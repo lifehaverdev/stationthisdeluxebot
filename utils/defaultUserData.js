@@ -1,11 +1,15 @@
 const defaultUserData = {
+    userId: '',
     wallet: '',
     balance: '',
+    verified: false,
     advancedUser: false,
     whaleMode: false,
     waterMark: true,
-    basePrompt: "MS2.2",
     userPrompt: false,
+    collections: 0,
+    loras: 0,
+    basePrompt: "MS2.2",
     blessing: 0,
     curse: 0,
     batchMax: 1,
@@ -14,10 +18,6 @@ const defaultUserData = {
     cfg: 7,
     strength: .6,
     prompt: '',
-    loras: [{
-        "name": 'LOW_POLY_PLAYSTATION_1_STILL',
-        "strength": 0.4
-    }],
     userBasePrompt: '',
     negativePrompt: '',
     seed: -1,
@@ -31,8 +31,37 @@ const defaultUserData = {
         height: 500,
         width: 500
     },
+    loraConfig: [
+        // {
+        //     loraName: '',
+        //     loraStrength: 1
+        // }
+    ],
+    collectionConfig: [
+        // {
+        //     name: '',
+        //     size: 100,
+        //     basePrompt: '',
+        //     subjectPrompt: '',
+        //     traits: [
+        //         {
+        //             name: '',
+        //             value: '',
+        //             prompt: '',
+        //             hidden: true
+        //         }
+        //     ]
+        // }
+    ],
+    loraCreateConfig: [
+        // {
+        //     name: '',
+        //     version: 0,
+        //     fileUrl: '',
+        // }
+    ],
     type: '',
 };
 
-module.exports = 
-    defaultUserData
+module.exports = defaultUserData
+

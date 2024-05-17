@@ -4,9 +4,9 @@ const Jimp = require('jimp');
 const fs = require('fs');
 const bot = require('../bot')
 //const fetch = require('fetch');
-const { addWaterMark } = require('../utils/waterMark');
+
 const defaultPrompt = require('../utils/defaultPrompt')
-const comfydeployid = "8e8cd6c1-fac6-4579-a908-619bf65f5415"
+const comfydeployid = "b466788a-4e8b-4866-88a3-7705267ba7c7"
 // Function to handle sending the generated image
 
 function getBasePromptByName(name) {
@@ -19,7 +19,7 @@ async function generateImage(message, promptObj) {
 
     try {
 
-        promptObj.prompt = promptObj.prompt.replace("/make", "").trim();
+        //promptObj.prompt = promptObj.prompt.replace("/make", "").trim();
         if(promptObj.prompt == ''){
             return;
         }
@@ -49,14 +49,14 @@ async function generateImage(message, promptObj) {
                 deployment_id: comfydeployid,
                 webhook: "http://localhost:3000/api/webhook", // optional
                 inputs: {
-                    "input_prompt": censoredPrompt + userBasePrompt + basePrompt,
+                    "input_prompt": censoredPrompt+'' + userBasePrompt + 'ps1 style',// + basePrompt,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_width": promptObj.photoStats.width,
-                    "input_height": promptObj.photoStats.height,
+                    //"input_width": promptObj.photoStats.width,
+                    //"input_height": promptObj.photoStats.height,
                     "input_seed": promptObj.seed,
                     // "input_lora_name": lora[0].name,
-                    "input_lora_strength": lora[0].strength
+                    //"input_lora_strength": lora[0].strength
                 }
             }),
         });
@@ -76,7 +76,7 @@ async function generateImage(message, promptObj) {
 
 }
 
-async function fetchWorkflowOutput(run_id) {
+async function fetchMAKEOutput(run_id) {
     const response = await fetch(`https://www.comfydeploy.com/api/run?run_id=${run_id}`, {
         method: "GET",
         headers: {
@@ -100,13 +100,14 @@ async function fetchWorkflowOutput(run_id) {
             const output = {
                 progress: data.progress,
                 status: data.status,
+                imgUrl: ''
             };
 
             if (data.outputs && data.outputs.length > 0 && data.outputs[0].data) {
                 const stuffData = data.outputs[0].data;
                 if (stuffData.images && stuffData.images.length > 0) {
-                    output.imageUrl = stuffData.images[0].url;
-                    console.log('Image URL:', output.imageUrl);
+                    output.imgUrl = stuffData.images[0].url;
+                    console.log('Image URL:', output.imgUrl);
                 }
             }
 
@@ -181,5 +182,5 @@ async function checkProgress(run_id) {
 module.exports = {
     //sendGeneratedImage,
     generateImage,
-    fetchWorkflowOutput
+    fetchMAKEOutput
 }

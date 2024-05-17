@@ -1,57 +1,57 @@
 const fs = require('fs');
 const path = require('path');
-const defaultUserData = require('./defaultUserData')
+const defaultUserData = require('./defaultUserData').default
 
 async function generateMasterKey() {
-    const chatsDir = path.join(__dirname, '../chats');
+    //const chatsDir = path.join(__dirname, '../chats');
     const masterKey = {};
 
     // Read the chats directory
-    try {
-        const files = fs.readdirSync(chatsDir);
+    // try {
+    //     const files = fs.readdirSync(chatsDir);
 
-        // Loop through each file in the chats directory
-        for (const file of files) {
-            if (file.endsWith('.json')) {
-                const filePath = path.join(chatsDir, file);
-                const fileData = fs.readFileSync(filePath, 'utf-8');
-                const jsonData = JSON.parse(fileData);
+    //     // Loop through each file in the chats directory
+    //     for (const file of files) {
+    //         if (file.endsWith('.json')) {
+    //             const filePath = path.join(chatsDir, file);
+    //             const fileData = fs.readFileSync(filePath, 'utf-8');
+    //             const jsonData = JSON.parse(fileData);
 
-                // Check if walletAddress exists in the JSON data
-                if (jsonData.wallet) {
-                    const walletAddress = jsonData.wallet.toLowerCase(); // Assuming wallet addresses should be case-insensitive
+    //             // Check if walletAddress exists in the JSON data
+    //             if (jsonData.wallet) {
+    //                 const walletAddress = jsonData.wallet.toLowerCase(); // Assuming wallet addresses should be case-insensitive
 
-                    // Check if walletAddress already exists in masterKey
-                    if (!masterKey[walletAddress]) {
-                        // Extract chatId from the filename (without the .json extension)
-                        const chatId = file.replace('.json', '');
-                        masterKey[walletAddress] = chatId;
-                    } else {
-                        console.error(`Duplicate wallet address found: ${walletAddress}. Deleting files...`);
+    //                 // Check if walletAddress already exists in masterKey
+    //                 if (!masterKey[walletAddress]) {
+    //                     // Extract chatId from the filename (without the .json extension)
+    //                     const chatId = file.replace('.json', '');
+    //                     masterKey[walletAddress] = chatId;
+    //                 } else {
+    //                     console.error(`Duplicate wallet address found: ${walletAddress}. Deleting files...`);
                         
-                        // Delete the duplicate files
-                        fs.unlinkSync(filePath);
+    //                     // Delete the duplicate files
+    //                     fs.unlinkSync(filePath);
                         
-                        const existingFilePath = path.join(chatsDir, `${masterKey[walletAddress]}.json`);
-                        fs.unlinkSync(existingFilePath);
+    //                     const existingFilePath = path.join(chatsDir, `${masterKey[walletAddress]}.json`);
+    //                     fs.unlinkSync(existingFilePath);
                         
-                        // Remove the wallet from masterKey to ensure it's not added
-                        delete masterKey[walletAddress];
-                    }
-                } else {
-                    console.error(`Missing wallet in ${file}. Deleting file...`);
-                    fs.unlinkSync(filePath);
-                }
-            }
-        }
+    //                     // Remove the wallet from masterKey to ensure it's not added
+    //                     delete masterKey[walletAddress];
+    //                 }
+    //             } else {
+    //                 console.error(`Missing wallet in ${file}. Deleting file...`);
+    //                 fs.unlinkSync(filePath);
+    //             }
+    //         }
+    //     }
 
-        // Write masterKey to a new file
-        fs.writeFileSync(path.join(__dirname, '../chats/masterKey.json'), JSON.stringify(masterKey, null, 2));
+    //     // Write masterKey to a new file
+    //     fs.writeFileSync(path.join(__dirname, '../chats/masterKey.json'), JSON.stringify(masterKey, null, 2));
 
-        console.log('masterKey generated successfully!');
-    } catch (error) {
-        console.error('Error generating masterKey:', error);
-    }
+    //     console.log('masterKey generated successfully!');
+    // } catch (error) {
+    //     console.error('Error generating masterKey:', error);
+    // }
 }
 
 function resetAccountsToDefault() {

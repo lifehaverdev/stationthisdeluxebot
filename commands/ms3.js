@@ -6,7 +6,7 @@ const bot = require('../bot')
 //const fetch = require('fetch');
 const { addWaterMark } = require('../utils/waterMark');
 const defaultPrompt = require('../utils/defaultPrompt')
-const comfydeployid = "dd87dbaf-22ca-4392-b170-a68457aa6626"
+const comfydeployid = "42106fbe-e6b5-4bcd-901f-a69554da084a"
 // Function to handle sending the generated image
 
 function getBasePromptByName(name) {
@@ -38,7 +38,7 @@ async function generateImg2Vid(message, promptObj) {
         if (response.ok) {
             const data = await response.json();
             ( run_id ) = data.run_id;
-            console.log('runid',run_id);
+            //console.log('runid',run_id);
             return run_id;
         } else {
             console.error('Failed to fetch:', response.statusText);
@@ -50,7 +50,7 @@ async function generateImg2Vid(message, promptObj) {
 
 }
 
-async function fetchWorkflowOutput(run_id) {
+async function fetchMS3Output(run_id) {
     const response = await fetch(`https://www.comfydeploy.com/api/run?run_id=${run_id}`, {
         method: "GET",
         headers: {
@@ -61,7 +61,7 @@ async function fetchWorkflowOutput(run_id) {
 
     if (response.ok) {
         const data = await response.json();
-        //console.log(`Response data:`, data); // Log the entire data object for debugging
+        console.log(`Response data:`, JSON.stringify(data)); // Log the entire data object for debugging
 
         if (!data) {
             console.error('No data received from the API');
@@ -70,28 +70,60 @@ async function fetchWorkflowOutput(run_id) {
 
         console.log(`Run_ID: ${run_id} Progress: ${(data.progress * 100).toFixed(2)}% - Status: ${data.status}`);
 
-        if (data.status === 'success' || data.status === 'failed' || data.status === 'running' || data.status === 'queued' || data.status === 'uploading' || data.status === 'started' || data.status === 'not-started') {
+        if (
+            data.status === 'success' || 
+            data.status === 'failed' || 
+            data.status === 'running' || 
+            data.status === 'queued' || 
+            data.status === 'uploading' || 
+            data.status === 'started' || 
+            data.status === 'not-started' ||
+            data.status === 'timeout'
+        ) {
             const output = {
                 progress: data.progress,
                 status: data.status,
+                imgUrl: ''
             };
 
+            // if (data.outputs && data.outputs.length > 0 && data.outputs[0].data) {
+            //     const stuffData = data.outputs[0].data;
+            //     console.log('stuffData',stuffData)
+            //     if (stuffData.gifs && stuffData.gifs.length > 0 && data.status == 'success') {
+            //         output.imgUrl = stuffData.gifs[0].url;
+            //         console.log('Image URL:', output.imgUrl);
+            //         return output;
+            //     }
+            // } else 
             if (data.outputs && data.outputs.length > 0 && data.outputs[0].data) {
                 const stuffData = data.outputs[0].data;
-                if (stuffData.images && stuffData.images.length > 0) {
-                    output.imageUrl = stuffData.images[0].url;
-                    console.log('Image URL:', output.imageUrl);
+                console.log(stuffData)
+                if (stuffData.gifs && stuffData.gifs.length > 0 && data.status == 'success') {
+                    output.imgUrl = stuffData.gifs[0].url;
+                    console.log('Image URL:', output.imgUrl);
+                    return output;
                 }
             }
 
             return output;
+
+            
         } else {
-            console.error('Invalid workflow status:', data.status);
-            return null;
+            console.error('Invalid workflow status:', response);
+            return {
+                progress: -1,
+                status: 'indeterminate',
+                imgUrl: ''
+            };
         }
     } else {
         console.error('Failed to fetch workflow status:', response.statusText);
-        return null;
+        console.log(response);
+        return {
+            progress: -1,
+            status: 'indeterminate',
+            imgUrl: ''
+        };
     }
 }
 
@@ -155,5 +187,5 @@ async function checkProgress(run_id) {
 module.exports = {
     //sendGeneratedImage,
     generateImg2Vid,
-    fetchWorkflowOutput
+    fetchMS3Output
 }
