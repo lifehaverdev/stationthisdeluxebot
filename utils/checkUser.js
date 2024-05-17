@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require ('path');
-const defaultUserData = require('./defaultUserData');
+const defaultUserData = require('./defaultUserData').default;
 
 function getUserData(chatId) {
 
