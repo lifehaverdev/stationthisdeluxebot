@@ -2,7 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { getBot } = require('./app')
 require('dotenv').config();
-
+console.log('running server now');
 const app = express();
 const bot = getBot();
 
