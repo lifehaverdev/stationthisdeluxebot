@@ -1,0 +1,133 @@
+const TelegramBot = require("node-telegram-bot-api");
+const botToken = process.env.TELEGRAM_TOKEN;
+const bot = new TelegramBot(botToken,
+    {
+        webHook: true,
+        webHookPort: 443,
+    });
+const startup = Date.now();
+const lobby = {};
+const STATES = {
+    IDLE: 'IDLE',
+    SIGN_IN: 'SIGN_IN',
+
+    MAKE: 'MAKE',
+    IMG2IMG: 'IMG2IMG',
+    MS3: 'MS3',
+    MS2PROMPT: 'MS2PROMPT',
+    INPAINT: 'INPAINT',
+    MASK: 'MASK',
+    MASKPROMPT: 'MASKPROMPT',
+    PFP: 'PFP',
+    ASSIST: 'ASSIST',
+    INTERROGATION: 'INTERROGATION',
+    DISC: 'DISC',
+    WATERMARK: 'WATERMARK',
+
+
+    SETBATCH: 'SETBATCH',
+    SETSTEPS: 'SETSTEPS',
+    SETCFG: 'SETCFG',
+    SETSTRENGTH: 'SETSTRENGTH',
+    SETPROMPT: 'SETPROMPT',
+    SETUSERPROMPT: 'SETUSERPROMPT',
+    SETNEGATIVEPROMPT: 'SETNEGATIVEPROMPT',
+    SETSEED: 'SETSEED',
+    SETPHOTO: 'SETPHOTO',
+    SETSIZE: 'SETSIZE',
+    VERIFY: 'VERIFY',
+
+    REQUEST: 'REQUEST',
+
+    COLLECTIONURI: 'URI',
+    COLLECTIONBASEPROMPT: 'COLBASE'
+    // Add more states as needed
+};
+//for setters
+const SET_COMMANDS = [
+    'prompt', 'userprompt', 'negprompt', 'photo', 'type',
+    'steps', 'batch', 'seed', 'size', 'strength', 'cfg'
+];
+const SETTER_TO_STATE = {
+    setbatch: STATES.SETBATCH,
+    setsteps: STATES.SETSTEPS,
+    setcfg: STATES.SETCFG,
+    setstrength: STATES.SETSTRENGTH,
+    setprompt: STATES.SETPROMPT,
+    setuserprompt: STATES.SETUSERPROMPT,
+    setnegprompt: STATES.SETNEGATIVEPROMPT,
+    setseed: STATES.SETSEED,
+    setphoto: STATES.SETPHOTO,
+    setsize: STATES.SETSIZE,
+    // Add more mappings as needed
+};
+const STATE_TO_LOBBYPARAM = {
+    'SETBATCH': "batchMax",
+    'SETSTEPS': "steps",
+    'SETCFG': "cfg",
+    'SETSTRENGTH': "strength",
+    'SETPROMPT': "prompt",
+    'SETUSERPROMPT': "userBasePrompt",
+    'SETNEGATIVEPROMPT': "negativePrompt",
+    'SETSEED': 'seed',
+    'SETPHOTO': 'fileUrl',
+    'SETSIZE': 'photoStats',
+}
+
+const commandStateMessages = {
+    '/disc': {
+        state: STATES.DISC,
+        message: 'What photo or file will you write to a disc?'
+    },
+    '/watermark': {
+        state: STATES.WATERMARK,
+        message: 'What photo or file will you brand?'
+    },
+    '/interrogate': {
+        state: STATES.INTERROGATION,
+        message: "Send in the photo you want to reverse engineer a prompt from."
+    },
+    '/quit': {
+        state: STATES.IDLE,
+        message: 'okay i reset your station'
+    },
+    '/request': {
+        state: STATES.REQUEST,
+        message: `Give us the link to the model you want`
+    },
+    '/inpaint': {
+        state: STATES.INPAINT,
+        message: 'What image are you inpainting?'
+    },
+    '/ms2': {
+        state: STATES.IMG2IMG,
+        message: "Send in the photo you want to img to img."
+    },
+    '/ms3': {
+        state: STATES.MS3,
+        message: "Send in a photo you want to img2vid, better be a square"
+    },
+    '/pfp': {
+        state: STATES.PFP,
+        message: "Send in a photo and I will automatically img2img it with my own prompt"
+    },
+    '/assist': {
+        state: STATES.ASSIST,
+        message: "Tell me the idea or key words you want a prompt for"
+    }
+    // Add other commands as needed
+};
+
+
+module.exports = {
+    getBotInstance: function () {
+        return bot;
+    },
+    lobby,
+    startup,
+    commandStateMessages,
+    SET_COMMANDS,
+    STATE_TO_LOBBYPARAM,
+    SETTER_TO_STATE,
+    STATES
+};

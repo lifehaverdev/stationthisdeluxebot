@@ -10,6 +10,7 @@ const defaultUserData = {
     collections: 0,
     loras: 0,
     basePrompt: "MS2.2",
+    checkpoint: "Proteus_V0.4.safetensors",
     blessing: 0,
     curse: 0,
     batchMax: 1,
@@ -31,12 +32,12 @@ const defaultUserData = {
         height: 500,
         width: 500
     },
-    loraConfig: [
+    //loraConfig: [
         // {
         //     loraName: '',
         //     loraStrength: 1
         // }
-    ],
+    //],
     collectionConfig: [
         // {
         //     name: '',
@@ -53,13 +54,11 @@ const defaultUserData = {
         //     ]
         // }
     ],
-    loraCreateConfig: [
-        // {
-        //     name: '',
-        //     version: 0,
-        //     fileUrl: '',
-        // }
-    ],
+    state: {
+        state: 'IDLE',
+        chatId: null,
+        messageThreadId: null
+    },
     type: '',
 };
 

@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-const defaultUserData = require("./defaultUserData.js");
+const defaultUserData = require("../utils/users/defaultUserData.js");
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
@@ -25,7 +25,7 @@ async function writeUserData(userId, data) {
     const client = new MongoClient(uri);
     
     try {
-        const collection = client.db('stationthisdeluxebot').collection('users');
+        const collection = client.db(dbName).collection('users');
         // Upsert the document with wallet address as the filter
         const filter = { userId: userId };
         await collection.updateOne( filter,
@@ -42,12 +42,202 @@ async function writeUserData(userId, data) {
     }
 }
 
+async function updateAllUserSettings() {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('users');
+        
+        // Fetch all user settings
+        const users = await collection.find().toArray();
+        
+        for (let user of users) {
+            let updatedUserSettings = { ...user };
+
+            // Add missing keys from defaultUserData
+            for (const key in defaultUserData) {
+                if (!updatedUserSettings.hasOwnProperty(key)) {
+                    updatedUserSettings[key] = defaultUserData[key];
+                }
+            }
+
+            // Remove keys not present in defaultUserData
+            for (const key in updatedUserSettings) {
+                if (!defaultUserData.hasOwnProperty(key)) {
+                    delete updatedUserSettings[key];
+                }
+            }
+
+            // Upsert the updated user settings
+            const filter = { userId: user.userId };
+            await collection.updateOne(filter, { $set: updatedUserSettings });
+
+            console.log(`User settings updated for userId: ${user.userId}`);
+        }
+
+        console.log('All user settings updated successfully');
+        return true;
+    } catch (error) {
+        console.error("Error updating user settings:", error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
+async function writeCollectionData(userId, collectionName) {
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+        const data = { userId: userId, collectionName: collectionName, metadata: [] };
+        const result = await collection.updateOne({ userId: userId, collectionName: collectionName }, { $set: data }, { upsert: true });
+        return result.upsertedCount > 0 || result.modifiedCount > 0;
+    } finally {
+        await client.close();
+    }
+}
+
+// async function getCollections(userId) {
+//     try {
+//         await client.connect();
+//         const collection = client.db(dbName).collection('collections');
+//         return await collection.find({ userId: userId }).project({ collectionName: 1, _id: 0 }).toArray();
+//     } finally {
+//         await client.close();
+//     }
+// }
+
+async function getCollections(userId) {
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+        // Include basePrompt and uri in the projection
+        return await collection.find({ userId: userId })
+                               .project({ collectionName: 1, basePrompt: 1, uri: 1, _id: 0, metadata: 1 })
+                               .toArray();
+    } finally {
+        await client.close();
+    }
+}
+
+async function addMetadataToCollection(collectionName, metadata) {
+    console.log('adding to collection')
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+
+        // First, fetch the current state of the collection to determine the next ms2tokenId
+        const currentCollection = await collection.findOne({ collectionName: collectionName });
+        if (!currentCollection) {
+            console.error('Collection not found');
+            return false;
+        }
+
+        // Determine the next ms2tokenId based on the length of the metadata array
+        const nextTokenId = currentCollection.metadata.length + 1;
+
+        // Append the ms2tokenId to the metadata object
+        metadata.ms2tokenId = nextTokenId;
+
+        // Push the updated metadata to the collection
+        const updateResult = await collection.updateOne(
+            { collectionName: collectionName },
+            { $push: { metadata: metadata } }
+        );
+
+        if (updateResult.modifiedCount === 1) {
+            console.log('Metadata added successfully');
+            return true;
+        } else {
+            console.error('No collection document was updated');
+            return false;
+        }
+    } catch (error) {
+        console.error("Error adding metadata to collection:", error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
+async function editCollectionURI(userId,collectionName,uri) {
+    const client = new MongoClient(process.env.MONGO_PASS);
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+        const filter = { userId: userId, collectionName: collectionName };
+        const updateDoc = {
+            $set: { uri: uri }
+        };
+        await collection.updateOne(filter, updateDoc);
+        console.log('URI added to collection successfully');
+    } catch (error) {
+        console.error('Failed to add URI:', error.message);
+    } finally {
+        await client.close();
+    }
+}
+
+async function editCollectionBasePrompt(userId,collectionName,basePrompt) {
+    const client = new MongoClient(process.env.MONGO_PASS);
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+        const filter = { userId: userId, collectionName: collectionName };
+        const updateDoc = {
+            $set: { basePrompt: basePrompt }
+        };
+        await collection.updateOne(filter, updateDoc);
+        console.log('Base Prompt added to collection successfully');
+    } catch (error) {
+        console.error('Failed to add URI:', error.message);
+    } finally {
+        await client.close();
+    }
+}
+async function performCollectionDatabaseAction(action, dbName, collectionName, filter, update) {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection(collectionName);
+        
+        let result;
+        switch (action) {
+            case 'write':
+                result = await collection.updateOne(filter, { $set: update }, { upsert: true });
+                return result.upsertedCount > 0 || result.modifiedCount > 0;
+            case 'addMetadata':
+                // Assuming metadata is an array field in the document
+                result = await collection.updateOne(filter, { $push: { metadata: update } });
+                return result.modifiedCount === 1;
+            case 'editField':
+                result = await collection.updateOne(filter, { $set: update });
+                return result.modifiedCount === 1;
+            // Add more cases for other actions as needed
+            case 'delete':
+                result = await collection.deleteOne(filter);
+                return result.deletedCount === 1;
+            default:
+                throw new Error('Invalid action specified');
+        }
+    } catch (error) {
+        console.error(`Error performing ${action} operation:`, error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 async function readUserData(walletAddress) {
     const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
     const client = new MongoClient(uri);
-    const collection = client.db('stationthisdeluxebot').collection('users');
+    const collection = client.db(dbName).collection('users');
     try {
         // Find the document with the given wallet address
         let userData = await collection.findOne({ wallet: walletAddress });
@@ -75,7 +265,7 @@ async function readUserData(walletAddress) {
 }
 
 async function getUserDataByUserId(userId) {
-    //deleteUserSettingsByUserId('stationthisdeluxebot',userId);
+    //deleteUserSettingsByUserId(dbName,userId);
     // Connection URI
     const uri = process.env.MONGO_PASS;
 
@@ -88,19 +278,19 @@ async function getUserDataByUserId(userId) {
         //await client.connect();
 
         // Access the database and the "users" collection
-        const db = client.db('stationthisdeluxebot');
+        const db = client.db(dbName);
         const userSettingsCollection = db.collection('users');
 
         // Query for the user settings by userId
         userData = await userSettingsCollection.findOne({ userId: userId });
         //console.log('userData in get userdatabyuserid',userData);
         if (userData != null){
-            console.log('User settings found:', userData);
+            console.log('User settings found:', userData.userId);
             return userData;
         } else {
             console.log('empty user settings');
             userSettings = { ...defaultUserData, userId: userId };
-            console.log('userSettings we are writing',userSettings);
+            console.log('userSettings we are writing',userSettings.userId);
             await userSettingsCollection.insertOne(userSettings);
             console.log('New user settings created:', userSettings.userId);
             return userSettings
@@ -195,9 +385,9 @@ async function createDatabase(dbName) {
     }
 }
 
-// Replace 'stationthisdeluxebot' with your desired database name
-//const dbName = 'stationthisdeluxebot';
-//createDatabase(dbName);
+// Replace dbName with your desired database name
+//const dbName = dbName;
+
 
 // Call the function to list databases
 //listDatabases();
@@ -338,10 +528,46 @@ async function deleteAllDocuments(dbName, collectionName) {
     }
 }
 
+async function updateMetadataEntry(userId, metadataId, features, imageUrl) {
+    const client = new MongoClient(process.env.MONGO_PASS);
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('collections');
+        console.log("Attempting to update:", userId, metadataId);  // Log identifiers
+
+        const filter = { userId: userId, "metadata.ms2tokenId": metadataId };
+        const update = { $set: { "metadata.$.features": features, "metadata.$.imageUrl": imageUrl } };
+        const result = await collection.updateOne(filter, update);
+
+        console.log("Matched Count:", result.matchedCount);  // How many documents were matched
+        console.log("Modified Count:", result.modifiedCount);  // How many documents were modified
+
+        return result.modifiedCount === 1;
+    } catch (error) {
+        console.error("Error in updateMetadataEntry:", error);
+        return false;  // Ensure false is returned on error
+    } finally {
+        await client.close();
+    }
+}
+
 //removeDuplicates(dbName, collectionName, '_id');
 // Call the function to print all documents in the collection
 //printAllDocuments(dbName, collectionName);
 //deleteAllDocuments(dbName,'users')
 //printAllCollections(dbName)
+//connectToMongoDB();
+//createDatabase(dbName);
 
-module.exports = { readUserData, writeUserData, getUserDataByUserId }
+module.exports = { 
+    performCollectionDatabaseAction, 
+    editCollectionBasePrompt, 
+    addMetadataToCollection, 
+    editCollectionURI, 
+    readUserData, 
+    writeUserData, 
+    updateAllUserSettings,
+    getUserDataByUserId, 
+    getCollections, 
+    writeCollectionData 
+};
