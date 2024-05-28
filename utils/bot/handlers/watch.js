@@ -115,10 +115,10 @@ function messageFilter(message) {
     }
     //console.log('message in filter',message)
     //console.log('startup in filter',startup)
-    // if(message.date < startup/1000){
-    //     console.log('ignoring because its old')
-    //     return true;
-    // }
+    if(message.date < startup/1000 - 1000 * 60 * 5){
+        console.log('ignoring because its old')
+        return true;
+    }
     //maybe this is not chill for webhooks
 
     //why did we do this
