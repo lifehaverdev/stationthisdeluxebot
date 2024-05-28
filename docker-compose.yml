@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  bot:
+    build:
+      context: .
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+    ports:
+      - "443:443"
+    env_file:
+      - .env

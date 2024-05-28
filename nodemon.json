@@ -1,5 +1,0 @@
-{
-    "watch": ["./"],
-    "ignore": ["chats/**", "tmp/**", "modelRequests/**", "reports/**", "utils/fortune.js"]
-  }
-  
