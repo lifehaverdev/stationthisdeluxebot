@@ -3,7 +3,6 @@ FROM node:20
 
 # Create and change to the app directory.
 WORKDIR /usr/src/app
-
 # Use build arguments for GitHub token
 # ARG GITHUB_TOKEN
 
@@ -20,7 +19,7 @@ COPY . .
 
 # Install dependencies
 RUN npm install
-
+RUN mkdir -p /tmp
 # Expose the port the app runs on
 EXPOSE 3000
 
