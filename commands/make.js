@@ -5,7 +5,7 @@ const { handleLoraTrigger } = require('../utils/models/loraTriggerTranslate.js')
 const defaultSettings = require('../utils/models/defaultSettings.js')
 //const fetch = require('fetch');
 
-//const {defaultPrompt, basepromptmenu, getBasePromptByName } = require('../utils/models/basepromptmenu.js')
+const {defaultPrompt, basepromptmenu, getBasePromptByName } = require('../utils/models/basepromptmenu.js')
 const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js');
 // Function to handle sending the generated image
 
