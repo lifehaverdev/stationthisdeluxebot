@@ -1262,7 +1262,7 @@ module.exports = {
     handleSignIn,
     handleSignOut,
     handleStatus,
-    handleTest,
+    //handleTest,
     handleVerify,
     handleWatermark,
     handleLoraTrigger,
