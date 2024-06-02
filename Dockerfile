@@ -5,7 +5,7 @@ FROM node:20
 WORKDIR /usr/src/app
 
 # Use build arguments for GitHub token
-ARG GITHUB_TOKEN
+# ARG GITHUB_TOKEN
 
 # Install git
 RUN apt-get update 
