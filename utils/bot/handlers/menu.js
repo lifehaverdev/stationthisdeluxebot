@@ -1,4 +1,12 @@
-
+const { lobby, getBotInstance } = require('../bot');
+const checkpointmenu = require('../../models/checkpointmenu')
+const voiceModels = require('../../models/voiceModelMenu')
+const { basepromptmenu, getBasePromptByName } = require('../../models/basepromptmenu')
+const {
+    sendMessage,
+    safeExecute
+} = require('../../utils');
+const bot = getBotInstance();
 
 function displayBasePromptSettingsMenu(callbackQuery) {
     // Create account settings menu keyboard
@@ -40,6 +48,26 @@ function displayCheckpointSettingsMenu(callbackQuery) {
         }
     });
 }
+function displayVoiceModelSettingsMenu(callbackQuery) {
+    // Create account settings menu keyboard
+    const chatId = callbackQuery.message.chat.id;
+    const userId = callbackQuery.from.id;
+    
+    //const promptsObject = require('./utils/basePrompts.js');  // Update the path to your prompts object file
+    
+    // Transform the prompts object into keyboard buttons
+    let voiceSettingsMenu = voiceModels.map(voice => [{
+        text: `${lobby[userId].voiceModel == voice.modelId ? '✅ '+voice.name : voice.name}`,
+        callback_data: `setVoice_${voice.modelId}`,
+    }]);
+
+    // Send account settings menu
+    bot.sendMessage(chatId, 'Voice Menu:', {
+        reply_markup: {
+            inline_keyboard: voiceSettingsMenu
+        }
+    });
+}
 
 
 function parseCallbackData(data) {
@@ -74,10 +102,6 @@ function parseCallbackData(data) {
 }
 module.exports = function(bot) {
     bot.on('callback_query', (callbackQuery) => {
-        if (ignoreQueue) {
-            console.log("Skipping logic because 'true' was passed as a command line argument.");
-            return true; // Skip further processing
-        }
         //console.log(callbackQuery.data);
         try {
             const chatId = callbackQuery.message.chat.id;
@@ -85,10 +109,7 @@ module.exports = function(bot) {
             //console.log('callbackquerey',callbackQuery);
                         // Function to check and parse the callback data
             const {action, message} = parseCallbackData(callbackQuery.data);
-            //console.log(message);
-            //console.log(callbackQuery.message);
-            //console.log(simulatedMessage);
-        
+            
             let messageTitle;
             
             switch (action) {
@@ -110,6 +131,7 @@ module.exports = function(bot) {
                     break;
         
                 case 'toggleWaterMark':
+                    
                     if(lobby[userId].balance > 1000000){
                         lobby[userId].waterMark = !lobby[userId].waterMark
                         bot.answerCallbackQuery(callbackQuery.id, { text: `WaterMark option updated to ${lobby[userId].waterMark ? 'ON' : 'OFF'}`});
@@ -127,6 +149,10 @@ module.exports = function(bot) {
                     messageTitle = 'switching checkpoint'
                     displayCheckpointSettingsMenu(callbackQuery);
                     break;
+                case 'toggleVoice':
+                    messageTitle = 'switching voice'
+                    displayVoiceModelSettingsMenu(callbackQuery);
+                    break;
         
                 default:
                     if (callbackQuery.data.startsWith('setBasePrompt_')) {
@@ -141,6 +167,13 @@ module.exports = function(bot) {
                             bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Base prompt not found'});
                             messageTitle = `Base prompt not set to: ${selectedName}`
                         }
+                    } else if (callbackQuery.data.startsWith('setVoice_')){
+                        console.log('setting voice');
+                        const selectedModel = callbackQuery.data.split('_').slice(1).join('_');
+                        console.log('voice set to',selectedModel)
+                        lobby[userId].voiceModel = selectedModel;
+                        bot.answerCallbackQuery(callbackQuery.id, { text: `Voice set`});
+                        messageTitle = `Voice set`
                     } else if (callbackQuery.data.startsWith('setCheckpoint_')){
                         console.log('setting checkpoint');
                         const selectedName = callbackQuery.data.split('_').slice(1).join('_');

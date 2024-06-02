@@ -5,7 +5,7 @@ require("dotenv").config()
 const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
 const dbName = 'stationthisdeluxebot';
-console.log('uri in mongo',uri);
+
 const client = new MongoClient(uri);
 
 // Connect to the MongoDB server

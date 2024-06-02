@@ -37,6 +37,8 @@ const {
     handleLoraTrigger,
     sendLoRaModelFilenames,
     startMake,
+    shakeAssist,
+    shakeSpeak,
     startSet,
     saySeed,
     checkLobby,
@@ -45,17 +47,17 @@ const defaultUserData = require('../../users/defaultUserData');
 
 const commandPatterns = {
     '/signin': handleSignIn,
-    '/make(?:@${stationthisdeluxebot})?\\s+(.+)': handleMake,
-    '/dexmake(?:@${stationthisdeluxebot})?\\s+(\\d+)': handleDexMake, 
-    '/test(?:@${stationthisdeluxebot})?\\s+(.+)': handleTest,
-    '/regen(?:@${stationthisdeluxebot})?\\s*(.*)': handleRegen,
+    '/make(?:@stationthisdeluxebot)?\\s+(.+)': handleMake,
+    '/dexmake(?:@stationthisdeluxebot)?\\s+(\\d+)': handleDexMake, 
+    '/test(?:@stationthisdeluxebot)?\\s+(.+)': handleTest,
+    '/regen(?:@stationthisdeluxebot)?\\s*(.*)': handleRegen,
     '/getseed(.*)': saySeed,
     '/promptcatch\\s+(\\d+)': handlePromptCatch,
     //'/request(.*)': startRequest,
     '/savesettings(.*)': handleSaveSettings,
     '/seesettings(.*)': handleSeeSettings,
-    '/accountsettings(?:@${stationthisdeluxebot})?': handleAccountSettings,
-    '/loralist(?:@${stationthisdeluxebot})?': sendLoRaModelFilenames,
+    '/accountsettings(?:@stationthisdeluxebot)?': handleAccountSettings,
+    '/loralist(?:@stationthisdeluxebot)?': sendLoRaModelFilenames,
     //'/seecollections': handleSeeCollections,
     //'/createcollection (.+)': handleCreateCollection,
     //'/uri': handleUri,
@@ -79,6 +81,7 @@ const stateHandlers = {
     [STATES.MASKPROMPT]: (message) => safeExecute(message, handleInpaintPrompt),
     [STATES.REQUEST]: (message) => safeExecute(message, handleRequest),
     [STATES.ASSIST]: (message) => safeExecute(message, shakeAssist),
+    [STATES.SPEAK]: (message) => safeExecute(message, shakeSpeak),
     [STATES.IMG2IMG]: (message) => safeExecute(message, handleMs2ImgFile),
     [STATES.MS3]: (message) => safeExecute(message,handleMs3ImgFile),
     [STATES.PFP]: (message) => safeExecute(message, handlePfpImgFile),
@@ -113,9 +116,9 @@ function messageFilter(message) {
         return; // Early return to prevent further processing of this as a normal command
         }
     }
-    //console.log('message in filter',message)
-    //console.log('startup in filter',startup)
-    if(message.date < startup/1000 - 1000 * 60 * 5){
+    //console.log('message date in filter',message.date)
+    //console.log('startup date /1000 in filter',startup/1000 - 60 * 5)
+    if(message.date < startup/1000 - 60 * 5){
         console.log('ignoring because its old')
         return true;
     }
@@ -130,12 +133,13 @@ function messageFilter(message) {
     if (!lobby[message.from.id]) {
        //console.log('no state')
        lobby[message.from.userId] = defaultUserData;
-    }else{
-        if( message.chat.id != lobby[message.from.id].state.chatId || ( lobby[message.from.id].state.messageThreadId && (!message.message_thread_id || message.message_thread_id != lobby[message.from.id].state.messageThreadId ))){
-            lobby[message.from.id].state.state = STATES.IDLE
-            return true;
-        }
+       return false
     }
+    if( message.chat.id != lobby[message.from.id].state.chatId || (message.message_thread_id && message.message_thread_id != lobby[message.from.id].state.messageThreadId )){
+        lobby[message.from.id].state.state = STATES.IDLE
+        return true;
+    }
+
     
     return false
 }
@@ -174,13 +178,15 @@ module.exports = function(bot) {
                 const regex = new RegExp(`^${pattern}`);
                 const match = regex.exec(message.text);
                 if (match) {
+                    console.log('i see a command tbh')
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => pattern.startsWith(cmd));
                     if (requiresGatekeeping) {
                         // Perform gatekeeping check
+                        console.log('we are gatekeeping')
                         const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
-                            await sendMessage(message.chat.id, 'Buy MS2 and sign in with that wallet to unlock more features');
+                            await sendMessage(message.chat.id, 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
                         } 
                     }
                     await safeExecute(message, () => handler(message, match));

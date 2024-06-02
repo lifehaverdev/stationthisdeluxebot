@@ -123,17 +123,13 @@ async function waitlist(task){
                 return
             }
             run_id = await generate(promptObj);
-            checkback = 2*60*1000;
             break;
-        case 'MAKE':
-            run_id = await generate(promptObj);
-            checkback = 45*1000;
-            break;   
+        case 'MAKE':   
         case 'MS2':
             run_id = await generate(promptObj);
-            checkback = 1*60*1000;
+            break;
     }
-    if(run_id != -1){
+    if(run_id != -1 && run_id != undefined){
         console.log('we have run id',run_id);
         const safeCheckBack = scheduleCheckback(checkback);
         task = {
@@ -144,10 +140,10 @@ async function waitlist(task){
         };
         waiting.push(task);
         console.log(`Task enqueued for ${message.from.first_name}`);
-        setTimeout(()=>processWaitlist(task),safeCheckBack)
+        //setTimeout(()=>processWaitlist(task),safeCheckBack)
     } else {
         console.log('no run id');
-        sendMessage(message,'ah it didnt take might be checkpoint or lora name issue. send your prompt to dev')
+        sendMessage(message,'ah it didnt take. send your prompt to dev')
     }
     
 }
@@ -194,87 +190,150 @@ async function retryOperation(operation, ...args) {
     }
     return success
 }
-async function processWaitlist(task) {
-    const removeIndex = (run_id) => {
-        try{
-            // Find the index of the task in the waiting list
-            const index = waiting.findIndex(task => task.run_id === run_id);
+// async function processWaitlist(task) {
+//     const removeIndex = (run_id) => {
+//         try{
+//             // Find the index of the task in the waiting list
+//             const index = waiting.findIndex(task => task.run_id === run_id);
     
-            // If the task is found, remove it from the waiting list
-            if (index !== -1) {
-                waiting.splice(index, 1);
-                console.log(`Task with ID ${run_id} removed from the waiting list.`);
-            } else {
-                console.warn(`Task with ID ${run_id} not found in the waiting list.`);
-            }
-        } catch (error) {
-            console.error('Error removing task:', error);
-        }
-    }
+//             // If the task is found, remove it from the waiting list
+//             if (index !== -1) {
+//                 waiting.splice(index, 1);
+//                 console.log(`Task with ID ${run_id} removed from the waiting list.`);
+//             } else {
+//                 console.warn(`Task with ID ${run_id} not found in the waiting list.`);
+//             }
+//         } catch (error) {
+//             console.error('Error removing task:', error);
+//         }
+//     }
 
-    const { run_id, timestamp, checkback } = task;
+//     const { run_id, timestamp, checkback } = task;
 
-    // Calculate the next scheduled check time
-    const nextCheckTime = timestamp + checkback;
+//     // Calculate the next scheduled check time
+//     const nextCheckTime = timestamp + checkback;
 
-    // Calculate the delay until the next checkback
-    const delay = nextCheckTime - Date.now();
+//     // Calculate the delay until the next checkback
+//     const delay = nextCheckTime - Date.now();
 
-    // Check if NOW is greater than nextCheckTime
-    if (Date.now() >= nextCheckTime) {
-        try {
-            // Check if the run_id is already being processed
-            if (!processingRunIds.has(run_id)) {
-                // Add the run_id to the processing set before processing the task
-                processingRunIds.add(run_id);
+//     // Check if NOW is greater than nextCheckTime
+//     if (Date.now() >= nextCheckTime) {
+//         try {
+//             // Check if the run_id is already being processed
+//             if (!processingRunIds.has(run_id)) {
+//                 // Add the run_id to the processing set before processing the task
+//                 processingRunIds.add(run_id);
 
-                // Check the status of the task using run_id
-                let adjustedCheckback;
-                const { progress, status, imgUrls } = await fetchOutput(run_id);
-                adjustedCheckback = progress > 0.9 ? 5 * 1000 : task.checkback;
+//                 // Check the status of the task using run_id
+//                 let adjustedCheckback;
+//                 const { progress, status, imgUrls } = await fetchOutput(run_id);
+//                 adjustedCheckback = progress > 0.9 ? 5 * 1000 : task.checkback;
 
-                if (status === 'success' && imgUrls) {
-                    // Task completed successfully, handle the output
-                    if(await handleTaskCompletion(task, { progress, status, imgUrls })){
-                        removeIndex(run_id);
-                    }
-                    processingRunIds.delete(run_id);
-                } else if (status === 'failed' || status === 'timeout') {
-                    console.error('Task failed:', task.message);
-                    // Remove the failed task from waiting
-                    sendMessage(task.message,'Oh no it failed ):')
-                    removeIndex(run_id);
-                    processingRunIds.delete(run_id);
-                } else {
-                    // Continue checking after the adjusted checkback time
-                    setTimeout(()=>processWaitlist(task), adjustedCheckback);
-                    processingRunIds.delete(run_id);
-                }
+//                 if (status === 'success' && imgUrls) {
+//                     // Task completed successfully, handle the output
+//                     if(await handleTaskCompletion(task, { progress, status, imgUrls })){
+//                         removeIndex(run_id);
+//                     }
+//                     processingRunIds.delete(run_id);
+//                 } else if (status === 'failed' || status === 'timeout') {
+//                     console.error('Task failed:', task.message);
+//                     // Remove the failed task from waiting
+//                     sendMessage(task.message,'Oh no it failed ):')
+//                     removeIndex(run_id);
+//                     processingRunIds.delete(run_id);
+//                 } else {
+//                     // Continue checking after the adjusted checkback time
+//                     setTimeout(()=>processWaitlist(task), adjustedCheckback);
+//                     processingRunIds.delete(run_id);
+//                 }
 
-                // Remove the run_id from the processing set after handling completion
+//                 // Remove the run_id from the processing set after handling completion
                 
-            } else {
-                console.log(`Task with run_id ${run_id} is already being processed. Skipping.`);
-            }
-        } catch (error) {
-            console.error('Error fetching workflow status:', error);
-        }
-    } else {
-        // Set a timeout to come back and process the queue when the next checkback is due
-        //actually dont do that
-        //setTimeout(processWaitlist, delay);
+//             } else {
+//                 console.log(`Task with run_id ${run_id} is already being processed. Skipping.`);
+//             }
+//         } catch (error) {
+//             console.error('Error fetching workflow status:', error);
+//         }
+//     } else {
+//         // Set a timeout to come back and process the queue when the next checkback is due
+//         //actually dont do that
+//         //setTimeout(processWaitlist, delay);
+//     }
+//     processQueue();
+// }
+
+async function processWaitlist(status, run_id, outputs) {
+    // Check the "waiting" task array for a matching ID
+    
+    const taskIndex = waiting.findIndex(task => task.run_id === run_id);
+    
+    if (taskIndex === -1) {
+        console.error('Task with run_id not found in the waiting array.');
+        return;
     }
+
+    const task = waiting[taskIndex];
+    const run = {
+        status, run_id, outputs
+    }
+    // Handle sending the content to the user via handleTaskCompletion
+    const response = await handleTaskCompletion(task, run);
+    console.log(response)
+
+    // Remove the corresponding task from the waiting array
+    if(status == 'success'){
+        waiting.splice(taskIndex, 1);
+    }
+    
+    // Continue processing tasks
     processQueue();
 }
+// [
+//     {
+//         "id":"f944b0c4-52f1-4968-afff-f1e5d9302783",
+//         "run_id":"626a641b-d64d-4e0b-86d7-5a114d76f72f",
+//         "data":
+//             {
+//                 "images":
+//                     [
+//                         {
+//                             "type":"output",
+//                             "filename":"2024-05-25_101159_00001_.png",
+//                             "subfolder":"",
+//                             "url":"https://storage.comfydeploy.com/outputs/runs/626a641b-d64d-4e0b-86d7-5a114d76f72f/2024-05-25_101159_00001_.png"
+//                         }
+//                     ]
+//             },
+//         "created_at":"2024-05-28T20:51:15.294Z",
+//         "updated_at":"2024-05-28T20:51:15.294Z"
+//     }
+// ]
 
 async function handleTaskCompletion(task, run) {
     const { message } = task;
-    const { imgUrls } = run;
+    const { status, outputs } = run;
+    const possibleTypes = ["images", "gifs", "videos"];
+    let urls = [];
 
     const operation = async () => {
-        for (const { url, type } of imgUrls) {
+        console.log("Outputs found:", outputs.length);
+        outputs.forEach(outputItem => {
+            possibleTypes.forEach(type => {
+                if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
+                    outputItem.data[type].forEach(dataItem => {
+                        const url = dataItem.url;
+                        const fileType = extractType(url);
+                        urls.push({ type: fileType, url });
+                        console.log(`${fileType.toUpperCase()} URL:`, url);
+                    });
+                }
+            });
+        });
+
+        for (const { url, type } of urls) {
             if (type === 'image') {
-                console.log('message right before sending photo',message)
+                console.log('Message right before sending photo:', message);
                 await sendPhoto(message, url);
             } else if (type === 'gif') {
                 await sendAnimation(message, url);
@@ -286,7 +345,27 @@ async function handleTaskCompletion(task, run) {
         }
     };
 
-     return await retryOperation(operation); // Retry sending message/photo/video 3 times with a delay of 2 seconds between retries
+    if (status === 'success') {
+        return await retryOperation(operation); // Retry sending message/photo/video 3 times with a delay of 2 seconds between retries
+    } else {
+        task.status = status;
+        //sendMessage(message, status);
+    }
+}
+// Function to extract type from the URL or outputItem.type field
+function extractType(url) {
+    // Example logic to extract type from the URL or outputItem.type field
+    const extension = url.split('.').pop().toLowerCase();
+    if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
+        return 'image';
+    } else if (extension === 'gif') {
+        return 'gif';
+    } else if (extension === 'mp4' || extension === 'avi' || extension === 'mov') {
+        return 'video';
+    } else {
+        // Default to 'unknown' type if extension is not recognized
+        return 'unknown';
+    }
 }
 
 // Export variables and functions
@@ -295,6 +374,7 @@ module.exports = {
     waiting,
     taskQueue,
     enqueueTask,
-    sortTaskQueue
+    sortTaskQueue,
+    processWaitlist
     // Add other exports here if needed
 };

@@ -4,15 +4,10 @@ const defaultUserData = {
     balance: '',
     verified: false,
     advancedUser: false,
-    whaleMode: false,
     waterMark: true,
-    userPrompt: false,
-    collections: 0,
-    loras: 0,
     basePrompt: "MS2.2",
     checkpoint: "Proteus_V0.4.safetensors",
-    blessing: 0,
-    curse: 0,
+    voiceModel: "165UvtZp7kKnmrVrVQwx",
     batchMax: 1,
     points: 0,
     steps: 30,
@@ -32,28 +27,6 @@ const defaultUserData = {
         height: 500,
         width: 500
     },
-    //loraConfig: [
-        // {
-        //     loraName: '',
-        //     loraStrength: 1
-        // }
-    //],
-    collectionConfig: [
-        // {
-        //     name: '',
-        //     size: 100,
-        //     basePrompt: '',
-        //     subjectPrompt: '',
-        //     traits: [
-        //         {
-        //             name: '',
-        //             value: '',
-        //             prompt: '',
-        //             hidden: true
-        //         }
-        //     ]
-        // }
-    ],
     state: {
         state: 'IDLE',
         chatId: null,

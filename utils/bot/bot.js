@@ -2,8 +2,9 @@ const TelegramBot = require("node-telegram-bot-api");
 const botToken = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(botToken,
     {
-        webHook: true,
-        webHookPort: 443,
+        //webHook: true,
+        //webHookPort: 443,
+        polling: true
     });
 const startup = Date.now();
 const lobby = {};
@@ -20,6 +21,7 @@ const STATES = {
     MASKPROMPT: 'MASKPROMPT',
     PFP: 'PFP',
     ASSIST: 'ASSIST',
+    SPEAK: 'SPEAK',
     INTERROGATION: 'INTERROGATION',
     DISC: 'DISC',
     WATERMARK: 'WATERMARK',
@@ -114,6 +116,10 @@ const commandStateMessages = {
     '/assist': {
         state: STATES.ASSIST,
         message: "Tell me the idea or key words you want a prompt for"
+    },
+    '/speak': {
+        state: STATES.SPEAK,
+        message: "What should I say"
     }
     // Add other commands as needed
 };
