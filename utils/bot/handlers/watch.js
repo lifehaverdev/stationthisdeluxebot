@@ -161,7 +161,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/make', '/dexmake', '/test', '/regen'];
+const commandsRequiringGatekeeping = ['/make', '/dexmake', '/test', '/regen', '/speak'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
