@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { getBot } = require('./app');
+//const { getBot } = require('./app');
 require('dotenv').config();
 console.log('running server now');
 const { processWaitlist } = require('./utils/bot/queue');
@@ -8,8 +8,12 @@ const { processWaitlist } = require('./utils/bot/queue');
 const app = express();
 app.use(bodyParser.json());
 
+app.get('api/webhook',() => {
+  console.log('yeah we are open for business')
+}) 
+
 app.post('/api/webhook', async (req, res) => {
-  console.log('Webhook ping received');
+  console.log('Webhook post received');
   
   // Log the entire request body
   console.log('Request body:', req.body);
@@ -18,7 +22,7 @@ app.post('/api/webhook', async (req, res) => {
   
   try {
     const data = req.body;
-    console.log('Parsed data:', data);
+    //console.log('Parsed data:', data);
     
     if (!data || !data.status || !data.run_id) {
       const error = 'Invalid request: Missing required fields';

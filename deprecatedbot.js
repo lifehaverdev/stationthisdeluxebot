@@ -1976,28 +1976,11 @@ bot.onText(/^\/status$/, (message) => {
     bot.sendMessage(chatId,queueMessage)
 });
 
-function closeTask(chatId,time,filenames,type) {
-    if(time && filenames){
+function closeTask(filenames) {
+    if(filenames.length > 0){
         for(let i = 0; i < filenames.length; i++){
             fs.unlinkSync(filenames[i]);
         }
-        
-    }
-
-    if(type == 'MAKE'){
-        if(time < fastestMake){
-            fastestMake = time;
-        }
-        lobby[userId].points += MAKEPOINTS;
-        totalPoints += MAKEPOINTS;
-    } else if (type == 'MS2'){
-        if(time < fastestMS2){
-            fastestMS2 = time;
-        }
-        lobby[userId].points += MS2POINTS;
-        totalPoints += MAKEPOINTS;
-    } else if (type == 'DISC'){
-        return
     }
 }
 

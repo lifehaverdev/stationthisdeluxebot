@@ -12,8 +12,10 @@ const defaultUserData = require('../../users/defaultUserData');
 const {getUserDataByUserId} = require('../../../db/mongodb');
 const { interrogateImage } = require('../../../commands/interrogate.js')
 const { verifyHash } = require('../../users/verify.js')
+const fs = require('fs');
 const Jimp = require('jimp');
 const { txt2Speech } = require('../../../commands/speak.js');
+const { promptAssist } = require('../../../commands/assist.js')
 
 
 const SIZELIMIT = 2048;
@@ -430,49 +432,50 @@ async function handleDexMake(message, match) {
         console.error("Error generating and sending image:", error);
     }
 }
-async function handleTest(message) {
-    const userId = message.from.id;
-    if(!await checkLobby(message)){
-        return;
-    }
+// async function handleTest(message) {
+//     const userId = message.from.id;
+//     if(!await checkLobby(message)){
+//         return;
+//     }
 
-    const thisSeed = makeSeed(userId);
+//     const thisSeed = makeSeed(userId);
     
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text.replace("/make", "").trim(),
-        type: 'MAKE',
-        lastSeed: thisSeed
-    }
+//     lobby[userId] = {
+//         ...lobby[userId],
+//         prompt: message.text.replace("/make", "").trim(),
+//         type: 'MAKE',
+//         lastSeed: thisSeed
+//     }
 
-    testObj = {
-        ...lobby[userId],
-        steps: 18,
-        batchMax: 2,
-        seed: thisSeed,
-        photoStats: {
-            width: 512,
-            height: 512
-        }
-    }
+//     testObj = {
+//         ...lobby[userId],
+//         steps: 18,
+//         batchMax: 2,
+//         seed: thisSeed,
+//         photoStats: {
+//             width: 512,
+//             height: 512
+//         }
+//     }
 
-    //console.log('TESTING: ',lobby[userId].prompt);
+//     //console.log('TESTING: ',lobby[userId].prompt);
         
-    try {
-        const{time,filenames} = await generateImage(message, testObj);
-        for(let i = 0; i < filenames.length; i++){
-            await sendPhoto(message, filenames[i]);
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        closeTask(userId,time,filenames,'MAKE');
-        if(lobby[userId].advancedUser){
-            await sendMessage(message,'Used seed: ',lobby[userId].lastSeed);
-        }
+//     try {
+//         const{time,filenames} = await generateImage(message, testObj);
+//         for(let i = 0; i < filenames.length; i++){
+//             await sendPhoto(message, filenames[i]);
+//             await new Promise(resolve => setTimeout(resolve, 500));
+//             fs.unlinkSync(filenames[i]);
+//         }
+        
+//         if(lobby[userId].advancedUser){
+//             await sendMessage(message,'Used seed: ',lobby[userId].lastSeed);
+//         }
 
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
-}
+//     } catch (error) {
+//         console.error("Error generating and sending image:", error);
+//     }
+// }
 async function handleRegen(message) {
     const userId = message.from.id;
     if(!await checkLobby(message)){
@@ -903,7 +906,8 @@ async function handleDiscWrite(message) {
         const filenames = await writeToDisc(fileUrl)
         console.log(filenames)
         await sendPhoto(message, filenames[0]);
-        closeTask(userId,1,filenames,'DISC')
+        //closeTask(userId,1,filenames,'DISC')
+        fs.unlinkSync(filenames[0]);
         setUserState(message,STATES.IDLE);
         return true;
     } catch (err) {
@@ -931,7 +935,8 @@ async function handleWatermark(message) {
         const filenames = await addWaterMark(fileUrl)
         console.log('back in handleWatermark',filenames)
         await sendPhoto(message, filenames[0]);
-        closeTask(userId,1,filenames,'WATERMARK')
+        //closeTask(userId,1,filenames,'WATERMARK')
+        fs.unlinkSync(filenames[0]);
         setUserState(message,STATES.IDLE);
         return true;
     } catch (err) {
@@ -1066,9 +1071,10 @@ async function shakeAssist(message) {
 async function shakeSpeak(message) {
     const userId = message.from.id;
     const result = await txt2Speech(message, lobby[userId].voiceModel);
-    console.log(result);
+    //console.log(result);
     lobby[userId].points += 5;
     bot.sendAudio(message.chat.id,result);
+    fs.unlinkSync(result);
     setUserState(message,STATES.IDLE);
     return true
 }
