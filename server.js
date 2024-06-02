@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-//const { getBot } = require('./app');
+const { getBot } = require('./app');
 require('dotenv').config();
 console.log('running server now');
 const { processWaitlist } = require('./utils/bot/queue');
