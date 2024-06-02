@@ -9,7 +9,7 @@ const {defaultPrompt, basepromptmenu, getBasePromptByName } = require('../utils/
 const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js');
 // Function to handle sending the generated image
 
-const webHook = 'https://'+process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
+const webHook = 'http://'+process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
 
 // Function to extract type from the URL or outputItem.type field
 function extractType(url) {
