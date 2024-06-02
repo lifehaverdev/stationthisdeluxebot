@@ -155,4 +155,7 @@ const loraTriggers = [
 // const modifiedPrompt = handleLoraTrigger(testPrompt);
 // console.log('Modified Prompt:', modifiedPrompt);
 
-module.exports = handleLoraTrigger, loraTriggers;
+module.exports = {
+  handleLoraTrigger, 
+  loraTriggers
+};

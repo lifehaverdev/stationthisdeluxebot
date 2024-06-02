@@ -1,18 +1,16 @@
 
-const fs = require('fs');
-const { addWaterMark } = require('./waterMark.js');
-const handleLoraTrigger = require('../utils/models/loraTriggerTranslate.js')
+//const fs = require('fs');
+//const { addWaterMark } = require('./waterMark.js');
+const { handleLoraTrigger } = require('../utils/models/loraTriggerTranslate.js')
+const defaultSettings = require('../utils/models/defaultSettings.js')
 //const fetch = require('fetch');
 
-const {defaultPrompt, basepromptmenu } = require('../utils/models/basepromptmenu.js')
-//const comfydeployid = "b466788a-4e8b-4866-88a3-7705267ba7c7"
+//const {defaultPrompt, basepromptmenu, getBasePromptByName } = require('../utils/models/basepromptmenu.js')
 const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js');
 // Function to handle sending the generated image
 
-function getBasePromptByName(name) {
-    const promptObj = basepromptmenu.find(prompt => prompt.name === name);
-    return promptObj ? promptObj.baseprompt : defaultPrompt;
-}
+const webHook = process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
+
 // Function to extract type from the URL or outputItem.type field
 function extractType(url) {
     // Example logic to extract type from the URL or outputItem.type field
@@ -85,61 +83,6 @@ async function fetchOutput(run_id) {
         return null;
     }
 }
-async function checkProgress(run_id) {
-    let progress = 0;
-    let status = 'not-started';
-    let imageUrl = null;
-    let timeTaken = null;
-
-    while (true) {
-        const output = await fetchWorkflowOutput(run_id);
-
-        if (output) {
-            const { progress: currentProgress, status: currentStatus, stuff: theStuff, created_at, ended_at } = output;
-            
-            if (currentProgress !== undefined) {
-                progress = currentProgress;
-            }
-
-            if (currentStatus !== undefined) {
-                status = currentStatus;
-            }
-
-            if (theStuff && theStuff.length > 0 && theStuff[0].data && theStuff[0].data.images && theStuff[0].data.images.length > 0) {
-                imageUrl = theStuff[0].data.images[0].url;
-            }
-
-            console.log(`Progress: ${(progress * 100).toFixed(2)}% - Status: ${status}; Image URL: ${imageUrl || 'not yet available'}`);
-
-            if (status === 'completed' || status === 'success' || status === 'failed') {
-                break;
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Polling interval of 5 seconds
-            }
-        } else {
-            console.error('Failed to fetch workflow output.');
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Retry after 5 seconds
-        }
-    }
-
-    if (imageUrl && created_at && ended_at) {
-        const startTime = new Date(created_at);
-        const endTime = new Date(ended_at);
-        timeTaken = (endTime - startTime) / 1000; // Time taken in seconds
-
-        console.log('Workflow completed! Image URL:', imageUrl);
-        console.log('Time taken:', timeTaken.toFixed(2), 'seconds');
-
-        // Return imageUrl and timeTaken
-        return {
-            imageUrl,
-            timeTaken
-        };
-    } else {
-        console.log('Workflow not completed.');
-        return null;
-    }
-}
 
 
 // Function to handle sending the generated image
@@ -149,7 +92,6 @@ async function generate(promptObj) {
     if(promptObj.prompt == ''){
         return;
     }
-    const start = process.hrtime();
     try {
         //console.log('well what is the prompt object here',promptObj)
         imgPreProc(promptObj);
@@ -192,11 +134,11 @@ function imgPreProc(promptObj) {
     let width = promptObj.photoStats.width;
     const ratio = height / width;
     if(height > width){
-        promptObj.photoStats.width = Math.floor((process.env.WIDTH / ratio) / 8) * 8;
-        promptObj.photoStats.height = process.env.HEIGHT;
+        promptObj.photoStats.width = Math.floor((defaultSettings.WIDTH / ratio) / 8) * 8;
+        promptObj.photoStats.height = defaultSettings.HEIGHT;
     } else if (width > height) {
-        promptObj.photoStats.height = Math.floor((process.env.HEIGHT * ratio) / 8) * 8;
-        promptObj.photoStats.width = process.env.WIDTH;
+        promptObj.photoStats.height = Math.floor((defaultSettings.HEIGHT * ratio) / 8) * 8;
+        promptObj.photoStats.width = defaultSettings.WIDTH;
     }
     if(promptObj.fileUrl[0] == "i"){
         promptObj.fileUrl = promptObj.fileUrl.slice(7)
@@ -234,9 +176,6 @@ function promptPreProc(promptObj) {
 }
 
 function prepareRequest(promptObj) {
-    let promptRequest;
-    let options;
-
     let basePrompt = getBasePromptByName(promptObj.basePrompt);
     let userBasePrompt;
     let negPrompt;
@@ -249,6 +188,7 @@ function prepareRequest(promptObj) {
         case "MAKE":
             body = JSON.stringify({
                 deployment_id: comfydeployid,
+                webhook: webHook,
                 inputs: {
                     input_width: promptObj.photoStats.width,
                     input_height: promptObj.photoStats.height,
@@ -265,6 +205,7 @@ function prepareRequest(promptObj) {
         case "MS2":
             body = JSON.stringify({
                 deployment_id: comfydeployid,
+                webhook: webHook,
                 inputs: {
                   "input_seed": promptObj.seed,
                   "input_batch": promptObj.batchMax,
@@ -280,6 +221,7 @@ function prepareRequest(promptObj) {
         case "MS3":
             body = JSON.stringify({
                 deployment_id: comfydeployid,
+                webhook: webHook,
                 inputs: {
                     "input_image": promptObj.fileUrl
                   }
@@ -290,34 +232,24 @@ function prepareRequest(promptObj) {
     return body;
 }
 
-function handleResponse(response, promptObj, start) {
-    const result = JSON.parse(response.body);
-    if (response.statusCode === 200 && result && result.images && result.images.length > 0) {
-        return processImages(result.images, promptObj, start);
-    } else {
-        console.error("No images found in the response or bad status code:", response.statusCode);
-        throw new Error("Invalid response or no images found.");
-    }
-}
+// async function processImages(images, promptObj, start) {
+//     let filenames = images.map((img, index) => {
+//         const filename = `./tmp/${promptObj.wallet}_${Date.now()}${index}.png`;
+//         fs.writeFileSync(filename, Buffer.from(img, "base64"), 'base64');
+//         return filename;
+//     });
 
-async function processImages(images, promptObj, start) {
-    let filenames = images.map((img, index) => {
-        const filename = `./tmp/${promptObj.wallet}_${Date.now()}${index}.png`;
-        fs.writeFileSync(filename, Buffer.from(img, "base64"), 'base64');
-        return filename;
-    });
+//     // Optionally apply watermark if required
+//     if (promptObj.waterMark) {
+//         await Promise.all(filenames.map(addWaterMark));
+//     }
 
-    // Optionally apply watermark if required
-    if (promptObj.waterMark) {
-        await Promise.all(filenames.map(addWaterMark));
-    }
-
-    // Calculate processing time
-    const end = process.hrtime(start);
-    const time = end[0] - start[0];  // assuming start is also hrtime format
-    console.log(end[0],start[0])
-    return { time, filenames };
-}
+//     // Calculate processing time
+//     const end = process.hrtime(start);
+//     const time = end[0] - start[0];  // assuming start is also hrtime format
+//     console.log(end[0],start[0])
+//     return { time, filenames };
+// }
 
 // module.exports = {
 //     generateImage

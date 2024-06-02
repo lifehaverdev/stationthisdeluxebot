@@ -13,6 +13,7 @@ const {getUserDataByUserId} = require('../../../db/mongodb');
 const { interrogateImage } = require('../../../commands/interrogate.js')
 const { verifyHash } = require('../../users/verify.js')
 const Jimp = require('jimp');
+const { txt2Speech } = require('../../../commands/speak.js');
 
 
 const SIZELIMIT = 2048;
@@ -100,6 +101,10 @@ function displayAccountSettingsMenu(message) {
             {
                 text: `Base Prompt Menu`,
                 callback_data: 'toggleBasePrompt',
+            },
+            {
+                text: `Voice Menu`,
+                callback_data: 'toggleVoice'
             }
         );
     }
@@ -313,8 +318,8 @@ ${taskQueue.map(task => {
 Working on: 
 ${waiting.map(task => {
     const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-    const remainingTime = task.timestamp + task.checkback - Date.now(); // Calculate remaining time until checkback
-    return `${username}: ${task.promptObj.type} ${Math.max(0, Math.round(remainingTime / 1000))}s`; // Include the username in the status
+    const remainingTime = task.status; // Calculate remaining time until checkback
+    return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
 }).join('\n')}
 `
     );
@@ -1058,6 +1063,15 @@ async function shakeAssist(message) {
     setUserState(message,STATES.IDLE);
     return true
 }
+async function shakeSpeak(message) {
+    const userId = message.from.id;
+    const result = await txt2Speech(message, lobby[userId].voiceModel);
+    console.log(result);
+    lobby[userId].points += 5;
+    bot.sendAudio(message.chat.id,result);
+    setUserState(message,STATES.IDLE);
+    return true
+}
 async function handleSignIn (message) {
     const userId = message.from.id;
     userData = await getUserDataByUserId(userId);
@@ -1247,6 +1261,8 @@ module.exports = {
     handleWatermark,
     handleLoraTrigger,
     sendLoRaModelFilenames,
+    shakeAssist,
+    shakeSpeak,
     startMake,
     startSet,
     saySeed,

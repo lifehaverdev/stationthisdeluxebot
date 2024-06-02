@@ -42,8 +42,12 @@ const basepromptmenu = [
     }
 ];
 
+function getBasePromptByName(name) {
+    const promptObj = basepromptmenu.find(prompt => prompt.name === name);
+    return promptObj ? promptObj.baseprompt : defaultPrompt;
+}
 
 const defaultPrompt = "pixelated glitchart of close-up ps1 playstation psx gamecube game radioactive dreams screencapture bryce 3d <lora:LOW_POLY_PLAYSTATION_1_STILL:0.7> playstation 1 still low poly"
 
 
-module.exports = { basepromptmenu, defaultPrompt };
+module.exports = { basepromptmenu, defaultPrompt, getBasePromptByName };

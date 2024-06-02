@@ -33,7 +33,7 @@ async function safeExecute(message, callback) {
     }
 }
 async function sendMessage(msg, text, replyMarkup = null) {
-    console.log('I would love to send a message here',text);
+    //console.log('I would love to send a message here',text);
     if(text == ''){
         return
     }
@@ -51,9 +51,9 @@ async function sendMessage(msg, text, replyMarkup = null) {
     }
     
     try {
-        console.log('alright lets try to send this then',options)
+        //console.log('alright lets try to send this then',options)
         const messageOutput = await bot.sendMessage(chatId, text, options);
-        console.log('Message sent successfully:', messageOutput);
+        //console.log('Message sent successfully:', messageOutput);
         return messageOutput;
     } catch (error) {
         console.error('Error sending message:', error.response.body);
