@@ -282,7 +282,7 @@ async function processWaitlist(status, run_id, outputs) {
     console.log(response)
 
     // Remove the corresponding task from the waiting array
-    if(status == 'success'){
+    if(status == 'success' || status == 'failed' || status == 'timeout'){
         waiting.splice(taskIndex, 1);
     }
     
@@ -348,7 +348,11 @@ async function handleTaskCompletion(task, run) {
     if (status === 'success') {
         return await retryOperation(operation); // Retry sending message/photo/video 3 times with a delay of 2 seconds between retries
     } else {
-        task.status = status;
+        if(status == undefined){
+            task.status = 'thinking'
+        } else {
+            task.status = status;
+        }
         //sendMessage(message, status);
     }
 }
