@@ -89,6 +89,7 @@ const stateHandlers = {
     [STATES.DISC]: (message) => safeExecute(message, handleDiscWrite),
     [STATES.WATERMARK]: (message) => safeExecute(message, handleWatermark),
     [STATES.SETPHOTO]: (message) => safeExecute(message, handleSet),
+    [STATES.SETSTYLE]: (message) => safeExecute(message,handleSet),
     [STATES.INPAINT]: (message) => safeExecute(message, handleInpaint),
     [STATES.MASK]: (message) => safeExecute(message, handleMask),
 };
@@ -97,7 +98,7 @@ const stateHandlers = {
 const setStates = [
     STATES.SETBATCH, STATES.SETSTEPS, STATES.SETCFG, 
     STATES.SETSTRENGTH, STATES.SETPROMPT, STATES.SETUSERPROMPT, 
-    STATES.SETNEGATIVEPROMPT, STATES.SETSEED, STATES.SETSIZE
+    STATES.SETNEGATIVEPROMPT, STATES.SETSEED, STATES.SETSIZE, STATES.SETSTYLE
 ];
 setStates.forEach(state => {
     stateHandlers[state] = (message) => safeExecute(message,handleSet);

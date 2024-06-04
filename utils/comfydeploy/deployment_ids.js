@@ -13,6 +13,16 @@ const comfydeployment_ids = [
         type: "MS3",
         name: "img2vidzoll",
         id: "389013b2-a888-4521-8447-747f9b7c6a5e"
+    },
+    {
+        type: "MS2_CONTROL",
+        name: "ms2_depth",
+        id: "7dcb8a03-ef18-4bb2-990f-d2571779b458"
+    },
+    {
+        type: "MAKE_STYLE",
+        name: "make_style",
+        id: "cf8d81b7-20e8-456d-a349-48e0af4018e8"
     }
 ]
 function getDeploymentIdByType(type) {

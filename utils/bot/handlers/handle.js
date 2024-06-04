@@ -371,6 +371,13 @@ async function handleMake(message) {
         lastSeed: thisSeed
     }
 
+    if(lobby[userId].styleTransfer && lobby[userId].styleFileUrl) {
+        lobby[userId].type = 'MAKE_STYLE'
+    } else if (lobby[userId].styleTransfer && !lobby[userId].stylefileUrl){
+        sendMessage(message, 'hey use the setstyle command to pick a style photo');
+        return;
+    }
+
     const promptObj = {
         ...lobby[userId],
         seed: thisSeed,
@@ -697,6 +704,7 @@ async function handleSet(message) {
             setUserState(message,STATES.IDLE);
             break;
         case STATES.SETPHOTO:
+        case STATES.SETSTYLE:
             let fileId, fileUrl;
             if (message.photo) {
                 fileId = message.photo[message.photo.length - 1].file_id;
@@ -709,17 +717,27 @@ async function handleSet(message) {
                 const photo = await Jimp.read(fileUrl);
                 const { width, height } = photo.bitmap;
 
-                const photoStats = {
-                    width: width,
-                    height: height
-                };
-
-                lobby[userId] = {
-                    ...lobby[userId],
-                    photoStats: photoStats,
-                    fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+                if(currentState == STATES.SETPHOTO) {
+                    const photoStats = {
+                        width: width,
+                        height: height
+                    };
+                    
+                    lobby[userId] = {
+                        ...lobby[userId],
+                        photoStats: photoStats,
+                        fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+                    }
+                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
+                } else {
+                    
+                    lobby[userId] = {
+                        ...lobby[userId],
+                        styleFileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`,
+                    }
+                    await sendMessage(message, `looks dope. if style transfer is enabled in account settings, this image will be applied for make`);
                 }
-                await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);        
+        
                 setUserState(message,STATES.IDLE);
             } catch(err) {
                 bot.sendMessage(DEV_DMS,err);
@@ -1004,6 +1022,13 @@ async function handleMs2Prompt(message) {
         ...lobby[userId],
         prompt: userInput,
         type: 'MS2'
+    }
+    if(lobby[userId].styleTransfer) {
+        lobby[userId].type = 'MS2_STYLE'
+    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet) {
+        lobby[userId].type = 'MS2_CONTROL_STYLE'
+    } else if (lobby[userId].controlNet){
+        lobby[userId].type = 'MS2_CONTROL'
     }
     await sendMessage(message, 'pls wait i will make in 1 second');
     const promptObj = {
