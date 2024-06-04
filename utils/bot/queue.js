@@ -190,78 +190,6 @@ async function retryOperation(operation, ...args) {
     }
     return success
 }
-// async function processWaitlist(task) {
-//     const removeIndex = (run_id) => {
-//         try{
-//             // Find the index of the task in the waiting list
-//             const index = waiting.findIndex(task => task.run_id === run_id);
-    
-//             // If the task is found, remove it from the waiting list
-//             if (index !== -1) {
-//                 waiting.splice(index, 1);
-//                 console.log(`Task with ID ${run_id} removed from the waiting list.`);
-//             } else {
-//                 console.warn(`Task with ID ${run_id} not found in the waiting list.`);
-//             }
-//         } catch (error) {
-//             console.error('Error removing task:', error);
-//         }
-//     }
-
-//     const { run_id, timestamp, checkback } = task;
-
-//     // Calculate the next scheduled check time
-//     const nextCheckTime = timestamp + checkback;
-
-//     // Calculate the delay until the next checkback
-//     const delay = nextCheckTime - Date.now();
-
-//     // Check if NOW is greater than nextCheckTime
-//     if (Date.now() >= nextCheckTime) {
-//         try {
-//             // Check if the run_id is already being processed
-//             if (!processingRunIds.has(run_id)) {
-//                 // Add the run_id to the processing set before processing the task
-//                 processingRunIds.add(run_id);
-
-//                 // Check the status of the task using run_id
-//                 let adjustedCheckback;
-//                 const { progress, status, imgUrls } = await fetchOutput(run_id);
-//                 adjustedCheckback = progress > 0.9 ? 5 * 1000 : task.checkback;
-
-//                 if (status === 'success' && imgUrls) {
-//                     // Task completed successfully, handle the output
-//                     if(await handleTaskCompletion(task, { progress, status, imgUrls })){
-//                         removeIndex(run_id);
-//                     }
-//                     processingRunIds.delete(run_id);
-//                 } else if (status === 'failed' || status === 'timeout') {
-//                     console.error('Task failed:', task.message);
-//                     // Remove the failed task from waiting
-//                     sendMessage(task.message,'Oh no it failed ):')
-//                     removeIndex(run_id);
-//                     processingRunIds.delete(run_id);
-//                 } else {
-//                     // Continue checking after the adjusted checkback time
-//                     setTimeout(()=>processWaitlist(task), adjustedCheckback);
-//                     processingRunIds.delete(run_id);
-//                 }
-
-//                 // Remove the run_id from the processing set after handling completion
-                
-//             } else {
-//                 console.log(`Task with run_id ${run_id} is already being processed. Skipping.`);
-//             }
-//         } catch (error) {
-//             console.error('Error fetching workflow status:', error);
-//         }
-//     } else {
-//         // Set a timeout to come back and process the queue when the next checkback is due
-//         //actually dont do that
-//         //setTimeout(processWaitlist, delay);
-//     }
-//     processQueue();
-// }
 
 async function processWaitlist(status, run_id, outputs) {
     // Check the "waiting" task array for a matching ID
@@ -289,26 +217,6 @@ async function processWaitlist(status, run_id, outputs) {
     // Continue processing tasks
     processQueue();
 }
-// [
-//     {
-//         "id":"f944b0c4-52f1-4968-afff-f1e5d9302783",
-//         "run_id":"626a641b-d64d-4e0b-86d7-5a114d76f72f",
-//         "data":
-//             {
-//                 "images":
-//                     [
-//                         {
-//                             "type":"output",
-//                             "filename":"2024-05-25_101159_00001_.png",
-//                             "subfolder":"",
-//                             "url":"https://storage.comfydeploy.com/outputs/runs/626a641b-d64d-4e0b-86d7-5a114d76f72f/2024-05-25_101159_00001_.png"
-//                         }
-//                     ]
-//             },
-//         "created_at":"2024-05-28T20:51:15.294Z",
-//         "updated_at":"2024-05-28T20:51:15.294Z"
-//     }
-// ]
 
 async function handleTaskCompletion(task, run) {
     const { message } = task;
@@ -353,7 +261,6 @@ async function handleTaskCompletion(task, run) {
         } else {
             task.status = status;
         }
-        //sendMessage(message, status);
     }
 }
 // Function to extract type from the URL or outputItem.type field
