@@ -107,6 +107,14 @@ function displayAccountSettingsMenu(message) {
             {
                 text: `Voice Menu`,
                 callback_data: 'toggleVoice'
+            },
+            {
+                text: `ControlNet`,
+                callback_data: 'toggleControlNet',
+            },
+            {
+                text: 'Style Transfer',
+                callback_data: 'toggleStyletransfer'
             }
         );
     }

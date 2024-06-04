@@ -140,12 +140,12 @@ function imgPreProc(promptObj) {
         promptObj.photoStats.height = Math.floor((defaultSettings.HEIGHT * ratio) / 8) * 8;
         promptObj.photoStats.width = defaultSettings.WIDTH;
     }
-    if(promptObj.fileUrl[0] == "i"){
-        promptObj.fileUrl = promptObj.fileUrl.slice(7)
-        metaIPFS= `https://mony.mypinata.cloud/ipfs/${promptObj.fileUrl}`,
-        urlAppend= process.env.PINATA_APPEND
-        promptObj.fileUrl  = `${metaIPFS}/${urlAppend}`
-    }
+    // if(promptObj.fileUrl[0] == "i"){
+    //     promptObj.fileUrl = promptObj.fileUrl.slice(7)
+    //     metaIPFS= `https://mony.mypinata.cloud/ipfs/${promptObj.fileUrl}`,
+    //     urlAppend= process.env.PINATA_APPEND
+    //     promptObj.fileUrl  = `${metaIPFS}/${urlAppend}`
+    // }
 }
 
 function promptPreProc(promptObj) {

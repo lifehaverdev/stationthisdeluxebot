@@ -135,7 +135,17 @@ function messageFilter(message) {
        lobby[message.from.userId] = defaultUserData;
        return false
     }
-    if( message.chat.id != lobby[message.from.id].state.chatId || (message.message_thread_id && message.message_thread_id != lobby[message.from.id].state.messageThreadId )){
+    if( 
+        //user is amidst call and response anywhere aka their state is set
+        lobby[message.from.id].state.state != STATES.IDLE && 
+        //AND set state chat id isnt where this message is
+        (lobby[message.from.id].state.chatId != message.chat.id || 
+            //OR message thread
+            (message.message_thread_id && 
+                (message.message_thread_id != lobby[message.from.id].state.messageThreadId )
+            )
+        )
+    ){
         lobby[message.from.id].state.state = STATES.IDLE
         return true;
     }

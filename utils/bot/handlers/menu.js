@@ -132,7 +132,7 @@ module.exports = function(bot) {
         
                 case 'toggleWaterMark':
                     
-                    if(lobby[userId].balance > 1000000){
+                    if(lobby[userId].balance >= 1000000){
                         lobby[userId].waterMark = !lobby[userId].waterMark
                         bot.answerCallbackQuery(callbackQuery.id, { text: `WaterMark option updated to ${lobby[userId].waterMark ? 'ON' : 'OFF'}`});
                         messageTitle = `WaterMark option updated to ${lobby[userId].waterMark ? 'ON' : 'OFF'}`
@@ -140,7 +140,7 @@ module.exports = function(bot) {
                     break;
         
                 case 'toggleBasePrompt':
-                    if(lobby[userId].balance > 1000000){
+                    if(lobby[userId].balance >= 1000000){
                         messageTitle = `switching base prompt`
                         displayBasePromptSettingsMenu(callbackQuery);
                     }
@@ -152,6 +152,30 @@ module.exports = function(bot) {
                 case 'toggleVoice':
                     messageTitle = 'switching voice'
                     displayVoiceModelSettingsMenu(callbackQuery);
+                    break;
+
+                case 'toggleControlNet':
+                    if(lobby[userId].balance >= 1000000){
+                        if(lobby[userId].controlNet){
+                            lobby[userId].controlNet = !lobby[userId].controlNet;
+                        } else {
+                            lobby[userId].controlNet = true;
+                        }
+                        bot.answerCallbackQuery(callbackQuery.id, { text: `Controlnet ${lobby[userId].controlNet ? 'Enabled' : 'Disabled'}`});
+                        messageTitle = `Controlnet ${lobby[userId].controlNet ? 'Enabled' : 'Disabled'}`
+                    }
+                    break;
+
+                case 'toggleStyleTransfer':
+                    if(lobby[userId].balance >= 1000000){
+                        if(lobby[userId].styleTransfer){
+                            lobby[userId].styleTransfer = !lobby[userId].styleTransfer;
+                        } else {
+                            lobby[userId].styleTransfer = true;
+                        }
+                        bot.answerCallbackQuery(callbackQuery.id, { text: `Style Transfer ${lobby[userId].styleTransfer ? 'Enabled' : 'Disabled'}`});
+                        messageTitle = `Style Transfer ${lobby[userId].styleTransfer ? 'Enabled' : 'Disabled'}`
+                    }
                     break;
         
                 default:
