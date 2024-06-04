@@ -114,7 +114,7 @@ function displayAccountSettingsMenu(message) {
             },
             {
                 text: 'Style Transfer',
-                callback_data: 'toggleStyletransfer'
+                callback_data: 'toggleStyleTransfer'
             }
         );
     }
