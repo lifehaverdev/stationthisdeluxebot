@@ -1128,10 +1128,12 @@ async function handleSignIn (message) {
             }
         } else {
             sendMessage(message, "What's your Solana address?")
+            setUserState(message,STATES.SIGN_IN)
             console.log('state',lobby[userId].state)
         }
     } else {
         sendMessage(message, "What's your Solana address?")
+        setUserState(message,STATES.SIGN_IN)
     }
 };
 async function shakeSignIn (message) {
