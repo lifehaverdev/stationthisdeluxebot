@@ -6,7 +6,7 @@ const {
 } = require('../../utils')
 const bot = getBotInstance()
 const { checkLobby } = require('../gatekeep')
-const handleLoraTrigger = require("../../models/loraTriggerTranslate");
+const { loraTriggers } = require("../../models/loraTriggerTranslate");
 const { enqueueTask, waiting, taskQueue } = require("../queue.js")
 const defaultUserData = require('../../users/defaultUserData');
 const {getUserDataByUserId, writeUserData} = require('../../../db/mongodb');
