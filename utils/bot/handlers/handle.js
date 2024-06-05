@@ -1027,7 +1027,7 @@ async function handleMs2Prompt(message) {
         lobby[userId].type = 'MS2_STYLE'
     } else if (lobby[userId].styleTransfer && lobby[userId].controlNet) {
         lobby[userId].type = 'MS2_CONTROL_STYLE'
-    } else if (lobby[userId].controlNet){
+    } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
         lobby[userId].type = 'MS2_CONTROL'
     }
     await sendMessage(message, 'pls wait i will make in 1 second');
