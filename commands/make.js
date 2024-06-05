@@ -260,6 +260,7 @@ function prepareRequest(promptObj) {
                     "input_neg_promt": negPrompt
                   }
             })
+            break;
         case "MAKE_STYLE":
             body = JSON.stringify({
                 deployment_id: comfydeployid,
