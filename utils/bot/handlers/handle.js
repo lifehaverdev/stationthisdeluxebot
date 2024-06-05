@@ -1128,12 +1128,14 @@ async function handleSignIn (message) {
             }
         } else {
             sendMessage(message, "What's your Solana address?")
+            console.log('state',lobby[userId].state)
         }
     } else {
         sendMessage(message, "What's your Solana address?")
     }
 };
 async function shakeSignIn (message) {
+    console.log('shaking signin')
     const userId = message.from.id;
     if(!lobby[userId]){
         return;
