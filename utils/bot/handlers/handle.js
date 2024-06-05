@@ -1301,7 +1301,7 @@ module.exports = {
     sendLoRaModelFilenames,
     shakeAssist,
     shakeSpeak,
-    shakeSignin,
+    shakeSignIn,
     startMake,
     startSet,
     saySeed,
