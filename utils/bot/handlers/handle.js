@@ -1023,7 +1023,7 @@ async function handleMs2Prompt(message) {
         prompt: userInput,
         type: 'MS2'
     }
-    if(lobby[userId].styleTransfer) {
+    if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
         lobby[userId].type = 'MS2_STYLE'
     } else if (lobby[userId].styleTransfer && lobby[userId].controlNet) {
         lobby[userId].type = 'MS2_CONTROL_STYLE'
