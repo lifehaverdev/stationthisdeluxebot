@@ -6,7 +6,7 @@ const defaultUserData = {
     advancedUser: false,
     waterMark: true,
     basePrompt: "MS2.2",
-    checkpoint: "Proteus_V0.4.safetensors",
+    checkpoint: "proteus_v0.4.safetensors",
     voiceModel: "165UvtZp7kKnmrVrVQwx",
     batchMax: 1,
     points: 0,

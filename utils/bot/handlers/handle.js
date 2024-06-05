@@ -1113,6 +1113,7 @@ async function shakeSpeak(message) {
 }
 async function handleSignIn (message) {
     const userId = message.from.id;
+    setUserState(message,STATES.SIGN_IN);
     userData = await getUserDataByUserId(userId);
     if(userData != false){
         const rawData = userData
@@ -1127,11 +1128,9 @@ async function handleSignIn (message) {
             }
         } else {
             sendMessage(message, "What's your Solana address?")
-            setUserState(message,STATES.SIGN_IN);
         }
     } else {
         sendMessage(message, "What's your Solana address?")
-        setUserState(message,STATES.SIGN_IN);
     }
     lobby[userId] = userData;
 };
@@ -1144,7 +1143,7 @@ async function shakeSignIn (message) {
     chatData.wallet = message.text;
     //console.log('chatdata wallet in shake',chatData.wallet);
     writeUserData(userId,chatData)
-    lobby[userId] = chatData;
+    lobby[userId] = chatData; //redundant i think
     console.log(message.from.first_name,'has entered the chat');
     // Confirm sign-in
     sendMessage(message, `You are now signed in to ${message.text}`);
