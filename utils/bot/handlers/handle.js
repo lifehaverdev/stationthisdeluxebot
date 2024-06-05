@@ -1113,14 +1113,14 @@ async function shakeSpeak(message) {
 }
 async function handleSignIn (message) {
     const userId = message.from.id;
-    setUserState(message,STATES.SIGN_IN);
+    
     userData = await getUserDataByUserId(userId);
+    
     if(userData != false){
-        const rawData = userData
-        console.log(rawData);
-        if(rawData.wallet != ''){
+        lobby[userId] = userData;
+        if(userData.wallet != ''){
             sendMessage(message, `You are signed in to ${userData.wallet}`);
-            if(rawData.verified == true){
+            if(userData.verified == true){
                 sendMessage(message,'and you are verified. Have fun');
                 setUserState(message,STATES.IDLE)
             } else {
@@ -1132,7 +1132,6 @@ async function handleSignIn (message) {
     } else {
         sendMessage(message, "What's your Solana address?")
     }
-    lobby[userId] = userData;
 };
 async function shakeSignIn (message) {
     const userId = message.from.id;
