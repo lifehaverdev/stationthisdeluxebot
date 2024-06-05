@@ -33,6 +33,7 @@ const {
     handleStatus,
     //handleTest,
     handleVerify,
+    shakeVerify,
     handleWatermark,
     //handleLoraTrigger,
     sendLoRaModelFilenames,

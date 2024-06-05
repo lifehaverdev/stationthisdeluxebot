@@ -1305,6 +1305,7 @@ module.exports = {
     shakeAssist,
     shakeSpeak,
     shakeSignIn,
+    shakeVerify,
     startMake,
     startSet,
     saySeed,
