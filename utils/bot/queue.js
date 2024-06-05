@@ -128,6 +128,8 @@ async function waitlist(task){
         case 'MS2':
         case 'MAKE_STYLE':
         case 'MS2_CONTROL':
+        case 'MS2_CONTROL_STYLE':
+        case 'MS2_STYLE':
             run_id = await generate(promptObj);
             break;
     }

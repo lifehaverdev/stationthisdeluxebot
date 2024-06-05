@@ -243,6 +243,23 @@ function prepareRequest(promptObj) {
                   }
             })
             break;
+        case "MS2_CONTROL_STYLE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_image": promptObj.fileUrl,
+                    "input_strength": promptObj.strength,
+                    "input_style_image": promptObj.styleFileUrl,
+                    "input_neg_promt": negPrompt
+                  }
+            })
         case "MAKE_STYLE":
             body = JSON.stringify({
                 deployment_id: comfydeployid,

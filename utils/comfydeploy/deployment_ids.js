@@ -20,6 +20,11 @@ const comfydeployment_ids = [
         id: "7dcb8a03-ef18-4bb2-990f-d2571779b458"
     },
     {
+        type: "MS2_CONTROL_STYLE",
+        name: "ms2_depth_style",
+        id: "0644d2fd-2cb4-47cf-a7b9-b650559eb501"
+    },
+    {
         type: "MAKE_STYLE",
         name: "make_style",
         id: "cf8d81b7-20e8-456d-a349-48e0af4018e8"

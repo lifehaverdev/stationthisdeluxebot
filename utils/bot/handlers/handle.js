@@ -1300,7 +1300,7 @@ module.exports = {
     //handleTest,
     handleVerify,
     handleWatermark,
-    handleLoraTrigger,
+    // handleLoraTrigger,
     sendLoRaModelFilenames,
     shakeAssist,
     shakeSpeak,
