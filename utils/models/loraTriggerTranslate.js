@@ -137,7 +137,7 @@ const loraTriggers = [
       lora_name: 'MOGCAT_MOGGLES_PIT_VIPERS',
       default_weight: 0.9,
       civitaiLink: 'miladystation2.net',
-      description: 'stationthisbot original lora for all the cousins xoxo - arthurt',
+      description: 'BROKEN ??? stationthisbot original lora for all the cousins xoxo - arthurt',
       triggerWords: ["MOGGLES", "MOGCAT", "PIT_VIPERS"]
   },
   // Add more LoRA configurations here
