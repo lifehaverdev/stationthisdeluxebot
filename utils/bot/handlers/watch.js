@@ -39,6 +39,7 @@ const {
     startMake,
     shakeAssist,
     shakeSpeak,
+    shakeSignin,
     startSet,
     saySeed,
     checkLobby,
