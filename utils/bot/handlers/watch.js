@@ -148,6 +148,11 @@ function messageFilter(message) {
             )
         )
     ){
+        console.log('here is why we are filtered')
+        console.log(lobby[message.from.id].state);
+        console.log('thread',message.message_thread_id)
+        console.log('chat id',message.chat.id)
+
         lobby[message.from.id].state.state = STATES.IDLE
         return true;
     }
