@@ -134,7 +134,7 @@ const loraTriggers = [
   //     triggerWords: ["FINE ART PHOTOGRAPHY STYLE"]
   // },
   {
-      lora_name: 'MOGCAT_MOGGLES_PIT_VIPERS',
+      lora_name: 'MOGGLES_MOGCAT_PIT_VIPERS',
       default_weight: 0.9,
       civitaiLink: 'miladystation2.net',
       description: 'BROKEN ??? stationthisbot original lora for all the cousins xoxo - arthurt',
