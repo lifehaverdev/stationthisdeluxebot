@@ -20,7 +20,9 @@ const blessings = {
     //veil
     "6sHPndv6XLhCwjPW5kbejwAaeWAWi9DhCWfvGvmWUUzu": 1000000,
     //"egmund"
-    "36NQZbu7KzFKj3YTjfWEDFaaZqNodEc4QywA8yAagjwB": 1000000
+    "36NQZbu7KzFKj3YTjfWEDFaaZqNodEc4QywA8yAagjwB": 1000000,
+    //xdrar
+    "9D2UVKHKmaCNwizw6iPS3NmideY2Qvq7A2jvLvVGfyVZ": 5000000
 }
 
 const curses = {
