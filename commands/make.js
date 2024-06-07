@@ -89,7 +89,7 @@ async function fetchOutput(run_id) {
 
 // Function to make the API request and handle the response
 async function generate(promptObj) {
-    if(promptObj.prompt == ''){
+    if(promptObj.prompt == '' && promptObj.type != 'MS3'){
         return;
     }
     try {
@@ -125,6 +125,7 @@ async function generate(promptObj) {
 
 
 function imgPreProc(promptObj) {
+    console.log('processing image');
     if(promptObj.type == 'MAKE'){
         console.log('make type')
         return
@@ -219,6 +220,7 @@ function prepareRequest(promptObj) {
               })
             break;
         case "MS3":
+            console.log('we makin in make ms3',promptObj)
             body = JSON.stringify({
                 deployment_id: comfydeployid,
                 webhook: webHook,

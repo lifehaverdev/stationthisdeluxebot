@@ -13,6 +13,14 @@ const blessings = {
     "J8w8wRLewHwjAmckHEgncC6GpBkc1EdeLUaoV35bN73w": 1000000,
     "4PygoXdiNArUNWbpTLF6rUKgmaMqD8FW4hJAZcZJksW9": 1000000,
     "7UZkrsrgijtqs4ihNdrYxK3SvyC4Ju3RhacAEb8ibskD": 1000000,
+    //aefek
+    "4rrJak8BHdMKbQU387jWrf8QLhnCtZcwn1oTKURYTZRk": 1000000,
+    //anon
+    "5ycSW3RiSWv87a4diRNRLR1Wk5Ygig4XENMyVeNi4xxk": 1000000,
+    //veil
+    "6sHPndv6XLhCwjPW5kbejwAaeWAWi9DhCWfvGvmWUUzu": 1000000,
+    //"egmund"
+    "36NQZbu7KzFKj3YTjfWEDFaaZqNodEc4QywA8yAagjwB": 1000000
 }
 
 const curses = {
