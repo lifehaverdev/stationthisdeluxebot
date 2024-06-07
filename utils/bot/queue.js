@@ -244,16 +244,24 @@ async function handleTaskCompletion(task, run) {
         });
 
         for (const { url, type } of urls) {
-            if (type === 'image') {
-                console.log('Message right before sending photo:', message);
-                await sendPhoto(message, url);
-            } else if (type === 'gif') {
-                await sendAnimation(message, url);
-            } else if (type === 'video') {
-                await sendVideo(message, url);
-            } else {
-                console.error(`Unknown URL type for URL: ${url}`);
+            try{
+                if (type === 'image') {
+                    console.log('Message right before sending photo:', message);
+                    await sendPhoto(message, url);
+                } else if (type === 'gif') {
+                    await sendAnimation(message, url);
+                } else if (type === 'video') {
+                    await sendVideo(message, url);
+                } else {
+                    console.error(`Unknown URL type for URL: ${url}`);
+                }
+            } catch (err) {
+                console.log('sending media error');
+                console.log(
+                    `${ err.message ? err.message : ''}`
+                )
             }
+            
         }
     };
 
