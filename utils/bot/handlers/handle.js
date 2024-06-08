@@ -94,7 +94,7 @@ function displayAccountSettingsMenu(message) {
         ]
     ];
 
-    if (lobby[userId].balance > 1000000) {
+    if (lobby[userId].balance >= 0){//1000000) {
         accountSettingsKeyboard[0].push(
             {
                 text: `Watermark: ${lobby[userId].waterMark ? 'ON' : 'OFF'}`,
@@ -118,7 +118,7 @@ function displayAccountSettingsMenu(message) {
             }
         );
     }
-    if (lobby[userId].balance > 5000000) {
+    if (lobby[userId].balance >= 0){//} 5000000) {
         accountSettingsKeyboard[0].push(
             {
                 text: `Checkpoint Menu`,
