@@ -118,10 +118,10 @@ async function waitlist(task){
     switch (promptObj.type){
         case 'MS3':
             console.log('we make ms3 pls')
-            if(promptObj.balance < 1000000){
-                sendMessage(message,'you cant make a video if you dont have 1M LOL')
-                return
-            }
+            // if(promptObj.balance < 1000000){
+            //     sendMessage(message,'you cant make a video if you dont have 1M LOL')
+            //     return
+            // }
             run_id = await generate(promptObj);
             break;
         case 'MAKE':   
