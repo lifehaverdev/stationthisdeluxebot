@@ -126,7 +126,7 @@ async function generate(promptObj) {
 
 function imgPreProc(promptObj) {
     console.log('processing image');
-    if(promptObj.type == 'MAKE'){
+    if(promptObj.type == 'MAKE' || promptObj.type == 'MAKE_CONTROL' || promptObj.type == 'MAKE_CONTROL_STYLE'){
         console.log('make type')
         return
     }
@@ -158,6 +158,8 @@ function promptPreProc(promptObj) {
     // Specific handling based on the type of prompt
     switch (promptObj.type){
         case "MAKE":
+        case "MAKE_CONTROL":
+        case "MAKE_CONTROL_STYLE":
             cleanedPrompt = cleanedPrompt.replace("/make", "");
         break;
         case "MS2":
