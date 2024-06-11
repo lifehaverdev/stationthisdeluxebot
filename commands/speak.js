@@ -44,8 +44,12 @@ const main = async (message, voiceModel) => {
 
         const fileName = `./tmp/speak${message.from.first_name}${Math.floor(Date.now() % 1000)}.mp3`;
         fs.writeFileSync(fileName, buffer);
-
-        return fileName;
+        if(fs.existsSync(fileName)){
+            return fileName;
+        } else {
+            return '-1';
+        }
+        
     } catch (err) {
         console.error(err);
         throw err;
