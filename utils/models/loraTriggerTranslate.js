@@ -140,6 +140,27 @@ const loraTriggers = [
       description: 'BROKEN ??? stationthisbot original lora for all the cousins xoxo - arthurt',
       triggerWords: ["MOGGLES", "MOGCAT", "PIT_VIPERS"]
   },
+  {
+    lora_name: 'mewing1',
+    default_weight: 0.8,
+    civitaiLink: 'miladystation2.net',
+    description: 'this mewing lora is for looksmaxxing',
+    triggerWrods: ['mewing']
+  },
+  {
+    lora_name: '13angel332',
+    default_weight: 1,
+    civitaiLink: 'miladystation2.net',
+    description: 'angel lora for infinite love and prayer',
+    triggerWords: ['13angel33']
+  },
+  {
+    lora_name: 'petravoice3',
+    default_weight: 1,
+    civitaiLink: 'miladystation2.net',
+    description: 'petravoice babes ai art',
+    triggerWords: ['petravoice']
+  }
   // Add more LoRA configurations here
   // {
   //     lora_name: ,
