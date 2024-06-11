@@ -46,9 +46,10 @@ const main = async (message, voiceModel) => {
         if (!fs.existsSync(dir)){
             fs.mkdirSync(dir, { recursive: true });
         }
-        
+
         const fileName = `./tmp/speak${message.from.first_name}${Math.floor(Date.now() % 1000)}.mp3`;
         fs.writeFileSync(fileName, buffer);
+        
         if(fs.existsSync(fileName)){
             return fileName;
         } else {

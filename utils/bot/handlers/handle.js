@@ -500,9 +500,10 @@ async function handleDexMake(message, match) {
 // }
 async function handleRegen(message) {
     const userId = message.from.id;
-    if(!await checkLobby(message)){
-        return;
-    }
+    // if(!await checkLobby(message)){
+    //     return;
+    // }
+    // we do this in watch
 
     const thisSeed = makeSeed(userId);
     lobby[userId].lastSeed = thisSeed;
@@ -1129,7 +1130,7 @@ async function shakeSpeak(message) {
         return 
     }
     lobby[userId].points += 5;
-    bot.sendAudio(message.chat.id,result);
+    await bot.sendAudio(message.chat.id,result);
     fs.unlinkSync(result);
     setUserState(message,STATES.IDLE);
     return true
