@@ -32,6 +32,9 @@ const main = async (message, voiceModel) => {
         const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceModel}`, options);
         
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Response Status:', response.status);
+            console.error('Response Body:', errorText);
             throw new Error('Network response was not ok');
         }
 
