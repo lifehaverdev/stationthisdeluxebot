@@ -31,7 +31,7 @@ const {
     handleSignIn,
     handleSignOut,
     handleStatus,
-    handleSpeak,
+    // handleSpeak,
     //handleTest,
     handleVerify,
     shakeVerify,
