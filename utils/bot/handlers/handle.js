@@ -383,6 +383,12 @@ async function handleMake(message) {
             return;
         }
         lobby[userId].type = 'MAKE_CONTROL_STYLE'
+    } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+        if(!lobby[userId].controlfileUrl) {
+            sendMessage(message, 'hey use setcontrol command to pick a control image');
+            return;
+        }
+        lobby[userId].type = 'MAKE_CONTROL'
     }
 
     const promptObj = {
@@ -454,50 +460,8 @@ async function handleDexMake(message, match) {
         console.error("Error generating and sending image:", error);
     }
 }
-// async function handleTest(message) {
-//     const userId = message.from.id;
-//     if(!await checkLobby(message)){
-//         return;
-//     }
 
-//     const thisSeed = makeSeed(userId);
-    
-//     lobby[userId] = {
-//         ...lobby[userId],
-//         prompt: message.text.replace("/make", "").trim(),
-//         type: 'MAKE',
-//         lastSeed: thisSeed
-//     }
 
-//     testObj = {
-//         ...lobby[userId],
-//         steps: 18,
-//         batchMax: 2,
-//         seed: thisSeed,
-//         photoStats: {
-//             width: 512,
-//             height: 512
-//         }
-//     }
-
-//     //console.log('TESTING: ',lobby[userId].prompt);
-        
-//     try {
-//         const{time,filenames} = await generateImage(message, testObj);
-//         for(let i = 0; i < filenames.length; i++){
-//             await sendPhoto(message, filenames[i]);
-//             await new Promise(resolve => setTimeout(resolve, 500));
-//             fs.unlinkSync(filenames[i]);
-//         }
-        
-//         if(lobby[userId].advancedUser){
-//             await sendMessage(message,'Used seed: ',lobby[userId].lastSeed);
-//         }
-
-//     } catch (error) {
-//         console.error("Error generating and sending image:", error);
-//     }
-// }
 async function handleRegen(message) {
     const userId = message.from.id;
     // if(!await checkLobby(message)){

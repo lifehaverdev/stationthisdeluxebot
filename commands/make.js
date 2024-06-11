@@ -298,33 +298,28 @@ function prepareRequest(promptObj) {
                   }
               });
             break;
+        case "MAKE_CONTROL":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_number": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_control_image": promptObj.controlfileUrl,
+                    "input_width": promptObj.photoStats.width,
+                    "input_height": promptObj.photoStats.height,
+                  }
+                })
+            break;
     };
     
     return body;
 }
 
-// async function processImages(images, promptObj, start) {
-//     let filenames = images.map((img, index) => {
-//         const filename = `./tmp/${promptObj.wallet}_${Date.now()}${index}.png`;
-//         fs.writeFileSync(filename, Buffer.from(img, "base64"), 'base64');
-//         return filename;
-//     });
-
-//     // Optionally apply watermark if required
-//     if (promptObj.waterMark) {
-//         await Promise.all(filenames.map(addWaterMark));
-//     }
-
-//     // Calculate processing time
-//     const end = process.hrtime(start);
-//     const time = end[0] - start[0];  // assuming start is also hrtime format
-//     console.log(end[0],start[0])
-//     return { time, filenames };
-// }
-
-// module.exports = {
-//     generateImage
-// }
 module.exports = {
     //sendGeneratedImage,
     generate,

@@ -33,6 +33,11 @@ const comfydeployment_ids = [
         type: "MAKE_CONTROL_STYLE",
         name: "make_control_style",
         id: "935facb4-34b2-4cab-b96c-efdd43da2c6d"
+    },
+    {
+        type: "MAKE_CONTROL",
+        name: "make_control",
+        id: "c8075e47-ad63-477e-a69d-56f55c88289e"
     }
 ]
 function getDeploymentIdByType(type) {
