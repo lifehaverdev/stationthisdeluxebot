@@ -371,11 +371,18 @@ async function handleMake(message) {
         lastSeed: thisSeed
     }
 
-    if(lobby[userId].styleTransfer && lobby[userId].styleFileUrl) {
+    if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+        if (!lobby[userId].stylefileUrl){
+            sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            return;
+        }
         lobby[userId].type = 'MAKE_STYLE'
-    } else if (lobby[userId].styleTransfer && !lobby[userId].stylefileUrl){
-        sendMessage(message, 'hey use the setstyle command to pick a style photo');
-        return;
+    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+        if (!lobby[userId].stylefileUrl && !lobby[userId].controlfileUrl){
+            sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
+            return;
+        }
+        lobby[userId].type = 'MAKE_CONTROL_STYLE'
     }
 
     const promptObj = {
@@ -705,6 +712,7 @@ async function handleSet(message) {
             break;
         case STATES.SETPHOTO:
         case STATES.SETSTYLE:
+        case STATES.SETCONTROL:
             let fileId, fileUrl;
             if (message.photo) {
                 fileId = message.photo[message.photo.length - 1].file_id;
@@ -729,8 +737,14 @@ async function handleSet(message) {
                         fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
                     }
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
-                } else {
+                } else if(currentState == STATES.SETCONTROL) {
                     
+                    lobby[userId] = {
+                        ...lobby[userId],
+                        controlfileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+                    }
+                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
+                } else {
                     lobby[userId] = {
                         ...lobby[userId],
                         styleFileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`,

@@ -280,6 +280,24 @@ function prepareRequest(promptObj) {
                   }
             })
             break;
+        case "MAKE_CONTROL_STYLE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": 1,
+                    "input_batch": 1,
+                    "input_steps": 30,
+                    "input_cfg": 7,
+                    "input_prompt": "gummy girl",
+                    "input_checkpoint": "zavychromaxl_v70.safetensors",
+                    "input_control_image": "",
+                    "input_width": 1024,
+                    "input_height": 1024,
+                    "input_style_image": ""
+                  }
+              });
+            break;
     };
     
     return body;

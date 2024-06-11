@@ -38,6 +38,7 @@ const STATES = {
     SETPHOTO: 'SETPHOTO',
     SETSIZE: 'SETSIZE',
     SETSTYLE: 'SETSTYLE',
+    SETCONTROL: 'SETCONTROL',
 
     VERIFY: 'VERIFY',
 
@@ -50,7 +51,8 @@ const STATES = {
 //for setters
 const SET_COMMANDS = [
     'prompt', 'userprompt', 'negprompt', 'photo', 'type',
-    'steps', 'batch', 'seed', 'size', 'strength', 'cfg', 'style'
+    'steps', 'batch', 'seed', 'size', 'strength', 'cfg', 'style',
+    'control',
 ];
 const SETTER_TO_STATE = {
     setbatch: STATES.SETBATCH,
@@ -64,6 +66,7 @@ const SETTER_TO_STATE = {
     setphoto: STATES.SETPHOTO,
     setsize: STATES.SETSIZE,
     setstyle: STATES.SETSTYLE,
+    setcontrol: STATES.SETCONTROL,
     // Add more mappings as needed
 };
 const STATE_TO_LOBBYPARAM = {
@@ -77,7 +80,8 @@ const STATE_TO_LOBBYPARAM = {
     'SETSEED': 'seed',
     'SETPHOTO': 'fileUrl',
     'SETSIZE': 'photoStats',
-    'SETSTYLE': 'styleFileUrl'
+    'SETSTYLE': 'stylefileUrl',
+    'SETCONTROL': 'controlfileUrl'
 }
 
 const commandStateMessages = {
