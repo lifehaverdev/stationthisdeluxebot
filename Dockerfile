@@ -19,7 +19,7 @@ COPY . .
 
 # Install dependencies
 RUN npm install
-RUN mkdir -p /tmp
+# RUN mkdir -p /tmp
 # Expose the port the app runs on
 EXPOSE 3000
 
