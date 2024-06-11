@@ -31,6 +31,7 @@ const {
     handleSignIn,
     handleSignOut,
     handleStatus,
+    handleSpeak,
     //handleTest,
     handleVerify,
     shakeVerify,
@@ -92,6 +93,7 @@ const stateHandlers = {
     [STATES.WATERMARK]: (message) => safeExecute(message, handleWatermark),
     [STATES.SETPHOTO]: (message) => safeExecute(message, handleSet),
     [STATES.SETSTYLE]: (message) => safeExecute(message,handleSet),
+    [STATES.SETCONTROL]: (message) => safeExecute(message,handleSet),
     [STATES.INPAINT]: (message) => safeExecute(message, handleInpaint),
     [STATES.MASK]: (message) => safeExecute(message, handleMask),
 };
@@ -100,7 +102,8 @@ const stateHandlers = {
 const setStates = [
     STATES.SETBATCH, STATES.SETSTEPS, STATES.SETCFG, 
     STATES.SETSTRENGTH, STATES.SETPROMPT, STATES.SETUSERPROMPT, 
-    STATES.SETNEGATIVEPROMPT, STATES.SETSEED, STATES.SETSIZE, STATES.SETSTYLE
+    STATES.SETNEGATIVEPROMPT, STATES.SETSEED, STATES.SETSIZE, 
+    STATES.SETSTYLE, STATES.SETCONTROL
 ];
 setStates.forEach(state => {
     stateHandlers[state] = (message) => safeExecute(message,handleSet);
@@ -204,7 +207,7 @@ module.exports = function(bot) {
                         const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
-                            await sendMessage(message.chat.id, 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
+                            await sendMessage(message, 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
                         } 
                     }
                     await safeExecute(message, () => handler(message, match));

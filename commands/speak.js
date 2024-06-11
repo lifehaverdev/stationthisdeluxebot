@@ -26,6 +26,8 @@ const main = async (message, voiceModel) => {
             })
       };
 
+      console.log('trying this',`https://api.elevenlabs.io/v1/text-to-speech/${voiceModel}`, options)
+
     try {
         const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceModel}`, options);
         
@@ -61,7 +63,7 @@ async function txt2Speech(message, voiceModel) {
             console.error("No result from gpt.");
         }
     } catch (error) {
-        console.error("Error generating assist:", error);
+        console.error("Error generating speak:", error);
     }
 }
 
