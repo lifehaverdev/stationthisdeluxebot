@@ -125,7 +125,7 @@ const loraTriggers = [
     default_weight: 0.8,
     civitaiLink: 'miladystation2.net',
     description: 'this mewing lora is for looksmaxxing',
-    triggerWrods: ['mewing']
+    triggerWords: ['mewing']
   },
   {
     lora_name: '13angel332',
