@@ -1117,8 +1117,17 @@ async function shakeAssist(message) {
 }
 async function shakeSpeak(message) {
     const userId = message.from.id;
+    if(!lobby[userId].voiceModel){
+        sendMessage(message,'please choose a voice from voice menu in account settings');
+        return;
+    }
     const result = await txt2Speech(message, lobby[userId].voiceModel);
     //console.log(result);
+    if(result == '-1'){
+        sendMessage(message,'... i failed... :<')
+        console.log(result);
+        return 
+    }
     lobby[userId].points += 5;
     bot.sendAudio(message.chat.id,result);
     fs.unlinkSync(result);
