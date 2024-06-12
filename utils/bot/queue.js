@@ -1,5 +1,5 @@
 
-const { generate, fetchOutput } = require('../../commands/make')
+const { generate } = require('../../commands/make')
 const {
     sendMessage,
     sendPhoto,
@@ -132,6 +132,7 @@ async function waitlist(task){
         case 'MS2_STYLE':
         case 'MAKE_CONTROL_STYLE':
         case 'MAKE_CONTROL':
+        case 'MAKE3':
             run_id = await generate(promptObj);
             break;
     }
