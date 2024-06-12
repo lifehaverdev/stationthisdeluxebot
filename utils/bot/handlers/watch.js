@@ -18,6 +18,7 @@ const {
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,
+    handkeMake3,
     handleMs2ImgFile,
     handleMs2Prompt,
     handleMs3ImgFile,
@@ -51,6 +52,7 @@ const defaultUserData = require('../../users/defaultUserData');
 const commandPatterns = {
     '/signin': handleSignIn,
     '/make(?:@stationthisdeluxebot)?\\s+(.+)': handleMake,
+    '/make3(?:@stationthisdeluxebot)?\\s+(.+)': handleMake3,
     '/dexmake(?:@stationthisdeluxebot)?\\s+(\\d+)': handleDexMake, 
 //    '/test(?:@stationthisdeluxebot)?\\s+(.+)': handleTest,
     '/regen(?:@stationthisdeluxebot)?\\s*(.*)': handleRegen,

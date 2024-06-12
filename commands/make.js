@@ -317,6 +317,17 @@ function prepareRequest(promptObj) {
                   }
                 })
             break;
+        case "MAKE3":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_text": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_negative_text": promptObj.negPrompt,
+                    "input_seed": promptObj.seed
+                  }
+            })
+        break;
     };
     
     return body;

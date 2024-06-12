@@ -406,6 +406,54 @@ async function handleMake(message) {
         console.error("Error generating and sending image:", error);
     }
 }
+async function handleMake3(message) {
+    console.log('MAK3ING SOMETHING')
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+    if(!await checkLobby(message)){
+        return;
+    }
+
+    if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
+        return;
+    }
+
+    if(message.text.replace('/make3','').replace(`@${process.env.BOT_NAME}`,'') == ''){
+        startMake();
+        return
+    }
+
+    const thisSeed = makeSeed(userId);
+    let batch;
+    if(chatId < 0){
+        batch = 1;
+    } else {
+        batch = lobby[userId].batchMax;
+    }
+
+    //save these settings into lobby in case cook mode time
+    lobby[userId] = {
+        ...lobby[userId],
+        prompt: message.text,
+        type: 'MAKE3',
+        lastSeed: thisSeed
+    }
+
+    const promptObj = {
+        ...lobby[userId],
+        seed: thisSeed,
+        batchMax: batch
+    }
+        
+    try {
+        sendMessage(message,'k3');
+        console.log('check out the prompt object')
+        console.log(promptObj);
+        enqueueTask({message,promptObj})
+    } catch (error) {
+        console.error("Error generating and sending image:", error);
+    }
+}
 async function handleDexMake(message, match) {
     const chatId = message.chat.id;
     const userId = message.from.id;
@@ -1272,6 +1320,7 @@ module.exports = {
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,
+    handleMake3,
     handleMs2ImgFile,
     handleMs2Prompt,
     handleMs3ImgFile,
