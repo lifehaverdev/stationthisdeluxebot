@@ -18,7 +18,7 @@ const {
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,
-    handkeMake3,
+    handleMake3,
     handleMs2ImgFile,
     handleMs2Prompt,
     handleMs3ImgFile,
@@ -184,7 +184,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/make', '/dexmake', '/test', '/regen', '/speak'];
+const commandsRequiringGatekeeping = ['/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
