@@ -1,11 +1,11 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot'); 
+const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('./bot'); 
 const bot = getBotInstance();
 //const { checkLobby } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
     setUserState
-} = require('../../utils')
+} = require('../utils')
 const {
     handleAccountReset,
     handleAccountSettings,
@@ -46,8 +46,8 @@ const {
     startSet,
     saySeed,
     checkLobby,
-} = require('./handle');
-const defaultUserData = require('../../users/defaultUserData');
+} = require('./handlers/handle');
+const defaultUserData = require('../users/defaultUserData');
 
 const commandPatterns = {
     '/signin': handleSignIn,
