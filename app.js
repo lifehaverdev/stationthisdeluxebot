@@ -2,8 +2,8 @@ require("dotenv").config()
 
 const { getBotInstance } = require("./utils/bot/bot.js");
 const bot = getBotInstance();
-const watch = require('./utils/bot/handlers/watch.js')
-const wait = require('./utils/bot/handlers/menu.js')
+const watch = require('./utils/bot/watch.js')
+const wait = require('./utils/bot/menu.js')
 
 watch(bot);
 wait(bot);

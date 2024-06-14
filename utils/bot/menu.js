@@ -1,11 +1,11 @@
-const { lobby, getBotInstance } = require('../bot');
-const checkpointmenu = require('../../models/checkpointmenu')
-const voiceModels = require('../../models/voiceModelMenu')
-const { basepromptmenu, getBasePromptByName } = require('../../models/basepromptmenu')
+const { lobby, getBotInstance } = require('./bot');
+const checkpointmenu = require('../models/checkpointmenu')
+const voiceModels = require('../models/voiceModelMenu')
+const { basepromptmenu, getBasePromptByName } = require('../models/basepromptmenu')
 const {
     sendMessage,
     safeExecute
-} = require('../../utils');
+} = require('../utils');
 const bot = getBotInstance();
 
 function displayBasePromptSettingsMenu(callbackQuery) {

@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, startup, STATES, SETTER_TO_STATE, STATE_TO_LOBBYPARAM } = require('../bot'); 
+const { getBotInstance, makeSeed, getPhotoUrl, lobby, startup, STATES, SETTER_TO_STATE, STATE_TO_LOBBYPARAM } = require('../bot'); 
 const {
     sendMessage,
     safeExecute,
@@ -17,19 +17,19 @@ const Jimp = require('jimp');
 const { txt2Speech } = require('../../../commands/speak.js');
 const { promptAssist } = require('../../../commands/assist.js')
 
+const { displayAccountSettingsMenu } = require('./accountSettings.js')
+const { handleAdvancedUserOptions } = require('./advancedUserSettings.js')
+const { handleMs3ImgFile } = require('./handleMs3ImgFile.js')
+const { saySeed } = require('./saySeed.js')
+const { startSet, handleSet } = require('./startSet.js')
+const { handleHelp, handleStatus } = require('./helpStatus.js')
+const { handleDexMake, handlePromptCatch } = require('./promptDex.js')
+
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 4;
 
 const STEPSLIMIT = 48;
-
-function makeSeed(userId) {
-    if(lobby[userId].seed == -1){
-        return Math.floor(Math.random() * 1000000);
-    } else {
-        return lobby[userId].seed;
-    }
-};
 
 function calcBatch(message) {
     const userId = message.from.id;
@@ -59,281 +59,8 @@ function calcSteps(message) {
         sendMessage(message,'hey, please make something first so i can see ur account')
     }
 }
-function calcSize(message) {
-    const userId = message.from.id;
-    const chatId = message.chat.id;
-    let possibleSize;
-    if(lobby[userId]){
-        possibleSize = Math.floor(lobby[userId].balance / 1000) + 1024; //has 1000000 is 1000 1000, can go 2024
-        if(possibleSize > SIZELIMIT){
-            possibleSize = SIZELIMIT;
-        }
-        return possibleSize
-    } else {
-        sendMessage(message,'hey, please make something first so i can see ur account')
-    }
-}
-function compactSerialize(data) {
-    return `${data.action}|${data.fromId}|${data.text}|${data.chatId}|${data.firstName}|${data.threadId}|${data.id}`;
-}
-function displayAccountSettingsMenu(message) {
-    // Create account settings menu keyboard
-    const userId = message.from.id;
-    const chatId = message.chat.id;
-    let accountSettingsKeyboard = [
-        [
-            {
-                text: `Advanced User: ${lobby[userId].advancedUser ? 'Enabled' : 'Disabled'}`,
-                callback_data: 'toggleAdvancedUser',
-            },
-            // {
-            //     text: `Whale Mode: ${lobby[userId].whaleMode ? 'Enabled' : 'Disabled'}`,
-            //     callback_data: 'toggleWhaleMode'
-            // },
-            
-        ]
-    ];
-
-    if (lobby[userId].balance >= 0){//1000000) {
-        accountSettingsKeyboard[0].push(
-            {
-                text: `Watermark: ${lobby[userId].waterMark ? 'ON' : 'OFF'}`,
-                callback_data: 'toggleWaterMark',
-            },
-            {
-                text: `Base Prompt Menu`,
-                callback_data: 'toggleBasePrompt',
-            },
-            {
-                text: `Voice Menu`,
-                callback_data: 'toggleVoice'
-            },
-            {
-                text: `ControlNet`,
-                callback_data: 'toggleControlNet',
-            },
-            {
-                text: 'Style Transfer',
-                callback_data: 'toggleStyleTransfer'
-            }
-        );
-    }
-    if (lobby[userId].balance >= 0){//} 5000000) {
-        accountSettingsKeyboard[0].push(
-            {
-                text: `Checkpoint Menu`,
-                callback_data: 'toggleCheckpoint',
-            },
-        );
-    }
-
-    // Send account settings menu
-    bot.sendMessage(chatId, 'Account Settings:', {
-        reply_markup: {
-            inline_keyboard: accountSettingsKeyboard
-        }
-    });
-}
-async function handleAdvancedUserOptions(message) {
-    const userId = message.from.id;
-    const chatId = message.chat.id;
-    //console.log('message in handle advanced',message);
-    if (lobby[userId].advancedUser && chatId > 0) {
-        // Prepare data for callback serialization
-        const baseData = {
-            text: 'k',
-            id: message.message_id,
-            fromId: message.from.id,
-            chatId: message.chat.id,
-            firstName: message.from.first_name.slice(0, 10), // Limit length of the name to avoid exceeding limit
-            threadId: message.message_thread_id || 0 // Use 0 if thread ID is not available
-        };
-        console.log(baseData);
-        console.log(compactSerialize({ ...baseData, action: 'regen' }))
-        // Create inline keyboard with compact serialized callback data
-        const replyMarkup = {
-            inline_keyboard: [
-                [
-                    { text: 'Regenerate', callback_data: compactSerialize({ ...baseData, action: 'regen' }) },
-                    { text: 'Set CFG', callback_data: compactSerialize({ ...baseData, action: 'setcfg' }) },
-                    { text: 'Set Prompt', callback_data: compactSerialize({ ...baseData, action: 'setprompt' }) }
-                ]
-            ]
-        };
-
-        // Send the message with inline keyboard
-        sendMessage(message, `Used seed: ${lobby[userId].lastSeed}`, replyMarkup);
-    }
-}
 
 
-async function handleMs3ImgFile(message) {
-    chatId = message.chat.id;
-    let fileId, fileUrl;
-    const userData = lobby[message.from.id];
-
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
-    }
-    const fileInfo = await bot.getFile(fileId);
-    fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
-    const promptObj = {
-        ...userData,
-        fileUrl: fileUrl,
-        type: 'MS3',
-    }
-    try {
-        //enqueueTask({message, promptObj})
-        enqueueTask({message,promptObj})
-        setUserState(message,STATES.IDLE);
-        sendMessage(message, `Okay dont hold your breath`);        
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
-}
-
-
-
-function saySeed(message){
-    if(lobby[message.from.id]){
-        sendMessage(message,`the last seed you used was ${lobby[message.from.id].lastSeed}`);
-    } else {
-        sendMessage(message, 'gen something and Ill tell you what seed you used');
-    }
-}
-
-async function startSet(message) {
-    const command = message.text.replace('/set','');
-    const userId = message.from.id;
-    const setter = `set${command}`;
-    const state = SETTER_TO_STATE[setter]
-    const lobbyParam = STATE_TO_LOBBYPARAM[state]
-    const currentValue = lobby[userId] ? (lobby[userId][lobbyParam] || "not set") : "not set";
-    if(currentValue == 'notset'){
-        console.log('not set');
-        setUserState(STATES.IDLE)
-        
-    } else {
-        switch (command) {
-            case 'batch':
-                const maxBatch = calcBatch(message); // Assume calcBatch is defined elsewhere
-                await sendMessage(message, `What batch do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxBatch}`);
-                break;
-            case 'steps':
-                const maxSteps = calcSteps(message); // Assume calcSteps is defined elsewhere
-                await sendMessage(message, `What steps do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxSteps}`);
-                break;
-            case 'size':
-                const maxSize = calcSize(message); // Assume calcSize is defined elsewhere
-                await sendMessage(message, `What size do you want to set to? Rn it is set to ${currentValue.width},${currentValue.height}. Your maximum size is ${maxSize},${maxSize}`);
-                break;
-            case 'cfg':
-                await sendMessage(message, `What CFG do you want to set to? Rn it is set to ${currentValue}. Please enter a value between 0 and 30`);
-                break;
-            case 'strength':
-                await sendMessage(message, `What strength do you want to set to? Rn it is set to ${currentValue}. Please enter a decimal value (i.e. '.4' or '0.5') between 0 and 1`);
-                break;
-            case 'prompt':
-            case 'userprompt':
-            case 'negprompt': 
-                await sendMessage(message, `What ${command} do you want to set it to? Rn it is set to:`);
-                await sendMessage(message, ` ${currentValue}`);
-                break;
-            case 'photo':
-                await sendMessage(message, 'What photo do you want to set')
-                break;
-            default:
-                await sendMessage(message, `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
-                break;
-        }
-        setUserState(message,state);
-    }
-}
-
-function handleHelp(message) {
-    const chatId = message.chat.id;
-
-    const helpMessage = `
-    HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHIS BOT ON TELEGRAM
-
-    TYPE IN /make + a prompt (dont just use the command)
-    and you will receive an image
-    use the /assist command + a smol prompt and gpt will expound on it for you if you're not feeling creative
-    use the /pfp command and send in a photo after the response to automatically receive an img2img that was prompted for you
-    use the /ms2 command to initiate an img2img, send a photo, provide a prompt and sit back
-    use /interrogate to create a prompt based on a photo you provide
-    use /regen to try another version of your last one
-
-    use /disc to put your image on a ms2 disc
-    use /watermark to brand your image with the ms2 logo
-    
-    ADVANCED USE
-    heres where we are currently developing a lot and you may find some new features. 
-    Use the /accountsettings command to bring up a menu. If you have >1M tokens or have been blessed by the dev youll be able to remove the watermark from your renders as well as change base prompts
-    
-    SETTERS
-    for /regen purposes, we have provided setter commands to tweak what your workspace sends to stable diffusion
-    /setprompt
-    /setcfg
-    /setstrength (only applies to img2img)
-    /setseed
-    /setnegativeprompt
-    /setsize (sdxl really loves 1024x1024 so dont go too crazy)
-    /setbatch 
-    /setsteps
-    /setphoto
-
-    /setuserprompt sets an additional baseprompt to be added to all generations while it is activated, you can input loras here as well
-    to toggle its activation use /toggleuserprompt
-    
-    if you are really onto something please be sure to use /savesettings in case the bot crashes you will be able to pick up where you left off
-    you can also use /getseed to see what seed was used for the last image so you can farm good generation seeds
-    using these features, you will be cooking fr
-    you can also utilize /promptcatch <SLOT> to save a prompt to 1 of 6 slots on your account
-    then just use /dexmake <SLOT> to create an image with that prompt and your current settings
-    If you make a mess of your account and want to start fresh use /resetaccount
-    
-    TROUBLESHOOTING
-    
-    First of all if you find a bug go to the techsupport channel and tell the dev, hes trying to make the bot perfect so pls help
-    
-    If you are stuck in some sort of UI call and rsponse loop or if you change your mind in the middle of one, use the /quit command
-    If you are unsure whether the bot is alive use the /status command
-    If your settings are all wonky, try /resetaccount or /signout and /signin again. you won't have to reverify
-    
-    EXTRA
-    
-    If you have a model you want me to check out use the /request command and shoot it in here ill take a look
-    
-    Try the /loralist command to see what LORAs we offer along with their key words, just use the trigger word somewhere in your prompt to activate it`
-
-    sendMessage(message, helpMessage);
-}
-function handleStatus(message) {
-    sendMessage(message, 
-`
-I have been running for ${(Date.now() - startup) / 1000} seconds. 
-
-Waiting: 
-${taskQueue.map(task => {
-    const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-    return `${username}: ${task.promptObj.type}`; // Include remaining time in the status
-}).join('\n')}
-
-Working on: 
-${waiting.map(task => {
-    const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-    const remainingTime = task.status; // Calculate remaining time until checkback
-    return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
-}).join('\n')}
-`
-    );
-}
 async function startMake(message) {
     await sendMessage(message,'What prompt for your txt2img?')
     setUserState(message,STATES.MAKE)
@@ -454,69 +181,10 @@ async function handleMake3(message) {
         console.error("Error generating and sending image:", error);
     }
 }
-async function handleDexMake(message, match) {
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-
-    if (!await checkLobby(message)) {
-        return;
-    }
-
-    const slot = parseInt(match[1], 10);
-    if (isNaN(slot) || slot < 1 || slot > 6) {
-        sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-        return;
-    }
-
-    const userSettings = lobby[userId];
-    if (!userSettings) {
-        sendMessage(message, "User settings not found.");
-        return;
-    }
-    
-    const prompt = userSettings.promptdex[slot - 1];
-    if (!prompt) {
-        sendMessage(message, `No prompt saved in slot ${slot}.`);
-        return;
-    }
-
-    const thisSeed = makeSeed(userId);
-    lobby[userId].lastSeed = thisSeed;
-
-    let batch;
-    if (chatId < 0) {
-        batch = 1;
-    } else {
-        batch = userSettings.batchMax;
-    }
-
-    userSettings.prompt = prompt; // Update prompt with selected slot
-    userSettings.type = 'MAKE';
-    userSettings.lastSeed = thisSeed;
-
-    const promptObj = {
-        ...userSettings,
-        seed: thisSeed,
-        batchMax: batch,
-        prompt: prompt
-    };
-    
-    try {
-        sendMessage(message, 'k');
-        enqueueTask({ message, promptObj });
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
-}
 
 
 async function handleRegen(message) {
     const userId = message.from.id;
-    // if(!await checkLobby(message)){
-    //     return;
-    // }
-    // we do this in watch
-
     const thisSeed = makeSeed(userId);
     lobby[userId].lastSeed = thisSeed;
 
@@ -545,18 +213,7 @@ async function handleRegen(message) {
 }
 async function handleInterrogation(message) {
     sendMessage(message,'hmm what should i call this..');
-    let fileId;
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
-    }
-    const photoInfo = await bot.getFile(fileId);
-    const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
-    // const promptObj = {
-    //     type: 'INTER',
-    //     photoUrl: photoUrl
-    // }
+    const photoUrl = await getPhotoUrl(message);
     try {
         //enqueueTask({message,promptObj})
         const{time,result} = await interrogateImage(message, photoUrl);
@@ -568,38 +225,11 @@ async function handleInterrogation(message) {
         return false
     }
 }
-async function handlePromptCatch(message, match) {
-    const slot = parseInt(match[1]); // Ensure it's an integer
-    const userId = message.from.id
-    if (slot < 1 || slot > 6) {
-        sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-        return;
-    }
 
-    const userSettings = lobby[userId];
-    if (!userSettings) {
-        sendMessage(message, "User settings not found.");
-        return;
-    }
-
-    const prompt = userSettings.prompt;
-
-    userSettings.promptdex[slot - 1] = prompt;
-    writeUserData(userId,userSettings);
-    sendMessage(message, `Prompt saved to slot ${slot} and settings saved`);
-}
 async function handleInpaint(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
-    let fileId, fileUrl;
-
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
-    }
-    const fileInfo = await bot.getFile(fileId);
-    fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+    const fileUrl = getPhotoUrl(message)
     
     try {
         const photo = await Jimp.read(fileUrl);
@@ -632,15 +262,7 @@ async function handleInpaint(message) {
 async function handleMask(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
-    let fileId, fileUrl;
-
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
-    }
-    const fileInfo = await bot.getFile(fileId);
-    fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+    const fileUrl = getPhotoUrl(message);
     
     try {
         const photo = await Jimp.read(fileUrl);
@@ -694,144 +316,7 @@ async function handleInpaintPrompt(message) {
 //
 // setter
 //
-async function handleSet(message) {
-    
-    const userId = message.from.id;
-    const newValue = message.text;
-    const currentState = lobby[userId].state.state;
-    const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
-    console.log('current user state',currentState)
-    if (!lobby[userId]) {
-        sendMessage(message, "You need to make something first");
-        return;
-    }
 
-    switch (currentState) {
-        case STATES.SETPROMPT:
-        case STATES.SETTYPE:
-            lobby[userId][lobbyParam] = newValue;
-            sendMessage(message, `ok its set`);
-            setUserState(message,STATES.IDLE);
-            break;
-        case STATES.SETNEGATIVEPROMPT:
-        case STATES.SETUSERPROMPT:
-            lobby[userId][lobbyParam] = newValue;
-            if(newValue == '-1'){
-                sendMessage(message,'alright its off');
-            } else {
-                sendMessage(message, `ok its set`);
-            }
-            setUserState(message,STATES.IDLE);
-            break;
-        case STATES.SETPHOTO:
-        case STATES.SETSTYLE:
-        case STATES.SETCONTROL:
-            let fileId, fileUrl;
-            if (message.photo) {
-                fileId = message.photo[message.photo.length - 1].file_id;
-            } else if (message.document) {
-                fileId = message.document.file_id;
-            }
-            const fileInfo = await bot.getFile(fileId);
-            fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
-            try {
-                const photo = await Jimp.read(fileUrl);
-                const { width, height } = photo.bitmap;
-
-                if(currentState == STATES.SETPHOTO) {
-                    const photoStats = {
-                        width: width,
-                        height: height
-                    };
-                    
-                    lobby[userId] = {
-                        ...lobby[userId],
-                        photoStats: photoStats,
-                        fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
-                    }
-                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
-                } else if(currentState == STATES.SETCONTROL) {
-                    
-                    lobby[userId] = {
-                        ...lobby[userId],
-                        controlfileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
-                    }
-                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
-                } else {
-                    lobby[userId] = {
-                        ...lobby[userId],
-                        styleFileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`,
-                    }
-                    await sendMessage(message, `looks dope. if style transfer is enabled in account settings, this image will be applied for make`);
-                }
-        
-                setUserState(message,STATES.IDLE);
-            } catch(err) {
-                bot.sendMessage(DEV_DMS,err);
-            }
-            break;
-        case STATES.SETSTEPS:
-        case STATES.SETBATCH:
-        case STATES.SETSEED:
-            const intValue = parseInt(newValue, 10);
-            if (isNaN(intValue)) {
-                sendMessage(message, 'Please enter a valid integer');
-                return false;
-            }
-            if (currentState === STATES.SETSTEPS) {
-                const maxSteps = calcSteps(message);
-                if (intValue > maxSteps) {
-                    sendMessage(message, `Please enter a value up to ${maxSteps}`);
-                    return false;
-                }
-            } else if (currentState === STATES.SETBATCH) {
-                const maxBatch = calcBatch(message);
-                if (intValue > maxBatch) {
-                    sendMessage(message, `Please enter a value up to ${maxBatch}`);
-                    return false;
-                }
-            }
-            lobby[userId][lobbyParam] = intValue;
-            sendMessage(message, `Your ${lobbyParam} is now ${intValue}`);
-            setUserState(message,STATES.IDLE);
-            break;
-        case STATES.SETSIZE:
-            const sizeValues = newValue.split(',').map(Number);
-            if (sizeValues.some(isNaN)) {
-                sendMessage(message, 'Please enter valid size values in the format <number,number>');
-                return false;
-            }
-            sizeValues[0] > SIZELIMIT ? sizeValues[0] = SIZELIMIT : null;
-            sizeValues[1] > SIZELIMIT ? sizeValues[1] = SIZELIMIT : null;
-            lobby[userId][lobbyParam] = { width: sizeValues[0], height: sizeValues[1] };
-            sendMessage(message, `You set size to ${sizeValues[0]},${sizeValues[1]}`);
-            setUserState(message,STATES.IDLE);
-            break;
-        case STATES.SETSTRENGTH:
-        case STATES.SETCFG:
-            const floatValue = parseFloat(newValue);
-            if (isNaN(floatValue)) {
-                sendMessage(message, 'Please enter a valid float value');
-                return false;
-            }
-            if (currentState === STATES.SETSTRENGTH && (floatValue < 0 || floatValue > 1)) {
-                sendMessage(message, 'Please enter a value between 0 and 1');
-                return false;
-            }
-            if (currentState === STATES.SETCFG && (floatValue < 0 || floatValue > 30)) {
-                sendMessage(message, 'Please enter a value between 0 and 30');
-                return false;
-            }
-            lobby[userId][lobbyParam] = floatValue;
-            sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`);
-            setUserState(message,STATES.IDLE);
-            break;
-        default:
-            sendMessage(message, 'Unknown setter command');
-            setUserState(message,STATES.IDLE);
-            break;
-    }
-}
 //
 // setter calc
 //

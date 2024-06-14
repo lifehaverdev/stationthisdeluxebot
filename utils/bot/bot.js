@@ -8,6 +8,7 @@ const bot = new TelegramBot(botToken,
     });
 const startup = Date.now();
 const lobby = {};
+const rooms = [];
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -132,11 +133,33 @@ const commandStateMessages = {
     // Add other commands as needed
 };
 
+function makeSeed(userId) {
+    if(lobby[userId].seed == -1){
+        return Math.floor(Math.random() * 1000000);
+    } else {
+        return lobby[userId].seed;
+    }
+};
+
+async function getPhotoUrl(message) {
+    let fileId;
+    if (message.photo) {
+        fileId = message.photo[message.photo.length - 1].file_id;
+    } else if (message.document) {
+        fileId = message.document.file_id;
+    }
+    const photoInfo = await bot.getFile(fileId);
+    const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
+    return photoUrl
+}
+
 
 module.exports = {
     getBotInstance: function () {
         return bot;
     },
+    makeSeed,
+    getPhotoUrl,
     lobby,
     startup,
     commandStateMessages,
