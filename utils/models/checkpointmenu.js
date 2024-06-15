@@ -4,7 +4,7 @@ checkpointmenu = [
         description: "SDXL",
     },
     {
-        name: "zavychromaxl_v70.safetensors",
+        name: "zavychromaxl_v60.safetensors",
         description: "SDXL",
     },
     {
