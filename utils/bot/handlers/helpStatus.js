@@ -1,3 +1,4 @@
+const { startup } = require('../bot.js')
 const { sendMessage } = require('../../utils.js')
 const { waiting, taskQueue } = require('../queue.js')
 
