@@ -1,4 +1,4 @@
-const { lobby, getPhotoUrl, makeSeed } = require('../bot');
+const { lobby, getPhotoUrl, makeSeed, STATES } = require('../bot');
 //const bot = getBotInstance;
 const { enqueueTask } = require('../queue');
 const { sendMessage, setUserState } = require('../../utils')
