@@ -60,7 +60,7 @@ function handleHelp(message) {
     sendMessage(message, helpMessage);
 }
 function handleStatus(message) {
-    const msg = `
+    let msg = `
     I have been running for ${(Date.now() - startup) / 1000} seconds. 
     `
     taskQueue.length > 0 ? msg +=    `
