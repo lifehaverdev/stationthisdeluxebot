@@ -1,23 +1,19 @@
-const { lobby, getBotInstance } = require('../bot');
+const { lobby, getBotInstance, getPhotoUrl } = require('../bot');
 const bot = getBotInstance;
 const { enqueueTask } = require('../queue');
 const { sendMessage, setUserState } = require('../../utils')
 
 async function handleMs3ImgFile(message) {
     chatId = message.chat.id;
-    let fileId, fileUrl;
-    const userData = lobby[message.from.id];
+    const fileUrl = getPhotoUrl(message);
 
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
-    }
-    const fileInfo = await bot.getFile(fileId);
-    fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+    const thisSeed = makeSeed(userId);
+    lobby[userId].lastSeed = thisSeed;
+
     const promptObj = {
         ...userData,
         fileUrl: fileUrl,
+        seed: thisSeed,
         type: 'MS3',
     }
     try {

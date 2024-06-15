@@ -227,7 +227,9 @@ function prepareRequest(promptObj) {
                 deployment_id: comfydeployid,
                 webhook: webHook,
                 inputs: {
-                    "input_image": promptObj.fileUrl
+                    "input_image": promptObj.fileUrl,
+                    "input_size": 576,
+                    "input_seed": promptObj.seed
                   }
               })
             break;
