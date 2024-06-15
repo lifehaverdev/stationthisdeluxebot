@@ -1,6 +1,11 @@
 const { SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, getPhotoUrl } = require('../bot')
 const { setUserState, sendMessage } = require('../../utils')
 
+const SIZELIMIT = 2048;
+const BATCHLIMIT = 4;
+
+const STEPSLIMIT = 48;
+
 async function startSet(message) {
     const command = message.text.replace('/set','');
     const userId = message.from.id;
