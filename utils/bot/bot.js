@@ -150,6 +150,7 @@ async function getPhotoUrl(message) {
     }
     const photoInfo = await bot.getFile(fileId);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
+    console.log(photoUrl);
     return photoUrl
 }
 
