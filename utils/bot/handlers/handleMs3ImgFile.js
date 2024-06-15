@@ -5,6 +5,7 @@ const { sendMessage, setUserState } = require('../../utils')
 
 async function handleMs3ImgFile(message) {
     chatId = message.chat.id;
+    userId = message.from.id;
     const fileUrl = getPhotoUrl(message);
 
     const thisSeed = makeSeed(userId);
