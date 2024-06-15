@@ -1,5 +1,5 @@
-const { lobby, getBotInstance, getPhotoUrl, makeSeed } = require('../bot');
-const bot = getBotInstance;
+const { lobby, getPhotoUrl, makeSeed } = require('../bot');
+//const bot = getBotInstance;
 const { enqueueTask } = require('../queue');
 const { sendMessage, setUserState } = require('../../utils')
 
@@ -12,7 +12,7 @@ async function handleMs3ImgFile(message) {
     lobby[userId].lastSeed = thisSeed;
 
     const promptObj = {
-        ...userData,
+        ...lobby[userId],
         fileUrl: fileUrl,
         seed: thisSeed,
         type: 'MS3',
