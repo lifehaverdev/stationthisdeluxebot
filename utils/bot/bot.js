@@ -172,8 +172,10 @@ const commandStateMessages = {
 function makeSeed(userId) {
     if(lobby[userId].seed == -1 || userId == -1){
         return Math.floor(Math.random() * 1000000);
-    } else {
+    } else if(lobby[userId]){
         return lobby[userId].seed;
+    } else {
+        return Math.floor(Math.random() * 1000000);
     }
 };
 
