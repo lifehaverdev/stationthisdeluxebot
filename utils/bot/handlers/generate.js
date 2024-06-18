@@ -1,4 +1,4 @@
-const { STATES, lobby, makeSeed } = require('../bot')
+const { STATES, lobby, rooms, makeSeed } = require('../bot')
 const { sendMessage } = require('../../utils')
 const { enqueueTask } = require('../queue')
 
@@ -10,9 +10,6 @@ async function handleMake(message) {
     console.log('MAKING SOMETHING')
     const chatId = message.chat.id;
     const userId = message.from.id;
-    // if(!await checkLobby(message)){
-    //     return;
-    // }
 
     if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
         return;
@@ -31,6 +28,29 @@ async function handleMake(message) {
         batch = lobby[userId].batchMax;
     }
 
+    const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
+
+    let settings = { ...lobby[userId] }; // Start with lobby settings
+
+    if (index !== -1) {
+        const matchedRoom = rooms[index];
+        console.log(matchedRoom); // Log the matched room object
+
+        // Apply group settings if user balance is 0, otherwise use user settings
+        if (lobby[userId].balance === 0) {
+            settings = {
+                ...matchedRoom.settings, // Group settings
+                ...settings // Keep any necessary default settings
+            };
+        } else {
+            // Merge user settings with group settings giving priority to user settings
+            settings = {
+                ...matchedRoom.settings, // Group settings
+                ...lobby[userId] // User-specific settings with balance > 0
+            };
+        }
+    }
+
     //save these settings into lobby in case cook mode time
     lobby[userId] = {
         ...lobby[userId],
@@ -39,20 +59,20 @@ async function handleMake(message) {
         lastSeed: thisSeed
     }
 
-    if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
-        if (!lobby[userId].stylefileUrl){
+    if(settings.styleTransfer && !settings.controlNet) {
+        if (!settings.stylefileUrl){
             sendMessage(message, 'hey use the setstyle command to pick a style photo');
             return;
         }
         lobby[userId].type = 'MAKE_STYLE'
-    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
-        if (!lobby[userId].stylefileUrl && !lobby[userId].controlfileUrl){
+    } else if (settings.styleTransfer && settings.controlNet){
+        if (!settings.stylefileUrl && !settings.controlfileUrl){
             sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
             return;
         }
         lobby[userId].type = 'MAKE_CONTROL_STYLE'
-    } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
-        if(!lobby[userId].controlfileUrl) {
+    } else if (settings.controlNet && !settings.styleTransfer){
+        if(!settings.controlfileUrl) {
             sendMessage(message, 'hey use setcontrol command to pick a control image');
             return;
         }
@@ -60,7 +80,7 @@ async function handleMake(message) {
     }
 
     const promptObj = {
-        ...lobby[userId],
+        ...settings,
         seed: thisSeed,
         batchMax: batch
     }

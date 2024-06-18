@@ -1,4 +1,4 @@
-const { SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, getPhotoUrl } = require('../bot')
+const { SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
 const { setUserState, sendMessage } = require('../../utils')
 
 const SIZELIMIT = 2048;
@@ -7,16 +7,31 @@ const BATCHLIMIT = 4;
 const STEPSLIMIT = 48;
 
 async function startSet(message) {
+    let settings;
+    if(message.chat.id < 0){
+        const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
+        if(index != -1){
+            if(rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+                settings = rooms[index].settings;
+            } else {
+                sendMessage(message,'only admin can change settings for a group')
+                return 
+            }
+        } else {
+            settings = lobby[userId]
+        }
+    }
+    
+
     const command = message.text.replace('/set','');
     const userId = message.from.id;
     const setter = `set${command}`;
     const state = SETTER_TO_STATE[setter]
     const lobbyParam = STATE_TO_LOBBYPARAM[state]
-    const currentValue = lobby[userId] ? (lobby[userId][lobbyParam] || "not set") : "not set";
+    const currentValue = settings ? (settings[lobbyParam] || "not set") : "not set";
     if(currentValue == 'notset'){
         console.log('not set');
         setUserState(STATES.IDLE)
-        
     } else {
         switch (command) {
             case 'batch':
@@ -100,6 +115,20 @@ function calcSteps(message) {
 }
 
 async function handleSet(message) {
+    let settings;
+    if(message.chat.id < 0){
+        const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
+        if(index != -1){
+            if(rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+                settings = rooms[index].settings;
+            } else {
+                sendMessage(message,'only admin can change settings for a group')
+                return 
+            }
+        } else {
+            settings = lobby[userId]
+        }
+    }
     
     const userId = message.from.id;
     const newValue = message.text;
@@ -114,13 +143,13 @@ async function handleSet(message) {
     switch (currentState) {
         case STATES.SETPROMPT:
         case STATES.SETTYPE:
-            lobby[userId][lobbyParam] = newValue;
+            settings[lobbyParam] = newValue;
             sendMessage(message, `ok its set`);
             setUserState(message,STATES.IDLE);
             break;
         case STATES.SETNEGATIVEPROMPT:
         case STATES.SETUSERPROMPT:
-            lobby[userId][lobbyParam] = newValue;
+            settings[lobbyParam] = newValue;
             if(newValue == '-1'){
                 sendMessage(message,'alright its off');
             } else {
@@ -142,22 +171,22 @@ async function handleSet(message) {
                         height: height
                     };
                     
-                    lobby[userId] = {
-                        ...lobby[userId],
+                    settings = {
+                        ...settings,
                         photoStats: photoStats,
                         fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
                     }
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
                 } else if(currentState == STATES.SETCONTROL) {
                     
-                    lobby[userId] = {
-                        ...lobby[userId],
+                    settings = {
+                        ...settings,
                         controlfileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
                     }
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
                 } else {
-                    lobby[userId] = {
-                        ...lobby[userId],
+                    settings = {
+                        ...settings,
                         styleFileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`,
                     }
                     await sendMessage(message, `looks dope. if style transfer is enabled in account settings, this image will be applied for make`);
@@ -189,7 +218,7 @@ async function handleSet(message) {
                     return false;
                 }
             }
-            lobby[userId][lobbyParam] = intValue;
+            settings[lobbyParam] = intValue;
             sendMessage(message, `Your ${lobbyParam} is now ${intValue}`);
             setUserState(message,STATES.IDLE);
             break;
@@ -201,7 +230,7 @@ async function handleSet(message) {
             }
             sizeValues[0] > SIZELIMIT ? sizeValues[0] = SIZELIMIT : null;
             sizeValues[1] > SIZELIMIT ? sizeValues[1] = SIZELIMIT : null;
-            lobby[userId][lobbyParam] = { width: sizeValues[0], height: sizeValues[1] };
+            settings[lobbyParam] = { width: sizeValues[0], height: sizeValues[1] };
             sendMessage(message, `You set size to ${sizeValues[0]},${sizeValues[1]}`);
             setUserState(message,STATES.IDLE);
             break;
@@ -220,7 +249,7 @@ async function handleSet(message) {
                 sendMessage(message, 'Please enter a value between 0 and 30');
                 return false;
             }
-            lobby[userId][lobbyParam] = floatValue;
+            settings[lobbyParam] = floatValue;
             sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`);
             setUserState(message,STATES.IDLE);
             break;

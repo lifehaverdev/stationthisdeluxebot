@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, STATES } = require('../bot'); 
+const { getBotInstance, lobby, rooms, STATES } = require('../bot'); 
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute } = require('../../utils')
@@ -77,7 +77,15 @@ async function handleSeeSettings(message) {
     // Define keys to ignore
     const keysToIgnore = ['_id', 'lastPhoto','userId', 'whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
 
-    if (lobby[userId]) {
+    if (
+        message.chat.id < 0 && 
+        index != -1 && 
+        rooms[index].admin.some(
+            (appointed)=> { return message.from.id == appointed ? true : false}
+        )){
+        settings = rooms[index].settings;
+    }
+    else if (lobby[userId]) {
         settings = lobby[userId];
     } else {
         settings = await getUserDataByUserId(chatId);  // Assuming this fetches user data
