@@ -18,7 +18,7 @@ async function handleMake(message) {
         return
     }
 
-    const thisSeed = makeSeed(userId);
+    
     let batch;
     if(chatId < 0){
         batch = 1;
@@ -29,11 +29,11 @@ async function handleMake(message) {
     const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
 
     let settings = { ...lobby[userId] }; // Start with lobby settings
-
+    let thisSeed
     if (index !== -1) {
         const matchedRoom = rooms[index];
         console.log(matchedRoom); // Log the matched room object
-
+        thisSeed = makeSeed(-1);
         // Apply group settings if user balance is 0, otherwise use user settings
         if (lobby[userId].balance === 0) {
             settings = {
@@ -46,7 +46,10 @@ async function handleMake(message) {
                 ...matchedRoom.settings, // Group settings
                 ...lobby[userId] // User-specific settings with balance > 0
             };
+            thisSeed = makeSeed(userId);
         }
+    } else {
+        thisSeed = makeSeed(userId);
     }
 
     if(settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
