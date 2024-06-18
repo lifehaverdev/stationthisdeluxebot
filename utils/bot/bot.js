@@ -170,7 +170,7 @@ const commandStateMessages = {
 };
 
 function makeSeed(userId) {
-    if(lobby[userId].seed == -1 || userId == -1){
+    if(userId == -1 || lobby[userId].seed == -1){
         return Math.floor(Math.random() * 1000000);
     } else if(lobby[userId]){
         return lobby[userId].seed;
