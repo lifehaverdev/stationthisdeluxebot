@@ -39,14 +39,16 @@ async function checkLobby(message){
     let balance;
     let userData;
 
-    if(rooms.some((group) => {
-        if(group.chat.id == message.chat.id) return true
-    })){return true}
+
 
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);
+        if(rooms.some((group) => {
+            if(group.chat.id == message.chat.id) return true
+        })){return true}
         if(userData.wallet == '' || userData.verified == false){
             if(message.chat.id < 0){
+                
                 sendMessage(message,'dm me the signin command and connect a wallet to unlock $MS2 holder benefits');
             } else {
                 sendMessage(message,'use the signin command and connect a wallet to unlock $MS2 holder benefits');
@@ -82,6 +84,9 @@ async function checkLobby(message){
         if(lobby[userId].balance == '' && lobby[userId].wallet != '' && lobby[userId].verified == true){
             lobby[userId].balance = await getBalance(lobby[userId].wallet);
         }
+        if(rooms.some((group) => {
+            if(group.chat.id == message.chat.id) return true
+        })){return true}
         setUserState(message,STATES.IDLE);
     }
     let points = lobby[userId].points;
