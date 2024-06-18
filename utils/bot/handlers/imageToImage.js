@@ -54,7 +54,7 @@ async function handleMs2Prompt(message) {
     } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
         lobby[userId].type = 'MS2_CONTROL'
     }
-    await sendMessage(message, 'pls wait i will make in 1 second');
+    await react(message);
     const promptObj = {
         ...lobby[userId],
         seed: lobby[userId].lastSeed,

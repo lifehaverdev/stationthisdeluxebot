@@ -1,10 +1,14 @@
 const { STATES, lobby, rooms, makeSeed } = require('../bot')
-const { sendMessage } = require('../../utils')
+const { sendMessage, react, setUserState } = require('../../utils')
 const { enqueueTask } = require('../queue')
 
 async function startMake(message) {
     await sendMessage(message,'What prompt for your txt2img?')
     setUserState(message,STATES.MAKE)
+}
+async function startMake3(message) {
+    await sendMessage(message,'What prompt for your txt2img sd3');
+    setUserState(message,STATES.MAKE3)
 }
 async function handleMake(message) {
     console.log('MAKING SOMETHING')
@@ -91,7 +95,7 @@ async function handleMake(message) {
     }
         
     try {
-        sendMessage(message,'k');
+        await react(message);
         console.log('check out the prompt object')
         console.log(promptObj);
         enqueueTask({message,promptObj})
@@ -107,7 +111,7 @@ async function handleMake3(message) {
     //     return;
     // }
 
-    if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
+    if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
         return;
     }
 
@@ -139,7 +143,7 @@ async function handleMake3(message) {
     }
         
     try {
-        sendMessage(message,'k3');
+        await react(message);
         console.log('check out the prompt object')
         console.log(promptObj);
         enqueueTask({message,promptObj})
@@ -178,4 +182,4 @@ async function handleRegen(message) {
     }
 }
 
-module.exports = { startMake, handleMake, handleRegen, handleMake3 }
+module.exports = { startMake, startMake3, handleMake, handleRegen, handleMake3 }

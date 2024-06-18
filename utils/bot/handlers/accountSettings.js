@@ -114,7 +114,23 @@ async function handleSignIn (message) {
         if(userData.wallet != ''){
             sendMessage(message, `You are signed in to ${userData.wallet}`);
             if(userData.verified == true){
-                sendMessage(message,'and you are verified. Have fun');
+                let options = {};
+                if(message.chat.id > 0){
+                    options = {
+                        reply_markup: {
+                            keyboard: [
+                                [{ text: '/create' }],
+                                [{ text: '/effect' }],
+                                [{ text: '/animate' }],
+                                [{ text: '/set' },{text: '/regen' }],
+                                [{ text: '/accountsettings' }]
+                            ],
+                          resize_keyboard: true,
+                          one_time_keyboard: false
+                        }
+                      };
+                }
+                sendMessage(message,'and you are verified. Have fun',options);
                 setUserState(message,STATES.IDLE)
             } else {
                 await handleVerify(message);

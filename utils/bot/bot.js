@@ -50,6 +50,7 @@ const STATES = {
     SIGN_IN: 'SIGN_IN',
 
     MAKE: 'MAKE',
+    MAKE3: 'MAKE3',
     IMG2IMG: 'IMG2IMG',
     MS3: 'MS3',
     MS2PROMPT: 'MS2PROMPT',
@@ -178,6 +179,8 @@ function makeSeed(userId) {
         return Math.floor(Math.random() * 1000000);
     }
 };
+
+
 
 async function getPhotoUrl(message) {
     let fileId;
