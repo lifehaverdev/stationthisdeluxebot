@@ -1,4 +1,4 @@
-const { lobby, STATES } = require('./bot'); 
+const { lobby, STATES, rooms } = require('./bot'); 
 const { getUserDataByUserId } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage } = require('../utils')
@@ -38,6 +38,10 @@ async function checkLobby(message){
     
     let balance;
     let userData;
+
+    if(rooms.some((group) => {
+        if(group.chat.id == message.chat.id) return true
+    })){return true}
 
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);

@@ -8,7 +8,43 @@ const bot = new TelegramBot(botToken,
     });
 const startup = Date.now();
 const lobby = {};
-const rooms = [];
+const rooms = [{
+    owner: 5472638766,
+    admins: [],
+    chat: {
+        id: -1002225298833 //stationthisofficial
+    },
+    settings: {
+        basePrompt: "petravoice",
+        checkpoint: "zavychromaxl_v70.safetensors",
+        voiceModel: "165UvtZp7kKnmrVrVQwx",
+        batchMax: 1,
+        points: 0,
+        steps: 30,
+        cfg: 7,
+        strength: .6,
+        prompt: '',
+        userBasePrompt: '',
+        negativePrompt: '',
+        seed: -1,
+        lastSeed: -1,
+        fileUrl: '',
+        photoStats: {
+            height: 1024,
+            width: 1024,
+        },
+        tempSize: {
+            height: 500,
+            width: 500
+        },
+        state: {
+            state: 'IDLE',
+            chatId: null,
+            messageThreadId: null
+        },
+        type: '',
+    }
+}];
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -162,6 +198,7 @@ module.exports = {
     makeSeed,
     getPhotoUrl,
     lobby,
+    rooms,
     startup,
     commandStateMessages,
     SET_COMMANDS,
