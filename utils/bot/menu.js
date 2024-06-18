@@ -1,11 +1,13 @@
-const { lobby, getBotInstance } = require('./bot');
+const { lobby, getBotInstance, STATES } = require('./bot');
 const checkpointmenu = require('../models/checkpointmenu')
 const voiceModels = require('../models/voiceModelMenu')
 const { basepromptmenu, getBasePromptByName } = require('../models/basepromptmenu')
 const {
     sendMessage,
-    safeExecute
+    safeExecute,
+    setUserState,
 } = require('../utils');
+const { startMake, startMake3, handleRegen, startSet } = require('./handlers/handle')
 const bot = getBotInstance();
 
 function displayBasePromptSettingsMenu(callbackQuery) {
@@ -118,9 +120,41 @@ module.exports = function(bot) {
                     safeExecute(message,handleRegen);
                     bot.answerCallbackQuery(callbackQuery.id, { text: "Regenerating" });
                     break;
-        
+                case 'make':
+                    safeExecute(message, startMake);
+                    //bot.answerCallbackQuery(callbackQuery.id, { text: ''})
+                    break;
+                case 'make3':
+                    safeExecute(message, startMake3);
+                    break;
+                case 'ms2':
+                    setUserState(message, STATES.IMG2IMG);
+                    sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+                    break;
+                case 'pfp':
+                    //setUserState(message, STATES.PFP);
+                    //sendMessage(message, 'Send in the photo you want to img to img. (pfp)',{reply_to_message_id: message.message_id});
+                    sendMessage(message, 'im sorry, not available rn')
+                    break;
+                case 'assist':
+                    //setUserState(message, STATES.ASSIST);
+                    //sendMessage(message, 'What prompt do you need help with',{reply_to_message_id: message.message_id});
+                    sendMessage(message, 'im sorry, not available rn')
+                    break;
+                case 'ms3':
+                    setUserState(message, STATES.MS3);
+                    sendMessage(message, 'What image will you animate (pls a square)',{reply_to_message_id: message.message_id});
+                    break;
+                case 'setstrength':
+                case 'setsize':
                 case 'setcfg':
                 case 'setprompt':
+                case 'setbatch':
+                case 'setsteps':
+                case 'setuserprompt':
+                case 'setseed':
+                case 'setnegprompt':
+                case 'setphoto':
                     message.text = `/${action}`
                     safeExecute(message,startSet)
                     break;

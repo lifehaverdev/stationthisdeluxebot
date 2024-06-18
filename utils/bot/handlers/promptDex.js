@@ -73,7 +73,7 @@ async function handleDexMake(message, match) {
     };
     
     try {
-        sendMessage(message, 'k');
+        await react(message);
         enqueueTask({ message, promptObj });
     } catch (error) {
         console.error("Error generating and sending image:", error);

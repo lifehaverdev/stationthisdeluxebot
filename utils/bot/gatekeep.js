@@ -51,12 +51,36 @@ async function checkLobby(message){
                 
                 sendMessage(message,'dm me the signin command and connect a wallet to unlock $MS2 holder benefits');
             } else {
-                sendMessage(message,'use the signin command and connect a wallet to unlock $MS2 holder benefits');
+                const options = {
+                    reply_markup: {
+                        keyboard: [[{ text: '/signin' }]],
+                        resize_keyboard: true,
+                        one_time_keyboard: true
+                    }
+                }
+                sendMessage(message,'use the signin command and connect a wallet to unlock $MS2 holder benefits',options);
             }
             balance = 0;
             //return false
         } else {
             balance = await getBalance(userData.wallet);
+            let options;
+            if(message.chat.id > 0){
+                options = {
+                    reply_markup: {
+                        keyboard: [
+                            [{ text: '/create' }],
+                            [{ text: '/effect' }],
+                            [{ text: '/animate' }],
+                            [{ text: '/set' },{text: '/regen' }],
+                            [{ text: '/accountsettings' }]
+                        ],
+                        resize_keyboard: true,
+                        one_time_keyboard: false
+                    }
+                }
+            }
+            sendMessage(message, 'welcome back', options);
         }
         // if(userData.verified === false){
         //     if(message.chat.id < 0){

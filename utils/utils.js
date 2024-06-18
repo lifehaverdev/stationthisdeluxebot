@@ -32,33 +32,26 @@ async function safeExecute(message, callback) {
         return false
     }
 }
-async function sendMessage(msg, text, replyMarkup = null) {
-    //console.log('I would love to send a message here',text);
+async function sendMessage(msg, text, options = {}) {
+
     if(text == ''){
         return
     }
     const chatId = msg.chat.id;
-    const options = {
-        chat_id: chatId,
-        text: text,
-        reply_markup: replyMarkup,  // Include the inline keyboard if provided
-    };
     if (msg.message_id) {
         options.reply_to_message_id = msg.message_id
     }
     if (msg.message_thread_id) {
         options.message_thread_id = msg.message_thread_id;
     }
-    
+    //console.log(options)
+    let response;
     try {
-        //console.log('alright lets try to send this then',options)
-        const messageOutput = await bot.sendMessage(chatId, text, options);
-        //console.log('Message sent successfully:', messageOutput);
-        return messageOutput;
-    } catch (error) {
-        console.error('Error sending message:', error.response.body);
-        throw error;
+        response = await bot.sendMessage(chatId, text, options);
+    } catch (err) {
+        console.log(err,'sendMessage error')
     }
+    return response;
 }
 async function sendPhoto(msg, fileUrl) {
     return await bot.sendPhoto(msg.chat.id,fileUrl,optionAppendage(msg));    
@@ -81,11 +74,29 @@ function optionAppendage(msg){
     return options
 }
 
+async function react(message) {
+    bot.sendChatAction(message.chat.id,'upload_photo')
+    await bot.setMessageReaction(message.chat.id, message.message_id, {
+        reaction: [
+            {
+                type: 'emoji',
+                emoji: '👌'
+            }
+        ]
+    })
+}
+
+function compactSerialize(data) {
+    return `${data.action}|${data.fromId}|${data.text}|${data.chatId}|${data.firstName}|${data.threadId}|${data.id}`;
+}
+
 module.exports = {
     sendPhoto,
     sendAnimation,
     sendMessage,
     sendVideo,
     safeExecute,
-    setUserState
+    setUserState,
+    react,
+    compactSerialize
 }

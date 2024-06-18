@@ -24,12 +24,13 @@ const { saySeed } = require('./saySeed.js')
 const { startSet, handleSet } = require('./startSet.js')
 const { handleHelp, handleStatus } = require('./helpStatus.js')
 const { handleDexMake, handlePromptCatch } = require('./promptDex.js')
-const { startMake, handleMake, handleRegen, handleMake3 } = require('./generate.js')
+const { startMake, startMake3, handleMake, handleRegen, handleMake3 } = require('./generate.js')
 const { handleInterrogation } = require('./interrogate.js')
 const { handleMask, handleInpaint, handleInpaintPrompt } = require('./inpaint.js')
 const { handleRequest, sendLoRaModelFilenames } = require('./loraRequestList.js')
 const { handleWatermark, handleDiscWrite } = require('./branding.js')
 const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile } = require('./imageToImage.js')
+const { setMenu, handleCreate, handleEffect, handleAnimate } = require('./keyboards.js')
 
 
 async function shakeAssist(message) {
@@ -97,8 +98,13 @@ module.exports = {
     shakeSignIn,
     shakeVerify,
     startMake,
+    startMake3,
     startSet,
     saySeed,
     setUserState,
-    checkLobby
+    checkLobby,
+    setMenu,
+    handleCreate,
+    handleEffect,
+    handleAnimate
 }
