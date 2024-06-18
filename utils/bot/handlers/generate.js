@@ -11,9 +11,7 @@ async function handleMake(message) {
     const chatId = message.chat.id;
     const userId = message.from.id;
 
-    if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
-        return;
-    }
+
 
     if(message.text.replace('/make','').replace(`@${process.env.BOT_NAME}`,'') == ''){
         startMake();
@@ -49,6 +47,10 @@ async function handleMake(message) {
                 ...lobby[userId] // User-specific settings with balance > 0
             };
         }
+    }
+
+    if(settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
+        return;
     }
 
     //save these settings into lobby in case cook mode time
