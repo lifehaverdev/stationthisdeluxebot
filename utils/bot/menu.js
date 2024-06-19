@@ -124,6 +124,9 @@ module.exports = function(bot) {
                     safeExecute(message, startMake);
                     //bot.answerCallbackQuery(callbackQuery.id, { text: ''})
                     break;
+                // case 'make_control':
+                    
+                //     safeExecute(message, startMake);
                 case 'make3':
                     safeExecute(message, startMake3);
                     break;

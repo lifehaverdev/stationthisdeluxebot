@@ -1,4 +1,4 @@
-const { sendMessage, setUserState } = require('../../utils')
+const { sendMessage, setUserState, react } = require('../../utils')
 const { getPhotoUrl, lobby, STATES, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const Jimp = require('jimp');
@@ -66,48 +66,49 @@ async function handleMs2Prompt(message) {
     return true
 }
 async function handlePfpImgFile(message) {
-    sendMessage(message,'looks good. sit tight');
-    chatId = message.chat.id;
-    const userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
-    const{time,result} = await interrogateImage(message, fileUrl);
+    sendMessage(message,'sorry this is broken rn');
+    // sendMessage(message,'looks good. sit tight');
+    // chatId = message.chat.id;
+    // const userId = message.from.id;
+    // const fileUrl = await getPhotoUrl(message);
+    // const{time,result} = await interrogateImage(message, fileUrl);
     
-    try {
-        const photo = await Jimp.read(fileUrl);
-        const { width, height } = photo.bitmap;
+    // try {
+    //     const photo = await Jimp.read(fileUrl);
+    //     const { width, height } = photo.bitmap;
 
-        const photoStats = {
-            width: width,
-            height: height
-        };
+    //     const photoStats = {
+    //         width: width,
+    //         height: height
+    //     };
 
-        const thisSeed = makeSeed(userId);
+    //     const thisSeed = makeSeed(userId);
 
-        lobby[userId] = {
-            ...lobby[userId],
-            prompt: result,
-            lastSeed: thisSeed,
-            type: 'MS2',
-            tempSize: photoStats,
-            fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
-        }
+    //     lobby[userId] = {
+    //         ...lobby[userId],
+    //         prompt: result,
+    //         lastSeed: thisSeed,
+    //         type: 'MS2',
+    //         tempSize: photoStats,
+    //         fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+    //     }
         
-        const promptObj = {
-            ...lobby[userId],
-            seed: thisSeed,
-            strength: .6,
-            cfg: 8,
-            photoStats: photoStats,
-        }
-        //return await shakeMs2(message,promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message,STATES.IDLE);
-        return true
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
+    //     const promptObj = {
+    //         ...lobby[userId],
+    //         seed: thisSeed,
+    //         strength: .6,
+    //         cfg: 8,
+    //         photoStats: photoStats,
+    //     }
+    //     //return await shakeMs2(message,promptObj);
+    //     enqueueTask({message,promptObj})
+    //     setUserState(message,STATES.IDLE);
+    //     return true
+    // } catch (error) {
+    //     console.error("Error processing photo:", error);
+    //     sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+    //     return false
+    // }
 }
 
 module.exports = { 

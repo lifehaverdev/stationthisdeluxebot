@@ -21,15 +21,15 @@ function displayAccountSettingsMenu(message) {
             //     callback_data: 'toggleWhaleMode'
             // },
             
-        ]
-    ];
-
-    if (lobby[userId].balance >= 0){//1000000) {
-        accountSettingsKeyboard[0].push(
+        ],
+        [
             {
                 text: `Watermark: ${lobby[userId].waterMark ? 'ON' : 'OFF'}`,
                 callback_data: 'toggleWaterMark',
             },
+            
+        ],
+        [
             {
                 text: `Base Prompt Menu`,
                 callback_data: 'toggleBasePrompt',
@@ -39,6 +39,13 @@ function displayAccountSettingsMenu(message) {
                 callback_data: 'toggleVoice'
             },
             {
+                text: `Checkpoint Menu`,
+                callback_data: 'toggleCheckpoint',
+            }
+            
+        ],
+        [
+            {
                 text: `ControlNet`,
                 callback_data: 'toggleControlNet',
             },
@@ -46,16 +53,19 @@ function displayAccountSettingsMenu(message) {
                 text: 'Style Transfer',
                 callback_data: 'toggleStyleTransfer'
             }
-        );
-    }
-    if (lobby[userId].balance >= 0){//} 5000000) {
-        accountSettingsKeyboard[0].push(
-            {
-                text: `Checkpoint Menu`,
-                callback_data: 'toggleCheckpoint',
-            },
-        );
-    }
+        ]
+    ];
+
+    // if (lobby[userId].balance >= 0){//1000000) {
+    //     accountSettingsKeyboard[0].push(
+            
+    //     );
+    // }
+    // if (lobby[userId].balance >= 0){//} 5000000) {
+    //     accountSettingsKeyboard[0].push(
+
+    //     );
+    // }
 
     // Send account settings menu
     bot.sendMessage(chatId, 'Account Settings:', {
