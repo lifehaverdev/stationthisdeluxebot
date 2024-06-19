@@ -116,6 +116,7 @@ function calcSteps(message) {
 
 async function handleSet(message) {
     let settings;
+    const userId = message.from.id;
     if(message.chat.id < 0){
         const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
         if(index != -1){
@@ -133,7 +134,6 @@ async function handleSet(message) {
     }
     console.log('settings in handleset',settings);
     
-    const userId = message.from.id;
     const newValue = message.text;
     const currentState = lobby[userId].state.state;
     const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
