@@ -4,7 +4,7 @@ require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
-const dbName = 'stationthisdeluxebot';
+const dbName = process.env.BOT_NAME;
 
 const client = new MongoClient(uri);
 
