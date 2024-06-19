@@ -1,5 +1,5 @@
 const { lobby, makeSeed } = require('../bot')
-const { sendMessage } = require('../../utils')
+const { sendMessage, react } = require('../../utils')
 const { writeUserData } = require('../../../db/mongodb')
 const { checkLobby } = require('../gatekeep')
 const { enqueueTask } = require('../queue')
