@@ -128,12 +128,18 @@ async function handleSet(message) {
         } else {
             settings = lobby[userId]
         }
+    } else {
+        settings = lobby[userId]
     }
+    console.log('settings in handleset',settings);
     
     const userId = message.from.id;
     const newValue = message.text;
     const currentState = lobby[userId].state.state;
     const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
+    
+    console.log('setting',lobbyParam)
+    console.log('currently',lobby[userId][lobbyParam])
     console.log('current user state',currentState)
     if (!lobby[userId]) {
         sendMessage(message, "You need to make something first");
