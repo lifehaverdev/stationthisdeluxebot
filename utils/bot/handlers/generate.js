@@ -99,6 +99,7 @@ async function handleMake(message) {
         console.log('check out the prompt object')
         console.log(promptObj);
         enqueueTask({message,promptObj})
+        setUserState(message, STATES.IDLE);
     } catch (error) {
         console.error("Error generating and sending image:", error);
     }
@@ -147,6 +148,7 @@ async function handleMake3(message) {
         console.log('check out the prompt object')
         console.log(promptObj);
         enqueueTask({message,promptObj})
+        setUserState(message, STATES.IDLE);
     } catch (error) {
         console.error("Error generating and sending image:", error);
     }
