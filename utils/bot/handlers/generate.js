@@ -20,13 +20,12 @@ async function handleMake(message) {
         return
     }
 
-    
     let batch;
     if(chatId < 0){
         batch = 1;
     } else {
-        lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
-        //batch = lobby[userId].batchMax;
+        //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
+        batch = lobby[userId].batchMax;
     }
 
     const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
