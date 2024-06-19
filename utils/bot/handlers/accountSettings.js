@@ -23,10 +23,10 @@ function displayAccountSettingsMenu(message) {
             
         ],
         [
-            {
-                text: `Watermark: ${lobby[userId].waterMark ? 'ON' : 'OFF'}`,
-                callback_data: 'toggleWaterMark',
-            },
+            // {
+            //     text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
+            //     callback_data: 'toggleWaterMark',
+            // },
             
         ],
         [
@@ -46,11 +46,11 @@ function displayAccountSettingsMenu(message) {
         ],
         [
             {
-                text: `ControlNet`,
+                text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
                 callback_data: 'toggleControlNet',
             },
             {
-                text: 'Style Transfer',
+                text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
                 callback_data: 'toggleStyleTransfer'
             }
         ]

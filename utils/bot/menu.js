@@ -292,13 +292,13 @@ module.exports = function(bot) {
                     break;
                     
             }
-            if(!callbackQuery.message.reply_to_message){
-                bot.editMessageText(messageTitle, {
-                    chat_id: chatId,
-                    message_id: callbackQuery.message.message_id,
-                    //reply_markup: opts.reply_markup
-                });
-            }
+            // if(!callbackQuery.message.reply_to_message){
+            //     bot.editMessageText(messageTitle, {
+            //         chat_id: chatId,
+            //         message_id: callbackQuery.message.message_id,
+            //         //reply_markup: opts.reply_markup
+            //     });
+            // }
             
         } catch (error) {
             console.error("Error during callback query handling:", {
