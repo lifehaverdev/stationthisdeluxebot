@@ -140,6 +140,13 @@ const loraTriggers = [
     civitaiLink: 'miladystation2.net',
     description: 'petravoice babes ai art',
     triggerWords: ['petravoice']
+  },
+  {
+    lora_name: 'remilia',
+    default_weight: 1,
+    civitaiLink: 'miladystation2.net',
+    description: 'cult is short for culture',
+    triggerWords: ['remilia']
   }
   // Add more LoRA configurations here
   // {

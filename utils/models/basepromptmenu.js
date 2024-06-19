@@ -5,6 +5,11 @@ const basepromptmenu = [
         baseprompt: ""
     },
     {
+        name: '$CULT',
+        description: 'ominous smiley man',
+        baseprompt: 'remilia <lora:remilia:1>'
+    },
+    {
         name: "MS2",
         description: "MS2 base prompt competition 1st place winner (default)",
         baseprompt: `playstation 1 still, low poly <lora:LOW_POLY_PLAYSTATION_1_STILL:0.5>`
@@ -34,7 +39,8 @@ const basepromptmenu = [
         description: "Kingdom Hearts",
         baseprompt: `Final Fantasy, Kingdom Hearts, low polygon, playstation 2, 2001-era graphics, Y2K, 90s NES 3d model, destiny islands beach in background
         (((LOW POLYGON LOW RESOLUTION)))`
-    }
+    },
+    
 ];
 
 function getBasePromptByName(name) {
