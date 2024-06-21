@@ -6,7 +6,7 @@ const defaultUserData = {
     advancedUser: false,
     waterMark: true,
     basePrompt: "MS2",
-    checkpoint: "zavychromaxl_v70.safetensors",
+    checkpoint: "zavychromaxl_v60.safetensors",
     voiceModel: "165UvtZp7kKnmrVrVQwx",
     batchMax: 1,
     points: 0,

@@ -7,7 +7,7 @@ const {
     safeExecute,
     setUserState,
 } = require('../utils');
-const { startMake, startMake3, handleRegen, startSet } = require('./handlers/handle')
+const { startMake, startMake3, handleRegen, startSet, setMenu } = require('./handlers/handle')
 const bot = getBotInstance();
 
 function displayBasePromptSettingsMenu(callbackQuery) {
@@ -102,6 +102,50 @@ function parseCallbackData(data) {
         return { action: data };
     }
 }
+
+const setActions = [
+    'setstrength', 'setsize', 'setcfg', 'setprompt', 'setbatch',
+    'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto'
+];
+
+const handleSetAction = (action, message) => {
+    message.text = `/${action}`;
+    safeExecute(message, startSet);
+};
+
+const actionHandlers = {
+    'regen': handleRegen,
+    'make': startMake,
+    'make3': startMake3,
+    'ms2': (message) => {
+        setUserState(message, STATES.IMG2IMG);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'pfp': (message) => {
+        sendMessage(message,'not available now');
+    },
+    'assist': (message) => {
+        setUserState(message, STATES.ASSIST);
+        sendMessage(message, 'What prompt do you need help with',{reply_to_message_id: message.message_id});
+    },
+    'ms3': (message) => {
+        setUserState(message, STATES.MS3);
+        sendMessage(message, 'What image will you animate (pls a square)',{reply_to_message_id: message.message_id});
+    },
+    'set': setMenu,
+    'speak': (message) => {
+        setUserState(message, STATES.SPEAK);
+        sendMessage(message, 'what should I say?');
+    },
+    'toggleAdvancedUser': (message) => {
+        bot.answerCallbackQuery(callbackQuery.id, { text: `Advanced User setting updated to ${!lobby[userId].advancedUser ? 'enabled' : 'disabled'}.` });
+        lobby[userId].advancedUser = !lobby[userId].advancedUser;
+        messageTitle = `Advanced User setting updated to ${lobby[userId].advancedUser ? 'enabled' : 'disabled'}.`
+    }
+
+    // Map other actions to handlers...
+};
+
 module.exports = function(bot) {
     bot.on('callback_query', (callbackQuery) => {
         //console.log(callbackQuery.data);
@@ -140,10 +184,10 @@ module.exports = function(bot) {
                     sendMessage(message, 'im sorry, not available rn')
                     break;
                 case 'assist':
-                    //setUserState(message, STATES.ASSIST);
-                    //sendMessage(message, 'What prompt do you need help with',{reply_to_message_id: message.message_id});
-                    sendMessage(message, 'im sorry, not available rn')
-                    break;
+                    setUserState(message, STATES.ASSIST);
+                    sendMessage(message, 'What prompt do you need help with',{reply_to_message_id: message.message_id});
+                    // sendMessage(message, 'im sorry, not available rn')
+                    // break;
                 case 'ms3':
                     setUserState(message, STATES.MS3);
                     sendMessage(message, 'What image will you animate (pls a square)',{reply_to_message_id: message.message_id});
@@ -161,6 +205,13 @@ module.exports = function(bot) {
                     message.text = `/${action}`
                     safeExecute(message,startSet)
                     break;
+                case 'set':
+                    safeExecute(message,setMenu)
+                    break;
+
+                case 'speak':
+                    setUserState(message, STATES.SPEAK);
+                    sendMessage(message, 'what should I say?');
                 case 'toggleAdvancedUser':
                     bot.answerCallbackQuery(callbackQuery.id, { text: `Advanced User setting updated to ${!lobby[userId].advancedUser ? 'enabled' : 'disabled'}.` });
                     lobby[userId].advancedUser = !lobby[userId].advancedUser;

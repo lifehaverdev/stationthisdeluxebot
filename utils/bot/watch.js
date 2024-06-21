@@ -193,7 +193,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
+const commandsRequiringGatekeeping = ['/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {

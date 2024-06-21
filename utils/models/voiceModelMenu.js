@@ -10,6 +10,14 @@ voiceModels = [
     {
         name: "trapaholics",
         modelId: "34Qj692rRGjm1fA8zudD"
+    },
+    {
+        name: 'bjork',
+        modelId: '6Vn3eARXC50TMEySWrrW'
+    },
+    {
+        name: 'Charlotte Fang',
+        modelId: 'zGDDoashdFkU2rlb917O'
     }
 ]
 
