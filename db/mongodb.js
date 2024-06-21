@@ -86,6 +86,45 @@ async function updateAllUserSettings() {
         await client.close();
     }
 }
+async function updateAllUsersWithCheckpoint() {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('users');
+
+        // Fetch all user settings
+        const users = await collection.find().toArray();
+        console.log(defaultUserData.checkpoint)
+        for (let user of users) {
+            // Update user's checkpoint to match defaultUserData
+            const filter = { userId: user.userId };
+            
+            const updateDoc = {
+                $set: { checkpoint: defaultUserData.checkpoint }
+            };
+
+            // Update the document in the collection
+            const result = await collection.updateOne(filter, updateDoc);
+
+            if (result.modifiedCount === 1) {
+                console.log(`Checkpoint updated successfully for userId: ${user.userId}`);
+            } else {
+                console.log(`No update needed for userId: ${user.userId}`);
+            }
+        }
+
+        console.log('All users updated with checkpoint successfully');
+        return true;
+    } catch (error) {
+        console.error("Error updating users with checkpoint:", error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 
 async function writeCollectionData(userId, collectionName) {
     try {
@@ -569,5 +608,6 @@ module.exports = {
     updateAllUserSettings,
     getUserDataByUserId, 
     getCollections, 
-    writeCollectionData 
+    writeCollectionData,
+    updateAllUsersWithCheckpoint
 };

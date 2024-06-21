@@ -17,19 +17,18 @@ async function handleAdvancedUserOptions(message) {
             firstName: message.from.first_name.slice(0, 10), // Limit length of the name to avoid exceeding limit
             threadId: message.message_thread_id || 0 // Use 0 if thread ID is not available
         };
-        console.log(baseData);
-        console.log(compactSerialize({ ...baseData, action: 'regen' }))
+        //console.log(baseData);
+        //console.log(compactSerialize({ ...baseData, action: 'regen' }))
         // Create inline keyboard with compact serialized callback data
         const replyMarkup = {
             inline_keyboard: [
                 [
                     { text: 'Regenerate', callback_data: compactSerialize({ ...baseData, action: 'regen' }) },
-                    { text: 'Set CFG', callback_data: compactSerialize({ ...baseData, action: 'setcfg' }) },
-                    { text: 'Set Prompt', callback_data: compactSerialize({ ...baseData, action: 'setprompt' }) }
+                    { text: 'Set', callback_data: compactSerialize({ ...baseData, action: 'set' }) },
                 ]
             ]
         };
-
+        console.log('this is the message advanced settings is replying to ', message)
         // Send the message with inline keyboard
         sendMessage(message, `Used seed: ${lobby[userId].lastSeed}`, replyMarkup);
     }

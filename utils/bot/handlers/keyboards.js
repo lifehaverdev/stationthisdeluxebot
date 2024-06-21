@@ -139,6 +139,9 @@ function handleAnimate(message) {
             [   
                 { text: 'img2video', callback_data: compactSerialize({ ...baseData, action: 'ms3' }) },
             ],
+            [
+                { text: 'txt2speech', callback_data: compactSerialize({...baseData, action: 'speak'})}
+            ]
         ],
           resize_keyboard: true,
           one_time_keyboard: true
