@@ -28,18 +28,19 @@ async function handleMake(message) {
         batch = lobby[userId].batchMax;
     }
 
+    let thisSeed = makeSeed(lobby[userId].seed)
+    //save these settings into lobby in case cook mode time
+    lobby[userId] = {
+        ...lobby[userId],
+        prompt: message.text,
+        type: 'MAKE',
+        lastSeed: thisSeed
+    }
+
     const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
 
-        //save these settings into lobby in case cook mode time
-        lobby[userId] = {
-            ...lobby[userId],
-            prompt: message.text,
-            type: 'MAKE',
-            lastSeed: thisSeed
-        }
-
     let settings = { ...lobby[userId] }; // Start with lobby settings
-    let thisSeed
+    
     if (index !== -1) {
         const matchedRoom = rooms[index];
         console.log(matchedRoom); // Log the matched room object
@@ -65,7 +66,6 @@ async function handleMake(message) {
     if(settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
         return;
     }
-
 
 
     if(settings.styleTransfer && !settings.controlNet) {
