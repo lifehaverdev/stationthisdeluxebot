@@ -1,87 +1,28 @@
 const { lobby, getBotInstance, STATES } = require('./bot');
-const checkpointmenu = require('../models/checkpointmenu')
-const voiceModels = require('../models/voiceModelMenu')
-const { basepromptmenu, getBasePromptByName } = require('../models/basepromptmenu')
+//const { checkpointmenu } = require('../models/checkpointmenu')
+const { getVoiceModelByName } = require('../models/voiceModelMenu')
+const { getBasePromptByName } = require('../models/basepromptmenu')
+const { getPromptMenu, getCheckpointMenu, getVoiceMenu } = require('../models/userKeyboards')
 const {
     sendMessage,
     safeExecute,
     setUserState,
+    makeBaseData,
 } = require('../utils');
-const { startMake, startMake3, handleRegen, startSet, setMenu } = require('./handlers/handle')
+const { startMake, startMake3, handleRegen, startSet, setMenu } = require('./handlers/handle');
+const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
 const bot = getBotInstance();
-
-function displayBasePromptSettingsMenu(callbackQuery) {
-    // Create account settings menu keyboard
-    const chatId = callbackQuery.message.chat.id;
-    const userId = callbackQuery.from.id;
-    
-    //const promptsObject = require('./utils/basePrompts.js');  // Update the path to your prompts object file
-    
-    // Transform the prompts object into keyboard buttons
-    let promptSettingsKeyboard = basepromptmenu.map(prompt => [{
-        text: `${lobby[userId].basePrompt == prompt.name ? '✅ '+prompt.name : prompt.name} - ${prompt.description}`,
-        callback_data: `setBasePrompt_${prompt.name}`,
-    }]);
-
-    // Send account settings menu
-    bot.sendMessage(chatId, 'Base Prompt Menu:', {
-        reply_markup: {
-            inline_keyboard: promptSettingsKeyboard
-        }
-    });
-}
-function displayCheckpointSettingsMenu(callbackQuery) {
-    // Create account settings menu keyboard
-    const chatId = callbackQuery.message.chat.id;
-    const userId = callbackQuery.from.id;
-    
-    //const promptsObject = require('./utils/basePrompts.js');  // Update the path to your prompts object file
-    
-    // Transform the prompts object into keyboard buttons
-    let promptSettingsKeyboard = checkpointmenu.map(checkpoint => [{
-        text: `${lobby[userId].checkpoint == checkpoint.name ? '✅ '+checkpoint.name : checkpoint.name} - ${checkpoint.description}`,
-        callback_data: `setCheckpoint_${checkpoint.name}`,
-    }]);
-
-    // Send account settings menu
-    bot.sendMessage(chatId, 'Checkpoint Menu:', {
-        reply_markup: {
-            inline_keyboard: promptSettingsKeyboard
-        }
-    });
-}
-function displayVoiceModelSettingsMenu(callbackQuery) {
-    // Create account settings menu keyboard
-    const chatId = callbackQuery.message.chat.id;
-    const userId = callbackQuery.from.id;
-    
-    //const promptsObject = require('./utils/basePrompts.js');  // Update the path to your prompts object file
-    
-    // Transform the prompts object into keyboard buttons
-    let voiceSettingsMenu = voiceModels.map(voice => [{
-        text: `${lobby[userId].voiceModel == voice.modelId ? '✅ '+voice.name : voice.name}`,
-        callback_data: `setVoice_${voice.modelId}`,
-    }]);
-
-    // Send account settings menu
-    bot.sendMessage(chatId, 'Voice Menu:', {
-        reply_markup: {
-            inline_keyboard: voiceSettingsMenu
-        }
-    });
-}
-
 
 function parseCallbackData(data) {
     if (data.includes('|')) {
         // Assume it's the compact serialized form
         const parts = data.split('|');
         message = {
-            message_id: parts[6], // You might not have a real message ID to use
+            message_id: parts[5], // You might not have a real message ID to use
             from: {
                 id: parseInt(parts[1]),
                 is_bot: false,
-                first_name: parts[4],
+                //first_name: parts[4],
                 // Add other necessary user fields if required
             },
             chat: {
@@ -95,6 +36,7 @@ function parseCallbackData(data) {
         };
         return {
             action: parts[0],
+            user: parts[6],
             message: message
         };
     } else {
@@ -105,7 +47,8 @@ function parseCallbackData(data) {
 
 const setActions = [
     'setstrength', 'setsize', 'setcfg', 'setprompt', 'setbatch',
-    'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto'
+    'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto', 
+    'setcheckpoint', 'setbaseprompt'
 ];
 
 const handleSetAction = (action, message) => {
@@ -113,7 +56,78 @@ const handleSetAction = (action, message) => {
     safeExecute(message, startSet);
 };
 
-const actionHandlers = {
+const handleSetBasePrompt = (message, selectedName, userId) => {
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    const basePrompt = getBasePromptByName(selectedName);
+    if (basePrompt !== undefined) {
+        lobby[userId].basePrompt = selectedName;
+        const messageTitle = `Base prompt set to: ${selectedName}`;
+        const opts = {
+            chat_id: chatId,
+            message_id: messageId,
+        };
+        bot.editMessageText(messageTitle, {
+            chat_id: chatId,
+            message_id: messageId,
+        }).then(() => {
+            bot.editMessageReplyMarkup(getPromptMenu(userId,message),opts);
+        }).catch((error) => {
+            console.error("Error editing message text or reply markup:", error);
+        });
+    } else {
+        console.log('no base prompt')
+    }
+};
+
+const handleSetCheckpoint = (message, selectedName, userId) => {
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    if (selectedName !== undefined) {
+        lobby[userId].checkpoint = selectedName;
+        const messageTitle = `Checkpoint set to: ${selectedName}`;
+        const opts = {
+            chat_id: chatId,
+            message_id: messageId,
+        };
+        bot.editMessageText(messageTitle, {
+            chat_id: chatId,
+            message_id: messageId,
+        }).then(() => {
+            bot.editMessageReplyMarkup(getCheckpointMenu(userId,message),opts);
+        }).catch((error) => {
+            console.error("Error editing message text or reply markup:", error);
+        });
+    } else {
+        console.log('no base prompt')
+    }
+};
+
+const handleSetVoice = (message, selectedName, userId) => {
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    const voiceModel = getVoiceModelByName(selectedName);
+    if (voiceModel !== undefined) {
+        lobby[userId].voiceModel = voiceModel;
+        const messageTitle = `Voice set to: ${selectedName}`;
+        const opts = {
+            chat_id: chatId,
+            message_id: messageId,
+        };
+        bot.editMessageText(messageTitle, {
+            chat_id: chatId,
+            message_id: messageId,
+        }).then(() => {
+            bot.editMessageReplyMarkup(getVoiceMenu(userId,message),opts);
+        }).catch((error) => {
+            console.error("Error editing message text or reply markup:", error);
+        });
+    } else {
+        console.log('no Voice')
+    }
+};
+
+const actionMap = {
     'regen': handleRegen,
     'make': startMake,
     'make3': startMake3,
@@ -137,220 +151,42 @@ const actionHandlers = {
         setUserState(message, STATES.SPEAK);
         sendMessage(message, 'what should I say?');
     },
-    'toggleAdvancedUser': (message) => {
-        bot.answerCallbackQuery(callbackQuery.id, { text: `Advanced User setting updated to ${!lobby[userId].advancedUser ? 'enabled' : 'disabled'}.` });
-        lobby[userId].advancedUser = !lobby[userId].advancedUser;
-        messageTitle = `Advanced User setting updated to ${lobby[userId].advancedUser ? 'enabled' : 'disabled'}.`
-    }
-
-    // Map other actions to handlers...
+    'voiceMenu': handleVoiceMenu,
+    'checkpointmenu': handleCheckpointMenu,
+    'basepromptmenu': handleBasePromptMenu,
+    'voicemenu':handleVoiceMenu,
+    'setVoice': handleSetVoice,
+    'setBasePrompt': handleSetBasePrompt,
+    'setCheckpoint': handleSetCheckpoint
+    
 };
+
 
 module.exports = function(bot) {
     bot.on('callback_query', (callbackQuery) => {
         //console.log(callbackQuery.data);
         try {
-            const chatId = callbackQuery.message.chat.id;
-            const userId = callbackQuery.from.id;
-            //console.log('callbackquerey',callbackQuery);
-                        // Function to check and parse the callback data
-            const {action, message} = parseCallbackData(callbackQuery.data);
-            
-            let messageTitle;
-            
-            switch (action) {
-                case 'regen':
-                    // Handle regeneration logic here
-                    safeExecute(message,handleRegen);
-                    bot.answerCallbackQuery(callbackQuery.id, { text: "Regenerating" });
-                    break;
-                case 'make':
-                    safeExecute(message, startMake);
-                    //bot.answerCallbackQuery(callbackQuery.id, { text: ''})
-                    break;
-                // case 'make_control':
-                    
-                //     safeExecute(message, startMake);
-                case 'make3':
-                    safeExecute(message, startMake3);
-                    break;
-                case 'ms2':
-                    setUserState(message, STATES.IMG2IMG);
-                    sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
-                    break;
-                case 'pfp':
-                    //setUserState(message, STATES.PFP);
-                    //sendMessage(message, 'Send in the photo you want to img to img. (pfp)',{reply_to_message_id: message.message_id});
-                    sendMessage(message, 'im sorry, not available rn')
-                    break;
-                case 'assist':
-                    setUserState(message, STATES.ASSIST);
-                    sendMessage(message, 'What prompt do you need help with',{reply_to_message_id: message.message_id});
-                    // sendMessage(message, 'im sorry, not available rn')
-                    // break;
-                case 'ms3':
-                    setUserState(message, STATES.MS3);
-                    sendMessage(message, 'What image will you animate (pls a square)',{reply_to_message_id: message.message_id});
-                    break;
-                case 'setstrength':
-                case 'setsize':
-                case 'setcfg':
-                case 'setprompt':
-                case 'setbatch':
-                case 'setsteps':
-                case 'setuserprompt':
-                case 'setseed':
-                case 'setnegprompt':
-                case 'setphoto':
-                    message.text = `/${action}`
-                    safeExecute(message,startSet)
-                    break;
-                case 'set':
-                    safeExecute(message,setMenu)
-                    break;
+            //const userId = callbackQuery.from.id;
+            const {action, message, user} = parseCallbackData(callbackQuery.data);
+            console.log('in callback query', action, message, user)
 
-                case 'speak':
-                    setUserState(message, STATES.SPEAK);
-                    sendMessage(message, 'what should I say?');
-                case 'toggleAdvancedUser':
-                    bot.answerCallbackQuery(callbackQuery.id, { text: `Advanced User setting updated to ${!lobby[userId].advancedUser ? 'enabled' : 'disabled'}.` });
-                    lobby[userId].advancedUser = !lobby[userId].advancedUser;
-                    messageTitle = `Advanced User setting updated to ${lobby[userId].advancedUser ? 'enabled' : 'disabled'}.`
-                    break;
-        
-                case 'toggleWaterMark':
-                    
-                    if(lobby[userId].balance >= 0){//1000000){
-                        lobby[userId].waterMark = !lobby[userId].waterMark
-                        bot.answerCallbackQuery(callbackQuery.id, { text: `WaterMark option updated to ${lobby[userId].waterMark ? 'ON' : 'OFF'}`});
-                        messageTitle = `WaterMark option updated to ${lobby[userId].waterMark ? 'ON' : 'OFF'}`
-                    }
-                    break;
-        
-                case 'toggleBasePrompt':
-                    if(lobby[userId].balance >= 0){//1000000){
-                        messageTitle = `switching base prompt`
-                        displayBasePromptSettingsMenu(callbackQuery);
-                    }
-                    break;
-                case 'toggleCheckpoint':
-                    messageTitle = 'switching checkpoint'
-                    displayCheckpointSettingsMenu(callbackQuery);
-                    break;
-                case 'toggleVoice':
-                    messageTitle = 'switching voice'
-                    displayVoiceModelSettingsMenu(callbackQuery);
-                    break;
-
-                case 'toggleControlNet':
-                    if(lobby[userId].balance >= 0){//1000000){
-                        if(lobby[userId].controlNet){
-                            lobby[userId].controlNet = !lobby[userId].controlNet;
-                        } else {
-                            lobby[userId].controlNet = true;
-                        }
-                        bot.answerCallbackQuery(callbackQuery.id, { text: `Controlnet ${lobby[userId].controlNet ? 'Enabled' : 'Disabled'}`});
-                        messageTitle = `Controlnet ${lobby[userId].controlNet ? 'Enabled' : 'Disabled'}`
-                    }
-                    break;
-
-                case 'toggleStyleTransfer':
-                    if(lobby[userId].balance >= 0){//1000000){
-                        if(lobby[userId].styleTransfer){
-                            lobby[userId].styleTransfer = !lobby[userId].styleTransfer;
-                        } else {
-                            lobby[userId].styleTransfer = true;
-                        }
-                        bot.answerCallbackQuery(callbackQuery.id, { text: `Style Transfer ${lobby[userId].styleTransfer ? 'Enabled' : 'Disabled'}`});
-                        messageTitle = `Style Transfer ${lobby[userId].styleTransfer ? 'Enabled' : 'Disabled'}`
-                    }
-                    break;
-        
-                default:
-                    if (callbackQuery.data.startsWith('setBasePrompt_')) {
-                        console.log('setting prompt');
-                        const selectedName = callbackQuery.data.split('_')[1];
-                        const basePrompt = getBasePromptByName(selectedName);
-                        if (basePrompt !== undefined) { // Check explicitly for undefined to allow empty string as valid
-                            lobby[userId].basePrompt = selectedName;
-                            bot.answerCallbackQuery(callbackQuery.id, { text: `Base prompt set to: ${selectedName}`});
-                            messageTitle = `Base prompt set to: ${selectedName}`
-                        } else {
-                            bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Base prompt not found'});
-                            messageTitle = `Base prompt not set to: ${selectedName}`
-                        }
-                    } else if (callbackQuery.data.startsWith('setVoice_')){
-                        console.log('setting voice');
-                        const selectedModel = callbackQuery.data.split('_').slice(1).join('_');
-                        console.log('voice set to',selectedModel)
-                        lobby[userId].voiceModel = selectedModel;
-                        bot.answerCallbackQuery(callbackQuery.id, { text: `Voice set`});
-                        messageTitle = `Voice set`
-                    } else if (callbackQuery.data.startsWith('setCheckpoint_')){
-                        console.log('setting checkpoint');
-                        const selectedName = callbackQuery.data.split('_').slice(1).join('_');
-                        //lobby[userId].checkpoint = selectedName;
-                        
-                        // Function to check if a checkpoint description contains "SDXL" or "SD1.5"
-                        function isSDXL(description) {
-                            return description.includes("SDXL");
-                        }
-                        function isSD15(description) {
-                            return description.includes("SD1.5");
-                        }
-                        // Iterate through the checkpointmenu array
-                        for (const checkpoint of checkpointmenu) {
-                            if (checkpoint.name === selectedName) {
-                                if (isSDXL(checkpoint.description)) {
-                                    // Checkpoint description contains "SDXL"
-                                    console.log(`${selectedName} is an SDXL checkpoint.`);
-                                    lobby[userId] = {
-                                        ...lobby[userId],
-                                        photoStats: {
-                                            height: 1024,
-                                            width: 1024
-                                        },
-                                        basePrompt: "MS2.2",
-                                        checkpoint: selectedName
-                                    }
-                                    // Perform actions for SDXL checkpoint
-                                } else if (isSD15(checkpoint.description)) {
-                                    // Checkpoint description contains "SD1.5"
-                                    console.log(`${selectedName} is an SD1.5 checkpoint.`);
-                                    // Perform actions for SD1.5 checkpoint
-                                    lobby[userId] = {
-                                        ...lobby[userId],
-                                        photoStats: {
-                                            height: 512,
-                                            width: 512
-                                        },
-                                        basePrompt: "MS2.1.5",
-                                        checkpoint: selectedName
-                                    }
-                                } else {
-                                    // Checkpoint description does not match any known pattern
-                                    console.log(`${selectedName} does not have a recognized description.`);
-                                    // Handle accordingly
-                                }
-                                
-                                break; // Break out of the loop since we found the matching checkpoint
-                            }
-                            
-                        }
-                        bot.answerCallbackQuery(callbackQuery.id, { text: `Base prompt set to: ${selectedName}`});
-                        messageTitle = `Checkpoint set to: ${selectedName}`
-                    }
-                    break;
-                    
+            if (actionMap[action]) {
+                actionMap[action](message);
+            } else if (callbackQuery.data.startsWith('sbp_')) {
+                const selectedName = action.split('_')[1];
+                actionMap['setBasePrompt'](message, selectedName, user);
+            } else if (callbackQuery.data.startsWith('sv_')) {
+                const selectedName = action.split('_').slice(1).join('_');
+                actionMap['setVoice'](message, selectedName, user);
+            } else if (callbackQuery.data.startsWith('scp_')) {
+                const selectedName = action.split('_').slice(1).join('_');
+                actionMap['setCheckpoint'](message, selectedName, user);
+            } else if (setActions.includes(action)) {
+                handleSetAction(action, message);
+            } else {
+                console.log(`Unhandled action: ${action}`);
             }
-            // if(!callbackQuery.message.reply_to_message){
-            //     bot.editMessageText(messageTitle, {
-            //         chat_id: chatId,
-            //         message_id: callbackQuery.message.message_id,
-            //         //reply_markup: opts.reply_markup
-            //     });
-            // }
-            
+
         } catch (error) {
             console.error("Error during callback query handling:", {
                 errorMessage: error.message,

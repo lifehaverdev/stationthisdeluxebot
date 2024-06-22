@@ -87,7 +87,29 @@ async function react(message) {
 }
 
 function compactSerialize(data) {
-    return `${data.action}|${data.fromId}|${data.text}|${data.chatId}|${data.firstName}|${data.threadId}|${data.id}`;
+    return `${data.action}|${data.fromId}|${data.text}|${data.chatId}|${data.threadId}|${data.id}|${data.userId}`;
+}
+
+function makeBaseData(message,userId) {
+    return {
+        text: 'k',
+        id: message.message_id,
+        fromId: message.from.id,
+        chatId: message.chat.id,
+        //firstName: message.from.first_name.slice(0, 4), // Limit length of the name to avoid exceeding limit
+        threadId: message.message_thread_id || 0 ,// Use 0 if thread ID is not available
+        userId: userId
+    };
+}
+
+function editReply(reply_markup, chat_id, message_id) {
+    bot.editMessageReplyMarkup(
+        reply_markup,
+        {
+            chat_id, 
+            message_id,
+        }
+    );
 }
 
 module.exports = {
@@ -98,5 +120,7 @@ module.exports = {
     safeExecute,
     setUserState,
     react,
-    compactSerialize
+    compactSerialize,
+    makeBaseData,
+    editReply,
 }

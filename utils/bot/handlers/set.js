@@ -1,5 +1,6 @@
 const { SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
 const { setUserState, sendMessage } = require('../../utils')
+const { getPromptMenu } = require('../../models/userKeyboards')
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 4;
@@ -29,6 +30,12 @@ async function startSet(message) {
     const state = SETTER_TO_STATE[setter]
     const lobbyParam = STATE_TO_LOBBYPARAM[state]
     const currentValue = settings ? (settings[lobbyParam] || "not set") : "not set";
+
+    let botMessage;
+    let chat_id;
+    let message_id;
+    let reply_markup;
+
     if(currentValue == 'notset'){
         console.log('not set');
         setUserState(STATES.IDLE)
@@ -61,6 +68,30 @@ async function startSet(message) {
             case 'photo':
                 await sendMessage(message, 'What photo do you want to set')
                 break;
+            case 'checkpoint':
+                botMessage = await sendMessage(message, 'Checkpoint Menu:');
+                chat_id = botMessage.chat.id;
+                message_id = botMessage.message_id;
+                reply_markup = getCheckpointMenu(message.from.id, botMessage);
+                bot.editMessageReplyMarkup(
+                    reply_markup,
+                    {
+                        chat_id, 
+                        message_id,
+                    }
+                );
+            case 'baseprompt':
+                botMessage = await sendMessage(message, 'Base Prompt Menu:');
+                chat_id = botMessage.chat.id;
+                message_id = botMessage.message_id;
+                reply_markup = getPromptMenu(message.from.id, botMessage);
+                bot.editMessageReplyMarkup(
+                    reply_markup,
+                    {
+                        chat_id, 
+                        message_id,
+                    }
+                );
             default:
                 await sendMessage(message, `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
                 break;

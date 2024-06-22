@@ -21,7 +21,7 @@ const {
 const { handleAdvancedUserOptions } = require('./advancedUserSettings.js')
 const { handleMs3ImgFile } = require('./handleMs3ImgFile.js')
 const { saySeed } = require('./saySeed.js')
-const { startSet, handleSet } = require('./startSet.js')
+const { startSet, handleSet } = require('./set.js')
 const { handleHelp, handleStatus } = require('./helpStatus.js')
 const { handleDexMake, handlePromptCatch } = require('./promptDex.js')
 const { startMake, startMake3, handleMake, handleRegen, handleMake3 } = require('./generate.js')

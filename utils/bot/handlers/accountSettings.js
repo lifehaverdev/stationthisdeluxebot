@@ -1,25 +1,22 @@
 const { getBotInstance, lobby, rooms, STATES } = require('../bot'); 
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId } = require('../../../db/mongodb')
-const { sendMessage, setUserState, safeExecute } = require('../../utils')
+const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize } = require('../../utils')
 const { checkLobby } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
-
+const { signedOut, home } = require('../../models/userKeyboards.js')
 
 function displayAccountSettingsMenu(message) {
     // Create account settings menu keyboard
     const userId = message.from.id;
     const chatId = message.chat.id;
+    const baseData = makeBaseData(message,userId);
     let accountSettingsKeyboard = [
         [
             {
                 text: `Advanced User: ${lobby[userId].advancedUser ? 'Enabled' : 'Disabled'}`,
-                callback_data: 'toggleAdvancedUser',
+                callback_data: compactSerialize({...baseData, action: 'toggleAdvancedUser'}),
             },
-            // {
-            //     text: `Whale Mode: ${lobby[userId].whaleMode ? 'Enabled' : 'Disabled'}`,
-            //     callback_data: 'toggleWhaleMode'
-            // },
             
         ],
         [
@@ -32,26 +29,26 @@ function displayAccountSettingsMenu(message) {
         [
             {
                 text: `Base Prompt Menu`,
-                callback_data: 'toggleBasePrompt',
+                callback_data: compactSerialize({...baseData, action: 'basepromptmenu'}),
             },
             {
                 text: `Voice Menu`,
-                callback_data: 'toggleVoice'
+                callback_data: compactSerialize({...baseData, action: 'voicemenu'}),
             },
             {
                 text: `Checkpoint Menu`,
-                callback_data: 'toggleCheckpoint',
+                callback_data: compactSerialize({...baseData, action: 'checkpointmenu'}),
             }
             
         ],
         [
             {
                 text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
-                callback_data: 'toggleControlNet',
+                callback_data: compactSerialize({...baseData, action: 'toggleControlNet'}),
             },
             {
                 text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
-                callback_data: 'toggleStyleTransfer'
+                callback_data: compactSerialize({...baseData, action: 'toggleStyleTransfer'}),
             }
         ]
     ];
@@ -77,7 +74,7 @@ function displayAccountSettingsMenu(message) {
 
 async function handleSaveSettings(message) {
     writeUserData(userId,lobby[message.from.id]);
-    await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`);
+    await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`, home);
 }
 async function handleSeeSettings(message) {
     const chatId = message.chat.id;
@@ -126,19 +123,7 @@ async function handleSignIn (message) {
             if(userData.verified == true){
                 let options = {};
                 if(message.chat.id > 0){
-                    options = {
-                        reply_markup: {
-                            keyboard: [
-                                [{ text: '/create' }],
-                                [{ text: '/effect' }],
-                                [{ text: '/animate' }],
-                                [{ text: '/set' },{text: '/regen' }],
-                                [{ text: '/accountsettings' }]
-                            ],
-                          resize_keyboard: true,
-                          one_time_keyboard: false
-                        }
-                      };
+                    options = home
                 }
                 sendMessage(message,'and you are verified. Have fun',options);
                 setUserState(message,STATES.IDLE)
@@ -256,7 +241,7 @@ async function handleSignOut(message) {
             // User data not found
             if(lobby[userId]){delete lobby[userId]}
         }
-    sendMessage(message,'You are signed out');
+    sendMessage(message,'You are signed out',signedOut);
     return true;
 }
 

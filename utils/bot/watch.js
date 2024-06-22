@@ -135,7 +135,7 @@ function messageFilter(message) {
     }
     //console.log('message date in filter',message.date)
     //console.log('startup date /1000 in filter',startup/1000 - 60 * 5)
-    if(message.date < startup/1000 - 60 * 5){
+    if(message.date < startup/1000 - 60 * 1){
         console.log('ignoring because its old')
         return true;
     }
@@ -193,7 +193,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
+const commandsRequiringGatekeeping = ['/accountsettings','/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {

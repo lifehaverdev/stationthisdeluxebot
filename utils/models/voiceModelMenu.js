@@ -16,9 +16,14 @@ voiceModels = [
         modelId: '6Vn3eARXC50TMEySWrrW'
     },
     {
-        name: 'Charlotte Fang',
+        name: 'Charlotte',
         modelId: 'zGDDoashdFkU2rlb917O'
     }
 ]
 
-module.exports = voiceModels;
+function getVoiceModelByName(name) {
+    const voice = voiceModels.find(voice => voice.name === name);
+    return voice ? voice.modelId : 'na';
+}
+
+module.exports = { voiceModels, getVoiceModelByName };
