@@ -30,6 +30,14 @@ async function handleMake(message) {
 
     const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
 
+        //save these settings into lobby in case cook mode time
+        lobby[userId] = {
+            ...lobby[userId],
+            prompt: message.text,
+            type: 'MAKE',
+            lastSeed: thisSeed
+        }
+
     let settings = { ...lobby[userId] }; // Start with lobby settings
     let thisSeed
     if (index !== -1) {
@@ -58,13 +66,7 @@ async function handleMake(message) {
         return;
     }
 
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'MAKE',
-        lastSeed: thisSeed
-    }
+
 
     if(settings.styleTransfer && !settings.controlNet) {
         if (!settings.stylefileUrl){
