@@ -1,32 +1,32 @@
 checkpointmenu = [
     {
-        name: "proteus_v0.4.safetensors",
+        name: "proteus_v0.4",
         description: "SDXL",
     },
     {
-        name: "zavychromaxl_v60.safetensors",
+        name: "zavychromaxl_v60",
         description: "SDXL",
     },
     {
-        name: "juggernautXL_juggernautX.safetensors",
+        name: "juggernautXL_juggernautX",
         description: "SDXL"
     },
     {
-        name: "dreamshaper_631BakedVae.safetensors",
+        name: "dreamshaper_631BakedVae",
         description: "SD1.5"
     },
     {
-        name: "frankenstein_v2.safetensors",
+        name: "frankenstein_v2",
         description: "SD1.5"
     },
     {
-        name: "realisticVisionV60B1_v51HyperVAE.safetensors",
+        name: "realisticVisionV60B1_v51HyperVAE",
         description: "SD1.5"
     },
     {
-        name: "picxReal_10.safetensors",
+        name: "picxReal_10",
         description: "SD1.5"
     },
 ]
 
-module.exports = checkpointmenu;
+module.exports = { checkpointmenu };

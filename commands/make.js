@@ -200,7 +200,7 @@ function prepareRequest(promptObj) {
                     input_steps: promptObj.steps,
                     input_cfg: promptObj.cfg,
                     input_prompt: promptObj.prompt +" "+ userBasePrompt + basePrompt,
-                    input_checkpoint: promptObj.checkpoint
+                    input_checkpoint: promptObj.checkpoint+'.safetensors'
                 }
             });
             
@@ -215,7 +215,7 @@ function prepareRequest(promptObj) {
                   "input_steps": promptObj.steps,
                   "input_cfg": promptObj.cfg,
                   "input_prompt": promptObj.prompt +" "+ userBasePrompt + basePrompt,
-                  "input_checkpoint": promptObj.checkpoint,
+                  "input_checkpoint": promptObj.checkpoint+'.safetensors',
                   "input_image": promptObj.fileUrl,
                   "input_strength": promptObj.strength
                 }
@@ -243,7 +243,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength
                   }
@@ -259,7 +259,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
                     "input_style_image": promptObj.styleFileUrl,
@@ -279,7 +279,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.styleFileUrl
                   }
             })
@@ -294,7 +294,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_control_image": promptObj.controlfileUrl,
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,
@@ -312,7 +312,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_control_image": promptObj.controlfileUrl,
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,

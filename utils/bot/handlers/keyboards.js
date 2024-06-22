@@ -1,4 +1,5 @@
-const { compactSerialize, sendMessage } = require('../../utils')
+const { compactSerialize, sendMessage, editReply } = require('../../utils')
+const { getPromptMenu, getCheckpointMenu, getVoiceMenu } = require('../../models/userKeyboards')
 
 function setMenu(message) {
     const baseData = {
@@ -19,7 +20,7 @@ function setMenu(message) {
             [
                 { text: '/setbatch', callback_data: compactSerialize({ ...baseData, action: 'setbatch' })  },
                 { text: '/setsize', callback_data: compactSerialize({ ...baseData, action: 'setsize' })  },
-                
+                { text: '/setsteps', callback_data: compactSerialize({ ...baseData, action: 'setsteps' }) },
             ],
             [
                 { text: '/setphoto', callback_data: compactSerialize({ ...baseData, action: 'setphoto' }) },
@@ -30,7 +31,10 @@ function setMenu(message) {
                 { text: '/setcfg', callback_data: compactSerialize({ ...baseData, action: 'setcfg' }) },
                 { text: '/setstrength', callback_data: compactSerialize({ ...baseData, action: 'setstrength' })  },
                 { text: '/setseed', callback_data: compactSerialize({ ...baseData, action: 'setseed' })  },
-                { text: '/setsteps', callback_data: compactSerialize({ ...baseData, action: 'setsteps' }) },
+            ],
+            [
+                { text: '/setcheckpoint', callback_data: compactSerialize({ ...baseData, action: 'checkpointmenu', user: message.from.id })},
+                { text: '/setbaseprompt', callback_data: compactSerialize({ ...baseData, action: 'basepromptmenu', user: message.from.id })}
             ]
         ],
           resize_keyboard: true,
@@ -153,9 +157,52 @@ function handleAnimate(message) {
     sendMessage(message,'Animate', options);
 }
 
+async function handleCheckpointMenu(message) {
+            const botMessage = await sendMessage(message, 'Checkpoint Menu:');
+            const chat_id = botMessage.chat.id;
+            const message_id = botMessage.message_id;
+            const reply_markup = getCheckpointMenu(message.from.id, botMessage);
+            editReply(reply_markup,chat_id,message_id);
+            // bot.editMessageReplyMarkup(
+            //     reply_markup,
+            //     {
+            //         chat_id, 
+            //         message_id,
+            //     }
+            // );
+        
+}
+
+async function handleBasePromptMenu(message) {
+    const botMessage = await sendMessage(message, 'Base Prompt Menu:');
+    const chat_id = botMessage.chat.id;
+    const message_id = botMessage.message_id;
+    const reply_markup = getPromptMenu(message.from.id, botMessage);
+    editReply(reply_markup,chat_id,message_id)
+    // bot.editMessageReplyMarkup(
+    //     reply_markup,
+    //     {
+    //         chat_id, 
+    //         message_id,
+    //     }
+    // );
+
+}
+
+async function handleVoiceMenu(message) {
+    const botMessage = await sendMessage(message, 'Voice Menu:');
+    const chat_id = botMessage.chat.id;
+    const message_id = botMessage.message_id;
+    const reply_markup = getVoiceMenu(message.from.id, botMessage);
+    editReply(reply_markup,chat_id,message_id)
+}
+
 module.exports = {
     handleCreate,
     setMenu,
     handleEffect,
-    handleAnimate
+    handleAnimate,
+    handleCheckpointMenu,
+    handleBasePromptMenu,
+    handleVoiceMenu
 }
