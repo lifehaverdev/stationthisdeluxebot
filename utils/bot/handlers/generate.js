@@ -169,7 +169,7 @@ async function handleRegen(message) {
         ...lobby[userId],
         seed: thisSeed,
     }
-    if(lobby[userId].type == 'MAKE'){
+    if(lobby[userId].type == 'MAKE' || lobby[userId].type == 'MAKE_STYLE' || lobby[userId].type == 'MAKE_CONTROL_STYLE'){
         try {
             sendMessage(message,'ok')
             enqueueTask({message,promptObj})
@@ -177,7 +177,7 @@ async function handleRegen(message) {
         } catch (error) {
             console.error("Error generating and sending image:", error);
         }
-    } else if (lobby[userId].type == 'MS2' || lobby[userId].type == 'INPAINT'){
+    } else if (lobby[userId].type == 'MS2' || lobby[userId].type == 'MS2_STYLE'|| lobby[userId].type == 'MS2_CONTROL_STYLE' || lobby[userId].type == 'INPAINT'){
         promptObj.photoStats = lobby[userId].tempSize
         await sendMessage(message, 'pls wait i will make in 1 second');
         //await shakeMs2(message,promptObj)
