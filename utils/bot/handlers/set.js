@@ -1,6 +1,7 @@
-const { SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
-const { setUserState, sendMessage } = require('../../utils')
+const { DEV_DMS, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
+const { setUserState, sendMessage, editReply } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
+const Jimp = require('jimp');
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 4;
@@ -73,25 +74,13 @@ async function startSet(message) {
                 chat_id = botMessage.chat.id;
                 message_id = botMessage.message_id;
                 reply_markup = getCheckpointMenu(message.from.id, botMessage);
-                bot.editMessageReplyMarkup(
-                    reply_markup,
-                    {
-                        chat_id, 
-                        message_id,
-                    }
-                );
+                editReply(reply_markup, chat_id, message_id,);
             case 'baseprompt':
                 botMessage = await sendMessage(message, 'Base Prompt Menu:');
                 chat_id = botMessage.chat.id;
                 message_id = botMessage.message_id;
                 reply_markup = getPromptMenu(message.from.id, botMessage);
-                bot.editMessageReplyMarkup(
-                    reply_markup,
-                    {
-                        chat_id, 
-                        message_id,
-                    }
-                );
+                editReply(reply_markup, chat_id, message_id,);
             default:
                 await sendMessage(message, `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
                 break;
@@ -197,7 +186,7 @@ async function handleSet(message) {
         case STATES.SETPHOTO:
         case STATES.SETSTYLE:
         case STATES.SETCONTROL:
-            getPhotoUrl(message);
+            const fileUrl = await getPhotoUrl(message);
             try {
                 const photo = await Jimp.read(fileUrl);
                 const { width, height } = photo.bitmap;
@@ -211,27 +200,27 @@ async function handleSet(message) {
                     settings = {
                         ...settings,
                         photoStats: photoStats,
-                        fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+                        fileUrl: fileUrl
                     }
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
                 } else if(currentState == STATES.SETCONTROL) {
                     
                     settings = {
                         ...settings,
-                        controlfileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
+                        controlfileUrl: fileUrl
                     }
-                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
+                    
+                    await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`);
                 } else {
-                    settings = {
-                        ...settings,
-                        styleFileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`,
-                    }
-                    await sendMessage(message, `looks dope. if style transfer is enabled in account settings, this image will be applied for make`);
+                    settings.styleFileUrl = fileUrl
+                    console.log('settings in setstyle',settings);
+                    console.log('lobby in setstyle',lobby[userId])
+                    await sendMessage(message, `looks dope. if style transfer is enabled, this image will be applied`);
                 }
         
                 setUserState(message,STATES.IDLE);
             } catch(err) {
-                bot.sendMessage(DEV_DMS,err);
+                sendMessage(message,`${err}`);
             }
             break;
         case STATES.SETSTEPS:

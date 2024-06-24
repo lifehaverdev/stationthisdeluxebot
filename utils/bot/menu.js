@@ -48,7 +48,7 @@ function parseCallbackData(data) {
 const setActions = [
     'setstrength', 'setsize', 'setcfg', 'setprompt', 'setbatch',
     'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto', 
-    'setcheckpoint', 'setbaseprompt'
+    'setcheckpoint', 'setbaseprompt', 'setstyle', 'setcontrol'
 ];
 
 const handleSetAction = (action, message) => {
@@ -130,6 +130,10 @@ const handleSetVoice = (message, selectedName, userId) => {
 const actionMap = {
     'regen': handleRegen,
     'make': startMake,
+    'make_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        startMake(message);
+    },
     'make3': startMake3,
     'ms2': (message) => {
         setUserState(message, STATES.IMG2IMG);
