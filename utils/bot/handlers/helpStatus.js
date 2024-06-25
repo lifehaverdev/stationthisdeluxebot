@@ -1,5 +1,5 @@
 const { startup } = require('../bot.js')
-const { sendMessage } = require('../../utils.js')
+const { sendMessage, makeBaseData, compactSerialize, editReply } = require('../../utils.js')
 const { waiting, taskQueue } = require('../queue.js')
 
 function handleHelp(message) {
@@ -59,7 +59,7 @@ function handleHelp(message) {
 
     sendMessage(message, helpMessage);
 }
-function handleStatus(message) {
+async function handleStatus(message) {
     let msg = `
     I have been running for ${(Date.now() - startup) / 1000} seconds. 
     `
@@ -79,7 +79,13 @@ function handleStatus(message) {
         return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
     }).join('\n')}
     ` : null
-    sendMessage(message, msg);
+    const sent = await sendMessage(message, msg);
+    const baseData = makeBaseData(sent,message.from.id);
+    const callbackData = compactSerialize({ ...baseData, action: `refresh`});
+    const chat_id = sent.chat.id;
+    const message_id = sent.message_id;
+    const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: callbackData}]]}
+    editReply(reply_markup,chat_id,message_id)
 }
 
 module.exports = { handleHelp, handleStatus }
