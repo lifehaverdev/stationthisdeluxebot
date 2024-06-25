@@ -299,6 +299,10 @@ async function handleTaskCompletion(task, run) {
 }
 // Function to extract type from the URL or outputItem.type field
 function extractType(url) {
+    if (!url) {
+        console.error('extractType: URL is undefined or null');
+        return 'unknown';
+    }
     // Example logic to extract type from the URL or outputItem.type field
     const extension = url.split('.').pop().toLowerCase();
     if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
