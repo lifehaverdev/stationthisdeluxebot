@@ -243,7 +243,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength
                   }
@@ -259,7 +259,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
                     "input_style_image": promptObj.styleFileUrl
@@ -276,7 +276,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
                     }
@@ -292,7 +292,7 @@ function prepareRequest(promptObj) {
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
                     "input_prompt": userBasePrompt + basePrompt,
-                    "input_checkpoint": promptObj.checkpoint,
+                    "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
                     "input_style_image": promptObj.styleFileUrl
