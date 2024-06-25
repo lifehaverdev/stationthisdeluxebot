@@ -235,18 +235,24 @@ async function handleTaskCompletion(task, run) {
     const { status, outputs } = run;
     const possibleTypes = ["images", "gifs", "videos","text"];
     let urls = [];
+    let texts = [];
 
     const operation = async () => {
         console.log("Outputs found:", outputs.length);
         outputs.forEach(outputItem => {
             possibleTypes.forEach(type => {
+                
                 if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
+                    if (type === 'text') {
+                        texts = outputItem.data[type]; // Directly assign the text array
+                    } else {
                     outputItem.data[type].forEach(dataItem => {
                         const url = dataItem.url;
                         const fileType = extractType(url);
                         urls.push({ type: fileType, url });
                         console.log(`${fileType.toUpperCase()} URL:`, url);
                     });
+                }
                 }
             });
         });
@@ -260,8 +266,6 @@ async function handleTaskCompletion(task, run) {
                     await sendAnimation(message, url);
                 } else if (type === 'video') {
                     await sendVideo(message, url);
-                } else if (type === 'unknown') {
-                    await sendMessage(message, url)
                 } else {
                     console.error(`Unknown URL type for URL: ${url}`);
                 }
@@ -272,6 +276,14 @@ async function handleTaskCompletion(task, run) {
                 )
             }
             
+        }
+        for (const text of texts) {
+            try {
+                await sendMessage(message, text);
+            } catch (err) {
+                console.log('Sending text error');
+                console.log(`${err.message ? err.message : ''}`);
+            }
         }
     };
 
