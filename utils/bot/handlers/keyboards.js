@@ -64,29 +64,23 @@ function handleCreate(message) {
         reply_markup: {
           inline_keyboard: [
             [   
-                { text: '💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make' }) },
-                { text: '💬➡️3️⃣🖼️', callback_data: compactSerialize({ ...baseData, action: 'make3' }) },
-            ],
-            // [
-            //     { text: 'sd3 💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make3' }) },
-            // ],
-            [   
-                { text: '💃🏼💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make_style' }) },
-                { text: '🩻💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make_control' }) },
-            ],
-            // [   
-                
-            // ],
-            [   
-                { text: '💃🏼💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make_style' }) },
-                { text: '🩻💃🏼💬➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'make_control_style' }) },
+                { text: 'txt2img', callback_data: compactSerialize({ ...baseData, action: 'make' }) },
             ],
             [
-                { text: '💬➡️🗯️', callback_data: compactSerialize({ ...baseData, action: 'assist' })},
-                { text: '🖼️➡️💬', callback_data: compactSerialize({ ...baseData, action: 'interrogate' })},
+                { text: 'sd3 txt2img', callback_data: compactSerialize({ ...baseData, action: 'make3' }) },
+            ],
+            [   
+                { text: 'txt2img style transfer', callback_data: compactSerialize({ ...baseData, action: 'make_style' }) },
+            ],
+            [   
+                { text: 'txt2img controlnet', callback_data: compactSerialize({ ...baseData, action: 'make_control' }) },
+            ],
+            [   
+                { text: 'txt2img controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'make_control_style' }) },
             ],
             [
-                { text: '💬➡️🗣️', callback_data: compactSerialize({...baseData, action: 'speak'})}
+                { text: 'assist', callback_data: compactSerialize({ ...baseData, action: 'assist' })},
+                { text: 'interrogate', callback_data: compactSerialize({ ...baseData, action: 'interrogate' })},
             ]
         ],
           resize_keyboard: true,
@@ -111,20 +105,20 @@ function handleEffect(message) {
         reply_markup: {
           inline_keyboard: [
             [   
-                { text: '🖼️➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'ms2' }) },
-                { text: '🖼️👾➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'pfp' }) },
+                { text: 'image2image', callback_data: compactSerialize({ ...baseData, action: 'ms2' }) },
+                { text: 'autoi2i', callback_data: compactSerialize({ ...baseData, action: 'pfp' }) },
             ],
             [
-                { text: '💃🏼🖼️➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'ms2_style' }) },
-                { text: '💃🏼🖼️👾➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'pfp_style' }) },
+                { text: 'image2image style transfer', callback_data: compactSerialize({ ...baseData, action: 'ms2_style' }) },
+                { text: 'autoi2i style transfer', callback_data: compactSerialize({ ...baseData, action: 'pfp_style' }) },
             ],
             [
-                { text: '🩻🖼️➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'ms2_control' })},
-                { text: '🩻🖼️👾➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'pfp_control' })}
+                { text: 'image2image controlnet', callback_data: compactSerialize({ ...baseData, action: 'ms2_control' })},
+                { text: 'autoi2i controlnet', callback_data: compactSerialize({ ...baseData, action: 'pfp_control' })}
             ],
             [
-                { text: '🩻💃🏼🖼️➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'ms2_control_style' })},
-                { text: '🩻💃🏼🖼️👾➡️🖼️', callback_data: compactSerialize({ ...baseData, action: 'pfp_control_style' })}
+                { text: 'image2image controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'ms2_control_style' })},
+                { text: 'autoi2i controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'pfp_control_style' })}
             ],
             [
                 //{ text: 'image2image promptless', callback_data: compactSerialize({ ...baseData, action: 'pfp' })},
@@ -153,11 +147,11 @@ function handleAnimate(message) {
         reply_markup: {
           inline_keyboard: [
             [   
-                { text: '🖼️➡️🎞️', callback_data: compactSerialize({ ...baseData, action: 'ms3' }) },
+                { text: 'img2video', callback_data: compactSerialize({ ...baseData, action: 'ms3' }) },
             ],
-            // [
-                
-            // ]
+            [
+                { text: 'txt2speech', callback_data: compactSerialize({...baseData, action: 'speak'})}
+            ]
         ],
           resize_keyboard: true,
           one_time_keyboard: true
