@@ -73,7 +73,7 @@ function displayAccountSettingsMenu(message) {
 }
 
 async function handleSaveSettings(message) {
-    writeUserData(userId,lobby[message.from.id]);
+    writeUserData(message.from.id,lobby[message.from.id]);
     await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`, home);
 }
 async function handleSeeSettings(message) {

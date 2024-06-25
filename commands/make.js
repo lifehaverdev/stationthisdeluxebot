@@ -233,6 +233,72 @@ function prepareRequest(promptObj) {
                   }
               })
             break;
+        case "PFP":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_image": promptObj.fileUrl,
+                    "input_strength": promptObj.strength
+                  }
+            })
+            break;
+        case "PFP_STYLE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_image": promptObj.fileUrl,
+                    "input_strength": promptObj.strength,
+                    "input_style_image": promptObj.styleFileUrl
+                  }
+            })
+            break;
+        case "PFP_CONTROL":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_image": promptObj.fileUrl,
+                    "input_strength": promptObj.strength,
+                    }
+            })
+            break;
+        case "PFP_CONTROL_STYLE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_seed": promptObj.seed,
+                    "input_batch": promptObj.batchMax,
+                    "input_steps": promptObj.steps,
+                    "input_cfg": promptObj.cfg,
+                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_checkpoint": promptObj.checkpoint,
+                    "input_image": promptObj.fileUrl,
+                    "input_strength": promptObj.strength,
+                    "input_style_image": promptObj.styleFileUrl
+                  }
+            })
+            break;
         case "MS2_CONTROL":
             body = JSON.stringify({
                 deployment_id: comfydeployid,
@@ -266,6 +332,24 @@ function prepareRequest(promptObj) {
                     "input_neg_promt": negPrompt
                   }
             })
+            break;
+        case "MS2_STYLE":
+        body = JSON.stringify({
+            deployment_id: comfydeployid,
+            webhook: webHook,
+            inputs: {
+                "input_seed": promptObj.seed,
+                "input_batch": promptObj.batchMax,
+                "input_steps": promptObj.steps,
+                "input_cfg": promptObj.cfg,
+                "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
+                "input_checkpoint": promptObj.checkpoint+'.safetensors',
+                "input_image": promptObj.fileUrl,
+                "input_strength": promptObj.strength,
+                "input_style_image": promptObj.styleFileUrl,
+                "input_neg_promt": negPrompt
+                }
+        })
             break;
         case "MAKE_STYLE":
             body = JSON.stringify({
@@ -329,7 +413,16 @@ function prepareRequest(promptObj) {
                     "input_seed": promptObj.seed
                   }
             })
-        break;
+            break;
+        case "INTERROGATE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_image": promptObj.fileUrl
+                  }
+            })
+            break;
     };
     
     return body;

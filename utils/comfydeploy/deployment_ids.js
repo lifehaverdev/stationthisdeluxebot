@@ -15,6 +15,11 @@ const comfydeployment_ids = [
         id: "389013b2-a888-4521-8447-747f9b7c6a5e"
     },
     {
+        type: "MS2_STYLE",
+        name: "ms2_style",
+        id: "4191863b-ebb3-4270-9e12-3dfb89cfd3a0"
+    },
+    {
         type: "MS2_CONTROL",
         name: "ms2_depth",
         id: "7dcb8a03-ef18-4bb2-990f-d2571779b458"
@@ -43,6 +48,31 @@ const comfydeployment_ids = [
         type: "MAKE3",
         name: "make3",
         id: "75636593-5a88-4b85-b0e6-504cc500b3cb"
+    },
+    {
+        type: "PFP",
+        name: 'pfp',
+        id: "0ea331d5-7006-4149-9dfe-cd82885f9188"
+    },
+    {
+        type: "PFP_STYLE",
+        name: 'pfp_style',
+        id: 'ef9a6f6d-f833-45a2-a92a-ac25664a4dfd'
+    },
+    {
+        type: "PFP_CONTROL",
+        name: "pfp_control",
+        id: '9ac6a0d1-6aff-4796-b25d-bd95cd9c30d3'
+    },
+    {
+        type: "PFP_CONTROL_STYLE",
+        name: 'pfp_control_style',
+        id: 'd1863419-8f2a-4dbd-b80d-cec63a4803e4'
+    },
+    {
+        type: "INTERROGATE",
+        NAME: 'interrogate',
+        id: '1be45f3d-1420-4018-843c-2af8cdb006d6'
     }
 ]
 function getDeploymentIdByType(type) {
