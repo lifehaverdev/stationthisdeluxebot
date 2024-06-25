@@ -56,15 +56,11 @@ async function handleMs2Prompt(message) {
         lobby[userId].type = 'MS2_STYLE'
     } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
         if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
-            sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
+            sendMessage(message, 'hey use the setstyle command to pick a style photo');
             return;
         }
         lobby[userId].type = 'MS2_CONTROL_STYLE'
     } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
-        if(!lobby[userId].controlFileUrl) {
-            sendMessage(message, 'hey use setcontrol command to pick a control image');
-            return;
-        }
         lobby[userId].type = 'MS2_CONTROL'
     }
 
@@ -115,16 +111,12 @@ async function handlePfpImgFile(message) {
             }
             lobby[userId].type = 'PFP_STYLE'
         } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
-            if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
-                sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
+            if (!lobby[userId].styleFileUrl){
+                sendMessage(message, 'hey use the setstyle command to pick a style/ control photo');
                 return;
             }
             lobby[userId].type = 'PFP_CONTROL_STYLE'
         } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
-            if(!lobby[userId].controlFileUrl) {
-                sendMessage(message, 'hey use setcontrol command to pick a control image');
-                return;
-            }
             lobby[userId].type = 'PFP_CONTROL'
         }
         

@@ -9,7 +9,7 @@ const {
     setUserState,
     makeBaseData,
 } = require('../utils');
-const { startMake, startMake3, handleRegen, startSet, setMenu } = require('./handlers/handle');
+const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus } = require('./handlers/handle');
 const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
 const bot = getBotInstance();
 
@@ -221,7 +221,12 @@ const actionMap = {
     'voicemenu':handleVoiceMenu,
     'setVoice': handleSetVoice,
     'setBasePrompt': handleSetBasePrompt,
-    'setCheckpoint': handleSetCheckpoint
+    'setCheckpoint': handleSetCheckpoint,
+    'refresh' : async (message) => {
+        await bot.deleteMessage(message.chat.id, message.message_id);
+        message.message_id = null;
+        handleStatus(message);
+    }
     
 };
 
@@ -232,7 +237,7 @@ module.exports = function(bot) {
         try {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery.data);
-            console.log('in callback query', action, message, user)
+            //console.log('in callback query', action, message, user)
 
             if (actionMap[action]) {
                 actionMap[action](message);

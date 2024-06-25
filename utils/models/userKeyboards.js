@@ -74,10 +74,11 @@ function getPromptMenu(userId, message) {
             }];
         } else {
             console.error('Invalid callback_data:', callbackData);
-            return [{
-                text: `${prompt.name} - ${prompt.description}`,
-                callback_data: 'invalid_callback_data'
-            }];
+            return 
+            // [{
+            //     text: `${prompt.name} - ${prompt.description}`,
+            //     callback_data: 'invalid_callback_data'
+            // }];
         }
     });
 
@@ -102,10 +103,11 @@ function getCheckpointMenu(userId, message) {
             }];
         } else {
             console.error('Invalid callback_data:', callbackData);
-            return [{
-                text: `${checkpoint.name} - ${checkpoint.description}`,
-                callback_data: 'invalid_callback_data'
-            }];
+            return 
+            // [{
+            //     text: `${checkpoint.name} - ${checkpoint.description}`,
+            //     callback_data: 'invalid_callback_data'
+            // }];
         }
     });
 
@@ -130,10 +132,11 @@ function getVoiceMenu(userId, message) {
             }]
         } else {
             console.error('Invalid callback_data:', callbackData);
-            return [{
-                text: `${voice.name} - Not Available`,
-                callback_data: 'invalid_callback_data'
-            }]
+            return 
+            // [{
+            //     text: `${voice.name} - Not Available`,
+            //     callback_data: 'invalid_callback_data'
+            // }]
         }
     })
 
