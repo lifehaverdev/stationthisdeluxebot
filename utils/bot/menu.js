@@ -129,18 +129,78 @@ const handleSetVoice = (message, selectedName, userId) => {
 
 const actionMap = {
     'regen': handleRegen,
-    'make': startMake,
+    'make': (message) => {
+        lobby[message.from.id].styleTransfer = false;
+        lobby[message.from.id].controlNet = false;
+        startMake(message)
+    },
     'make_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = false;
+        startMake(message);
+    },
+    'make_control': (message) => {
+        lobby[message.from.id].controlNet = true;
+        lobby[message.from.id].styleTransfer = false;
+        startMake(message);
+    },
+    'make_control_style': (message) => {
+        lobby[message.from.id].controlNet = true;
         lobby[message.from.id].styleTransfer = true;
         startMake(message);
     },
-    'make3': startMake3,
     'ms2': (message) => {
+        lobby[message.from.id].styleTransfer = false;
+        lobby[message.from.id].controlNet = false;
         setUserState(message, STATES.IMG2IMG);
         sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
     },
+    'ms2_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = false;
+        setUserState(message, STATES.IMG2IMG);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'ms2_control': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = false;
+        setUserState(message, STATES.IMG2IMG);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'ms2_control_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = true;
+        setUserState(message, STATES.IMG2IMG);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'make3': startMake3,
     'pfp': (message) => {
-        sendMessage(message,'not available now');
+        lobby[message.from.id].styleTransfer = false;
+        lobby[message.from.id].controlNet = false;
+        setUserState(message, STATES.PFP);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'pfp_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = false;
+        setUserState(message, STATES.PFP);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'pfp_control': (message) => {
+        lobby[message.from.id].styleTransfer = false;
+        lobby[message.from.id].controlNet = true;
+        setUserState(message, STATES.PFP);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'pfp_control_style': (message) => {
+        lobby[message.from.id].styleTransfer = true;
+        lobby[message.from.id].controlNet = true;
+        setUserState(message, STATES.PFP);
+        sendMessage(message, 'Send in the photo you want to img to img.', {reply_to_message_id: message.message_id});
+    },
+    'interrogate' : (message) => {
+        setUserState(message, STATES.INTERROGATION);
+        sendMessage(message, 'Send in the photo you want to extract a prompt from');
     },
     'assist': (message) => {
         setUserState(message, STATES.ASSIST);

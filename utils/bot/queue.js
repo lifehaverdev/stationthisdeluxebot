@@ -125,25 +125,30 @@ async function waitlist(task){
             run_id = await generate(promptObj);
             break;
         case 'MAKE':   
-        case 'MS2':
         case 'MAKE_STYLE':
+        case 'MAKE_CONTROL_STYLE':
+        case 'MAKE_CONTROL':
+        case 'MS2':
         case 'MS2_CONTROL':
         case 'MS2_CONTROL_STYLE':
         case 'MS2_STYLE':
-        case 'MAKE_CONTROL_STYLE':
-        case 'MAKE_CONTROL':
+        case 'PFP':
+        case 'PFP_STYLE':
+        case 'PFP_CONTROL_STYLE':
+        case 'PFP_CONTROL':
+        case 'INTERROGATE':
         case 'MAKE3':
             run_id = await generate(promptObj);
             break;
     }
     if(run_id != -1 && run_id != undefined){
         console.log('we have run id',run_id);
-        const safeCheckBack = scheduleCheckback(checkback);
+        //const safeCheckBack = scheduleCheckback(checkback);
         task = {
             ...task,
             run_id: run_id,
             timestamp: Date.now(),
-            checkback: safeCheckBack // default checkback time is 5000ms (5 seconds)
+            //checkback: safeCheckBack // default checkback time is 5000ms (5 seconds)
         };
         waiting.push(task);
         console.log(`Task enqueued for ${message.from.first_name}`);
@@ -155,17 +160,17 @@ async function waitlist(task){
     
 }
 
-function scheduleCheckback(checkBack) {
-    // Iterate through the tasks in the waitlist
-    const now = Date.now();
-    let currentTarget = now + checkBack;
-    for (let i = 0; i < waiting.length; i++){
-        const existingTarget = waiting[i].timestamp + waiting[i].checkback;
-        if(currentTarget < existingTarget + 5000){currentTarget = existingTarget +5000}
-    }
-    // Schedule the next task processing after 5 seconds
-    return currentTarget - now;
-}
+// function scheduleCheckback(checkBack) {
+//     // Iterate through the tasks in the waitlist
+//     const now = Date.now();
+//     let currentTarget = now + checkBack;
+//     for (let i = 0; i < waiting.length; i++){
+//         const existingTarget = waiting[i].timestamp + waiting[i].checkback;
+//         if(currentTarget < existingTarget + 5000){currentTarget = existingTarget +5000}
+//     }
+//     // Schedule the next task processing after 5 seconds
+//     return currentTarget - now;
+// }
 
 // Define a set to keep track of run_ids being processed
 const processingRunIds = new Set();
@@ -228,7 +233,7 @@ async function processWaitlist(status, run_id, outputs) {
 async function handleTaskCompletion(task, run) {
     const { message } = task;
     const { status, outputs } = run;
-    const possibleTypes = ["images", "gifs", "videos"];
+    const possibleTypes = ["images", "gifs", "videos","text"];
     let urls = [];
 
     const operation = async () => {
@@ -255,6 +260,8 @@ async function handleTaskCompletion(task, run) {
                     await sendAnimation(message, url);
                 } else if (type === 'video') {
                     await sendVideo(message, url);
+                } else if (type === 'unknown') {
+                    await sendMessage(message, url)
                 } else {
                     console.error(`Unknown URL type for URL: ${url}`);
                 }

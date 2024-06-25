@@ -79,7 +79,8 @@ function handleCreate(message) {
                 { text: 'txt2img controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'make_control_style' }) },
             ],
             [
-                { text: 'gptprompt assist', callback_data: compactSerialize({ ...baseData, action: 'assist' })},
+                { text: 'assist', callback_data: compactSerialize({ ...baseData, action: 'assist' })},
+                { text: 'interrogate', callback_data: compactSerialize({ ...baseData, action: 'interrogate' })},
             ]
         ],
           resize_keyboard: true,
@@ -102,17 +103,22 @@ function handleEffect(message) {
     };
     const options = {
         reply_markup: {
-          inline_keyboard: [[   
+          inline_keyboard: [
+            [   
                 { text: 'image2image', callback_data: compactSerialize({ ...baseData, action: 'ms2' }) },
+                { text: 'autoi2i', callback_data: compactSerialize({ ...baseData, action: 'pfp' }) },
             ],
             [
                 { text: 'image2image style transfer', callback_data: compactSerialize({ ...baseData, action: 'ms2_style' }) },
+                { text: 'autoi2i style transfer', callback_data: compactSerialize({ ...baseData, action: 'pfp_style' }) },
             ],
             [
-                { text: 'image2image controlnet', callback_data: compactSerialize({ ...baseData, action: 'ms2_control' })}
+                { text: 'image2image controlnet', callback_data: compactSerialize({ ...baseData, action: 'ms2_control' })},
+                { text: 'autoi2i controlnet', callback_data: compactSerialize({ ...baseData, action: 'pfp_control' })}
             ],
             [
-                { text: 'image2image controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'ms2_control_style' })}
+                { text: 'image2image controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'ms2_control_style' })},
+                { text: 'autoi2i controlnet + style transfer', callback_data: compactSerialize({ ...baseData, action: 'pfp_control_style' })}
             ],
             [
                 //{ text: 'image2image promptless', callback_data: compactSerialize({ ...baseData, action: 'pfp' })},

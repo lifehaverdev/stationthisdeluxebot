@@ -47,13 +47,28 @@ async function handleMs2Prompt(message) {
         prompt: userInput,
         type: 'MS2'
     }
+
     if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+        if (!lobby[userId].styleFileUrl){
+            sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            return;
+        }
         lobby[userId].type = 'MS2_STYLE'
-    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet) {
+    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+        if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
+            sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
+            return;
+        }
         lobby[userId].type = 'MS2_CONTROL_STYLE'
     } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+        if(!lobby[userId].controlFileUrl) {
+            sendMessage(message, 'hey use setcontrol command to pick a control image');
+            return;
+        }
         lobby[userId].type = 'MS2_CONTROL'
     }
+
+    
     await react(message);
     const promptObj = {
         ...lobby[userId],
@@ -66,49 +81,67 @@ async function handleMs2Prompt(message) {
     return true
 }
 async function handlePfpImgFile(message) {
-    sendMessage(message,'sorry this is broken rn');
-    // sendMessage(message,'looks good. sit tight');
-    // chatId = message.chat.id;
-    // const userId = message.from.id;
-    // const fileUrl = await getPhotoUrl(message);
-    // const{time,result} = await interrogateImage(message, fileUrl);
+    //sendMessage(message,'sorry this is broken rn');
+    sendMessage(message,'looks good. sit tight');
+    chatId = message.chat.id;
+    const userId = message.from.id;
+    const fileUrl = await getPhotoUrl(message);
+    //const{time,result} = await interrogateImage(message, fileUrl);
     
-    // try {
-    //     const photo = await Jimp.read(fileUrl);
-    //     const { width, height } = photo.bitmap;
+    try {
+        const photo = await Jimp.read(fileUrl);
+        const { width, height } = photo.bitmap;
 
-    //     const photoStats = {
-    //         width: width,
-    //         height: height
-    //     };
+        const photoStats = {
+            width: width,
+            height: height
+        };
 
-    //     const thisSeed = makeSeed(userId);
+        const thisSeed = makeSeed(userId);
 
-    //     lobby[userId] = {
-    //         ...lobby[userId],
-    //         prompt: result,
-    //         lastSeed: thisSeed,
-    //         type: 'MS2',
-    //         tempSize: photoStats,
-    //         fileUrl: `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`
-    //     }
+        lobby[userId] = {
+            ...lobby[userId],
+            lastSeed: thisSeed,
+            type: 'PFP',
+            tempSize: photoStats,
+            fileUrl: fileUrl
+        }
+
+
+        if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+            if (!lobby[userId].styleFileUrl){
+                sendMessage(message, 'hey use the setstyle command to pick a style photo');
+                return;
+            }
+            lobby[userId].type = 'PFP_STYLE'
+        } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+            if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
+                sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
+                return;
+            }
+            lobby[userId].type = 'PFP_CONTROL_STYLE'
+        } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+            if(!lobby[userId].controlFileUrl) {
+                sendMessage(message, 'hey use setcontrol command to pick a control image');
+                return;
+            }
+            lobby[userId].type = 'PFP_CONTROL'
+        }
         
-    //     const promptObj = {
-    //         ...lobby[userId],
-    //         seed: thisSeed,
-    //         strength: .6,
-    //         cfg: 8,
-    //         photoStats: photoStats,
-    //     }
-    //     //return await shakeMs2(message,promptObj);
-    //     enqueueTask({message,promptObj})
-    //     setUserState(message,STATES.IDLE);
-    //     return true
-    // } catch (error) {
-    //     console.error("Error processing photo:", error);
-    //     sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-    //     return false
-    // }
+        const promptObj = {
+            ...lobby[userId],
+            seed: thisSeed,
+            photoStats: photoStats,
+        }
+        //return await shakeMs2(message,promptObj);
+        enqueueTask({message,promptObj})
+        setUserState(message,STATES.IDLE);
+        return true
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+        return false
+    }
 }
 
 module.exports = { 
