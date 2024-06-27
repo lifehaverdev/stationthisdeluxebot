@@ -9,13 +9,6 @@ const loraTriggers = [
       triggerWords: ["N64STYLE","N64","3D","OCARINAOFTIME","MAJORASMASK"]
   },
   {
-      lora_name: 'mushroomz-sdxl',
-      default_weight: 0.8,
-      civitaiLink: 'https://civitai.com/models/181525?modelVersionId=203727',
-      description: 'trippy mushroom lora .. idk - arthurt',
-      triggerWords: ["MUSHROOMZ"]
-  },
-  {
       lora_name: 'wojak_SDXL',
       default_weight: 0.8,
       civitaiLink: 'https://civitai.com/models/128046?modelVersionId=140160',
@@ -85,40 +78,19 @@ const loraTriggers = [
       description: `LeLo stands for LEGO LoRA. It is a LoRA trained with over 900 images from the LEGO MiniFigures, BrickHeadz, and Creator themes. It provides a simulation of the LEGO design style.`,
       triggerWords: ["LEGO","MINIFIG","LEGO CREATOR","LEGO BRICKHEADZ"]
   },
-  // {
-  //     lora_name: 'PLAYSTATIONRETROV2_LOWPOLY_PS1_PIXELATED',
-  //     default_weight: ,
-  //     civitaiLink: ,
-  //     description: ,
-  //     triggerWords: ["PLAYSTATIONRETROV2","LOWPOLY","PS1","PIXELATED"]
-  // },
-  // {
-  //     lora_name: 'Architecture_sketch',
-  //     default_weight: 0.8,
-  //     civitaiLink: 'https://civitai.com/models/407939/jjs-drawing-architecture-sketch',
-  //     description: `JJ's Drawing- Architecture Sketch`,
-  //     triggerWords: ["Architecture sketch"]
-  // },
-  // {
-  //     lora_name: 'DonMDr4g0nX',
-  //     default_weight: 0.8,
-  //     civitaiLink: 'https://civitai.com/models/284025?modelVersionId=319616',
-  //     description: `Some examples:Cyber:hologram, holographic, anything with cyber. Scifi:use scifi, tech, futuristic, futurism, postapocalyptic. Darker: eerie, stygical, gloomy, decay, haunting. Fantasy/magical: use magical, whimsical, fairytale, fantasy. Organic:biomorphic, Biomimetic, botanical, bio, organic`,
-  //     triggerWords: ["DonMDr4g0nXL"]
-  // },
-  // {
-  //     lora_name: 'FINE_ART_PHOTOGRAPHY_STYLE',
-  //     default_weight: 0.8,
-  //     civitaiLink: 'https://civitai.com/models/344028?modelVersionId=385111',
-  //     description: 'photographic surrealism or something -arthurt',
-  //     triggerWords: ["FINE ART PHOTOGRAPHY STYLE"]
-  // },
   {
       lora_name: 'MOGGLES_MOGCAT_PIT_VIPERS',
       default_weight: 0.9,
       civitaiLink: 'miladystation2.net',
-      description: 'BROKEN ??? stationthisbot original lora for all the cousins xoxo - arthurt',
+      description: 'stationthisbot original lora for all the cousins xoxo - arthurt',
       triggerWords: ["MOGGLES", "MOGCAT", "PIT_VIPERS"]
+  },
+  {
+    lora_name: 'joycat',
+    default_weight: 1,
+    civitaiLink: 'mogcoin.xyz',
+    description: 'mogcat v2 lora trained by mooncryptowow',
+    triggerWords: ['joycat','😹']
   },
   {
     lora_name: 'mewing1',
