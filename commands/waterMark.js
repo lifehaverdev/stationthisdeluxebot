@@ -5,7 +5,7 @@ async function addWaterMark (filename) {
         waterOptions = {
             opacity: .8,
             dstPath: `./tmp/${Date.now()}tmp`,
-            ratio: .5
+            ratio: .4
         }
         const main = await Jimp.read(filename);
         const watermark = await Jimp.read('./ms2black.png');
@@ -19,7 +19,7 @@ async function addWaterMark (filename) {
             positionY,
             Jimp.HORIZONTAL_ALIGN_CENTER | Jimp.VERTICAL_ALIGN_MIDDLE);
         await main.quality(100).writeAsync(waterOptions.dstPath);
-        //return waterOptions.dstPath;
+        return waterOptions.dstPath;
     } catch (err) {
         throw err;
     }

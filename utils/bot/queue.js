@@ -114,7 +114,6 @@ async function processQueue() {
 async function waitlist(task){
     const { message, promptObj } = task;
     let run_id;
-    let checkback;
     switch (promptObj.type){
         case 'MS3':
             console.log('we make ms3 pls')
@@ -143,34 +142,19 @@ async function waitlist(task){
     }
     if(run_id != -1 && run_id != undefined){
         console.log('we have run id',run_id);
-        //const safeCheckBack = scheduleCheckback(checkback);
         task = {
             ...task,
             run_id: run_id,
             timestamp: Date.now(),
-            //checkback: safeCheckBack // default checkback time is 5000ms (5 seconds)
         };
         waiting.push(task);
         console.log(`Task enqueued for ${message.from.first_name}`);
-        //setTimeout(()=>processWaitlist(task),safeCheckBack)
     } else {
         console.log('no run id');
         sendMessage(message,'ah it didnt take. send your prompt to dev')
     }
     
 }
-
-// function scheduleCheckback(checkBack) {
-//     // Iterate through the tasks in the waitlist
-//     const now = Date.now();
-//     let currentTarget = now + checkBack;
-//     for (let i = 0; i < waiting.length; i++){
-//         const existingTarget = waiting[i].timestamp + waiting[i].checkback;
-//         if(currentTarget < existingTarget + 5000){currentTarget = existingTarget +5000}
-//     }
-//     // Schedule the next task processing after 5 seconds
-//     return currentTarget - now;
-// }
 
 // Define a set to keep track of run_ids being processed
 const processingRunIds = new Set();

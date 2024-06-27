@@ -76,7 +76,7 @@ const commandPatterns = {
     //'/watermark(.*)': handleWatermark,
     '/signout': handleSignOut,
     '/resetaccount': handleAccountReset,
-    '/set(.*)': setMenu,
+    '/set$': setMenu,
     '/create(.*)': handleCreate,
     '/effect(.*)': handleEffect,
     '/animate(.*)': handleAnimate,
@@ -134,8 +134,9 @@ function messageFilter(message) {
         }
     }
     //console.log('message date in filter',message.date)
-    //console.log('startup date /1000 in filter',startup/1000 - 60 * 5)
-    if(message.date < startup/1000 - 60 * 1){
+    //console.log('startup date /1000 in filter',(startup/1000 - (5 * 60)))
+    //console.log(startup/1000 - (5 * 60))
+    if(message.date < (startup/1000 - (5 * 60))){
         console.log('ignoring because its old')
         return true;
     }
@@ -197,7 +198,7 @@ const commandsRequiringGatekeeping = ['/accountsettings','/create', '/effect','/
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
-        console.log('wow we have a message');
+        //console.log('wow we have a message');
         if (messageFilter(message)) {
             //console.log('message filtered');
             return;
@@ -210,7 +211,7 @@ module.exports = function(bot) {
                 const regex = new RegExp(`^${pattern}`);
                 const match = regex.exec(message.text);
                 if (match) {
-                    console.log('i see a command tbh')
+                    console.log('i see a command tbh',match)
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => pattern.startsWith(cmd));
                     if (requiresGatekeeping) {
                         // Perform gatekeeping check

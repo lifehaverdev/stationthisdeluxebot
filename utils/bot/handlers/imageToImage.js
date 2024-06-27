@@ -1,13 +1,32 @@
-const { sendMessage, setUserState, react } = require('../../utils')
+const { sendMessage, editMessage, setUserState, react } = require('../../utils')
 const { getPhotoUrl, lobby, STATES, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const Jimp = require('jimp');
 
+async function startMs2(message, user = null) {
+
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send in the photo you want to img to img.',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        sendMessage(message, 'Send in the photo you want to img to img.',{reply_to_message_id: message.message_id})
+    }
+    setUserState(message,STATES.IMG2IMG)
+}
+
 
 async function handleMs2ImgFile(message) {
-    sendMessage(message,'okay lemme see...');
+    if(!message.photo || message.document) {
+        return;
+    }
+    const sent = await sendMessage(message,'okay lemme see...');
     chatId = message.chat.id;
     const userId = message.from.id;
+
     const fileUrl = await getPhotoUrl(message)
     
     try {
@@ -28,12 +47,25 @@ async function handleMs2ImgFile(message) {
             fileUrl: fileUrl
         }
         //console.log(lobby[userId])
-        await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);        
+
+        await editMessage(
+            {
+                text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            }
+        );        
         setUserState(message,STATES.MS2PROMPT);
         return true;
     } catch (error) {
         console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+        await editMessage(
+            {
+                text: "An error occurred while processing the photo. Please send it again, or another photo.",
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            }
+        );      
         return false
     }
 }
@@ -78,6 +110,9 @@ async function handleMs2Prompt(message) {
 }
 async function handlePfpImgFile(message) {
     //sendMessage(message,'sorry this is broken rn');
+    if(!message.photo || message.document) {
+        return;
+    }
     sendMessage(message,'looks good. sit tight');
     chatId = message.chat.id;
     const userId = message.from.id;
@@ -139,5 +174,6 @@ async function handlePfpImgFile(message) {
 module.exports = { 
     handlePfpImgFile,
     handleMs2Prompt,
-    handleMs2ImgFile
+    handleMs2ImgFile,
+    startMs2
 }

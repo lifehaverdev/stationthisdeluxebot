@@ -1,13 +1,36 @@
 const { STATES, lobby, rooms, makeSeed } = require('../bot')
-const { sendMessage, react, setUserState } = require('../../utils')
+const { sendMessage, react, setUserState, editMessage } = require('../../utils')
 const { enqueueTask } = require('../queue')
 
-async function startMake(message) {
-    await sendMessage(message,'What prompt for your txt2img?')
+async function startMake(message, user = null) {
+
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'What prompt for your txt2img?',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        sendMessage(message, 'What prompt for your txt2img?')
+    }
+    //await sendMessage(message,'What prompt for your txt2img?')
+    //console.log('user in start make',message.from.id);
+    //console.log('message in start make',message);
     setUserState(message,STATES.MAKE)
 }
-async function startMake3(message) {
-    await sendMessage(message,'What prompt for your txt2img sd3');
+async function startMake3(message,user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'What prompt for your txt2img sd3',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        sendMessage(message, 'What prompt for your txt2img sd3')
+    }
+    //await sendMessage(message,'What prompt for your txt2img sd3');
     setUserState(message,STATES.MAKE3)
 }
 async function handleMake(message) {
@@ -113,9 +136,6 @@ async function handleMake3(message) {
     console.log('MAK3ING SOMETHING')
     const chatId = message.chat.id;
     const userId = message.from.id;
-    // if(!await checkLobby(message)){
-    //     return;
-    // }
 
     if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
         return;

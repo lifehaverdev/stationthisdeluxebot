@@ -1,5 +1,5 @@
 const { startup } = require('../bot.js')
-const { sendMessage, makeBaseData, compactSerialize, editReply } = require('../../utils.js')
+const { sendMessage, makeBaseData, compactSerialize, editMessage } = require('../../utils.js')
 const { waiting, taskQueue } = require('../queue.js')
 
 function handleHelp(message) {
@@ -60,19 +60,19 @@ function handleHelp(message) {
     sendMessage(message, helpMessage);
 }
 async function handleStatus(message) {
-    let msg = `
-    I have been running for ${(Date.now() - startup) / 1000} seconds. 
+    let msg = 
+    `I have been running for ${(Date.now() - startup) / 1000} seconds. 
     `
-    taskQueue.length > 0 ? msg +=    `
-    Waiting: 
+    taskQueue.length > 0 ? msg +=    
+    `Waiting: 
     ${taskQueue.map(task => {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         return `${username}: ${task.promptObj.type}`; // Include remaining time in the status
     }).join('\n')}
     ` : null
 
-    waiting.length > 0 ? msg += `
-    Working on: 
+    waiting.length > 0 ? msg += 
+    `Working on: 
     ${waiting.map(task => {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         const remainingTime = task.status; // Calculate remaining time until checkback
@@ -80,12 +80,19 @@ async function handleStatus(message) {
     }).join('\n')}
     ` : null
     const sent = await sendMessage(message, msg);
-    const baseData = makeBaseData(sent,message.from.id);
-    const callbackData = compactSerialize({ ...baseData, action: `refresh`});
+    //const baseData = makeBaseData(sent,sent.from.id);
+    //const callbackData = compactSerialize({ ...baseData, action: `refresh`});
+    const callbackData = 'refresh'
     const chat_id = sent.chat.id;
     const message_id = sent.message_id;
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: callbackData}]]}
-    editReply(reply_markup,chat_id,message_id)
+    editMessage(
+        {
+            reply_markup,
+            chat_id,
+            message_id
+        }
+        )
 }
 
 module.exports = { handleHelp, handleStatus }
