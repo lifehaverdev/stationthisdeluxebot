@@ -18,6 +18,20 @@ async function startMs2(message, user = null) {
     setUserState(message,STATES.IMG2IMG)
 }
 
+async function startPfp(message, user = null) {
+
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send in the photo you want to img to img. I will do the prompt myself.',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        sendMessage(message, 'Send in the photo you want to img to img.  I will do the prompt myself.',{reply_to_message_id: message.message_id})
+    }
+    setUserState(message,STATES.IMG2IMG)
+}
 
 async function handleMs2ImgFile(message) {
     if(!message.photo || message.document) {
@@ -175,5 +189,6 @@ module.exports = {
     handlePfpImgFile,
     handleMs2Prompt,
     handleMs2ImgFile,
-    startMs2
+    startMs2,
+    startPfp
 }
