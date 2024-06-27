@@ -219,18 +219,12 @@ async function handleSet(message) {
                         height: height
                     };
                     
-                    settings = {
-                        ...settings,
-                        photoStats: photoStats,
-                        fileUrl: fileUrl
-                    }
+                    settings.fileUrl = fileUrl
+                    settings.photoStates = photoStats
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
                 } else if(currentState == STATES.SETCONTROL) {
                     
-                    settings = {
-                        ...settings,
-                        controlFileUrl: fileUrl
-                    }
+                    settings.controlFileUrl = fileUrl
                     
                     await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`);
                 } else {
