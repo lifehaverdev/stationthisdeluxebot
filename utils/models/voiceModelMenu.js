@@ -18,6 +18,14 @@ voiceModels = [
     {
         name: 'Charlotte',
         modelId: 'zGDDoashdFkU2rlb917O'
+    },
+    {
+        name: 'Jordan',
+        modelId: 'baXUaMbdXzShhJFwCRJZ'
+    },
+    {
+        name: 'Joe',
+        modelId: 'eJnCdPneH7e8OxO6azGV'
     }
 ]
 
