@@ -85,7 +85,7 @@ async function handleMake(message) {
         type: 'MAKE',
         lastSeed: thisSeed
     }
-    if(user){message.message_id = null};
+    
     if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
         if (!lobby[userId].styleFileUrl){
             
