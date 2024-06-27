@@ -11,7 +11,7 @@ const {
     makeBaseData,
 } = require('../utils');
 const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus } = require('./handlers/handle');
-const { startMs2 } = require('./handlers/imageToImage')
+const { startMs2, startPfp } = require('./handlers/imageToImage')
 const { startMs3 } = require('./handlers/handleMs3ImgFile')
 const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
 const bot = getBotInstance();
@@ -194,22 +194,22 @@ const actionMap = {
     'pfp': (message,user) => {
         lobby[user].styleTransfer = false;
         lobby[user].controlNet = false;
-        startMs2(message,user);
+        startPfp(message,user);
     },
     'pfp_style': (message,user) => {
         lobby[user].styleTransfer = true;
         lobby[user].controlNet = false;
-        startMs2(message,user);
+        startPfp(message,user);
     },
     'pfp_control': (message,user) => {
         lobby[user].styleTransfer = false;
         lobby[user].controlNet = true;
-        startMs2(message,user);
+        startPfp(message,user);
     },
     'pfp_control_style': (message,user) => {
         lobby[user].styleTransfer = true;
         lobby[user].controlNet = true;
-        startMs2(message,user);
+        startPfp(message,user);
     },
     'interrogate' : (message, user) => {
         
