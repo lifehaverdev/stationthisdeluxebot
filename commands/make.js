@@ -379,7 +379,7 @@ function prepareRequest(promptObj) {
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
-                    "input_control_image": promptObj.controlfileUrl,
+                    "input_control_image": promptObj.controlFileUrl,
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,
                     "input_style_image": promptObj.styleFileUrl
@@ -397,7 +397,7 @@ function prepareRequest(promptObj) {
                     "input_cfg": promptObj.cfg,
                     "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
-                    "input_control_image": promptObj.controlfileUrl,
+                    "input_control_image": promptObj.controlFileUrl,
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,
                   }

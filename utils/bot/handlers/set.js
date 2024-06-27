@@ -229,7 +229,7 @@ async function handleSet(message) {
                     
                     settings = {
                         ...settings,
-                        controlfileUrl: fileUrl
+                        controlFileUrl: fileUrl
                     }
                     
                     await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`);
