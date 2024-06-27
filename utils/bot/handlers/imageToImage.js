@@ -30,7 +30,7 @@ async function startPfp(message, user = null) {
     } else {
         sendMessage(message, 'Send in the photo you want to img to img.  I will do the prompt myself.',{reply_to_message_id: message.message_id})
     }
-    setUserState(message,STATES.IMG2IMG)
+    setUserState(message,STATES.PFP)
 }
 
 async function handleMs2ImgFile(message) {
