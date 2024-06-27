@@ -3,7 +3,24 @@ const { lobby, getPhotoUrl, makeSeed, STATES } = require('../bot');
 const { enqueueTask } = require('../queue');
 const { sendMessage, setUserState } = require('../../utils')
 
+async function startMs3(message, user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send in the photo you want to img to img.',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        sendMessage(message, 'Send in the photo you want to img to img.',{reply_to_message_id: message.message_id})
+    }
+    setUserState(message,STATES.MS3)
+}
+
 async function handleMs3ImgFile(message) {
+    if(!message.photo || message.document) {
+        return;
+    }
     chatId = message.chat.id;
     userId = message.from.id;
     const fileUrl = await getPhotoUrl(message);
@@ -30,4 +47,4 @@ async function handleMs3ImgFile(message) {
     }
 }
 
-module.exports = { handleMs3ImgFile }
+module.exports = { handleMs3ImgFile, startMs3 }

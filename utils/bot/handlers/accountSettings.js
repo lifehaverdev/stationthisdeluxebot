@@ -19,13 +19,10 @@ function displayAccountSettingsMenu(message) {
             },
             
         ],
-        [
-            // {
-            //     text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
-            //     callback_data: 'toggleWaterMark',
-            // },
+        // [
+
             
-        ],
+        // ],
         [
             {
                 text: `Base Prompt Menu`,
@@ -53,11 +50,14 @@ function displayAccountSettingsMenu(message) {
         ]
     ];
 
-    // if (lobby[userId].balance >= 0){//1000000) {
-    //     accountSettingsKeyboard[0].push(
-            
-    //     );
-    // }
+    if (lobby[userId].balance >= 200000) {
+        accountSettingsKeyboard[0].push(
+            {
+                text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
+                callback_data: 'toggleWaterMark',
+            },
+        );
+    }
     // if (lobby[userId].balance >= 0){//} 5000000) {
     //     accountSettingsKeyboard[0].push(
 

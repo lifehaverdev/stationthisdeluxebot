@@ -1,10 +1,11 @@
-const { lobby, STATES, rooms } = require('./bot'); 
+const { lobby, STATES, rooms, startup } = require('./bot'); 
 const { getUserDataByUserId } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
-const { setUserState, sendMessage } = require('../utils')
+const { setUserState, sendMessage } = require('../utils');
+const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
-let startup = Date.now()
+// let startup = Date.now()
 const POINTMULTI = 666;
 const NOCOINERSTARTER = 16666;
 setInterval(cleanLobby, 2 * 60 * 60 * 1000); //every hour
@@ -67,20 +68,10 @@ async function checkLobby(message){
             let options;
             if(message.chat.id > 0){
                 options = {
-                    reply_markup: {
-                        keyboard: [
-                            [{ text: '/create' }],
-                            [{ text: '/effect' }],
-                            [{ text: '/animate' }],
-                            [{ text: '/set' },{text: '/regen' }],
-                            [{ text: '/accountsettings' }]
-                        ],
-                        resize_keyboard: true,
-                        one_time_keyboard: false
-                    }
+                    home
                 }
             }
-            sendMessage(message, 'welcome back', options);
+            //sendMessage(message, 'welcome back', options);
         }
         // if(userData.verified === false){
         //     if(message.chat.id < 0){
@@ -99,8 +90,8 @@ async function checkLobby(message){
         }
         setUserState(message,STATES.IDLE);
         console.log(message.from.first_name,"has entered the chat");
-        const welcomeMessage = `welcome, been here for ${(Date.now() - startup)/1000} seconds now`
-        sendMessage(message, welcomeMessage);
+        //const welcomeMessage = `welcome, been here for ${(Date.now() - startup)/1000} seconds now`
+        //sendMessage(message, welcomeMessage);
         //return true
     // } else if (lobby[userId].verified === false) {
     //     sendMessage(message,'You must be verified to use the bot. Try signout and signin to complete the verify process.')

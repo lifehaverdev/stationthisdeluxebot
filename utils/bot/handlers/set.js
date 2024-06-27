@@ -1,5 +1,5 @@
 const { DEV_DMS, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
-const { setUserState, sendMessage, editReply } = require('../../utils')
+const { setUserState, sendMessage, editMessage } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
 const Jimp = require('jimp');
 
@@ -8,7 +8,8 @@ const BATCHLIMIT = 4;
 
 const STEPSLIMIT = 48;
 
-async function startSet(message) {
+async function startSet(message,user) {
+    //console.log('message in startset',message)
     let settings;
     if(message.chat.id < 0){
         const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
@@ -20,22 +21,42 @@ async function startSet(message) {
                 return 
             }
         } else {
-            settings = lobby[userId]
+            settings = lobby[message.from.id]
         }
+    } else {
+        settings = lobby[message.from.id]
     }
     
 
     const command = message.text.replace('/set','');
-    const userId = message.from.id;
+    //const userId = message.from.id;
     const setter = `set${command}`;
     const state = SETTER_TO_STATE[setter]
     const lobbyParam = STATE_TO_LOBBYPARAM[state]
+    //console.log(settings)
     const currentValue = settings ? (settings[lobbyParam] || "not set") : "not set";
 
     let botMessage;
     let chat_id;
     let message_id;
     let reply_markup;
+
+    const editPayload = {
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+    };
+
+    const sendOrEditMessage = async (text, reply_markup = null) => {
+        if (user) {
+            editMessage({
+                text,
+                reply_markup,
+                ...editPayload
+            });
+        } else {
+            await sendMessage(message, text, { reply_markup });
+        }
+    };
 
     if(currentValue == 'notset'){
         console.log('not set');
@@ -44,45 +65,46 @@ async function startSet(message) {
         switch (command) {
             case 'batch':
                 const maxBatch = calcBatch(message); // Assume calcBatch is defined elsewhere
-                await sendMessage(message, `What batch do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxBatch}`);
+                await sendOrEditMessage( `What batch do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxBatch}`);
                 break;
             case 'steps':
                 const maxSteps = calcSteps(message); // Assume calcSteps is defined elsewhere
-                await sendMessage(message, `What steps do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxSteps}`);
+                await sendOrEditMessage( `What steps do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxSteps}`);
                 break;
             case 'size':
                 const maxSize = calcSize(message); // Assume calcSize is defined elsewhere
-                await sendMessage(message, `What size do you want to set to? Rn it is set to ${currentValue.width},${currentValue.height}. Your maximum size is ${maxSize},${maxSize}`);
+                await sendOrEditMessage(`What size do you want to set to? Rn it is set to ${currentValue.width},${currentValue.height}. Your maximum size is ${maxSize},${maxSize}`);
                 break;
             case 'cfg':
-                await sendMessage(message, `What CFG do you want to set to? Rn it is set to ${currentValue}. Please enter a value between 0 and 30`);
+                await sendOrEditMessage( `What CFG do you want to set to? Rn it is set to ${currentValue}. Please enter a value between 0 and 30`);
                 break;
             case 'strength':
-                await sendMessage(message, `What strength do you want to set to? Rn it is set to ${currentValue}. Please enter a decimal value (i.e. '.4' or '0.5') between 0 and 1`);
+                await sendOrEditMessage( `What strength do you want to set to? Rn it is set to ${currentValue}. Please enter a decimal value (i.e. '.4' or '0.5') between 0 and 1`);
                 break;
             case 'prompt':
             case 'userprompt':
             case 'negprompt': 
-                await sendMessage(message, `What ${command} do you want to set it to? Rn it is set to:`);
-                await sendMessage(message, ` ${currentValue}`);
+                await sendOrEditMessage( `What ${command} do you want to set it to? Rn it is set to:`);
+                message.message_id = null;
+                await sendMessage(message, `\`${currentValue}\``,{parse_mode: 'MarkdownV2'});
                 break;
             case 'photo':
-                await sendMessage(message, 'What photo do you want to set')
+                await sendOrEditMessage( 'What photo do you want to set')
                 break;
             case 'checkpoint':
-                botMessage = await sendMessage(message, 'Checkpoint Menu:');
+                botMessage = await sendOrEditMessage( 'Checkpoint Menu:');
                 chat_id = botMessage.chat.id;
                 message_id = botMessage.message_id;
                 reply_markup = getCheckpointMenu(message.from.id, botMessage);
                 editReply(reply_markup, chat_id, message_id,);
             case 'baseprompt':
-                botMessage = await sendMessage(message, 'Base Prompt Menu:');
+                botMessage = await sendOrEditMessage( 'Base Prompt Menu:');
                 chat_id = botMessage.chat.id;
                 message_id = botMessage.message_id;
                 reply_markup = getPromptMenu(message.from.id, botMessage);
                 editReply(reply_markup, chat_id, message_id,);
             default:
-                await sendMessage(message, `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
+                await sendOrEditMessage( `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
                 break;
         }
         setUserState(message,state);

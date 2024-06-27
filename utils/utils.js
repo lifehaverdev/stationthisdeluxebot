@@ -33,7 +33,6 @@ async function safeExecute(message, callback) {
     }
 }
 async function sendMessage(msg, text, options = {}) {
-
     if(text == ''){
         return
     }
@@ -44,12 +43,43 @@ async function sendMessage(msg, text, options = {}) {
     if (msg.message_thread_id) {
         options.message_thread_id = msg.message_thread_id;
     }
-    //console.log(options)
     let response;
     try {
         response = await bot.sendMessage(chatId, text, options);
-    } catch (err) {
-        console.log(err,'sendMessage error')
+    } catch (error) {
+        console.error(`Sendmessage error:`, {
+            message: error.message ? error.message : '',
+            name: error.name ? error.name : '',
+            code: error.code ? error.code : '',
+            // url: error.request ? JSON.stringify(error.request) : '',
+            // request: error.request.path? error.request.path : ''
+        });
+        try {
+            options.reply_to_message_id = null;
+
+            response = await bot.sendMessage(chatId, text, options);
+        } catch (error) {
+            console.error(`sendMessage error 2:`, {
+                message: error.message ? error.message : '',
+                name: error.name ? error.name : '',
+                code: error.code ? error.code : '',
+                // url: error.request ? JSON.stringify(error.request) : '',
+                // request: error.request.path? error.request.path : ''
+            });
+            try {
+                options.message_thread_id = null;
+
+                response = await bot.sendMessage(chatId, text, options);
+            } catch (error) {
+                console.error(`sendMessage error 3:`, {
+                    message: error.message ? error.message : '',
+                    name: error.name ? error.name : '',
+                    code: error.code ? error.code : '',
+                    // url: error.request ? JSON.stringify(error.request) : '',
+                    // request: error.request.path? error.request.path : ''
+                });
+            }
+        }
     }
     return response;
 }
@@ -87,29 +117,54 @@ async function react(message) {
 }
 
 function compactSerialize(data) {
-    return `${data.action}|${data.fromId}|${data.text}|${data.chatId}|${data.threadId}|${data.id}|${data.userId}`;
+    return `${data.action}|${data.fromId}|${data.userId}`;
 }
 
 function makeBaseData(message,userId) {
     return {
-        text: 'k',
-        id: message.message_id,
+        //text: 'k',
+        //id: message.message_id,
         fromId: message.from.id,
-        chatId: message.chat.id,
+        //chatId: message.chat.id,
         //firstName: message.from.first_name.slice(0, 4), // Limit length of the name to avoid exceeding limit
-        threadId: message.message_thread_id || 0 ,// Use 0 if thread ID is not available
+        //threadId: message.message_thread_id || 0 ,// Use 0 if thread ID is not available
         userId: userId
     };
 }
 
-function editReply(reply_markup, chat_id, message_id) {
-    bot.editMessageReplyMarkup(
-        reply_markup,
-        {
-            chat_id, 
-            message_id,
-        }
-    );
+async function editMessage({reply_markup = null, chat_id, message_id, text = null}) {
+    if(text){
+        await bot.editMessageText(
+            text,
+            {
+                chat_id,
+                message_id
+            }
+        ).catch(error => {
+            console.error("Error editing message text:", 
+            {
+                message: error.message ? error.message : '',
+                name: error.name ? error.name : '',
+                code: error.code ? error.code : ''
+            });
+        });
+    }
+    if(reply_markup) {
+        await bot.editMessageReplyMarkup(
+            reply_markup,
+            {
+                chat_id, 
+                message_id,
+            }
+        ).catch(error => {
+            console.error("Error editing message reply markup:", 
+            {
+                message: error.message ? error.message : '',
+                name: error.name ? error.name : '',
+                code: error.code ? error.code : ''
+            });
+        });
+    }
 }
 
 module.exports = {
@@ -122,5 +177,5 @@ module.exports = {
     react,
     compactSerialize,
     makeBaseData,
-    editReply,
+    editMessage,
 }
