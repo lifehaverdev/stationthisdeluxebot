@@ -228,6 +228,7 @@ const actionMap = {
             message_id: message.message_id,
             text: 'What prompt do you need help with'
         })
+        message.from.id = user;
         setUserState(message, STATES.ASSIST);
     },
     'ms3': startMs3,
@@ -238,6 +239,7 @@ const actionMap = {
             message_id: message.message_id,
             text: 'what should I say?'
         })
+        message.from.id = user;
         setUserState(message, STATES.SPEAK);
         //sendMessage(message, 'what should I say?');
     },
