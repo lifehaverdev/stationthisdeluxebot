@@ -263,7 +263,7 @@ module.exports = function(bot) {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery);
             //console.log('in callback query data', action, message, user)
-            if(message.from.id != callbackQuery.from.id && action != 'refresh' && message.from.id != 6324772900 ){
+            if(message.from.id != callbackQuery.from.id && action != 'refresh' && message.from.id != 6864632060){//6324772900 ){
                 console.log('wrong user');
                 return
             }
