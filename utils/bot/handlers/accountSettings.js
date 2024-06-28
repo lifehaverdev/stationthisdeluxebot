@@ -5,6 +5,7 @@ const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize }
 const { checkLobby } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
+const { features } = require('../../models/tokengatefeatures.js')
 
 function displayAccountSettingsMenu(message) {
     // Create account settings menu keyboard
@@ -14,29 +15,9 @@ function displayAccountSettingsMenu(message) {
     let accountSettingsKeyboard = [
         [
             {
-                text: `Advanced User: ${lobby[userId].advancedUser ? 'Enabled' : 'Disabled'}`,
+                text: `Advanced User: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
                 callback_data: compactSerialize({...baseData, action: 'toggleAdvancedUser'}),
             },
-            
-        ],
-        // [
-
-            
-        // ],
-        [
-            {
-                text: `Base Prompt Menu`,
-                callback_data: compactSerialize({...baseData, action: 'basepromptmenu'}),
-            },
-            {
-                text: `Voice Menu`,
-                callback_data: compactSerialize({...baseData, action: 'voicemenu'}),
-            },
-            {
-                text: `Checkpoint Menu`,
-                callback_data: compactSerialize({...baseData, action: 'checkpointmenu'}),
-            }
-            
         ],
         [
             {
@@ -47,8 +28,38 @@ function displayAccountSettingsMenu(message) {
                 text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
                 callback_data: compactSerialize({...baseData, action: 'toggleStyleTransfer'}),
             }
+        ],
+        [
+            // {
+            //     text: `Base Prompt Menu`,
+            //     callback_data: compactSerialize({...baseData, action: 'basepromptmenu'}),
+            // },
+            {
+                text: `Voice Menu`,
+                callback_data: compactSerialize({...baseData, action: 'voicemenu'}),
+            },
+            // {
+            //     text: `Checkpoint Menu`,
+            //     callback_data: compactSerialize({...baseData, action: 'checkpointmenu'}),
+            // }
+            
+        ],
+        [
+            {
+                text: 'Chart', 
+                url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
+            },
+            {
+                text: 'Buy',
+                url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
+            },
+            {
+                text: 'Site',
+                url: 'https://miladystation2.net'
+            }
         ]
     ];
+
 
     if (lobby[userId].balance >= 200000) {
         accountSettingsKeyboard[0].push(
@@ -58,14 +69,27 @@ function displayAccountSettingsMenu(message) {
             },
         );
     }
-    // if (lobby[userId].balance >= 0){//} 5000000) {
-    //     accountSettingsKeyboard[0].push(
 
-    //     );
-    // }
+    // Create account information text
+    let accountInfo = `Account:\n\n`;
+    accountInfo += `<b>Username:</b> ${message.from.username}\n`;
+    accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance}\n`;
+    accountInfo += `<b>Points:</b> ${lobby[userId].points || 0}\n\n`;
+    accountInfo += `<b>Locked Features:</b>\n`;
+    
+    // List locked features based on the user's balance
+    const lockedFeatures = features.filter(feature => lobby[userId].balance < feature.gate);
+    if (lockedFeatures.length > 0) {
+        lockedFeatures.forEach(feature => {
+            accountInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
+        });
+    } else {
+        accountInfo += `None\n`;
+    }
 
-    // Send account settings menu
-    bot.sendMessage(chatId, 'Account Settings:', {
+    // Send account settings menu with account information
+    bot.sendMessage(chatId, accountInfo, {
+        parse_mode: 'HTML',
         reply_markup: {
             inline_keyboard: accountSettingsKeyboard
         }
