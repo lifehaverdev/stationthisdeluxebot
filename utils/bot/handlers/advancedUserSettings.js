@@ -2,7 +2,6 @@ const { lobby, compactSerialize } = require('../bot');
 const { sendMessage, makeBaseData } = require('../../utils')
 
 
-
 async function handleAdvancedUserOptions(message) {
     const userId = message.from.id;
     const chatId = message.chat.id;
