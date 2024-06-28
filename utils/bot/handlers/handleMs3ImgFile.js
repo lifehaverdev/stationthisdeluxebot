@@ -1,7 +1,7 @@
 const { lobby, getPhotoUrl, makeSeed, STATES } = require('../bot');
 //const bot = getBotInstance;
 const { enqueueTask } = require('../queue');
-const { sendMessage, setUserState } = require('../../utils')
+const { sendMessage, setUserState, editMessage } = require('../../utils')
 
 async function startMs3(message, user) {
     if(user){
