@@ -42,6 +42,16 @@ const loraTriggers = [
       triggerWords: ["vantablack"]
   },
   {
+    lora_name: 'CLAYMATE',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 0,
+    civitaiLink: 'https://civitai.com/models/208168/claymate-claymation-style-for-sdxl',
+    description: 'claymation style',
+    triggerWords: ['claymation']
+  },
+  {
       lora_name: 'RW_PS1v1',
       default_weight: 0.8,
       version: 'SD1.5',
