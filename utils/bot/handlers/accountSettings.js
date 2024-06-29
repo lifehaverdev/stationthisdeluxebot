@@ -16,17 +16,17 @@ function displayAccountSettingsMenu(message) {
         [
             {
                 text: `Advanced User: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
-                callback_data: compactSerialize({...baseData, action: 'toggleAdvancedUser'}),
+                callback_data: 'toggleAdvancedUser',
             },
         ],
         [
             {
                 text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
-                callback_data: compactSerialize({...baseData, action: 'toggleControlNet'}),
+                callback_data: 'toggleControlNet',
             },
             {
                 text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
-                callback_data: compactSerialize({...baseData, action: 'toggleStyleTransfer'}),
+                callback_data: 'toggleStyleTransfer',
             }
         ],
         [
@@ -36,7 +36,7 @@ function displayAccountSettingsMenu(message) {
             // },
             {
                 text: `Voice Menu`,
-                callback_data: compactSerialize({...baseData, action: 'voicemenu'}),
+                callback_data: 'voicemenu',
             },
             // {
             //     text: `Checkpoint Menu`,
@@ -308,6 +308,7 @@ module.exports = {
     handleSignOut,
     handleAccountReset,
     handleAccountSettings,
+    displayAccountSettingsMenu,
     shakeVerify,
     shakeSignIn
 }

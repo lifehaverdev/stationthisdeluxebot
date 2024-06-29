@@ -35,6 +35,9 @@ function setMenu(message) {
             [
                 { text: 'checkpoint', callback_data: 'checkpointmenu' },
                 { text: 'baseprompt', callback_data: 'basepromptmenu' }
+            ],
+            [
+                { text: 'cancel', callback_data: 'cancel' }
             ]
         ],
           resize_keyboard: true,
@@ -79,6 +82,9 @@ async function handleCreate(message) {
             [
                 { text: 'assist', callback_data: 'assist'},
                 { text: 'interrogate', callback_data: 'interrogate'},
+            ],
+            [
+                { text: 'cancel', callback_data: 'cancel' }
             ]
         ]
         }
@@ -125,7 +131,7 @@ function handleEffect(message) {
                 { text: 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
             ],
             [
-                //{ text: 'image2image promptless', callback_data: compactSerialize({ ...baseData, action: 'pfp' })},
+                { text: 'cancel', callback_data: 'cancel' }
             ]
         ],
           resize_keyboard: true,
@@ -155,6 +161,9 @@ function handleAnimate(message) {
             ],
             [
                 { text: 'txt2speech', callback_data: 'speak' }  
+            ],
+            [
+                { text: 'cancel', callback_data: 'cancel' }
             ]
         ],
           resize_keyboard: true,

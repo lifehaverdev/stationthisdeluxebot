@@ -20,9 +20,9 @@ function enqueueTask(task) {
     // Count how many tasks are in the queue from the same user
     const count = taskQueue.filter(t => t.message.from.id === userId).length;
     // Check if the user has already 4 tasks in the queue
-    if (count >= 2) {
+    if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
-        sendMessage(task.message,"You have 2 things in the queue rn, chill out. Try setting batch or something damn.")
+        sendMessage(task.message,"You have 5 things in the queue rn, chill out. Try setting batch or something damn.")
         return; // Exit the function without enqueuing the new task
     }
     taskQueue.push(task);
@@ -91,7 +91,7 @@ function sortTaskQueue() {
 }
 
 async function processQueue() {
-    if (taskQueue.length > 0 && waiting.length < 3) {
+    if (taskQueue.length > 0 && waiting.length < 7) {
         const task = taskQueue[0];
         waitlist(task);
         //console.log(taskQueue);
