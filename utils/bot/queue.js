@@ -7,6 +7,7 @@ const {
     sendVideo,
     // safeExecute
 } = require('../utils');
+const { addWaterMark } = require('../../commands/waterMark')
 
 let taskQueue = []
 let waiting = []
