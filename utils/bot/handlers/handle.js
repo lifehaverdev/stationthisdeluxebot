@@ -37,7 +37,7 @@ async function shakeAssist(message) {
     const userId = message.from.id;
     const{time,result} = await promptAssist(message);
     lobby[userId].points += time;
-    sendMessage(message,result);
+    sendMessage(message,`\`${result}\``);
     setUserState(message,STATES.IDLE);
     return true
 }
