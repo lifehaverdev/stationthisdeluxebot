@@ -188,9 +188,15 @@ async function retryOperation(operation, ...args) {
     return success
 }
 
+function isTaskOld(task) {
+    const FIFTEEN_MINUTES = 30 * 60 * 1000; // 15 minutes in milliseconds
+    const now = Date.now();
+    return (now - task.timestamp) > FIFTEEN_MINUTES;
+}
+
 async function processWaitlist(status, run_id, outputs) {
     // Check the "waiting" task array for a matching ID
-    
+    waiting = waiting.filter(task => !isTaskOld(task));
     const taskIndex = waiting.findIndex(task => task.run_id === run_id);
     
     if (taskIndex === -1) {
