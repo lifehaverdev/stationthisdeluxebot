@@ -8,8 +8,8 @@ const {
     editMessage,
     safeExecute,
     setUserState,
-    makeBaseData,
 } = require('../utils');
+const { displayAccountSettingsMenu } = require('./handlers/accountSettings')
 const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus } = require('./handlers/handle');
 const { startMs2, startPfp } = require('./handlers/imageToImage')
 const { startMs3 } = require('./handlers/handleMs3ImgFile')
@@ -83,19 +83,12 @@ const handleSetBasePrompt = (message, selectedName, userId) => {
     const basePrompt = getBasePromptByName(selectedName);
     if (basePrompt !== undefined) {
         lobby[userId].basePrompt = selectedName;
-        const messageTitle = `Base prompt set to: ${selectedName}`;
-        const opts = {
+        const messageTitle = `Base prompt set to: ${selectedName} ✅`;
+        editMessage({
+            text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
-        };
-        bot.editMessageText(messageTitle, {
-            chat_id: chatId,
-            message_id: messageId,
-        }).then(() => {
-            bot.editMessageReplyMarkup(getPromptMenu(userId,message),opts);
-        }).catch((error) => {
-            console.error("Error editing message text or reply markup:", error);
-        });
+        })
     } else {
         console.log('no base prompt')
     }
@@ -106,19 +99,12 @@ const handleSetCheckpoint = (message, selectedName, userId) => {
     const chatId = message.chat.id;
     if (selectedName !== undefined) {
         lobby[userId].checkpoint = selectedName;
-        const messageTitle = `Checkpoint set to: ${selectedName}`;
-        const opts = {
+        const messageTitle = `Checkpoint set to: ${selectedName} ✅`;
+        editMessage({
+            text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
-        };
-        bot.editMessageText(messageTitle, {
-            chat_id: chatId,
-            message_id: messageId,
-        }).then(() => {
-            bot.editMessageReplyMarkup(getCheckpointMenu(userId,message),opts);
-        }).catch((error) => {
-            console.error("Error editing message text or reply markup:", error);
-        });
+        })
     } else {
         console.log('no base prompt')
     }
@@ -233,7 +219,7 @@ const actionMap = {
     },
     'ms3': startMs3,
     'set': setMenu,
-    'speak': (message) => {
+    'speak': (message,user) => {
         editMessage({
             chat_id: message.chat.id,
             message_id: message.message_id,
@@ -250,10 +236,38 @@ const actionMap = {
     'setVoice': handleSetVoice,
     'setBasePrompt': handleSetBasePrompt,
     'setCheckpoint': handleSetCheckpoint,
+    'toggleAdvancedUser': async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].advancedUser = !lobby[user].advancedUser;
+        message.from.id = user;
+        displayAccountSettingsMenu(message);
+    },
+    'toggleStyleTransfer': async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].styleTransfer = !lobby[user].styleTransfer;
+        message.from.id = user;
+        displayAccountSettingsMenu(message);
+    },
+    'toggleControlNet' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].controlNet = !lobby[user].controlNet;
+        message.from.id = user;
+        displayAccountSettingsMenu(message);
+    },
+    'toggleWaterMark' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].waterMark = !lobby[user].waterMark;
+        message.from.id = user;
+        displayAccountSettingsMenu(message);
+    },
     'refresh' : async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
         handleStatus(message);
+    },
+    'cancel' : (message) => {
+        bot.deleteMessage(message.chat.id, message.message_id);
     }
+
     
 };
 
@@ -265,7 +279,7 @@ module.exports = function(bot) {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery);
             //console.log('in callback query data', action, message, user)
-            if(message.from.id != callbackQuery.from.id && action != 'refresh' && message.from.id != 6864632060){//6324772900 ){
+            if(message.from.id != callbackQuery.from.id && action != 'refresh' && message.from.id != process.env.BOT_ID){ //6864632060){//6324772900 ){
                 console.log('wrong user');
                 return
             }
