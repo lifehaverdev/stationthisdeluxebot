@@ -175,7 +175,7 @@ function promptPreProc(promptObj) {
                                     .join(" ");
     }
     // Handle LoRa triggers or any other final modifications
-    promptObj.prompt = handleLoraTrigger(cleanedPrompt);
+    promptObj.prompt = handleLoraTrigger(cleanedPrompt, promptObj.balance);
 }
 
 function prepareRequest(promptObj) {

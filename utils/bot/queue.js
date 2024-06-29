@@ -243,9 +243,18 @@ async function handleTaskCompletion(task, run) {
 
         for (const { url, type } of urls) {
             try{
+                let fileToSend = url;
+                if (promptObj.waterMark && type === 'image') {
+                    fileToSend = await addWaterMark(url); // Watermark the image
+                }
                 if (type === 'image') {
                     console.log('Message right before sending photo:', message);
-                    await sendPhoto(message, url);
+                    // await sendPhoto(message, url);
+                    await sendPhoto(message, fileToSend);
+                    if (promptObj.waterMark) {
+                        // Remove the temporary watermarked file
+                        fs.unlinkSync(fileToSend);
+                    }
                 } else if (type === 'gif') {
                     await sendAnimation(message, url);
                 } else if (type === 'video') {
