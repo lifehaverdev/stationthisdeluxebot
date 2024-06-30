@@ -181,6 +181,72 @@ const loraTriggers = [
     civitaiLink: 'miladystation2.net',
     description: 'cult is short for culture',
     triggerWords: ['remilia']
+  },
+  {
+    lora_name: 'XL_Weapon_Dual_Pistols',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/247024/pony-and-xl-weapon-dual-pistols-by-hailoknight?modelVersionId=278696',
+    description: 'character wields 2 pistols',
+    triggerWords: ['dual pistols']
+  },
+  {
+    lora_name: 'XL_Weapon_pistol',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 100000,
+    civitAiLink: 'https://civitai.com/models/199697/pony-and-xl-weapon-pistol-by-hailoknight?modelVersionId=224714',
+    description:'character points pistol',
+    triggerWords: ['pointing pistol']
+  },
+  {
+    lora_name: 'supersaiyanauraXL3',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/318192/super-saiyan-aura-sdxl?modelVersionId=356851',
+    description: 'super saiyan aura',
+    triggerWords: ['supersaiyanaura']
+  },
+  {
+    lora_name: 'single_thumbs_up',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate:100000,
+    civitaiLink: 'https://civitai.com/models/101769/single-thumbs-up?modelVersionId=313391',
+    triggerWords: ['single thumbs up']
+  },
+  {
+    lora_name: 'sdxl_wojakpoint_v14',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/124795/pointing-meme-sdxl',
+    triggerWords: ['duo selfie pose', 'next to each other', 'in the background']
+  },
+  {
+    lora_name: 'pk_trainer_xl_v1',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/159333/pokemon-trainer-sprite-pixelart?modelVersionId=443092',
+    triggerWords: ['gen1','gen2']
+  },
+  {
+    lora_name: 'PE_CourtRoomSketchV2',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/122829/pe-courtroomsketch-style?modelVersionId=148278',
+    triggerWords: ['PECourtRoomSketch','Courtroom']
   }
   // Add more LoRA configurations here
   // {

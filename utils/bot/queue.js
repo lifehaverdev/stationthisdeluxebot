@@ -196,7 +196,7 @@ function isTaskOld(task) {
 
 async function processWaitlist(status, run_id, outputs) {
     // Check the "waiting" task array for a matching ID
-    waiting = waiting.filter(task => !isTaskOld(task));
+    //waiting = waiting.filter(task => !isTaskOld(task));
     const taskIndex = waiting.findIndex(task => task.run_id === run_id);
     
     if (taskIndex === -1) {
