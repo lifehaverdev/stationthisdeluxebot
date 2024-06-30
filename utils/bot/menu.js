@@ -208,7 +208,7 @@ const actionMap = {
         setUserState(message, STATES.INTERROGATION);
         //sendMessage(message, );
     },
-    'assist': (message) => {
+    'assist': (message,user) => {
         editMessage({
             chat_id: message.chat.id,
             message_id: message.message_id,
