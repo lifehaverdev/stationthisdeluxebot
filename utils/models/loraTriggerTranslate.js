@@ -217,7 +217,7 @@ const loraTriggers = [
     default_weight: 1,
     version: 'SDXL',
     type: 'context',
-    gate:100000,
+    gate: 100000,
     civitaiLink: 'https://civitai.com/models/101769/single-thumbs-up?modelVersionId=313391',
     triggerWords: ['single thumbs up']
   },
