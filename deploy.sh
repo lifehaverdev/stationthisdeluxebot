@@ -32,7 +32,7 @@ else
 fi
 
 # Run the new container on the same network with a temporary name
-docker run -d --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME}
+docker run -d -p 80:3000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME}
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
