@@ -194,7 +194,8 @@ async function handleRegen(message) {
         lobby[userId].type == 'MAKE' || 
         lobby[userId].type == 'MAKE_STYLE' || 
         lobby[userId].type == 'MAKE_CONTROL_STYLE' ||
-        lobby[userId].type == 'MAKE_CONTROL' 
+        lobby[userId].type == 'MAKE_CONTROL' ||
+        lobby[userId].type == 'MAKE3'
     ){
         try {
             sendMessage(message,'ok')
