@@ -109,8 +109,8 @@ async function sendLoRaModelFilenames(message) {
 
   // Filter and categorize LoRAs
   loraTriggers.forEach(lora => {
-    console.log(lora.version);
-    console.log(checkpointDescription == lora.version);
+    //console.log(lora.version);
+    //console.log(checkpointDescription == lora.version);
       if (checkpointName && checkpointDescription == lora.version && lobby[message.from.id].balance >= lora.gate) {
           const triggerWords = lora.triggerWords.join(', ');
           const loraInfo = `\`${triggerWords}\``;
