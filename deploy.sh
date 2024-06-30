@@ -52,6 +52,9 @@ if is_container_running ${NEW_CONTAINER}; then
     docker tag ${IMAGE_NAME} ${OLD_IMAGE_NAME}
 
     echo "Update completed successfully."
+
+    # Clean up unused builds
+    docker builder prune -a -f
 else
     echo "Failed to start the new container. Keeping the old container running if it exists."
     docker rm -f ${NEW_CONTAINER}
