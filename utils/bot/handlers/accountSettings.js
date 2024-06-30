@@ -6,6 +6,7 @@ const { checkLobby } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
+const { defaultUserData } = require('../../users/defaultUserData.js')
 
 function displayAccountSettingsMenu(message) {
     // Create account settings menu keyboard
