@@ -76,10 +76,10 @@ const commandPatterns = {
     //'/watermark(.*)': handleWatermark,
     '/signout': handleSignOut,
     '/resetaccount': handleAccountReset,
-    '/set$': setMenu,
-    '/create(.*)': handleCreate,
-    '/effect(.*)': handleEffect,
-    '/animate(.*)': handleAnimate,
+    '/set(?:@stationthisbot)?': setMenu,
+    '/create(?:@stationthisbot)?': handleCreate,
+    '/effect(?:@stationthisbot)?': handleEffect,
+    '/animate(?:@stationthisbot)?': handleAnimate,
     
     '/help(?:@stationthisbot)?': handleHelp,
     '/status(?:@stationthisbot)?': handleStatus

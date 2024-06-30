@@ -147,9 +147,7 @@ async function handleSignIn (message) {
             sendMessage(message, `You are signed in to ${userData.wallet}`);
             if(userData.verified == true){
                 let options = {};
-                if(message.chat.id > 0){
                     options = home
-                }
                 sendMessage(message,'and you are verified. Have fun',options);
                 setUserState(message,STATES.IDLE)
             } else {
