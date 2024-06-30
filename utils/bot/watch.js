@@ -84,8 +84,13 @@ const commandPatterns = {
     '/help(?:@stationthisbot)?': handleHelp,
     '/status(?:@stationthisbot)?': handleStatus,
     '/mogmogmogmogmogmogmogmog$': (message) => {
-        lobby[message.from.id].balance = 200001;
-        sendMessage(message,'based mog cousin you now how 200000 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+        if(lobby[message.from.id].wallet){
+            lobby[message.from.id].balance = 200001;
+            sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+        } else {
+            sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
+        }
+        
     }
 };
 
