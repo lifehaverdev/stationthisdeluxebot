@@ -82,7 +82,11 @@ const commandPatterns = {
     '/animate(?:@stationthisbot)?': handleAnimate,
     
     '/help(?:@stationthisbot)?': handleHelp,
-    '/status(?:@stationthisbot)?': handleStatus
+    '/status(?:@stationthisbot)?': handleStatus,
+    '/mogmogmogmogmogmogmogmog$': (message) => {
+        lobby[message.from.id].balance = 200001;
+        sendMessage(message,'based mog cousin you now how 200000 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+    }
 };
 
 
