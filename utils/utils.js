@@ -50,6 +50,7 @@ async function sendMessage(msg, text, options = {}) {
             return response;
         } catch (error) {
             console.error(`sendMessage error:`, {
+                context: text,
                 message: error.message || '',
                 name: error.name || '',
                 code: error.code || ''

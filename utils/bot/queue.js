@@ -231,7 +231,7 @@ async function processWaitlist(status, run_id, outputs) {
 
         // Handle sending the content to the user via handleTaskCompletion
         const result = await handleTaskCompletion(task, run);
-        console.log('Task completion response:', success);
+        console.log('Task completion response:', result);
 
         // Remove the corresponding task from the waiting array only if sent successfully
         // Remove the corresponding task from the waiting array only if successfully processed
