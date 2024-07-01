@@ -33,64 +33,66 @@ async function safeExecute(message, callback) {
     }
 }
 async function sendMessage(msg, text, options = {}) {
-    if(text == ''){
-        return
+    if (text === '') {
+        return null;
     }
     const chatId = msg.chat.id;
     if (msg.message_id) {
-        options.reply_to_message_id = msg.message_id
+        options.reply_to_message_id = msg.message_id;
     }
     if (msg.message_thread_id) {
         options.message_thread_id = msg.message_thread_id;
     }
-    let response;
-    try {
-        response = await bot.sendMessage(chatId, text, options);
-    } catch (error) {
-        console.error(`Sendmessage error:`, {
-            message: error.message ? error.message : '',
-            name: error.name ? error.name : '',
-            code: error.code ? error.code : '',
-            // url: error.request ? JSON.stringify(error.request) : '',
-            // request: error.request.path? error.request.path : ''
-        });
+
+    const attemptSendMessage = async (options) => {
         try {
-            options.reply_to_message_id = null;
-
-            response = await bot.sendMessage(chatId, text, options);
+            const response = await bot.sendMessage(chatId, text, options);
+            return response;
         } catch (error) {
-            console.error(`sendMessage error 2:`, {
-                message: error.message ? error.message : '',
-                name: error.name ? error.name : '',
-                code: error.code ? error.code : '',
-                // url: error.request ? JSON.stringify(error.request) : '',
-                // request: error.request.path? error.request.path : ''
+            console.error(`sendMessage error:`, {
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || ''
             });
-            try {
-                options.message_thread_id = null;
-
-                response = await bot.sendMessage(chatId, text, options);
-            } catch (error) {
-                console.error(`sendMessage error 3:`, {
-                    message: error.message ? error.message : '',
-                    name: error.name ? error.name : '',
-                    code: error.code ? error.code : '',
-                    // url: error.request ? JSON.stringify(error.request) : '',
-                    // request: error.request.path? error.request.path : ''
-                });
-            }
+            return null;
         }
-    }
-    return response;
+    };
+
+    // Try sending the message with different options
+    let response = await attemptSendMessage(options);
+    if (response) return response;
+    options.reply_to_message_id = null;
+    response = await attemptSendMessage(options);
+    if (response) return response;
+    options.message_thread_id = null;
+    return await attemptSendMessage(options);
 }
 async function sendPhoto(msg, fileUrl) {
-    return await bot.sendPhoto(msg.chat.id,fileUrl,optionAppendage(msg));    
+    try {
+        const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
+        return response;
+    } catch (error) {
+        console.error('sendPhoto error:', error.message || error);
+        return null;
+    }
 }
 async function sendAnimation(msg, fileUrl) {
-    return await bot.sendAnimation(msg.chat.id,fileUrl,optionAppendage(msg));    
+    try {
+        const response = await bot.sendAnimation(msg.chat.id, fileUrl, optionAppendage(msg));
+        return response;
+    } catch (error) {
+        console.error('sendAnimation error:', error.message || error);
+        return null;
+    }
 }
 async function sendVideo(msg, fileUrl) {
-    return await bot.sendVideo(chatId,fileUrl,optionAppendage(msg));    
+    try {
+        const response = await bot.sendVideo(msg.chat.id, fileUrl, optionAppendage(msg));
+        return response;
+    } catch (error) {
+        console.error('sendVideo error:', error.message || error);
+        return null;
+    }
 }
 function optionAppendage(msg){
     const options = {};

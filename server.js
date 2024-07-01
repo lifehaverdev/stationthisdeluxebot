@@ -2,11 +2,12 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { getBot } = require('./app');
 require('dotenv').config();
-console.log('running server now');
 const { processWaitlist } = require('./utils/bot/queue');
 
 const app = express();
 app.use(bodyParser.json());
+
+console.log('running server now');
 
 app.get('api/webhook',() => {
   console.log('yeah we are open for business')
@@ -18,20 +19,16 @@ app.post('/api/webhook', async (req, res) => {
   // Log the entire request body
   console.log('Request body:', req.body);
   
-  //const { parseWebhookDataSafe } = await import('comfydeploy');
-  
   try {
-    const data = req.body;
+    const { status, run_id, outputs } = req.body;
     //console.log('Parsed data:', data);
     
-    if (!data || !data.status || !data.run_id) {
+    if (!status || !run_id) {
       const error = 'Invalid request: Missing required fields';
       console.error(error);
       res.status(400).json({ error });
       return;
     }
-
-    const { status, run_id, outputs } = data;
     
     // Log the parsed data
     console.log('Status:', status);
