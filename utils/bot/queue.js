@@ -159,7 +159,7 @@ async function waitlist(task){
 
 // Define a set to keep track of run_ids being processed
 const processingRunIds = new Set();
-const processQueue = {};
+const processingQueue = {};
 
 async function retryOperation(operation, ...args) {
     let attempts = 0;
@@ -190,20 +190,23 @@ async function retryOperation(operation, ...args) {
     return success
 }
 
-function isTaskOld(task) {
-    const FIFTEEN_MINUTES = 30 * 60 * 1000; // 15 minutes in milliseconds
+const TWENTY_MINUTES = 20 * 60 * 1000;
+
+function removeStaleTasks() {
     const now = Date.now();
-    return (now - task.timestamp) > FIFTEEN_MINUTES;
+    waiting = waiting.filter(task => (now - task.timestamp) <= TWENTY_MINUTES);
 }
 
 async function processWaitlist(status, run_id, outputs) {
 
+    removeStaleTasks();
+
     // Avoid processing the same task multiple times
     if (processingRunIds.has(run_id)) {
-        if (!processQueue[run_id]) {
-            processQueue[run_id] = [];
+        if (!processingQueue[run_id]) {
+            processingQueue[run_id] = [];
         }
-        processQueue[run_id].push({ status, outputs });
+        processingQueue[run_id].push({ status, outputs });
         console.log(`Task with run_id ${run_id} is already being processed. Added to queue.`);
         return;
     }
@@ -243,12 +246,12 @@ async function processWaitlist(status, run_id, outputs) {
         processingRunIds.delete(run_id);
 
         // Process the next task in the queue for this run_id, if any
-        if (processQueue[run_id] && processQueue[run_id].length > 0) {
-            const nextTask = processQueue[run_id].shift();
+        if (processingQueue[run_id] && processingQueue[run_id].length > 0) {
+            const nextTask = processingQueue[run_id].shift();
             processWaitlist(nextTask.status, run_id, nextTask.outputs);
-            // Clean up the processQueue if empty
-            if (processQueue[run_id].length === 0) {
-                delete processQueue[run_id];
+            // Clean up the processingQueue if empty
+            if (processingQueue[run_id].length === 0) {
+                delete processingQueue[run_id];
             }
         }
     }
