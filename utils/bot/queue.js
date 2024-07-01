@@ -236,10 +236,10 @@ async function processWaitlist(status, run_id, outputs) {
 
         // Remove the corresponding task from the waiting array only if sent successfully
         // Remove the corresponding task from the waiting array only if successfully processed
-        if (result === 'success') {
+        if (result == 'success') {
             waiting.splice(taskIndex, 1);
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
-        } else if (result === 'failed') {
+        } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
         } else {
             console.log(`Task with run_id ${run_id} is incomplete, not removing from waiting array.`);
