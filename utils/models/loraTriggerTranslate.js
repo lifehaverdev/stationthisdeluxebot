@@ -247,6 +247,15 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/122829/pe-courtroomsketch-style?modelVersionId=148278',
     triggerWords: ['PECourtRoomSketch','Courtroom']
+  },
+  {
+    lora_name: 'felted_doll',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/155531/felted-doll-xl-or',
+    triggerwords: ['Felted Doll']
   }
   // Add more LoRA configurations here
   // {

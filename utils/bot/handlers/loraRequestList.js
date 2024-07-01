@@ -30,67 +30,12 @@ function handleRequest(message) {
     return true;
 }
 
-// async function sendLoRaModelFilenames(message) {
-//     const chatId = message.chat.id;
-//     let loraMessage = 'Here are the available LoRAs:\n\n';
-  
-//     loraTriggers.forEach(lora => {
-//       const triggerWords = lora.triggerWords.join(', ');
-//       loraMessage += `Trigger Words: ${triggerWords}\n`;
-//       loraMessage += `Description: ${lora.description}\n`;
-//       loraMessage += `Civitai Link: ${lora.civitaiLink}\n\n`;
-//     });
-  
-//     loraMessage += 'Use the listed trigger word to activate the LoRA in your prompt!';
-  
-//     const maxMessageLength = 4096; // Telegram's max message length is 4096 characters
-//   if (loraMessage.length > maxMessageLength) {
-//     const midpoint = Math.floor(loraMessage.length / 2);
-//     let splitIndex = midpoint;
-    
-//     // Ensure we split at a sensible point (e.g., end of a line)
-//     while (splitIndex > 0 && loraMessage[splitIndex] !== '\n') {
-//       splitIndex--;
-//     }
-
-//     const messagePart1 = loraMessage.substring(0, splitIndex);
-//     const messagePart2 = loraMessage.substring(splitIndex);
-
-//     sendMessage(message, messagePart1)
-//       .then(() => {
-//         sendMessage(message, messagePart2)
-//           .then(() => {
-//             console.log(`Sent split LoRA list to chatId ${chatId}.`);
-//           })
-//           .catch(error => {
-//             console.error(`Error sending second part of LoRA list to chatId ${chatId}:`, error);
-//           });
-//       })
-//       .catch(error => {
-//         console.error(`Error sending first part of LoRA list to chatId ${chatId}:`, error);
-//       });
-//   } else {
-//     sendMessage(message, loraMessage)
-//       .then(() => {
-//         console.log(`Sent LoRA list to chatId ${chatId}.`);
-//       })
-//       .catch(error => {
-//         console.error(`Error sending LoRA list to chatId ${chatId}:`, error);
-//       });
-//   }
-// }
-
 async function sendLoRaModelFilenames(message) {
   const chatId = message.chat.id;
   let loraMessage = 'Loras:\n\n';
 
   const checkpointName = lobby[message.from.id]?.checkpoint;
-  console.log(checkpointName);
-  // const checkpointDescriptions = {
-  //     "SD1.5": true,
-  //     "SDXL": true,
-  //     "SD3": true
-  // };
+  //console.log(checkpointName);
   let checkpointDescription = '';
   if (checkpointName) {
       const checkpoint = checkpointmenu.find(item => item.name === checkpointName);
