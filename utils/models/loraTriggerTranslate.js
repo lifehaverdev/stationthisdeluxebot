@@ -255,7 +255,7 @@ const loraTriggers = [
     type: 'style',
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/155531/felted-doll-xl-or',
-    triggerwords: ['Felted Doll']
+    triggerWords: ['Felted Doll']
   }
   // Add more LoRA configurations here
   // {
