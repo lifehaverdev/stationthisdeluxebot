@@ -237,8 +237,12 @@ async function processWaitlist(status, run_id, outputs) {
         // Remove the corresponding task from the waiting array only if sent successfully
         // Remove the corresponding task from the waiting array only if successfully processed
         if (result == 'success') {
+            console.log('waiting before splicing',waiting);
+
             waiting.splice(taskIndex, 1);
+            
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
+            console.log('waiting after splicing',waiting)
         } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
         } else {
