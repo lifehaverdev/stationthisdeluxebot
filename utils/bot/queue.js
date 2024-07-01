@@ -269,9 +269,10 @@ async function handleTaskCompletion(task, run) {
     const possibleTypes = ["images", "gifs", "videos", "text"];
     let urls = [];
     let texts = [];
-    let success = true;
+    let sent = true;
 
     const operation = async () => {
+        
         // If outputs are present, process them
         if (outputs && outputs.length > 0) {
             console.log("Outputs found:", outputs.length);
@@ -299,7 +300,7 @@ async function handleTaskCompletion(task, run) {
                         fileToSend = await addWaterMark(url); // Watermark the image
                     }
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj.waterMark);
-                    if (!mediaResponse) success = false;
+                    if (!mediaResponse) sent = false;
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);
                 }
@@ -308,7 +309,7 @@ async function handleTaskCompletion(task, run) {
             for (const text of texts) {
                 try {
                     const mediaResponse = await sendMessage(message, text);
-                    if (!mediaResponse) success = false;
+                    if (!mediaResponse) sent = false;
                 } catch (err) {
                     console.error('Error sending text:', err.message || err);
                 }
@@ -319,8 +320,11 @@ async function handleTaskCompletion(task, run) {
     };
 
     if (status === 'success') {
+        task.status = 'success'
         const operationSuccess = await retryOperation(operation);
-        return operationSuccess && success ? 'success' : 'failed';
+        console.log('operationSuccess value after  retry operation',operationSuccess)
+        console.log('sent? ',sent);
+        return operationSuccess && sent ? 'success' : 'failed';
     } else {
         if (status === undefined || status === 'undefined') {
             task.status = 'thinking';
