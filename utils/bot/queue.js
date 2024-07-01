@@ -194,7 +194,9 @@ const TWENTY_MINUTES = 20 * 60 * 1000;
 
 function removeStaleTasks() {
     const now = Date.now();
+    console.log('removing stales before',waiting.length);
     waiting = waiting.filter(task => (now - task.timestamp) <= TWENTY_MINUTES);
+    console.log('removing stales',waiting.length)
 }
 
 async function processWaitlist(status, run_id, outputs) {
@@ -232,11 +234,14 @@ async function processWaitlist(status, run_id, outputs) {
         console.log('Task completion response:', success);
 
         // Remove the corresponding task from the waiting array only if sent successfully
-        if (success) {
+        // Remove the corresponding task from the waiting array only if successfully processed
+        if (result === 'success') {
             waiting.splice(taskIndex, 1);
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
-        } else {
+        } else if (result === 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
+        } else {
+            console.log(`Task with run_id ${run_id} is incomplete, not removing from waiting array.`);
         }
 
     } catch (err) {
@@ -293,7 +298,7 @@ async function handleTaskCompletion(task, run) {
                     if (promptObj.waterMark && type === 'image') {
                         fileToSend = await addWaterMark(url); // Watermark the image
                     }
-                    const mediaResponse = await sendMedia(message, url, type, promptObj.waterMark);
+                    const mediaResponse = await sendMedia(message, fileToSend, type, promptObj.waterMark);
                     if (!mediaResponse) success = false;
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);
@@ -314,15 +319,15 @@ async function handleTaskCompletion(task, run) {
     };
 
     if (status === 'success') {
-        const success = await retryOperation(operation);
-        return success;
+        const operationSuccess = await retryOperation(operation);
+        return operationSuccess && success ? 'success' : 'failed';
     } else {
         if (status === undefined || status === 'undefined') {
             task.status = 'thinking';
         } else {
             task.status = status;
         }
-        return true; // Return true for non-'success' statuses to avoid blocking the queue
+        return 'incomplete'; 
     }
 }
 
