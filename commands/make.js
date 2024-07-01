@@ -151,7 +151,8 @@ function imgPreProc(promptObj) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    
+    let userBasePrompt;
+    promptObj.userBasePrompt == '-1' ?  userBasePrompt = '' : userBasePrompt = handleLoraTrigger(promptObj.userBasePrompt)
     // Initial cleanup
     let cleanedPrompt = promptObj.prompt.replace(`@${process.env.BOT_NAME}`, "").trim();
 
@@ -175,18 +176,18 @@ function promptPreProc(promptObj) {
                                     .join(" ");
     }
     // Handle LoRa triggers or any other final modifications
-    promptObj.prompt = handleLoraTrigger(cleanedPrompt, promptObj.balance);
+    promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
 }
 
 function prepareRequest(promptObj) {
     let basePrompt = getBasePromptByName(promptObj.basePrompt);
-    let userBasePrompt;
+    
     let negPrompt;
-    promptObj.userBasePrompt == '-1' ?  userBasePrompt = '' : userBasePrompt = promptObj.userBasePrompt
+    
     promptObj.negativePrompt == '-1' ?  negPrompt = '' : negPrompt = promptObj.negativePrompt;
     const comfydeployid = getDeploymentIdByType(promptObj.type);
     console.log(comfydeployid);
-    console.log(promptObj.prompt +" "+ userBasePrompt + basePrompt)
+    console.log(promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt)
     switch(promptObj.type) {
         case "MAKE":
             body = JSON.stringify({
@@ -199,7 +200,7 @@ function prepareRequest(promptObj) {
                     input_batch: promptObj.batchMax,
                     input_steps: promptObj.steps,
                     input_cfg: promptObj.cfg,
-                    input_prompt: promptObj.prompt +" "+ userBasePrompt + basePrompt,
+                    input_prompt: promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt,
                     input_checkpoint: promptObj.checkpoint+'.safetensors'
                 }
             });
@@ -214,7 +215,7 @@ function prepareRequest(promptObj) {
                   "input_batch": promptObj.batchMax,
                   "input_steps": promptObj.steps,
                   "input_cfg": promptObj.cfg,
-                  "input_prompt": promptObj.prompt +" "+ userBasePrompt + basePrompt,
+                  "input_prompt": promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt,
                   "input_checkpoint": promptObj.checkpoint+'.safetensors',
                   "input_image": promptObj.fileUrl,
                   "input_strength": promptObj.strength
@@ -242,7 +243,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength
@@ -258,7 +259,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
@@ -275,7 +276,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
@@ -291,7 +292,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
@@ -308,7 +309,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.prompt + " "+ promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength
@@ -324,7 +325,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.prompt + " "+ promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
@@ -342,7 +343,7 @@ function prepareRequest(promptObj) {
                 "input_batch": promptObj.batchMax,
                 "input_steps": promptObj.steps,
                 "input_cfg": promptObj.cfg,
-                "input_prompt": promptObj.prompt + " "+ userBasePrompt + basePrompt,
+                "input_prompt": promptObj.prompt + " "+ promptObj.userBasePrompt + basePrompt,
                 "input_checkpoint": promptObj.checkpoint+'.safetensors',
                 "input_image": promptObj.fileUrl,
                 "input_strength": promptObj.strength,
@@ -362,7 +363,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.styleFileUrl
                   }
@@ -377,7 +378,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_control_image": promptObj.controlFileUrl,
                     "input_width": promptObj.photoStats.width,
@@ -395,7 +396,7 @@ function prepareRequest(promptObj) {
                     "input_batch": promptObj.batchMax,
                     "input_steps": promptObj.steps,
                     "input_cfg": promptObj.cfg,
-                    "input_prompt": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_prompt": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_control_image": promptObj.controlFileUrl,
                     "input_width": promptObj.photoStats.width,
@@ -408,7 +409,7 @@ function prepareRequest(promptObj) {
                 deployment_id: comfydeployid,
                 webhook: webHook,
                 inputs: {
-                    "input_text": promptObj.prompt + " " + userBasePrompt + basePrompt,
+                    "input_text": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
                     "input_negative_text": promptObj.negPrompt,
                     "input_seed": promptObj.seed
                   }
