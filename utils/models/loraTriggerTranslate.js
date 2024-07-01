@@ -256,6 +256,15 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/155531/felted-doll-xl-or',
     triggerWords: ['Felted Doll']
+  },
+  {
+    lora_name: 'oidrater',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 100000,
+    civitaiLink: 'https://miladystation2.net',
+    triggerWords: ['oidrater']
   }
   // Add more LoRA configurations here
   // {
