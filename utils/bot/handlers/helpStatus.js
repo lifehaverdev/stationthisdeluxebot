@@ -61,15 +61,13 @@ function handleHelp(message) {
 }
 async function handleStatus(message) {
     let msg = 
-    `I have been running for ${(Date.now() - startup) / 1000} seconds. 
-    `
+    `I have been running for ${(Date.now() - startup) / 1000} seconds.\n`
     taskQueue.length > 0 ? msg +=    
     `Waiting: 
     ${taskQueue.map(task => {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         return `${username}: ${task.promptObj.type}`; // Include remaining time in the status
-    }).join('\n')}
-    ` : null
+    }).join('\n')}` : null
 
     waiting.length > 0 ? msg += 
     `Working on: 
@@ -77,8 +75,7 @@ async function handleStatus(message) {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         const remainingTime = task.status; // Calculate remaining time until checkback
         return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
-    }).join('\n')}
-    ` : null
+    }).join('\n')}` : null
     const sent = await sendMessage(message, msg);
     //const baseData = makeBaseData(sent,sent.from.id);
     //const callbackData = compactSerialize({ ...baseData, action: `refresh`});

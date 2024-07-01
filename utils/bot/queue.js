@@ -159,6 +159,8 @@ async function waitlist(task){
 
 // Define a set to keep track of run_ids being processed
 const processingRunIds = new Set();
+const processQueue = {};
+
 async function retryOperation(operation, ...args) {
     let attempts = 0;
     let success = false;
@@ -195,125 +197,172 @@ function isTaskOld(task) {
 }
 
 async function processWaitlist(status, run_id, outputs) {
-    // Check the "waiting" task array for a matching ID
-    //waiting = waiting.filter(task => !isTaskOld(task));
-    const taskIndex = waiting.findIndex(task => task.run_id === run_id);
-    
-    if (taskIndex === -1) {
-        console.error('Task with run_id not found in the waiting array.');
+
+    // Avoid processing the same task multiple times
+    if (processingRunIds.has(run_id)) {
+        if (!processQueue[run_id]) {
+            processQueue[run_id] = [];
+        }
+        processQueue[run_id].push({ status, outputs });
+        console.log(`Task with run_id ${run_id} is already being processed. Added to queue.`);
         return;
     }
 
-    const task = waiting[taskIndex];
-    const run = {
-        status, run_id, outputs
-    }
-    // Handle sending the content to the user via handleTaskCompletion
-    const response = await handleTaskCompletion(task, run);
-    console.log(response)
+    // Add the run_id to the set of processing tasks
+    processingRunIds.add(run_id);
 
-    // Remove the corresponding task from the waiting array
-    if(status == 'success' || status == 'failed' || status == 'timeout' || Date.now() - task.timestamp > 30 * 60 * 60 * 1000){
-        waiting.splice(taskIndex, 1);
+    try {
+        // Check the "waiting" task array for a matching ID
+        const taskIndex = waiting.findIndex(task => task.run_id === run_id);
+
+        if (taskIndex === -1) {
+            console.error('Task with run_id not found in the waiting array.');
+            processingRunIds.delete(run_id);
+            return;
+        }
+
+        const task = waiting[taskIndex];
+        const run = { status, run_id, outputs };
+
+        // Handle sending the content to the user via handleTaskCompletion
+        const success = await handleTaskCompletion(task, run);
+        console.log('Task completion response:', success);
+
+        // Remove the corresponding task from the waiting array only if sent successfully
+        if (success) {
+            waiting.splice(taskIndex, 1);
+            console.log(`Task with run_id ${run_id} removed from the waiting array.`);
+        } else {
+            console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
+        }
+
+    } catch (err) {
+        console.error('Exception in processWaitlist:', err);
+    } finally {
+        // Remove the run_id from the set of processing tasks
+        processingRunIds.delete(run_id);
+
+        // Process the next task in the queue for this run_id, if any
+        if (processQueue[run_id] && processQueue[run_id].length > 0) {
+            const nextTask = processQueue[run_id].shift();
+            processWaitlist(nextTask.status, run_id, nextTask.outputs);
+            // Clean up the processQueue if empty
+            if (processQueue[run_id].length === 0) {
+                delete processQueue[run_id];
+            }
+        }
     }
-    
-    // Continue processing tasks
     processQueue();
 }
 
 async function handleTaskCompletion(task, run) {
     const { message, promptObj } = task;
     const { status, outputs } = run;
-    const possibleTypes = ["images", "gifs", "videos","text"];
+    const possibleTypes = ["images", "gifs", "videos", "text"];
     let urls = [];
     let texts = [];
+    let success = true;
 
     const operation = async () => {
-        console.log("Outputs found:", outputs.length);
-        outputs.forEach(outputItem => {
-            possibleTypes.forEach(type => {
-                
-                if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
-                    if (type === 'text') {
-                        texts = outputItem.data[type]; // Directly assign the text array
-                    } else {
-                    outputItem.data[type].forEach(dataItem => {
-                        const url = dataItem.url;
-                        const fileType = extractType(url);
-                        urls.push({ type: fileType, url });
-                        console.log(`${fileType.toUpperCase()} URL:`, url);
-                    });
-                }
-                }
-            });
-        });
-
-        for (const { url, type } of urls) {
-            try{
-                let fileToSend = url;
-                if (promptObj.waterMark && type === 'image') {
-                    fileToSend = await addWaterMark(url); // Watermark the image
-                }
-                if (type === 'image') {
-                    console.log('Message right before sending photo:', message);
-                    // await sendPhoto(message, url);
-                    await sendPhoto(message, fileToSend);
-                    if (promptObj.waterMark) {
-                        // Remove the temporary watermarked file
-                        fs.unlinkSync(fileToSend);
+        // If outputs are present, process them
+        if (outputs && outputs.length > 0) {
+            console.log("Outputs found:", outputs.length);
+            outputs.forEach(outputItem => {
+                possibleTypes.forEach(type => {
+                    if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
+                        if (type === 'text') {
+                            texts = outputItem.data[type]; // Directly assign the text array
+                        } else {
+                            outputItem.data[type].forEach(dataItem => {
+                                const url = dataItem.url;
+                                const fileType = extractType(url);
+                                urls.push({ type: fileType, url });
+                                console.log(`${fileType.toUpperCase()} URL:`, url);
+                            });
+                        }
                     }
-                } else if (type === 'gif') {
-                    await sendAnimation(message, url);
-                } else if (type === 'video') {
-                    await sendVideo(message, url);
-                } else {
-                    console.error(`Unknown URL type for URL: ${url}`);
+                });
+            });
+
+            for (const { url, type } of urls) {
+                try {
+                    let fileToSend = url;
+                    if (promptObj.waterMark && type === 'image') {
+                        fileToSend = await addWaterMark(url); // Watermark the image
+                    }
+                    const mediaResponse = await sendMedia(message, url, type, promptObj.waterMark);
+                    if (!mediaResponse) success = false;
+                } catch (err) {
+                    console.error('Error sending media:', err.message || err);
                 }
-            } catch (err) {
-                console.log('sending media error');
-                console.log(
-                    `${ err.message ? err.message : ''}`
-                )
             }
-            
-        }
-        for (const text of texts) {
-            try {
-                await sendMessage(message, text);
-            } catch (err) {
-                console.log('Sending text error');
-                console.log(`${err.message ? err.message : ''}`);
+
+            for (const text of texts) {
+                try {
+                    const mediaResponse = await sendMessage(message, text);
+                    if (!mediaResponse) success = false;
+                } catch (err) {
+                    console.error('Error sending text:', err.message || err);
+                }
             }
+        } else {
+            console.log(`No outputs to process for status: ${status}`);
         }
     };
 
     if (status === 'success') {
-        return await retryOperation(operation); // Retry sending message/photo/video 3 times with a delay of 2 seconds between retries
+        const success = await retryOperation(operation);
+        return success;
     } else {
-        if(status == undefined || status == 'undefined'){
-            task.status = 'thinking'
+        if (status === undefined || status === 'undefined') {
+            task.status = 'thinking';
         } else {
             task.status = status;
         }
+        return true; // Return true for non-'success' statuses to avoid blocking the queue
     }
 }
-// Function to extract type from the URL or outputItem.type field
+
+async function sendMedia(message, fileToSend, type, waterMark) {
+    if (type === 'image') {
+        console.log('Sending photo:', fileToSend);
+        const response = await sendPhoto(message, fileToSend);
+        if (waterMark) {
+            fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
+        }
+        return response;
+    } else if (type === 'gif') {
+        console.log('Sending animation:', fileToSend);
+        return await sendAnimation(message, fileToSend);
+    } else if (type === 'video') {
+        console.log('Sending video:', fileToSend);
+        return await sendVideo(message, fileToSend);
+    } else {
+        console.error(`Unknown URL type for URL: ${fileToSend}`);
+        return null;
+    }
+}
+
+
 function extractType(url) {
     if (!url) {
         console.error('extractType: URL is undefined or null');
         return 'unknown';
     }
-    // Example logic to extract type from the URL or outputItem.type field
     const extension = url.split('.').pop().toLowerCase();
-    if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
-        return 'image';
-    } else if (extension === 'gif') {
-        return 'gif';
-    } else if (extension === 'mp4' || extension === 'avi' || extension === 'mov') {
-        return 'video';
-    } else {
-        // Default to 'unknown' type if extension is not recognized
-        return 'unknown';
+    switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+        case 'png':
+            return 'image';
+        case 'gif':
+            return 'gif';
+        case 'mp4':
+        case 'avi':
+        case 'mov':
+            return 'video';
+        default:
+            return 'unknown';
     }
 }
 
