@@ -13,6 +13,18 @@ is_container_running() {
     [ "$(docker inspect -f '{{.State.Running}}' $1 2>/dev/null)" = "true" ]
 }
 
+# Ensure the script itself is executable
+SCRIPT_PATH="$(realpath $0)"
+if [ ! -x "$SCRIPT_PATH" ]; then
+    chmod +x "$SCRIPT_PATH"
+    exec "$SCRIPT_PATH" "$@"
+    exit
+fi
+
+# Pull the latest changes from the repository
+git reset --hard
+git pull
+
 # Pull the latest changes from the repository
 git pull
 
