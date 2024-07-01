@@ -8,6 +8,7 @@ const {
     // safeExecute
 } = require('../utils');
 const { addWaterMark } = require('../../commands/waterMark')
+const fs = require('fs');
 
 let taskQueue = []
 let waiting = []
