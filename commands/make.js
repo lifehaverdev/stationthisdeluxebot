@@ -111,7 +111,7 @@ async function generate(promptObj) {
         if (response.ok) {
             const data = await response.json();
             ( run_id ) = data.run_id;
-            console.log('runid',run_id);
+            //console.log('runid',run_id);
             return run_id;
         } else {
             console.error('Failed to fetch:', response.body.stream);
@@ -125,7 +125,7 @@ async function generate(promptObj) {
 
 
 function imgPreProc(promptObj) {
-    console.log('processing image');
+    //console.log('processing image');
     if(promptObj.type == 'MAKE' || promptObj.type == 'MAKE_CONTROL' || promptObj.type == 'MAKE_CONTROL_STYLE'){
         console.log('make type')
         return
@@ -187,7 +187,7 @@ function prepareRequest(promptObj) {
     promptObj.negativePrompt == '-1' ?  negPrompt = '' : negPrompt = promptObj.negativePrompt;
     const comfydeployid = getDeploymentIdByType(promptObj.type);
     console.log(comfydeployid);
-    console.log(promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt)
+    //console.log(promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt)
     switch(promptObj.type) {
         case "MAKE":
             body = JSON.stringify({

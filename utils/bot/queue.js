@@ -107,9 +107,16 @@ async function processQueue() {
         }
         processQueue(); // Continue processing next task
     } else {
-        console.log('All queue processed , or waitlist full')
-        console.log('Waitlist',waiting.length);
-        console.log('Tasks',taskQueue.length);
+        if(taskQueue.length == 0 && waiting.length == 0){
+            console.log('queues empty');
+        } else if (taskQueue.length == 0 && waiting.length > 0){
+            console.log('queue empty, waiting')
+        } else if (taskQueue.length > 0 && waiting.length > 7) {
+            console.log('we are full full')
+        }
+        //console.log('All queue processed , or waitlist full')
+        //console.log('Waitlist',waiting.length);
+        //console.log('Tasks',taskQueue.length);
     }
 }
 
@@ -143,7 +150,7 @@ async function waitlist(task){
             break;
     }
     if(run_id != -1 && run_id != undefined){
-        console.log('we have run id',run_id);
+        //console.log('we have run id',run_id);
         task = {
             ...task,
             run_id: run_id,
@@ -177,8 +184,6 @@ async function retryOperation(operation, ...args) {
             message: error.message ? error.message : '',
             name: error.name ? error.name : '',
             code: error.code ? error.code : '',
-            // url: error.request ? JSON.stringify(error.request) : '',
-            // request: error.request.path? error.request.path : ''
         });
             attempts++;
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -195,9 +200,7 @@ const TWENTY_MINUTES = 20 * 60 * 1000;
 
 function removeStaleTasks() {
     const now = Date.now();
-    console.log('removing stales before',waiting.length);
     waiting = waiting.filter(task => (now - task.timestamp) <= TWENTY_MINUTES);
-    console.log('removing stales',waiting.length)
 }
 
 async function processWaitlist(status, run_id, outputs) {
@@ -232,17 +235,10 @@ async function processWaitlist(status, run_id, outputs) {
 
         // Handle sending the content to the user via handleTaskCompletion
         const result = await handleTaskCompletion(task, run);
-        console.log('Task completion response:', result);
-
-        // Remove the corresponding task from the waiting array only if sent successfully
         // Remove the corresponding task from the waiting array only if successfully processed
         if (result == 'success') {
-            console.log('waiting before splicing',waiting);
-
             waiting.splice(taskIndex, 1);
-            
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
-            console.log('waiting after splicing',waiting)
         } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
         } else {
@@ -327,8 +323,8 @@ async function handleTaskCompletion(task, run) {
     if (status === 'success') {
         task.status = 'success'
         const operationSuccess = await retryOperation(operation);
-        console.log('operationSuccess value after  retry operation',operationSuccess)
-        console.log('sent? ',sent);
+        //console.log('operationSuccess value after  retry operation',operationSuccess)
+        //console.log('sent? ',sent);
         return operationSuccess && sent ? 'success' : 'failed';
     } else {
         if (status === undefined || status === 'undefined') {
