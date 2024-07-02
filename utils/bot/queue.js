@@ -242,12 +242,18 @@ async function processWaitlist(status, run_id, outputs) {
         const result = await handleTaskCompletion(task, run);
         // Remove the corresponding task from the waiting array only if successfully processed
         if (result == 'success') {
-            console.log('before removing task',waiting.length)
+            // console.log('before removing task',waiting.length)
             waiting.splice(taskIndex, 1);
-            console.log('after removing task',waiting.length);
+            // console.log('after removing task',waiting.length);
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
         } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
+            waiting.splice(taskIndex, 1);
+        } else if (result == 'not sent'){
+            const secondResult = await handleTaskCompletion(task, run);
+            if(secondResult){
+                waiting.splice(taskIndex, 1);
+            } 
         } else {
             console.log(`Task with run_id ${run_id} is incomplete, not removing from waiting array.`);
         }
@@ -332,7 +338,9 @@ async function handleTaskCompletion(task, run) {
         const operationSuccess = await retryOperation(operation);
         //console.log('operationSuccess value after  retry operation',operationSuccess)
         //console.log('sent? ',sent);
-        return operationSuccess && sent ? 'success' : 'failed';
+        return operationSuccess && sent ? 'success' : 'not sent';
+    } else if (status === 'failed'){
+      return 'failed';  
     } else {
         if (status === undefined || status === 'undefined') {
             task.status = 'thinking';
