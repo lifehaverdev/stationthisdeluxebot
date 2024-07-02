@@ -237,7 +237,9 @@ async function processWaitlist(status, run_id, outputs) {
         const result = await handleTaskCompletion(task, run);
         // Remove the corresponding task from the waiting array only if successfully processed
         if (result == 'success') {
+            console.log('before removing task',waiting.length)
             waiting.splice(taskIndex, 1);
+            console.log('after removing task',waiting.length);
             console.log(`Task with run_id ${run_id} removed from the waiting array.`);
         } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
