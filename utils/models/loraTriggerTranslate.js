@@ -303,6 +303,28 @@ const loraTriggers = [
     description: 'Become Shiro, make your own oh i see',
     civitaiLink: 'miladystation2.net',
     triggerWords: ['ohisee']
+  },
+  {
+    lora_name: 'hellkitt',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 0,
+    featured: false,
+    description: 'hello kitty',
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['hellkitt']
+  },
+  {
+    lora_name: 'cultcat4',
+    default_weight: 1.1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 200000,
+    featured: true,
+    description: 'work in progress, share best gens with dev to improve the model',
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['cultkat']
   }
   // Add more LoRA configurations here
   // {
