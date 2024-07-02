@@ -265,6 +265,15 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'https://miladystation2.net',
     triggerWords: ['oidrater']
+  },
+  {
+    lora_name: 'MinionStyle',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/347778/minion-style-sdxl-make-your-own-minions',
+    triggerWords: ['MINIONSTYLE']
   }
   // Add more LoRA configurations here
   // {
