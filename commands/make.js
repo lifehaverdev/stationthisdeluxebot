@@ -152,7 +152,7 @@ function imgPreProc(promptObj) {
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
     let userBasePrompt;
-    promptObj.userBasePrompt == '-1' ?  userBasePrompt = '' : userBasePrompt = handleLoraTrigger(promptObj.userBasePrompt)
+    promptObj.userBasePrompt == '-1' ?  userBasePrompt = '' : userBasePrompt = handleLoraTrigger(promptObj.userBasePrompt, promptObj.balance)+" "
     // Initial cleanup
     let cleanedPrompt = promptObj.prompt.replace(`@${process.env.BOT_NAME}`, "").trim();
 

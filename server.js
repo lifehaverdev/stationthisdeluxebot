@@ -17,7 +17,7 @@ app.post('/api/webhook', async (req, res) => {
   console.log('Webhook post received');
   
   // Log the entire request body
-  console.log('Request body:', req.body);
+  //console.log('Request body:', req.body);
   
   try {
     const { status, run_id, outputs } = req.body;
@@ -31,9 +31,9 @@ app.post('/api/webhook', async (req, res) => {
     }
     
     // Log the parsed data
-    console.log('Status:', status);
-    console.log('Run ID:', run_id);
-    console.log('Outputs:', JSON.stringify(outputs));
+    console.log(' Status:', status);
+    console.log(' Run ID:', run_id);
+    console.log(' Outputs:', JSON.stringify(outputs));
     
     // Process the waitlist with the webhook data
     await processWaitlist(status, run_id, outputs);

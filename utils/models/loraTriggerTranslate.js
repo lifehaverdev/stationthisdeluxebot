@@ -274,6 +274,14 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/347778/minion-style-sdxl-make-your-own-minions',
     triggerWords: ['MINIONSTYLE']
+  },
+  {
+    lora_name: 'frieren-10',
+    default_weight: 'SDXL',
+    type: 'character',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/333139/frieren-sdxlpony?modelVersionId=373180',
+    ttriggerWords: ['NEREIRFPNXL, FRIEREN']
   }
   // Add more LoRA configurations here
   // {
@@ -303,7 +311,7 @@ function handleLoraTrigger(prompt, balance) {
       });
     });
   });
-  console.log('before after', prompt, modifiedPrompt)
+  console.log('before & after', prompt, modifiedPrompt)
   return modifiedPrompt;
 }
 
