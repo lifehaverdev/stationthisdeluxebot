@@ -29,7 +29,7 @@ const loraTriggers = [
       gate: 0,
       civitaiLink: 'https://civitai.com/models/301368?modelVersionId=338451',
       description: `Because fuck you, that's why. Trigger is "pepe the frog", supporting tags are "frog, amphibian"`,
-      triggerWords: ["pepe the frog","pepe"]
+      triggerWords: ["pepe_frog"]
   },
   {
       lora_name: 'vanta-black_contrast_V3.0',
