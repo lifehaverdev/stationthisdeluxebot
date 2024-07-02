@@ -13,14 +13,6 @@ is_container_running() {
     [ "$(docker inspect -f '{{.State.Running}}' $1 2>/dev/null)" = "true" ]
 }
 
-# Ensure the script itself is executable
-SCRIPT_PATH="$(realpath $0)"
-if [ ! -x "$SCRIPT_PATH" ]; then
-    chmod +x "$SCRIPT_PATH"
-    exec "$SCRIPT_PATH" "$@"
-    exit
-fi
-
 # Pull the latest changes from the repository
 git reset --hard
 git pull
@@ -33,6 +25,9 @@ docker build -t ${IMAGE_NAME} .
 
 # Create a Docker network if it doesn't exist
 docker network inspect ${NETWORK_NAME} >/dev/null 2>&1 || docker network create ${NETWORK_NAME}
+
+# Ensure any existing new container is removed
+docker rm -f ${NEW_CONTAINER} 2>/dev/null || true
 
 # Ensure the old container is stopped and removed
 if is_container_running ${OLD_CONTAINER}; then
