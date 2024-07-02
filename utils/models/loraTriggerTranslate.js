@@ -292,6 +292,17 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/299418/dark-magician-girl-yu-gi-oh?modelVersionId=336299',
     triggerWords: ['blamagi']
+  },
+  {
+    lora_name: 'ohisee',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 600000,
+    featured: true,
+    description: 'Become Shiro, make your own oh i see',
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['ohisee']
   }
   // Add more LoRA configurations here
   // {
