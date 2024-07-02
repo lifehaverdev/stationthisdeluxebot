@@ -65,7 +65,6 @@ async function sendMessage(msg, text, options = {}) {
     options.reply_to_message_id = null;
     response = await attemptSendMessage(options);
     if (response) return response;
-    console.log('message before removing thread id',msg)
     options.message_thread_id = null;
     return await attemptSendMessage(options);
 }
