@@ -82,7 +82,7 @@ const loraTriggers = [
       triggerWords: ["ascii art"]
   },
   {
-      lora_name: 'GHIBLI_STYLE',
+      lora_name: 'ghibli_style',
       default_weight: 0.8,
       version: 'SDXL',
       type: 'style',
