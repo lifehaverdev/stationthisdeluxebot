@@ -277,11 +277,21 @@ const loraTriggers = [
   },
   {
     lora_name: 'frieren-10',
-    default_weight: 'SDXL',
+    default_weight: 1,
+    version: 'SDXL',
     type: 'character',
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/333139/frieren-sdxlpony?modelVersionId=373180',
-    ttriggerWords: ['NEREIRFPNXL, FRIEREN']
+    triggerWords: ['NEREIRFPNXL, FRIEREN']
+  },
+  {
+    lora_name: 'dark_magician_girl',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 100000,
+    civitaiLink: 'https://civitai.com/models/299418/dark-magician-girl-yu-gi-oh?modelVersionId=336299',
+    triggerWords: ['blamagi']
   }
   // Add more LoRA configurations here
   // {
