@@ -201,7 +201,11 @@ const TWENTY_MINUTES = 20 * 60 * 1000;
 
 function removeStaleTasks() {
     const now = Date.now();
-    waiting = waiting.filter(task => (now - task.timestamp) <= TWENTY_MINUTES);
+    for (let i = waiting.length - 1; i >= 0; i--) {
+        if ((now - waiting[i].timestamp) > TWENTY_MINUTES) {
+            waiting.splice(i, 1); // Remove stale tasks
+        }
+    }
 }
 
 async function processWaitlist(status, run_id, outputs) {
