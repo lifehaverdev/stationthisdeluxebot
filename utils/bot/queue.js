@@ -30,6 +30,7 @@ function enqueueTask(task) {
     }
     taskQueue.push(task);
     task.timestamp = Date.now()
+    task.status = 'thinking'
     console.log(`Task enqueued for ${task.message.from.first_name}:`);
     //console.log(task.promptObj.type,task.promptObj.prompt)
     if (!isSorting && taskQueue.length > 1) {
