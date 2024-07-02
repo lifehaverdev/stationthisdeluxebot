@@ -1,4 +1,5 @@
 
+const { taskQueue, waiting } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
@@ -10,8 +11,8 @@ const {
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
 
-let taskQueue = []
-let waiting = []
+// let taskQueue = []
+// let waiting = []
 let isSorting = false; 
 //
 // LOBBY AND QUEUE

@@ -1,6 +1,6 @@
-const { startup } = require('../bot.js')
+const { startup, waiting, taskQueue } = require('../bot.js')
 const { sendMessage, editMessage } = require('../../utils.js')
-const { waiting, taskQueue } = require('../queue.js')
+//const {  } = require('../queue.js')
 
 function handleHelp(message) {
     const helpMessage = `
@@ -60,7 +60,7 @@ function handleHelp(message) {
     sendMessage(message, helpMessage);
 }
 async function handleStatus(message) {
-    console.log('message in handleStatus',message);
+    // console.log('message in handleStatus',message);
     console.log('waiting in handleStatus',waiting);
     let msg = 
     `I have been running for ${(Date.now() - startup) / 1000} seconds.\n`

@@ -8,6 +8,8 @@ const bot = new TelegramBot(botToken,
     });
 const startup = Date.now();
 const lobby = {};
+let taskQueue = []
+let waiting = []
 const rooms = [
 //     {
 //     owner: 5472638766,
@@ -207,6 +209,8 @@ module.exports = {
     lobby,
     rooms,
     startup,
+    waiting,
+    taskQueue,
     commandStateMessages,
     SET_COMMANDS,
     STATE_TO_LOBBYPARAM,
