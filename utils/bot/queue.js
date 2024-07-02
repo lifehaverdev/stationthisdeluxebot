@@ -333,20 +333,17 @@ async function handleTaskCompletion(task, run) {
             console.log(`No outputs to process for status: ${status}`);
         }
     };
+    
+    task.status = status
 
     if (status === 'success') {
-        task.status = 'success'
         const operationSuccess = await retryOperation(operation);
-        //console.log('operationSuccess value after  retry operation',operationSuccess)
-        //console.log('sent? ',sent);
         return operationSuccess && sent ? 'success' : 'not sent';
     } else if (status === 'failed'){
       return 'failed';  
     } else {
         if (status === undefined || status === 'undefined') {
             task.status = 'thinking';
-        } else {
-            task.status = status;
         }
         return 'incomplete'; 
     }
