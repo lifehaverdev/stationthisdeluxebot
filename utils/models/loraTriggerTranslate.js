@@ -325,6 +325,33 @@ const loraTriggers = [
     description: 'work in progress, share best gens with dev to improve the model',
     civitaiLink: 'miladystation2.net',
     triggerWords: ['cultkat']
+  },
+  {
+    lora_name: 'cigawrette',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 0,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['cigawrette','cigawrette_featured']
+  },
+  {
+    lora_name: 'minote',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['minote'],
+  },
+  {
+    lora_name: 'whitehearts',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['whiteheartnft']
   }
   // Add more LoRA configurations here
   // {

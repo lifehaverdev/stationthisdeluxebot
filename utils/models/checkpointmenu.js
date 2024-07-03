@@ -8,6 +8,10 @@ checkpointmenu = [
         description: "SDXL",
     },
     {
+        name: 'animagineXLV31',
+        description: "SDXL"
+    },
+    {
         name: "juggernautXL_juggernautX",
         description: "SDXL"
     },
