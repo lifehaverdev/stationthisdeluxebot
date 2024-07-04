@@ -361,7 +361,7 @@ const loraTriggers = [
     type: 'character',
     gate: 0,
     civitaiLink: 'miladystation2.net',
-    triggerWords: ['longkat, longkatzoom']
+    triggerWords: ['longkat', 'longkatzoom']
   }
   // Add more LoRA configurations here
   // {
