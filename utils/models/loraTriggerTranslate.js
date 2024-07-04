@@ -291,7 +291,8 @@ const loraTriggers = [
     type: 'character',
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/299418/dark-magician-girl-yu-gi-oh?modelVersionId=336299',
-    triggerWords: ['blamagi']
+    triggerWords: ['blamagi'],
+    hidden: true
   },
   {
     lora_name: 'ohisee',
