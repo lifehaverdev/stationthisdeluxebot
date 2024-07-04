@@ -352,6 +352,15 @@ const loraTriggers = [
     gate: 100000,
     civitaiLink: 'miladystation2.net',
     triggerWords: ['whiteheartnft']
+  },
+  {
+    lora_name: 'longcat',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 0,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['longkat, longkatzoom']
   }
   // Add more LoRA configurations here
   // {
