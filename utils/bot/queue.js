@@ -206,7 +206,7 @@ function removeStaleTasks() {
     for (let i = waiting.length - 1; i >= 0; i--) {
         if ((now - waiting[i].timestamp) > TWENTY_MINUTES) {
             waiting.splice(i, 1); // Remove stale tasks
-        } else if (waiting[i].task.status == 'success') {
+        } else if (waiting[i].task.status && waiting[i].task.status == 'success') {
             waiting.splice(i,1);
         }
     }

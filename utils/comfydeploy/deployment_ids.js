@@ -88,6 +88,12 @@ const comfydeployment_ids = [
         NAME: 'interrogate',
         id: '1be45f3d-1420-4018-843c-2af8cdb006d6',
         score: 46
+    },
+    {
+        type: "ASSIST",
+        NAME: 'assist',
+        id: 'na',
+        score: 10
     }
 ]
 function getDeploymentIdByType(type) {

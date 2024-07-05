@@ -18,4 +18,8 @@ function addPoints(promptObj) {
     }
 }
 
+function checkPoints(userId) {
+    
+}
+
 module.exports = { addPoints };
