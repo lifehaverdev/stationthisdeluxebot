@@ -117,7 +117,7 @@ async function checkLobby(message){
     }
     let points = lobby[userId].points;
     if (pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER){
-        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m`)
+        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \nbuy more MS2\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
         ++locks;
         return false
     }

@@ -228,8 +228,8 @@ module.exports = function(bot) {
                         const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
-                            await sendMessage(message, 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
-                            break;
+                            
+                            return;
                         } 
                     }
                     await safeExecute(message, () => handler(message, match));
