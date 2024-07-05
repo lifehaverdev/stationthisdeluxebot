@@ -8,8 +8,9 @@ let lastCleanTime = Date.now();
 // let startup = Date.now()
 const POINTMULTI = 666;
 const NOCOINERSTARTER = 16666;
-setInterval(cleanLobby, 2 * 60 * 60 * 1000); //every hour
-if(logLobby){setInterval(printLobby, 6*60*60*1000);} //every 6 hours
+//setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
+setInterval(cleanLobby, 5 * 60 * 1000); //every 5 minutes
+if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
 
 
 function cleanLobby() {
@@ -40,8 +41,6 @@ async function checkLobby(message){
     let balance;
     let userData;
 
-
-
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);
         if(rooms.some((group) => {
@@ -49,7 +48,6 @@ async function checkLobby(message){
         })){return true}
         if(userData.wallet == '' || userData.verified == false){
             if(message.chat.id < 0){
-                
                 sendMessage(message,'dm me the signin command and connect a wallet to unlock $MS2 holder benefits');
             } else {
                 const options = {
@@ -112,6 +110,7 @@ async function checkLobby(message){
     }
     return true;
 }
+
 function timeTillTurnover() {
     const currentTime = Date.now();
     const timePassed = currentTime - lastCleanTime;
