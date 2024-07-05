@@ -115,7 +115,7 @@ async function addPointsToAllUsers() {
                 if (pointsToAdd > 0) {
                     try {
                         const result = await collection.updateOne(
-                            { userId: userId },  // Ensure userId is treated as a string
+                            { userId: parseInt(userId) },  // Ensure userId is treated as a string
                             { $inc: { exp: pointsToAdd } }
                         );
                         

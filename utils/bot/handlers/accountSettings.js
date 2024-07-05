@@ -6,7 +6,7 @@ const { checkLobby } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
-const { defaultUserData } = require('../../users/defaultUserData.js')
+const defaultUserData = require('../../users/defaultUserData.js')
 
 function displayAccountSettingsMenu(message) {
     // Create account settings menu keyboard
@@ -289,6 +289,7 @@ async function handleAccountReset(message) {
     let chatData;
 
     if (lobby[userId]) {
+        console.log('getting from lobby');
         chatData = lobby[userId];
     } else {
         chatData = await getUserDataByUserId(userId);
@@ -303,6 +304,7 @@ async function handleAccountReset(message) {
     chatData = { ...defaultUserData };
 
     // Restore preserved keys
+    chatData.userId = userId;
     chatData.points = points;
     chatData.exp = exp;
     chatData.wallet = wallet;
