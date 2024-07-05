@@ -371,6 +371,26 @@ const loraTriggers = [
     gate: 500000,
     civitaiLink: 'miladystation2.net',
     triggerWords: ['psyduck']
+  },
+  {
+    lora_name: 'animalcrossinggc',
+    default_weight: .94,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['animalcrossing']
+  },
+  {
+    lora_name: 'chudjak',
+    default_weight: .9,
+    version: 'SDXL',
+    type: 'character',
+    gate: 10000000,
+    featured: true,
+    description: 'This lora is being held hostage. tweet at chudjak coin accounts and get them to burn 1M ms2 to unlock',
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['chudjak']
   }
   // Add more LoRA configurations here
   // {
