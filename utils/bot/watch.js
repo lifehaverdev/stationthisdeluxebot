@@ -229,6 +229,7 @@ module.exports = function(bot) {
                         if (!allowed) {
                             // User is not allowed to execute the command
                             await sendMessage(message, 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
+                            break;
                         } 
                     }
                     await safeExecute(message, () => handler(message, match));

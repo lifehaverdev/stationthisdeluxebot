@@ -8,8 +8,9 @@ let lastCleanTime = Date.now();
 // let startup = Date.now()
 const POINTMULTI = 10000540;
 const NOCOINERSTARTER = 199800;
+const LOBBY_CLEAN_INTERVAL = 5 * 60 * 1000; 
 //setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
-setInterval(cleanLobby, 5 * 60 * 1000); //every 5 minutes
+setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every 5 minutes
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
 let locks = 0;
 
@@ -126,7 +127,7 @@ async function checkLobby(message){
 function timeTillTurnover() {
     const currentTime = Date.now();
     const timePassed = currentTime - lastCleanTime;
-    const minutesLeft = 60 - Math.floor((timePassed % (1000 * 60 * 60)) / (1000 * 60));
+    const minutesLeft = 60 - Math.floor((timePassed % (LOBBY_CLEAN_INTERVAL)) / (1000 * 60));
 
     return minutesLeft;
 }
