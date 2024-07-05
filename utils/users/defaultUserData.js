@@ -9,6 +9,7 @@ const defaultUserData = {
     checkpoint: "zavychromaxl_v60",
     voiceModel: "165UvtZp7kKnmrVrVQwx",
     batchMax: 1,
+    exp: 0,
     points: 0,
     steps: 30,
     cfg: 7,
