@@ -99,7 +99,9 @@ async function addPointsToAllUsers() {
         const processedUserIds = new Set();  // To track processed user IDs
 
         for (const userId in lobby) {
+            console.log('userId and type',userId, typeof userId)
             if (userId && lobby.hasOwnProperty(userId)) {
+                console.log('we can see the userid here');
                 if (processedUserIds.has(userId)) {
                     console.log(`Duplicate entry found for userId: ${userId}`);
                     continue;
@@ -113,7 +115,7 @@ async function addPointsToAllUsers() {
                 if (pointsToAdd > 0) {
                     try {
                         const result = await collection.updateOne(
-                            { userId: userId.toString() },  // Ensure userId is treated as a string
+                            { userId: userId },  // Ensure userId is treated as a string
                             { $inc: { exp: pointsToAdd } }
                         );
                         

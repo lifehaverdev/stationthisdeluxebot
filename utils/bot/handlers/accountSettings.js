@@ -287,18 +287,36 @@ async function handleAccountReset(message) {
     const chatId = message.chat.id;
     const userId = message.from.id;
     let chatData;
-    if(lobby[userId]){
-        chatData = lobby[userId]
+
+    if (lobby[userId]) {
+        chatData = lobby[userId];
     } else {
         chatData = await getUserDataByUserId(userId);
     }
-    let wallet = chatData.wallet;
-    chatData=defaultUserData;
+
+    console.log('chatdata in reset account', chatData);
+
+    // Preserve specific keys
+    let { points, exp, wallet, verified, promptDex } = chatData;
+    
+    // Reset to default settings
+    chatData = { ...defaultUserData };
+
+    // Restore preserved keys
+    chatData.points = points;
+    chatData.exp = exp;
     chatData.wallet = wallet;
-    if(lobby[userId]){lobby[userId] = chatData;}
+    chatData.verified = verified;
+    chatData.promptDex = promptDex;
+
+    // Update lobby if necessary
+    if (lobby[userId]) {
+        lobby[userId] = chatData;
+    }
+
     // Confirm sign-in
     sendMessage(message, `You reset to default settings`);
-    setUserState(message,STATES.IDLE);
+    setUserState(message, STATES.IDLE);
 }
 
 module.exports = {

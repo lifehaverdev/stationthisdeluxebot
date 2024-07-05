@@ -27,6 +27,9 @@ let locks = 0;
 //40*37 = 1480 , 1M / 1480 = 675,
 //nah i like it the other way better
 
+//so what do you need to buy to get one more gen?
+//if 37 * multi = 20k
+
 
 function cleanLobby() {
     for (const userId in lobby) {
