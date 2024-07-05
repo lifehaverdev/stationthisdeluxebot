@@ -94,16 +94,21 @@ async function addPointsToAllUsers() {
 
     try {
         const collection = client.db(dbName).collection('users');
-        
+        console.log('here is the lobby rn',lobby)
         for (const userId in lobby) {
             if (lobby.hasOwnProperty(userId)) {
+                console.log('lets add points for',userId)
                 const user = lobby[userId];
                 const pointsToAdd = user.points;
                 if(pointsToAdd > 0){
-                    await collection.updateOne(
-                        { userId: userId },
-                        { $inc: { exp: pointsToAdd } }
-                    );
+                    try {
+                        await collection.updateOne(
+                            { userId: userId },
+                            { $inc: { exp: pointsToAdd } }
+                        );
+                    } catch (err) {
+                        console.log('it didnt work heres why',err);
+                    }
                     console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
                 } else {
                     console.log('no points in this period for user')
