@@ -1,7 +1,7 @@
 const { lobby, STATES, rooms, startup } = require('./bot'); 
 const { getUserDataByUserId, addPointsToAllUsers } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
-const { setUserState, sendMessage } = require('../utils');
+const { setUserState, sendMessage, react } = require('../utils');
 const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
