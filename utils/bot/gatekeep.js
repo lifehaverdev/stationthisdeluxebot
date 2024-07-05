@@ -6,14 +6,13 @@ const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
 // let startup = Date.now()
-const POINTMULTI = 10000540;
+const POINTMULTI = 0//540;
 const NOCOINERSTARTER = 199800;
-const LOBBY_CLEAN_MINUTE = 5;
+const LOBBY_CLEAN_MINUTE = 60 * 8;//8 hours
 const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
 
-//setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
-setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every 5 minutes
-if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
+setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every N minutes
+if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 8 hours
 let locks = 0;
 
 
@@ -124,11 +123,11 @@ async function checkLobby(message){
     }
     let points = lobby[userId].points;
     if (pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER){
-        lobby[userId].balance = '';
         const reacts = ["👎", "❤", "🥰", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴","🐳", "🌚", "🌭","🤣", "🍌", "💔", "🤨", "😐","💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😇", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
         const which = Math.floor(Math.random() * reacts.length)
         react(message,reacts[which])
         sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \n\n\\.\\.\\. or \\.\\.\\. Buy${lobby[userId].balance > 0 ? ' more' : ''} MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
+        lobby[userId].balance = '';
         ++locks;
         return false
     }
