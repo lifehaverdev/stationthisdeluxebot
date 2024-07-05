@@ -106,5 +106,6 @@ function getDeploymentIdByType(type) {
 }
 
 module.exports = {
-    getDeploymentIdByType
+    getDeploymentIdByType,
+    comfydeployment_ids
 };
