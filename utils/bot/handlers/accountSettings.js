@@ -75,6 +75,8 @@ function displayAccountSettingsMenu(message) {
     let accountInfo = `Account:\n\n`;
     accountInfo += `<b>Username:</b> ${message.from.username}\n`;
     accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance}\n`;
+    accountInfo += `<b>LEVEL:</b>${Math.floor(Math.cbrt(lobby[userId].exp)) + 1}`
+    accountInfo += `<b>EXP:</b> ${lobby[userId].exp}`
     accountInfo += `<b>Points:</b> ${lobby[userId].points || 0}\n\n`;
     accountInfo += `<b>Locked Features:</b>\n`;
     

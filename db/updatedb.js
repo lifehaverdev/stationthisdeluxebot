@@ -1,3 +1,4 @@
-const { updateAllUsersWithCheckpoint } = require('./mongodb')
+const { updateAllUsersWithCheckpoint, updateAllUserSettings } = require('./mongodb')
 
-updateAllUsersWithCheckpoint();
+//updateAllUsersWithCheckpoint();
+updateAllUserSettings()

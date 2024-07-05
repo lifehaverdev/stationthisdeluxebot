@@ -107,16 +107,28 @@ function optionAppendage(msg){
     return options
 }
 
-async function react(message) {
-    bot.sendChatAction(message.chat.id,'upload_photo')
-    await bot.setMessageReaction(message.chat.id, message.message_id, {
-        reaction: [
-            {
-                type: 'emoji',
-                emoji: '👌'
-            }
-        ]
-    })
+async function react(message, emoji = null) {
+    if(emoji){
+        await bot.setMessageReaction(message.chat.id, message.message_id, {
+            reaction: [
+                {
+                    type: 'emoji',
+                    emoji: emoji
+                }
+            ]
+        })
+    } else {
+        bot.sendChatAction(message.chat.id,'upload_photo')
+        await bot.setMessageReaction(message.chat.id, message.message_id, {
+            reaction: [
+                {
+                    type: 'emoji',
+                    emoji: '👌'
+                }
+            ]
+        })
+    }
+    
 }
 
 function compactSerialize(data) {
