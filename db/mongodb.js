@@ -1,4 +1,5 @@
 const { MongoClient } = require("mongodb");
+const { lobby } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
 require("dotenv").config()
 // Replace the uri string with your connection string.
