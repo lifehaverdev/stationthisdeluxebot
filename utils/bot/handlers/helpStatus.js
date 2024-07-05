@@ -6,42 +6,19 @@ function handleHelp(message) {
     const helpMessage = `
     HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHIS BOT ON TELEGRAM
 
-    TYPE IN /make + a prompt (dont just use the command)
-    and you will receive an image
-    use the /assist command + a smol prompt and gpt will expound on it for you if you're not feeling creative
-    use the /pfp command and send in a photo after the response to automatically receive an img2img that was prompted for you
-    use the /ms2 command to initiate an img2img, send a photo, provide a prompt and sit back
-    use /interrogate to create a prompt based on a photo you provide
-    use /regen to try another version of your last one
+    Use /signin to connect a solana wallet holding $MS2
+    verify it on our site by pasting the hash in your chat when prompted
 
-    use /disc to put your image on a ms2 disc
-    use /watermark to brand your image with the ms2 logo
+    /create - txt2image + chatgpt prompt augmentation + image interrogation
+    /effect - img2img + auto prompt img2img (great for simply applying a baseprompt)
+    /animate - img2video + txt2speech
+    /set - set parameters for generation
+    /status - see what the bot is workin on
     
-    ADVANCED USE
-    heres where we are currently developing a lot and you may find some new features. 
-    Use the /accountsettings command to bring up a menu. If you have >1M tokens or have been blessed by the dev youll be able to remove the watermark from your renders as well as change base prompts
+    Use the /accountsettings command to bring up a menu. This is where you toggle watermark as well as choose a voice for speak command
     
-    SETTERS
-    for /regen purposes, we have provided setter commands to tweak what your workspace sends to stable diffusion
-    /setprompt
-    /setcfg
-    /setstrength (only applies to img2img)
-    /setseed
-    /setnegativeprompt
-    /setsize (sdxl really loves 1024x1024 so dont go too crazy)
-    /setbatch 
-    /setsteps
-    /setphoto
-
-    /setuserprompt sets an additional baseprompt to be added to all generations while it is activated, you can input loras here as well
-    to toggle its activation use /toggleuserprompt
-    
-    if you are really onto something please be sure to use /savesettings in case the bot crashes you will be able to pick up where you left off
+    if you are really onto something please use /savesettings to lock in
     you can also use /getseed to see what seed was used for the last image so you can farm good generation seeds
-    using these features, you will be cooking fr
-    you can also utilize /promptcatch <SLOT> to save a prompt to 1 of 6 slots on your account
-    then just use /dexmake <SLOT> to create an image with that prompt and your current settings
-    If you make a mess of your account and want to start fresh use /resetaccount
     
     TROUBLESHOOTING
     
@@ -52,8 +29,6 @@ function handleHelp(message) {
     If your settings are all wonky, try /resetaccount or /signout and /signin again. you won't have to reverify
     
     EXTRA
-    
-    If you have a model you want me to check out use the /request command and shoot it in here ill take a look
     
     Try the /loralist command to see what LORAs we offer along with their key words, just use the trigger word somewhere in your prompt to activate it`
 
