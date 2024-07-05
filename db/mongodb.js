@@ -94,26 +94,34 @@ async function addPointsToAllUsers() {
 
     try {
         const collection = client.db(dbName).collection('users');
-        console.log('here is the lobby rn',lobby)
+        console.log('Here is the lobby right now:', lobby);
+
         for (const userId in lobby) {
             if (lobby.hasOwnProperty(userId)) {
-                console.log('lets add points for',userId)
+                console.log('Adding points for:', userId);
                 const user = lobby[userId];
                 const pointsToAdd = user.points;
-                if(pointsToAdd > 0){
+                
+                if (pointsToAdd > 0) {
                     try {
-                        await collection.updateOne(
+                        const result = await collection.updateOne(
                             { userId: userId },
                             { $inc: { exp: pointsToAdd } }
                         );
+                        
+                        if (result.matchedCount === 0) {
+                            console.log(`User with ID ${userId} not found in the database.`);
+                        } else if (result.modifiedCount === 0) {
+                            console.log(`Points for user ${userId} were not updated.`);
+                        } else {
+                            console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
+                        }
                     } catch (err) {
-                        console.log('it didnt work heres why',err);
+                        console.log('Failed to update points, error:', err);
                     }
-                    console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
                 } else {
-                    console.log('no points in this period for user')
+                    console.log(`No points to add for user ${userId} in this period`);
                 }
-                
             }
         }
         return true;
@@ -121,7 +129,6 @@ async function addPointsToAllUsers() {
         console.error("Error adding points to all users:", error);
         return false;
     } finally {
-        // Close the connection if it was established within this function
         await client.close();
     }
 }
