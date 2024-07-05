@@ -127,7 +127,7 @@ async function checkLobby(message){
         const reacts = ["👎", "❤", "🥰", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴","🐳", "🌚", "🌭","🤣", "🍌", "💔", "🤨", "😐","💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😇", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
         const which = Math.floor(Math.random() * reacts.length)
         react(message,reacts[which])
-        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \n\n\\.\\.\\. or \\.\\.\\. Buy more MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
+        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \n\n\\.\\.\\. or \\.\\.\\. Buy ${lobby[userId].balance > 0 ? 'more' : ''} MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
         ++locks;
         return false
     }
