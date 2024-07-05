@@ -28,8 +28,9 @@ async function writeUserData(userId, data) {
         const collection = client.db(dbName).collection('users');
         // Upsert the document with wallet address as the filter
         const filter = { userId: userId };
+        const { points, balance, ...dataToSave } = data;
         await collection.updateOne( filter,
-            { $set: { ...data } },
+            { $set: { ...dataToSave } },
         );
         console.log('User data written successfully');
         return true
@@ -83,6 +84,38 @@ async function updateAllUserSettings() {
         console.error("Error updating user settings:", error);
         return false;
     } finally {
+        await client.close();
+    }
+}
+async function addPointsToAllUsers() {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        const collection = client.db(dbName).collection('users');
+        
+        for (const userId in lobby) {
+            if (lobby.hasOwnProperty(userId)) {
+                const user = lobby[userId];
+                const pointsToAdd = user.points;
+                if(pointsToAdd > 0){
+                    await collection.updateOne(
+                        { userId: userId },
+                        { $inc: { exp: pointsToAdd } }
+                    );
+                    console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
+                } else {
+                    console.log('no points in this period for user')
+                }
+                
+            }
+        }
+        return true;
+    } catch (error) {
+        console.error("Error adding points to all users:", error);
+        return false;
+    } finally {
+        // Close the connection if it was established within this function
         await client.close();
     }
 }
@@ -609,5 +642,6 @@ module.exports = {
     getUserDataByUserId, 
     getCollections, 
     writeCollectionData,
-    updateAllUsersWithCheckpoint
+    updateAllUsersWithCheckpoint,
+    addPointsToAllUsers
 };

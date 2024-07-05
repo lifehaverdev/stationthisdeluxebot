@@ -1,5 +1,5 @@
 const { lobby, STATES, rooms, startup } = require('./bot'); 
-const { getUserDataByUserId } = require('../../db/mongodb')
+const { getUserDataByUserId, addPointsToAllUsers } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage } = require('../utils');
 const { home } = require('../models/userKeyboards');
@@ -8,7 +8,9 @@ let lastCleanTime = Date.now();
 // let startup = Date.now()
 const POINTMULTI = 10000540;
 const NOCOINERSTARTER = 199800;
-const LOBBY_CLEAN_INTERVAL = 5 * 60 * 1000; 
+const LOBBY_CLEAN_MINUTE = 5;
+const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
+
 //setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
 setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every 5 minutes
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
@@ -28,6 +30,7 @@ let locks = 0;
 
 function cleanLobby() {
     for (const userId in lobby) {
+        addPointsToAllUsers()
         lobby[userId].points = 0;
     }
     locks = 0;
@@ -117,7 +120,8 @@ async function checkLobby(message){
     }
     let points = lobby[userId].points;
     if (pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER){
-        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \nbuy more MS2\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
+        react(message,'😹')
+        sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \n\nBuy more MS2 while you wait 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
         ++locks;
         return false
     }
@@ -127,7 +131,7 @@ async function checkLobby(message){
 function timeTillTurnover() {
     const currentTime = Date.now();
     const timePassed = currentTime - lastCleanTime;
-    const minutesLeft = 60 - Math.floor((timePassed % (LOBBY_CLEAN_INTERVAL)) / (1000 * 60));
+    const minutesLeft = LOBBY_CLEAN_MINUTE - Math.floor((timePassed % (LOBBY_CLEAN_INTERVAL)) / (1000 * 60));
 
     return minutesLeft;
 }
