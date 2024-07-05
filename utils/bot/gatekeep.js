@@ -6,11 +6,22 @@ const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
 // let startup = Date.now()
-const POINTMULTI = 666;
-const NOCOINERSTARTER = 16666;
+const POINTMULTI = 100540;
+const NOCOINERSTARTER = 199800;
 //setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
 setInterval(cleanLobby, 5 * 60 * 1000); //every 5 minutes
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
+
+
+//10 images for a free user, 37 points a pop
+//thats 370 points no multi
+//how many images should an ms2 millionaire be able to make? 
+//lets say a ms2 millionaire should be able to make 50 images in 8 hours
+//50*37 = 1850 , 1000000 / 1850 = 540
+//so with points multiplier of 540, if a million balance user makes 50 images, their multid points will exceed their balance of 1m
+//540 * 370 = 199800, which fits nicely. but lets not give another 10 to our millionaires so easily
+//40*37 = 1480 , 1M / 1480 = 675,
+//nah i like it the other way better
 
 
 function cleanLobby() {
