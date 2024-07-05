@@ -96,8 +96,16 @@ async function addPointsToAllUsers() {
         const collection = client.db(dbName).collection('users');
         console.log('Here is the lobby right now:', lobby);
 
+        const processedUserIds = new Set();  // To track processed user IDs
+
         for (const userId in lobby) {
-            if (lobby.hasOwnProperty(userId)) {
+            if (userId && lobby.hasOwnProperty(userId)) {
+                if (processedUserIds.has(userId)) {
+                    console.log(`Duplicate entry found for userId: ${userId}`);
+                    continue;
+                }
+                processedUserIds.add(userId);
+
                 console.log('Adding points for:', userId);
                 const user = lobby[userId];
                 const pointsToAdd = user.points;
@@ -105,7 +113,7 @@ async function addPointsToAllUsers() {
                 if (pointsToAdd > 0) {
                     try {
                         const result = await collection.updateOne(
-                            { userId: userId },
+                            { userId: userId.toString() },  // Ensure userId is treated as a string
                             { $inc: { exp: pointsToAdd } }
                         );
                         
