@@ -120,7 +120,9 @@ async function checkLobby(message){
     }
     let points = lobby[userId].points;
     if (pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER){
-        react(message,'🖕')
+        const reacts = ["👎", "❤", "🥰", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴","🐳", "🌚", "🌭","🤣", "🍌", "💔", "🤨", "😐","💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😇", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
+        const which = Math.floor(Math.random() * reacts.length)
+        react(message,reacts[which])
         sendMessage(message,`I am sorry, you have reached your limit, please try again in ${timeTillTurnover()}m \n\nBuy more MS2 while you wait 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
         ++locks;
         return false
