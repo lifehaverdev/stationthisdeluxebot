@@ -204,7 +204,7 @@ const TWENTY_MINUTES = 20 * 60 * 1000;
 function removeStaleTasks() {
     const now = Date.now();
     for (let i = waiting.length - 1; i >= 0; i--) {
-        console.log('what is waiting looking like',waiting[i])
+        //console.log('what is waiting looking like',waiting[i])
         if ((now - waiting[i].timestamp) > TWENTY_MINUTES) {
             waiting.splice(i, 1); // Remove stale tasks
         }
