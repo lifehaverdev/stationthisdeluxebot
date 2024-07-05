@@ -61,7 +61,7 @@ function handleHelp(message) {
 }
 async function handleStatus(message) {
     // console.log('message in handleStatus',message);
-    console.log('waiting in handleStatus',waiting);
+    //console.log('waiting in handleStatus',waiting);
     let msg = 
     `I have been running for ${(Date.now() - startup) / 1000} seconds.\n`
     taskQueue.length > 0 ? msg +=    

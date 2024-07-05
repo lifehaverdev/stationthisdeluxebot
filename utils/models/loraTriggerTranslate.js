@@ -362,6 +362,15 @@ const loraTriggers = [
     gate: 0,
     civitaiLink: 'miladystation2.net',
     triggerWords: ['longkat', 'longkatzoom']
+  },
+  {
+    lora_name: 'psyduck',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 500000,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['psyduck']
   }
   // Add more LoRA configurations here
   // {

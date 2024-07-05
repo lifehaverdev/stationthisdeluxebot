@@ -8,6 +8,7 @@ const {
     sendVideo,
     // safeExecute
 } = require('../utils');
+const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
 
@@ -205,6 +206,8 @@ function removeStaleTasks() {
     for (let i = waiting.length - 1; i >= 0; i--) {
         if ((now - waiting[i].timestamp) > TWENTY_MINUTES) {
             waiting.splice(i, 1); // Remove stale tasks
+        } else if (waiting[i].task.status == 'success') {
+            waiting.splice(i,1);
         }
     }
 }
@@ -338,7 +341,13 @@ async function handleTaskCompletion(task, run) {
 
     if (status === 'success') {
         const operationSuccess = await retryOperation(operation);
-        return operationSuccess && sent ? 'success' : 'not sent';
+        if(operationSuccess && sent){
+            addPoints(promptObj)
+            return 'success'
+        } else {
+            return 'not sent'
+        }
+        //return operationSuccess && sent ? 'success' : 'not sent';
     } else if (status === 'failed'){
       return 'failed';  
     } else {
