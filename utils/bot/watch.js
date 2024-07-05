@@ -203,7 +203,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/accountsettings','/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak'];
+const commandsRequiringGatekeeping = ['/accountsettings','/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
