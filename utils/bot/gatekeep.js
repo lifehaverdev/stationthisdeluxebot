@@ -6,11 +6,12 @@ const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
 // let startup = Date.now()
-const POINTMULTI = 100540;
+const POINTMULTI = 10000540;
 const NOCOINERSTARTER = 199800;
 //setInterval(cleanLobby, 8 * 60 * 60 * 1000); //every 8 hours
 setInterval(cleanLobby, 5 * 60 * 1000); //every 5 minutes
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 6 hours
+let locks = 0;
 
 
 //10 images for a free user, 37 points a pop
