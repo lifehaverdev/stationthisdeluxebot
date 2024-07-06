@@ -391,6 +391,16 @@ const loraTriggers = [
     description: 'This lora is being held hostage\\. tweet at chudjak coin accounts and get them to burn 1M ms2 to unlock',
     civitaiLink: 'miladystation2.net',
     triggerWords: ['chudjak']
+  },
+  {
+    lora_name: 'kemonokaki5',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'style',
+    gate: 100000,
+    featured: false,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['kemonokaki']
   }
   // Add more LoRA configurations here
   // {
