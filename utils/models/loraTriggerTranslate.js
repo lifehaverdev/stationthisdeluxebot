@@ -18,7 +18,7 @@ const loraTriggers = [
       type: 'character',
       gate: 0,
       civitaiLink: 'https://civitai.com/models/128046?modelVersionId=140160',
-      description: "This model was trained on over 14K wojak images with various tags. It should generate Wojaks for just about any character. There aren't many character LoRAs available, so I haven't had the chance to test it extensively with other LoRAs. I was hoping the different character styles would be more easy to generate (Trad Wife, Doomer, etc.) but I think there were too many standard Wojaks and it got more trained on that style. If there is enough interest, I will try doing a version 2 where I balance out the styles a little more, but this took 118 hours just on the training, so I'm not going to spend the time training another one if no one cares that much.",
+      description: "This model was trained on over 14K wojak images with various tags. It should generate Wojaks for just about any character. There aren't many character LoRAs available, so I haven't had the chance to test it extensively with other LoRAs. I was hoping the different character styles would be more easy to generate (Trad Wife, Doomer, etc.) but I think there were too many standard Wojaks and it got more trained on that style. If there is enough interest, I will try doing a version 2 where I balance out the styles a little more, but this took 118 hours just on the training, so I'm not going to spend the time training another one if no one cares that much\\.",
       triggerWords: ["WOJAK","CRYING WOJACK","TRAD WIFE", "DOOMER"]
   },
   {
@@ -388,7 +388,7 @@ const loraTriggers = [
     type: 'character',
     gate: 10000000,
     featured: true,
-    description: 'This lora is being held hostage. tweet at chudjak coin accounts and get them to burn 1M ms2 to unlock',
+    description: 'This lora is being held hostage\\. tweet at chudjak coin accounts and get them to burn 1M ms2 to unlock',
     civitaiLink: 'miladystation2.net',
     triggerWords: ['chudjak']
   }

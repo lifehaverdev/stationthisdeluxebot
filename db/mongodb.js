@@ -152,13 +152,13 @@ async function updateAllUsersWithCheckpoint() {
 
         // Fetch all user settings
         const users = await collection.find().toArray();
-        console.log(defaultUserData.checkpoint)
+        console.log(defaultUserData.points)
         for (let user of users) {
             // Update user's checkpoint to match defaultUserData
             const filter = { userId: user.userId };
             
             const updateDoc = {
-                $set: { checkpoint: defaultUserData.checkpoint }
+                $set: { points: defaultUserData.points }
             };
 
             // Update the document in the collection

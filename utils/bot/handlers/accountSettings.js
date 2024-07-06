@@ -12,7 +12,6 @@ function displayAccountSettingsMenu(message) {
     // Create account settings menu keyboard
     const userId = message.from.id;
     const chatId = message.chat.id;
-    const baseData = makeBaseData(message,userId);
     let accountSettingsKeyboard = [
         [
             {
