@@ -73,12 +73,12 @@ function displayAccountSettingsMenu(message) {
     // Create account information text
     const totalExp = (lobby[userId].exp + lobby[userId].points);
     const level = Math.floor(Math.cbrt(totalExp)) + 1;
-    const toNextLevel = (level + 1)**3; 
-    const lastLevel = level**3;
-    const toLevelUpRatio = (totalExp-lastLevel) / (toNextLevel-lastLevel);
+    const nextLevel = (level + 1)**3; 
+    const lastLevel = (level-1)**3;
+    const toLevelUpRatio = (totalExp-lastLevel) / (nextLevel-lastLevel);
     let bars = '🟩';
-    for(let i =0; i < 8; i++){
-        if(i < toLevelUpRatio * 8){
+    for(let i =0; i < 7; i++){
+        if(i < toLevelUpRatio * 7){
             bars += '🟩';
         } else {
             bars += '⬜️'
