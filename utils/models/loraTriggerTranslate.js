@@ -317,7 +317,7 @@ const loraTriggers = [
     triggerWords: ['hellkitt']
   },
   {
-    lora_name: 'cultcat4',
+    lora_name: 'cultcat6',
     default_weight: 1.1,
     version: 'SDXL',
     type: 'character',
@@ -382,7 +382,7 @@ const loraTriggers = [
     triggerWords: ['animalcrossing']
   },
   {
-    lora_name: 'chudjak',
+    lora_name: 'chudjak2',
     default_weight: .9,
     version: 'SDXL',
     type: 'character',
