@@ -71,11 +71,24 @@ function displayAccountSettingsMenu(message) {
     }
 
     // Create account information text
+    const totalExp = (lobby[userId].exp + lobby[userId].points);
+    const level = Math.floor(Math.cbrt(totalExp)) + 1;
+    const toNextLevel = (level + 1)**3; 
+    const lastLevel = level**3;
+    const toLevelUpRatio = (totalExp-lastLevel) / (toNextLevel-lastLevel);
+    let bars = '🟩';
+    for(let i =0; i < 8; i++){
+        if(i < toLevelUpRatio * 8){
+            bars += '🟩';
+        } else {
+            bars += '⬜️'
+        }
+    }
     let accountInfo = `Account:\n\n`;
     accountInfo += `<b>Username:</b> ${message.from.username}\n`;
     accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance}\n`;
-    accountInfo += `<b>LEVEL:</b>${Math.floor(Math.cbrt(lobby[userId].exp)) + 1} `
-    accountInfo += `<b>EXP:</b> ${lobby[userId].exp}\n`
+    accountInfo += `<b>LEVEL:</b>${level} `
+    accountInfo += `<b>EXP:</b> ${bars}\n`
     accountInfo += `<b>Points:</b> ${lobby[userId].points || 0}\n\n`;
     accountInfo += `<b>Locked Features:</b>\n`;
     
