@@ -201,7 +201,8 @@ function prepareRequest(promptObj) {
                     input_steps: promptObj.steps,
                     input_cfg: promptObj.cfg,
                     input_prompt: promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt,
-                    input_checkpoint: promptObj.checkpoint+'.safetensors'
+                    input_checkpoint: promptObj.checkpoint+'.safetensors',
+                    input_negprompt: promptObj.negPrompt
                 }
             });
             
