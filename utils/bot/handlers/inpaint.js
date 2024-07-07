@@ -2,7 +2,9 @@ const { getPhotoUrl, makeSeed, lobby } = require('../bot')
 const { sendMessage, setUserState } = require('../../utils')
 const { enqueueTask } = require('../queue');
 
+// async function startInpaint(message, user = null) {
 
+// }
 async function handleInpaint(message) {
     chatId = message.chat.id;
     const userId = message.from.id;

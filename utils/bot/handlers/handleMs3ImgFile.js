@@ -1,9 +1,10 @@
 const { lobby, getPhotoUrl, makeSeed, STATES } = require('../bot');
 //const bot = getBotInstance;
 const { enqueueTask } = require('../queue');
-const { sendMessage, setUserState, editMessage } = require('../../utils')
+const { sendMessage, setUserState, editMessage, gated } = require('../../utils')
 
 async function startMs3(message, user) {
+
     if(user){
         message.from.id = user;
         await editMessage({
@@ -12,6 +13,10 @@ async function startMs3(message, user) {
             message_id: message.message_id
         })
     } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance < 600000){
+            gated(message)
+            return
+        }
         sendMessage(message, 'Send in the photo you want to img to img.',{reply_to_message_id: message.message_id})
     }
     setUserState(message,STATES.MS3)

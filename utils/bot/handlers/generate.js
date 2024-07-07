@@ -1,5 +1,5 @@
 const { STATES, lobby, rooms, makeSeed } = require('../bot')
-const { sendMessage, react, setUserState, editMessage } = require('../../utils')
+const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue')
 
 async function startMake(message, user = null) {
@@ -19,7 +19,13 @@ async function startMake(message, user = null) {
     //console.log('message in start make',message);
     setUserState(message,STATES.MAKE)
 }
+
+
 async function startMake3(message,user) {
+    if(lobby[user] && lobby[user].balance <= 500000){
+        gated(message)
+        return
+    }
     if(user){
         message.from.id = user;
         await editMessage({
@@ -85,8 +91,18 @@ async function handleMake(message) {
         type: 'MAKE',
         lastSeed: thisSeed
     }
-    
+
+    function tokenGate() {
+        if(lobby[userId] && lobby[userId].balance <= 400000) {
+            gated(message)
+            return true
+        }
+    }
+
     if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+        if(tokenGate()){
+            return
+        }
         if (!lobby[userId].styleFileUrl){
             
             sendMessage(message, 'hey use the setstyle command to pick a style photo');
@@ -94,12 +110,18 @@ async function handleMake(message) {
         }
         lobby[userId].type = 'MAKE_STYLE'
     } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+        if(tokenGate()){
+            return
+        }
         if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
             sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
             return;
         }
         lobby[userId].type = 'MAKE_CONTROL_STYLE'
     } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+        if(tokenGate()){
+            return
+        }
         if(!lobby[userId].controlFileUrl) {
             sendMessage(message, 'hey use setcontrol command to pick a control image');
             return;
@@ -114,8 +136,6 @@ async function handleMake(message) {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
         batch = lobby[userId].batchMax;
     }
-
-
 
     const promptObj = {
         ...lobby[userId],
@@ -137,6 +157,10 @@ async function handleMake3(message) {
     console.log('MAK3ING SOMETHING')
     const chatId = message.chat.id;
     const userId = message.from.id;
+    if(lobby[userId] && lobby[userId].balance <= 400000000) {
+        gated(message)
+        return true
+    }
 
     if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
         return;
@@ -185,10 +209,17 @@ async function handleRegen(message) {
     const userId = message.from.id;
     const thisSeed = makeSeed(userId);
     lobby[userId].lastSeed = thisSeed;
-
+    let batch;
+    if(message.chat.id < 0){
+        batch = 1;
+    } else {
+        //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
+        batch = lobby[userId].batchMax;
+    }
     const promptObj = {
         ...lobby[userId],
         seed: thisSeed,
+        batchMax: batch
     }
     if(
         lobby[userId].type == 'MAKE' || 
