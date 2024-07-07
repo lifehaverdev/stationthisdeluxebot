@@ -19,6 +19,10 @@ async function startMs2(message, user = null) {
 }
 
 async function startPfp(message, user = null) {
+    if(lobby[message.fron.id] && lobby[message.from.id].balance <= 300000 ){
+        gated(message)
+        return
+    }
 
     if(user){
         message.from.id = user;
@@ -94,19 +98,34 @@ async function handleMs2Prompt(message) {
         type: 'MS2'
     }
 
+    function tokenGate() {
+        if(lobby[userId] && lobby[userId].balance <= 400000) {
+            gated(message)
+            return true
+        }
+    }
     if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+        if(tokenGate()){
+            return;
+        }
         if (!lobby[userId].styleFileUrl){
             sendMessage(message, 'hey use the setstyle command to pick a style photo');
             return;
         }
         lobby[userId].type = 'MS2_STYLE'
     } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+        if(tokenGate()){
+            return;
+        }
         if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
             sendMessage(message, 'hey use the setstyle command to pick a style photo');
             return;
         }
         lobby[userId].type = 'MS2_CONTROL_STYLE'
     } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+        if(tokenGate()){
+            return;
+        }
         lobby[userId].type = 'MS2_CONTROL'
     }
 

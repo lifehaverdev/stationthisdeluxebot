@@ -20,29 +20,20 @@ function displayAccountSettingsMenu(message) {
             },
         ],
         [
-            {
-                text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
-                callback_data: 'toggleControlNet',
-            },
-            {
-                text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
-                callback_data: 'toggleStyleTransfer',
-            }
+            // {
+            //     text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
+            //     callback_data: 'toggleControlNet',
+            // },
+            // {
+            //     text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
+            //     callback_data: 'toggleStyleTransfer',
+            // }
         ],
         [
             // {
-            //     text: `Base Prompt Menu`,
-            //     callback_data: compactSerialize({...baseData, action: 'basepromptmenu'}),
+            //     text: `Voice Menu`,
+            //     callback_data: 'voicemenu',
             // },
-            {
-                text: `Voice Menu`,
-                callback_data: 'voicemenu',
-            },
-            // {
-            //     text: `Checkpoint Menu`,
-            //     callback_data: compactSerialize({...baseData, action: 'checkpointmenu'}),
-            // }
-            
         ],
         [
             {
@@ -68,6 +59,26 @@ function displayAccountSettingsMenu(message) {
                 callback_data: 'toggleWaterMark',
             },
         );
+    }
+    if(lobby[userId].balance >= 400000){
+        accountSettingsKeyboard[1].push(
+            {
+                text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
+                callback_data: 'toggleControlNet',
+            },
+            {
+                text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
+                callback_data: 'toggleStyleTransfer',
+            }
+        )
+    }
+    if(lobby[userId].balance >= 500000){
+        accountSettingsKeyboard[2].push(
+            {
+                text: `Voice Menu`,
+                callback_data: 'voicemenu',
+            },
+        )
     }
 
     // Create account information text
