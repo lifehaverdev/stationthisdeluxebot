@@ -19,7 +19,7 @@ async function startMs2(message, user = null) {
 }
 
 async function startPfp(message, user = null) {
-    if(lobby[message.fron.id] && lobby[message.from.id].balance <= 300000 ){
+    if(lobby[message.from.id] && lobby[message.from.id].balance <= 300000 ){
         gated(message)
         return
     }
