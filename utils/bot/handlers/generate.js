@@ -22,10 +22,6 @@ async function startMake(message, user = null) {
 
 
 async function startMake3(message,user) {
-    if(lobby[user] && lobby[user].balance <= 500000){
-        gated(message)
-        return
-    }
     if(user){
         message.from.id = user;
         await editMessage({
@@ -34,6 +30,10 @@ async function startMake3(message,user) {
             message_id: message.message_id
         })
     } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance <= 500000){
+            gated(message)
+            return
+        }
         sendMessage(message, 'What prompt for your txt2img sd3')
     }
     //await sendMessage(message,'What prompt for your txt2img sd3');
