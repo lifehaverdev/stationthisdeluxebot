@@ -167,8 +167,8 @@ const actionMap = {
         startMs2(message,user);
     },
     'ms2_control': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = false;
+        lobby[user].styleTransfer = false;
+        lobby[user].controlNet = true;
         startMs2(message,user);
     },
     'ms2_control_style': (message,user) => {

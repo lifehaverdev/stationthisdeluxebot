@@ -175,10 +175,10 @@ function handleEffect(message) {
             //     { text: 'image2image controlnet', callback_data: 'ms2_control'},
             //     { text: 'autoi2i controlnet', callback_data: 'pfp_control'}
             // ],
-            [
-                { text: 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
-                { text: 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
-            ],
+            // [
+            //     { text: 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
+            //     { text: 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
+            // ],
             // [
             //     { text: 'cancel', callback_data: 'cancel' }
             // ]
