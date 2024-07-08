@@ -177,7 +177,7 @@ const loraTriggers = [
     version: 'SDXL',
     type: 'character',
     featured: true,
-    gate: 1000000,
+    gate: 300000,
     civitaiLink: 'miladystation2.net',
     description: 'cult is short for culture',
     triggerWords: ['remilia']
@@ -282,7 +282,8 @@ const loraTriggers = [
     type: 'character',
     gate: 100000,
     civitaiLink: 'https://civitai.com/models/333139/frieren-sdxlpony?modelVersionId=373180',
-    triggerWords: ['NEREIRFPNXL, FRIEREN']
+    triggerWords: ['NEREIRFPNXL, FRIEREN'],
+    hidden: true,
   },
   {
     lora_name: 'dark_magician_girl',
@@ -386,8 +387,8 @@ const loraTriggers = [
     default_weight: .9,
     version: 'SDXL',
     type: 'character',
-    gate: 10000000,
-    featured: true,
+    gate: 1000000,
+    featured: false,
     description: 'This lora is being held hostage\\. tweet at chudjak coin accounts and get them to burn 1M ms2 to unlock',
     civitaiLink: 'miladystation2.net',
     triggerWords: ['chudjak']
@@ -401,6 +402,27 @@ const loraTriggers = [
     featured: false,
     civitaiLink: 'miladystation2.net',
     triggerWords: ['kemonokaki']
+  },
+  {
+    lora_name: 'meerkat',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'character',
+    gate: 0,
+    featured: false,
+    civitaiLink: 'miladystation2.net',
+    triggerWords: ['meerkat']
+  },
+  {
+    lora_name: 'munyun',
+    default_weight: 1,
+    version: 'SDXL',
+    type: 'context',
+    gate: 0,
+    featured: false,
+    civitaiLink: 'miladystation2.net',
+    hidden: true,
+    triggerWords: ['munyunuv','uvmodel']
   }
   // Add more LoRA configurations here
   // {
