@@ -64,7 +64,6 @@ function getPromptMenu(userId, message) {
         console.error('User not found in lobby:', userId);
         return null;
     }
-
     const promptSettingsKeyboard = basepromptmenu.map(prompt => {
         const callbackData = compactSerialize({ ...baseData, action: `sbp_${prompt.name}` });
         if (isValidCallbackData(callbackData)) {

@@ -146,5 +146,8 @@ function pointsCalc(points) {
 }
 
 module.exports =  {
-    checkLobby
+    checkLobby,
+    cleanLobby,
+    POINTMULTI,
+    NOCOINERSTARTER
 }

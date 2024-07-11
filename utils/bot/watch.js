@@ -1,10 +1,12 @@
 const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('./bot'); 
+const { initialize } = require('../bot/intitialize')
 const bot = getBotInstance();
-//const { checkLobby } = require('../gatekeep')
+const { cleanLobby } = require('./gatekeep')
 const {
     safeExecute,
     sendMessage,
-    setUserState
+    setUserState,
+    DEV_DMS
 } = require('../utils')
 const {
     handleAccountReset,
@@ -83,17 +85,63 @@ const commandPatterns = {
     
     '/help(?:@stationthisbot)?': handleHelp,
     '/status(?:@stationthisbot)?': handleStatus,
-    '/mogmogmogmogmogmogmogmog$': (message) => {
-        if(lobby[message.from.id].wallet){
-            lobby[message.from.id].balance = 200001;
-            sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
-        } else {
-            sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
-        }
+    // '/mogmogmogmogmogmogmogmog$': (message) => {
+    //     if(lobby[message.from.id].wallet){
+    //         lobby[message.from.id].balance = 200001;
+    //         sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+    //     } else {
+    //         sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
+    //     }
         
-    },
+    // },
     '/start': (message) => {
         sendMessage(message,'welcome to stationthisbot. you can create images from thin air. check out our /help to get started. you must have a solana wallet verified on your account to utilize $MS2 holder benefits. try /signin')
+    },
+    '/ca@stationthisbot': (message) => {
+        const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
+        sendMessage(message,caMessage,
+            {
+                reply_markup: {inline_keyboard: [
+                    [
+                        {
+                            text: 'Chart', 
+                            url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
+                        },
+                        {
+                            text: 'Buy',
+                            url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
+                        },
+                        {
+                            text: 'Site',
+                            url: 'https://miladystation2.net'
+                        }
+                    ]
+                ]},
+                parse_mode: 'MarkdownV2'
+            }
+        )
+    },
+    '/flush': async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
+            await cleanLobby();
+            sendMessage(message,'ok we reset da points')
+        }
+    },
+    '/ibought': async (message) => {
+        if(lobby[message.from.id]){
+            lobby[message.from.id].balance = ''
+            sendMessage(message,'I reset your balance');
+        }
+    },
+    '/refresh': async(message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
+            await initialize()
+            sendMessage(message,'I reset burns and loralist');
+        }
     }
 };
 

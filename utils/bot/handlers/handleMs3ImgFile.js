@@ -8,7 +8,7 @@ async function startMs3(message, user) {
     if(user){
         message.from.id = user;
         await editMessage({
-            text: 'Send in the photo you want to img to img.',
+            text: 'Send in the photo you want to img to video.',
             chat_id: message.chat.id,
             message_id: message.message_id
         })
@@ -17,7 +17,7 @@ async function startMs3(message, user) {
             gated(message)
             return
         }
-        sendMessage(message, 'Send in the photo you want to img to img.',{reply_to_message_id: message.message_id})
+        sendMessage(message, 'Send in the photo you want to img to video.',{reply_to_message_id: message.message_id})
     }
     setUserState(message,STATES.MS3)
 }

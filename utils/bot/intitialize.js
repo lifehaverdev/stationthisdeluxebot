@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-const { loraTriggers } = require('../bot/bot')
+const { loraTriggers, burns } = require('../bot/bot')
 // read mongodb for burns, return object for addresses
 async function readBurns() {
     // Connection URI
@@ -18,11 +18,40 @@ async function readBurns() {
 
         // Find all documents in the collection
         const documents = await collection.find().toArray();
+        // Initialize a map to store the total burned amount for each wallet
+        const burnsMap = new Map();
+
+        // Process each document
         documents.forEach(doc => {
-            console.log('Document:', doc);
+        const wallet = doc.wallet;
+        const burnts = doc.burns;
+
+        // Initialize the total amount for this wallet if it doesn't exist
+        if (!burnsMap.has(wallet)) {
+            burnsMap.set(wallet, 0);
+        }
+
+        // Sum up the burned amounts for this wallet
+        burnts.forEach(burn => {
+            burnsMap.set(wallet, burnsMap.get(wallet) + burn.amount);
+        });
         });
 
-        console.log('All documents printed successfully');
+        burnsMap.forEach((burned, wallet) => {
+            burns.push({ wallet, burned });
+        });
+
+        // // Convert the map to the desired burns array format
+        // const burnsArray = Array.from(burnsMap.entries()).map(([wallet, burned]) => ({
+        // wallet,
+        // burned
+        // }));
+
+        // Log the result
+        //console.log('Burns:', burns);
+        
+
+        console.log('burns loaded');
     } catch (error) {
         console.error('Error printing documents:', error);
     } finally {
@@ -59,7 +88,7 @@ async function readLoraList() {
         }
 
         console.log('loraTriggers loaded');
-        console.log(JSON.stringify(loraTriggers))
+        //console.log(JSON.stringify(loraTriggers))
     } catch (error) {
         console.error('Error printing documents:', error);
     } finally {
@@ -73,7 +102,7 @@ async function initialize() {
     console.log('getting lora list');
     await readLoraList();
     console.log('reading burns');
-    //await readBurns();
+    await readBurns();
     console.log('ready...!')
 }
 

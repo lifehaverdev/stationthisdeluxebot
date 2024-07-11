@@ -22,14 +22,15 @@ function handleHelp(message) {
     
     TROUBLESHOOTING
     
-    First of all if you find a bug go to the techsupport channel and tell the dev, hes trying to make the bot perfect so pls help
+    First of all if you find a bug tell the dev @arthurtmonyman, hes trying to make the bot perfect so pls help
     
-    If you are stuck in some sort of UI call and rsponse loop or if you change your mind in the middle of one, use the /quit command
+    If you are stuck in some sort of UI call and response loop or if you change your mind in the middle of one, use the /quit command
     If you are unsure whether the bot is alive use the /status command
     If your settings are all wonky, try /resetaccount or /signout and /signin again. you won't have to reverify
     
     EXTRA
     
+    If you bought or burned and want to see your new balance try /ibought
     Try the /loralist command to see what LORAs we offer along with their key words, just use the trigger word somewhere in your prompt to activate it`
 
     sendMessage(message, helpMessage);
