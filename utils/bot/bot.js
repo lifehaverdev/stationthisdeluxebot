@@ -10,6 +10,8 @@ const startup = Date.now();
 const lobby = {};
 let taskQueue = []
 let waiting = []
+let loraTriggers = [];
+let burns = [];
 const rooms = [
 //     {
 //     owner: 5472638766,
@@ -192,10 +194,12 @@ async function getPhotoUrl(message) {
         fileId = message.photo[message.photo.length - 1].file_id;
     } else if (message.document) {
         fileId = message.document.file_id;
+    } else {
+        return
     }
     const photoInfo = await bot.getFile(fileId);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
-    console.log(photoUrl);
+    //console.log(photoUrl);
     return photoUrl
 }
 
@@ -210,6 +214,8 @@ module.exports = {
     rooms,
     startup,
     waiting,
+    loraTriggers,
+    burns,
     taskQueue,
     commandStateMessages,
     SET_COMMANDS,

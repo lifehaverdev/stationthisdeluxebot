@@ -3,9 +3,12 @@ const bodyParser = require('body-parser');
 const { getBot } = require('./app');
 require('dotenv').config();
 const { processWaitlist } = require('./utils/bot/queue');
+const { initialize } = require('./utils/bot/intitialize')
 
 const app = express();
 app.use(bodyParser.json());
+
+initialize();
 
 console.log('running server now');
 
