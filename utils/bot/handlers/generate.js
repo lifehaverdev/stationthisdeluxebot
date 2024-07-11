@@ -157,7 +157,7 @@ async function handleMake3(message) {
     console.log('MAK3ING SOMETHING')
     const chatId = message.chat.id;
     const userId = message.from.id;
-    if(lobby[userId] && lobby[userId].balance <= 400000000) {
+    if(lobby[userId] && lobby[userId].balance <= 400000) {
         gated(message)
         return true
     }

@@ -1,4 +1,5 @@
 const sdk = require('api')('@alchemy-docs/v1.0#1qz7y1elt7gubvr');
+const { burns } = require('../bot/bot');
 
 const blessings = {
     //FU STUDIOS PROMO
@@ -66,6 +67,14 @@ async function getBalance(address) {
             balance += blessings[address] - curses[address];
         }
     }
+
+    const burnRecord = burns.find(burn => burn.wallet === address);
+    if (burnRecord) {
+        console.log(burnRecord.burned)
+        balance += parseInt(burnRecord.burned) / 1000000;
+    }
+
+
     return balance
 }
 

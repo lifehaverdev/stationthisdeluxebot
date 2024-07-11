@@ -1,8 +1,8 @@
-const { getBotInstance, lobby, rooms, STATES } = require('../bot'); 
+const { getBotInstance, lobby, rooms, STATES, burns, startup } = require('../bot'); 
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize } = require('../../utils')
-const { checkLobby } = require('../gatekeep')
+const { checkLobby, NOCOINERSTARTER, POINTMULTI } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
@@ -95,12 +95,22 @@ function displayAccountSettingsMenu(message) {
             bars += '⬜️'
         }
     }
-    let accountInfo = `Account:\n\n`;
-    accountInfo += `<b>Username:</b> ${message.from.username}\n`;
-    accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance}\n`;
+    const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
+    let burned = 0;
+    if (burnRecord) {
+        console.log(burnRecord.burned)
+        burned += parseInt(burnRecord.burned) / 1000000;
+    }
+    
+    //let accountInfo = `Account:\n\n`;
+    let accountInfo = '\n';
+    accountInfo += `<b>${message.from.username}</b> \n`;
+    accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n`;
+    accountInfo += `<b>MS2 Burned:</b> ${burned}🔥\n`;
     accountInfo += `<b>LEVEL:</b>${level} `
     accountInfo += `<b>EXP:</b> ${bars}\n`
-    accountInfo += `<b>Points:</b> ${lobby[userId].points || 0}\n\n`;
+    accountInfo += `<b>Points:</b> ${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}\n\n`;
+    accountInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
     accountInfo += `<b>Locked Features:</b>\n`;
     
     // List locked features based on the user's balance
@@ -120,6 +130,20 @@ function displayAccountSettingsMenu(message) {
             inline_keyboard: accountSettingsKeyboard
         }
     });
+}
+
+function getNextPeriodTime(startup) {
+    const currentTime = Date.now();
+    const elapsedMilliseconds = currentTime - startup;
+    const eightHoursInMilliseconds = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+
+    // Calculate remaining milliseconds until the next 8-hour period
+    const remainingMilliseconds = eightHoursInMilliseconds - (elapsedMilliseconds % eightHoursInMilliseconds);
+
+    // Convert remaining time to minutes
+    const remainingMinutes = Math.floor(remainingMilliseconds / 1000 / 60);
+
+    return remainingMinutes;
 }
 
 async function handleSaveSettings(message) {

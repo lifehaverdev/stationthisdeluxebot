@@ -201,5 +201,6 @@ module.exports = {
     compactSerialize,
     makeBaseData,
     editMessage,
-    gated
+    gated,
+    DEV_DMS
 }
