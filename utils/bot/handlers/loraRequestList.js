@@ -60,9 +60,28 @@ async function sendLoRaModelFilenames(message) {
             return
         }
       if (checkpointName && checkpointDescription == lora.version && lobby[message.from.id].balance >= lora.gate) {
-          const triggerWords = lora.triggerWords.join(', ');
-          const loraInfo = `\`${triggerWords}\``;
-          const featureInfo = `${lora.description}\nTrigger Words: \`${triggerWords}\`\nToken Gate: ${lora.gate}\n`;
+          //const triggerWords = lora.triggerWords.join(', ');
+          //const triggerWords = lora.triggerWords.map(word => word ? `\`${word}\`` : '').join(', ');
+          //const loraInfo = `\`${triggerWords}\``;
+          
+
+
+        let currentString = '`';
+
+        lora.triggerWords.forEach(word => {
+            if (word != '#') {
+                currentString += `${word},`
+            } else {
+                currentString += `\` \`` 
+            }
+        });
+        if (currentString.endsWith(',')) {
+            currentString = currentString.slice(0, -1);
+        }
+        currentString += '`';
+
+        const loraInfo = currentString;
+        const featureInfo = `${lora.description}\nTrigger Words: ${currentString}\nToken Gate: ${lora.gate}\n`;
 
           // Categorize by type
           if (lora.type) {
@@ -91,7 +110,7 @@ async function sendLoRaModelFilenames(message) {
   });
 
   loraMessage += 'Add one or all of the trigger words to a prompt to activate the respective lora on the generation';
-
+  console.log(loraMessage)
   const maxMessageLength = 4096; // Telegram's max message length is 4096 characters
   if (loraMessage.length > maxMessageLength) {
       const midpoint = Math.floor(loraMessage.length / 2);
