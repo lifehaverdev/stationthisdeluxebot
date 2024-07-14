@@ -203,7 +203,7 @@ function prepareRequest(promptObj) {
                     input_cfg: promptObj.cfg,
                     input_prompt: promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt,
                     input_checkpoint: promptObj.checkpoint+'.safetensors',
-                    input_negprompt: promptObj.negativePromptt
+                    "input_negprompt": promptObj.negativePrompt + baseNegPrompt
                 }
             });
             
@@ -220,7 +220,8 @@ function prepareRequest(promptObj) {
                   "input_prompt": promptObj.prompt +" "+ promptObj.userBasePrompt + basePrompt,
                   "input_checkpoint": promptObj.checkpoint+'.safetensors',
                   "input_image": promptObj.fileUrl,
-                  "input_strength": promptObj.strength
+                  "input_strength": promptObj.strength,
+                  "input_negative": promptObj.negativePrompt + baseNegPrompt
                 }
               })
             break;
@@ -248,7 +249,8 @@ function prepareRequest(promptObj) {
                     "input_prompt": promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
-                    "input_strength": promptObj.strength
+                    "input_strength": promptObj.strength,
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -265,7 +267,8 @@ function prepareRequest(promptObj) {
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
-                    "input_style_image": promptObj.styleFileUrl
+                    "input_style_image": promptObj.styleFileUrl,
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -282,6 +285,7 @@ function prepareRequest(promptObj) {
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                     }
             })
             break;
@@ -298,7 +302,8 @@ function prepareRequest(promptObj) {
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
-                    "input_style_image": promptObj.styleFileUrl
+                    "input_style_image": promptObj.styleFileUrl,
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -315,7 +320,7 @@ function prepareRequest(promptObj) {
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
-                    //"input_neg_promt": negPrompt + baseNegPrompt
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -333,7 +338,7 @@ function prepareRequest(promptObj) {
                     "input_image": promptObj.fileUrl,
                     "input_strength": promptObj.strength,
                     "input_style_image": promptObj.styleFileUrl,
-                    "input_neg_promt": negPrompt + baseNegPrompt
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -351,7 +356,7 @@ function prepareRequest(promptObj) {
                 "input_image": promptObj.fileUrl,
                 "input_strength": promptObj.strength,
                 "input_style_image": promptObj.styleFileUrl,
-                "input_neg_promt": negPrompt + baseNegPrompt
+                "input_neg_prompt": promptObj.negativePrompt + baseNegPrompt
                 }
         })
             break;
@@ -369,7 +374,7 @@ function prepareRequest(promptObj) {
                     "input_prompt": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
                     "input_checkpoint": promptObj.checkpoint+'.safetensors',
                     "input_image": promptObj.styleFileUrl,
-                    //"input_neg_promt": negPrompt + baseNegPrompt
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
             })
             break;
@@ -388,7 +393,7 @@ function prepareRequest(promptObj) {
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,
                     "input_style_image": promptObj.styleFileUrl,
-                    //"input_neg_promt": negPrompt + baseNegPrompt
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
               });
             break;
@@ -406,7 +411,7 @@ function prepareRequest(promptObj) {
                     "input_control_image": promptObj.controlFileUrl,
                     "input_width": promptObj.photoStats.width,
                     "input_height": promptObj.photoStats.height,
-                    //"input_neg_promt": negPrompt + baseNegPrompt
+                    "input_negative": promptObj.negativePrompt + baseNegPrompt
                   }
                 })
             break;
@@ -416,7 +421,7 @@ function prepareRequest(promptObj) {
                 webhook: webHook,
                 inputs: {
                     "input_text": promptObj.prompt + " " + promptObj.userBasePrompt + basePrompt,
-                    "input_negative_text": promptObj.negativePromp,
+                    "input_negative_text": promptObj.negativePrompt,
                     "input_seed": promptObj.seed
                   }
             })
