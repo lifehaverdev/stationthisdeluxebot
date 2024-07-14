@@ -1,10 +1,29 @@
-const { getPhotoUrl, makeSeed, lobby } = require('../bot')
-const { sendMessage, setUserState } = require('../../utils')
+const { getPhotoUrl, makeSeed, lobby, STATES } = require('../bot')
+const { sendMessage, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue');
+const Jimp = require('jimp');
 
 // async function startInpaint(message, user = null) {
 
 // }
+
+async function startInpaint(message, user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send in the photo you want to inpaint.',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance < 400000){
+            gated(message)
+            return
+        }
+        sendMessage(message, 'Send in the photo you want to inpaint.',{reply_to_message_id: message.message_id})
+    }
+    setUserState(message,STATES.INPAINT)
+}
 async function handleInpaint(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
@@ -28,9 +47,9 @@ async function handleInpaint(message) {
             fileUrl: fileUrl
         }
         //console.log(lobby[userId])
-        await sendMessage(message, `The dimensions of the photo are ${width}x${height}.`);       
-        sendMessage(message,'Ok now go here: https://imagemasker.github.io/ put that same photo in there and draw white over the part you want to inpaint and black over everything else then post it back here') 
-        setUserState(message,STATES.MASK);
+        await sendMessage(message, `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`);       
+        //sendMessage(message,'Ok now go here: https://imagemasker.github.io/ put that same photo in there and draw white over the part you want to inpaint and black over everything else then post it back here') 
+        setUserState(message,STATES.INPAINTTARGET);
         return true;
     } catch (error) {
         console.error("Error processing photo:", error);
@@ -38,40 +57,40 @@ async function handleInpaint(message) {
         return false
     }
 }
-async function handleMask(message) {
-    chatId = message.chat.id;
-    const userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
+// async function handleMask(message) {
+//     chatId = message.chat.id;
+//     const userId = message.from.id;
+//     const fileUrl = await getPhotoUrl(message);
     
-    try {
-        const photo = await Jimp.read(fileUrl);
-        const { width, height } = photo.bitmap;
+//     try {
+//         const photo = await Jimp.read(fileUrl);
+//         const { width, height } = photo.bitmap;
 
-        const photoStats = {
-            width: width,
-            height: height
-        };
+//         const photoStats = {
+//             width: width,
+//             height: height
+//         };
 
-        if (photoStats.width != lobby[userId].tempSize.width || photoStats.height != lobby[userId].tempSize.height){
-            sendMessage(message,'hey those dont match. try again from beginning')
-            setUserState(message,STATES.IDLE);
+//         if (photoStats.width != lobby[userId].tempSize.width || photoStats.height != lobby[userId].tempSize.height){
+//             sendMessage(message,'hey those dont match. try again from beginning')
+//             setUserState(message,STATES.IDLE);
             
-        }
+//         }
 
 
-        lobby[userId].mask = fileUrl
+//         lobby[userId].mask = fileUrl
         
-        //console.log(lobby[userId])
-        sendMessage(message,'What prompt for the inpainting pls')
-        setUserState(message,STATES.MASKPROMPT);
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
+//         //console.log(lobby[userId])
+//         sendMessage(message,'What prompt for the inpainting pls')
+//         setUserState(message,STATES.MASKPROMPT);
+//         return true;
+//     } catch (error) {
+//         console.error("Error processing photo:", error);
+//         sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+//         return false
+//     }
     
-}
+// }
 async function handleInpaintPrompt(message) {
     const userId = message.from.id;
     let userInput = message.text;
@@ -93,4 +112,25 @@ async function handleInpaintPrompt(message) {
     setUserState(message,STATES.IDLE);
 }
 
-module.exports = { handleInpaint, handleInpaintPrompt, handleMask }
+async function handleInpaintTarget(message) {
+    const userId = message.from.id;
+    let userInput = message.text;
+    userInput == '' ? userInput = '' : null;
+
+    lobby[userId] = {
+        ...lobby[userId],
+        inpaintTarget: userInput,
+        type: 'INPAINT'
+    }
+    await sendMessage(message, 'What do you want instead of what you described.');
+    // const promptObj = {
+    //     ...lobby[userId],
+    //     seed: lobby[userId].lastSeed,
+    //     photoStats: lobby[userId].tempSize
+    // }
+    //return await shakeMs2(message,promptObj);
+    //enqueueTask({message,promptObj})
+    setUserState(message,STATES.INPAINTPROMPT);
+}
+
+module.exports = { startInpaint, handleInpaint, handleInpaintPrompt, handleInpaintTarget }

@@ -26,7 +26,7 @@ const { handleHelp, handleStatus } = require('./helpStatus.js')
 const { handleDexMake, handlePromptCatch } = require('./promptDex.js')
 const { startMake, startMake3, handleMake, handleRegen, handleMake3 } = require('./generate.js')
 const { handleInterrogation } = require('./interrogate.js')
-const { handleMask, handleInpaint, handleInpaintPrompt } = require('./inpaint.js')
+const { handleInpaintTarget, startInpaint, handleInpaint, handleInpaintPrompt } = require('./inpaint.js')
 const { handleRequest, sendLoRaModelFilenames } = require('./loraRequestList.js')
 const { handleWatermark, handleDiscWrite } = require('./branding.js')
 const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile } = require('./imageToImage.js')
@@ -70,7 +70,8 @@ module.exports = {
     handleDiscWrite,
     handleHelp,
     handleInpaint,
-    handleMask,
+    handleInpaintTarget,
+    startInpaint,
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,

@@ -10,7 +10,7 @@ const {
     setUserState,
 } = require('../utils');
 const { displayAccountSettingsMenu } = require('./handlers/accountSettings')
-const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus } = require('./handlers/handle');
+const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus, startInpaint } = require('./handlers/handle');
 const { startMs2, startPfp } = require('./handlers/imageToImage')
 const { startMs3 } = require('./handlers/handleMs3ImgFile')
 const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
@@ -266,7 +266,8 @@ const actionMap = {
     },
     'cancel' : (message) => {
         bot.deleteMessage(message.chat.id, message.message_id);
-    }
+    },
+    'inpaint' : startInpaint
 
     
 };

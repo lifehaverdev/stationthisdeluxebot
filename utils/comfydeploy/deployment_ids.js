@@ -94,6 +94,12 @@ const comfydeployment_ids = [
         NAME: 'assist',
         id: 'na',
         score: 10
+    },
+    {
+        type: "INPAINT",
+        name: 'inpaint',
+        id: 'a222e1b0-9503-482f-a088-ae57a4b4d0c2',
+        score: 50
     }
 ]
 function getDeploymentIdByType(type) {
