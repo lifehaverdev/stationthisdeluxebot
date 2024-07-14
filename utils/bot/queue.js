@@ -149,6 +149,7 @@ async function waitlist(task){
         case 'PFP_CONTROL':
         case 'INTERROGATE':
         case 'MAKE3':
+        case 'INPAINT':
             run_id = await generate(promptObj);
             break;
     }
@@ -283,9 +284,10 @@ async function processWaitlist(status, run_id, outputs) {
 async function handleTaskCompletion(task, run) {
     const { message, promptObj } = task;
     const { status, outputs } = run;
-    const possibleTypes = ["images", "gifs", "videos", "text"];
+    const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
     let urls = [];
     let texts = [];
+    let tags = [];
     let sent = true;
 
     const operation = async () => {
@@ -298,6 +300,8 @@ async function handleTaskCompletion(task, run) {
                     if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
                         if (type === 'text') {
                             texts = outputItem.data[type]; // Directly assign the text array
+                        } else if (type === 'tags') {
+                            tags = outputItem.data[type]; // Directly assign the text array
                         } else {
                             outputItem.data[type].forEach(dataItem => {
                                 const url = dataItem.url;
@@ -324,6 +328,15 @@ async function handleTaskCompletion(task, run) {
             }
 
             for (const text of texts) {
+                try {
+                    const mediaResponse = await sendMessage(message, text);
+                    if (!mediaResponse) sent = false;
+                } catch (err) {
+                    console.error('Error sending text:', err.message || err);
+                }
+            }
+
+            for (const text of tags) {
                 try {
                     const mediaResponse = await sendMessage(message, text);
                     if (!mediaResponse) sent = false;

@@ -16,7 +16,7 @@ const {
     handleDiscWrite,
     handleHelp,
     handleInpaint,
-    handleMask,
+    handleInpaintTarget,
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,
@@ -42,6 +42,7 @@ const {
     //handleLoraTrigger,
     sendLoRaModelFilenames,
     startMake,
+    startInpaint,
     shakeAssist,
     shakeSpeak,
     shakeSignIn,
@@ -82,18 +83,18 @@ const commandPatterns = {
     '/create(?:@stationthisbot)?': handleCreate,
     '/effect(?:@stationthisbot)?': handleEffect,
     '/animate(?:@stationthisbot)?': handleAnimate,
-    
+    //'/inpaint': startInpaint,
     '/help(?:@stationthisbot)?': handleHelp,
     '/status(?:@stationthisbot)?': handleStatus,
-    // '/mogmogmogmogmogmogmogmog$': (message) => {
-    //     if(lobby[message.from.id].wallet){
-    //         lobby[message.from.id].balance = 200001;
-    //         sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
-    //     } else {
-    //         sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
-    //     }
+    '/mogmogmogmogmogmogmogmog$': (message) => {
+        if(lobby[message.from.id].wallet){
+            lobby[message.from.id].balance = 200001;
+            sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+        } else {
+            sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
+        }
         
-    // },
+    },
     '/start': (message) => {
         sendMessage(message,'welcome to stationthisbot. you can create images from thin air. check out our /help to get started. you must have a solana wallet verified on your account to utilize $MS2 holder benefits. try /signin')
     },
@@ -142,7 +143,8 @@ const commandPatterns = {
             await initialize()
             sendMessage(message,'I reset burns and loralist');
         }
-    }
+    },
+
 };
 
 
@@ -166,6 +168,8 @@ const stateHandlers = {
     [STATES.SETSTYLE]: (message) => safeExecute(message,handleSet),
     [STATES.SETCONTROL]: (message) => safeExecute(message,handleSet),
     [STATES.INPAINT]: (message) => safeExecute(message, handleInpaint),
+    [STATES.INPAINTTARGET]: (message) => safeExecute(message, handleInpaintTarget),
+    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, handleInpaintPrompt),
     [STATES.MASK]: (message) => safeExecute(message, handleMask),
 };
 
@@ -254,7 +258,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/accountsettings','/create', '/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {

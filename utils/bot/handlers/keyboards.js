@@ -214,6 +214,11 @@ function handleEffect(message) {
                 { text: 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
             ]
         )
+        options.reply_markup.inline_keyboard.push(
+            [
+                { text: 'inpaint', callback_data: 'inpaint'},
+            ]
+        )
     }
     options.reply_markup.inline_keyboard.push(
         [
