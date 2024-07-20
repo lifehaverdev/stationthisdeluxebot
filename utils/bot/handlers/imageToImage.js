@@ -37,6 +37,80 @@ async function startPfp(message, user = null) {
     setUserState(message,STATES.PFP)
 }
 
+async function handleUpscale(message) {
+    if(!message.photo || message.document) {
+        return;
+    }
+    const sent = await sendMessage(message,'okay lemme see...');
+    chatId = message.chat.id;
+    const userId = message.from.id;
+
+    const fileUrl = await getPhotoUrl(message)
+    
+    try {
+        lobby[userId] = {
+            ...lobby[userId],
+            type: 'UPSCALE',
+            fileUrl: fileUrl
+        }
+
+        await react(message);
+        const promptObj = {
+            ...lobby[userId]
+        }
+        enqueueTask({message,promptObj})
+        setUserState(message,STATES.IDLE);
+        return true;
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        await editMessage(
+            {
+                text: "An error occurred while processing the photo. Please send it again, or another photo.",
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            }
+        );      
+        return false
+    }
+}
+
+async function handleRmbg(message) {
+    if(!message.photo || message.document) {
+        return;
+    }
+    const sent = await sendMessage(message,'okay lemme see...');
+    chatId = message.chat.id;
+    const userId = message.from.id;
+
+    const fileUrl = await getPhotoUrl(message)
+    
+    try {
+        lobby[userId] = {
+            ...lobby[userId],
+            type: 'RMBG',
+            fileUrl: fileUrl
+        }
+
+        await react(message);
+        const promptObj = {
+            ...lobby[userId]
+        }
+        enqueueTask({message,promptObj})
+        setUserState(message,STATES.IDLE);
+        return true;
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        await editMessage(
+            {
+                text: "An error occurred while processing the photo. Please send it again, or another photo.",
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            }
+        );      
+        return false
+    }
+}
+
 async function handleMs2ImgFile(message) {
     if(!message.photo || message.document) {
         return;
@@ -208,6 +282,8 @@ module.exports = {
     handlePfpImgFile,
     handleMs2Prompt,
     handleMs2ImgFile,
+    handleUpscale,
+    handleRmbg,
     startMs2,
     startPfp
 }

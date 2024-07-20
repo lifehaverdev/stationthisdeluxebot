@@ -100,6 +100,18 @@ const comfydeployment_ids = [
         name: 'inpaint',
         id: 'a222e1b0-9503-482f-a088-ae57a4b4d0c2',
         score: 50
+    },
+    {
+        type: 'RMBG',
+        name: 'removebackground',
+        id: '42106fbe-e6b5-4bcd-901f-a69554da084a',
+        score: 40
+    },
+    {
+        type: 'UPSCALE',
+        name: 'upscale',
+        id: 'b0d89b67-4e01-47fe-8680-405b2d6bd204',
+        score: 10
     }
 ]
 function getDeploymentIdByType(type) {

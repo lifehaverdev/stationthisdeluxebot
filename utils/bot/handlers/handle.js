@@ -1,7 +1,8 @@
-const { getBotInstance, lobby, STATES } = require('../bot'); 
+const { getBotInstance, lobby, STATES, startup } = require('../bot'); 
 const {
     sendMessage,
-    setUserState
+    setUserState,
+    editMessage
 } = require('../../utils')
 const bot = getBotInstance()
 const { checkLobby } = require('../gatekeep')
@@ -29,8 +30,8 @@ const { handleInterrogation } = require('./interrogate.js')
 const { handleInpaintTarget, startInpaint, handleInpaint, handleInpaintPrompt } = require('./inpaint.js')
 const { handleRequest, sendLoRaModelFilenames } = require('./loraRequestList.js')
 const { handleWatermark, handleDiscWrite } = require('./branding.js')
-const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile } = require('./imageToImage.js')
-const { setMenu, handleCreate, handleEffect, handleAnimate } = require('./keyboards.js')
+const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile, handleUpscale, handleRmbg } = require('./imageToImage.js')
+const { setMenu, handleCreate, handleEffect, handleAnimate, handleUtils } = require('./keyboards.js')
 
 
 async function shakeAssist(message) {
@@ -61,6 +62,44 @@ async function shakeSpeak(message) {
     return true
 }
 
+async function startRmbg(message, user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send me the photo to remove the background from',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance < 200000){
+            gated(message)
+            return
+        }
+        sendMessage(message,'Send me the photo to remove the background from',{reply_to_message_id: message.message_id})
+    }
+    
+    setUserState(message,STATES.RMBG)
+}
+
+async function startUpscale(message,user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send me the photo you want to upscale',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+    } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance < 200000){
+            gated(message)
+            return
+        }
+        sendMessage(message,'Send me the photo you want to upscale',{reply_to_message_id: message.message_id})
+    }
+    
+    setUserState(message,STATES.UPSCALE);
+}
+
 
 module.exports = {
     handleAccountReset,
@@ -72,6 +111,8 @@ module.exports = {
     handleInpaint,
     handleInpaintTarget,
     startInpaint,
+    startRmbg,
+    startUpscale,
     handleInpaintPrompt,
     handleInterrogation,
     handleMake,
@@ -89,6 +130,8 @@ module.exports = {
     handleSignIn,
     handleSignOut,
     handleStatus,
+    handleUpscale,
+    handleRmbg,
     //handleTest,
     //handleVerify,
     handleWatermark,
@@ -107,5 +150,6 @@ module.exports = {
     setMenu,
     handleCreate,
     handleEffect,
-    handleAnimate
+    handleAnimate,
+    handleUtils
 }

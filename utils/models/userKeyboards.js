@@ -8,7 +8,7 @@ const home =  {
     reply_markup: {
         keyboard: [
             [{ text: '/create' },{ text: '/effect' },{ text: '/animate' }],
-            [{ text: '/set' },{text: '/regen' },{ text: '/status'}],
+            [{ text: '/set' },{text: '/utils'},{text: '/regen' },{ text: '/status'}],
             [{ text: '/accountsettings' }]
         ],
         resize_keyboard: true,

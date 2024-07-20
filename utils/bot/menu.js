@@ -10,7 +10,7 @@ const {
     setUserState,
 } = require('../utils');
 const { displayAccountSettingsMenu } = require('./handlers/accountSettings')
-const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus, startInpaint } = require('./handlers/handle');
+const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus, startInpaint, startRmbg, startUpscale } = require('./handlers/handle');
 const { startMs2, startPfp } = require('./handlers/imageToImage')
 const { startMs3 } = require('./handlers/handleMs3ImgFile')
 const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
@@ -218,6 +218,8 @@ const actionMap = {
         setUserState(message, STATES.ASSIST);
     },
     'ms3': startMs3,
+    'rmbg': startRmbg,
+    'upscale': startUpscale,
     'set': setMenu,
     'speak': (message,user) => {
         editMessage({

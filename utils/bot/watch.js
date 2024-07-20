@@ -8,68 +8,23 @@ const {
     setUserState,
     DEV_DMS
 } = require('../utils')
-const {
-    handleAccountReset,
-    handleAccountSettings,
-    handleAdvancedUserOptions,
-    handleDexMake,
-    handleDiscWrite,
-    handleHelp,
-    handleInpaint,
-    handleInpaintTarget,
-    handleInpaintPrompt,
-    handleInterrogation,
-    handleMake,
-    handleMake3,
-    handleMs2ImgFile,
-    handleMs2Prompt,
-    handleMs3ImgFile,
-    handlePfpImgFile,
-    handlePromptCatch,
-    handleRegen,
-    handleRequest,
-    handleSaveSettings,
-    handleSeeSettings,
-    handleSet,
-    handleSignIn,
-    handleSignOut,
-    handleStatus,
-    // handleSpeak,
-    //handleTest,
-    //handleVerify,
-    shakeVerify,
-    handleWatermark,
-    //handleLoraTrigger,
-    sendLoRaModelFilenames,
-    startMake,
-    startInpaint,
-    shakeAssist,
-    shakeSpeak,
-    shakeSignIn,
-    startSet,
-    saySeed,
-    checkLobby,
-    setMenu,
-    handleCreate,
-    handleEffect,
-    handleAnimate
-} = require('./handlers/handle');
+const handlers = require('./handlers/handle');
 const defaultUserData = require('../users/defaultUserData');
 
 const commandPatterns = {
-    '/signin': handleSignIn,
-    '/make(?:@stationthisbot)?\\s+(.+)': handleMake,
-    '/make3(?:@stationthisbot)?\\s+(.+)': handleMake3,
-    '/dexmake(?:@stationthisbot)?\\s+(\\d+)': handleDexMake, 
+    '/signin': handlers.handleSignIn,
+    '/make(?:@stationthisbot)?\\s+(.+)': handlers.handleMake,
+    '/make3(?:@stationthisbot)?\\s+(.+)': handlers.handleMake3,
+    '/dexmake(?:@stationthisbot)?\\s+(\\d+)': handlers.handleDexMake, 
 //    '/test(?:@stationthisbot)?\\s+(.+)': handleTest,
-    '/regen(?:@stationthisbot)?\\s*(.*)': handleRegen,
-    '/getseed(.*)': saySeed,
-    '/promptcatch\\s+(\\d+)': handlePromptCatch,
+    '/regen(?:@stationthisbot)?\\s*(.*)': handlers.handleRegen,
+    '/getseed(.*)': handlers.saySeed,
+    '/promptcatch\\s+(\\d+)': handlers.handlePromptCatch,
     //'/request(.*)': startRequest,
-    '/savesettings(.*)': handleSaveSettings,
-    '/seesettings(.*)': handleSeeSettings,
-    '/accountsettings(?:@stationthisbot)?': handleAccountSettings,
-    '/loralist(?:@stationthisbot)?': sendLoRaModelFilenames,
+    '/savesettings(.*)': handlers.handleSaveSettings,
+    '/seesettings(.*)': handlers.handleSeeSettings,
+    '/accountsettings(?:@stationthisbot)?': handlers.handleAccountSettings,
+    '/loralist(?:@stationthisbot)?': handlers.sendLoRaModelFilenames,
     //'/seecollections': handleSeeCollections,
     //'/createcollection (.+)': handleCreateCollection,
     //'/uri': handleUri,
@@ -77,15 +32,16 @@ const commandPatterns = {
     // '/savework': handleSaveWork,
     //'/disc(.*)': handleDisc,
     //'/watermark(.*)': handleWatermark,
-    '/signout': handleSignOut,
-    '/resetaccount': handleAccountReset,
-    '/set(?:@stationthisbot)?': setMenu,
-    '/create(?:@stationthisbot)?': handleCreate,
-    '/effect(?:@stationthisbot)?': handleEffect,
-    '/animate(?:@stationthisbot)?': handleAnimate,
+    '/signout': handlers.handleSignOut,
+    '/resetaccount': handlers.handleAccountReset,
+    '/set(?:@stationthisbot)?': handlers.setMenu,
+    '/create(?:@stationthisbot)?': handlers.handleCreate,
+    '/effect(?:@stationthisbot)?': handlers.handleEffect,
+    '/animate(?:@stationthisbot)?': handlers.handleAnimate,
+    '/utils(?:@stationthisbot)?': handlers.handleUtils,
     //'/inpaint': startInpaint,
-    '/help(?:@stationthisbot)?': handleHelp,
-    '/status(?:@stationthisbot)?': handleStatus,
+    '/help(?:@stationthisbot)?': handlers.handleHelp,
+    '/status(?:@stationthisbot)?': handlers.handleStatus,
     '/mogmogmogmogmogmogmogmog$': (message) => {
         if(lobby[message.from.id].wallet){
             lobby[message.from.id].balance = 200001;
@@ -98,7 +54,7 @@ const commandPatterns = {
     '/start': (message) => {
         sendMessage(message,'welcome to stationthisbot. you can create images from thin air. check out our /help to get started. you must have a solana wallet verified on your account to utilize $MS2 holder benefits. try /signin')
     },
-    '/ca@stationthisbot': (message) => {
+    '/ca(?:@stationthisbot)?': (message) => {
         const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
         sendMessage(message,caMessage,
             {
@@ -149,28 +105,28 @@ const commandPatterns = {
 
 
 const stateHandlers = {
-    [STATES.SIGN_IN]: (message) => safeExecute(message, shakeSignIn),
-    [STATES.VERIFY]: (message) => safeExecute(message, shakeVerify),
-    [STATES.MAKE]: (message) => safeExecute(message, handleMake),
-    [STATES.MAKE3]: (message) => safeExecute(message, handleMake3),
-    [STATES.MS2PROMPT]: (message) => safeExecute(message, handleMs2Prompt),
-    [STATES.MASKPROMPT]: (message) => safeExecute(message, handleInpaintPrompt),
-    [STATES.REQUEST]: (message) => safeExecute(message, handleRequest),
-    [STATES.ASSIST]: (message) => safeExecute(message, shakeAssist),
-    [STATES.SPEAK]: (message) => safeExecute(message, shakeSpeak),
-    [STATES.IMG2IMG]: (message) => safeExecute(message, handleMs2ImgFile),
-    [STATES.MS3]: (message) => safeExecute(message,handleMs3ImgFile),
-    [STATES.PFP]: (message) => safeExecute(message, handlePfpImgFile),
-    [STATES.INTERROGATION]: (message) => safeExecute(message, handleInterrogation),
-    [STATES.DISC]: (message) => safeExecute(message, handleDiscWrite),
-    [STATES.WATERMARK]: (message) => safeExecute(message, handleWatermark),
-    [STATES.SETPHOTO]: (message) => safeExecute(message, handleSet),
-    [STATES.SETSTYLE]: (message) => safeExecute(message,handleSet),
-    [STATES.SETCONTROL]: (message) => safeExecute(message,handleSet),
-    [STATES.INPAINT]: (message) => safeExecute(message, handleInpaint),
-    [STATES.INPAINTTARGET]: (message) => safeExecute(message, handleInpaintTarget),
-    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, handleInpaintPrompt),
-    [STATES.MASK]: (message) => safeExecute(message, handleMask),
+    [STATES.SIGN_IN]: (message) => safeExecute(message, handlers.shakeSignIn),
+    [STATES.VERIFY]: (message) => safeExecute(message, handlers.shakeVerify),
+    [STATES.MAKE]: (message) => safeExecute(message, handlers.handleMake),
+    [STATES.MAKE3]: (message) => safeExecute(message, handlers.handleMake3),
+    [STATES.MS2PROMPT]: (message) => safeExecute(message, handlers.handleMs2Prompt),
+    [STATES.REQUEST]: (message) => safeExecute(message, handlers.handleRequest),
+    [STATES.ASSIST]: (message) => safeExecute(message, handlers.shakeAssist),
+    [STATES.SPEAK]: (message) => safeExecute(message, handlers.shakeSpeak),
+    [STATES.IMG2IMG]: (message) => safeExecute(message, handlers.handleMs2ImgFile),
+    [STATES.MS3]: (message) => safeExecute(message,handlers.handleMs3ImgFile),
+    [STATES.PFP]: (message) => safeExecute(message, handlers.handlePfpImgFile),
+    [STATES.INTERROGATION]: (message) => safeExecute(message, handlers.handleInterrogation),
+    [STATES.DISC]: (message) => safeExecute(message, handlers.handleDiscWrite),
+    [STATES.WATERMARK]: (message) => safeExecute(message, handlers.handleWatermark),
+    [STATES.SETPHOTO]: (message) => safeExecute(message, handlers.handleSet),
+    [STATES.SETSTYLE]: (message) => safeExecute(message,handlers.handleSet),
+    [STATES.SETCONTROL]: (message) => safeExecute(message,handlers.handleSet),
+    [STATES.INPAINT]: (message) => safeExecute(message, handlers.handleInpaint),
+    [STATES.INPAINTTARGET]: (message) => safeExecute(message, handlers.handleInpaintTarget),
+    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, handlers.handleInpaintPrompt),
+    [STATES.UPSCALE] : (message) => safeExecute(message, handlers.handleUpscale),
+    [STATES.RMBG] : (message) => safeExecute(message, handlers.handleRmbg)
 };
 
 
@@ -181,7 +137,7 @@ const setStates = [
     STATES.SETSTYLE, STATES.SETCONTROL
 ];
 setStates.forEach(state => {
-    stateHandlers[state] = (message) => safeExecute(message,handleSet);
+    stateHandlers[state] = (message) => safeExecute(message,handlers.handleSet);
 });
 
 function messageFilter(message) {
@@ -246,19 +202,22 @@ function watch(message) {
         const currentState = lobby[userId].state;
         const handler = stateHandlers[currentState.state];
         if (handler) {
-            //console.log('sending to',handler)
+            console.log('sending to',handler)
             handler(message);
+        } else {
+            console.log('no handler')
+            console.log(currentState)
         }
     }
 }
 
 SET_COMMANDS.forEach(command => {
     bot.onText(new RegExp(`^/set${command}(.*)`), (message) => {
-        safeExecute(message, startSet);
+        safeExecute(message, handlers.startSet);
     });
 });
 
-const commandsRequiringGatekeeping = ['/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/utils','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
@@ -280,7 +239,7 @@ module.exports = function(bot) {
                     if (requiresGatekeeping) {
                         // Perform gatekeeping check
                         console.log('we are gatekeeping')
-                        const allowed = await checkLobby(message);
+                        const allowed = await handlers.checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
                             
@@ -300,7 +259,7 @@ module.exports = function(bot) {
                 if (commandKey) {
                     const commandInfo = commandStateMessages[commandKey];
     
-                    if (commandKey !== '/quit' && !(await checkLobby(message))) {
+                    if (commandKey !== '/quit' && !(await handlers.checkLobby(message))) {
                         console.log("Lobby check failed, not processing command:", commandKey);
                         return; // Exit if lobby check fails
                     }
