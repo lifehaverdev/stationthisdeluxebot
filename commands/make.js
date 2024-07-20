@@ -447,6 +447,25 @@ function prepareRequest(promptObj) {
                     "noise": promptObj.strength,
                 }
             })
+            break;
+        case "UPSCALE":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_image": promptObj.fileUrl,
+                }
+            })
+            break;
+        case "RMBG":
+            body = JSON.stringify({
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    "input_image": promptObj.fileUrl,
+                }
+            })
+            break;
     };
     
     return body;

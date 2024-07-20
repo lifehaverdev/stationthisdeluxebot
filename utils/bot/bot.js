@@ -69,6 +69,8 @@ const STATES = {
     INTERROGATION: 'INTERROGATION',
     DISC: 'DISC',
     WATERMARK: 'WATERMARK',
+    RMBG: 'RMBG',
+    UPSCALE: 'UPSCALE',
 
 
     SETBATCH: 'SETBATCH',
@@ -88,8 +90,6 @@ const STATES = {
 
     REQUEST: 'REQUEST',
 
-    COLLECTIONURI: 'URI',
-    COLLECTIONBASEPROMPT: 'COLBASE'
     // Add more states as needed
 };
 //for setters

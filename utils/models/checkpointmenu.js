@@ -31,6 +31,10 @@ checkpointmenu = [
         name: "picxReal_10",
         description: "SD1.5"
     },
+    {
+        name: "ponydiffusionv6",
+        description: "PONYXL"
+    }
 ]
 
 module.exports = { checkpointmenu };

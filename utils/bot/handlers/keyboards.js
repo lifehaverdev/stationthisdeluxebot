@@ -157,6 +157,42 @@ async function handleCreate(message) {
     }
 }
 
+function handleUtils(message) {
+    const options = {
+        reply_markup: {
+          inline_keyboard: [
+        ],
+          resize_keyboard: true,
+          one_time_keyboard: true
+        }
+
+      };
+      if(lobby[message.from.id] && lobby[message.from.id].balance >= 200000){
+        options.reply_markup.inline_keyboard.push(
+            [
+                { text: 'upscale', callback_data: 'upscale' }  
+            ]
+        )
+        options.reply_markup.inline_keyboard.push(
+            [
+                { text: 'remove background', callback_data: 'rmbg' }  
+            ]
+        )
+      }
+      options.reply_markup.inline_keyboard.push(
+        [
+            { text: 'cancel', callback_data: 'cancel' }
+        ]
+      )
+    if(lobby[message.from.id] && lobby[message.from.id].balance < 200000){
+        gated(message);
+        return;
+    } else {
+          // Sending an empty message to set the keyboard
+        sendMessage(message,'Utils', options);
+    }
+}
+
 
 
 function handleEffect(message) {
@@ -364,6 +400,7 @@ module.exports = {
     setMenu,
     handleEffect,
     handleAnimate,
+    handleUtils,
     handleCheckpointMenu,
     handleBasePromptMenu,
     handleVoiceMenu

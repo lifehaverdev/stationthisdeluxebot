@@ -150,6 +150,8 @@ async function waitlist(task){
         case 'INTERROGATE':
         case 'MAKE3':
         case 'INPAINT':
+        case 'UPSCALE':
+        case 'RMBG':
             run_id = await generate(promptObj);
             break;
     }
