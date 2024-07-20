@@ -97,7 +97,7 @@ async function generate(promptObj) {
         imgPreProc(promptObj);
         promptPreProc(promptObj);
         const body = prepareRequest(promptObj);
-        console.log(body);
+        //console.log(body);
         let run_id;
         const response = await fetch("https://www.comfydeploy.com/api/run", {
             method: "POST",
@@ -127,10 +127,10 @@ async function generate(promptObj) {
 function imgPreProc(promptObj) {
     //console.log('processing image');
     if(promptObj.type == 'MAKE' || promptObj.type == 'MAKE_CONTROL' || promptObj.type == 'MAKE_CONTROL_STYLE'){
-        console.log('make type')
+        //console.log('make type')
         return
     }
-    console.log(promptObj);
+    //console.log(promptObj);
     let height = promptObj.photoStats.height;
     let width = promptObj.photoStats.width;
     const ratio = height / width;
