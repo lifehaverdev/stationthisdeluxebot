@@ -98,8 +98,8 @@ function displayAccountSettingsMenu(message) {
     const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
     let burned = 0;
     if (burnRecord) {
-        console.log(burnRecord.burned)
-        burned += parseInt(burnRecord.burned) / 1000000;
+        //console.log(burnRecord.burned)
+        burned += parseInt(burnRecord.burned) * 2 / 1000000;
     }
     
     //let accountInfo = `Account:\n\n`;

@@ -71,7 +71,7 @@ async function getBalance(address) {
     const burnRecord = burns.find(burn => burn.wallet === address);
     if (burnRecord) {
         console.log(burnRecord.burned)
-        balance += parseInt(burnRecord.burned) / 1000000;
+        balance += parseInt(burnRecord.burned) * 2 / 1000000;
     }
 
 
