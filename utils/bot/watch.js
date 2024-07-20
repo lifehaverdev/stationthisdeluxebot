@@ -54,7 +54,7 @@ const commandPatterns = {
     '/start': (message) => {
         sendMessage(message,'welcome to stationthisbot. you can create images from thin air. check out our /help to get started. you must have a solana wallet verified on your account to utilize $MS2 holder benefits. try /signin')
     },
-    '/ca(?:@stationthisbot)?': (message) => {
+    '/ca@stationthisbot$': (message) => {
         const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
         sendMessage(message,caMessage,
             {
