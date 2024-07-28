@@ -100,6 +100,11 @@ const commandPatterns = {
             sendMessage(message,'I reset burns and loralist');
         }
     },
+    '/brendonis': (message) => {
+        sendMessage(message,'Brendon is hacking into the satellite....')
+        sendMessage(message,'hacking...')
+        sendMessage(message,'CONNECTED');
+    }
 
 };
 
