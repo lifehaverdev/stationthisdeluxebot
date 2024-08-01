@@ -1,5 +1,5 @@
 
-const { taskQueue, waiting } = require('../bot/bot');
+const { taskQueue, waiting, lobby } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
