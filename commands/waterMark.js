@@ -1,18 +1,28 @@
 const Jimp = require('jimp')
+const { watermarkmenu } = require('../utils/models/watermarks')
 
-async function addWaterMark (filename) {
+async function addWaterMark (filename,markName) {
+        console.log(filename,markName)
     try {
+        if(markName == false){
+            markName = 'ms2logo'
+        }
+        console.log('markName after false check',markName)
+        const watermarkProps = watermarkmenu.find(watermark => watermark.name == markName )
+        
+        console.log(watermarkProps)
         waterOptions = {
-            opacity: .8,
-            dstPath: `./tmp/${Date.now()}tmp`,
-            ratio: .4
+            opacity: 1,
+            dstPath: `./tmp/${Date.now()}tmp.png`,
+            ratio: parseFloat(watermarkProps.ratio)
         }
         const main = await Jimp.read(filename);
-        const watermark = await Jimp.read('./ms2black.png');
+        const watermark = await Jimp.read(`./watermarks/${watermarkProps.fileName}`);
+        
         const [newHeight, newWidth] = getDimensions(main.getHeight(), main.getWidth(), watermark.getHeight(), watermark.getWidth(), waterOptions.ratio);
         watermark.resize(newWidth, newHeight);
-        const positionX = (main.getWidth() - newWidth) / 8;     //Centre aligned
-        const positionY = (main.getHeight() - newHeight) - 10/// 2;   //Centre aligned
+        const positionX = (main.getWidth() - newWidth) / parseInt(watermarkProps.positiondX);     
+        const positionY = (main.getHeight() - newHeight) + parseInt(watermarkProps.positiondY)/// 2;   //Centre aligned
         watermark.opacity(waterOptions.opacity);
         main.composite(watermark,
             positionX,
@@ -40,7 +50,7 @@ async function writeToDisc(filename){
         }
         const main = await Jimp.read(filename);
         console.log('okay we have main');
-        const watermark = await Jimp.read('./ms2disc.png');
+        const watermark = await Jimp.read('./watermarks/ms2disc.png');
         console.log('okay we have disc');
         //const [newHeight, newWidth] = getDimensions(main.getHeight(), main.getWidth(), watermark.getHeight(), watermark.getWidth(), waterOptions.ratio);
         main.resize(1024, 1024);

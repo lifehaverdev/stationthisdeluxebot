@@ -2,6 +2,7 @@ const { lobby } = require('../bot/bot')
 const { basepromptmenu } = require('../models/basepromptmenu')
 const { checkpointmenu } = require('../models/checkpointmenu')
 const { voiceModels } = require('../models/voiceModelMenu')
+const { watermarkmenu } = require('../models/watermarks')
 const { compactSerialize, makeBaseData } = require('../utils')
 
 const home =  {
@@ -144,6 +145,35 @@ function getVoiceMenu(userId, message) {
     };
 }
 
+function getWatermarkMenu(userId, message) {
+    const baseData = makeBaseData(message,userId);
+    if(!lobby[userId]) {
+        console.log('User not in the lobby', userId);
+        return null;
+    }
+
+    const watermarkKeyboard = watermarkmenu.map(watermark => {
+        const callbackData = compactSerialize({ ...baseData, action: `swm_${watermark.name}`});
+        if(isValidCallbackData(callbackData)) {
+            return [{
+                    text: `${lobby[userId].waterMark == watermark.name ? '✅ '+watermark.name : watermark.name}`,
+                    callback_data: callbackData,
+            }]
+        } else {
+            console.error('Invalid callback_data:', callbackData);
+            return 
+            // [{
+            //     text: `${voice.name} - Not Available`,
+            //     callback_data: 'invalid_callback_data'
+            // }]
+        }
+    })
+
+    return {
+        inline_keyboard: watermarkKeyboard
+    };
+}
+
 
 
 module.exports = {
@@ -152,5 +182,6 @@ module.exports = {
     signedOut,
     getPromptMenu,
     getCheckpointMenu,
-    getVoiceMenu
+    getVoiceMenu,
+    getWatermarkMenu
 }
