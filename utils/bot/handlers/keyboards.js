@@ -1,6 +1,6 @@
 const { lobby } = require('../bot')
 const { compactSerialize, sendMessage, editMessage, makeBaseData, gated } = require('../../utils')
-const { getPromptMenu, getCheckpointMenu, getVoiceMenu } = require('../../models/userKeyboards')
+const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../models/userKeyboards')
 
 function setMenu(message) {
     const options = {
@@ -127,16 +127,7 @@ async function handleCreate(message) {
         )
         sd3 = true;
     }
-    if(lobby[message.from.id] && lobby[message.from.id].balance >= 300000){
-        let index;
-        sd3 && controlstyle ? index = 5 : controlstyle ? index = 4 : index = 1
-        reply_markup.inline_keyboard.push(
-            [
-                { text: 'assist', callback_data: 'assist'},
-                { text: 'interrogate', callback_data: 'interrogate'},
-            ],
-        )
-    }
+    
     reply_markup.inline_keyboard.push(
         [
             { text: 'cancel', callback_data: 'cancel' }
@@ -170,13 +161,21 @@ function handleUtils(message) {
       if(lobby[message.from.id] && lobby[message.from.id].balance >= 200000){
         options.reply_markup.inline_keyboard.push(
             [
-                { text: 'upscale', callback_data: 'upscale' }  
+                { text: 'upscale', callback_data: 'upscale' },
+                { text: 'remove background', callback_data: 'rmbg' },
+            ],
+            [
+                { text: 'watermark', callback_data: 'watermark'},
+                { text: 'disc', callback_data: 'disc'}
             ]
         )
+      }
+      if(lobby[message.from.id] && lobby[message.from.id].balance >= 300000){
         options.reply_markup.inline_keyboard.push(
             [
-                { text: 'remove background', callback_data: 'rmbg' }  
-            ]
+                { text: 'assist', callback_data: 'assist'},
+                { text: 'interrogate', callback_data: 'interrogate'},
+            ],
         )
       }
       options.reply_markup.inline_keyboard.push(
@@ -342,6 +341,33 @@ async function handleCheckpointMenu(message,user) {
             
 }
 
+async function handleWatermarkMenu(message,user) {
+    if(user){
+        const reply_markup = getWatermarkMenu(user, message);
+        editMessage(
+            {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: 'Watermark Menu:',
+                reply_markup
+            }
+        )
+    } else {
+        const botMessage = await sendMessage(message, 'Watermark Menu:');
+        const chat_id = botMessage.chat.id;
+        const message_id = botMessage.message_id;
+        const reply_markup = getWatermarkMenu(user, botMessage);
+        editMessage(
+            {
+                reply_markup,
+                chat_id,
+                message_id
+            }
+        );
+    }
+            
+}
+
 async function handleBasePromptMenu(message,user) {
     if(user){
         const reply_markup = getPromptMenu(user, message);
@@ -403,5 +429,6 @@ module.exports = {
     handleUtils,
     handleCheckpointMenu,
     handleBasePromptMenu,
-    handleVoiceMenu
+    handleVoiceMenu,
+    handleWatermarkMenu
 }

@@ -91,6 +91,12 @@ async function startSet(message,user) {
             case 'photo':
                 await sendOrEditMessage( 'What photo do you want to set')
                 break;
+            case 'style':
+                await sendOrEditMessage( 'Send in a photo to apply style transfer on')
+                break;
+            case 'control':
+                await sendOrEditMessage( 'Send in a photo to apply controlnet from')
+                break;
             case 'checkpoint':
                 botMessage = await sendOrEditMessage( 'Checkpoint Menu:');
                 chat_id = botMessage.chat.id;

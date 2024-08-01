@@ -13,7 +13,8 @@ const { displayAccountSettingsMenu } = require('./handlers/accountSettings')
 const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus, startInpaint, startRmbg, startUpscale } = require('./handlers/handle');
 const { startMs2, startPfp } = require('./handlers/imageToImage')
 const { startMs3 } = require('./handlers/handleMs3ImgFile')
-const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu } = require('./handlers/keyboards');
+const { startDisc, startWatermark } = require('./handlers/branding')
+const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu, handleWatermarkMenu } = require('./handlers/keyboards');
 const bot = getBotInstance();
 
 // function parseCallbackData(data) {
@@ -134,6 +135,26 @@ const handleSetVoice = (message, selectedName, userId) => {
     }
 };
 
+const handleSetWatermark = (message, selectedName, userId) => {
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    if (selectedName !== undefined) {
+        if(selectedName == 'empty'){
+            lobby[userId].waterMark = false;
+        } else {
+            lobby[userId].waterMark = selectedName;
+        }
+        const messageTitle = `Watermark set to: ${selectedName} ✅`;
+        editMessage({
+            text: messageTitle,
+            chat_id: chatId,
+            message_id: messageId,
+        })
+    } else {
+        console.log('no base prompt')
+    }
+};
+
 const actionMap = {
     'regen': handleRegen,
     'make': (message, user) => {
@@ -220,6 +241,8 @@ const actionMap = {
     'ms3': startMs3,
     'rmbg': startRmbg,
     'upscale': startUpscale,
+    'watermark': startWatermark,
+    'disc': startDisc,
     'set': setMenu,
     'speak': (message,user) => {
         editMessage({
@@ -235,9 +258,11 @@ const actionMap = {
     'checkpointmenu': handleCheckpointMenu,
     'basepromptmenu': handleBasePromptMenu,
     'voicemenu':handleVoiceMenu,
+    'toggleWaterMark' : handleWatermarkMenu,
     'setVoice': handleSetVoice,
     'setBasePrompt': handleSetBasePrompt,
     'setCheckpoint': handleSetCheckpoint,
+    'setWatermark': handleSetWatermark,
     'toggleAdvancedUser': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].advancedUser = !lobby[user].advancedUser;
@@ -256,12 +281,7 @@ const actionMap = {
         message.from.id = user;
         displayAccountSettingsMenu(message);
     },
-    'toggleWaterMark' : async (message, user) => {
-        await bot.deleteMessage(message.chat.id, message.message_id)
-        lobby[user].waterMark = !lobby[user].waterMark;
-        message.from.id = user;
-        displayAccountSettingsMenu(message);
-    },
+    
     'refresh' : async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
         handleStatus(message);
@@ -299,6 +319,9 @@ module.exports = function(bot) {
             } else if (callbackQuery.data.startsWith('scp_')) {
                 const selectedName = action.split('_').slice(1).join('_');
                 actionMap['setCheckpoint'](message, selectedName, user);
+            } else if (callbackQuery.data.startsWith('swm_')) {
+                const selectedName = action.split('_').slice(1).join('_');
+                actionMap['setWatermark'](message, selectedName, user);
             } else if (setActions.includes(action)) {
                 handleSetAction(action, message, user);
             } else {
