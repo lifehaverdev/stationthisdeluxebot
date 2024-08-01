@@ -80,7 +80,7 @@ async function sendPhoto(msg, fileUrl, options = {}) {
 
     const attemptSendPhoto = async (options) => {
         try {
-            const response = await bot.sendPhoto(chatId, text, optionAppendage(msg));
+            const response = await bot.sendPhoto(chatId, fileUrl, optionAppendage(msg));
             return response;
         } catch (error) {
             console.error(`sendMessage error:`, {
