@@ -68,14 +68,46 @@ async function sendMessage(msg, text, options = {}) {
     options.message_thread_id = null;
     return await attemptSendMessage(options);
 }
-async function sendPhoto(msg, fileUrl) {
-    try {
-        const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
-        return response;
-    } catch (error) {
-        console.error('sendPhoto error:', error.message || error);
-        return null;
+async function sendPhoto(msg, fileUrl, options = {}) {
+    
+    const chatId = msg.chat.id;
+    if (msg.message_id) {
+        options.reply_to_message_id = msg.message_id;
     }
+    if (msg.message_thread_id) {
+        options.message_thread_id = msg.message_thread_id;
+    }
+
+    const attemptSendPhoto = async (options) => {
+        try {
+            const response = await bot.sendPhoto(chatId, text, optionAppendage(msg));
+            return response;
+        } catch (error) {
+            console.error(`sendMessage error:`, {
+                context: text,
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || ''
+            });
+            return null;
+        }
+    };
+
+    // Try sending the message with different options
+    let response = await attemptSendPhoto(options);
+    if (response) return response;
+    options.reply_to_message_id = null;
+    response = await attemptSendPhoto(options);
+    if (response) return response;
+    options.message_thread_id = null;
+    return await attemptSendPhoto(options);
+    // try {
+    //     const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
+    //     return response;
+    // } catch (error) {
+    //     console.error('sendPhoto error:', error.message || error);
+    //     return null;
+    // }
 }
 async function sendAnimation(msg, fileUrl) {
     try {
