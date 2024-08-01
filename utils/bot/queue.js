@@ -320,7 +320,7 @@ async function handleTaskCompletion(task, run) {
                 try {
                     let fileToSend = url;
                     if (promptObj.waterMark && type === 'image') {
-                        fileToSend = await addWaterMark(url,message.from.id); // Watermark the image
+                        fileToSend = await addWaterMark(url,lobby[message.from.id].waterMark); // Watermark the image
                     }
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj.waterMark);
                     if (!mediaResponse) sent = false;
