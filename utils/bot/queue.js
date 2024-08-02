@@ -11,6 +11,7 @@ const {
 const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
+const { waterMark } = require('../users/defaultUserData');
 
 // let taskQueue = []
 // let waiting = []
@@ -319,8 +320,9 @@ async function handleTaskCompletion(task, run) {
             for (const { url, type } of urls) {
                 try {
                     let fileToSend = url;
+                    console.log(promptObj.waterMark)
                     if ((promptObj.waterMark != 'empty' || promptObj.waterMark == true) && type === 'image') {
-                        if(promptObj.waterMark == true) {
+                        if(promptObj.waterMark === true) {
                             promptObj.waterMark = 'ms2logo'
                         }
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
