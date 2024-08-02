@@ -66,7 +66,8 @@ async function handleWatermark(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
     const fileUrl = await getPhotoUrl(message);
-    console.log('current lobby stats',lobby[userId].waterMark)
+    //console.log('current lobby stats',lobby[userId].waterMark)
+    if(lobby[userId].waterMark == false) sendMessage(message,'you need to choose a watermark in account settings tho')
     try {
         const filenames = await addWaterMark(fileUrl,lobby[userId].waterMark)
         console.log('back in handleWatermark',filenames)

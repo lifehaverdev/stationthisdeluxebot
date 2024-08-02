@@ -321,7 +321,7 @@ async function handleTaskCompletion(task, run) {
                 try {
                     let fileToSend = url;
                     console.log(promptObj.waterMark)
-                    if ((promptObj.waterMark != 'empty' || promptObj.waterMark == true) && type === 'image') {
+                    if ((promptObj.waterMark != false || promptObj.waterMark == true) && type === 'image') {
                         if(promptObj.waterMark === true) {
                             promptObj.waterMark = 'ms2logo'
                         }
