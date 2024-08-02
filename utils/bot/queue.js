@@ -96,7 +96,7 @@ function sortTaskQueue() {
 }
 
 async function processQueue() {
-    if (taskQueue.length > 0 && waiting.length < 7) {
+    if (taskQueue.length > 0 && waiting.length < 6) {
         const task = taskQueue[0];
         waitlist(task);
         //console.log(taskQueue);
@@ -319,8 +319,11 @@ async function handleTaskCompletion(task, run) {
             for (const { url, type } of urls) {
                 try {
                     let fileToSend = url;
-                    if (promptObj.waterMark && type === 'image') {
-                        fileToSend = await addWaterMark(url,lobby[message.from.id].waterMark); // Watermark the image
+                    if ((promptObj.waterMark != 'empty' || promptObj.waterMark == true) && type === 'image') {
+                        if(promptObj.waterMark == true) {
+                            promptObj.waterMark = 'ms2logo'
+                        }
+                        fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj.waterMark);
                     if (!mediaResponse) sent = false;
@@ -376,7 +379,7 @@ async function sendMedia(message, fileToSend, type, waterMark) {
     if (type === 'image') {
         console.log('Sending photo:', fileToSend);
         const response = await sendPhoto(message, fileToSend);
-        if (waterMark) {
+        if (waterMark != 'empty') {
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
         }
         return response;
