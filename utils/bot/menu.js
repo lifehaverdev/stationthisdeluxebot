@@ -1,4 +1,4 @@
-const { lobby, getBotInstance, STATES } = require('./bot');
+const { lobby, getBotInstance, STATES, burns } = require('./bot');
 //const { checkpointmenu } = require('../models/checkpointmenu')
 const { getVoiceModelByName } = require('../models/voiceModelMenu')
 const { getBasePromptByName } = require('../models/basepromptmenu')
@@ -289,7 +289,18 @@ const actionMap = {
     'cancel' : (message) => {
         bot.deleteMessage(message.chat.id, message.message_id);
     },
-    'inpaint' : startInpaint
+    'inpaint' : startInpaint,
+    'applygroupbalance': (message) => {
+        console.log(message)
+        const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
+        let burned = 0;
+        if (burnRecord) {
+            console.log(burnRecord.burned)
+            burned += parseInt(burnRecord.burned) * 2 / 1000000;
+        }
+        sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
+        setUserState(message.reply_to_message, STATES.GROUPAPPLY)
+    }
 
     
 };

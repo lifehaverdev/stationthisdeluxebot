@@ -40,14 +40,15 @@ function setMenu(message) {
       };
       if(lobby[message.from.id] && lobby[message.from.id].balance >= 100000){
         options.reply_markup.inline_keyboard[4].push(
-            { text: 'baseprompt', callback_data: 'basepromptmenu' }
-        )
-      }
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 600000){
-        options.reply_markup.inline_keyboard[4].push(
+            { text: 'baseprompt', callback_data: 'basepromptmenu' },
             { text: 'checkpoint', callback_data: 'checkpointmenu' },
         )
       }
+    //   if(lobby[message.from.id] && lobby[message.from.id].balance >= 600000){
+    //     options.reply_markup.inline_keyboard[4].push(
+    //         { text: 'checkpoint', callback_data: 'checkpointmenu' },
+    //     )
+    //   }
     
       // Sending an empty message to set the keyboard
     sendMessage(message,'Settings', options);
