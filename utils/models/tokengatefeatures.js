@@ -1,6 +1,6 @@
 const features = [
     {
-        name: 'set base prompt',
+        name: 'set base prompt + checkpoint',
         gate: 100000,
     },
     {

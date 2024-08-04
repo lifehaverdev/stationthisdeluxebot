@@ -28,6 +28,9 @@ const commandPatterns = {
     //'/seecollections': handleSeeCollections,
     //'/createcollection (.+)': handleCreateCollection,
     //'/uri': handleUri,
+    //
+    //'/groupsettings': handlers.groupSettings,
+    //
     //'/collectionbaseprompt': handleCollectionBasePrompt,
     // '/savework': handleSaveWork,
     //'/disc(.*)': handleDisc,
@@ -100,11 +103,11 @@ const commandPatterns = {
             sendMessage(message,'I reset burns and loralist');
         }
     },
-    '/brendonis': (message) => {
-        sendMessage(message,'Brendon is hacking into the satellite....')
-        sendMessage(message,'hacking...')
-        sendMessage(message,'CONNECTED');
-    }
+    // '/brendonis': (message) => {
+    //     sendMessage(message,'Brendon is hacking into the satellite....')
+    //     sendMessage(message,'hacking...')
+    //     sendMessage(message,'CONNECTED');
+    // }
 
 };
 
@@ -131,7 +134,8 @@ const stateHandlers = {
     [STATES.INPAINTTARGET]: (message) => safeExecute(message, handlers.handleInpaintTarget),
     [STATES.INPAINTPROMPT]: (message) => safeExecute(message, handlers.handleInpaintPrompt),
     [STATES.UPSCALE] : (message) => safeExecute(message, handlers.handleUpscale),
-    [STATES.RMBG] : (message) => safeExecute(message, handlers.handleRmbg)
+    [STATES.RMBG] : (message) => safeExecute(message, handlers.handleRmbg),
+    [STATES.GROUPAPPLY] : (message) => safeExecute(message, handlers.handleApplyBalance)
 };
 
 

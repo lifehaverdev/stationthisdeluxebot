@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, rooms, STATES, burns, startup } = require('../bot'); 
+const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize } = require('../../utils')
@@ -95,12 +95,7 @@ function displayAccountSettingsMenu(message) {
             bars += '⬜️'
         }
     }
-    const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
-    let burned = 0;
-    if (burnRecord) {
-        //console.log(burnRecord.burned)
-        burned += parseInt(burnRecord.burned) * 2 / 1000000;
-    }
+    const burned = getBurned(userId)
     
     //let accountInfo = `Account:\n\n`;
     let accountInfo = '\n';
@@ -132,19 +127,7 @@ function displayAccountSettingsMenu(message) {
     });
 }
 
-function getNextPeriodTime(startup) {
-    const currentTime = Date.now();
-    const elapsedMilliseconds = currentTime - startup;
-    const eightHoursInMilliseconds = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
 
-    // Calculate remaining milliseconds until the next 8-hour period
-    const remainingMilliseconds = eightHoursInMilliseconds - (elapsedMilliseconds % eightHoursInMilliseconds);
-
-    // Convert remaining time to minutes
-    const remainingMinutes = Math.floor(remainingMilliseconds / 1000 / 60);
-
-    return remainingMinutes;
-}
 
 async function handleSaveSettings(message) {
     writeUserData(message.from.id,lobby[message.from.id]);

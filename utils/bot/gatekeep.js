@@ -60,6 +60,8 @@ async function checkLobby(message){
     let balance;
     let userData;
 
+
+
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);
         if(rooms.some((group) => {

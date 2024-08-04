@@ -15,9 +15,12 @@ let burns = [];
 const rooms = [
 //     {
 //     owner: 5472638766,
+//     name: 'wild dogs',
 //     admins: [],
+//     applied: 1000,
 //     chat: {
-//         id: -1002225298833 //stationthisofficial
+//         //id: -1002225298833 //stationthisofficial
+//         id: -1002118388042, //deprecated
 //     },
 //     settings: {
 //         basePrompt: "petravoice",
@@ -89,6 +92,8 @@ const STATES = {
     VERIFY: 'VERIFY',
 
     REQUEST: 'REQUEST',
+
+    GROUPAPPLY: 'GROUPAPPLY'
 
     // Add more states as needed
 };
@@ -203,6 +208,34 @@ async function getPhotoUrl(message) {
     return photoUrl
 }
 
+function getNextPeriodTime(startup) {
+    const currentTime = Date.now();
+    const elapsedMilliseconds = currentTime - startup;
+    const eightHoursInMilliseconds = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+
+    // Calculate remaining milliseconds until the next 8-hour period
+    const remainingMilliseconds = eightHoursInMilliseconds - (elapsedMilliseconds % eightHoursInMilliseconds);
+
+    // Convert remaining time to minutes
+    const remainingMinutes = Math.floor(remainingMilliseconds / 1000 / 60);
+
+    return remainingMinutes;
+}
+
+function getBurned(userId) {
+
+    const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
+    
+    let burned = 0;
+    if (burnRecord) {
+        //console.log(burnRecord.burned)
+        burned += parseInt(burnRecord.burned) * 2 / 1000000;
+    }
+    
+    return burned;
+}
+
+
 
 module.exports = {
     getBotInstance: function () {
@@ -210,6 +243,8 @@ module.exports = {
     },
     makeSeed,
     getPhotoUrl,
+    getNextPeriodTime,
+    getBurned,
     lobby,
     rooms,
     startup,

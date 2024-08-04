@@ -32,6 +32,7 @@ const { handleRequest, sendLoRaModelFilenames } = require('./loraRequestList.js'
 const { handleWatermark, handleDiscWrite } = require('./branding.js')
 const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile, handleUpscale, handleRmbg } = require('./imageToImage.js')
 const { setMenu, handleCreate, handleEffect, handleAnimate, handleUtils } = require('./keyboards.js')
+const { groupSettings, handleApplyBalance } = require('../handlers/groupSettings.js')
 
 
 async function shakeAssist(message) {
@@ -151,5 +152,7 @@ module.exports = {
     handleCreate,
     handleEffect,
     handleAnimate,
-    handleUtils
+    handleUtils,
+    groupSettings,
+    handleApplyBalance
 }
