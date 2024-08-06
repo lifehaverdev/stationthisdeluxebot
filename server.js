@@ -19,9 +19,6 @@ app.get('api/webhook',() => {
 app.post('/api/webhook', async (req, res) => {
   console.log('Webhook post received');
   
-  // Log the entire request body
-  //console.log('Request body:', req.body);
-  
   try {
     const { status, run_id, outputs } = req.body;
     //console.log('Parsed data:', data);

@@ -1,4 +1,4 @@
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 const { lobby } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
 require("dotenv").config()
@@ -43,6 +43,124 @@ async function writeUserData(userId, data) {
         await client.close();
     }
 }
+
+//write room settings
+//saves settings
+
+//modbalanceroom
+//changes rooms applied balance
+//adds a negative balance to the burns db
+
+//
+
+async function createRoom(chatId, userId, value) {
+    const uri = process.env.MONGO_PASS;
+
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+    
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('floorplan');
+        
+        // Fetch the creator's settings from the lobby
+        const settings = lobby[userId];
+        if (!settings) {
+            throw new Error("User settings not found");
+        }
+
+        // Create the room object
+        const room = {
+            owner: userId,
+            name: 'placeholder', // This can be parameterized
+            admins: [],
+            applied: parseInt(value), // This can be parameterized
+            id: chatId,
+            settings: {
+                ...settings
+            }
+        };
+
+        // Upsert the document and push the new room to the rooms array
+        await collection.updateOne(
+            { _id: new ObjectId("66b0f7b979230b59f16399eb") }, // Ensure this filter targets the correct document
+            { $push: { rooms: room } },
+            { upsert: true }
+        );
+
+        console.log('Room written successfully');
+        return true;
+    } catch (error) {
+        console.error("Error writing room data:", error);
+        return false;
+    } finally {
+        // Close the connection if it was established within this function
+        await client.close();
+    }
+}
+
+
+    // const { wallet, amount, service, projectName, twitterHandle, telegramHandle, hash } = await req.json();
+
+    // if (!wallet || !amount || !service || !hash) {
+    //   res.status(400).json({ message: 'Missing required fields' });
+    //   return;
+    // }
+
+    // try {
+    //   const client = await connectToDatabase();
+    //   const db = client.db('stationthisbot');
+    //   const collection = db.collection('burns');
+
+    //   // Find the wallet document
+    //   let walletDoc = await collection.findOne({ wallet });
+
+    //   if (walletDoc) {
+    //     // If the document exists, push the new burn data to the wallet array
+    //     await collection.updateOne(
+    //       { wallet },
+    //       {
+    //         $push: {
+    //           burns: {
+    //             amount,
+    //             service,
+    //             projectName,
+    //             twitterHandle,
+    //             telegramHandle,
+    //             hash,
+    //           },
+    //         },
+    //       }
+    //     );
+    //   } else {
+    //     // If the document does not exist, create a new document
+    //     await collection.insertOne({
+    //       wallet,
+    //       burns: [
+    //         {
+    //           amount,
+    //           service,
+    //           projectName,
+    //           twitterHandle,
+    //           telegramHandle,
+    //           hash,
+    //         },
+    //       ],
+    //     });
+    //   }
+
+    //   //res.status(200).json({ message: 'Burn saved successfully' });
+    //   return new Response('Burn saved successfully', {
+    //     status: 200,
+    //   })
+    // } catch (error) {
+    //   console.error('Error saving burn data:', error);
+    //   //res.status(500).json({ message: 'Error saving burn data' });
+    //   return new Response('Error saving burn data', {
+    //     status: 500,
+    //   })
+    // }
+
 
 async function updateAllUserSettings() {
     const uri = process.env.MONGO_PASS;
@@ -666,5 +784,6 @@ module.exports = {
     getCollections, 
     writeCollectionData,
     updateAllUsersWithCheckpoint,
-    addPointsToAllUsers
+    addPointsToAllUsers,
+    createRoom
 };

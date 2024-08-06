@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-const { loraTriggers, burns } = require('../bot/bot')
+const { loraTriggers, burns , rooms} = require('../bot/bot')
 // read mongodb for burns, return object for addresses
 async function readBurns() {
     // Connection URI
@@ -97,12 +97,52 @@ async function readLoraList() {
     }
 }
 
+async function readRooms() {
+    // Connection URI
+    const uri = process.env.MONGO_PASS;
+
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+
+    try {
+        // Connect to the MongoDB server
+        await client.connect();
+
+        // Access the database and the specified collection
+        const db = client.db(process.env.BOT_NAME);
+        const collection = db.collection('floorplan');
+
+        // Find all documents in the collection
+        const document = await collection.findOne()
+        console.log('document found',document)
+        if (document && document.rooms) {
+            // Parse the loraTriggers field and update the existing array
+            rooms.length = 0; // Clear the existing array
+            //const parsedTriggers = 
+            document.rooms.map(room => rooms.push(room))//JSON.parse(triggerStr));
+            
+            //loraTriggers.push(...parsedTriggers); // Push new elements into the array
+        }
+
+        console.log('Rooms loaded');
+        console.log(JSON.stringify(rooms))
+    } catch (error) {
+        console.error('Error printing documents:', error);
+    } finally {
+        // Close the connection
+        await client.close();
+    }
+}
+
 async function initialize() {
     console.log('initializing...')
     console.log('getting lora list');
     await readLoraList();
     console.log('reading burns');
     await readBurns();
+    
+    console.log('reading rooms...')
+    await readRooms();
     console.log('ready...!')
 }
 

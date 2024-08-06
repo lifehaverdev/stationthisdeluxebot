@@ -29,7 +29,7 @@ const commandPatterns = {
     //'/createcollection (.+)': handleCreateCollection,
     //'/uri': handleUri,
     //
-    //'/groupsettings': handlers.groupSettings,
+    '/groupsettings': handlers.groupSettings,
     //
     //'/collectionbaseprompt': handleCollectionBasePrompt,
     // '/savework': handleSaveWork,
@@ -169,12 +169,6 @@ function messageFilter(message) {
         console.log('ignoring because its old')
         return true;
     }
-    //maybe this is not chill for webhooks
-
-    //why did we do this
-    // if(message.text && message.text[0] == '/' && message.text != '/signin'){
-    //     return true
-    // }
     
     // // Initialize state for new users
     if (!lobby[message.from.id]) {
@@ -226,7 +220,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/utils','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {

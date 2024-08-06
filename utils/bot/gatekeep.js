@@ -2,6 +2,8 @@ const { lobby, STATES, rooms, startup } = require('./bot');
 const { getUserDataByUserId, addPointsToAllUsers } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
+const { initialize } =  require('./intitialize')
+const { getGroup } = require('./handlers/groupSettings')
 const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
@@ -10,8 +12,10 @@ const POINTMULTI = 540;
 const NOCOINERSTARTER = 199800;
 const LOBBY_CLEAN_MINUTE = 60 * 8;//8 hours
 const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
+const DB_REFRESH = 1000*60*15
 
 setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every N minutes
+setInterval(initialize, DB_REFRESH); //update burns, lora list etc from db
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 8 hours
 let locks = 0;
 
@@ -65,11 +69,11 @@ async function checkLobby(message){
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);
         if(rooms.some((group) => {
-            if(group.chat.id == message.chat.id) return true
+            if(group.id == message.chat.id) return true
         })){return true}
         if(userData.wallet == '' || userData.verified == false){
             if(message.chat.id < 0){
-                sendMessage(message,'dm me the signin command and connect a wallet to unlock $MS2 holder benefits');
+                sendMessage(message,'hi nice to meet you. 🥰');
             } else {
                 const options = {
                     reply_markup: {
@@ -119,7 +123,7 @@ async function checkLobby(message){
             lobby[userId].balance = await getBalance(lobby[userId].wallet);
         }
         if(rooms.some((group) => {
-            if(group.chat.id == message.chat.id) return true
+            if(group.id == message.chat.id) return true
         })){return true}
         setUserState(message,STATES.IDLE);
     }
@@ -135,7 +139,6 @@ async function checkLobby(message){
     }
     return true;
 }
-
 function timeTillTurnover() {
     const currentTime = Date.now();
     const timePassed = currentTime - lastCleanTime;

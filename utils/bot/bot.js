@@ -2,8 +2,6 @@ const TelegramBot = require("node-telegram-bot-api");
 const botToken = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(botToken,
     {
-        //webHook: true,
-        //webHookPort: 443,
         polling: true
     });
 const startup = Date.now();
@@ -12,48 +10,7 @@ let taskQueue = []
 let waiting = []
 let loraTriggers = [];
 let burns = [];
-const rooms = [
-//     {
-//     owner: 5472638766,
-//     name: 'wild dogs',
-//     admins: [],
-//     applied: 1000,
-//     chat: {
-//         //id: -1002225298833 //stationthisofficial
-//         id: -1002118388042, //deprecated
-//     },
-//     settings: {
-//         basePrompt: "petravoice",
-//         checkpoint: "zavychromaxl_v70.safetensors",
-//         voiceModel: "165UvtZp7kKnmrVrVQwx",
-//         batchMax: 1,
-//         points: 0,
-//         steps: 30,
-//         cfg: 7,
-//         strength: .6,
-//         prompt: '',
-//         userBasePrompt: '',
-//         negativePrompt: '',
-//         seed: -1,
-//         lastSeed: -1,
-//         fileUrl: '',
-//         photoStats: {
-//             height: 1024,
-//             width: 1024,
-//         },
-//         tempSize: {
-//             height: 500,
-//             width: 500
-//         },
-//         state: {
-//             state: 'IDLE',
-//             chatId: null,
-//             messageThreadId: null
-//         },
-//         type: '',
-//     }
-// }
-];
+let rooms = [];
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -234,7 +191,6 @@ function getBurned(userId) {
     
     return burned;
 }
-
 
 
 module.exports = {
