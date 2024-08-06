@@ -97,17 +97,19 @@ function sortTaskQueue() {
 }
 
 async function processQueue() {
-    if (taskQueue.length > 0 && waiting.length < 6) {
+    if (taskQueue.length > 0 && waiting.length < 10) {
         const task = taskQueue[0];
         waitlist(task);
-        //console.log(taskQueue);
-        // Find the index of the processed task based on its timestamp
+        
         const taskIndexToRemove = taskQueue.findIndex(t => t.timestamp === task.timestamp);
 
         // Check if the task still exists at the found index
         if (taskIndexToRemove !== -1 && taskQueue[taskIndexToRemove].timestamp === task.timestamp) {
             // Remove the task from the queue
             taskQueue.splice(taskIndexToRemove, 1);
+            if(taskIndexToRemove != 0){
+                console.log("THAT THING WHERE THE TASK YOU CALLED AT THE BEGINNING OF THE FUNCTION ISNT THE SAE INDEX IN THE TASK QUEUE ARRAY JUST HAPPENED AND ITS A GOOD THING YOU KEP THE FUNCTION AALL COMPLICATED THANKS DEV")
+            }
         }
         processQueue(); // Continue processing next task
     } else {
@@ -130,10 +132,6 @@ async function waitlist(task){
     switch (promptObj.type){
         case 'MS3':
             console.log('we make ms3 pls')
-            // if(promptObj.balance < 1000000){
-            //     sendMessage(message,'you cant make a video if you dont have 1M LOL')
-            //     return
-            // }
             run_id = await generate(promptObj);
             break;
         case 'MAKE':   
@@ -297,7 +295,7 @@ async function handleTaskCompletion(task, run) {
         
         // If outputs are present, process them
         if (outputs && outputs.length > 0) {
-            console.log("Outputs found:", outputs.length);
+            //console.log("Outputs found:", outputs.length);
             outputs.forEach(outputItem => {
                 possibleTypes.forEach(type => {
                     if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
@@ -327,7 +325,7 @@ async function handleTaskCompletion(task, run) {
                         }
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
-                    const mediaResponse = await sendMedia(message, fileToSend, type, promptObj.waterMark);
+                    const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
                     if (!mediaResponse) sent = false;
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);
@@ -377,11 +375,13 @@ async function handleTaskCompletion(task, run) {
     }
 }
 
-async function sendMedia(message, fileToSend, type, waterMark) {
+async function sendMedia(message, fileToSend, type, promptObj) {
     if (type === 'image') {
         console.log('Sending photo:', fileToSend);
-        const response = await sendPhoto(message, fileToSend);
-        if (waterMark != 'empty') {
+        let options = {};
+        if(lobby[message.from.id].advancedUser) options = {text: promptObj.lastSeed}
+        const response = await sendPhoto(message, fileToSend, options);
+        if (promptObj.waterMark != 'empty') {
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
         }
         return response;

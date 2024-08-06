@@ -1,9 +1,11 @@
 const { sendMessage, setUserState } = require('../../utils');
-const { rooms, getNextPeriodTime, startup, getBurned, lobby } = require('../bot')
+const { rooms, getNextPeriodTime, startup, getBurned, lobby, STATES } = require('../bot')
 const { features } = require('../../models/tokengatefeatures.js')
+const { createRoom } = require('../../../db/mongodb.js')
+const { initialize } = require('../intitialize.js');
 
 function getGroup(message) {
-    const group = rooms.find(group => group.chat.id == message.chat.id)
+    const group = rooms.find(group => group.id == message.chat.id)
     return group;
 }
 
@@ -142,30 +144,33 @@ function handleRemoveBalance(message) {
 
 }
 
-function createGroup(message) {
+async function createGroup(message) {
     const owner = message.from.id;
-    rooms.push(
-        {
-        owner: owner,
-        name: 'placeholder',
-        admins: [],
-        applied: parseInt(message.text),
-        charge: 0,
-        points: 0,
-        ledger: [],
-        chat: {
-            id: message.chat.id
-        },
-        settings: {
-            ...lobby[message.from.id]
-        }
-    }
-    )
+    const chat = message.chat.id;
+    await createRoom(chat,owner,message.text);
+    // rooms.push(
+    //     {
+    //     owner: owner,
+    //     name: 'placeholder',
+    //     admins: [],
+    //     applied: parseInt(message.text),
+    //     charge: 0,
+    //     points: 0,
+    //     ledger: [],
+    //     chat: {
+    //         id: message.chat.id
+    //     },
+    //     settings: {
+    //         ...lobby[message.from.id]
+    //     }
+    // }
+    //)
+    await initialize();
     const group = rooms.find(group => group.chat.id == message.chat.id)
-    group.ledger.push({
-        user: message.from.id,
-        stake: parseInt(message.text)
-    })
+    // group.ledger.push({
+    //     user: message.from.id,
+    //     stake: parseInt(message.text)
+    // })
     // sendMessage(message,'ok we create group with that')
     setUserState(message,STATES.IDLE)
     groupSettings(message);
@@ -173,5 +178,6 @@ function createGroup(message) {
 
 module.exports = {
     groupSettings,
-    handleApplyBalance
+    handleApplyBalance,
+    getGroup
 }

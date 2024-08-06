@@ -54,10 +54,7 @@ function setMenu(message) {
     sendMessage(message,'Settings', options);
 }
 
-
-
 // Look good?
-
 async function handleCreate(message) {
     const sent = await sendMessage(message, `what shall I create for you, @${message.from.username} ?`);
     console.log('message in help status',message)
@@ -148,7 +145,6 @@ async function handleCreate(message) {
         });
     }
 }
-
 function handleUtils(message) {
     const options = {
         reply_markup: {
@@ -192,32 +188,13 @@ function handleUtils(message) {
         sendMessage(message,'Utils', options);
     }
 }
-
-
-
 function handleEffect(message) {
     const options = {
         reply_markup: {
           inline_keyboard: [
             [   
                 { text: 'image2image', callback_data: 'ms2' },
-                //{ text: 'autoi2i', callback_data: 'pfp' },
             ],
-            // [
-            //     { text: 'image2image style transfer', callback_data: 'ms2_style' },
-            //     { text: 'autoi2i style transfer', callback_data: 'pfp_style' },
-            // ],
-            // [
-            //     { text: 'image2image controlnet', callback_data: 'ms2_control'},
-            //     { text: 'autoi2i controlnet', callback_data: 'pfp_control'}
-            // ],
-            // [
-            //     { text: 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
-            //     { text: 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
-            // ],
-            // [
-            //     { text: 'cancel', callback_data: 'cancel' }
-            // ]
         ],
           resize_keyboard: true,
           one_time_keyboard: true
@@ -264,23 +241,10 @@ function handleEffect(message) {
       // Sending an empty message to set the keyboard
     sendMessage(message,'Effect', options);
 }
-
-
-
 function handleAnimate(message) {
     const options = {
         reply_markup: {
-          inline_keyboard: [
-            // [   
-            //     { text: 'img2video', callback_data: 'ms3' },
-            // ],
-            // [
-            //     { text: 'txt2speech', callback_data: 'speak' }  
-            // ],
-            // [
-            //     { text: 'cancel', callback_data: 'cancel' }
-            // ]
-        ],
+          inline_keyboard: [],
           resize_keyboard: true,
           one_time_keyboard: true
         }
@@ -314,7 +278,6 @@ function handleAnimate(message) {
     }
     
 }
-
 async function handleCheckpointMenu(message,user) {
     if(user){
         const reply_markup = getCheckpointMenu(user, message);
@@ -341,7 +304,6 @@ async function handleCheckpointMenu(message,user) {
     }
             
 }
-
 async function handleWatermarkMenu(message,user) {
     if(user){
         const reply_markup = getWatermarkMenu(user, message);
@@ -368,7 +330,6 @@ async function handleWatermarkMenu(message,user) {
     }
             
 }
-
 async function handleBasePromptMenu(message,user) {
     if(user){
         const reply_markup = getPromptMenu(user, message);
@@ -395,7 +356,6 @@ async function handleBasePromptMenu(message,user) {
     }
 
 }
-
 async function handleVoiceMenu(message,user) {
     if(user){
         const reply_markup = getVoiceMenu(user, message);
