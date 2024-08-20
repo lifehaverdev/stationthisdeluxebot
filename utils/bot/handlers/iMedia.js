@@ -1,6 +1,6 @@
 const { sendMessage, editMessage, setUserState } = require('../../utils')
 const { getPhotoUrl, lobby, STATES, makeSeed } = require('../bot')
-//const { enqueueTask } = require('../queue')
+const { enqueueTask } = require('../queue')
 const Jimp = require('jimp');
 
 
