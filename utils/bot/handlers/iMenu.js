@@ -153,6 +153,7 @@ async function handleCreate(message) {
     }
 }
 function handleUtils(message) {
+    const settings = lobby[message.from.id]
     const options = {
         reply_markup: {
           inline_keyboard: [
