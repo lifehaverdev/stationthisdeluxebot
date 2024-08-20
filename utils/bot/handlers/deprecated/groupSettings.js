@@ -148,23 +148,6 @@ async function createGroup(message) {
     const owner = message.from.id;
     const chat = message.chat.id;
     await createRoom(chat,owner,message.text);
-    // rooms.push(
-    //     {
-    //     owner: owner,
-    //     name: 'placeholder',
-    //     admins: [],
-    //     applied: parseInt(message.text),
-    //     charge: 0,
-    //     points: 0,
-    //     ledger: [],
-    //     chat: {
-    //         id: message.chat.id
-    //     },
-    //     settings: {
-    //         ...lobby[message.from.id]
-    //     }
-    // }
-    //)
     await initialize();
     const group = rooms.find(group => group.chat.id == message.chat.id)
     // group.ledger.push({
