@@ -1,7 +1,8 @@
-const { DEV_DMS, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
-const { setUserState, sendMessage, editMessage } = require('../../utils')
-const { getPromptMenu } = require('../../models/userKeyboards')
+const { DEV_DMS, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../../bot')
+const { setUserState, sendMessage, editMessage } = require('../../../utils')
+const { getPromptMenu } = require('../../../models/userKeyboards')
 const Jimp = require('jimp');
+const iMenu = require('../iMenu')
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 4;
@@ -12,9 +13,9 @@ async function startSet(message,user) {
     //console.log('message in startset',message)
     let settings;
     if(message.chat.id < 0){
-        const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
+        const index = rooms.findIndex((group) => group.id === message.chat.id);
         if(index != -1){
-            if(rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+            if(message.from.id != rooms[index].owner){//rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
                 settings = rooms[index].settings;
             } else {
                 sendMessage(message,'only admin can change settings for a group')
@@ -47,14 +48,17 @@ async function startSet(message,user) {
     };
 
     const sendOrEditMessage = async (text, reply_markup = null) => {
+        let keyboard;
+        reply_markup ? keyboard = reply_markup : keyboard = iMenu.justSet
+        console.log(keyboard)
         if (user) {
             editMessage({
                 text,
-                reply_markup,
+                keyboard,
                 ...editPayload
             });
         } else {
-            await sendMessage(message, text, { reply_markup });
+            await sendMessage(message, text, { keyboard });
         }
     };
 
@@ -198,16 +202,16 @@ async function handleSet(message) {
         case STATES.SETPROMPT:
         case STATES.SETTYPE:
             settings[lobbyParam] = newValue;
-            sendMessage(message, `ok its set`);
+            sendMessage(message, `ok its set`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;
         case STATES.SETNEGATIVEPROMPT:
         case STATES.SETUSERPROMPT:
             settings[lobbyParam] = newValue;
             if(newValue == '-1'){
-                sendMessage(message,'alright its off');
+                sendMessage(message,'alright its off', iMenu.justSet);
             } else {
-                sendMessage(message, `ok its set`);
+                sendMessage(message, `ok its set`, iMenu.justSet);
             }
             setUserState(message,STATES.IDLE);
             break;
@@ -227,17 +231,17 @@ async function handleSet(message) {
                     
                     settings.fileUrl = fileUrl
                     settings.photoStates = photoStats
-                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`);
+                    await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`, iMenu.justSet);
                 } else if(currentState == STATES.SETCONTROL) {
                     
                     settings.controlFileUrl = fileUrl
                     
-                    await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`);
+                    await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`, iMenu.justSet);
                 } else {
                     settings.styleFileUrl = fileUrl
                     console.log('settings in setstyle',settings);
                     console.log('lobby in setstyle',lobby[userId])
-                    await sendMessage(message, `looks dope. if style transfer is enabled, this image will be applied`);
+                    await sendMessage(message, `looks dope. if style transfer is enabled, this image will be applied`, iMenu.justSet);
                 }
         
                 setUserState(message,STATES.IDLE);
@@ -267,7 +271,7 @@ async function handleSet(message) {
                 }
             }
             settings[lobbyParam] = intValue;
-            sendMessage(message, `Your ${lobbyParam} is now ${intValue}`);
+            sendMessage(message, `Your ${lobbyParam} is now ${intValue}`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;
         case STATES.SETSIZE:
@@ -279,7 +283,7 @@ async function handleSet(message) {
             sizeValues[0] > SIZELIMIT ? sizeValues[0] = SIZELIMIT : null;
             sizeValues[1] > SIZELIMIT ? sizeValues[1] = SIZELIMIT : null;
             settings[lobbyParam] = { width: sizeValues[0], height: sizeValues[1] };
-            sendMessage(message, `You set size to ${sizeValues[0]},${sizeValues[1]}`);
+            sendMessage(message, `You set size to ${sizeValues[0]},${sizeValues[1]}`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;
         case STATES.SETSTRENGTH:
@@ -298,7 +302,7 @@ async function handleSet(message) {
                 return false;
             }
             settings[lobbyParam] = floatValue;
-            sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`);
+            sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;
         default:

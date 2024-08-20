@@ -1,14 +1,14 @@
-const { getBotInstance, lobby, STATES, startup } = require('../bot'); 
+const { getBotInstance, lobby, STATES, startup } = require('../../bot.js'); 
 const {
     sendMessage,
     setUserState,
     editMessage
-} = require('../../utils')
+} = require('../../../utils.js')
 const bot = getBotInstance()
-const { checkLobby } = require('../gatekeep')
+const { checkLobby } = require('../../gatekeep.js')
 const fs = require('fs');
-const { txt2Speech } = require('../../../commands/speak.js');
-const { promptAssist } = require('../../../commands/assist.js')
+const { txt2Speech } = require('../../../../commands/speak.js');
+const { promptAssist } = require('../../../../commands/assist.js')
 
 const { 
     handleSaveSettings,
@@ -32,8 +32,9 @@ const { handleRequest, sendLoRaModelFilenames } = require('./loraRequestList.js'
 const { handleWatermark, handleDiscWrite } = require('./branding.js')
 const { handleMs2ImgFile, handleMs2Prompt, handlePfpImgFile, handleUpscale, handleRmbg } = require('./imageToImage.js')
 const { setMenu, handleCreate, handleEffect, handleAnimate, handleUtils } = require('./keyboards.js')
-const { groupSettings, handleApplyBalance } = require('../handlers/groupSettings.js')
+const { groupSettings, handleApplyBalance } = require('./groupSettings.js')
 
+//const iMenu = require('./iMenu')
 
 async function shakeAssist(message) {
     const userId = message.from.id;
