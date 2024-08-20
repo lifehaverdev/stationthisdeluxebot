@@ -1,6 +1,7 @@
 const { MongoClient, ObjectId } = require("mongodb");
 const { lobby } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
+const { DEV_DMS } = require("../utils/utils.js");
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
@@ -40,6 +41,152 @@ async function writeUserData(userId, data) {
         return false
     } finally {
         // Close the connection if it was established within this function
+        await client.close();
+    }
+}
+
+async function getGroupDataByChatId(chatId) {
+    //deleteUserSettingsByUserId(dbName,userId);
+    // Connection URI
+    const uri = process.env.MONGO_PASS;
+
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+    let groupData
+    //console.log('this is what we think default is',defaultUserData)
+    try {
+        // Connect to the MongoDB server
+        //await client.connect();
+
+        // Access the database and the "users" collection
+        const db = client.db(dbName);
+        const groupSettingsCollection = db.collection('rooms');
+
+        // Query for the user settings by userId
+        groupData = await groupSettingsCollection.findOne({ id: chatId });
+        //console.log('groupData in get groupDatabyuserid',userData);
+        if (groupData != null){
+            console.log('Group settings found:', groupData.userId);
+            return groupData;
+        } else {
+            console.log('empty group settings');
+            groupSettings = { ...defaultGroupData, id: chatId };
+            console.log('groupSettings we are writing',groupSettings.userId);
+            await groupSettingsCollection.insertOne(groupSettings);
+            console.log('New group settings created:', groupSettings.userId);
+            return groupSettings
+        }
+    } catch (error) {
+        console.error('Error getting user settings:', error);
+        //throw error;
+        return false;
+    } finally {
+        // Close the connection
+        await client.close();
+    }
+}
+
+async function writeData(collectionName, filter, data) {
+    const uri = process.env.MONGO_PASS;
+
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+    
+    try {
+        const collection = client.db(dbName).collection(collectionName);
+        // Upsert the document with wallet address as the filter
+        //const filter = { userId: userId };
+        const { ...dataToSave } = data;
+        await collection.updateOne( filter,
+            { $set: { ...dataToSave } },
+        );
+        console.log('User data written successfully');
+        return true
+    } catch (error) {
+        console.error("Error writing user data:", error);
+        return false
+    } finally {
+        // Close the connection if it was established within this function
+        await client.close();
+    }
+}
+
+async function readStats() {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    // Sets and variables to track stats
+    const walletSet = new Set();
+    const doubleUseSet = new Set();
+    const nonUserSet = new Set();
+    let totalExp = 0;
+    let totalHeld = 0;
+    let totalBurned = 0;
+    let totalDex = 0;
+
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('users');
+        
+        // Fetch all user settings
+        const users = await collection.find().toArray();
+        let count = 0;
+        for (let user of users) {
+         // Add user wallet to wallet set
+            count++
+         if (user.wallet) {
+            if (walletSet.has(user.wallet)) {
+                // If the wallet is already in the set, add it to the doubleUseSet
+                doubleUseSet.add(user.wallet);
+                console.log(user.wallet);
+            } else {
+                walletSet.add(user.wallet);
+            }
+        }
+
+        // Add user exp to totalExp
+        if (user.exp) {
+            totalExp += user.exp;
+        }
+
+        // Add user balance to totalHeld
+        if (user.balance) {
+            totalHeld += user.balance;
+        }
+
+        // Add user burns to totalBurned
+        // if (user.burned) {
+        //     totalBurned += user.burned;
+        // }
+
+        // Add the number of promptDex prompts to totalDex
+        if (user.promptDex && Array.isArray(user.promptDex)) {
+            totalDex += user.promptdex.length;
+        }
+
+        // If exp == 0, add userId to nonUserSet
+        if (user.exp === 0) {
+            nonUserSet.add(user._id);
+        }
+        }
+        let msg = ''
+        msg += 'total Users '+count+`\n`
+        msg += 'tourists ' + nonUserSet.size+'\n'
+        msg += 'net users ' + (count - nonUserSet.size) +'\n'
+        msg += 'net wallets ' + walletSet.size+`\n\n`
+        //msg += 'double wallets ' + doubleUseSet.size+`\n`
+        msg += 'total Exp '+totalExp+`\n`
+        msg += 'total Balance Held '+totalHeld+`MS2\n`
+        //msg += 'total Dex ' + totalDex+`\n`
+        
+        //msg += 'totalBurned'
+        //bot.sendMessage(DEV_DMS, msg);
+        console.log('All user settings analyzed successfully');
+        return msg;
+    } catch (error) {
+        console.error("Error updating user settings:", error);
+        return false;
+    } finally {
         await client.close();
     }
 }
@@ -785,5 +932,7 @@ module.exports = {
     writeCollectionData,
     updateAllUsersWithCheckpoint,
     addPointsToAllUsers,
-    createRoom
+    createRoom,
+    writeData,
+    readStats
 };

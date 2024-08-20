@@ -1,55 +1,24 @@
-const { lobby, getBotInstance, STATES, burns } = require('./bot');
-//const { checkpointmenu } = require('../models/checkpointmenu')
-const { getVoiceModelByName } = require('../models/voiceModelMenu')
-const { getBasePromptByName } = require('../models/basepromptmenu')
-const { getPromptMenu, getCheckpointMenu, getVoiceMenu } = require('../models/userKeyboards')
+const { lobby, getBotInstance, STATES, burns } = require('../bot');
+const { getVoiceModelByName } = require('../../models/voiceModelMenu')
+const { getBasePromptByName } = require('../../models/basepromptmenu')
 const {
     sendMessage,
     editMessage,
     safeExecute,
     setUserState,
-} = require('../utils');
-const { displayAccountSettingsMenu } = require('./handlers/accountSettings')
-const { startMake, startMake3, handleRegen, startSet, setMenu, handleStatus, startInpaint, startRmbg, startUpscale } = require('./handlers/handle');
-const { startMs2, startPfp } = require('./handlers/imageToImage')
-const { startMs3 } = require('./handlers/handleMs3ImgFile')
-const { startDisc, startWatermark } = require('./handlers/branding')
-const { handleCheckpointMenu, handleBasePromptMenu, handleVoiceMenu, handleWatermarkMenu } = require('./handlers/keyboards');
+} = require('../../utils');
+const { displayAccountSettingsMenu } = require('./iAccount')
+const { handleStatus } = require('./iWork');
+const { startSet } = require('./iSettings');
+const { handleRegen } = require('./iMake')
+const iMenu = require('./iMenu');
+const iResponse = require('./iResponse');
 const bot = getBotInstance();
 
-const iMenu = require('./handlers/iMenu')
-
-// function parseCallbackData(data) {
-//     if (data.includes('|')) {
-//         // Assume it's the compact serialized form
-//         const parts = data.split('|');
-//         message = {
-//             message_id: parts[5], // You might not have a real message ID to use
-//             from: {
-//                 id: parseInt(parts[1]),
-//                 is_bot: false,
-//                 //first_name: parts[4],
-//                 // Add other necessary user fields if required
-//             },
-//             chat: {
-//                 id: parseInt(parts[3]),
-//                 //type: 'private', // Adjust based on actual usage or data available
-//                 // Add other necessary chat fields if required
-//             },
-//             date: Math.floor(Date.now() / 1000), // Use the current timestamp
-//             text: 'k', // Since you don't have the original text, leave this empty or use placeholder
-//             message_thread_id: parts[4] === '0' ? null : parseInt(parts[4], 10) // Handling for no thread ID
-//         };
-//         return {
-//             action: parts[0],
-//             user: parts[6],
-//             message: message
-//         };
-//     } else {
-//         // Simple command
-//         return { action: data };
-//     }
-// }
+/*
+Uniformity and confluence with iResponse
+private menus, must only be selectable by intended user
+*/
 
 function parseCallbackData(callbackQuery) {
     const data = callbackQuery.data;
@@ -128,7 +97,7 @@ const handleSetVoice = (message, selectedName, userId) => {
             chat_id: chatId,
             message_id: messageId,
         }).then(() => {
-            bot.editMessageReplyMarkup(getVoiceMenu(userId,message),opts);
+            bot.editMessageReplyMarkup(iMenu.getVoiceMenu(userId,message),opts);
         }).catch((error) => {
             console.error("Error editing message text or reply markup:", error);
         });
@@ -158,109 +127,41 @@ const handleSetWatermark = (message, selectedName, userId) => {
 };
 
 const actionMap = {
-    'regen': handleRegen,
-    'make': (message, user) => {
-        lobby[user].styleTransfer = false;
-        lobby[user].controlNet = false;
-        startMake(message, user)
-    },
-    'make_style': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = false;
-        startMake(message,user);
-    },
-    'make_control': (message,user) => {
-        lobby[user].controlNet = true;
-        lobby[user].styleTransfer = false;
-        startMake(message,user);
-    },
-    'make_control_style': (message,user) => {
-        lobby[user].controlNet = true;
-        lobby[user].styleTransfer = true;
-        startMake(message,user);
-    },
-    'ms2': (message,user) => {
-        lobby[user].styleTransfer = false;
-        lobby[user].controlNet = false;
-        startMs2(message,user);
-    },
-    'ms2_style': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = false;
-        startMs2(message,user);
-    },
-    'ms2_control': (message,user) => {
-        lobby[user].styleTransfer = false;
-        lobby[user].controlNet = true;
-        startMs2(message,user);
-    },
-    'ms2_control_style': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = true;
-        startMs2(message,user);
-    },
-    'make3': startMake3,
-    'pfp': (message,user) => {
-        lobby[user].styleTransfer = false;
-        lobby[user].controlNet = false;
-        startPfp(message,user);
-    },
-    'pfp_style': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = false;
-        startPfp(message,user);
-    },
-    'pfp_control': (message,user) => {
-        lobby[user].styleTransfer = false;
-        lobby[user].controlNet = true;
-        startPfp(message,user);
-    },
-    'pfp_control_style': (message,user) => {
-        lobby[user].styleTransfer = true;
-        lobby[user].controlNet = true;
-        startPfp(message,user);
-    },
-    'interrogate' : (message, user) => {
-        
-        editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: 'Send in the photo you want to extract a prompt from'
-        })
+    'regen': async (message,user) => {
         message.from.id = user;
-        setUserState(message, STATES.INTERROGATION);
-        //sendMessage(message, );
+        handleRegen(message)
     },
-    'assist': (message,user) => {
-        editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: 'What prompt do you need help with'
-        })
+    'make': iResponse.makeStarter.start.bind(iResponse.makeStarter),
+    'make_style': iResponse.makeStyleStarter.start.bind(iResponse.makeStyleStarter),
+    'make_control': iResponse.makeControlStarter.start.bind(iResponse.makeControlStarter),
+    'make_control_style': iResponse.makeControlStyleStarter.start.bind(iResponse.makeControlStyleStarter),
+    'ms2': iResponse.ms2Starter.start.bind(iResponse.ms2Starter),
+    'ms2_style': iResponse.ms2StyleStarter.start.bind(iResponse.ms2StyleStarter),
+    'ms2_control': iResponse.ms2ControlStarter.start.bind(iResponse.ms2ControlStarter),
+    'ms2_control_style': iResponse.ms2ControlStyleStarter.start.bind(iResponse.ms2ControlStyleStarter),
+    'make3': iResponse.make3Starter.start.bind(iResponse.make3Starter),
+    'pfp': iResponse.pfpStarter.start.bind(iResponse.pfpStarter),
+    'pfp_style': iResponse.pfpStyleStarter.start.bind(iResponse.pfpStyleStarter),
+    'pfp_control': iResponse.pfpControlStarter.start.bind(iResponse.pfpControlStarter),
+    'pfp_control_style': iResponse.pfpControlStyleStarter.start.bind(iResponse.pfpControlStyleStarter),
+    'interrogate' : iResponse.interrogateStarter.start.bind(iResponse.interrogateStarter),
+    'assist': iResponse.assistStarter.start.bind(iResponse.assistStarter),
+    'ms3': iResponse.ms3Starter.start.bind(iResponse.ms3Starter),
+    'rmbg': iResponse.rmbgStarter.start.bind(iResponse.rmbgStarter),
+    'upscale': iResponse.upscaleStarter.start.bind(iResponse.upscaleStarter),
+    'watermark': iResponse.watermarkStarter.start.bind(iResponse.watermarkStarter),
+    'disc': iResponse.discStarter.start.bind(iResponse.discStarter),
+    'speak': iResponse.speakStarter.start.bind(iResponse.speakStarter),
+    'inpaint' : iResponse.inpaintStarter.start.bind(iResponse.inpaintStarter),
+    'set': async (message,user) => {
         message.from.id = user;
-        setUserState(message, STATES.ASSIST);
+        iMenu.setMenu(message)
     },
-    'ms3': startMs3,
-    'rmbg': startRmbg,
-    'upscale': startUpscale,
-    'watermark': startWatermark,
-    'disc': startDisc,
-    'set': iMenu.setMenu,
-    'speak': (message,user) => {
-        editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: 'what should I say?'
-        })
-        message.from.id = user;
-        setUserState(message, STATES.SPEAK);
-        //sendMessage(message, 'what should I say?');
-    },
-    'voiceMenu': handleVoiceMenu,
-    'checkpointmenu': handleCheckpointMenu,
-    'basepromptmenu': handleBasePromptMenu,
-    'voicemenu':handleVoiceMenu,
-    'toggleWaterMark' : handleWatermarkMenu,
+    'voiceMenu': iMenu.handleVoiceMenu,
+    'checkpointmenu': iMenu.handleCheckpointMenu,
+    'basepromptmenu': iMenu.handleBasePromptMenu,
+    'voicemenu': iMenu.handleVoiceMenu,
+    'toggleWaterMark' : iMenu.handleWatermarkMenu,
     'setVoice': handleSetVoice,
     'setBasePrompt': handleSetBasePrompt,
     'setCheckpoint': handleSetCheckpoint,
@@ -283,7 +184,6 @@ const actionMap = {
         message.from.id = user;
         displayAccountSettingsMenu(message);
     },
-    
     'refresh' : async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
         handleStatus(message);
@@ -291,7 +191,6 @@ const actionMap = {
     'cancel' : (message) => {
         bot.deleteMessage(message.chat.id, message.message_id);
     },
-    'inpaint' : startInpaint,
     'applygroupbalance': (message) => {
         console.log(message)
         const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
@@ -303,24 +202,28 @@ const actionMap = {
         sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
         setUserState(message.reply_to_message, STATES.GROUPAPPLY)
     }
-
-    
 };
 
 
 module.exports = function(bot) {
     bot.on('callback_query', (callbackQuery) => {
         //console.log('callback querey itself',callbackQuery,'/n/n');
+        //console.log('message reply to message from',callbackQuery.message.reply_to_message)
         try {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery);
             //console.log('in callback query data', action, message, user)
-            if(message.from.id != callbackQuery.from.id && action != 'refresh' && message.from.id != process.env.BOT_ID){ //6864632060){//6324772900 ){
+            if(
+                (
+                    callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
+                    //|| callbackQuery.from.id != callbackQuery.message.from.id
+                ) 
+                && action != 'refresh' 
+                //&& message.from.id != process.env.BOT_ID
+            ){ //6864632060){//6324772900 ){
                 console.log('wrong user');
                 return
             }
-
-
             if (actionMap[action]) {
                 actionMap[action](message, user);
             } else if (callbackQuery.data.startsWith('sbp_')) {

@@ -113,6 +113,9 @@ function groupSettings(message) {
     
 }
 
+/*
+Needs to be updated so anyone can request to 
+*/
 function handleApplyBalance(message) {
     const burned = getBurned(message.from.id);
     const value = message.text;

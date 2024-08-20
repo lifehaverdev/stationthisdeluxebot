@@ -1,53 +1,56 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('./bot'); 
-const { initialize } = require('../bot/intitialize')
+const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
+const { initialize } = require('../intitialize')
 const bot = getBotInstance();
-const { cleanLobby } = require('./gatekeep')
+const { cleanLobby, checkLobby } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
     setUserState,
     DEV_DMS
-} = require('../utils')
-const handlers = require('./handlers/deprecated/handle');
-const defaultUserData = require('../users/defaultUserData');
-const iResponse = require('./handlers/iResponse')
+} = require('../../utils')
+const { readStats } = require('../../../db/mongodb.js')
+// const handlers = require('./handle');
+const defaultUserData = require('../../users/defaultUserData');
 
-const iMenu = require('./handlers/iMenu')
+const iMenu = require('./iMenu')
+const iAccount = require('./iAccount')
+const iMake = require('./iMake')
+const iWork = require('./iWork')
+const iMedia = require('./iMedia')
+const iBrand = require('./iBrand')
+const iSettings = require('./iSettings')
+const iGroup = require('./iGroup')
+
+/*
+Recognizes Groupchat Context
+Classes for start, ask photo etc
+*/
 
 const commandPatterns = {
-    '/signin': handlers.handleSignIn,
-    '/make(?:@stationthisbot)?\\s+(.+)': handlers.handleMake,
-    '/make3(?:@stationthisbot)?\\s+(.+)': handlers.handleMake3,
-    '/dexmake(?:@stationthisbot)?\\s+(\\d+)': handlers.handleDexMake, 
-//    '/test(?:@stationthisbot)?\\s+(.+)': handleTest,
-    '/regen(?:@stationthisbot)?\\s*(.*)': handlers.handleRegen,
-    '/getseed(.*)': handlers.saySeed,
-    '/promptcatch\\s+(\\d+)': handlers.handlePromptCatch,
-    //'/request(.*)': startRequest,
-    '/savesettings(.*)': handlers.handleSaveSettings,
-    '/seesettings(.*)': handlers.handleSeeSettings,
-    '/accountsettings(?:@stationthisbot)?': handlers.handleAccountSettings,
-    '/loralist(?:@stationthisbot)?': handlers.sendLoRaModelFilenames,
-    //'/seecollections': handleSeeCollections,
-    //'/createcollection (.+)': handleCreateCollection,
-    //'/uri': handleUri,
-    //
-    '/groupsettings': handlers.groupSettings,
-    //
-    //'/collectionbaseprompt': handleCollectionBasePrompt,
-    // '/savework': handleSaveWork,
+    '/signin': iAccount.handleSignIn,
+    '/make(?:@stationthisbot)?\\s+(.+)': iMake.handleMake,
+    '/make3(?:@stationthisbot)?\\s+(.+)': iMake.handleMake3,
+    '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
+    '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
+    '/getseed(.*)': iWork.saySeed,
+    '/promptcatch\\s+(\\d+)': iMake.handlePromptCatch,
+    '/savesettings(.*)': iAccount.handleSaveSettings,
+    '/seesettings(.*)': iAccount.handleSeeSettings,
+    '/accountsettings(?:@stationthisbot)?': iAccount.handleAccountSettings,
+    '/loralist(?:@stationthisbot)?': iWork.sendLoRaModelFilenames,
+    //'/groupsettings': iGroup.groupSettings,
     //'/disc(.*)': handleDisc,
     //'/watermark(.*)': handleWatermark,
-    '/signout': handlers.handleSignOut,
-    '/resetaccount': handlers.handleAccountReset,
+    '/signout': iAccount.handleSignOut,
+    '/resetaccount': iAccount.handleAccountReset,
     '/set(?:@stationthisbot)?': iMenu.setMenu,
-    '/create(?:@stationthisbot)?': handlers.handleCreate,
-    '/effect(?:@stationthisbot)?': handlers.handleEffect,
-    '/animate(?:@stationthisbot)?': handlers.handleAnimate,
-    '/utils(?:@stationthisbot)?': handlers.handleUtils,
+    '/create(?:@stationthisbot)?': iMenu.handleCreate,
+    '/effect(?:@stationthisbot)?': iMenu.handleEffect,
+    '/animate(?:@stationthisbot)?': iMenu.handleAnimate,
+    '/utils(?:@stationthisbot)?': iMenu.handleUtils,
     //'/inpaint': startInpaint,
-    '/help(?:@stationthisbot)?': handlers.handleHelp,
-    '/status(?:@stationthisbot)?': handlers.handleStatus,
+    '/help(?:@stationthisbot)?': iWork.handleHelp,
+    '/status(?:@stationthisbot)?': iWork.handleStatus,
     '/mogmogmogmogmogmogmogmog$': (message) => {
         if(lobby[message.from.id].wallet){
             lobby[message.from.id].balance = 200001;
@@ -110,36 +113,43 @@ const commandPatterns = {
     //     sendMessage(message,'hacking...')
     //     sendMessage(message,'CONNECTED');
     // }
-
+    '/see': async(message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
+            const msg = await readStats()
+            sendMessage(message,msg);
+            //sendMessage(message,'I reset burns and loralist');
+        }
+    },
+    
 };
 
 
 const stateHandlers = {
-    [STATES.SIGN_IN]: (message) => safeExecute(message, handlers.shakeSignIn),
-    [STATES.VERIFY]: (message) => safeExecute(message, handlers.shakeVerify),
-    [STATES.MAKE]: (message) => safeExecute(message, handlers.handleMake),
-    [STATES.MAKE3]: (message) => safeExecute(message, handlers.handleMake3),
-    [STATES.IMG2IMG]: (message) => safeExecute(message, iResponse.ms2Flow.handleImage.bind(iResponse.ms2Flow)),
-    [STATES.MS2PROMPT]: (message) => safeExecute(message, iResponse.ms2Flow.handlePrompt.bind(iResponse.ms2Flow)),
-    //[STATES.MS2PROMPT]: (message) => safeExecute(message, handlers.handleMs2Prompt),
-    [STATES.REQUEST]: (message) => safeExecute(message, handlers.handleRequest),
-    [STATES.ASSIST]: (message) => safeExecute(message, handlers.shakeAssist),
-    [STATES.SPEAK]: (message) => safeExecute(message, handlers.shakeSpeak),
-    //[STATES.IMG2IMG]: (message) => safeExecute(message, handlers.handleMs2ImgFile),
-    [STATES.MS3]: (message) => safeExecute(message,handlers.handleMs3ImgFile),
-    [STATES.PFP]: (message) => safeExecute(message, handlers.handlePfpImgFile),
-    [STATES.INTERROGATION]: (message) => safeExecute(message, handlers.handleInterrogation),
-    [STATES.DISC]: (message) => safeExecute(message, handlers.handleDiscWrite),
-    [STATES.WATERMARK]: (message) => safeExecute(message, handlers.handleWatermark),
-    [STATES.SETPHOTO]: (message) => safeExecute(message, handlers.handleSet),
-    [STATES.SETSTYLE]: (message) => safeExecute(message,handlers.handleSet),
-    [STATES.SETCONTROL]: (message) => safeExecute(message,handlers.handleSet),
-    [STATES.INPAINT]: (message) => safeExecute(message, iResponse.inpaintFlow.handleImage.bind(iResponse.inpaintFlow)),
-    [STATES.INPAINTTARGET]: (message) => safeExecute(message, iResponse.inpaintFlow.handlePrompt.bind(iResponse.inpaintFlow)),
-    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, iResponse.inpaintFlow.handlePrompt.bind(iResponse.inpaintFlow)),
-    [STATES.UPSCALE] : (message) => safeExecute(message, handlers.handleUpscale),
-    [STATES.RMBG] : (message) => safeExecute(message, handlers.handleRmbg),
-    [STATES.GROUPAPPLY] : (message) => safeExecute(message, handlers.handleApplyBalance)
+    [STATES.SIGN_IN]: (message) => safeExecute(message, iAccount.shakeSignIn),
+    [STATES.VERIFY]: (message) => safeExecute(message, iAccount.shakeVerify),
+    [STATES.MAKE]: (message) => safeExecute(message, iMake.handleMake),
+    [STATES.MAKE3]: (message) => safeExecute(message, iMake.handleMake3),
+    [STATES.MS2PROMPT]: (message) => safeExecute(message, iMake.handleMs2Prompt),
+    [STATES.REQUEST]: (message) => safeExecute(message, iWork.handleRequest),
+    [STATES.ASSIST]: (message) => safeExecute(message, iWork.shakeAssist),
+    [STATES.SPEAK]: (message) => safeExecute(message, iWork.shakeSpeak),
+    [STATES.IMG2IMG]: (message) => safeExecute(message, iMedia.handleMs2ImgFile),
+    [STATES.MS3]: (message) => safeExecute(message,iMedia.handleMs3ImgFile),
+    [STATES.PFP]: (message) => safeExecute(message, iMedia.handlePfpImgFile),
+    [STATES.INTERROGATION]: (message) => safeExecute(message, iMedia.handleInterrogation),
+    [STATES.DISC]: (message) => safeExecute(message, iBrand.handleDiscWrite),
+    [STATES.WATERMARK]: (message) => safeExecute(message, iBrand.handleWatermark),
+    [STATES.SETPHOTO]: (message) => safeExecute(message, iSettings.handleSet),
+    [STATES.SETSTYLE]: (message) => safeExecute(message,iSettings.handleSet),
+    [STATES.SETCONTROL]: (message) => safeExecute(message,iSettings.handleSet),
+    [STATES.INPAINT]: (message) => safeExecute(message, iMedia.handleInpaint),
+    [STATES.INPAINTTARGET]: (message) => safeExecute(message, iMake.handleInpaintTarget),
+    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, iMake.handleInpaintPrompt),
+    [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
+    [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
+    [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance)
 };
 
 
@@ -150,7 +160,7 @@ const setStates = [
     STATES.SETSTYLE, STATES.SETCONTROL
 ];
 setStates.forEach(state => {
-    stateHandlers[state] = (message) => safeExecute(message,handlers.handleSet);
+    stateHandlers[state] = (message) => safeExecute(message,iSettings.handleSet);
 });
 
 function messageFilter(message) {
@@ -220,7 +230,7 @@ function watch(message) {
 
 SET_COMMANDS.forEach(command => {
     bot.onText(new RegExp(`^/set${command}(.*)`), (message) => {
-        safeExecute(message, handlers.startSet);
+        safeExecute(message, iSettings.startSet);
     });
 });
 
@@ -241,12 +251,12 @@ module.exports = function(bot) {
                 const regex = new RegExp(`^${pattern}`);
                 const match = regex.exec(message.text);
                 if (match) {
-                    console.log('i see a command tbh','match',match,'handler',handler)
+                    console.log('i see a command tbh',match)
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => pattern.startsWith(cmd));
                     if (requiresGatekeeping) {
                         // Perform gatekeeping check
                         console.log('we are gatekeeping')
-                        const allowed = await handlers.checkLobby(message);
+                        const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
                             
@@ -266,7 +276,7 @@ module.exports = function(bot) {
                 if (commandKey) {
                     const commandInfo = commandStateMessages[commandKey];
     
-                    if (commandKey !== '/quit' && !(await handlers.checkLobby(message))) {
+                    if (commandKey !== '/quit' && !(await checkLobby(message))) {
                         console.log("Lobby check failed, not processing command:", commandKey);
                         return; // Exit if lobby check fails
                     }

@@ -1,5 +1,5 @@
-const { startup, waiting, taskQueue } = require('../bot.js')
-const { sendMessage, editMessage } = require('../../utils.js')
+const { startup, waiting, taskQueue } = require('../../bot.js')
+const { sendMessage, editMessage } = require('../../../utils.js')
 //const {  } = require('../queue.js')
 
 function handleHelp(message) {
