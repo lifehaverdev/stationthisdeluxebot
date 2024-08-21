@@ -201,6 +201,8 @@ async function handleMake(message) {
                 return
             }
             params = rooms[index].settings
+        } else {
+            params = lobby[userId]
         }
     } else {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1

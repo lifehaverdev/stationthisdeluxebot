@@ -4,6 +4,8 @@ const { sendMessage, setUserState, editMessage } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { lobby, startup, waiting, taskQueue } = require('../bot.js')
+const { txt2Speech } = require('../../../commands/speak')
+const { promptAssist } = require('../../../commands/assist')
 
 function handleHelp(message) {
     const helpMessage = `
