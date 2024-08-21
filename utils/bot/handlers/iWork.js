@@ -3,10 +3,11 @@ const path = require('path');
 const { sendMessage, setUserState, editMessage } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
-const { lobby, startup, waiting, taskQueue } = require('../bot.js')
+const { lobby, STATES, startup, waiting, taskQueue, getBotInstance } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
+const bot = getBotInstance();
 function handleHelp(message) {
     const helpMessage = `
     HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHIS BOT ON TELEGRAM
