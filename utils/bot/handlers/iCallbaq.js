@@ -27,7 +27,7 @@ function parseCallbackData(callbackQuery) {
     // Use information from the callbackQuery itself
     const message = callbackQuery.message;
     const user = callbackQuery.from.id;
-
+    //console.log(user, message, parts[0])
     // Reconstruct additional information if necessary
     return {
         action: parts[0],
@@ -213,9 +213,10 @@ module.exports = function(bot) {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery);
             //console.log('in callback query data', action, message, user)
+            console.log('before the first if')
             if(
                 (
-                    callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
+                    callbackQuery.from.id && callbackQuery.message.reply_to_message && callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
                     //|| callbackQuery.from.id != callbackQuery.message.from.id
                 ) 
                 && action != 'refresh' 
@@ -224,6 +225,7 @@ module.exports = function(bot) {
                 console.log('wrong user');
                 return
             }
+            console.log('after first if')
             if (actionMap[action]) {
                 actionMap[action](message, user);
             } else if (callbackQuery.data.startsWith('sbp_')) {
