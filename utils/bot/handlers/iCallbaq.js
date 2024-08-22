@@ -217,10 +217,11 @@ module.exports = function(bot) {
             if(
                 (
                     callbackQuery.from.id && callbackQuery.message.reply_to_message && callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
+                    && message.from.id != process.env.BOT_ID
                     //|| callbackQuery.from.id != callbackQuery.message.from.id
-                ) 
+                )
                 && action != 'refresh' 
-                //&& message.from.id != process.env.BOT_ID
+                //
             ){ //6864632060){//6324772900 ){
                 console.log('wrong user');
                 return
