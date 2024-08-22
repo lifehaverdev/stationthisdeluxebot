@@ -170,7 +170,7 @@ async function handleSet(message) {
     let settings;
     const userId = message.from.id;
     if(message.chat.id < 0){
-        const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
+        const index = rooms.findIndex((group) => group.id === message.chat.id);
         if(index != -1){
             if(rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
                 settings = rooms[index].settings;

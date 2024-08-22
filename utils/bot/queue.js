@@ -379,7 +379,7 @@ async function sendMedia(message, fileToSend, type, promptObj) {
     if (type === 'image') {
         console.log('Sending photo:', fileToSend);
         let options = {};
-        if(lobby[message.from.id].advancedUser) options = {caption: promptObj.lastSeed}
+        if(lobby[message.from.id].advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
         if (promptObj.waterMark != 'empty') {
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
@@ -396,7 +396,6 @@ async function sendMedia(message, fileToSend, type, promptObj) {
         return null;
     }
 }
-
 
 function extractType(url) {
     if (!url) {

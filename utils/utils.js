@@ -84,7 +84,7 @@ async function sendPhoto(msg, fileUrl, options = {}) {
             return response;
         } catch (error) {
             console.error(`sendMessage error:`, {
-                context: text,
+                context: msg.text || '',
                 message: error.message || '',
                 name: error.name || '',
                 code: error.code || ''
