@@ -19,7 +19,7 @@ function addPoints({promptObj,task,message}) {
     // }
     const pointsToAdd = (task.timestamp - Date.now()) / 1000;
     const user = lobby[promptObj.userId];
-    const group = getGroup(message.chat.id);
+    const group = getGroup(message);
     if(user && group != -1 && group != '-1'){
         user.points += pointsToAdd;
     } else if (group){
