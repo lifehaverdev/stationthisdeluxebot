@@ -170,8 +170,8 @@ function calcSteps(message) {
 async function handleSet(message) {
     let settings;
     const userId = message.from.id;
+    const group = getGroup(message);
     if(message.chat.id < 0){
-        const group = getGroup(message);
         if(group != -1){
             if(group.admin.some((appointed) => {return message.from.id == appointed ? true : false})){
                 settings = group.settings;
@@ -194,7 +194,7 @@ async function handleSet(message) {
     console.log('setting',lobbyParam)
     console.log('currently',lobby[userId][lobbyParam])
     console.log('current user state',currentState)
-    if (!lobby[userId]) {
+    if (!lobby[userId] && group == -1) {
         sendMessage(message, "You need to make something first");
         return;
     }
