@@ -3,6 +3,7 @@ const { sendMessage, sendPhoto, setUserState, editMessage } = require('../../uti
 const { getPhotoUrl, STATES, lobby } = require('../bot')
 const { addWaterMark, writeToDisc } = require('../../../commands/waterMark')
 
+const iMenu = require('./iMenu')
 
 /*
 "Add a branding" handler
@@ -28,19 +29,22 @@ async function startDisc(message, user) {
 }
 
 async function startWatermark(message, user) {
+    console.log('start watermark menu')
     if(user){
         message.from.id = user;
-        await editMessage({
-            text: 'Send in the photo you want to watermark.',
-            chat_id: message.chat.id,
-            message_id: message.message_id
-        })
+        // await editMessage({
+        //     text: 'Send in the photo you want to watermark.',
+        //     chat_id: message.chat.id,
+        //     message_id: message.message_id
+        // })
+        iMenu.handleWatermarkMenu(message,user)
     } else {
         if(lobby[message.from.id] && lobby[message.from.id].balance < 200000){
             gated(message)
             return
         }
-        sendMessage(message, 'Send in the photo you want to watermark.',{reply_to_message_id: message.message_id})
+        //sendMessage(message, 'Send in the photo you want to watermark.',{reply_to_message_id: message.message_id})
+        iMenu.handleWatermarkMenu(message,user)
     }
     setUserState(message,STATES.WATERMARK)
 }

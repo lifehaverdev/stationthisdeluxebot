@@ -51,10 +51,19 @@ const commandPatterns = {
     //'/inpaint': startInpaint,
     '/help(?:@stationthisbot)?': iWork.handleHelp,
     '/status(?:@stationthisbot)?': iWork.handleStatus,
+    //'/speak(?:@stationthisbot)?': iWork.startSpeak,
     '/mogmogmogmogmogmogmogmog$': (message) => {
         if(lobby[message.from.id].wallet){
             lobby[message.from.id].balance = 200001;
-            sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens, remove watermark in accountsettings and use set choose baseprompt and empty then create txt2image including keyword joycat in prompt')
+            sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens')
+        } else {
+            sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
+        }
+    },
+    '/degodmodeactivate': (message) => {
+        if(lobby[message.from.id].wallet){
+            lobby[message.from.id].balance = 600001;
+            sendMessage(message,'chad degod you now have 600001 virtual MS2 tokens')
         } else {
             sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
         }
