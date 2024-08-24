@@ -21,7 +21,7 @@ function addPoints({promptObj,task,message}) {
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
     console.log('group',group)
-    if(user && group != -1 && group != '-1'){
+    if(user && (group == -1 || group == '-1')){
         user.points += pointsToAdd;
     } else if (group){
         console.log('group points before',group.points)
