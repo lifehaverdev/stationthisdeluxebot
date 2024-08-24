@@ -3,6 +3,7 @@ const { sendMessage, react, setUserState, editMessage, gated } = require('../../
 const { enqueueTask } = require('../queue')
 const { writeUserData } = require('../../../db/mongodb')
 const { checkLobby } = require('../gatekeep')
+const { getGroup } = require('./iGroup')
 
 async function handlePromptCatch(message, match) {
     const slot = parseInt(match[1]); // Ensure it's an integer
