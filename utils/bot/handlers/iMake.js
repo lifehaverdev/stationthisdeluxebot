@@ -128,11 +128,9 @@ async function handleMake(message) {
         startMake();
         return
     }
-
     //const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
 
     //let settings = { ...lobby[userId] }; // Start with lobby settings
-
 
     if(lobby[userId] && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
         return;
@@ -154,7 +152,7 @@ async function handleMake(message) {
         }
     }
     function groupGate() {
-        if(group.points > group.charge){
+        if(group.points > group.credit){
             gated(message)
             return true
         }
