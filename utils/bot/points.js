@@ -17,7 +17,7 @@ function addPoints({promptObj,task,message}) {
     // } else {
     //     console.log(`Deployment with type ${promptObj.type} not found.`);
     // }
-    const pointsToAdd = task.timestamp - Date.now();
+    const pointsToAdd = (task.timestamp - Date.now()) / 1000;
     const user = lobby[promptObj.userId];
     const group = getGroup(message.chat.id);
     if(user && group != -1 && group != '-1'){
