@@ -23,7 +23,9 @@ function addPoints({promptObj,task,message}) {
     if(user && group != -1 && group != '-1'){
         user.points += pointsToAdd;
     } else if (group){
+        console.log('group points before',group.points)
         group.points += pointsToAdd;
+        console.log('group points after',group.points)
         console.log('added points to group')
     } else {
         console.log('no user id in lobby for points addition after task completion')
