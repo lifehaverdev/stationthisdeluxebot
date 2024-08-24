@@ -1,20 +1,32 @@
 const { lobby } = require('../bot/bot')
-const { comfydeployment_ids } = require('../comfydeploy/deployment_ids')
+//const { comfydeployment_ids } = require('../comfydeploy/deployment_ids')
+const { getGroup } = require('./handlers/iGroup');
 
-function addPoints(promptObj) {
-    const deployment = comfydeployment_ids.find(d => d.type === promptObj.type);
+function addPoints({promptObj,task,message}) {
+    //const deployment = comfydeployment_ids.find(d => d.type === promptObj.type);
     
-    if (deployment) {
-        const user = lobby[promptObj.userId];
+    // if (deployment) {
+    //     const user = lobby[promptObj.userId];
         
-        if (user) {
-            const pointsToAdd = deployment.score * promptObj.batchMax;
-            user.points += pointsToAdd;
-        } else {
-            console.log(`User with ID ${promptObj.userId} not found in the lobby.`);
-        }
+    //     if (user) {
+    //         const pointsToAdd = deployment.score * promptObj.batchMax;
+    //         user.points += pointsToAdd;
+    //     } else {
+    //         console.log(`User with ID ${promptObj.userId} not found in the lobby.`);
+    //     }
+    // } else {
+    //     console.log(`Deployment with type ${promptObj.type} not found.`);
+    // }
+    const pointsToAdd = task.timestamp - Date.now();
+    const user = lobby[promptObj.userId];
+    const group = getGroup(message.chat.id);
+    if(user && group != -1 && group != '-1'){
+        user.points += pointsToAdd;
+    } else if (group){
+        group.points += pointsToAdd;
+        console.log('added points to group')
     } else {
-        console.log(`Deployment with type ${promptObj.type} not found.`);
+        console.log('no user id in lobby for points addition after task completion')
     }
 }
 

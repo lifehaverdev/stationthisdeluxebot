@@ -215,24 +215,30 @@ async function createRoom(chatId, userId, value) {
         if (!settings) {
             throw new Error("User settings not found");
         }
-
+        //const filter = { userId: userId };
         // Create the room object
         const room = {
             owner: userId,
             name: 'placeholder', // This can be parameterized
             admins: [],
             applied: parseInt(value), // This can be parameterized
+            points: 0,
+            credits: parseInt(value) * 2 / 540,
             id: chatId,
             settings: {
                 ...settings
             }
         };
 
-        // Upsert the document and push the new room to the rooms array
-        await collection.updateOne(
-            { _id: new ObjectId("66b0f7b979230b59f16399eb") }, // Ensure this filter targets the correct document
-            { $push: { rooms: room } },
-            { upsert: true }
+        // // Upsert the document and push the new room to the rooms array
+        // await collection.updateOne(
+        //     { _id: new ObjectId("66b0f7b979230b59f16399eb") }, // Ensure this filter targets the correct document
+        //     { $push: { rooms: room } },
+        //     { upsert: true }
+        // );
+        //const { ...dataToSave } = data;
+        await collection.updateOne( {},
+            { $set: { ...room } },
         );
 
         console.log('Room written successfully');
