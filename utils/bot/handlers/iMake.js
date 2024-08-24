@@ -65,6 +65,7 @@ async function handleDexMake(message, match) {
     userSettings.type = 'MAKE';
     userSettings.lastSeed = thisSeed;
 
+    
     const promptObj = {
         ...userSettings,
         seed: thisSeed,
