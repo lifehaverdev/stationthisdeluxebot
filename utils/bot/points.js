@@ -1,6 +1,7 @@
 const { lobby } = require('../bot/bot')
 //const { comfydeployment_ids } = require('../comfydeploy/deployment_ids')
 const { getGroup } = require('./handlers/iGroup');
+const { updateGroupPoints } = require('../../db/mongodb')
 
 function addPoints({promptObj,task,message}) {
     //const deployment = comfydeployment_ids.find(d => d.type === promptObj.type);
@@ -24,10 +25,8 @@ function addPoints({promptObj,task,message}) {
     if(user && (group == -1 || group == '-1')){
         user.points += pointsToAdd;
     } else if (group){
-        console.log('group points before',group.points)
         group.points += pointsToAdd;
-        console.log('group points after',group.points)
-        console.log('added points to group')
+        updateGroupPoints(group,pointsToAdd)
     } else {
         console.log('no user id in lobby for points addition after task completion')
     }

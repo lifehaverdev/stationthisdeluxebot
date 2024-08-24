@@ -111,6 +111,33 @@ async function writeData(collectionName, filter, data) {
     }
 }
 
+async function updateGroupPoints(group, pointsToAdd) {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        const collection = client.db(dbName).collection('floorplan');
+        const filter = { owner: group.owner };
+
+        // Retrieve the current points
+        const existingGroup = await collection.findOne(filter);
+
+        // Calculate the new points
+        const updatedPoints = (existingGroup?.points || 0) + pointsToAdd;
+
+        // Use the existing writeData function to save the updated points
+        await writeData('floorplan', filter, { points: updatedPoints });
+
+        console.log('Group points updated successfully');
+        return true;
+    } catch (error) {
+        console.error("Error updating group points:", error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 async function readStats() {
     const uri = process.env.MONGO_PASS;
     const client = new MongoClient(uri);
@@ -940,5 +967,6 @@ module.exports = {
     addPointsToAllUsers,
     createRoom,
     writeData,
-    readStats
+    readStats,
+    updateGroupPoints
 };
