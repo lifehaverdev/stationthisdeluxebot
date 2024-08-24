@@ -127,14 +127,14 @@ function displayAccountSettingsMenu(message,dms) {
 
     // Send account settings menu with account information
     if(dms){
-        bot.sendMessage(chatId, accountInfo, {
+        sendMessage(message, accountInfo, {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: accountSettingsKeyboard
             }
         });
     } else {
-        bot.sendMessage(chatId, 'Account Settings:', {
+        sendMessage(message, 'Account Settings:', {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: accountSettingsKeyboard

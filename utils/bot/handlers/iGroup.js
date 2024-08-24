@@ -35,8 +35,8 @@ function groupSettings(message) {
         ],
         [
             {text: 'Apply Balance', callback_data: 'applygroupbalance'},
-            {text: 'Remove Balance', callback_data: 'removegroupbalance'}
         ],
+        [],
         [
             {
                 text: 'Chart', 
@@ -54,16 +54,16 @@ function groupSettings(message) {
     ];
 
 
-    if (group.applied >= 200000) {
-        groupSettingsKeyboard[0].push(
-            {
-                text: `Watermark: ${group.settings.waterMark ? '✅' : '❌'}`,
-                callback_data: 'toggleWaterMark',
-            },
-        );
-    }
+    // if (group.applied >= 200000) {
+    //     groupSettingsKeyboard[0].push(
+    //         {
+    //             text: `Watermark: ${group.settings.waterMark ? '✅' : '❌'}`,
+    //             callback_data: 'toggleWaterMark',
+    //         },
+    //     );
+    // }
     if(group.applied >= 400000){
-        groupSettingsKeyboard[1].push(
+        groupSettingsKeyboard[2].push(
             {
                 text: `ControlNet ${group.settings.controlNet ? '✅' : '❌'}`,
                 callback_data: 'toggleControlNet',
@@ -74,23 +74,23 @@ function groupSettings(message) {
             }
         )
     }
-    if(group.applied >= 500000){
-        groupSettingsKeyboard[2].push(
-            {
-                text: `Voice Menu`,
-                callback_data: 'voicemenu',
-            },
-        )
-    }
+    // if(group.applied >= 500000){
+    //     groupSettingsKeyboard[2].push(
+    //         {
+    //             text: `Voice Menu`,
+    //             callback_data: 'voicemenu',
+    //         },
+    //     )
+    // }
     //console.log('groupchat message',message);
     
     let groupSettingsInfo = '\n';
     groupSettingsInfo += `<b>${group.name}</b> \n`;
     groupSettingsInfo += `<b>MS2 Burn Balance:</b> ${group.applied}🎮\n`;
-    groupSettingsInfo += `<b>Points Remaining</b> ${group.charge - group.points}\n`
+    groupSettingsInfo += `<b>Points Remaining</b> ${group.credits - group.points}\n`
     //groupSettingsInfo += `<b>LEVEL:</b>${level} `
     //groupSettingsInfo += `<b>EXP:</b> ${bars}\n`
-    groupSettingsInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
+    //groupSettingsInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
     groupSettingsInfo += `<b>Locked Features:</b>\n`;
     
     // List locked features based on the user's balance
@@ -169,7 +169,7 @@ async function createGroup(message) {
     // }
     //)
     await initialize();
-    const group = rooms.find(group => group.chat.id == message.chat.id)
+    const group = rooms.find(group => group.id == message.chat.id)
     // group.ledger.push({
     //     user: message.from.id,
     //     stake: parseInt(message.text)

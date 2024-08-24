@@ -38,7 +38,7 @@ const commandPatterns = {
     '/seesettings(.*)': iAccount.handleSeeSettings,
     '/accountsettings(?:@stationthisbot)?': iAccount.handleAccountSettings,
     '/loralist(?:@stationthisbot)?': iWork.sendLoRaModelFilenames,
-    //'/groupsettings': iGroup.groupSettings,
+    '/groupsettings': iGroup.groupSettings,
     //'/disc(.*)': handleDisc,
     //'/watermark(.*)': handleWatermark,
     '/signout': iAccount.handleSignOut,

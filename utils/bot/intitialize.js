@@ -113,19 +113,28 @@ async function readRooms() {
         const collection = db.collection('floorplan');
 
         // Find all documents in the collection
-        const document = await collection.findOne()
-        console.log('document found',document)
-        if (document && document.rooms) {
-            // Parse the loraTriggers field and update the existing array
-            rooms.length = 0; // Clear the existing array
-            //const parsedTriggers = 
-            document.rooms.map(room => rooms.push(room))//JSON.parse(triggerStr));
+        // const document = await collection.findOne()
+        // console.log('document found',document)
+        // if (document && document.rooms) {
+        //     // Parse the loraTriggers field and update the existing array
+        //     rooms.length = 0; // Clear the existing array
+        //     //const parsedTriggers = 
+        //     document.rooms.map(room => rooms.push(room))//JSON.parse(triggerStr));
             
-            //loraTriggers.push(...parsedTriggers); // Push new elements into the array
-        }
+        //     //loraTriggers.push(...parsedTriggers); // Push new elements into the array
+        // }
+        // Find all documents in the collection
+        const documents = await collection.find().toArray();
+        // Initialize a map to store the total burned amount for each wallet
 
-        console.log('Rooms loaded');
-        console.log(JSON.stringify(rooms))
+        // Process each document
+        documents.forEach(doc => {
+            rooms.push(doc)
+        })
+
+        console.log('found the rooms',rooms)
+
+
     } catch (error) {
         console.error('Error printing documents:', error);
     } finally {
@@ -140,7 +149,6 @@ async function initialize() {
     await readLoraList();
     console.log('reading burns');
     await readBurns();
-    
     console.log('reading rooms...')
     await readRooms();
     console.log('ready...!')

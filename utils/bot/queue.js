@@ -358,7 +358,7 @@ async function handleTaskCompletion(task, run) {
     if (status === 'success') {
         const operationSuccess = await retryOperation(operation);
         if(operationSuccess && sent){
-            addPoints(promptObj)
+            addPoints({promptObj,task,message})
             return 'success'
         } else {
             return 'not sent'
