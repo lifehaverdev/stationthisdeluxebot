@@ -12,7 +12,7 @@ const {
 const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
-const { waterMark } = require('../users/defaultUserData');
+//const { waterMark } = require('../users/defaultUserData');
 
 // let taskQueue = []
 // let waiting = []
@@ -375,13 +375,14 @@ async function handleTaskCompletion(task, run) {
 }
 
 async function sendMedia(message, fileToSend, type, promptObj) {
+    let options = {};
     if (type === 'image') {
         if(promptObj.type == 'RMBG' || promptObj.type == 'UPSCALE'){
             const response = await sendDocument(message, fileToSend, options);
             return response
         }
         console.log('Sending photo:', fileToSend);
-        let options = {};
+        
         if(lobby[message.from.id].advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
         if (promptObj.balance == '' || promptObj.balance < 200000){
