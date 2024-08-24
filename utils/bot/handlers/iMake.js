@@ -135,14 +135,16 @@ async function handleMake(message) {
     //let settings = { ...lobby[userId] }; // Start with lobby settings
 
     const group = getGroup(message);
+    console.log('group',group.name)
     let settings;
     if(group != -1){
         settings = group.settings;
     } else {
         settings = lobby[userId]
     }
-
+    console.log('settings',settings)
     if(settings && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
+        console.log('we not in the right state')
         return;
     }
 
