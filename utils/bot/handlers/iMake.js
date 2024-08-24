@@ -65,7 +65,7 @@ async function handleDexMake(message, match) {
     userSettings.type = 'MAKE';
     userSettings.lastSeed = thisSeed;
 
-    
+
     const promptObj = {
         ...userSettings,
         seed: thisSeed,
@@ -133,12 +133,20 @@ async function handleMake(message) {
 
     //let settings = { ...lobby[userId] }; // Start with lobby settings
 
-    if(lobby[userId] && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE){
+    const group = getGroup(message);
+    let settings;
+    if(group != -1){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
+
+    if(settings && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
         return;
     }
 
     let thisSeed = makeSeed(userId)
-    //save these lobby[userId] into lobby in case cook mode time
+    //save these settings into lobby in case cook mode time
     lobby[userId] = {
         ...lobby[userId],
         prompt: message.text,
@@ -159,49 +167,50 @@ async function handleMake(message) {
         }
     }
 
-    if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+    if(settings.styleTransfer && !settings.controlNet) {
         if(tokenGate()){
             return
         }
-        if (!lobby[userId].styleFileUrl){
+        if (!settings.styleFileUrl){
             
             sendMessage(message, 'hey use the setstyle command to pick a style photo');
             return;
         }
-        lobby[userId].type = 'MAKE_STYLE'
-    } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
+        settings.type = 'MAKE_STYLE'
+    } else if (settings.styleTransfer && settings.controlNet){
         if(tokenGate()){
             return
         }
-        if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
+        if (!settings.styleFileUrl && !settings.controlFileUrl){
             sendMessage(message, 'hey use the setstyle setcontrol command to pick a style/ control photo');
             return;
         }
-        lobby[userId].type = 'MAKE_CONTROL_STYLE'
-    } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
+        settings.type = 'MAKE_CONTROL_STYLE'
+    } else if (settings.controlNet && !settings.styleTransfer){
         if(tokenGate()){
             return
         }
-        if(!lobby[userId].controlFileUrl) {
+        if(!settings.controlFileUrl) {
             sendMessage(message, 'hey use setcontrol command to pick a control image');
             return;
         }
-        lobby[userId].type = 'MAKE_CONTROL'
+        settings.type = 'MAKE_CONTROL'
     }
 
     let batch;
     let params;
-    if(chatId < 0){
+    if(group != -1){
         batch = 1;
-        const index = rooms.findIndex((group) => group.id === message.chat.id);
-        console.log('index in handlemake for groupchat',index)
-        if(index != -1){
+        console.log('index in handlemake for groupchat',group.id)
+        if(group != -1){
             if(groupGate()){
+                react(message)
                 return
+            } else {
+                params = group.settings
             }
-            params = rooms[index].settings
         } else {
-            params = lobby[userId]
+            //react(message)
         }
     } else {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
