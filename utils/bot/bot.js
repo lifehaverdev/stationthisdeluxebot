@@ -131,10 +131,10 @@ const commandStateMessages = {
         state: STATES.ASSIST,
         message: "Tell me the idea or key words you want a prompt for"
     },
-    '/speak': {
-        state: STATES.SPEAK,
-        message: "What should I say"
-    }
+    // '/speak': {
+    //     state: STATES.SPEAK,
+    //     message: "What should I say"
+    // }
     // Add other commands as needed
 };
 

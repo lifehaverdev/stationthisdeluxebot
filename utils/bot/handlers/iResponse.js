@@ -186,11 +186,11 @@ const upscaleStarter = new StarterFunction(STATES.UPSCALE, 'Send me the photo yo
 //const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?');
 const make3Starter = new StarterFunction(STATES.MAKE3, 'What prompt for your txt2img sd3', 500000);
 const discStarter = new StarterFunction(STATES.DISC, 'Send in the photo you want to write to a disc.', 200000);
-const watermarkStarter = new StarterFunction(STATES.WATERMARK, 'Send in the photo you want to watermark.', 200000);
+//const watermarkStarter = new StarterFunction(STATES.WATERMARK, 'Send in the photo you want to watermark.', 200000);
 
 const interrogateStarter = new StarterFunction(STATES.INTERROGATION, 'Send in the photo you want to extract a prompt from');
 const assistStarter = new StarterFunction(STATES.ASSIST, 'What prompt do you need help with');
-const speakStarter = new StarterFunction(STATES.SPEAK, 'What should I say?');
+//const speakStarter = new StarterFunction(STATES.SPEAK, 'What should I say?');
 
 const inpaintStarter = new StarterFunction(STATES.INPAINT, 'Send in the photo you want to inpaint', 300000, null)
 
@@ -314,7 +314,7 @@ module.exports = {
     makeStarter,
     make3Starter,
     discStarter,
-    watermarkStarter,
+    //watermarkStarter,
     makeStyleStarter,
     makeControlStarter,
     makeControlStyleStarter,
@@ -323,7 +323,7 @@ module.exports = {
     ms2ControlStyleStarter,
     interrogateStarter,
     assistStarter,
-    speakStarter,
+    //speakStarter,
     inpaintStarter,
 
     ms2Flow,

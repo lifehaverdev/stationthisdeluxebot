@@ -6,6 +6,7 @@ const {
     sendPhoto,
     sendAnimation,
     sendVideo,
+    sendDocument
     // safeExecute
 } = require('../utils');
 const { addPoints } = require('./points')
@@ -319,10 +320,8 @@ async function handleTaskCompletion(task, run) {
                 try {
                     let fileToSend = url;
                     console.log(promptObj.waterMark)
-                    if ((promptObj.waterMark != false || promptObj.waterMark == true) && type === 'image') {
-                        if(promptObj.waterMark === true) {
-                            promptObj.waterMark = 'ms2logo'
-                        }
+                    if ((promptObj.balance == '' || promptObj.balance < 200000) && type === 'image') {
+                        promptObj.waterMark = 'mslogo'
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
@@ -377,11 +376,15 @@ async function handleTaskCompletion(task, run) {
 
 async function sendMedia(message, fileToSend, type, promptObj) {
     if (type === 'image') {
+        if(promptObj.type == 'RMBG' || promptObj.type == 'UPSCALE'){
+            const response = await sendDocument(message, fileToSend, options);
+            return response
+        }
         console.log('Sending photo:', fileToSend);
         let options = {};
         if(lobby[message.from.id].advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
-        if (promptObj.waterMark != 'empty') {
+        if (promptObj.balance == '' || promptObj.balance < 200000){
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
         }
         return response;

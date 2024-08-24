@@ -15,7 +15,7 @@ Cull multiple addresses same userId?
 Website route?
 */
 
-function displayAccountSettingsMenu(message) {
+function displayAccountSettingsMenu(message,dms) {
     // Create account settings menu keyboard
     const userId = message.from.id;
     const chatId = message.chat.id;
@@ -59,14 +59,14 @@ function displayAccountSettingsMenu(message) {
     ];
 
 
-    if (lobby[userId].balance >= 200000) {
-        accountSettingsKeyboard[0].push(
-            {
-                text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
-                callback_data: 'toggleWaterMark',
-            },
-        );
-    }
+    // if (lobby[userId].balance >= 200000) {
+    //     accountSettingsKeyboard[0].push(
+    //         {
+    //             text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
+    //             callback_data: 'toggleWaterMark',
+    //         },
+    //     );
+    // }
     if(lobby[userId].balance >= 400000){
         accountSettingsKeyboard[1].push(
             {
@@ -79,14 +79,14 @@ function displayAccountSettingsMenu(message) {
             }
         )
     }
-    if(lobby[userId].balance >= 500000){
-        accountSettingsKeyboard[2].push(
-            {
-                text: `Voice Menu`,
-                callback_data: 'voicemenu',
-            },
-        )
-    }
+    // if(lobby[userId].balance >= 500000){
+    //     accountSettingsKeyboard[2].push(
+    //         {
+    //             text: `Voice Menu`,
+    //             callback_data: 'voicemenu',
+    //         },
+    //     )
+    // }
 
     // Create account information text
     const totalExp = (lobby[userId].exp + lobby[userId].points);
@@ -126,15 +126,23 @@ function displayAccountSettingsMenu(message) {
     }
 
     // Send account settings menu with account information
-    bot.sendMessage(chatId, accountInfo, {
-        parse_mode: 'HTML',
-        reply_markup: {
-            inline_keyboard: accountSettingsKeyboard
-        }
-    });
+    if(dms){
+        bot.sendMessage(chatId, accountInfo, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: accountSettingsKeyboard
+            }
+        });
+    } else {
+        bot.sendMessage(chatId, 'Account Settings:', {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: accountSettingsKeyboard
+            }
+        });
+    }
+    
 }
-
-
 
 async function handleSaveSettings(message) {
     writeUserData(message.from.id,lobby[message.from.id]);
@@ -314,9 +322,10 @@ async function handleAccountSettings(message) {
         return;
     }
     if(chatId < 0){
-        sendMessage(message,'ew do that in private messages you perv');
+        //sendMessage(message,'ew do that in private messages you perv');
+        displayAccountSettingsMenu(message,false);
     } else {
-        displayAccountSettingsMenu(message);
+        displayAccountSettingsMenu(message,true);
     }
 }
 

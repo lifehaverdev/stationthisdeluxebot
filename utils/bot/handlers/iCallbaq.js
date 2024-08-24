@@ -13,6 +13,8 @@ const { startSet } = require('./iSettings');
 const { handleRegen } = require('./iMake')
 const iMenu = require('./iMenu');
 const iResponse = require('./iResponse');
+const iBrand = require('./iBrand')
+const iWork = require('./iWork')
 const bot = getBotInstance();
 
 /*
@@ -88,19 +90,24 @@ const handleSetVoice = (message, selectedName, userId) => {
     const voiceModel = getVoiceModelByName(selectedName);
     if (voiceModel !== undefined) {
         lobby[userId].voiceModel = voiceModel;
-        const messageTitle = `Voice set to: ${selectedName}`;
-        const opts = {
+        const messageTitle = `Voice set to: ${selectedName}\n\nWhat should I say?`;
+        // const opts = {
+        //     chat_id: chatId,
+        //     message_id: messageId,
+        // };
+        // bot.editMessageText(messageTitle, {
+        //     chat_id: chatId,
+        //     message_id: messageId,
+        // }).then(() => {
+        //     bot.editMessageReplyMarkup(iMenu.getVoiceMenu(userId,message),opts);
+        // }).catch((error) => {
+        //     console.error("Error editing message text or reply markup:", error);
+        // });
+        editMessage({
+            text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
-        };
-        bot.editMessageText(messageTitle, {
-            chat_id: chatId,
-            message_id: messageId,
-        }).then(() => {
-            bot.editMessageReplyMarkup(iMenu.getVoiceMenu(userId,message),opts);
-        }).catch((error) => {
-            console.error("Error editing message text or reply markup:", error);
-        });
+        })
     } else {
         console.log('no Voice')
     }
@@ -115,7 +122,7 @@ const handleSetWatermark = (message, selectedName, userId) => {
         } else {
             lobby[userId].waterMark = selectedName;
         }
-        const messageTitle = `Watermark set to: ${selectedName} ✅`;
+        const messageTitle = `Watermark set to: ${selectedName} ✅\n\nSend in the photo you want to brand`;
         editMessage({
             text: messageTitle,
             chat_id: chatId,
@@ -149,9 +156,9 @@ const actionMap = {
     'ms3': iResponse.ms3Starter.start.bind(iResponse.ms3Starter),
     'rmbg': iResponse.rmbgStarter.start.bind(iResponse.rmbgStarter),
     'upscale': iResponse.upscaleStarter.start.bind(iResponse.upscaleStarter),
-    'watermark': iResponse.watermarkStarter.start.bind(iResponse.watermarkStarter),
+    'watermark': iBrand.startWatermark ,//iResponse.watermarkStarter.start.bind(iResponse.watermarkStarter),
     'disc': iResponse.discStarter.start.bind(iResponse.discStarter),
-    'speak': iResponse.speakStarter.start.bind(iResponse.speakStarter),
+    'speak': iWork.startSpeak,//iResponse.speakStarter.start.bind(iResponse.speakStarter),
     'inpaint' : iResponse.inpaintStarter.start.bind(iResponse.inpaintStarter),
     'set': async (message,user) => {
         message.from.id = user;
@@ -213,7 +220,7 @@ module.exports = function(bot) {
             //const userId = callbackQuery.from.id;
             const {action, message, user} = parseCallbackData(callbackQuery);
             //console.log('in callback query data', action, message, user)
-            console.log('before the first if')
+            //console.log('before the first if')
             if(
                 (
                     callbackQuery.from.id && callbackQuery.message.reply_to_message && callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
@@ -226,7 +233,7 @@ module.exports = function(bot) {
                 console.log('wrong user');
                 return
             }
-            console.log('after first if')
+            //console.log('after first if')
             if (actionMap[action]) {
                 actionMap[action](message, user);
             } else if (callbackQuery.data.startsWith('sbp_')) {

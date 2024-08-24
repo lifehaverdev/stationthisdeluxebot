@@ -109,6 +109,47 @@ async function sendPhoto(msg, fileUrl, options = {}) {
     //     return null;
     // }
 }
+async function sendDocument(msg, fileUrl, options = {}) {
+    
+    const chatId = msg.chat.id;
+    if (msg.message_id) {
+        options.reply_to_message_id = msg.message_id;
+    }
+    if (msg.message_thread_id) {
+        options.message_thread_id = msg.message_thread_id;
+    }
+
+    const attemptSendFile = async (options) => {
+        try {
+            const response = await bot.sendDocument(chatId, fileUrl, options);
+            return response;
+        } catch (error) {
+            console.error(`sendMessage error:`, {
+                context: msg.text || '',
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || ''
+            });
+            return null;
+        }
+    };
+
+    // Try sending the message with different options
+    let response = await attemptSendFile(options);
+    if (response) return response;
+    options.reply_to_message_id = null;
+    response = await attemptSendFile(options);
+    if (response) return response;
+    options.message_thread_id = null;
+    return await attemptSendFile(options);
+    // try {
+    //     const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
+    //     return response;
+    // } catch (error) {
+    //     console.error('sendPhoto error:', error.message || error);
+    //     return null;
+    // }
+}
 async function sendAnimation(msg, fileUrl) {
     try {
         const response = await bot.sendAnimation(msg.chat.id, fileUrl, optionAppendage(msg));
@@ -226,6 +267,7 @@ async function editMessage({reply_markup = null, chat_id, message_id, text = nul
 
 module.exports = {
     sendPhoto,
+    sendDocument,
     sendAnimation,
     sendMessage,
     sendVideo,

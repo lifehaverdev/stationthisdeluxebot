@@ -7,6 +7,8 @@ const { lobby, STATES, startup, waiting, taskQueue, getBotInstance } = require('
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
+const iMenu = require('./iMenu')
+
 const bot = getBotInstance();
 function handleHelp(message) {
     const helpMessage = `
@@ -236,12 +238,33 @@ async function shakeAssist(message) {
     return true
 }
 
+async function startSpeak(message, user) {
+    console.log('start voice menu')
+    if(user){
+        message.from.id = user;
+        // await editMessage({
+        //     text: 'Send in the photo you want to watermark.',
+        //     chat_id: message.chat.id,
+        //     message_id: message.message_id
+        // })
+        iMenu.handleVoiceMenu(message,user)
+    } else {
+        if(lobby[message.from.id] && lobby[message.from.id].balance < 500000){
+            gated(message)
+            return
+        }
+        //sendMessage(message, 'Send in the photo you want to watermark.',{reply_to_message_id: message.message_id})
+        iMenu.handleVoiceMenu(message,user)
+    }
+    setUserState(message,STATES.SPEAK)
+}
+
 async function shakeSpeak(message) {
     const userId = message.from.id;
-    if(!lobby[userId].voiceModel){
-        sendMessage(message,'please choose a voice from voice menu in account settings');
-        return;
-    }
+    // if(!lobby[userId].voiceModel){
+    //     sendMessage(message,'please choose a voice from voice menu in account settings');
+    //     return;
+    // }
     const result = await txt2Speech(message, lobby[userId].voiceModel);
     //console.log(result);
     if(result == '-1'){
@@ -259,6 +282,6 @@ async function shakeSpeak(message) {
 module.exports = {
     saySeed,
     handleRequest, sendLoRaModelFilenames,
-    shakeAssist, shakeSpeak,
+    shakeAssist, shakeSpeak, startSpeak,
     handleHelp, handleStatus
 }
