@@ -203,11 +203,11 @@ async function handleMake(message) {
 
     let batch;
     let params;
-    if(group != -1){
+    if(message.chat.id < 0){
         //batch = 1;
         batch = lobby[userId].batchMax
-        console.log('index in handlemake for groupchat',group.id)
-        if(group != -1){
+        //console.log('index in handlemake for groupchat',group.id)
+        if(group){
             if(groupGate()){
                 react(message)
                 return
