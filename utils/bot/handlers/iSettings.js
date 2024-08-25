@@ -3,20 +3,23 @@ const { setUserState, sendMessage, editMessage } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
 const Jimp = require('jimp');
 const iMenu = require('./iMenu')
-const iGroup = require('./iGroup')
+const { getGroup } = require('./iGroup')
 
 const SIZELIMIT = 2048;
-const BATCHLIMIT = 4;
+const BATCHLIMIT = 6;
 
 const STEPSLIMIT = 48;
 
 async function startSet(message,user) {
     //console.log('message in startset',message)
     let settings;
+    const group = getGroup(message);
+    //console.log('group',group.wallet, group.owner)
+    //console.log('user',message.from.id)
     if(message.chat.id < 0){
-        const group = getGroup(message);
-        if(group != -1){
-            if(message.from.id != group.owner){//rooms[index].admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+        if(group){
+            if(message.from.id == group.owner || group.admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+                console.log('we got it , you are group owner')
                 settings = group.settings;
             } else {
                 sendMessage(message,'only admin can change settings for a group')
@@ -172,8 +175,8 @@ async function handleSet(message) {
     const userId = message.from.id;
     const group = getGroup(message);
     if(message.chat.id < 0){
-        if(group != -1){
-            if(group.admin.some((appointed) => {return message.from.id == appointed ? true : false})){
+        if(group){
+            if(group.admin.some((appointed) => {return message.from.id == appointed ? true : false}) || userId == group.owner){
                 settings = group.settings;
             } else {
                 sendMessage(message,'only admin can change settings for a group')
