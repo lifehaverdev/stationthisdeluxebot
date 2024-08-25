@@ -135,7 +135,7 @@ async function handleMake(message) {
     //let settings = { ...lobby[userId] }; // Start with lobby settings
 
     const group = getGroup(message);
-    console.log('group',group.name)
+    //console.log('group',group.name)
     let settings;
     if(group != -1){
         settings = group.settings;
@@ -298,7 +298,8 @@ async function handleRegen(message) {
     lobby[userId].lastSeed = thisSeed;
     let batch;
     if(message.chat.id < 0){
-        batch = 1;
+        //batch = 1;
+        batch = lobby[userId].batchMax
     } else {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
         batch = lobby[userId].batchMax;
