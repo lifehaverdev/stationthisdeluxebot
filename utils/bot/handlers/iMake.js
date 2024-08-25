@@ -143,7 +143,7 @@ async function handleMake(message) {
         settings = lobby[userId]
     }
     console.log('settings',settings)
-    if(settings && group == -1 && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
+    if(settings && !group && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
         console.log('we not in the right state')
         console.log(settings.state.state)
         return;
@@ -216,6 +216,7 @@ async function handleMake(message) {
             }
         } else {
             //react(message)
+            params = lobby[userId]
         }
     } else {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
