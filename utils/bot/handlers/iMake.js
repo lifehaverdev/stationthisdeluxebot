@@ -137,7 +137,7 @@ async function handleMake(message) {
     const group = getGroup(message);
     //console.log('group',group.name)
     let settings;
-    if(group != -1){
+    if(group){
         settings = group.settings;
     } else {
         settings = lobby[userId]
