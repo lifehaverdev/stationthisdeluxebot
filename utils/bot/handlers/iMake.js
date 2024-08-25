@@ -143,8 +143,9 @@ async function handleMake(message) {
         settings = lobby[userId]
     }
     console.log('settings',settings)
-    if(settings && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
+    if(settings && group == -1 && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
         console.log('we not in the right state')
+        console.log(settings.state.state)
         return;
     }
 
@@ -203,7 +204,8 @@ async function handleMake(message) {
     let batch;
     let params;
     if(group != -1){
-        batch = 1;
+        //batch = 1;
+        batch = lobby[userId].batchMax
         console.log('index in handlemake for groupchat',group.id)
         if(group != -1){
             if(groupGate()){

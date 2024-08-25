@@ -5,10 +5,19 @@ const { voiceModels } = require('../../models/voiceModelMenu')
 const { watermarkmenu } = require('../../models/watermarks')
 const { compactSerialize, sendMessage, editMessage, makeBaseData, gated } = require('../../utils')
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
+const {getGroup} = require('./iGroup')
 
 function setMenu(message) {
-    console.log('we are using imenu')
-    settings = lobby[message.from.id]
+    const group = getGroup(message);
+    console.log('group',group)
+    let settings;
+    if(group){
+        console.log('yes to group')
+        settings = group.settings
+    } else {
+        settings = lobby[message.from.id]
+    }
+    //settings = lobby[message.from.id]
     const options = {
         reply_markup: {
             inline_keyboard: [[
@@ -62,14 +71,24 @@ function setMenu(message) {
 
 // Look good?
 async function handleCreate(message) {
-    const settings = lobby[message.from.id]
+    const group = getGroup(message);
+    let settings;
+    let balance;
+    if(group){
+        settings = group.settings;
+        balance = group.applied;
+    }else{
+        settings = lobby[message.from.id]
+        balance = settings.balance
+    }
+    //const settings = lobby[message.from.id]
     const sent = await sendMessage(message, `what shall I create for you, @${message.from.username} ?`);
-    console.log('message in help status',message)
-    console.log('sent message in help status',sent)
-    const baseData = makeBaseData(sent,message.from.id);
+    //console.log('message in help status',message)
+    //console.log('sent message in help status',sent)
+    //const baseData = makeBaseData(sent,message.from.id);
     //const callbackData = compactSerialize({ ...baseData, action: `refresh`});
-    console.log(baseData);
-    console.log(compactSerialize({ ...baseData, action: 'make' }))
+    //console.log(baseData);
+    //console.log(compactSerialize({ ...baseData, action: 'make' }))
     const chat_id = sent.chat.id;
     const message_id = sent.message_id;
     
@@ -79,30 +98,11 @@ async function handleCreate(message) {
             [   
                 { text: settings.advancedUser ? '💬➡️🖼️' : 'txt2img', callback_data: 'make'},
             ],
-            // [
-            //     { text: 'sd3 txt2img', callback_data: 'make3' },
-            // ],
-            // [   
-            //     { text: 'txt2img style transfer', callback_data: 'make_style' },
-            // ],
-            // [   
-            //     { text: 'txt2img controlnet', callback_data: 'make_control' },
-            // ],
-            // [   
-            //     { text: 'txt2img controlnet + style transfer', callback_data: 'make_control_style' },
-            // ],
-            // [
-            //     { text: 'assist', callback_data: 'assist'},
-            //     { text: 'interrogate', callback_data: 'interrogate'},
-            // ],
-            // [
-            //     { text: 'cancel', callback_data: 'cancel' }
-            // ]
         ]
     }
     let controlstyle = false;
     let sd3 = false;
-    if(lobby[message.from.id] && lobby[message.from.id].balance >= 400000){
+    if(lobby[message.from.id] && balance >= 400000){
         const newButtons = [
             [   
                 { text: settings.advancedUser ? '💬💃🏼➡️🖼️' : 'txt2img style transfer', callback_data: 'make_style' },
@@ -124,7 +124,7 @@ async function handleCreate(message) {
         }
         controlstyle = true;
     }
-    if(lobby[message.from.id] && lobby[message.from.id].balance >= 500000){
+    if(lobby[message.from.id] && balance >= 500000){
         reply_markup.inline_keyboard.splice(1,0,
             [
                 { text: settings.advancedUser ? '💬3➡️🖼️' : 'sd3 txt2img', callback_data: 'make3' },
@@ -132,7 +132,6 @@ async function handleCreate(message) {
         )
         sd3 = true;
     }
-    
     reply_markup.inline_keyboard.push(
         [
             { text: 'cancel', callback_data: 'cancel' }
@@ -153,7 +152,16 @@ async function handleCreate(message) {
     }
 }
 function handleUtils(message) {
-    const settings = lobby[message.from.id]
+    const group = getGroup(message);
+    let settings;
+    let balance;
+    if(group){
+        settings = group.settings;
+        balance = group.applied;
+    }else{
+        settings = lobby[message.from.id]
+        balance = settings.balance
+    }
     const options = {
         reply_markup: {
           inline_keyboard: [
@@ -163,7 +171,7 @@ function handleUtils(message) {
         }
 
       };
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 200000){
+      if(lobby[message.from.id] && balance >= 200000){
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '🖼️➡️📈🖼️' : 'upscale', callback_data: 'upscale' },
@@ -175,7 +183,7 @@ function handleUtils(message) {
             ]
         )
       }
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 300000){
+      if(lobby[message.from.id] && balance >= 300000){
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assist'},
@@ -188,7 +196,7 @@ function handleUtils(message) {
             { text: 'cancel', callback_data: 'cancel' }
         ]
       )
-    if(lobby[message.from.id] && lobby[message.from.id].balance < 200000){
+    if(lobby[message.from.id] && balance < 200000){
         gated(message);
         return;
     } else {
@@ -197,7 +205,16 @@ function handleUtils(message) {
     }
 }
 function handleEffect(message) {
-    const settings = lobby[message.from.id]
+    const group = getGroup(message);
+    let settings;
+    let balance;
+    if(group){
+        settings = group.settings;
+        balance = group.applied;
+    }else{
+        settings = lobby[message.from.id]
+        balance = settings.balance
+    }
     const options = {
         reply_markup: {
           inline_keyboard: [
@@ -210,14 +227,14 @@ function handleEffect(message) {
         }
 
     };
-    if(lobby[message.from.id] && lobby[message.from.id].balance >= 300000){
+    if(lobby[message.from.id] && balance >= 300000){
         options.reply_markup.inline_keyboard[0] = 
         [   
             { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
             { text: settings.advancedUser ? '🖼️👾➡️🖼️' : 'autoi2i', callback_data: 'pfp' },
         ];
     }
-    if(lobby[message.from.id] && lobby[message.from.id].balance >= 400000){
+    if(lobby[message.from.id] && balance >= 400000){
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
@@ -251,7 +268,16 @@ function handleEffect(message) {
     sendMessage(message,'Effect', options);
 }
 function handleAnimate(message) {
-    const settings = lobby[message.from.id]
+    const group = getGroup(message);
+    let settings;
+    let balance;
+    if(group){
+        settings = group.settings;
+        balance = group.applied;
+    }else{
+        settings = lobby[message.from.id]
+        balance = settings.balance
+    }
     const options = {
         reply_markup: {
           inline_keyboard: [],
@@ -260,14 +286,14 @@ function handleAnimate(message) {
         }
 
       };
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 500000){
+      if(lobby[message.from.id] && balance >= 500000){
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '💬➡️🗣️' : 'txt2speech', callback_data: 'speak' }  
             ]
         )
       }
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 600000){
+      if(lobby[message.from.id] && balance >= 600000){
         options.reply_markup.inline_keyboard.push(
             [   
                 { text: settings.advancedUser ? '🖼️➡️🎞️' : 'img2video', callback_data: 'ms3' },
@@ -279,7 +305,7 @@ function handleAnimate(message) {
             { text: 'cancel', callback_data: 'cancel' }
         ]
       )
-    if(lobby[message.from.id] && lobby[message.from.id].balance < 600000){
+    if(lobby[message.from.id] && balance < 600000){
         gated(message);
         return;
     } else {
@@ -447,6 +473,13 @@ function isValidCallbackData(callbackData) {
 }
 
 function getPromptMenu(userId, message) {
+    const group = getGroup(message)
+    let settings;
+    if(group){
+        settings = group.settings;
+    }else{
+        settings = lobby[userId]
+    }
     const baseData = makeBaseData(message, userId);
     if (!lobby[userId]) {
         console.error('User not found in lobby:', userId);
@@ -456,7 +489,7 @@ function getPromptMenu(userId, message) {
         const callbackData = compactSerialize({ ...baseData, action: `sbp_${prompt.name}` });
         if (isValidCallbackData(callbackData)) {
             return [{
-                text: `${lobby[userId].basePrompt === prompt.name ? '✅ ' + prompt.name : prompt.name} - ${prompt.description}`,
+                text: `${settings.basePrompt === prompt.name ? '✅ ' + prompt.name : prompt.name} - ${prompt.description}`,
                 callback_data: callbackData
             }];
         } else {
@@ -475,6 +508,13 @@ function getPromptMenu(userId, message) {
 }
 
 function getCheckpointMenu(userId, message) {
+    const group = getGroup(message)
+    let settings;
+    if(group){
+        settings = group.settings;
+    }else{
+        settings = lobby[userId]
+    }
     const baseData = makeBaseData(message, userId);
     if (!lobby[userId]) {
         console.error('User not found in lobby:', userId);
@@ -485,7 +525,7 @@ function getCheckpointMenu(userId, message) {
         const callbackData = compactSerialize({ ...baseData, action: `scp_${checkpoint.name}` });
         if (isValidCallbackData(callbackData)) {
             return [{
-                text: `${lobby[userId].checkpoint == checkpoint.name ? '✅ '+checkpoint.name : checkpoint.name} - ${checkpoint.description}`,
+                text: `${settings.checkpoint == checkpoint.name ? '✅ '+checkpoint.name : checkpoint.name} - ${checkpoint.description}`,
                 callback_data: callbackData,
             }];
         } else {
@@ -504,6 +544,13 @@ function getCheckpointMenu(userId, message) {
 }
 
 function getVoiceMenu(userId, message) {
+    const group = getGroup(message)
+    let settings;
+    if(group){
+        settings = group.settings;
+    }else{
+        settings = lobby[userId]
+    }
     const baseData = makeBaseData(message,userId);
     if(!lobby[userId]) {
         console.log('User not in the lobby', userId);
@@ -514,7 +561,7 @@ function getVoiceMenu(userId, message) {
         const callbackData = compactSerialize({ ...baseData, action: `sv_${voice.name}`});
         if(isValidCallbackData(callbackData)) {
             return [{
-                    text: `${lobby[userId].voiceModel == voice.modelId ? '✅ '+voice.name : voice.name}`,
+                    text: `${settings.voiceModel == voice.modelId ? '✅ '+voice.name : voice.name}`,
                     callback_data: callbackData,
             }]
         } else {
@@ -533,6 +580,13 @@ function getVoiceMenu(userId, message) {
 }
 
 function getWatermarkMenu(userId, message) {
+    const group = getGroup(message)
+    let settings;
+    if(group){
+        settings = group.settings;
+    }else{
+        settings = lobby[userId]
+    }
     const baseData = makeBaseData(message,userId);
     if(!lobby[userId]) {
         console.log('User not in the lobby', userId);
@@ -543,7 +597,7 @@ function getWatermarkMenu(userId, message) {
         const callbackData = compactSerialize({ ...baseData, action: `swm_${watermark.name}`});
         if(isValidCallbackData(callbackData)) {
             return [{
-                    text: `${lobby[userId].waterMark == watermark.name ? '✅ '+watermark.name : watermark.name}`,
+                    text: `${settings.waterMark == watermark.name ? '✅ '+watermark.name : watermark.name}`,
                     callback_data: callbackData,
             }]
         } else {
