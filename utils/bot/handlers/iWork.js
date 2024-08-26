@@ -7,7 +7,8 @@ const { lobby, STATES, startup, waiting, taskQueue, getBotInstance } = require('
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
-const iMenu = require('./iMenu')
+const iMenu = require('./iMenu');
+const { getBalance } = require('../../users/checkBalance.js');
 
 const bot = getBotInstance();
 function handleHelp(message) {
@@ -279,9 +280,16 @@ async function shakeSpeak(message) {
     return true
 }
 
+async function seeGlorp(address) {
+    const balance = await getBalance(address)
+    console.log('balance',balance)
+    return balance
+}
+
 module.exports = {
     saySeed,
     handleRequest, sendLoRaModelFilenames,
     shakeAssist, shakeSpeak, startSpeak,
-    handleHelp, handleStatus
+    handleHelp, handleStatus,
+    seeGlorp
 }

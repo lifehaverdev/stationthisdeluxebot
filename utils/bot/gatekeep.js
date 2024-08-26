@@ -3,7 +3,7 @@ const { getUserDataByUserId, addPointsToAllUsers } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
-const { getGroup } = require('./handlers/iGroup')
+//const { getGroup } = require('./handlers/iGroup')
 const { home } = require('../models/userKeyboards');
 const logLobby = true;
 let lastCleanTime = Date.now();
@@ -13,6 +13,8 @@ const NOCOINERSTARTER = 199800;
 const LOBBY_CLEAN_MINUTE = 60 * 8;//8 hours
 const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
 const DB_REFRESH = 1000*60*15
+
+const { getGroup } = require('./handlers/iGroup')
 
 setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every N minutes
 setInterval(initialize, DB_REFRESH); //update burns, lora list etc from db
@@ -60,17 +62,17 @@ function printLobby(){
 }
 async function checkLobby(message){
     const userId = message.from.id
-    
+    const group = await getGroup(message)
     let balance;
     let userData;
 
-
-
     if(!lobby.hasOwnProperty(userId)){
         userData = await getUserDataByUserId(userId);
-        if(rooms.some((group) => {
-            if(group.id == message.chat.id) return true
-        })){return true}
+        if(group){
+            if(group.credit > group.points){
+                return true
+            }    
+        }
         if(userData.wallet == '' || userData.verified == false){
             if(message.chat.id < 0){
                 sendMessage(message,'hi nice to meet you. 🥰');
@@ -122,9 +124,11 @@ async function checkLobby(message){
         if(lobby[userId].balance == '' && lobby[userId].wallet != '' && lobby[userId].verified == true){
             lobby[userId].balance = await getBalance(lobby[userId].wallet);
         }
-        if(rooms.some((group) => {
-            if(group.id == message.chat.id) return true
-        })){return true}
+        if(group){
+            if(group.credit > group.balance){
+                return true
+            }
+        }
         setUserState(message,STATES.IDLE);
     }
     let points = lobby[userId].points;
