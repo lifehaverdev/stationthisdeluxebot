@@ -208,6 +208,10 @@ const actionMap = {
         }
         sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
         setUserState(message.reply_to_message, STATES.GROUPAPPLY)
+    },
+    'createGroup': (message) => {
+        sendMessage(message,'What is the name of your group?')
+        setUserState(message.reply_to_message, STATES.GROUPNAME)
     }
 };
 

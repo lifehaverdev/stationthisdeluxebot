@@ -194,10 +194,10 @@ async function handleSet(message) {
     const currentState = lobby[userId].state.state;
     const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
     
-    console.log('setting',lobbyParam)
-    console.log('currently',lobby[userId][lobbyParam])
-    console.log('current user state',currentState)
-    if (!lobby[userId] && group == -1) {
+    //console.log('setting',lobbyParam)
+    //console.log('currently',lobby[userId][lobbyParam])
+    //console.log('current user state',currentState)
+    if (!lobby[userId] && !group) {
         sendMessage(message, "You need to make something first");
         return;
     }
@@ -211,10 +211,11 @@ async function handleSet(message) {
             break;
         case STATES.SETNEGATIVEPROMPT:
         case STATES.SETUSERPROMPT:
-            settings[lobbyParam] = newValue;
             if(newValue == '-1'){
+                settings[lobbyParam] = '';
                 sendMessage(message,'alright its off', iMenu.justSet);
             } else {
+                settings[lobbyParam] = newValue;
                 sendMessage(message, `ok its set`, iMenu.justSet);
             }
             setUserState(message,STATES.IDLE);

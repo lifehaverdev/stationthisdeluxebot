@@ -19,7 +19,7 @@ function groupSettings(message) {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            {text: 'Yes, I am the boss', callback_data: 'applygroupbalance'},
+                            {text: 'Yes, I am the boss', callback_data: 'createGroup'},
                             {text: 'No, I am but a hubmle genner', callback_data: 'cancel'}
                         ]
                     ]
@@ -143,38 +143,16 @@ function handleApplyBalance(message) {
     }
 }
 
-function handleRemoveBalance(message) {
+// function handleRemoveBalance(message) {
 
-}
+// }
 
 async function createGroup(message) {
     const owner = message.from.id;
     const chat = message.chat.id;
     await createRoom(chat,owner,message.text);
-    // rooms.push(
-    //     {
-    //     owner: owner,
-    //     name: 'placeholder',
-    //     admins: [],
-    //     applied: parseInt(message.text),
-    //     charge: 0,
-    //     points: 0,
-    //     ledger: [],
-    //     chat: {
-    //         id: message.chat.id
-    //     },
-    //     settings: {
-    //         ...lobby[message.from.id]
-    //     }
-    // }
-    //)
     await initialize();
-    const group = rooms.find(group => group.id == message.chat.id)
-    // group.ledger.push({
-    //     user: message.from.id,
-    //     stake: parseInt(message.text)
-    // })
-    // sendMessage(message,'ok we create group with that')
+    //const group = rooms.find(group => group.id == message.chat.id)
     setUserState(message,STATES.IDLE)
     groupSettings(message);
 }
