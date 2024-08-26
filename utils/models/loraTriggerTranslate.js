@@ -9,7 +9,7 @@ function handleLoraTrigger(prompt, balance) {
       const regex = new RegExp(`${triggerWord}(\\d*)`, 'gi');
       modifiedPrompt = modifiedPrompt.replace(regex, (match, p1) => {
         const weight = p1 ? (parseInt(p1, 10) / 10).toFixed(1) : lora.default_weight;
-        if (!usedLoras.has(lora.lora_name) && (lora.gate <= balance)) {
+        if (!usedLoras.has(lora.lora_name) && (lora.gate <= balance) && !lora.disabled) {
           usedLoras.add(lora.lora_name);
           return `<lora:${lora.lora_name}:${weight}> ${triggerWord}`;
         } else {
