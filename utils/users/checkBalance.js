@@ -52,7 +52,7 @@ async function getBalance(address) {
       }, {apiKey: process.env.ALCHEMY_SECRET})
     .then(({ data }) => {
         //
-        //console.log('data in checkbalance response',data)
+        console.log('data in checkbalance response',data.result.value[0].account.data.info)
         if(data.error || (data.result.value && data.result.value.length == 0)){
             balance = 0;
         } else if (data.result.value.length > 0){
@@ -63,10 +63,12 @@ async function getBalance(address) {
     })
     .catch(err => console.error(err));
     if(blessings.hasOwnProperty(address)){
-        if(balance == 0){
-            balance = blessings[address] - curses[address];
+        console.log('we have this blessed',address)
+        console.log('this is current balance',balance)
+        if(balance == 0 || balance == NaN){
+            balance = blessings[address];// - curses[address];
         } else {
-            balance += blessings[address] - curses[address];
+            balance += blessings[address];// - curses[address];
         }
     }
 

@@ -131,6 +131,20 @@ const commandPatterns = {
             //sendMessage(message,'I reset burns and loralist');
         }
     },
+    '/glorp': async(message) => {
+        if(message.from.id != DEV_DMS){
+            console.log(message.from.id)
+            return;
+        } else {
+            message.from.id = ''
+            const key = message.text 
+            const spliced = key.slice(6);
+            console.log(spliced);
+            const glorpBalance = await iWork.seeGlorp(spliced)//iAccount.displayAccountSettingsMenu(message,true) //eadStats()
+            sendMessage(message,glorpBalance);
+            //sendMessage(message,'I reset burns and loralist');
+        }
+    }
     
 };
 
