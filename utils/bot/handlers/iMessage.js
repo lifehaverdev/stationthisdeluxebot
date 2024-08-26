@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
+const { getBotInstance, lobby, burns, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
 const { cleanLobby, checkLobby } = require('../gatekeep')
@@ -20,6 +20,8 @@ const iMedia = require('./iMedia')
 const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
+const iResponse = require('./iResponse')
+const {wifeyAddies} = require('../../models/wifestationlist.js')
 
 /*
 Recognizes Groupchat Context
@@ -114,7 +116,7 @@ const commandPatterns = {
             return;
         } else {
             await initialize()
-            sendMessage(message,'I reset burns and loralist');
+            sendMessage(message,'I reset burns, loralist and groups');
         }
     },
     // '/brendonis': (message) => {
@@ -144,7 +146,11 @@ const commandPatterns = {
             sendMessage(message,glorpBalance);
             //sendMessage(message,'I reset burns and loralist');
         }
-    }
+    },
+    '/wifeywl': (message) => {
+        setUserState(message,STATES.WL)
+        sendMessage(message,'what address')
+    }//iResponse.wifeyWlStarter.start.bind(iResponse.wifeyWlStarter),
     
 };
 
@@ -172,7 +178,33 @@ const stateHandlers = {
     [STATES.INPAINTPROMPT]: (message) => safeExecute(message, iMake.handleInpaintPrompt),
     [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
-    [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance)
+    [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
+    [STATES.GROUPNAME] : (message) => safeExecute(message,(message)=>{
+        //console.log(message)
+        const userId = message.from.id
+        lobby[userId].group = message.text;
+        const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
+        let burned = 0;
+        if (burnRecord) {
+            console.log(burnRecord.burned)
+            burned += parseInt(burnRecord.burned) * 2 / 1000000;
+        }
+        sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
+        setUserState(message.reply_to_message, STATES.GROUPAPPLY)
+    }),
+    [STATES.WL] : (message) => {safeExecute(message,()=>{
+        console.log('we in da wl fc')
+        const isList = wifeyAddies.includes(message.text);
+        console.log(isList)
+        //return isList
+        if(isList){
+            sendMessage(message,'YOU GET A WIFEY!')
+            setUserState(message,STATES.IDLE)
+        }else{
+            sendMessage(message,'... im so sorry...')
+            setUserState(message,STATES.IDLE)
+        }
+    })}
 };
 
 

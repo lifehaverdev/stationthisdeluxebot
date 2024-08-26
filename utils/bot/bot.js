@@ -50,7 +50,9 @@ const STATES = {
 
     REQUEST: 'REQUEST',
 
-    GROUPAPPLY: 'GROUPAPPLY'
+    GROUPAPPLY: 'GROUPAPPLY',
+    GROUPNAME: 'GROUPNAME',
+    WL: 'WL',
 
     // Add more states as needed
 };

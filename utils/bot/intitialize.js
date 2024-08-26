@@ -126,13 +126,16 @@ async function readRooms() {
         // Find all documents in the collection
         const documents = await collection.find().toArray();
         // Initialize a map to store the total burned amount for each wallet
-
+        rooms.length = 0;
         // Process each document
         documents.forEach(doc => {
             rooms.push(doc)
         })
 
-        console.log('found the rooms',rooms)
+        console.log('found the rooms')//,rooms)
+        rooms.forEach(room => {
+            console.log(room.name)
+        })
 
 
     } catch (error) {

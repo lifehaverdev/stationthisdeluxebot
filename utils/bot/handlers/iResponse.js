@@ -194,6 +194,8 @@ const assistStarter = new StarterFunction(STATES.ASSIST, 'What prompt do you nee
 
 const inpaintStarter = new StarterFunction(STATES.INPAINT, 'Send in the photo you want to inpaint', 300000, null)
 
+const wifeyWlStarter = new StarterFunction(STATES.WL, 'Send in your solana address',null,null);
+
 const ms2Flow = new CallAndResponse(STATES.MS2, [
     {
         type: 'image',
@@ -325,6 +327,7 @@ module.exports = {
     assistStarter,
     //speakStarter,
     inpaintStarter,
+    wifeyWlStarter,
 
     ms2Flow,
     inpaintFlow,
