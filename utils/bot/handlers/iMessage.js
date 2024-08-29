@@ -21,7 +21,6 @@ const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
 const iResponse = require('./iResponse')
-const {wifeyAddies} = require('../../models/wifestationlist.js')
 
 /*
 Recognizes Groupchat Context
@@ -174,18 +173,7 @@ const stateHandlers = {
     [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
-    [STATES.GROUPNAME] : (message) => safeExecute(message,(message)=>{
-        const userId = message.from.id
-        lobby[userId].group = message.text;
-        const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
-        let burned = 0;
-        if (burnRecord) {
-            console.log(burnRecord.burned)
-            burned += parseInt(burnRecord.burned) * 2 / 1000000;
-        }
-        sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
-        setUserState(message.reply_to_message, STATES.GROUPAPPLY)
-    }),
+    [STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 
 
