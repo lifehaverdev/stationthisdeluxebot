@@ -16,17 +16,13 @@ async function startSet(message,user) {
     const group = getGroup(message);
     //console.log('group',group.wallet, group.owner)
     //console.log('user',message.from.id)
-    if(message.chat.id < 0){
-        if(group){
-            if(message.from.id == group.owner || group.admin.some((appointed) => {return message.from.id == appointed ? true : false})){
-                console.log('we got it , you are group owner')
-                settings = group.settings;
-            } else {
-                sendMessage(message,'only admin can change settings for a group')
-                return 
-            }
+    if(group){
+        if(user == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return user == appointed ? true : false}))){
+            console.log('we got it , you are group owner')
+            settings = group.settings;
         } else {
-            settings = lobby[message.from.id]
+            sendMessage(message,'only admin can change settings for a group')
+            return 
         }
     } else {
         settings = lobby[message.from.id]
@@ -127,10 +123,14 @@ async function startSet(message,user) {
 
 function calcSize(message) {
     const userId = message.from.id;
-    const chatId = message.chat.id;
+    const group = getGroup(message)
     let possibleSize;
-    if(lobby[userId]){
-        possibleSize = Math.floor(lobby[userId].balance / 1000) + 1024; //has 1000000 is 1000 1000, can go 2024
+    if(lobby[userId] || group){
+        if(group){
+            possibleSize = Math.floor(group.applied/ 1000) + 1024; //has 1000000 is 1000 1000, can go 2024
+        } else {
+            possibleSize = Math.floor(lobby[userId].balance / 1000) + 1024; //has 1000000 is 1000 1000, can go 2024
+        }
         if(possibleSize > SIZELIMIT){
             possibleSize = SIZELIMIT;
         }
@@ -143,10 +143,14 @@ function calcSize(message) {
 
 function calcBatch(message) {
     const userId = message.from.id;
-    const chatId = message.chat.id;
+    const group = getGroup(message)
     let possibleBatch;
-    if(lobby[userId]){
-        possibleBatch = Math.floor(lobby[userId].balance / 1000000) + 1;
+    if(lobby[userId] || group){
+        if(group){
+            possibleBatch = Math.floor(group.applied / 1000000) + 1;
+        } else {
+            possibleBatch = Math.floor(lobby[userId].balance / 1000000) + 1;
+        }
         if(possibleBatch > BATCHLIMIT){
             possibleBatch = BATCHLIMIT;
         }
@@ -156,11 +160,15 @@ function calcBatch(message) {
     }
 }
 function calcSteps(message) {
-    const chatId = message.chat.id;
     const userId = message.from.id;
+    const group = getGroup(message)
     let possibleSteps;
-    if(lobby[userId]){
-        possibleSteps = Math.floor(lobby[userId].balance / 1000000) + 30;
+    if(lobby[userId] || group){
+        if(group){
+            possibleSteps = Math.floor(group.applied / 1000000) + 30;
+        } else {
+            possibleSteps = Math.floor(lobby[userId].balance / 1000000) + 30;
+        }
         if(possibleSteps > STEPSLIMIT){
             possibleSteps = STEPSLIMIT;
         }
@@ -174,21 +182,18 @@ async function handleSet(message) {
     let settings;
     const userId = message.from.id;
     const group = getGroup(message);
-    if(message.chat.id < 0){
-        if(group){
-            if(group.admin.some((appointed) => {return message.from.id == appointed ? true : false}) || userId == group.owner){
-                settings = group.settings;
-            } else {
-                sendMessage(message,'only admin can change settings for a group')
-                return 
-            }
+    if(group){
+        if(userId == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return message.from.id == appointed ? true : false}))){
+            settings = group.settings;
         } else {
-            settings = lobby[userId]
+            sendMessage(message,'only admin can change settings for a group')
+            return 
         }
     } else {
         settings = lobby[userId]
     }
-    console.log('settings in handleset',settings);
+
+    //console.log('settings in handleset',settings);
     
     const newValue = message.text;
     const currentState = lobby[userId].state.state;
@@ -235,7 +240,7 @@ async function handleSet(message) {
                     };
                     
                     settings.fileUrl = fileUrl
-                    settings.photoStates = photoStats
+                    settings.photoStats = photoStats
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`, iMenu.justSet);
                 } else if(currentState == STATES.SETCONTROL) {
                     

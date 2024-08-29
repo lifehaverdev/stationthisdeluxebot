@@ -9,7 +9,7 @@ const {getGroup} = require('./iGroup')
 
 function setMenu(message) {
     const group = getGroup(message);
-    console.log('group',group)
+    //console.log('group',group.name)
     let settings;
     if(group){
         console.log('yes to group')
@@ -53,7 +53,8 @@ function setMenu(message) {
         }
 
       };
-      if(lobby[message.from.id] && lobby[message.from.id].balance >= 100000){
+      if((lobby[message.from.id] && lobby[message.from.id].balance >= 100000)
+        || (group)){
         options.reply_markup.inline_keyboard[4].push(
             { text: settings.basePrompt+' ✅', callback_data: 'basepromptmenu' },
             { text: settings.checkpoint+' ✅', callback_data: 'checkpointmenu' },

@@ -256,8 +256,10 @@ async function createRoom(chatId, userId, value) {
             }
         };
         try {
-            await collection.updateOne( {},
+            await collection.updateOne( 
+                { id: chatId},
                 { $set: { ...room } },
+                { upsert: true }
             );
         } catch(err) {
             console.log('error writing room')

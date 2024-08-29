@@ -147,11 +147,6 @@ const commandPatterns = {
             //sendMessage(message,'I reset burns and loralist');
         }
     },
-    '/wifeywl': (message) => {
-        setUserState(message,STATES.WL)
-        sendMessage(message,'what address')
-    }//iResponse.wifeyWlStarter.start.bind(iResponse.wifeyWlStarter),
-    
 };
 
 
@@ -180,7 +175,6 @@ const stateHandlers = {
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
     [STATES.GROUPNAME] : (message) => safeExecute(message,(message)=>{
-        //console.log(message)
         const userId = message.from.id
         lobby[userId].group = message.text;
         const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
@@ -192,19 +186,6 @@ const stateHandlers = {
         sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
         setUserState(message.reply_to_message, STATES.GROUPAPPLY)
     }),
-    [STATES.WL] : (message) => {safeExecute(message,()=>{
-        console.log('we in da wl fc')
-        const isList = wifeyAddies.includes(message.text);
-        console.log(isList)
-        //return isList
-        if(isList){
-            sendMessage(message,'YOU GET A WIFEY!')
-            setUserState(message,STATES.IDLE)
-        }else{
-            sendMessage(message,'... im so sorry...')
-            setUserState(message,STATES.IDLE)
-        }
-    })}
 };
 
 

@@ -16,6 +16,7 @@ const iResponse = require('./iResponse');
 const iBrand = require('./iBrand')
 const iWork = require('./iWork')
 const bot = getBotInstance();
+const { getGroup } = require('./iGroup')
 
 /*
 Uniformity and confluence with iResponse
@@ -38,7 +39,6 @@ function parseCallbackData(callbackQuery) {
     };
 }
 
-
 const setActions = [
     'setstrength', 'setsize', 'setcfg', 'setprompt', 'setbatch',
     'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto', 
@@ -55,8 +55,15 @@ const handleSetBasePrompt = (message, selectedName, userId) => {
     const messageId = message.message_id;
     const chatId = message.chat.id;
     const basePrompt = getBasePromptByName(selectedName);
+    const group = getGroup(message)
+    let settings;
+    if(group) {
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
     if (basePrompt !== undefined) {
-        lobby[userId].basePrompt = selectedName;
+        settings.basePrompt = selectedName;
         const messageTitle = `Base prompt set to: ${selectedName} ✅`;
         editMessage({
             text: messageTitle,
@@ -71,8 +78,15 @@ const handleSetBasePrompt = (message, selectedName, userId) => {
 const handleSetCheckpoint = (message, selectedName, userId) => {
     const messageId = message.message_id;
     const chatId = message.chat.id;
+    const group = getGroup(message)
+    let settings;
+    if(group) {
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
     if (selectedName !== undefined) {
-        lobby[userId].checkpoint = selectedName;
+        settings.checkpoint = selectedName;
         const messageTitle = `Checkpoint set to: ${selectedName} ✅`;
         editMessage({
             text: messageTitle,

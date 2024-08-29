@@ -1,13 +1,13 @@
 const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
-const { writeUserData, getUserDataByUserId } = require('../../../db/mongodb')
+const { writeUserData, getUserDataByUserId, writeData } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize } = require('../../utils')
 const { checkLobby, NOCOINERSTARTER, POINTMULTI } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
 const defaultUserData = require('../../users/defaultUserData.js')
-
+const { getGroup } = require('./iGroup')
 /*
 Let's upgrade protection
 Cull mutliple userids on same wallet address
@@ -18,7 +18,6 @@ Website route?
 function displayAccountSettingsMenu(message,dms) {
     // Create account settings menu keyboard
     const userId = message.from.id;
-    const chatId = message.chat.id;
     let accountSettingsKeyboard = [
         [
             {
@@ -27,20 +26,6 @@ function displayAccountSettingsMenu(message,dms) {
             },
         ],
         [
-            // {
-            //     text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
-            //     callback_data: 'toggleControlNet',
-            // },
-            // {
-            //     text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
-            //     callback_data: 'toggleStyleTransfer',
-            // }
-        ],
-        [
-            // {
-            //     text: `Voice Menu`,
-            //     callback_data: 'voicemenu',
-            // },
         ],
         [
             {
@@ -58,15 +43,6 @@ function displayAccountSettingsMenu(message,dms) {
         ]
     ];
 
-
-    // if (lobby[userId].balance >= 200000) {
-    //     accountSettingsKeyboard[0].push(
-    //         {
-    //             text: `Watermark: ${lobby[userId].waterMark ? '✅' : '❌'}`,
-    //             callback_data: 'toggleWaterMark',
-    //         },
-    //     );
-    // }
     if(lobby[userId].balance >= 400000){
         accountSettingsKeyboard[1].push(
             {
@@ -79,14 +55,6 @@ function displayAccountSettingsMenu(message,dms) {
             }
         )
     }
-    // if(lobby[userId].balance >= 500000){
-    //     accountSettingsKeyboard[2].push(
-    //         {
-    //             text: `Voice Menu`,
-    //             callback_data: 'voicemenu',
-    //         },
-    //     )
-    // }
 
     // Create account information text
     const totalExp = (lobby[userId].exp + lobby[userId].points);
@@ -145,8 +113,14 @@ function displayAccountSettingsMenu(message,dms) {
 }
 
 async function handleSaveSettings(message) {
-    writeUserData(message.from.id,lobby[message.from.id]);
-    await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`, home);
+    const group = getGroup(message);
+    if(group){
+        writeData('floorplan',{id: group.id},{settings: group.settings})
+        await sendMessage(message,`I just saved your group settings. So when the bot resets, this is what you'll be on`, home);
+    } else {
+        writeUserData(message.from.id,lobby[message.from.id]);
+        await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`, home);
+    }
 }
 async function handleSeeSettings(message) {
     const chatId = message.chat.id;

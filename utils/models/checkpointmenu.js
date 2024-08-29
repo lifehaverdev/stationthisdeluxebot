@@ -15,10 +15,10 @@ checkpointmenu = [
         name: "juggernautXL_juggernautX",
         description: "SDXL"
     },
-    {
-        name: "degod3",
-        description: "SDXL"
-    },
+    // {
+    //     name: "degod3",
+    //     description: "SDXL"
+    // },
     {
         name: "dreamshaper_631BakedVae",
         description: "SD1.5"

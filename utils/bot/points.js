@@ -7,8 +7,8 @@ function addPoints({promptObj,task,message}) {
     const pointsToAdd = (Date.now()-task.timestamp) / 1000;
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
-    console.log('group',group)
-    if(user && (group == -1 || group == '-1')){
+    //console.log('group',group)
+    if(user && !group){
         user.points += pointsToAdd;
     } else if (group){
         group.points += pointsToAdd;
