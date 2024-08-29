@@ -24,6 +24,13 @@ watermarkmenu = [
         positiondY: -84,
     },
     {
+        name: 'wifeyms2disc',
+        fileName: "wifeydisc.png",
+        ratio: 1,
+        positiondX: 8,
+        positiondY: 0,
+    },
+    {
         name: 'quickfootlogo',
         fileName: 'quickfoot.png',
         ratio: .2,

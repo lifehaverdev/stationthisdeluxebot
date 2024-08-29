@@ -180,7 +180,7 @@ function handleUtils(message) {
             ],
             [
                 { text: settings.advancedUser ? '🖼️✍️' : 'watermark', callback_data: 'watermark'},
-                { text: settings.advancedUser ? '🖼️➡️💽' : 'disc', callback_data: 'disc'}
+                //{ text: settings.advancedUser ? '🖼️➡️💽' : 'disc', callback_data: 'disc'}
             ]
         )
       }
