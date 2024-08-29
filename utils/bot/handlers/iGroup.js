@@ -143,9 +143,18 @@ function handleApplyBalance(message) {
     }
 }
 
-// function handleRemoveBalance(message) {
-
-// }
+function handleGroupName(message) {
+    const userId = message.from.id
+    lobby[userId].group = message.text;
+    const burnRecord = burns.find(burn => burn.wallet === lobby[message.from.id].wallet);
+    let burned = 0;
+    if (burnRecord) {
+        console.log(burnRecord.burned)
+        burned += parseInt(burnRecord.burned) * 2 / 1000000;
+    }
+    sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
+    setUserState(message.reply_to_message, STATES.GROUPAPPLY)
+}
 
 async function createGroup(message) {
     const owner = message.from.id;
@@ -160,5 +169,6 @@ async function createGroup(message) {
 module.exports = {
     groupSettings,
     handleApplyBalance,
+    handleGroupName,
     getGroup
 }
