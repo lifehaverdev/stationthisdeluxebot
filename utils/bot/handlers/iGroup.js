@@ -1,5 +1,5 @@
 const { sendMessage, setUserState } = require('../../utils');
-const { rooms, getNextPeriodTime, startup, getBurned, lobby, STATES } = require('../bot')
+const { rooms, burns, getNextPeriodTime, startup, getBurned, lobby, STATES } = require('../bot')
 const { features } = require('../../models/tokengatefeatures.js')
 const { createRoom } = require('../../../db/mongodb.js')
 const { initialize } = require('../intitialize.js');
