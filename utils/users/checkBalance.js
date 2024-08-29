@@ -3,17 +3,17 @@ const { burns } = require('../bot/bot');
 
 const blessings = {
     //FU STUDIOS PROMO
-    "2bBaEQ2BhbYR5YwFYrVgaawn8DxUEfGTE2Mo6oW1yvjm": 1000000,
-    "B2VNytRnn1ZUvEtefJZn5iMD8Ez7sSfuxC27EH1odJW": 1000000,
-    "2BejAjjLer46EMsdYw3VYcL5CGPUSprpeBbp8XUHxESJ": 1000000,
-    "GDSa1MaSTYKbNwcvJqhhgUEx97UsCTNKVPDKVE6ASzT8": 1000000,
-    "85vHqjTYuWjpURT1vLkQPXBourkzAF6SjTohbxhwAZgs": 1000000,
+    //"2bBaEQ2BhbYR5YwFYrVgaawn8DxUEfGTE2Mo6oW1yvjm": 1000000,
+    //"B2VNytRnn1ZUvEtefJZn5iMD8Ez7sSfuxC27EH1odJW": 1000000,
+    //"2BejAjjLer46EMsdYw3VYcL5CGPUSprpeBbp8XUHxESJ": 1000000,
+    //"GDSa1MaSTYKbNwcvJqhhgUEx97UsCTNKVPDKVE6ASzT8": 1000000,
+    //"85vHqjTYuWjpURT1vLkQPXBourkzAF6SjTohbxhwAZgs": 1000000,
     //egmund
     "qDYNYPYcMiBy4R5yvjrpQvpdkBQuB8q3aehmSr7EoBt": 1000000,
     //42069
-    "J8w8wRLewHwjAmckHEgncC6GpBkc1EdeLUaoV35bN73w": 1000000,
-    "4PygoXdiNArUNWbpTLF6rUKgmaMqD8FW4hJAZcZJksW9": 1000000,
-    "7UZkrsrgijtqs4ihNdrYxK3SvyC4Ju3RhacAEb8ibskD": 1000000,
+    //"J8w8wRLewHwjAmckHEgncC6GpBkc1EdeLUaoV35bN73w": 1000000,
+    //"4PygoXdiNArUNWbpTLF6rUKgmaMqD8FW4hJAZcZJksW9": 1000000,
+    //"7UZkrsrgijtqs4ihNdrYxK3SvyC4Ju3RhacAEb8ibskD": 1000000,
     //aefek
     "4rrJak8BHdMKbQU387jWrf8QLhnCtZcwn1oTKURYTZRk": 1000000,
     //anon
@@ -25,7 +25,7 @@ const blessings = {
     //xdrar
     "9D2UVKHKmaCNwizw6iPS3NmideY2Qvq7A2jvLvVGfyVZ": 5000000,
     //wifeystation
-    "BiFSjP1uDi9D9euchgYzwJGmYbfomBexXDzN6iJNC5Gv": 10000000,
+    //"BiFSjP1uDi9D9euchgYzwJGmYbfomBexXDzN6iJNC5Gv": 10000000,
 }
 
 const curses = {

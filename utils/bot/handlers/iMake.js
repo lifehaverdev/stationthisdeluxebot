@@ -101,8 +101,6 @@ async function startMake(message, user = null) {
     //console.log('message in start make',message);
     setUserState(message,STATES.MAKE)
 }
-
-
 async function startMake3(message,user) {
     if(user){
         message.from.id = user;
@@ -121,6 +119,7 @@ async function startMake3(message,user) {
     //await sendMessage(message,'What prompt for your txt2img sd3');
     setUserState(message,STATES.MAKE3)
 }
+
 async function handleMake(message) {
     console.log('MAKING SOMETHING')
     const chatId = message.chat.id;
@@ -130,19 +129,16 @@ async function handleMake(message) {
         startMake();
         return
     }
-    //const index = rooms.findIndex((group) => group.chat.id === message.chat.id);
-
-    //let settings = { ...lobby[userId] }; // Start with lobby settings
 
     const group = getGroup(message);
-    //console.log('group',group.name)
+
     let settings;
     if(group){
         settings = group.settings;
     } else {
         settings = lobby[userId]
     }
-    console.log('settings',settings)
+    
     if(settings && !group && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
         console.log('we not in the right state')
         console.log(settings.state.state)
@@ -152,20 +148,18 @@ async function handleMake(message) {
     let thisSeed = makeSeed(userId)
     //save these settings into lobby in case cook mode time
     lobby[userId] = {
-        ...lobby[userId],
+        ...settings,
         prompt: message.text,
         type: 'MAKE',
         lastSeed: thisSeed
     }
 
     function tokenGate() {
-        if(lobby[userId] && lobby[userId].balance <= 400000) {
+        if(!group && lobby[userId] && lobby[userId].balance < 400000) {
             gated(message)
             return true
         }
-    }
-    function groupGate() {
-        if(group.points > group.credit){
+        if(group && group.applied < 400000){
             gated(message)
             return true
         }
@@ -177,7 +171,7 @@ async function handleMake(message) {
         }
         if (!settings.styleFileUrl){
             
-            sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            sendMessage(message, 'You do not currently have a photo set for your style transfer. Use the set menu and select style to pick a style photo');
             return;
         }
         settings.type = 'MAKE_STYLE'
@@ -204,16 +198,11 @@ async function handleMake(message) {
     let batch;
     let params;
     if(message.chat.id < 0){
-        //batch = 1;
-        batch = lobby[userId].batchMax
+        batch = 1;
+        //batch = lobby[userId].batchMax
         //console.log('index in handlemake for groupchat',group.id)
         if(group){
-            if(groupGate()){
-                react(message)
-                return
-            } else {
-                params = group.settings
-            }
+            params = group.settings
         } else {
             //react(message)
             params = lobby[userId]
@@ -245,18 +234,29 @@ async function handleMake3(message) {
     console.log('MAK3ING SOMETHING')
     const chatId = message.chat.id;
     const userId = message.from.id;
-    if(lobby[userId] && lobby[userId].balance <= 400000) {
+    const group = getGroup(message);
+
+    if((lobby[userId] && lobby[userId].balance < 400000)
+    || (group && group.applied < 400000)
+    ) {
         gated(message)
         return true
     }
 
-    if(lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
+    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
         return;
     }
 
     if(message.text.replace('/make3','').replace(`@${process.env.BOT_NAME}`,'') == ''){
-        startMake();
+        startMake3();
         return
+    }
+
+    let settings;
+    if(group){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
     }
 
     const thisSeed = makeSeed(userId);
@@ -264,27 +264,27 @@ async function handleMake3(message) {
     if(chatId < 0){
         batch = 1;
     } else {
-        batch = lobby[userId].batchMax;
+        batch = settings.batchMax;
     }
 
     //save these settings into lobby in case cook mode time
     lobby[userId] = {
-        ...lobby[userId],
+        ...settings,
         prompt: message.text,
         type: 'MAKE3',
         lastSeed: thisSeed
     }
 
     const promptObj = {
-        ...lobby[userId],
+        ...settings,
         seed: thisSeed,
         batchMax: batch
     }
         
     try {
         await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
+        //console.log('check out the prompt object')
+        //console.log(promptObj);
         enqueueTask({message,promptObj})
         setUserState(message, STATES.IDLE);
     } catch (error) {
@@ -350,8 +350,17 @@ async function handleRegen(message) {
 
 async function handleMs2Prompt(message) {
     const userId = message.from.id;
+    const group = getGroup(message)
     let userInput = message.text;
-    userInput == '' ? userInput = '' : null;
+    //wtf does this do >
+    //userInput == '' ? userInput = '' : null;
+
+    let settings;
+    if(group){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
 
     lobby[userId] = {
         ...lobby[userId],
@@ -360,17 +369,19 @@ async function handleMs2Prompt(message) {
     }
 
     function tokenGate() {
-        if(lobby[userId] && lobby[userId].balance <= 400000) {
+        if((lobby[userId] && lobby[userId].balance < 400000)
+            || (group && group.applied < 400000)
+        ) {
             gated(message)
             return true
         }
     }
-    if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
+    if(settings.styleTransfer && !settings.controlNet) {
         if(tokenGate()){
             return;
         }
-        if (!lobby[userId].styleFileUrl){
-            sendMessage(message, 'hey use the setstyle command to pick a style photo');
+        if (!settings.styleFileUrl){
+            sendMessage(message, 'You do not currently have a photo set for your style transfer. Use the set menu and select style to pick a style photo');
             return;
         }
         lobby[userId].type = 'MS2_STYLE'
@@ -379,7 +390,7 @@ async function handleMs2Prompt(message) {
             return;
         }
         if (!lobby[userId].styleFileUrl && !lobby[userId].controlFileUrl){
-            sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            sendMessage(message, 'You do not currently have a photo set for your style transfer. Use the set menu and select style to pick a style photo');
             return;
         }
         lobby[userId].type = 'MS2_CONTROL_STYLE'
@@ -393,9 +404,9 @@ async function handleMs2Prompt(message) {
     
     await react(message);
     const promptObj = {
-        ...lobby[userId],
+        ...settings,
         seed: lobby[userId].lastSeed,
-        photoStats: lobby[userId].tempSize
+        photoStats: settings.tempSize
     }
     //return await shakeMs2(message,promptObj);
     enqueueTask({message,promptObj})

@@ -1,13 +1,11 @@
-const { lobby, STATES, rooms, startup } = require('./bot'); 
+const { lobby, STATES } = require('./bot'); 
 const { getUserDataByUserId, addPointsToAllUsers } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
-//const { getGroup } = require('./handlers/iGroup')
 const { home } = require('../models/userKeyboards');
-const logLobby = true;
 let lastCleanTime = Date.now();
-// let startup = Date.now()
+const logLobby = true;
 const POINTMULTI = 540;
 const NOCOINERSTARTER = 199800;
 const LOBBY_CLEAN_MINUTE = 60 * 8;//8 hours
@@ -66,8 +64,11 @@ async function checkLobby(message){
     let balance;
     let userData;
 
+    //if the user is not in the lobby
     if(!lobby.hasOwnProperty(userId)){
+        //check db for settings
         userData = await getUserDataByUserId(userId);
+        //check message for group
         if(group){
             if(group.credit > group.points){
                 return true
@@ -87,7 +88,7 @@ async function checkLobby(message){
                 sendMessage(message,'use the signin command and connect a wallet to unlock $MS2 holder benefits',options);
             }
             balance = 0;
-            //return false
+        //we have a 
         } else {
             balance = await getBalance(userData.wallet);
             let options;
@@ -121,18 +122,22 @@ async function checkLobby(message){
     // } else if (lobby[userId].verified === false) {
     //     sendMessage(message,'You must be verified to use the bot. Try signout and signin to complete the verify process.')
     } else {
-        if(lobby[userId].balance == '' && lobby[userId].wallet != '' && lobby[userId].verified == true){
-            lobby[userId].balance = await getBalance(lobby[userId].wallet);
-        }
         if(group){
-            if(group.credit > group.balance){
+            if(group.credit > group.points){
                 return true
             }
+        }
+        if(lobby[userId].balance == '' && lobby[userId].wallet != '' && lobby[userId].verified == true){
+            lobby[userId].balance = await getBalance(lobby[userId].wallet);
         }
         setUserState(message,STATES.IDLE);
     }
     let points = lobby[userId].points;
-    if (pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER){
+
+    if (
+            pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER
+            || (group && group.credt < group.points)
+        ){
         const reacts = ["👎", "❤", "🥰", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴","🐳", "🌚", "🌭","🤣", "🍌", "💔", "🤨", "😐","💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😇", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "😎", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
         const which = Math.floor(Math.random() * reacts.length)
         react(message,reacts[which])
