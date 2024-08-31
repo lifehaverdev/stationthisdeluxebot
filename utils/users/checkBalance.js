@@ -26,6 +26,8 @@ const blessings = {
     "9D2UVKHKmaCNwizw6iPS3NmideY2Qvq7A2jvLvVGfyVZ": 5000000,
     //wifeystation
     //"BiFSjP1uDi9D9euchgYzwJGmYbfomBexXDzN6iJNC5Gv": 10000000,
+    //tom
+    "UrTz5ydH7gg2XpJoG6CNRuForc5PSHH14mtd4hhW9a2": 5000000
 }
 
 const curses = {

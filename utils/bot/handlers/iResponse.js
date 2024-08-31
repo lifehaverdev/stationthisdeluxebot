@@ -165,20 +165,20 @@ class CallAndResponse {
 
 // Example usage for each starter function:
 const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.');
-const ms2StyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.', 400000, { styleTransfer: true, controlNet: false });
-const ms2ControlStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.', 400000, { styleTransfer: false, controlNet: true });
-const ms2ControlStyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.', 400000, { styleTransfer: true, controlNet: true });
+const ms2StyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style.', 400000, { styleTransfer: true, controlNet: false });
+const ms2ControlStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + control.', 400000, { styleTransfer: false, controlNet: true });
+const ms2ControlStyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style + control.', 400000, { styleTransfer: true, controlNet: true });
 
 const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?');
-const makeStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?', 400000, { styleTransfer: true, controlNet: false });
-const makeControlStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?', 400000, { styleTransfer: false, controlNet: true });
-const makeControlStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?', 400000, { styleTransfer: true, controlNet: true });
+const makeStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style?', 400000, { styleTransfer: true, controlNet: false });
+const makeControlStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+control?', 400000, { styleTransfer: false, controlNet: true });
+const makeControlStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style+control?', 400000, { styleTransfer: true, controlNet: true });
 
 //const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.');
 const pfpStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img. I will do the prompt myself.', 300000);
-const pfpStyleStarter = new StarterFunction(STATES.PFP, 'What prompt for your txt2img?', 400000, { styleTransfer: true, controlNet: false });
-const pfpControlStarter = new StarterFunction(STATES.PFP, 'What prompt for your txt2img?', 400000, { styleTransfer: false, controlNet: true });
-const pfpControlStyleStarter = new StarterFunction(STATES.PFP, 'What prompt for your txt2img?', 400000, { styleTransfer: true, controlNet: true });
+const pfpStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + style transfer. I will do the prompt myself.', 400000, { styleTransfer: true, controlNet: false });
+const pfpControlStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet. I will do the prompt myself.', 400000, { styleTransfer: false, controlNet: true });
+const pfpControlStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet + style transfer. I will do the prompt myself.', 400000, { styleTransfer: true, controlNet: true });
 
 const ms3Starter = new StarterFunction(STATES.MS3, 'Send in the photo you want to img to video.', 600000);
 const rmbgStarter = new StarterFunction(STATES.RMBG, 'Send me the photo to remove the background from', 200000);
