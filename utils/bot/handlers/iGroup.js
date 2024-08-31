@@ -1,7 +1,7 @@
 const { sendMessage, setUserState } = require('../../utils');
 const { rooms, burns, getNextPeriodTime, startup, getBurned, lobby, STATES } = require('../bot')
 const { features } = require('../../models/tokengatefeatures.js')
-const { createRoom } = require('../../../db/mongodb.js')
+const { createRoom, writeData } = require('../../../db/mongodb.js')
 const { initialize } = require('../intitialize.js');
 
 function getGroup(message) {
@@ -116,7 +116,7 @@ function groupSettings(message) {
 /*
 Needs to be updated so anyone can request to 
 */
-function handleApplyBalance(message) {
+async function handleApplyBalance(message) {
     const burned = getBurned(message.from.id);
     const value = message.text;
     const group = getGroup(message);
@@ -136,8 +136,9 @@ function handleApplyBalance(message) {
     if(group == undefined){
         createGroup(message)
     } else {
-        if(group.admin.includes(message.from.id) || group.owner == message.from.id){
-            group.applied = parseInt(value)
+        if(group.owner == message.from.id || (group.admin.length > 0 && group.admin.includes(message.from.id))){
+            group.applied += parseInt(value)
+            await writeData('floorplan',{id: message.chat.id},{applied: group.applied})
             sendMessage(message,'nice you just added some more burn to the pile')
         }
     }
