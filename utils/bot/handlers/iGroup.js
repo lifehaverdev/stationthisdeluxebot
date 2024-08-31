@@ -146,7 +146,7 @@ function handleApplyBalance(message) {
 function handleGroupName(message) {
     const userId = message.from.id
     lobby[userId].group = message.text;
-    const burnRecord = burns.find(burn => burn.wallet === lobby[message.from.id].wallet);
+    const burnRecord = burns.find(burn => burn.wallet == lobby[message.from.id].wallet);
     let burned = 0;
     if (burnRecord) {
         console.log(burnRecord.burned)
