@@ -1,7 +1,7 @@
-const { sendMessage, setUserState } = require('../../utils');
-const { rooms, burns, getNextPeriodTime, startup, getBurned, lobby, STATES } = require('../bot')
+const { sendMessage, setUserState, makeBaseData, compactSerialize } = require('../../utils');
+const { rooms, getBurned, lobby, STATES } = require('../bot')
 const { features } = require('../../models/tokengatefeatures.js')
-const { createRoom, writeData } = require('../../../db/mongodb.js')
+const { createRoom, writeData, writeBurnData } = require('../../../db/mongodb.js')
 const { initialize } = require('../intitialize.js');
 
 function getGroup(message) {
@@ -10,22 +10,27 @@ function getGroup(message) {
 }
 
 function groupSettings(message) {
-
+    baseData = makeBaseData(message,message.from.id);
+    const callbackData = compactSerialize({ ...baseData, action: `createGroup` });
     const group = getGroup(message);
-    console.log(group)
-    if(group == undefined){
-        sendMessage(message,'This group is not initialized, would you like to apply a balance and become the bot boss?',
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {text: 'Yes, I am the boss', callback_data: 'createGroup'},
-                            {text: 'No, I am but a hubmle genner', callback_data: 'cancel'}
-                        ]
-                    ]
-                }
-            }
-        )
+    console.log('group?',group)
+    if(!group){
+        // sendMessage(message,'This group is not initialized, would you like to apply a balance and become the bot boss?',
+        //     {
+        //         reply_markup: {
+        //             inline_keyboard: [
+        //                 [
+        //                     {text: 'Yes, I am the boss', callback_data: callbackData},
+        //                     {text: 'No, I am but a hubmle genner', callback_data: 'cancel'}
+        //                 ]
+        //             ]
+        //         }
+        //     }
+        // )
+        //return
+        console.log('handling groupname','message',message.text)
+        handleGroupName(message);
+        console.log('exiting groupSettings')
         return
     }
     //console.log('group found',group.name)
@@ -62,7 +67,7 @@ function groupSettings(message) {
     //         },
     //     );
     // }
-    if(group.applied >= 400000){
+    if(group && group.applied >= 400000){
         groupSettingsKeyboard[2].push(
             {
                 text: `ControlNet ${group.settings.controlNet ? '✅' : '❌'}`,
@@ -113,11 +118,25 @@ function groupSettings(message) {
     
 }
 
+function handleGroupName(message) {
+    console.log('handling group name')
+    console.log(message)
+    const userId = message.from.id
+    lobby[userId].group = message.chat.title;
+    const burned = getBurned(userId)/2
+    const msg = `You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`
+    console.log('i would be saying this now'+msg)
+    sendMessage(message,msg)
+    setUserState(message, STATES.GROUPAPPLY)
+    console.log('now the user',userId,' state is ',lobby[userId].state)
+}
+
 /*
 Needs to be updated so anyone can request to 
 */
 async function handleApplyBalance(message) {
-    const burned = getBurned(message.from.id);
+    console.log('handling apply balance')
+    const burned = getBurned(message.from.id)/2;
     const value = message.text;
     const group = getGroup(message);
     if (isNaN(value)) {
@@ -135,29 +154,27 @@ async function handleApplyBalance(message) {
     }
     if(group == undefined){
         createGroup(message)
+        await writeBurnData(message.from.id,parseInt(value))
+        setUserState(message,STATES.IDLE)
     } else {
         if(group.owner == message.from.id || (group.admin.length > 0 && group.admin.includes(message.from.id))){
             group.applied += parseInt(value)
             await writeData('floorplan',{id: message.chat.id},{applied: group.applied})
+            await writeBurnData(message.from.id,parseInt(value))
             sendMessage(message,'nice you just added some more burn to the pile')
+            setUserState(message,STATES.IDLE)
         }
     }
 }
 
-function handleGroupName(message) {
-    const userId = message.from.id
-    lobby[userId].group = message.text;
-    const burnRecord = burns.find(burn => burn.wallet == lobby[message.from.id].wallet);
-    let burned = 0;
-    if (burnRecord) {
-        console.log(burnRecord.burned)
-        burned += parseInt(burnRecord.burned) * 2 / 1000000;
-    }
-    sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
-    setUserState(message.reply_to_message, STATES.GROUPAPPLY)
-}
-
 async function createGroup(message) {
+    console.log('creating group')
+        // Check if any room has an owner that matches the current message's owner
+        if (rooms.some(room => room.owner === message.from.id)) {
+            console.log('Owner already has a group');
+            sendMessage(message,'you are already group owner')
+            return; // Exit the function if the owner already has a group
+        }
     const owner = message.from.id;
     const chat = message.chat.id;
     await createRoom(chat,owner,message.text);
@@ -167,9 +184,28 @@ async function createGroup(message) {
     groupSettings(message);
 }
 
+async function toggleAdmin(message) {
+    const group = getGroup(message);
+    if(group && group.admins.length > 0
+        && group.admins.includes(message.reply_to_message.from.id)
+    ) {
+        group.admins = group.admins.filter(adminId => adminId !== message.reply_to_message.from.id);
+        sendMessage(message,'removing admin');
+        //return; // Exit the function after removing the admin
+    } else {
+        group.admins.push(message.reply_to_message.from.id);
+        sendMessage(message,'okay they are admin');
+        //return
+    }
+    await writeData('floorplan',{id: message.chat.id},{admins: group.admins})
+    console.log('rewrote the room')
+}
+
 module.exports = {
     groupSettings,
     handleApplyBalance,
     handleGroupName,
-    getGroup
+    getGroup,
+    createGroup,
+    toggleAdmin
 }
