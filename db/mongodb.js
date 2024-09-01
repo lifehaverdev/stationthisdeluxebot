@@ -277,67 +277,72 @@ async function createRoom(chatId, userId, value) {
     }
 }
 
+async function writeBurnData(userId, amount) {
+    //this is for subtracting from burns when applying balance to group chats
+    //const { wallet, amount, service, projectName, twitterHandle, telegramHandle, hash } = {...lobby[userId]}
+    const wallet = lobby[userId].wallet;
+    const service = 'Group apply';
+    const projectName = lobby[userId].group;
+    const telegramHandle = userId;
+    const hash = 'botTx(;'
+    if (!wallet || !amount || !service || !hash) {
+      //res.status(400).json({ message: 'Missing required fields' });
+      return;
+    }
+    const uri = process.env.MONGO_PASS;
+    //console.log(value)
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+    amount = -amount * 1000000;
+    try {
+        await client.connect();
+        const collection = client.db(dbName).collection('burns');
 
-    // const { wallet, amount, service, projectName, twitterHandle, telegramHandle, hash } = await req.json();
+      // Find the wallet document
+      let walletDoc = await collection.findOne({ wallet });
 
-    // if (!wallet || !amount || !service || !hash) {
-    //   res.status(400).json({ message: 'Missing required fields' });
-    //   return;
-    // }
+      if (walletDoc) {
+        // If the document exists, push the new burn data to the wallet array
+        await collection.updateOne(
+          { wallet },
+          {
+            $push: {
+              burns: {
+                amount,
+                service,
+                projectName,
+                //twitterHandle,
+                telegramHandle,
+                hash,
+              },
+            },
+          }
+        );
+      } else {
+        // If the document does not exist, create a new document
+        await collection.insertOne({
+          wallet,
+          burns: [
+            {
+              amount,
+              service,
+              projectName,
+              //twitterHandle,
+              telegramHandle,
+              hash,
+            },
+          ],
+        });
+      }
 
-    // try {
-    //   const client = await connectToDatabase();
-    //   const db = client.db('stationthisbot');
-    //   const collection = db.collection('burns');
-
-    //   // Find the wallet document
-    //   let walletDoc = await collection.findOne({ wallet });
-
-    //   if (walletDoc) {
-    //     // If the document exists, push the new burn data to the wallet array
-    //     await collection.updateOne(
-    //       { wallet },
-    //       {
-    //         $push: {
-    //           burns: {
-    //             amount,
-    //             service,
-    //             projectName,
-    //             twitterHandle,
-    //             telegramHandle,
-    //             hash,
-    //           },
-    //         },
-    //       }
-    //     );
-    //   } else {
-    //     // If the document does not exist, create a new document
-    //     await collection.insertOne({
-    //       wallet,
-    //       burns: [
-    //         {
-    //           amount,
-    //           service,
-    //           projectName,
-    //           twitterHandle,
-    //           telegramHandle,
-    //           hash,
-    //         },
-    //       ],
-    //     });
-    //   }
-
-    //   //res.status(200).json({ message: 'Burn saved successfully' });
-    //   return new Response('Burn saved successfully', {
-    //     status: 200,
-    //   })
-    // } catch (error) {
-    //   console.error('Error saving burn data:', error);
-    //   //res.status(500).json({ message: 'Error saving burn data' });
-    //   return new Response('Error saving burn data', {
-    //     status: 500,
-    //   })
-    // }
+     
+      console.log('anti burn successful')
+    } catch (error) {
+      console.error('Error saving burn data:', error);
+      
+    }
+}
+    
 
 
 async function updateAllUserSettings() {
@@ -957,6 +962,7 @@ module.exports = {
     editCollectionURI, 
     readUserData, 
     writeUserData, 
+    writeBurnData,
     updateAllUserSettings,
     getUserDataByUserId, 
     getCollections, 

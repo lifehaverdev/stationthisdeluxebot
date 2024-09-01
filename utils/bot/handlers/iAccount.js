@@ -76,7 +76,7 @@ function displayAccountSettingsMenu(message,dms) {
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
     accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n`;
-    accountInfo += `<b>MS2 Burned:</b> ${burned}🔥\n`;
+    accountInfo += `<b>MS2 Burned:</b> ${burned/2}🔥\n`;
     accountInfo += `<b>LEVEL:</b>${level} `
     accountInfo += `<b>EXP:</b> ${bars}\n`
     accountInfo += `<b>Points:</b> ${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}\n\n`;

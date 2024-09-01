@@ -146,6 +146,10 @@ const commandPatterns = {
             //sendMessage(message,'I reset burns and loralist');
         }
     },
+    '/slamtest': async(message) => {
+        sendMessage(message,`${lobby[message.from.id].state.state}`)
+    },
+    '/admin': iGroup.toggleAdmin
 };
 
 
@@ -173,7 +177,7 @@ const stateHandlers = {
     [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
-    [STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
+    //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 
 
@@ -195,9 +199,9 @@ function messageFilter(message) {
     // Check if the message is a reply
     if (message.reply_to_message) {
         if(message.reply_to_message.message_id != message.message_thread_id){
-           // console.log("Handling a reply to a message.")
+           console.log("Handling a reply to a message.")
             //console.log(message)
-        return; // Early return to prevent further processing of this as a normal command
+            return false; // Early return to prevent further processing of this as a normal command
         }
     }
     //console.log('message date in filter',message.date)
@@ -210,27 +214,31 @@ function messageFilter(message) {
     
     // // Initialize state for new users
     if (!lobby[message.from.id]) {
-       //console.log('no state')
+       console.log('no lobby')
        lobby[message.from.userId] = defaultUserData;
        return false
     }
     if( 
         //user is amidst call and response anywhere aka their state is set
         lobby[message.from.id].state.state != STATES.IDLE && 
+        //commented out to fix groupname
         //AND set state chat id isnt where this message is
         (lobby[message.from.id].state.chatId != message.chat.id || 
             //OR message thread
-            (message.message_thread_id && 
+            (message.message_thread_id && lobby[message.from.id].state.messageThreadId &&
                 (message.message_thread_id != lobby[message.from.id].state.messageThreadId )
             )
         )
     ){
-        console.log('here is why we are filtered')
-        console.log(lobby[message.from.id].state);
-        console.log('thread',message.message_thread_id)
-        console.log('chat id',message.chat.id)
+        console.log('here is why we are filtered, all of these must match')
+        
+        console.log('msg thread',message.message_thread_id)
+        console.log('msg chat id',message.chat.id)
+        console.log('state state',lobby[message.from.id].state);
+        console.log('state chatid',lobby[message.from.id].state.chatId)
+        console.log('state message thread',lobby[message.from.id].state.messageThreadId )
 
-        lobby[message.from.id].state.state = STATES.IDLE
+        //lobby[message.from.id].state.state = STATES.IDLE
         return true;
     }
 
@@ -238,15 +246,16 @@ function messageFilter(message) {
     return false
 }
 function watch(message) {
+    //console.log('watching message')
     const userId = message.from.id;
     if(lobby[userId]){
         const currentState = lobby[userId].state;
         const handler = stateHandlers[currentState.state];
         if (handler) {
-            console.log('sending to',handler)
+            //console.log('sending to',handler)
             handler(message);
         } else {
-            console.log('no handler')
+            //console.log('no handler')
             console.log(currentState)
         }
     }
@@ -262,24 +271,25 @@ const commandsRequiringGatekeeping = ['/utils','/set','/accountsettings','/creat
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
-        //console.log('wow we have a message');
+        //console.log('wow we have a message',message);
         if (messageFilter(message)) {
-            //console.log('message filtered');
+            console.log('message filtered');
             return;
         }
     
         if ('text' in message) {
+            //console.log('message text')
             let handled = false;
             // Process commands with specific regex patterns
             for (const [pattern, handler] of Object.entries(commandPatterns)) {
                 const regex = new RegExp(`^${pattern}`);
                 const match = regex.exec(message.text);
                 if (match) {
-                    console.log('i see a command tbh',match)
+                    //console.log('i see a command tbh',match)
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => pattern.startsWith(cmd));
                     if (requiresGatekeeping) {
                         // Perform gatekeeping check
-                        console.log('we are gatekeeping')
+                        //console.log('we are gatekeeping')
                         const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
@@ -292,6 +302,7 @@ module.exports = function(bot) {
                     break; // Stop after the first match to avoid multiple command executions
                 }
             }
+            //console.log('no commandpattern')
     
             // Process generic commands if no specific command was handled
             if (!handled) {
@@ -304,17 +315,21 @@ module.exports = function(bot) {
                         console.log("Lobby check failed, not processing command:", commandKey);
                         return; // Exit if lobby check fails
                     }
-    
+                    //console.log('command key')
                     setUserState(message, commandInfo.state);
                     await sendMessage(message, commandInfo.message, {reply_to_message_id: message.message_id});
                     handled = true;
                 }
             }
-    
+            //console.log('no command key')
             // If no command has handled the message, use watch for further processing
             if (!handled) {
+                //console.log('imessage text watch')
                 watch(message);
+            } else {
+                //console.log('but its handled?')
             }
+            //console.log('message receipt complete')
         } else if ('photo' in message || 'document' in message) {
             // Log and delegate to watch for non-text messages
             //console.log(`Received ${'photo' in message ? 'photo' : 'document'}`);

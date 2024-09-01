@@ -13,34 +13,59 @@ const { getBalance } = require('../../users/checkBalance.js');
 const bot = getBotInstance();
 function handleHelp(message) {
     const helpMessage = `
-    HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHIS BOT ON TELEGRAM
+    HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHISBOT ON TELEGRAM
 
-    Use /signin to connect a solana wallet holding $MS2
-    verify it on our site by pasting the hash in your chat when prompted
+1. Getting Started
+• Use /signin to connect a solana wallet holding $MS2
+• Verify it on our site by pasting the hash in your chat when prompted
 
-    /create - txt2image + chatgpt prompt augmentation + image interrogation
-    /effect - img2img + auto prompt img2img (great for simply applying a baseprompt)
-    /animate - img2video + txt2speech
-    /set - set parameters for generation
-    /status - see what the bot is workin on
-    
-    Use the /accountsettings command to bring up a menu. This is where you toggle watermark as well as choose a voice for speak command
-    
-    if you are really onto something please use /savesettings to lock in
-    you can also use /getseed to see what seed was used for the last image so you can farm good generation seeds
-    
-    TROUBLESHOOTING
-    
-    First of all if you find a bug tell the dev @arthurtmonyman, hes trying to make the bot perfect so pls help
-    
-    If you are stuck in some sort of UI call and response loop or if you change your mind in the middle of one, use the /quit command
-    If you are unsure whether the bot is alive use the /status command
-    If your settings are all wonky, try /resetaccount or /signout and /signin again. you won't have to reverify
-    
-    EXTRA
-    
-    If you bought or burned and want to see your new balance try /ibought
-    Try the /loralist command to see what LORAs we offer along with their key words, just use the trigger word somewhere in your prompt to activate it`
+2. Get Cooking With Various Commands
+
+/create - Best for generating from scratch
+
+txt2img: type words to create a new image. use keywords from /loralist to add styles, effects, and more
+txt2img style transfer: same as above, while inheriting the style of a user-uploaded image (use /set >> style first)
+txt2img controlnet: style transfer: same as above, while inheriting the outline of a user-uploaded image (use /set >> control first)
+txt2img controlnet + style transfer: both combined
+txt2img controlstylepose: additional pose controlnet
+
+/effect - Generate from or modify existing images
+available with automatic prompting in the right column
+txt2img: type words to create a new image. use keywords from /loralist to add styles, effects, and more
+txt2img style transfer: same as above, while inheriting the style of a user-uploaded image (use /set >> style first)
+txt2img controlnet: style transfer: same as above, while inheriting the outline of a user-uploaded image (use /set >> control first)
+txt2img controlnet + style transfer: both combined
+txt2img controlstylepose: additional pose controlnet
+
+3. Save Your Progress
+/savesettings - Lock in your settings when you're onto something good
+/getseed - Check the seed used for the last image to farm good generation seeds
+
+4. Advanced Features
+/accountsettings - view point balance, $MS2 holdings, and toggle control/style/pose
+
+TROUBLESHOOTING
+
+Found a bug? 
+Tell the dev, @arthurtmonyman. He's trying to make the bot perfect, so pls help.
+
+Stuck in a UI call and response loop or change your mind?
+Use /quit command    
+
+Is the bot still alive?
+Use the /status command
+
+Check your balance
+If you bought or burned and want to see your new balance, try /ibought
+
+COMING SOON
+
+Custom groupchats
+Home Pages / Webui
+Collection Mode
+
+Powered by $MS2
+`
 
     sendMessage(message, helpMessage);
 }

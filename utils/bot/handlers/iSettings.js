@@ -3,7 +3,7 @@ const { setUserState, sendMessage, editMessage } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
 const Jimp = require('jimp');
 const iMenu = require('./iMenu')
-const { getGroup } = require('./iGroup')
+const { getGroup, createGroup } = require('./iGroup')
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 6;
@@ -182,6 +182,7 @@ async function handleSet(message) {
     let settings;
     const userId = message.from.id;
     const group = getGroup(message);
+    console.log('group in handleset',group.id);
     if(group){
         if(userId == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return message.from.id == appointed ? true : false}))){
             settings = group.settings;
@@ -193,15 +194,15 @@ async function handleSet(message) {
         settings = lobby[userId]
     }
 
-    //console.log('settings in handleset',settings);
+    console.log('settings in handleset',settings);
     
     const newValue = message.text;
     const currentState = lobby[userId].state.state;
     const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
     
-    //console.log('setting',lobbyParam)
-    //console.log('currently',lobby[userId][lobbyParam])
-    //console.log('current user state',currentState)
+    console.log('setting',lobbyParam)
+    console.log('currently',lobby[userId][lobbyParam])
+    console.log('current user state',currentState)
     if (!lobby[userId] && !group) {
         sendMessage(message, "You need to make something first");
         return;
@@ -312,6 +313,25 @@ async function handleSet(message) {
                 return false;
             }
             settings[lobbyParam] = floatValue;
+            sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`, iMenu.justSet);
+            setUserState(message,STATES.IDLE);
+            break;
+        case STATES.GROUPAPPLY:
+            console.log('we are in handle set group apply');
+            if (isNaN(floatValue)) {
+                sendMessage(message, 'Please enter a valid float value');
+                return false;
+            }
+            if (currentState === STATES.SETSTRENGTH && (floatValue < 0 || floatValue > 1)) {
+                sendMessage(message, 'Please enter a value between 0 and 1');
+                return false;
+            }
+            if (currentState === STATES.SETCFG && (floatValue < 0 || floatValue > 30)) {
+                sendMessage(message, 'Please enter a value between 0 and 30');
+                return false;
+            }
+            //settings[lobbyParam] = floatValue;
+            iGroup.createGroup(message);
             sendMessage(message, `Your ${lobbyParam} is now ${floatValue}`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;

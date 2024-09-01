@@ -9,8 +9,9 @@ function setUserState(message,state) {
     const stateObj = {
         state: state,
         chatId: message.chat.id,
-        messageThreadId: message.message_thread_id || null  // Since not all messages might have this
+        messageThreadId: message.message_thread_id || undefined  // Since not all messages might have this
     }
+    //message.message_thread_id ? stateObj.messageThreadId = message.message_thread_id : null;
     if(lobby[message.from.id]){
         lobby[message.from.id].state = stateObj
     } else {
@@ -41,6 +42,7 @@ async function sendMessage(msg, text, options = {}) {
         options.reply_to_message_id = msg.message_id;
     }
     if (msg.message_thread_id) {
+        console.log('msg.msgthrdid in sendmessage',msg.message_thread_id)
         options.message_thread_id = msg.message_thread_id;
     }
 
@@ -62,10 +64,10 @@ async function sendMessage(msg, text, options = {}) {
     // Try sending the message with different options
     let response = await attemptSendMessage(options);
     if (response) return response;
-    options.reply_to_message_id = null;
+    options.reply_to_message_id = undefined;
     response = await attemptSendMessage(options);
     if (response) return response;
-    options.message_thread_id = null;
+    options.message_thread_id = undefined;
     return await attemptSendMessage(options);
 }
 async function sendPhoto(msg, fileUrl, options = {}) {

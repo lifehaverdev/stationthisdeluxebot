@@ -89,7 +89,8 @@ const STATE_TO_LOBBYPARAM = {
     'SETPHOTO': 'fileUrl',
     'SETSIZE': 'photoStats',
     'SETSTYLE': 'stylefileUrl',
-    'SETCONTROL': 'controlfileUrl'
+    'SETCONTROL': 'controlfileUrl',
+    //'SETGROUPAPPLY': 'group'
 }
 
 const commandStateMessages = {
@@ -184,13 +185,11 @@ function getNextPeriodTime(startup) {
 function getBurned(userId) {
 
     const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
-    
     let burned = 0;
     if (burnRecord) {
-        //console.log(burnRecord.burned)
+        console.log('burn record',burnRecord.burned)
         burned += parseInt(burnRecord.burned) * 2 / 1000000;
     }
-    
     return burned;
 }
 
