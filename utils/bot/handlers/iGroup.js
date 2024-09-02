@@ -11,9 +11,9 @@ function getGroup(message) {
 
 function groupSettings(message) {
     baseData = makeBaseData(message,message.from.id);
-    const callbackData = compactSerialize({ ...baseData, action: `createGroup` });
+    //const callbackData = compactSerialize({ ...baseData, action: `createGroup` });
     const group = getGroup(message);
-    console.log('group?',group)
+    //console.log('group?',group)
     if(!group){
         // sendMessage(message,'This group is not initialized, would you like to apply a balance and become the bot boss?',
         //     {

@@ -177,7 +177,7 @@ async function handleSignIn (message) {
         } else {
             sendMessage(message, "What's your Solana address?")
             setUserState(message,STATES.SIGN_IN)
-            console.log('state',lobby[userId].state)
+            //console.log('state',lobby[userId].state)
         }
     } else {
         sendMessage(message, "What's your Solana address?")
@@ -210,7 +210,7 @@ async function handleVerify(message) {
         userData.verified ? sendMessage(message,'You are verified, dw') : sendMessage(message,'go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there')
         userData.verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
     }
-    console.log('userStates after handlever',lobby[userId].state.state)
+    ///console.log('userStates after handlever',lobby[userId].state.state)
 }
 async function shakeVerify(message) {
     // Example data received from user
@@ -232,7 +232,7 @@ async function shakeVerify(message) {
         let isValid = false;
         for(let i = 0; i < 5; i++){
             const match = verifyHash(userWalletAddress, userTimestamp-i, salt, userProvidedHash);
-            console.log(match);
+            //console.log(match);
             if(match){
                 isValid = true;
             }
@@ -273,7 +273,7 @@ async function handleSignOut(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
     let userData = await getUserDataByUserId(userId);
-    console.log(userData,'signing out');
+    console.log(userData.userId,'signing out');
         if (userData) {
             // Remove user data for this chatId
             userData.wallet = '';
@@ -309,13 +309,13 @@ async function handleAccountReset(message) {
     let chatData;
 
     if (lobby[userId]) {
-        console.log('getting from lobby');
+        console.log('getting from lobby account reset');
         chatData = lobby[userId];
     } else {
         chatData = await getUserDataByUserId(userId);
     }
 
-    console.log('chatdata in reset account', chatData);
+    //console.log('chatdata in reset account', chatData);
 
     // Preserve specific keys
     let { points, exp, wallet, verified, promptDex } = chatData;

@@ -134,13 +134,13 @@ const commandPatterns = {
     },
     '/glorp': async(message) => {
         if(message.from.id != DEV_DMS){
-            console.log(message.from.id)
+            //console.log(message.from.id)
             return;
         } else {
             message.from.id = ''
             const key = message.text 
             const spliced = key.slice(6);
-            console.log(spliced);
+            //console.log(spliced);
             const glorpBalance = await iWork.seeGlorp(spliced)//iAccount.displayAccountSettingsMenu(message,true) //eadStats()
             sendMessage(message,glorpBalance);
             //sendMessage(message,'I reset burns and loralist');
@@ -252,11 +252,11 @@ function watch(message) {
         const currentState = lobby[userId].state;
         const handler = stateHandlers[currentState.state];
         if (handler) {
-            //console.log('sending to',handler)
+            console.log('sending to',handler)
             handler(message);
         } else {
-            //console.log('no handler')
-            console.log(currentState)
+            console.log('no handler',currentState)
+            //console.log(currentState)
         }
     }
 }
