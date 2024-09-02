@@ -182,7 +182,7 @@ async function handleSet(message) {
     let settings;
     const userId = message.from.id;
     const group = getGroup(message);
-    console.log('group in handleset',group.id);
+    //console.log('group in handleset',group.id);
     if(group){
         if(userId == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return message.from.id == appointed ? true : false}))){
             settings = group.settings;
