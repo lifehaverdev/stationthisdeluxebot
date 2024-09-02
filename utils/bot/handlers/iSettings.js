@@ -194,15 +194,15 @@ async function handleSet(message) {
         settings = lobby[userId]
     }
 
-    console.log('settings in handleset',settings);
+    //console.log('settings in handleset',settings);
     
     const newValue = message.text;
     const currentState = lobby[userId].state.state;
     const lobbyParam = STATE_TO_LOBBYPARAM[currentState];
     
-    console.log('setting',lobbyParam)
-    console.log('currently',lobby[userId][lobbyParam])
-    console.log('current user state',currentState)
+    // console.log('setting',lobbyParam)
+    // console.log('currently',lobby[userId][lobbyParam])
+    // console.log('current user state',currentState)
     if (!lobby[userId] && !group) {
         sendMessage(message, "You need to make something first");
         return;
@@ -250,8 +250,8 @@ async function handleSet(message) {
                     await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`, iMenu.justSet);
                 } else {
                     settings.styleFileUrl = fileUrl
-                    console.log('settings in setstyle',settings);
-                    console.log('lobby in setstyle',lobby[userId])
+                    // console.log('settings in setstyle',settings);
+                    // console.log('lobby in setstyle',lobby[userId])
                     await sendMessage(message, `looks dope. if style transfer is enabled, this image will be applied`, iMenu.justSet);
                 }
         
@@ -317,7 +317,7 @@ async function handleSet(message) {
             setUserState(message,STATES.IDLE);
             break;
         case STATES.GROUPAPPLY:
-            console.log('we are in handle set group apply');
+            //console.log('we are in handle set group apply');
             if (isNaN(floatValue)) {
                 sendMessage(message, 'Please enter a valid float value');
                 return false;
