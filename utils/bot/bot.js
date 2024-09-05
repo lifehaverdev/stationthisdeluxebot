@@ -46,6 +46,7 @@ const STATES = {
     SETSIZE: 'SETSIZE',
     SETSTYLE: 'SETSTYLE',
     SETCONTROL: 'SETCONTROL',
+    SETPOSE: 'SETPOSE',
 
     VERIFY: 'VERIFY',
 
@@ -61,7 +62,7 @@ const STATES = {
 const SET_COMMANDS = [
     'prompt', 'userprompt', 'negprompt', 'photo', 'type',
     'steps', 'batch', 'seed', 'size', 'strength', 'cfg', 'style',
-    'control',
+    'control', 'pose'
 ];
 const SETTER_TO_STATE = {
     setbatch: STATES.SETBATCH,
@@ -76,6 +77,7 @@ const SETTER_TO_STATE = {
     setsize: STATES.SETSIZE,
     setstyle: STATES.SETSTYLE,
     setcontrol: STATES.SETCONTROL,
+    setpose: STATES.SETPOSE,
     // Add more mappings as needed
 };
 const STATE_TO_LOBBYPARAM = {
@@ -89,8 +91,9 @@ const STATE_TO_LOBBYPARAM = {
     'SETSEED': 'seed',
     'SETPHOTO': 'fileUrl',
     'SETSIZE': 'photoStats',
-    'SETSTYLE': 'stylefileUrl',
-    'SETCONTROL': 'controlfileUrl',
+    'SETSTYLE': 'styleFileUrl',
+    'SETCONTROL': 'controlFileUrl',
+    'SETPOSE': 'poseFileUrl'
     //'SETGROUPAPPLY': 'group'
 }
 
