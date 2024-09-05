@@ -39,7 +39,7 @@ async function readBurns() {
         });
 
         burnsMap.forEach((burned, wallet) => {
-            console.log('wallet',wallet,'burned',burned)
+            //console.log('wallet',wallet,'burned',burned)
             burns.push({ wallet, burned });
         });
 
@@ -50,7 +50,7 @@ async function readBurns() {
         // }));
 
         // Log the result
-        console.log('Burns:', burns);
+        //console.log('Burns:', burns);
         
 
         console.log('burns loaded');

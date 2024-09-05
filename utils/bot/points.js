@@ -1,5 +1,4 @@
 const { lobby } = require('../bot/bot')
-//const { comfydeployment_ids } = require('../comfydeploy/deployment_ids')
 const { getGroup } = require('./handlers/iGroup');
 const { updateGroupPoints } = require('../../db/mongodb')
 
@@ -8,7 +7,8 @@ function addPoints({promptObj,task,message}) {
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
     //console.log('group',group)
-    if(user && !group){
+    if((user && !group) || (user.verified && group)){
+        if(user && group) console.log('WE ADDING POINTS TO USER EVEN THO GROUP')
         user.points += pointsToAdd;
     } else if (group){
         group.points += pointsToAdd;
