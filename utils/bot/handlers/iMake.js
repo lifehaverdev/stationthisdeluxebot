@@ -82,9 +82,9 @@ async function handleDexMake(message, match) {
     }
 }
 
-function checkAndSetType(type, settings, message) {
+function checkAndSetType(type, settings, message, group, userId) {
     // Early return for token gate if needed
-    if (tokenGate()) return;
+    if (tokenGate(group, userId, message)) return;
 
     // Define required files based on settings
     const requiredFiles = [];
@@ -96,15 +96,15 @@ function checkAndSetType(type, settings, message) {
     // Check if any required files are missing
     for (let file of requiredFiles) {
         if (!settings[file.name]) {
-            sendMessage(message, `${file.message} use /set menu or turn off the fanciness in /accountsettings}`);
+            //sendMessage(message, `${file.message} use /set menu or turn off the fanciness in /accountsettings}`);
             return;
         }
     }
 
     // Dynamically build the type
-    if (settings.controlNet) type += '_CANNY';
-    if (settings.styleTransfer) type += '_STYLE';
-    if (settings.openPose) type += '_POSE';
+    if (settings.controlNet && settings.controlFileUrl) type += '_CANNY';
+    if (settings.styleTransfer && settings.styleFileUrl) type += '_STYLE';
+    if (settings.openPose && settings.poseFileUrl) type += '_POSE';
 
     settings.type = type;
     console.log(`Selected type: ${settings.type}`);
@@ -160,8 +160,9 @@ async function startMake3(message,user) {
 async function handleMake(message) {
     console.log('MAKING SOMETHING')
     const userId = message.from.id;
+    message.text = message.text.replace('/make','').replace(`@${process.env.BOT_NAME}`,'')
 
-    if(message.text.replace('/make','').replace(`@${process.env.BOT_NAME}`,'') == ''){
+    if(message.text == ''){
         startMake();
         return
     }
@@ -190,7 +191,7 @@ async function handleMake(message) {
         lastSeed: thisSeed
     }
 
-    checkAndSetType(lobby[userId].type, lobby[userId], message);
+    checkAndSetType(lobby[userId].type, lobby[userId], message, group, userId);
 
     let batch;
     let params;
@@ -335,10 +336,10 @@ async function handleMs2Prompt(message) {
     lobby[userId] = {
         ...lobby[userId],
         prompt: userInput,
-        type: 'MS2'
+        type: 'I2I'
     }
 
-    checkAndSetType(lobby[userId].type, settings, message);
+    checkAndSetType(lobby[userId].type, settings, message, group, userId);
     
     await react(message);
     const promptObj = {

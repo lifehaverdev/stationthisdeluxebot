@@ -186,8 +186,12 @@ async function handleSeeSettings(message) {
 
 async function handleSignIn (message) {
     const userId = message.from.id;
-    
-    userData = await getUserDataByUserId(userId);
+    let userData;
+    if(lobby[userId]){
+        userData = lobby[userId]
+    } else {
+        userData = await getUserDataByUserId(userId);
+    }
     
     if(userData != false){
         lobby[userId] = userData;

@@ -99,6 +99,7 @@ function sortTaskQueue() {
 
 async function processQueue() {
     if (taskQueue.length > 0 && waiting.length < 10) {
+        console.log('we got a live one')
         const task = taskQueue[0];
         waitlist(task);
         
@@ -130,33 +131,8 @@ async function processQueue() {
 async function waitlist(task){
     const { message, promptObj } = task;
     let run_id;
-    switch (promptObj.type){
-        case 'MS3':
-            console.log('we make ms3 pls')
-            run_id = await generate(promptObj);
-            break;
-        case 'MAKE':   
-        case 'MAKE_STYLE':
-        case 'MAKE_CONTROL_STYLE':
-        case 'MAKE_CONTROL':
-        case 'MS2':
-        case 'MS2_CONTROL':
-        case 'MS2_CONTROL_STYLE':
-        case 'MS2_STYLE':
-        case 'PFP':
-        case 'PFP_STYLE':
-        case 'PFP_CONTROL_STYLE':
-        case 'PFP_CONTROL':
-        case 'INTERROGATE':
-        case 'MAKE3':
-        case 'INPAINT':
-        case 'UPSCALE':
-        case 'RMBG':
-            run_id = await generate(promptObj);
-            break;
-    }
+    run_id = await generate(promptObj);
     if(run_id != -1 && run_id != undefined){
-        //console.log('we have run id',run_id);
         task = {
             ...task,
             run_id: run_id,

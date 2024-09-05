@@ -109,8 +109,10 @@ async function generate(promptObj) {
             //console.log('runid',run_id);
             return run_id;
         } else {
-            console.error('Failed to fetch:', response.body.stream);
-            return -1
+                   // If the response is not ok, log the status and error message
+            const errorText = await response.text();  // Use response.text() to capture error details
+            console.error('Failed to fetch:', errorText);
+            return -1;
         }
 
     } catch (error) {
@@ -121,7 +123,7 @@ async function generate(promptObj) {
 
 function imgPreProc(promptObj) {
     //console.log('processing image');
-    if(promptObj.type == 'MAKE' || promptObj.type == 'MAKE_CONTROL' || promptObj.type == 'MAKE_CONTROL_STYLE'){
+    if(promptObj.type.slice(0,4) == 'MAKE'){
         //console.log('make type')
         return
     }
@@ -191,7 +193,7 @@ function prepareRequest(promptObj) {
     let basePrompt = getBasePromptByName(promptObj.basePrompt);
     const comfydeployids = getDeploymentIdByType(promptObj.type);
     const comfydeployid = chooseIdByMachine(comfydeployids, promptObj);
-
+    //console.log('prepareRequest', comfydeployid)
     // Base structure that works for most complex cases like PFP_CONTROL_STYLE
     let body = {
         deployment_id: comfydeployid,
@@ -201,7 +203,7 @@ function prepareRequest(promptObj) {
             input_batch: promptObj.batchMax,
             input_steps: promptObj.steps,
             input_cfg: promptObj.cfg,
-            input_prompt: `${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+            input_prompt: `${promptObj.type.includes('AUTO') ? '' : promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
             input_checkpoint: `${promptObj.checkpoint}.safetensors`,
             input_image: promptObj.fileUrl || null,
             input_strength: promptObj.strength || null,
@@ -213,6 +215,11 @@ function prepareRequest(promptObj) {
             input_negative: promptObj.negativePrompt == '-1' ? '' : `${promptObj.negativePrompt} ${baseNegPrompt}`,
         }
     };
+
+        // Remove any null or undefined fields from the `inputs`
+        body.inputs = Object.fromEntries(
+            Object.entries(body.inputs).filter(([_, value]) => value !== null && value !== undefined)
+        );
 
     // Handle special cases where fewer fields are needed
     switch (promptObj.type) {

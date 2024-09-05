@@ -1,8 +1,8 @@
-const { sendMessage, editMessage, setUserState, react } = require('../../utils')
+const { sendMessage, editMessage, setUserState, react, gated } = require('../../utils')
 const { getPhotoUrl, lobby, STATES, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
+const { getGroup } = require('./iGroup')
 const Jimp = require('jimp');
-
 
 async function handleUpscale(message) {
     if(!message.photo || message.document) {
@@ -129,17 +129,66 @@ async function handleMs2ImgFile(message) {
     }
 }
 
+
+function checkAndSetType(settings, message, group, userId) {
+    // Early return for token gate if needed
+    if (tokenGate(group, userId, message)) return;
+    let typest = settings.type;
+    // Define required files based on settings
+    //const requiredFiles = [];
+    
+    //if (settings.styleTransfer) requiredFiles.push({ name: 'styleFileUrl', message: 'You need to set a style image.' });
+    //if (settings.controlNet) requiredFiles.push({ name: 'controlFileUrl', message: 'You need to set a control image.' });
+    //if (settings.openPose) requiredFiles.push({ name: 'poseFileUrl', message: 'You need to set a pose image.' });
+
+    // Check if any required files are missing
+    // for (let file of requiredFiles) {
+    //     if (!settings[file.name]) {
+    //         sendMessage(message, `${file.message} use /set menu or turn off the fanciness in /accountsettings}`);
+    //         return;
+    //     }
+    // }
+
+    // Dynamically build the type
+    if (settings.controlNet) typest += '_CANNY';
+    if (settings.styleTransfer) typest += '_STYLE';
+    if (settings.openPose) typest += '_POSE';
+
+    //settings.type = type;
+    console.log(`Selected type: ${settings.type}`);
+    return typest
+}
+
+function tokenGate(group, userId, message) {
+    if(!group && lobby[userId] && lobby[userId].balance < 400000) {
+        gated(message)
+        return true
+    }
+    if(group && group.applied < 400000){
+        gated(message)
+        return true
+    }
+}
+
+
 async function handlePfpImgFile(message) {
     //sendMessage(message,'sorry this is broken rn');
     if(!message.photo || message.document) {
         return;
     }
-    sendMessage(message,'looks good. sit tight');
+    react(message,'🥰')
     chatId = message.chat.id;
     const userId = message.from.id;
     const fileUrl = await getPhotoUrl(message);
+    const group = getGroup(message);
     //const{time,result} = await interrogateImage(message, fileUrl);
-    
+    let settings;
+    if(group) {
+        settings = group.settings
+    } else {
+        settings = lobby[userId]
+    }
+    settings.type = 'I2I_AUTO'
     try {
         const photo = await Jimp.read(fileUrl);
         const { width, height } = photo.bitmap;
@@ -150,36 +199,20 @@ async function handlePfpImgFile(message) {
         };
 
         const thisSeed = makeSeed(userId);
+        settings.type = checkAndSetType(settings,message, group, userId)
 
         lobby[userId] = {
             ...lobby[userId],
             lastSeed: thisSeed,
-            type: 'PFP',
             tempSize: photoStats,
             fileUrl: fileUrl
         }
-
-
-        if(lobby[userId].styleTransfer && !lobby[userId].controlNet) {
-            if (!lobby[userId].styleFileUrl){
-                sendMessage(message, 'hey use the setstyle command to pick a style photo');
-                return;
-            }
-            lobby[userId].type = 'PFP_STYLE'
-        } else if (lobby[userId].styleTransfer && lobby[userId].controlNet){
-            if (!lobby[userId].styleFileUrl){
-                sendMessage(message, 'hey use the setstyle command to pick a style/ control photo');
-                return;
-            }
-            lobby[userId].type = 'PFP_CONTROL_STYLE'
-        } else if (lobby[userId].controlNet && !lobby[userId].styleTransfer){
-            lobby[userId].type = 'PFP_CONTROL'
-        }
         
         const promptObj = {
-            ...lobby[userId],
+            ...settings,
             seed: thisSeed,
             photoStats: photoStats,
+            fileUrl: fileUrl
         }
         //return await shakeMs2(message,promptObj);
         enqueueTask({message,promptObj})

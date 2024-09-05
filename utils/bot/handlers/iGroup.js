@@ -11,29 +11,13 @@ function getGroup(message) {
 
 function groupSettings(message) {
     baseData = makeBaseData(message,message.from.id);
-    //const callbackData = compactSerialize({ ...baseData, action: `createGroup` });
     const group = getGroup(message);
-    //console.log('group?',group)
     if(!group){
-        // sendMessage(message,'This group is not initialized, would you like to apply a balance and become the bot boss?',
-        //     {
-        //         reply_markup: {
-        //             inline_keyboard: [
-        //                 [
-        //                     {text: 'Yes, I am the boss', callback_data: callbackData},
-        //                     {text: 'No, I am but a hubmle genner', callback_data: 'cancel'}
-        //                 ]
-        //             ]
-        //         }
-        //     }
-        // )
-        //return
         console.log('handling groupname','message',message.text)
         handleGroupName(message);
         console.log('exiting groupSettings')
         return
     }
-    //console.log('group found',group.name)
     let groupSettingsKeyboard = [
         [
             {text: 'Edit Group', callback_data: 'editgroup'},
@@ -53,59 +37,26 @@ function groupSettings(message) {
             },
             {
                 text: 'Charge',
-                url: 'https://miladystation2.net'
+                url: 'https://miladystation2.net/charge'
             }
         ]
     ];
 
-
-    // if (group.applied >= 200000) {
-    //     groupSettingsKeyboard[0].push(
-    //         {
-    //             text: `Watermark: ${group.settings.waterMark ? '✅' : '❌'}`,
-    //             callback_data: 'toggleWaterMark',
-    //         },
-    //     );
-    // }
-    if(group && group.applied >= 400000){
-        groupSettingsKeyboard[2].push(
-            {
-                text: `ControlNet ${group.settings.controlNet ? '✅' : '❌'}`,
-                callback_data: 'toggleControlNet',
-            },
-            {
-                text: `Style Transfer ${group.settings.styleTransfer ? '✅' : '❌'}`,
-                callback_data: 'toggleStyleTransfer',
-            }
-        )
-    }
-    // if(group.applied >= 500000){
-    //     groupSettingsKeyboard[2].push(
-    //         {
-    //             text: `Voice Menu`,
-    //             callback_data: 'voicemenu',
-    //         },
-    //     )
-    // }
-    //console.log('groupchat message',message);
     
     let groupSettingsInfo = '\n';
     groupSettingsInfo += `<b>${group.name}</b> \n`;
     groupSettingsInfo += `<b>MS2 Burn Balance:</b> ${group.applied}🎮\n`;
     groupSettingsInfo += `<b>Points Remaining</b> ${group.credits - group.points}\n`
-    //groupSettingsInfo += `<b>LEVEL:</b>${level} `
-    //groupSettingsInfo += `<b>EXP:</b> ${bars}\n`
-    //groupSettingsInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
-    groupSettingsInfo += `<b>Locked Features:</b>\n`;
-    
+
     // List locked features based on the user's balance
     const lockedFeatures = features.filter(feature => group.applied < feature.gate);
     if (lockedFeatures.length > 0) {
+        groupSettingsInfo += `<b>Locked Features:</b>\n`;
         lockedFeatures.forEach(feature => {
             groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
         });
     } else {
-        groupSettingsInfo += `None\n`;
+        groupSettingsInfo += `Full Access VIP GROUP\n`;
     }
 
     // Send account settings menu with account information
@@ -186,15 +137,17 @@ async function createGroup(message) {
 
 async function toggleAdmin(message) {
     const group = getGroup(message);
+    if(!group) return
+    if(message.from.id != group.owner || !group.admins.includes(message.from.id)) return
     if(group && group.admins.length > 0
         && group.admins.includes(message.reply_to_message.from.id)
     ) {
         group.admins = group.admins.filter(adminId => adminId !== message.reply_to_message.from.id);
-        sendMessage(message,'removing admin');
+        react(message,'✍️');
         //return; // Exit the function after removing the admin
     } else {
         group.admins.push(message.reply_to_message.from.id);
-        sendMessage(message,'okay they are admin');
+        react(message,"💅");
         //return
     }
     await writeData('floorplan',{id: message.chat.id},{admins: group.admins})

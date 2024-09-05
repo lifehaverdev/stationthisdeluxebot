@@ -9,26 +9,26 @@ const basepromptmenu = [
         description: "actual wifeystationmode",
         baseprompt: "<lora:miladystation3:1>, (<lora:petravoice3:1> petravoice) a cartoon woman, bold makeup, red lipstick, glsl - shaders, smooth soft focus, imagenet, twitter pfp, beautifully dithered gradients, <lora:LOW_POLY_PLAYSTATION_1_STILL:0.9> low poly stardew valley character, upper body avatar, fluffy, hyperrealistic, toon aesthetic, low poly low resolution, pixelated graphics, blocky textures, retro game"
     },
-    // {
-    //     name: '$CULT',
-    //     description: 'ominous smiley man',
-    //     baseprompt: 'remilia <lora:remilia:1>'
-    // },
+    {
+        name: '$CULT',
+        description: 'ominous smiley man',
+        baseprompt: 'remilia <lora:remilia:1>'
+    },
     {
         name: "petravoice",
         description: "babes by petravoice",
         baseprompt: "simple_background, portrait, close-up, blurry, depth_of_field, chromatic_aberration, film_grain, <lora:petravoice3:1> petravoice"
     },
-    // {
-    //     name: "13<33",
-    //     description: "heavenly angel",
-    //     baseprompt: "blue_theme, glowing, 3d, magic, crystal, magic_circle, <lora:13angel332:1> 13angel33"
-    // },
-    // {
-    //     name: 'ediblekawaii',
-    //     description: 'edible kawaii demonization',
-    //     baseprompt: "figure, 3d, simple_background, gradient_background, colored_sclera, gem, gummy, <lora:ediblekawaii:1>"
-    // },
+    {
+        name: "13<33",
+        description: "heavenly angel",
+        baseprompt: "blue_theme, glowing, 3d, magic, crystal, magic_circle, <lora:13angel332:1> 13angel33"
+    },
+    {
+        name: 'ediblekawaii',
+        description: 'edible kawaii demonization',
+        baseprompt: "figure, 3d, simple_background, gradient_background, colored_sclera, gem, gummy, <lora:ediblekawaii:1>"
+    },
     {
         name: "MS2",
         description: "MS2 base prompt competition 1st place winner (default)",
