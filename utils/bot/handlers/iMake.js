@@ -185,7 +185,7 @@ async function handleMake(message) {
     let thisSeed = makeSeed(userId)
     //save these settings into lobby in case cook mode time
     lobby[userId] = {
-        ...settings,
+        ...lobby[userId],
         prompt: message.text,
         type: 'MAKE',
         lastSeed: thisSeed
@@ -265,7 +265,7 @@ async function handleMake3(message) {
 
     //save these settings into lobby in case cook mode time
     lobby[userId] = {
-        ...settings,
+        ...lobby[userId],
         prompt: message.text,
         type: 'MAKE3',
         lastSeed: thisSeed
