@@ -171,6 +171,7 @@ const stateHandlers = {
     [STATES.SETPHOTO]: (message) => safeExecute(message, iSettings.handleSet),
     [STATES.SETSTYLE]: (message) => safeExecute(message,iSettings.handleSet),
     [STATES.SETCONTROL]: (message) => safeExecute(message,iSettings.handleSet),
+    [STATES.SETPOSE]: (message) => safeExecute(message, iSettings.handleSet),
     [STATES.INPAINT]: (message) => safeExecute(message, iMedia.handleInpaint),
     [STATES.INPAINTTARGET]: (message) => safeExecute(message, iMake.handleInpaintTarget),
     [STATES.INPAINTPROMPT]: (message) => safeExecute(message, iMake.handleInpaintPrompt),
