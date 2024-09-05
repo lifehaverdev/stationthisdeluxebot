@@ -31,9 +31,33 @@ function setMenu(message) {
                 { text: 'steps '+settings.steps, callback_data: 'setsteps'},
             ],
             [
-                { text: settings.photo ? 'photo ✅' : 'photo ❌', callback_data: 'setphoto'},
-                { text: settings.style ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
-                { text: settings.control ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
+                {
+                    text: 
+                        settings.controlNet && settings.controlFileUrl ? 
+                        'control ✅' : 
+                        settings.controlNet && !settings.controlFileUrl ? 
+                        'control 🆘' : 'control ❌',
+                    callback_data: 'setcontrol',
+                },
+                {
+                    text:
+                        settings.styleTransfer && settings.styleFileUrl ?
+                        'style ✅' : 
+                        settings.styleTransfer && !settings.styleFileUrl ?
+                        'style 🆘' : 'style ❌',
+                    callback_data: 'setstyle',
+                },
+                {
+                    text:
+                        settings.openPose && settings.poseFileUrl ? 
+                        'pose ✅' : 
+                        settings.openPose && !settings.poseFileUrl ?
+                        'pose 🆘' : 'pose ❌',
+                    callback_data: 'setpose'
+                }
+                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
+                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
+                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
             ],
             [
                 { text: 'cfg '+settings.cfg, callback_data: 'setcfg'},
@@ -105,15 +129,44 @@ async function handleCreate(message) {
     let sd3 = false;
     if(lobby[message.from.id] && balance >= 400000){
         const newButtons = [
-            [   
-                { text: settings.advancedUser ? '💬💃🏼➡️🖼️' : 'txt2img style transfer', callback_data: 'make_style' },
+            [
+                {
+                    text: 
+                        settings.controlNet && settings.controlFileUrl ? 
+                        'control ✅' : 
+                        settings.controlNet && !settings.controlFileUrl ? 
+                        'control 🆘' : 'control ❌',
+                    callback_data: 'toggleControlCreate',
+                },
+                {
+                    text:
+                        settings.styleTransfer && settings.styleFileUrl ?
+                        'style ✅' : 
+                        settings.styleTransfer && !settings.styleFileUrl ?
+                        'style 🆘' : 'style ❌',
+                    callback_data: 'toggleStyleCreate',
+                },
+                {
+                    text:
+                        settings.openPose && settings.poseFileUrl ? 
+                        'pose ✅' : 
+                        settings.openPose && !settings.poseFileUrl ?
+                        'pose 🆘' : 'pose ❌',
+                    callback_data: 'togglePoseCreate'
+                }
+                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
+                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
+                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
             ],
-            [   
-                { text: settings.advancedUser ? '💬🩻➡️🖼️' : 'txt2img controlnet', callback_data: 'make_control' },
-            ],
-            [   
-                { text: settings.advancedUser ? '💬💃🏼🩻➡️🖼️' : 'txt2img controlnet + style transfer', callback_data: 'make_control_style' },
-            ],
+            // [   
+            //     { text: settings.advancedUser ? '💬💃🏼➡️🖼️' : 'txt2img style transfer', callback_data: 'make_style' },
+            // ],
+            // [   
+            //     { text: settings.advancedUser ? '💬🩻➡️🖼️' : 'txt2img controlnet', callback_data: 'make_control' },
+            // ],
+            // [   
+            //     { text: settings.advancedUser ? '💬💃🏼🩻➡️🖼️' : 'txt2img controlnet + style transfer', callback_data: 'make_control_style' },
+            // ],
         ];
     
         // Define the index where you want to insert the new buttons
@@ -236,24 +289,55 @@ function handleEffect(message) {
         ];
     }
     if(lobby[message.from.id] && balance >= 400000){
-        options.reply_markup.inline_keyboard.push(
+        options.reply_markup.inline_keyboard.unshift(
             [
-                { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
-                { text: settings.advancedUser ? '🖼️💃🏼👾➡️🖼️' : 'autoi2i style transfer', callback_data: 'pfp_style' },
-            ]
+                {
+                    text: 
+                        settings.controlNet && settings.controlFileUrl ? 
+                        'control ✅' : 
+                        settings.controlNet && !settings.controlFileUrl ? 
+                        'control ♻️' : 'control ❌',
+                    callback_data: 'toggleControlEffect',
+                },
+                {
+                    text:
+                        settings.styleTransfer && settings.styleFileUrl ?
+                        'style ✅' : 
+                        settings.styleTransfer && !settings.styleFileUrl ?
+                        'style ♻️' : 'style ❌',
+                    callback_data: 'toggleStyleEffect',
+                },
+                {
+                    text:
+                        settings.openPose && settings.poseFileUrl ? 
+                        'pose ✅' : 
+                        settings.openPose && !settings.poseFileUrl ?
+                        'pose ♻️' : 'pose ❌',
+                    callback_data: 'togglePoseEffect'
+                }
+                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
+                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
+                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
+            ],
         )
-        options.reply_markup.inline_keyboard.push(
-            [
-                { text: settings.advancedUser ? '🖼️🩻➡️🖼️' : 'image2image controlnet', callback_data: 'ms2_control'},
-                { text: settings.advancedUser ? '🖼️🩻👾➡️🖼️' : 'autoi2i controlnet', callback_data: 'pfp_control'}
-            ]
-        )
-        options.reply_markup.inline_keyboard.push(
-            [
-                { text: settings.advancedUser ? '🖼️💃🏼🩻➡️🖼️' : 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
-                { text: settings.advancedUser ? '🖼️💃🏼🩻👾➡️🖼️' : 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
-            ]
-        )
+        // options.reply_markup.inline_keyboard.push(
+        //     [
+        //         { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
+        //         { text: settings.advancedUser ? '🖼️💃🏼👾➡️🖼️' : 'autoi2i style transfer', callback_data: 'pfp_style' },
+        //     ]
+        // )
+        // options.reply_markup.inline_keyboard.push(
+        //     [
+        //         { text: settings.advancedUser ? '🖼️🩻➡️🖼️' : 'image2image controlnet', callback_data: 'ms2_control'},
+        //         { text: settings.advancedUser ? '🖼️🩻👾➡️🖼️' : 'autoi2i controlnet', callback_data: 'pfp_control'}
+        //     ]
+        // )
+        // options.reply_markup.inline_keyboard.push(
+        //     [
+        //         { text: settings.advancedUser ? '🖼️💃🏼🩻➡️🖼️' : 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
+        //         { text: settings.advancedUser ? '🖼️💃🏼🩻👾➡️🖼️' : 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
+        //     ]
+        // )
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '🖼️🔍➡️🎨🖼️' : 'inpaint', callback_data: 'inpaint'},

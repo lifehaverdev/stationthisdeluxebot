@@ -17,11 +17,14 @@ class StarterFunction {
             if (this.preconditions.controlNet !== undefined) {
                 lobby[user].controlNet = this.preconditions.controlNet;
             }
+            if (this.preconditions.openPose !== undefined) {
+                lobby[user].openPose = this.preconditions.openPose
+            }
         }
     }
 
     async start(message, user = null) {
-        console.log('we are using the new starter class')
+        ///console.log('we are using the new starter class')
         // Apply preconditions if user is provided
         if (user) {
             this.applyPreconditions(user);
@@ -164,21 +167,32 @@ class CallAndResponse {
 
 
 // Example usage for each starter function:
-const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.');
-const ms2StyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style.', 400000, { styleTransfer: true, controlNet: false });
-const ms2ControlStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + control.', 400000, { styleTransfer: false, controlNet: true });
-const ms2ControlStyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style + control.', 400000, { styleTransfer: true, controlNet: true });
+const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.',null,null);
+const ms2PoseStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + pose.', 400000, { openPose: true, styleTransfer: false, controlNet: false });
+const ms2StyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style.', 400000, { openPose: false, styleTransfer: true, controlNet: false });
+const ms2StylePoseStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style + pose.', 400000, { openPose: true, styleTransfer: true, controlNet: false });
+const ms2ControlStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + control.', 400000, { openPose: false, styleTransfer: false, controlNet: true });
+const ms2ControlPoseStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + control + pose.', 400000, { openPose: true, styleTransfer: false, controlNet: true });
+const ms2ControlStyleStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style + control.', 400000, { openPose: false, styleTransfer: true, controlNet: true });
+const ms2ControlStylePoseStarter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img + style + control + pose.', 400000, { openPose: true, styleTransfer: true, controlNet: true });
 
-const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?');
-const makeStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style?', 400000, { styleTransfer: true, controlNet: false });
-const makeControlStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+control?', 400000, { styleTransfer: false, controlNet: true });
-const makeControlStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style+control?', 400000, { styleTransfer: true, controlNet: true });
+const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?',null,null);
+const makePoseStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img + pose?',null,{ openPose: true, styleTransfer: false, controlNet: false });
+const makeStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style?', 400000, { openPose: false, styleTransfer: true, controlNet: false });
+const makeStylePoseStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style+pose?', 400000, { openPose: true, styleTransfer: true, controlNet: false });
+const makeControlStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+control?', 400000, { openPose: false, styleTransfer: false, controlNet: true });
+const makeControlPoseStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+control?', 400000, { openPose: true, styleTransfer: false, controlNet: true });
+const makeControlStyleStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style+control?', 400000, { openPose: false, styleTransfer: true, controlNet: true });
+const makeControlStylePoseStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img+style+control?', 400000, { openPose: true, styleTransfer: true, controlNet: true });
 
-//const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.');
-const pfpStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img. I will do the prompt myself.', 300000);
-const pfpStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + style transfer. I will do the prompt myself.', 400000, { styleTransfer: true, controlNet: false });
-const pfpControlStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet. I will do the prompt myself.', 400000, { styleTransfer: false, controlNet: true });
-const pfpControlStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet + style transfer. I will do the prompt myself.', 400000, { styleTransfer: true, controlNet: true });
+const pfpStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img. I will do the prompt myself.', 300000, null);
+const pfpPoseStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + pose. I will do the prompt myself.', 400000, { openPose: true, styleTransfer: false, controlNet: false });
+const pfpStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + style transfer. I will do the prompt myself.', 400000, { openPose: false, styleTransfer: true, controlNet: false });
+const pfpStylePoseStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + style transfer + pose. I will do the prompt myself.', 400000, { openPose: true, styleTransfer: true, controlNet: false });
+const pfpControlStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet. I will do the prompt myself.', 400000, { openPose: false, styleTransfer: false, controlNet: true });
+const pfpControlPoseStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet + pose. I will do the prompt myself.', 400000, { openPose: true, styleTransfer: false, controlNet: true });
+const pfpControlStyleStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet + style transfer. I will do the prompt myself.', 400000, { openPose: false, styleTransfer: true, controlNet: true });
+const pfpControlStylePoseStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img + controlnet + style transfer. I will do the prompt myself.', 400000, { openPose: true, styleTransfer: true, controlNet: true });
 
 const ms3Starter = new StarterFunction(STATES.MS3, 'Send in the photo you want to img to video.', 600000);
 const rmbgStarter = new StarterFunction(STATES.RMBG, 'Send me the photo to remove the background from', 200000);
@@ -307,9 +321,9 @@ const inpaintFlow = new CallAndResponse(STATES.INPAINT, [
 module.exports = {
     ms2Starter,
     pfpStarter,
-    pfpStyleStarter,
-    pfpControlStarter,
-    pfpControlStyleStarter,
+    // pfpStyleStarter,
+    // pfpControlStarter,
+    // pfpControlStyleStarter,
     ms3Starter,
     rmbgStarter,
     upscaleStarter,
@@ -317,12 +331,12 @@ module.exports = {
     make3Starter,
     discStarter,
     //watermarkStarter,
-    makeStyleStarter,
-    makeControlStarter,
-    makeControlStyleStarter,
-    ms2ControlStarter,
-    ms2StyleStarter,
-    ms2ControlStyleStarter,
+    // makeStyleStarter,
+    // makeControlStarter,
+    // makeControlStyleStarter,
+    // ms2ControlStarter,
+    // ms2StyleStarter,
+    // ms2ControlStyleStarter,
     interrogateStarter,
     assistStarter,
     //speakStarter,
@@ -331,5 +345,9 @@ module.exports = {
 
     ms2Flow,
     inpaintFlow,
+
+    // ms2PoseStarter, ms2StylePoseStarter, ms2ControlPoseStarter, ms2ControlStylePoseStarter,
+    // makePoseStarter, makeStylePoseStarter, makeControlPoseStarter, makeControlStylePoseStarter,
+    // pfpPoseStarter, pfpStylePoseStarter, pfpControlPoseStarter, pfpControlStylePoseStarter
 
 }
