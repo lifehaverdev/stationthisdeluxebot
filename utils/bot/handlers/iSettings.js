@@ -233,6 +233,7 @@ async function handleSet(message) {
         case STATES.SETPHOTO:
         case STATES.SETSTYLE:
         case STATES.SETCONTROL:
+        case STATES.SETPOSE:
             const fileUrl = await getPhotoUrl(message);
             try {
                 const photo = await Jimp.read(fileUrl);
@@ -252,7 +253,11 @@ async function handleSet(message) {
                     settings.controlFileUrl = fileUrl
                     
                     await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`, iMenu.justSet);
-                } else {
+                } else if(currentState == STATES.SETPOSE) {
+                    settings.poseFileUrl = fileUrl
+                    await sendMessage(message, `very nice. if pose is enabled, this image will be applied.`, iMenu.justSet)
+                
+                } else if(currentState == STATES.SETSTYLE) {
                     settings.styleFileUrl = fileUrl
                     // console.log('settings in setstyle',settings);
                     // console.log('lobby in setstyle',lobby[userId])
