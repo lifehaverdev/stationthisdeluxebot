@@ -1,3 +1,4 @@
+const { flows } = require('../bot/bot')
 const comfydeployment_ids = [
     {
         type: "MAKE",
@@ -114,10 +115,11 @@ const comfydeployment_ids = [
         score: 10
     }
 ]
+
 function getDeploymentIdByType(type) {
-    const deployment = comfydeployment_ids.find(deployment => deployment.type === type);
-    if (deployment) {
-        return deployment.id;
+    const workflow = flows.find(flow => flow.name === type);
+    if (workflow) {
+        return workflow.ids; //an array
     } else {
         throw new Error(`Deployment ID not found for type: ${type}`);
     }

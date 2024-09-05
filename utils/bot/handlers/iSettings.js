@@ -3,7 +3,7 @@ const { setUserState, sendMessage, editMessage } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
 const Jimp = require('jimp');
 const iMenu = require('./iMenu')
-const { getGroup, createGroup } = require('./iGroup')
+const { getGroup } = require('./iGroup')
 
 const SIZELIMIT = 2048;
 const BATCHLIMIT = 6;
@@ -45,6 +45,7 @@ async function startSet(message,user) {
     const editPayload = {
         chat_id: message.chat.id,
         message_id: message.message_id,
+        force_reply: true
     };
 
     const sendOrEditMessage = async (text, reply_markup = null) => {
@@ -58,7 +59,7 @@ async function startSet(message,user) {
                 ...editPayload
             });
         } else {
-            await sendMessage(message, text, { keyboard });
+            await sendMessage(message, text, { keyboard, force_reply: true });
         }
     };
 
@@ -100,6 +101,9 @@ async function startSet(message,user) {
                 break;
             case 'control':
                 await sendOrEditMessage( 'Send in a photo to apply controlnet from')
+                break;
+            case 'pose':
+                await sendOrEditMessage( 'Send in a photo to apply openPose on')
                 break;
             case 'checkpoint':
                 botMessage = await sendOrEditMessage( 'Checkpoint Menu:');

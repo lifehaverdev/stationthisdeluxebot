@@ -218,6 +218,42 @@ async function readStats() {
     }
 }
 
+async function incrementLoraUseCounter(names) {
+    const uri = process.env.MONGO_PASS;
+    const client = new MongoClient(uri);
+
+    try {
+        const collection = client.db(dbName).collection('loralist');
+                // Find the single document in the collection
+                const loraListDoc = await collection.findOne({});
+        
+                if (!loraListDoc) {
+                    console.error('No loraList document found');
+                    return false;
+                }
+        
+                // Iterate over the 'names' array and find the corresponding object to update
+                const updatedLoraTriggers = loraListDoc.loraTriggers.map(lora => {
+                    if (names.includes(lora.lora_name)) {
+                        // Increment or set the 'uses' key
+                        lora.uses = (lora.uses || 0) + 1;
+                    }
+                    return lora;
+                });
+        
+                // Update the document in the collection with the modified array
+                await collection.updateOne({}, { $set: { loraTriggers: updatedLoraTriggers } });
+        
+        console.log('Lora Use Counter updated successfully',names);
+        return true;
+    } catch (error) {
+        console.error("Error updating group points:", error);
+        return false;
+    } finally {
+        await client.close();
+    }
+}
+
 //write room settings
 //saves settings
 
@@ -972,5 +1008,6 @@ module.exports = {
     createRoom,
     writeData,
     readStats,
-    updateGroupPoints
+    updateGroupPoints,
+    incrementLoraUseCounter
 };

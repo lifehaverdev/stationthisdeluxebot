@@ -46,12 +46,28 @@ function displayAccountSettingsMenu(message,dms) {
     if(lobby[userId].balance >= 400000){
         accountSettingsKeyboard[1].push(
             {
-                text: `ControlNet ${lobby[userId].controlNet ? '✅' : '❌'}`,
+                text: `ControlNet ${
+                    lobby[userId].controlNet && lobby[userId].controlFileUrl ? 
+                    '✅' : 
+                    lobby[userId].controlNet && !lobby[userId].controlFileUrl ? 
+                    '🆘' : '❌'}`,
                 callback_data: 'toggleControlNet',
             },
             {
-                text: `Style Transfer ${lobby[userId].styleTransfer ? '✅' : '❌'}`,
+                text: `StyleTransfer ${
+                    lobby[userId].styleTransfer && lobby[userId].styleFileUrl ?
+                    '✅' : 
+                    lobby[userId].styleTransfer && !lobby[userId].styleFileUrl ?
+                    '🆘' : '❌'}`,
                 callback_data: 'toggleStyleTransfer',
+            },
+            {
+                text: `OpenPose ${
+                    lobby[userId].openPose && lobby[userId].poseFileUrl ? 
+                    '✅' : 
+                    lobby[userId].openPose && !lobby[userId].poseFileUrl ?
+                    '🆘' : '❌'}`,
+                callback_data: 'toggleOpenPose'
             }
         )
     }
@@ -63,6 +79,7 @@ function displayAccountSettingsMenu(message,dms) {
     const lastLevel = (level)**3;
     const toLevelUpRatio = (totalExp-lastLevel) / (nextLevel-lastLevel);
     let bars = '🟩';
+    let pointBars = '🔹'
     for(let i =0; i < 6; i++){
         if(i < toLevelUpRatio * 6){
             bars += '🟩';
@@ -70,45 +87,55 @@ function displayAccountSettingsMenu(message,dms) {
             bars += '⬜️'
         }
     }
+    const toPointRunOutRatio = lobby[userId].points / Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)
+    for(let i =0; i < 6; i++){
+        if(i < toPointRunOutRatio * 6){
+            pointBars += '🔹';
+        } else {
+            pointBars += '▫️'
+        }
+    }
     const burned = getBurned(userId)
     
     //let accountInfo = `Account:\n\n`;
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
-    accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n`;
-    accountInfo += `<b>MS2 Burned:</b> ${burned/2}🔥\n`;
-    accountInfo += `<b>LEVEL:</b>${level} `
-    accountInfo += `<b>EXP:</b> ${bars}\n`
-    accountInfo += `<b>Points:</b> ${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}\n\n`;
+    dms ? accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n` : null
+    dms ? accountInfo += `<b>MS2 Burned:</b> ${burned/2}🔥\n` : null
+    accountInfo += `<b>LEVEL:</b>${level}\n`
+    accountInfo += `<b>EXP:</b>        ${bars}\n`
+    accountInfo += `<b>POINTS:</b> ${pointBars}\n`
+    accountInfo += `${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}\n\n`;
     accountInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
-    accountInfo += `<b>Locked Features:</b>\n`;
+    
     
     // List locked features based on the user's balance
     const lockedFeatures = features.filter(feature => lobby[userId].balance < feature.gate);
     if (lockedFeatures.length > 0) {
+        accountInfo += `<b>Locked Features:</b>\n`;
         lockedFeatures.forEach(feature => {
             accountInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
         });
     } else {
-        accountInfo += `None\n`;
+        accountInfo += `<b>ALL ACCESS VIP STATION THIS</b>`
     }
 
     // Send account settings menu with account information
-    if(dms){
+    // if(dms){
         sendMessage(message, accountInfo, {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: accountSettingsKeyboard
             }
         });
-    } else {
-        sendMessage(message, 'Account Settings:', {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: accountSettingsKeyboard
-            }
-        });
-    }
+    // } else {
+    //     sendMessage(message, 'Account Settings:', {
+    //         parse_mode: 'HTML',
+    //         reply_markup: {
+    //             inline_keyboard: accountSettingsKeyboard
+    //         }
+    //     });
+    // }
     
 }
 
@@ -290,7 +317,6 @@ async function handleSignOut(message) {
 }
 
 async function handleAccountSettings(message) {
-    const userId = message.from.id;
     const chatId = message.chat.id;
     if(!await checkLobby(message)){
         return;
@@ -304,7 +330,6 @@ async function handleAccountSettings(message) {
 }
 
 async function handleAccountReset(message) {
-    const chatId = message.chat.id;
     const userId = message.from.id;
     let chatData;
 

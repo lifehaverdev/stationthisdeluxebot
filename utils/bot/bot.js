@@ -11,6 +11,7 @@ let waiting = []
 let loraTriggers = [];
 let burns = [];
 let rooms = [];
+let flows = [];
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -203,12 +204,9 @@ module.exports = {
     getNextPeriodTime,
     getBurned,
     lobby,
-    rooms,
+    rooms, flows, burns, loraTriggers,
+    taskQueue, waiting,
     startup,
-    waiting,
-    loraTriggers,
-    burns,
-    taskQueue,
     commandStateMessages,
     SET_COMMANDS,
     STATE_TO_LOBBYPARAM,

@@ -1,4 +1,5 @@
 const { loraTriggers } = require('../bot/bot')
+const { incrementLoraUseCounter } = require('../../db/mongodb')
 
 function handleLoraTrigger(prompt, balance) {
   let usedLoras = new Set();
@@ -18,6 +19,11 @@ function handleLoraTrigger(prompt, balance) {
       });
     });
   });
+    // Convert the Set to an Array and increment the use counter for the used LoRAs
+    const usedLoraNamesArray = Array.from(usedLoras);
+    if (usedLoraNamesArray.length > 0) {
+      incrementLoraUseCounter(usedLoraNamesArray); // Call the function to increment 'uses'
+    }
   console.log('before & after', prompt, modifiedPrompt)
   return modifiedPrompt;
 }

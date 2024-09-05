@@ -42,7 +42,7 @@ function parseCallbackData(callbackQuery) {
 const setActions = [
     'setstrength', 'setsize', 'setcfg', 'setprompt', 'setbatch',
     'setsteps', 'setuserprompt', 'setseed', 'setnegprompt', 'setphoto', 
-    'setcheckpoint', 'setbaseprompt', 'setstyle', 'setcontrol'
+    'setcheckpoint', 'setbaseprompt', 'setstyle', 'setcontrol', 'setpose'
 ];
 
 const handleSetAction = (action, message, user) => {
@@ -153,18 +153,30 @@ const actionMap = {
         handleRegen(message)
     },
     'make': iResponse.makeStarter.start.bind(iResponse.makeStarter),
+    'make_pose': iResponse.makeStarter.start.bind(iResponse.makePoseStarter),
     'make_style': iResponse.makeStyleStarter.start.bind(iResponse.makeStyleStarter),
+    'make_style_pose': iResponse.makeStyleStarter.start.bind(iResponse.makeStylePoseStarter),
     'make_control': iResponse.makeControlStarter.start.bind(iResponse.makeControlStarter),
+    'make_control_pose': iResponse.makeControlStarter.start.bind(iResponse.makeControlPoseStarter),
     'make_control_style': iResponse.makeControlStyleStarter.start.bind(iResponse.makeControlStyleStarter),
+    'make_control_style_pose': iResponse.makeControlStyleStarter.start.bind(iResponse.makeControlStylePoseStarter),
     'ms2': iResponse.ms2Starter.start.bind(iResponse.ms2Starter),
+    'ms2_pose': iResponse.ms2Starter.start.bind(iResponse.ms2PoseStarter),
     'ms2_style': iResponse.ms2StyleStarter.start.bind(iResponse.ms2StyleStarter),
+    'ms2_style_pose': iResponse.ms2StyleStarter.start.bind(iResponse.ms2StylePoseStarter),
     'ms2_control': iResponse.ms2ControlStarter.start.bind(iResponse.ms2ControlStarter),
+    'ms2_control_pose': iResponse.ms2ControlStarter.start.bind(iResponse.ms2ControlPoseStarter),
     'ms2_control_style': iResponse.ms2ControlStyleStarter.start.bind(iResponse.ms2ControlStyleStarter),
+    'ms2_control_style_pose': iResponse.ms2ControlStyleStarter.start.bind(iResponse.ms2ControlStylePoseStarter),
     'make3': iResponse.make3Starter.start.bind(iResponse.make3Starter),
     'pfp': iResponse.pfpStarter.start.bind(iResponse.pfpStarter),
     'pfp_style': iResponse.pfpStyleStarter.start.bind(iResponse.pfpStyleStarter),
+    'pfp_style_pose': iResponse.pfpStyleStarter.start.bind(iResponse.pfpStylePoseStarter),
     'pfp_control': iResponse.pfpControlStarter.start.bind(iResponse.pfpControlStarter),
+    'pfp_control_pose': iResponse.pfpControlStarter.start.bind(iResponse.pfpControlPoseStarter),
+    'pfp_pose': iResponse.pfpStarter.start.bind(iResponse.pfpPoseStarter),
     'pfp_control_style': iResponse.pfpControlStyleStarter.start.bind(iResponse.pfpControlStyleStarter),
+    'pfp_control_style_pose': iResponse.pfpControlStyleStarter.start.bind(iResponse.pfpControlStylePoseStarter),
     'interrogate' : iResponse.interrogateStarter.start.bind(iResponse.interrogateStarter),
     'assist': iResponse.assistStarter.start.bind(iResponse.assistStarter),
     'ms3': iResponse.ms3Starter.start.bind(iResponse.ms3Starter),
@@ -193,6 +205,7 @@ const actionMap = {
         message.from.id = user;
         displayAccountSettingsMenu(message);
     },
+    //for accountsettings
     'toggleStyleTransfer': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].styleTransfer = !lobby[user].styleTransfer;
@@ -204,6 +217,49 @@ const actionMap = {
         lobby[user].controlNet = !lobby[user].controlNet;
         message.from.id = user;
         displayAccountSettingsMenu(message);
+    },
+    'toggleOpenPose' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].openPose = !lobby[user].openPose;
+        message.from.id = user;
+        displayAccountSettingsMenu(message);
+    },
+    //for create and effect menu
+    'toggleStyleCreate': async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].styleTransfer = !lobby[user].styleTransfer;
+        message.from.id = user;
+        iMenu.handleCreate(message);
+    },
+    'toggleStyleEffect': async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].styleTransfer = !lobby[user].styleTransfer;
+        message.from.id = user;
+        iMenu.handleEffect(message);
+    },
+    'toggleControlCreate' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].controlNet = !lobby[user].controlNet;
+        message.from.id = user;
+        iMenu.handleCreate(message);
+    },
+    'toggleControlEffect' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].controlNet = !lobby[user].controlNet;
+        message.from.id = user;
+        iMenu.handleEffect(message);
+    },
+    'togglePoseCreate' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].openPose = !lobby[user].openPose;
+        message.from.id = user;
+        iMenu.handleCreate(message);
+    },
+    'togglePoseEffect' : async (message, user) => {
+        await bot.deleteMessage(message.chat.id, message.message_id)
+        lobby[user].openPose = !lobby[user].openPose;
+        message.from.id = user;
+        iMenu.handleEffect(message);
     },
     'refresh' : async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
