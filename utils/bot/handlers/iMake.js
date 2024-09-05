@@ -311,7 +311,7 @@ async function handleRegen(message) {
         batch = lobby[userId].batchMax;
     }
     let strength;
-    if(settings.type.splice(0,4) == 'MAKE'){
+    if(settings.type.startsWith('MAKE')){
         strength = 1;
     } else {
         strength = settings.strength
