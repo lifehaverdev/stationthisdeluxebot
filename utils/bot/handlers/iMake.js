@@ -69,6 +69,7 @@ async function handleDexMake(message, match) {
 
     const promptObj = {
         ...settings,
+        strength: 1,
         seed: thisSeed,
         batchMax: batch,
         prompt: prompt
@@ -213,6 +214,7 @@ async function handleMake(message) {
     
     const promptObj = {
         ...params,
+        strength: 1,
         prompt: message.text,
         seed: thisSeed,
         batchMax: batch
@@ -273,6 +275,7 @@ async function handleMake3(message) {
 
     const promptObj = {
         ...settings,
+        strength: 1,
         seed: thisSeed,
         batchMax: batch
     }
@@ -307,8 +310,15 @@ async function handleRegen(message) {
         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
         batch = lobby[userId].batchMax;
     }
+    let strength;
+    if(settings.type.splice(0,4) == 'MAKE'){
+        strength = 1;
+    } else {
+        strength = settings.strength
+    }
     const promptObj = {
         ...settings,
+        strength: strength,
         prompt: lobby[userId].prompt,
         seed: thisSeed,
         batchMax: batch
