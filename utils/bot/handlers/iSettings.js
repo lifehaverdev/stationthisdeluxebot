@@ -235,6 +235,7 @@ async function handleSet(message) {
         case STATES.SETCONTROL:
         case STATES.SETPOSE:
             const fileUrl = await getPhotoUrl(message);
+
             try {
                 const photo = await Jimp.read(fileUrl);
                 const { width, height } = photo.bitmap;
