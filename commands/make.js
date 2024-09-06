@@ -208,7 +208,7 @@ function prepareRequest(promptObj) {
             input_image: promptObj.fileUrl || null,
             input_strength: promptObj.strength || null,
             input_style_image: promptObj.styleFileUrl || null,
-            input_control_image: promptObj.controlFileUrl || null,
+            input_canny_image: promptObj.controlFileUrl || null,
             input_pose_image: promptObj.poseFileUrl || null,
             input_width: promptObj.photoStats?.width || null,
             input_height: promptObj.photoStats?.height || null,
