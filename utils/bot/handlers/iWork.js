@@ -9,11 +9,34 @@ const { promptAssist } = require('../../../commands/assist')
 
 const iMenu = require('./iMenu');
 const { getBalance } = require('../../users/checkBalance.js');
+const { getGroup } = require('./iGroup')
 
 const bot = getBotInstance();
 function handleHelp(message) {
-    const helpMessage = `
-    HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHISBOT ON TELEGRAM
+    const group = getGroup(message)
+    let helpMessage;
+    if(message.chat.id < 0) {
+        if(group) {
+            helpMessage = 
+`
+Welcome to ${group.name} where you can use me, ${process.env.BOT_NAME} to create images from thin air
+
+The host has very graciously sponsored your use of the bot and took care of parameters
+
+All you have to do is come up with a prompt that describes the image you want to make, then using the following syntax:
+
+>> /make description of the image you want to make
+
+The bot will handle the rest!
+
+You may also use the /create /effect /utils /animate menus if the group owner allows
+
+Enjoy <3
+`
+        } else {
+            helpMessage = 
+`
+HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHISBOT ON TELEGRAM
 
 1. Getting Started
 • Use /signin to connect a solana wallet holding $MS2
@@ -22,20 +45,31 @@ function handleHelp(message) {
 2. Get Cooking With Various Commands
 
 /create - Best for generating from scratch
-
-txt2img: type words to create a new image. use keywords from /loralist to add styles, effects, and more
-txt2img style transfer: same as above, while inheriting the style of a user-uploaded image (use /set >> style first)
-txt2img controlnet: style transfer: same as above, while inheriting the outline of a user-uploaded image (use /set >> control first)
-txt2img controlnet + style transfer: both combined
-txt2img controlstylepose: additional pose controlnet
-
 /effect - Generate from or modify existing images
-available with automatic prompting in the right column
-txt2img: type words to create a new image. use keywords from /loralist to add styles, effects, and more
-txt2img style transfer: same as above, while inheriting the style of a user-uploaded image (use /set >> style first)
-txt2img controlnet: style transfer: same as above, while inheriting the outline of a user-uploaded image (use /set >> control first)
-txt2img controlnet + style transfer: both combined
-txt2img controlstylepose: additional pose controlnet
+/animate - Generate txt2speech or img2video
+
+Try using Pose, Style, or Canny to increase your control over the outcome
+Use /loralist to find out the trigger words for our various additional models you can activate
+
+Powered by $MS2
+`
+        }
+    } else {
+        helpMessage = 
+`
+HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTHISBOT ON TELEGRAM
+
+1. Getting Started
+• Use /signin to connect a solana wallet holding $MS2
+• Verify it on our site by pasting the hash in your chat when prompted
+
+2. Get Cooking With Various Commands
+
+/create - Best for generating from scratch
+/effect - Generate from or modify existing images
+/animate - Generate txt2speech or img2video
+/utils - remove background, upscale, prompt assist
+
 
 3. Save Your Progress
 /savesettings - Lock in your settings when you're onto something good
@@ -43,7 +77,7 @@ txt2img controlstylepose: additional pose controlnet
 
 4. Advanced Features
 /accountsettings - view point balance, $MS2 holdings, and toggle control/style/pose
-
+/loralist - view the lora activation trigger words. Include a number after the trigger word to contorl the strength of the lora
 TROUBLESHOOTING
 
 Found a bug? 
@@ -66,9 +100,12 @@ Collection Mode
 
 Powered by $MS2
 `
+    }
+    
 
     sendMessage(message, helpMessage);
 }
+
 async function handleStatus(message) {
     // console.log('message in handleStatus',message);
     //console.log('waiting in handleStatus',waiting);
@@ -129,10 +166,121 @@ function handleRequest(message) {
     return true;
 }
 
+async function loraList(message) {
+    const chatId = message.chat.id;
+    let loraMessage = 'Top 10 LoRa Triggers 🔥\n';
+    loraMessage += 'click to copy\n'
+
+    // Sort LoRAs by `uses` and get the top 10
+    const top10Loras = loraTriggers
+        .filter(lora => lora.uses && !lora.hidden) // Filter out hidden LoRAs and those without `uses`
+        .sort((a, b) => b.uses - a.uses) // Sort by `uses` in descending order
+        .slice(0, 10); // Get the top 10
+
+    
+    // Build message for the top 10 LoRAs
+    top10Loras.forEach(lora => {
+        let currentString = '\n`';
+        lora.triggerWords.forEach(word => {
+            if (word != '#') {
+                currentString += `${word}, `
+            } else {
+                currentString += `\` \`` 
+            }
+        })
+        if (currentString.endsWith(',')) {
+            currentString = currentString.slice(0, -1);
+        }
+        //let triggerWords = '`' + lora.triggerWords.filter(word => word !== '#').join(',') + '`';
+        currentString += '`';
+        loraMessage += currentString;
+    });
+    
+    loraMessage += '\n\nSelect a category to view more LoRA trigger words:';
+
+    // Inline keyboard options for different modes of display
+    const options = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Featured', callback_data: 'featuredLora' },
+                    //{ text: 'Favorites', callback_data: 'recent_uses' },
+                    { text: 'Full List', callback_data: 'fullLora' }
+                ],
+            ]
+        },
+        parse_mode: 'MarkdownV2'
+    };
+
+    // Send the message with the top 10 LoRAs and inline buttons
+    try {
+        await sendMessage(message, loraMessage, options);
+        console.log(`Sent top 10 LoRA list to chatId ${chatId}.`);
+    } catch (error) {
+        console.error(`Error sending LoRA list to chatId ${chatId}:`, error);
+    }
+}
+
+async function featuredLoRaList(message) {
+    const chatId = message.chat.id;
+    let loraMessage = 'Featured LoRa Triggers ✨\n';
+    loraMessage += 'click to copy\n';
+
+    // Filter LoRAs that are featured
+    const featuredLoras = loraTriggers
+        .filter(lora => lora.featured === true && !lora.hidden); // Only include featured LoRAs that aren't hidden
+
+    
+    // Build message for the featured LoRAs
+    featuredLoras.forEach(lora => {
+        let currentString = '\n`';
+        lora.triggerWords.forEach(word => {
+            if (word != '#') {
+                currentString += `${word}, `;
+            } else {
+                currentString += `\` \``;
+            }
+        });
+        if (currentString.endsWith(',')) {
+            currentString = currentString.slice(0, -1);
+        }
+        currentString += '`';
+
+        loraMessage += currentString;
+    });
+    
+
+    loraMessage += '\n\nSelect a category to view more LoRA trigger words:';
+
+    // Inline keyboard options for different modes of display
+    const options = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Top 10', callback_data: 'topTenLora' },
+                    //{ text: 'Favorites', callback_data: 'recent_uses' },
+                    { text: 'Full List', callback_data: 'fullLora' }
+                ],
+            ]
+        },
+        parse_mode: 'MarkdownV2'
+    };
+
+    // Send the message with the featured LoRAs and inline buttons
+    try {
+        await sendMessage(message, loraMessage, options);
+        console.log(`Sent featured LoRA list to chatId ${chatId}.`);
+    } catch (error) {
+        console.error(`Error sending featured LoRA list to chatId ${chatId}:`, error);
+    }
+}
+
+
 async function sendLoRaModelFilenames(message) {
   const chatId = message.chat.id;
+  message.from.id = message.reply_to_message.from.id;
   let loraMessage = 'Loras:\n\n';
-
+    console.log(message)
   const checkpointName = lobby[message.from.id]?.checkpoint;
   //console.log(checkpointName);
   let checkpointDescription = '';
@@ -142,7 +290,6 @@ async function sendLoRaModelFilenames(message) {
           checkpointDescription = checkpoint.description;
       }
   }
-  
 
   const loraCategories = {
       style: [],
@@ -158,12 +305,7 @@ async function sendLoRaModelFilenames(message) {
             return
         }
       if (checkpointName && checkpointDescription == lora.version && lobby[message.from.id].balance >= lora.gate) {
-          //const triggerWords = lora.triggerWords.join(', ');
-          //const triggerWords = lora.triggerWords.map(word => word ? `\`${word}\`` : '').join(', ');
-          //const loraInfo = `\`${triggerWords}\``;
-          
-
-
+         
         let currentString = '`';
 
         lora.triggerWords.forEach(word => {
@@ -224,7 +366,17 @@ async function sendLoRaModelFilenames(message) {
 
       sendMessage(message, messagePart1, {parse_mode: 'MarkdownV2'})
           .then(() => {
-              sendMessage(message, messagePart2,{parse_mode: 'MarkdownV2'})
+              sendMessage(message, messagePart2,{
+                parse_mode: 'MarkdownV2',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: 'Top 10', callback_data: 'topTenLora' },
+                            { text: 'Featured', callback_data: 'featuredLora' },
+                        ],
+                    ]
+                },
+            })
                   .then(() => {
                       console.log(`Sent split LoRA list to chatId ${chatId}.`);
                   })
@@ -236,7 +388,17 @@ async function sendLoRaModelFilenames(message) {
               console.error(`Error sending first part of LoRA list to chatId ${chatId}:`, error);
           });
   } else {
-      sendMessage(message, loraMessage,{parse_mode: 'MarkdownV2'})
+      sendMessage(message, loraMessage,{
+        parse_mode: 'MarkdownV2',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Top 10', callback_data: 'topTenLora' },
+                    { text: 'Featured', callback_data: 'featuredLora' },
+                ],
+            ]
+        },
+    })
           .then(() => {
               console.log(`Sent LoRA list to chatId ${chatId}.`);
           })
@@ -313,7 +475,8 @@ async function seeGlorp(address) {
 
 module.exports = {
     saySeed,
-    handleRequest, sendLoRaModelFilenames,
+    handleRequest, sendLoRaModelFilenames, 
+    loraList, featuredLoRaList,
     shakeAssist, shakeSpeak, startSpeak,
     handleHelp, handleStatus,
     seeGlorp

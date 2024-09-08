@@ -270,6 +270,22 @@ const actionMap = {
     //     sendMessage(message.reply_to_message,'What is the name of your group?')
     //     setUserState(message.reply_to_message, STATES.GROUPNAME)
     // }
+    'featuredLora': async (message) => {
+        await bot.deleteMessage(message.chat.id, message.message_id);
+        iWork.featuredLoRaList(message);
+    },
+    'topTenLora': async (message) => {
+        await bot.deleteMessage(message.chat.id, message.message_id);
+        iWork.loraList(message);
+    },
+    // 'favoriteLora': async (message) => {
+    //     await bot.deleteMessage(message.chat.id, message.message_id);
+    //     iWork.favoriteLoRaList(message);
+    // }
+    'fullLora': async(message) => {
+        await bot.deleteMessage(message.chat.id, message.message_id);
+        iWork.sendLoRaModelFilenames(message)
+    }
 };
 
 
