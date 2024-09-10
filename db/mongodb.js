@@ -135,9 +135,9 @@ async function addGenDocument(collectionName, data) {
     }
 }
 
-function saveGen({task, run}) {
+function saveGen({task, run, out}) {
     // Combine the data into one object
-    const dataToSave = {...task, ...run};
+    const dataToSave = {...task, ...run, ...out};
     
     // Call addGenDocument to save the new document to the 'gens' collection
     addGenDocument('gens', dataToSave);
