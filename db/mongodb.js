@@ -111,6 +111,38 @@ async function writeData(collectionName, filter, data) {
     }
 }
 
+async function addGenDocument(collectionName, data) {
+    const uri = process.env.MONGO_PASS;
+
+    // Create a new MongoClient
+    const client = new MongoClient(uri);
+    
+    try {
+        // Connect to the client
+        await client.connect();
+
+        const collection = client.db(dbName).collection(collectionName);
+        // Insert the new document
+        const result = await collection.insertOne(data);
+        console.log('New document inserted successfully:', result.insertedId);
+        return true;
+    } catch (error) {
+        console.error("Error inserting document:", error);
+        return false;
+    } finally {
+        // Close the connection
+        await client.close();
+    }
+}
+
+function saveGen({promptObj, task, message, outputs}) {
+    // Combine the data into one object
+    const dataToSave = {...promptObj, ...task, ...message, ...outputs};
+    
+    // Call addGenDocument to save the new document to the 'gens' collection
+    addGenDocument('gens', dataToSave);
+}
+
 async function updateGroupPoints(group, pointsToAdd) {
     const uri = process.env.MONGO_PASS;
     const client = new MongoClient(uri);
@@ -1009,5 +1041,6 @@ module.exports = {
     writeData,
     readStats,
     updateGroupPoints,
-    incrementLoraUseCounter
+    incrementLoraUseCounter,
+    saveGen
 };
