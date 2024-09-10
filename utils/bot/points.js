@@ -2,7 +2,8 @@ const { lobby } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { updateGroupPoints } = require('../../db/mongodb')
 
-function addPoints({promptObj,task,message}) {
+function addPoints(task) {
+    ({ promptObj, message } = task);
     const pointsToAdd = (Date.now()-task.timestamp) / 1000;
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
