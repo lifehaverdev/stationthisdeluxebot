@@ -12,6 +12,7 @@ const {
 const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
+const { saveGen } = require('../../db/mongodb');
 //const { waterMark } = require('../users/defaultUserData');
 
 // let taskQueue = []
@@ -178,13 +179,13 @@ async function retryOperation(operation, ...args) {
     return success
 }
 
-const TWENTY_MINUTES = 20 * 60 * 1000;
+const TEN_MINUTES = 10 * 60 * 1000;
 
 function removeStaleTasks() {
     const now = Date.now();
     for (let i = waiting.length - 1; i >= 0; i--) {
         //console.log('what is waiting looking like',waiting[i])
-        if ((now - waiting[i].timestamp) > TWENTY_MINUTES) {
+        if ((now - waiting[i].timestamp) > TEN_MINUTES) {
             waiting.splice(i, 1); // Remove stale tasks
         }
     }
@@ -335,6 +336,7 @@ async function handleTaskCompletion(task, run) {
         const operationSuccess = await retryOperation(operation);
         if(operationSuccess && sent){
             addPoints({promptObj,task,message})
+            saveGen({promptObj,task,message,outputs})
             return 'success'
         } else {
             return 'not sent'
