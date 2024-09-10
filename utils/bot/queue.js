@@ -336,7 +336,12 @@ async function handleTaskCompletion(task, run) {
         const operationSuccess = await retryOperation(operation);
         if(operationSuccess && sent){
             addPoints(task)
-            saveGen({task,run})
+            const out = {
+                urls: urls,
+                tags: tags,
+                texts: texts
+            }
+            saveGen({task,run,out})
             return 'success'
         } else {
             return 'not sent'
