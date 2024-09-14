@@ -31,6 +31,7 @@ const commandPatterns = {
     '/signin': iAccount.handleSignIn,
     '/make(?:@stationthisbot)?\\s+(.+)': iMake.handleMake,
     '/make3(?:@stationthisbot)?\\s+(.+)': iMake.handleMake3,
+    '/mog\\s+(.+)': iMake.handleMog,
     '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
     '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
     '/getseed(.*)': iWork.saySeed,

@@ -155,18 +155,6 @@ function promptPreProc(promptObj) {
     // Initial cleanup
     let cleanedPrompt = promptObj.prompt.replace(`@${process.env.BOT_NAME}`, "").trim();
 
-    // Specific handling based on the type of prompt
-    switch (promptObj.type){
-        case "MAKE":
-        case "MAKE_CONTROL":
-        case "MAKE_CONTROL_STYLE":
-            cleanedPrompt = cleanedPrompt.replace("/make", "");
-        break;
-        case "MS2":
-            cleanedPrompt = cleanedPrompt.replace("/ms2", "");
-        break;
-    }
-
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
         cleanedPrompt = cleanedPrompt.split(" ")
@@ -223,6 +211,21 @@ function prepareRequest(promptObj) {
 
     // Handle special cases where fewer fields are needed
     switch (promptObj.type) {
+        case 'MOG':
+            console.log('oh we mogging alright')
+            console.log(comfydeployid)
+            body = {
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    noise_seed: promptObj.seed,
+                    cfg: promptObj.cfg,
+                    input_height: promptObj.photoStats.height,
+                    input_width: promptObj.photoStats.width,
+                    input_text: `j0yc4t ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                }
+            }
+            break;
         case 'RMBG':
         case 'UPSCALE':
         case 'INTERROGATE':
