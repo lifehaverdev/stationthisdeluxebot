@@ -158,6 +158,25 @@ async function startMake3(message,user) {
     setUserState(message,STATES.MAKE3)
 }
 
+async function startMog(message,user) {
+        if(user){
+            message.from.id = user;
+            await editMessage({
+                text: 'What prompt for your txt2img mogflux',
+                chat_id: message.chat.id,
+                message_id: message.message_id
+            })
+        } else {
+            // if(lobby[message.from.id] && lobby[message.from.id].balance <= 100000){
+            //     gated(message)
+            //     return
+            // }
+            sendMessage(message, 'What prompt for your txt2img mogflux')
+        }
+        //await sendMessage(message,'What prompt for your txt2img sd3');
+        setUserState(message,STATES.MOG)
+    }
+
 async function handleMake(message) {
     console.log('MAKING SOMETHING')
     const userId = message.from.id;
@@ -291,6 +310,70 @@ async function handleMake3(message) {
     }
 }
 
+async function handleMog(message) {
+    console.log('MOGING SOMETHING')
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+    const group = getGroup(message);
+
+    // if((lobby[userId] && lobby[userId].balance < 100000)
+    // || (group && group.applied < 100000)
+    // ) {
+    //     gated(message)
+    //     return true
+    // }
+
+    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MOG){
+        return;
+    }
+    message.text = message.text.replace('/mog','').replace(`@${process.env.BOT_NAME}`,'');
+    if(message.text == ''){
+        startMog();
+        return
+    }
+
+    let settings;
+    if(group){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
+
+    const thisSeed = makeSeed(userId);
+    let batch;
+    if(chatId < 0){
+        batch = 1;
+    } else {
+        batch = settings.batchMax;
+    }
+
+    //save these settings into lobby in case cook mode time
+    lobby[userId] = {
+        ...lobby[userId],
+        prompt: message.text,
+        type: 'MOG',
+        lastSeed: thisSeed
+    }
+
+    const promptObj = {
+        ...settings,
+        strength: 1,
+        seed: thisSeed,
+        batchMax: batch,
+        type: 'MOG'
+    }
+        
+    try {
+        await react(message);
+        console.log('check out the prompt object')
+        console.log(promptObj);
+        enqueueTask({message,promptObj})
+        setUserState(message, STATES.IDLE);
+    } catch (error) {
+        console.error("Error generating and sending image:", error);
+    }
+}
+
 async function handleRegen(message) {
     const userId = message.from.id;
     const thisSeed = makeSeed(userId);
@@ -409,5 +492,6 @@ module.exports = {
     handlePromptCatch,
     handleMs2Prompt,
     handleInpaintPrompt,
-    handleInpaintTarget
+    handleInpaintTarget,
+    handleMog, startMog
 }
