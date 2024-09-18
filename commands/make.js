@@ -225,7 +225,23 @@ function prepareRequest(promptObj) {
                     input_text: `j0yc4t ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
                 }
             }
-            console.log('body for mog',body)
+            //console.log('body for mog',body)
+            break;
+        case 'DEGOD':
+            console.log('oh we degod alright')
+            console.log(comfydeployid)
+            body = {
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    noise_seed: promptObj.seed,
+                    cfg: promptObj.cfg,
+                    input_height: promptObj.photoStats.height,
+                    input_width: promptObj.photoStats.width,
+                    input_text: `man wearing d3g0d mask ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                }
+            }
+            //console.log('body for mog',body)
             break;
         case 'RMBG':
         case 'UPSCALE':
