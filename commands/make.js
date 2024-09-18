@@ -225,6 +225,7 @@ function prepareRequest(promptObj) {
                     input_text: `j0yc4t ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
                 }
             }
+            console.log('body for mog',body)
             break;
         case 'RMBG':
         case 'UPSCALE':

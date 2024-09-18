@@ -326,7 +326,7 @@ async function handleMog(message) {
     if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MOG){
         return;
     }
-    message.text = message.text.replace('/mog','').replace(`@${process.env.BOT_NAME}`,'');
+    message.text = message.text.replace('/joycat','').replace(`@${process.env.BOT_NAME}`,'');
     if(message.text == ''){
         startMog();
         return
@@ -357,6 +357,7 @@ async function handleMog(message) {
 
     const promptObj = {
         ...settings,
+        prompt: message.text,
         strength: 1,
         seed: thisSeed,
         batchMax: batch,
