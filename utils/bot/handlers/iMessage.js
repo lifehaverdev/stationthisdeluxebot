@@ -32,6 +32,7 @@ const commandPatterns = {
     '/make(?:@stationthisbot)?\\s+(.+)': iMake.handleMake,
     '/make3(?:@stationthisbot)?\\s+(.+)': iMake.handleMake3,
     '/joycat\\s+(.+)': iMake.handleMog,
+    '/degod\\s+(.+)': iMake.handleDegod,
     '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
     '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
     '/getseed(.*)': iWork.saySeed,
@@ -269,7 +270,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/joycat','/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/degod','/joycat','/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
