@@ -151,7 +151,32 @@ const commandPatterns = {
     '/slamtest': async(message) => {
         sendMessage(message,`${lobby[message.from.id].state.state}`)
     },
-    '/admin': iGroup.toggleAdmin
+    '/admin': iGroup.toggleAdmin,
+    '/forcelogo': (message) => {
+        lobby[message.from.id].forceLogo = true;
+        react(message, '👍');
+    }
+    // '/okaywhatisthis': async(message) => {
+        
+    //     const user = lobby[message.from.id];
+    //     const group = iGroup.getGroup(message);
+    //     //console.log('group',group)
+    //     if((user && !group) || (user && user.verified && group)){
+    //         //if(user && group) console.log('WE ADDING POINTS TO USER EVEN THO GROUP')
+    //         if(!group){
+    //             sendMessage(message,'adding to user')
+    //         } else {
+    //             sendMessage(message,'adding to user, even tho group')
+    //         }
+    //     } else if (group){
+    //         // group.points += pointsToAdd;
+    //         //updateGroupPoints(group,pointsToAdd)
+    //         sendMessage(message,'adding to group')
+    //     } else {
+    //         sendMessage(message,'neither')
+    //         console.log('no user id in lobby for points addition after task completion')
+    //     }
+    // }
 };
 
 
