@@ -297,7 +297,7 @@ async function handleTaskCompletion(task, run) {
                 try {
                     let fileToSend = url;
                     console.log(promptObj.waterMark)
-                    if ((promptObj.balance == '' || promptObj.balance < 200000) && type === 'image') {
+                    if ((promptObj.balance == '' || promptObj.balance < 200000 || promptObj.forceLogo) && type === 'image') {
                         promptObj.waterMark = 'mslogo'
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
