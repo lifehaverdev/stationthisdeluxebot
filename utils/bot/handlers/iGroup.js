@@ -19,9 +19,9 @@ function groupSettings(message) {
         return
     }
     let groupSettingsKeyboard = [
-        [
-            {text: 'Edit Group', callback_data: 'editgroup'},
-        ],
+        // [
+        //     {text: 'Edit Group', callback_data: 'editgroup'},
+        // ],
         [
             {text: 'Apply Balance', callback_data: 'applygroupbalance'},
         ],
@@ -51,10 +51,10 @@ function groupSettings(message) {
     // List locked features based on the user's balance
     const lockedFeatures = features.filter(feature => group.applied < feature.gate);
     if (lockedFeatures.length > 0) {
-        groupSettingsInfo += `<b>Locked Features:</b>\n`;
-        lockedFeatures.forEach(feature => {
-            groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
-        });
+        groupSettingsInfo += `<b>Limited Access</b>\n`;
+        // lockedFeatures.forEach(feature => {
+        //     groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
+        // });
     } else {
         groupSettingsInfo += `Full Access VIP GROUP\n`;
     }
