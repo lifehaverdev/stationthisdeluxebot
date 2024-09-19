@@ -153,7 +153,11 @@ const commandPatterns = {
     },
     '/admin': iGroup.toggleAdmin,
     '/forcelogo': (message) => {
-        lobby[message.from.id].forceLogo = true;
+        if(lobby[message.from.id] && !lobby[message.from.id].forceLogo) {
+            lobby[message.from.id].forceLogo = true;
+        } else if (lobby[message.from.id] && lobby[message.from.id].forceLogo) {
+            lobby[message.from.id].forceLogo = false;
+        }
         react(message, '👍');
     }
     // '/okaywhatisthis': async(message) => {
