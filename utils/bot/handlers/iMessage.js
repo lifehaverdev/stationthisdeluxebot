@@ -33,6 +33,7 @@ const commandPatterns = {
     '/make3(?:@stationthisbot)?\\s+(.+)': iMake.handleMake3,
     '/joycat\\s+(.+)': iMake.handleMog,
     '/degod\\s+(.+)': iMake.handleDegod,
+    '/milady\\s+(.+)': iMake.handleMilady,
     '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
     '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
     '/getseed(.*)': iWork.saySeed,

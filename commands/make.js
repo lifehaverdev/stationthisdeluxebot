@@ -243,6 +243,22 @@ function prepareRequest(promptObj) {
             }
             //console.log('body for mog',body)
             break;
+        case 'MILADY':
+            console.log('oh milady alright')
+            console.log(comfydeployid)
+            body = {
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    noise_seed: promptObj.seed,
+                    cfg: promptObj.cfg,
+                    input_height: promptObj.photoStats.height,
+                    input_width: promptObj.photoStats.width,
+                    input_text: `milady ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                }
+            }
+            //console.log('body for mog',body)
+            break;
         case 'RMBG':
         case 'UPSCALE':
         case 'INTERROGATE':
