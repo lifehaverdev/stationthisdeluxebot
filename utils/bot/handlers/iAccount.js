@@ -198,8 +198,7 @@ async function handleSignIn (message) {
         if(userData.wallet != ''){
             sendMessage(message, `You are signed in to ${userData.wallet}`);
             if(userData.verified == true){
-                let options = {};
-                    options = home
+                let options = home;
                 sendMessage(message,'and you are verified. Have fun',options);
                 setUserState(message,STATES.IDLE)
             } else {
@@ -208,7 +207,6 @@ async function handleSignIn (message) {
         } else {
             sendMessage(message, "What's your Solana address?")
             setUserState(message,STATES.SIGN_IN)
-            //console.log('state',lobby[userId].state)
         }
     } else {
         sendMessage(message, "What's your Solana address?")
@@ -303,19 +301,38 @@ async function shakeVerify(message) {
 async function handleSignOut(message) {
     chatId = message.chat.id;
     const userId = message.from.id;
-    let userData = await getUserDataByUserId(userId);
+    let userData = lobby[userId] ? lobby[userId] : await getUserDataByUserId(userId);
+    
     console.log(userData.userId,'signing out');
-        if (userData) {
-            // Remove user data for this chatId
-            userData.wallet = '';
-            userData.verified = false;
-            //fs.writeFileSync(chatFilePath, JSON.stringify(userData, null, 2))
-            writeUserData(userId,userData);
-            if(lobby[userId]){delete lobby[userId]}
+    if (userData) {
+        // Ensure the most current points (from lobby) are saved to the database
+        if (lobby[userId]) {
+            // Update the database with the latest points and user data from the lobby
+            await writeUserData(userId, {
+                ...userData,
+                points: lobby[userId].points,  // Use the most up-to-date points from the lobby
+                wallet: '',  // Clearing wallet as part of sign out
+                verified: false  // Reset verification status
+            });
         } else {
-            // User data not found
-            if(lobby[userId]){delete lobby[userId]}
+            // If the user is not in the lobby, just clear their wallet and verified status
+            await writeUserData(userId, {
+                ...userData,
+                wallet: '',
+                verified: false
+            });
         }
+
+        // Clean up the in-memory lobby object
+        if (lobby[userId]) {
+            delete lobby[userId];
+        }
+    } else {
+        // If no user data is found, just clean up the lobby
+        if (lobby[userId]) {
+            delete lobby[userId];
+        }
+    }
     sendMessage(message,'You are signed out',signedOut);
     return true;
 }
