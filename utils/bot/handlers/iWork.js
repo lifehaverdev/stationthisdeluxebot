@@ -1,9 +1,9 @@
 const fs = require('fs')
 const path = require('path');
-const { sendMessage, setUserState, editMessage } = require('../../utils')
+const { sendMessage, setUserState, editMessage, react } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
-const { lobby, STATES, startup, waiting, taskQueue, getBotInstance } = require('../bot.js')
+const { lobby, STATES, startup, waiting, taskQueue, getBotInstance, getPhotoUrl } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
@@ -207,6 +207,9 @@ async function loraList(message) {
                     //{ text: 'Favorites', callback_data: 'recent_uses' },
                     { text: 'Full List', callback_data: 'fullLora' }
                 ],
+                [
+                    { text: 'Flux', callback_data: 'fluxLora'}
+                ]
             ]
         },
         parse_mode: 'MarkdownV2'
@@ -229,6 +232,63 @@ async function featuredLoRaList(message) {
     // Filter LoRAs that are featured
     const featuredLoras = loraTriggers
         .filter(lora => lora.featured === true && !lora.hidden); // Only include featured LoRAs that aren't hidden
+
+    
+    // Build message for the featured LoRAs
+    featuredLoras.forEach(lora => {
+        let currentString = '\n`';
+        lora.triggerWords.forEach(word => {
+            if (word != '#') {
+                currentString += `${word}, `;
+            } else {
+                currentString += `\` \``;
+            }
+        });
+        if (currentString.endsWith(',')) {
+            currentString = currentString.slice(0, -1);
+        }
+        currentString += '`';
+
+        loraMessage += currentString;
+    });
+    
+
+    loraMessage += '\n\nSelect a category to view more LoRA trigger words:';
+
+    // Inline keyboard options for different modes of display
+    const options = {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Top 10', callback_data: 'topTenLora' },
+                    //{ text: 'Favorites', callback_data: 'recent_uses' },
+                    { text: 'Full List', callback_data: 'fullLora' }
+                ],
+                [
+                    { text: 'Flux', callback_data: 'fluxLora'}
+                ]
+            ]
+        },
+        parse_mode: 'MarkdownV2'
+    };
+
+    // Send the message with the featured LoRAs and inline buttons
+    try {
+        await sendMessage(message, loraMessage, options);
+        console.log(`Sent featured LoRA list to chatId ${chatId}.`);
+    } catch (error) {
+        console.error(`Error sending featured LoRA list to chatId ${chatId}:`, error);
+    }
+}
+
+async function fluxLoraList(message) {
+    const chatId = message.chat.id;
+    let loraMessage = 'Flux LoRa Triggers ✨\n';
+    loraMessage += 'click to copy\n';
+
+    // Filter LoRAs that are featured
+    const featuredLoras = loraTriggers
+        .filter(lora => lora.version === 'FLUX' && !lora.hidden); // Only include featured LoRAs that aren't hidden
 
     
     // Build message for the featured LoRAs
@@ -396,6 +456,9 @@ async function sendLoRaModelFilenames(message) {
                     { text: 'Top 10', callback_data: 'topTenLora' },
                     { text: 'Featured', callback_data: 'featuredLora' },
                 ],
+                [
+                    { text: 'Flux', callback_data: 'fluxLora'}
+                ]
             ]
         },
     })
@@ -426,6 +489,98 @@ async function shakeAssist(message) {
     return true
 }
 
+
+
+
+async function startFluxInterrogate(message, user) {
+    if(user){
+        message.from.id = user;
+        await editMessage({
+            text: 'Send in the photo for interrogation',
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        })
+        //iMenu.handleVoiceMenu(message,user)
+        //sendMessage(message, 'Send in the photo for interrogation')
+        setUserState(message,STATES.FLUXINTERROGATE)
+    } else {
+        // if(lobby[message.from.id] && lobby[message.from.id].balance < 500000){
+        //     gated(message)
+        //     return
+        // }
+        //sendMessage(message, 'Send in the photo you want to watermark.',{reply_to_message_id: message.message_id})
+        sendMessage(message, 'Send in the photo for interrogation')
+        setUserState(message,STATES.FLUXINTERROGATE)
+    }
+    
+}
+
+async function shakeFluxInterrogate(message) {
+    react(message,'😇')
+    const url = await getPhotoUrl(message)
+    
+    // Step 1: Make the POST request using fetch
+    const getEventId = async (url) => {
+        try {
+        const response = await fetch('https://fancyfeast-joy-caption-pre-alpha.hf.space/call/stream_chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+            data: [
+                { path: url }
+            ]
+            })
+        });
+    
+        const jsonResponse = await response.json();
+        
+        // Assuming the EVENT_ID is the 4th item when split by quotes (based on the original awk command)
+        const eventId = JSON.stringify(jsonResponse).split('"')[3];
+        console.log('Event ID:', eventId);
+        return eventId;
+        } catch (error) {
+        console.error('Error fetching Event ID:', error);
+        }
+    };
+  
+  // Step 2: Use fetch to make a GET request to stream the event data
+  const streamEventResult = async (eventId) => {
+    const streamUrl = `https://fancyfeast-joy-caption-pre-alpha.hf.space/call/stream_chat/${eventId}`;
+    
+    try {
+      const response = await fetch(streamUrl, { method: 'GET' });
+        //console.log('response in result? ',response)
+      // Here we can just treat the response as text (since it's a string)
+      const result = await response.text();
+      // Split the result by new lines and find the line that starts with 'data:'
+        const lines = result.split('\n');
+        const dataLine = lines.find(line => line.startsWith('data:'));
+
+        // Extract the part inside the brackets (JSON string) and parse it
+        const jsonData = JSON.parse(dataLine.replace('data: ', ''));
+        
+        console.log('Parsed Data:', jsonData[0]); // Access the first item in the array
+        return jsonData[0]; // Return the description as a clean string
+    } catch (error) {
+        console.error('Error streaming event result:', error);
+    }
+    };
+    //sendMessage(message,jso);
+    //console.log(result.data);
+    // Execute both steps
+    (async () => {
+        const eventId = await getEventId(url);
+        
+        if (eventId) {
+            const res = await streamEventResult(eventId);
+            console.log('res ? ',res)
+            sendMessage(message,res)
+        }
+    })();
+    setUserState(message,STATES.IDLE)
+    
+}
+
 async function startSpeak(message, user) {
     console.log('start voice menu')
     if(user){
@@ -446,6 +601,8 @@ async function startSpeak(message, user) {
     }
     setUserState(message,STATES.SPEAK)
 }
+
+
 
 async function shakeSpeak(message) {
     const userId = message.from.id;
@@ -477,7 +634,10 @@ module.exports = {
     saySeed,
     handleRequest, sendLoRaModelFilenames, 
     loraList, featuredLoRaList,
+    fluxLoraList,
     shakeAssist, shakeSpeak, startSpeak,
     handleHelp, handleStatus,
-    seeGlorp
+    seeGlorp,
+    startFluxInterrogate,
+    shakeFluxInterrogate
 }

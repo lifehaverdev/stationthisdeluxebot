@@ -1,5 +1,9 @@
 checkpointmenu = [
     {
+        name: 'flux-schnell',
+        description: 'FLUX'
+    },
+    {
         name: "proteus_v0.4",
         description: "SDXL",
     },

@@ -35,6 +35,7 @@ const commandPatterns = {
     '/joycat\\s+(.+)': iMake.handleMog,
     '/degod\\s+(.+)': iMake.handleDegod,
     '/milady\\s+(.+)': iMake.handleMilady,
+    '/flux\\s+(.+)': iMake.handleFlux,
     '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
     '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
     '/getseed(.*)': iWork.saySeed,
@@ -211,6 +212,8 @@ const stateHandlers = {
     [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
+    [STATES.FLUXINTERROGATE] : (message) => safeExecute(message, iWork.shakeFluxInterrogate),
+    [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux)
     //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 
@@ -301,7 +304,7 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/milady','/degod','/joycat','/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {

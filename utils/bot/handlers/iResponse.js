@@ -170,6 +170,7 @@ class CallAndResponse {
 const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.',null,null);
 
 const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?',null,null);
+const fluxStarter = new StarterFunction(STATES.FLUX, 'What prompt for your flux txt2img?',null,null);
 
 const pfpStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img. I will do the prompt myself.', 300000, null);
 
@@ -324,6 +325,8 @@ module.exports = {
 
     ms2Flow,
     inpaintFlow,
+
+    fluxStarter
 
     // ms2PoseStarter, ms2StylePoseStarter, ms2ControlPoseStarter, ms2ControlStylePoseStarter,
     // makePoseStarter, makeStylePoseStarter, makeControlPoseStarter, makeControlStylePoseStarter,

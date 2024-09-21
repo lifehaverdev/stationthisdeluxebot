@@ -285,7 +285,14 @@ const actionMap = {
     'fullLora': async(message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
         iWork.sendLoRaModelFilenames(message)
-    }
+    },
+    'fluxLora': async(message) => {
+        await bot.deleteMessage(message.chat.id, message.message_id);
+        iWork.fluxLoraList(message)
+    },
+    'finterrogate': iWork.startFluxInterrogate,
+    'flux': iResponse.fluxStarter.start.bind(iResponse.fluxStarter),
+    'interMenu': iMenu.handleInterrogateMenu
 };
 
 

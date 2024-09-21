@@ -183,8 +183,10 @@ async function handleCreate(message) {
             [
                 { text: settings.advancedUser ? '💬3➡️🖼️' : 'sd3 txt2img', callback_data: 'make3' },
             ],
+            [
+                { text: settings.advancedUser ? '💬➡️FLUX🖼️' : 'FLUX txt2img', callback_data: 'flux' },
+            ]
         )
-        sd3 = true;
     }
     reply_markup.inline_keyboard.push(
         [
@@ -241,8 +243,11 @@ function handleUtils(message) {
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assist'},
-                { text: settings.advancedUser ? '🖼️➡️💬' : 'interrogate', callback_data: 'interrogate'},
+                { text: settings.advancedUser ? '🖼️➡️💬' : 'interrogate', callback_data: 'interMenu'},
             ],
+            // [
+            //     { text: settings.advancedUser ? '🖼️➡️FLUX💬' : 'Flux inter', callback_data: 'finterrogate'},
+            // ]
         )
       }
       options.reply_markup.inline_keyboard.push(
@@ -700,7 +705,45 @@ function getWatermarkMenu(userId, message) {
     };
 }
 
+function getInterrogateMenu() {
 
+    const interrogateKeyboard = [
+        [{text: 'SDXL', callback_data: 'interrogate'}],
+        [{text: 'FLUX', callback_data: 'finterrogate'}]
+    ]
+
+    return {
+        inline_keyboard: interrogateKeyboard
+    };
+}
+
+async function handleInterrogateMenu(message,user) {
+    const reply_markup = getInterrogateMenu();
+    if(user){
+        console.log('we have user')
+        editMessage(
+            {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: 'Which prompt format?',
+                reply_markup
+            }
+        )
+    } else {
+        console.log('no user i guess')
+        const botMessage = await sendMessage(message, 'Which prompt format?');
+        const chat_id = botMessage.chat.id;
+        const message_id = botMessage.message_id;
+        editMessage(
+            {
+                reply_markup,
+                chat_id,
+                message_id
+            }
+        );
+    }
+            
+}
 
 module.exports = {
     home,
@@ -718,5 +761,6 @@ module.exports = {
     handleCheckpointMenu,
     handleBasePromptMenu,
     handleVoiceMenu,
-    handleWatermarkMenu
+    handleWatermarkMenu,
+    handleInterrogateMenu
 }
