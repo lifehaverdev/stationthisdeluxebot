@@ -19,6 +19,7 @@ const STATES = {
     MAKE: 'MAKE',
     MAKE3: 'MAKE3',
     MOG: 'MOG',
+    FLUX: 'FLUX',
     IMG2IMG: 'IMG2IMG',
     MS3: 'MS3',
     MS2PROMPT: 'MS2PROMPT',

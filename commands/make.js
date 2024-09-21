@@ -1,6 +1,6 @@
 const { handleLoraTrigger } = require('../utils/models/loraTriggerTranslate.js')
 const defaultSettings = require('../utils/models/defaultSettings.js')
-const {defaultPrompt, basepromptmenu, getBasePromptByName } = require('../utils/models/basepromptmenu.js')
+const {getBasePromptByName } = require('../utils/models/basepromptmenu.js')
 const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js');
 // Function to handle sending the generated image
 
@@ -79,7 +79,6 @@ async function fetchOutput(run_id) {
     }
 }
 
-
 // Function to handle sending the generated image
 
 // Function to make the API request and handle the response
@@ -148,22 +147,18 @@ function imgPreProc(promptObj) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    let userBasePrompt;
-    promptObj.userBasePrompt == '-1' ?  userBasePrompt = '' : userBasePrompt = handleLoraTrigger(promptObj.userBasePrompt, promptObj.balance)+" "
-    promptObj.userBasePrompt = userBasePrompt;
-    //promptObj.negativePrompt"
-    // Initial cleanup
-    let cleanedPrompt = promptObj.prompt.replace(`@${process.env.BOT_NAME}`, "").trim();
-
+    let promptFinal = handleLoraTrigger(`${promptObj.prompt}, ${promptObj.userBasePrompt == '-1' ?  '' : promptObj.userBasePrompt}, ${getBasePromptByName(promptObj.basePrompt)}`,promptObj.checkpoint, promptObj.balance);
+    
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
-        cleanedPrompt = cleanedPrompt.split(" ")
+        promptFinal = promptFinal.split(" ")
                                     .map(word => word.replace(/[^\w\s]|_/g, ''))
                                     .filter(word => !censoredWords.includes(word))
                                     .join(" ");
     }
     // Handle LoRa triggers or any other final modifications
-    promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
+    //promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
+    promptObj.finalPrompt = promptFinal;
 }
 
 function chooseIdByMachine(ids,promptObj) {
@@ -178,7 +173,7 @@ function chooseIdByMachine(ids,promptObj) {
 }
 
 function prepareRequest(promptObj) {
-    let basePrompt = getBasePromptByName(promptObj.basePrompt);
+    //let basePrompt = handleLoraTrigger(getBasePromptByName(promptObj.basePrompt),promptObj.balance);
     const comfydeployids = getDeploymentIdByType(promptObj.type);
     const comfydeployid = chooseIdByMachine(comfydeployids, promptObj);
     //console.log('prepareRequest', comfydeployid)
@@ -191,7 +186,7 @@ function prepareRequest(promptObj) {
             input_batch: promptObj.batchMax,
             input_steps: promptObj.steps,
             input_cfg: promptObj.cfg,
-            input_prompt: `${promptObj.type.includes('AUTO') ? '' : promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+            input_prompt: promptObj.finalPrompt,
             input_checkpoint: `${promptObj.checkpoint}.safetensors`,
             input_image: promptObj.fileUrl || null,
             input_strength: promptObj.strength || null,
@@ -222,7 +217,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `j0yc4t ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                    input_text: `j0yc4t ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -238,7 +233,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `man wearing d3g0d mask ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                    input_text: `man wearing d3g0d mask ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -254,7 +249,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `milady ${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                    input_text: `milady ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -276,7 +271,7 @@ function prepareRequest(promptObj) {
                 webhook: webHook,
                 inputs: {
                     input_image_url: promptObj.fileUrl,
-                    positive_prompt: `${promptObj.prompt} ${promptObj.userBasePrompt} ${basePrompt}`,
+                    positive_prompt: `${promptObj.finalPrompt}`,
                     negative_prompt: promptObj.negativePrompt,
                     inpainting_area: promptObj.inpaintTarget,
                     noise: promptObj.strength

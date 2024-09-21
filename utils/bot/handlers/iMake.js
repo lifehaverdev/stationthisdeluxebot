@@ -490,6 +490,66 @@ async function handleMilady(message) {
     }
 }
 
+async function handleFlux(message) {
+    console.log('flux')
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+    const group = getGroup(message);
+
+    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.FLUX){
+        return;
+    }
+    message.text = message.text.replace('/flux','').replace(`@${process.env.BOT_NAME}`,'');
+    if(message.text == ''){
+        console.log('no msg text')
+        // startMog();
+        return
+    }
+
+    let settings;
+    if(group){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
+
+    const thisSeed = makeSeed(userId);
+    let batch;
+    if(chatId < 0){
+        batch = 1;
+    } else {
+        batch = settings.batchMax;
+    }
+
+    //save these settings into lobby in case cook mode time
+    lobby[userId] = {
+        ...lobby[userId],
+        prompt: message.text,
+        type: 'FLUX',
+        lastSeed: thisSeed
+    }
+
+    const promptObj = {
+        ...settings,
+        prompt: message.text,
+        strength: 1,
+        checkpoint: 'flux-schnell',
+        seed: thisSeed,
+        batchMax: batch,
+        type: 'FLUX'
+    }
+        
+    try {
+        await react(message);
+        console.log('check out the prompt object')
+        console.log(promptObj);
+        enqueueTask({message,promptObj})
+        setUserState(message, STATES.IDLE);
+    } catch (error) {
+        console.error("Error generating and sending image:", error);
+    }
+}
+
 async function handleRegen(message) {
     const userId = message.from.id;
     const thisSeed = makeSeed(userId);
@@ -609,5 +669,6 @@ module.exports = {
     handleMs2Prompt,
     handleInpaintPrompt,
     handleInpaintTarget,
-    handleMog, startMog, handleDegod, handleMilady
+    handleMog, startMog, handleDegod, handleMilady,
+    handleFlux
 }
