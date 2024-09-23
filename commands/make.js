@@ -147,8 +147,8 @@ function imgPreProc(promptObj) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    let promptFinal = handleLoraTrigger(`${promptObj.prompt}, ${promptObj.userBasePrompt == '-1' ?  '' : promptObj.userBasePrompt}, ${getBasePromptByName(promptObj.basePrompt)}`,promptObj.checkpoint, promptObj.balance);
-    
+    let promptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`,promptObj.checkpoint, promptObj.balance);
+    let justPromptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}`, promptObj.checkpoint, promptObj.balance)
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
         promptFinal = promptFinal.split(" ")
@@ -159,6 +159,7 @@ function promptPreProc(promptObj) {
     // Handle LoRa triggers or any other final modifications
     //promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
     promptObj.finalPrompt = promptFinal;
+    promptObj.justPrompt = justPromptFinal;
 }
 
 function chooseIdByMachine(ids,promptObj) {
@@ -217,7 +218,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `j0yc4t ${promptObj.finalPrompt}`,
+                    input_text: `j0yc4t ${promptObj.justPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -233,7 +234,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `man wearing d3g0d mask ${promptObj.finalPrompt}`,
+                    input_text: `man wearing d3g0d mask ${promptObj.justPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -249,7 +250,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `milady ${promptObj.finalPrompt}`,
+                    input_text: `milady ${promptObj.justPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -263,7 +264,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `${promptObj.finalPrompt}`,
+                    input_text: `${promptObj.justPrompt}`,
                 }
             }
             //console.log('body for mog',body)
