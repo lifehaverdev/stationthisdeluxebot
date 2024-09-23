@@ -152,20 +152,16 @@ async function handleSaveSettings(message) {
 async function handleSeeSettings(message) {
     const chatId = message.chat.id;
     const userId = message.from.id;
+    const group = getGroup(message);
     let settings;
 
     // Define keys to ignore
     const keysToIgnore = ['_id', 'lastPhoto','userId', 'whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
 
-    if (
-        message.chat.id < 0 && 
-        index != -1 && 
-        rooms[index].admin.some(
-            (appointed)=> { return message.from.id == appointed ? true : false}
-        )){
-        settings = rooms[index].settings;
+    if (message.chat.id < 0 && group){
+        settings = group.settings;
     }
-    else if (lobby[userId]) {
+    else if (!group && lobby[userId]) {
         settings = lobby[userId];
     } else {
         settings = await getUserDataByUserId(chatId);  // Assuming this fetches user data
