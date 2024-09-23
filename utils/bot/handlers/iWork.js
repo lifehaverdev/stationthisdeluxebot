@@ -139,8 +139,6 @@ async function handleStatus(message) {
         )
 }
 
-
-
 function handleRequest(message) {
     const chatId = message.chat.id;
     const userId = message.from.first_name;
@@ -482,14 +480,21 @@ function saySeed(message){
 
 async function shakeAssist(message) {
     const userId = message.from.id;
-    const{time,result} = await promptAssist(message);
-    lobby[userId].points += time;
+    const{time,result} = await promptAssist(message,false);
+    lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
     return true
 }
 
-
+async function shakeFluxAssist(message) {
+    const userId = message.from.id;
+    const{time,result} = await promptAssist(message,true);
+    lobby[userId].points += time+5;
+    sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
+    setUserState(message,STATES.IDLE);
+    return true
+}
 
 
 async function startFluxInterrogate(message, user) {
@@ -635,7 +640,8 @@ module.exports = {
     handleRequest, sendLoRaModelFilenames, 
     loraList, featuredLoRaList,
     fluxLoraList,
-    shakeAssist, shakeSpeak, startSpeak,
+    shakeAssist, shakeFluxAssist,
+    shakeSpeak, startSpeak,
     handleHelp, handleStatus,
     seeGlorp,
     startFluxInterrogate,

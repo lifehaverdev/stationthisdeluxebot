@@ -184,6 +184,7 @@ const discStarter = new StarterFunction(STATES.DISC, 'Send in the photo you want
 
 const interrogateStarter = new StarterFunction(STATES.INTERROGATION, 'Send in the photo you want to extract a prompt from');
 const assistStarter = new StarterFunction(STATES.ASSIST, 'What prompt do you need help with');
+const flassistStarter = new StarterFunction(STATES.FLASSIST, 'What prompt do you need help with');
 //const speakStarter = new StarterFunction(STATES.SPEAK, 'What should I say?');
 
 const inpaintStarter = new StarterFunction(STATES.INPAINT, 'Send in the photo you want to inpaint', 300000, null)
@@ -319,6 +320,7 @@ module.exports = {
     // ms2ControlStyleStarter,
     interrogateStarter,
     assistStarter,
+    flassistStarter,
     //speakStarter,
     inpaintStarter,
     wifeyWlStarter,

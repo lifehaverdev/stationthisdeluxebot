@@ -161,6 +161,7 @@ const actionMap = {
     
     'interrogate' : iResponse.interrogateStarter.start.bind(iResponse.interrogateStarter),
     'assist': iResponse.assistStarter.start.bind(iResponse.assistStarter),
+    'flassist': iResponse.flassistStarter.start.bind(iResponse.flassistStarter),
     'ms3': iResponse.ms3Starter.start.bind(iResponse.ms3Starter),
     'rmbg': iResponse.rmbgStarter.start.bind(iResponse.rmbgStarter),
     'upscale': iResponse.upscaleStarter.start.bind(iResponse.upscaleStarter),
@@ -292,7 +293,9 @@ const actionMap = {
     },
     'finterrogate': iWork.startFluxInterrogate,
     'flux': iResponse.fluxStarter.start.bind(iResponse.fluxStarter),
-    'interMenu': iMenu.handleInterrogateMenu
+
+    'interMenu': iMenu.handleInterrogateMenu,
+    'assistMenu': iMenu.handleAssistMenu
 };
 
 
