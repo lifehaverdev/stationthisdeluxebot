@@ -570,11 +570,11 @@ async function handleRegen(message) {
         batch = lobby[userId].batchMax;
     }
     let strength;
-    if(settings.type.startsWith('MAKE')){
-        strength = 1;
-    } else {
-        strength = settings.strength
-    }
+    // if(settings.type.startsWith('MAKE')){
+    //     strength = 1;
+    // } else {
+    //     strength = settings.strength
+    // }
     const promptObj = {
         ...settings,
         strength: strength,
