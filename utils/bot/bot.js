@@ -28,6 +28,7 @@ const STATES = {
     INPAINTTARGET: 'INPAINTTARGET',
     PFP: 'PFP',
     ASSIST: 'ASSIST',
+    FLASSIST: 'FLASSIST',
     SPEAK: 'SPEAK',
     INTERROGATION: 'INTERROGATION',
     DISC: 'DISC',
@@ -100,18 +101,18 @@ const STATE_TO_LOBBYPARAM = {
 }
 
 const commandStateMessages = {
-    '/disc': {
-        state: STATES.DISC,
-        message: 'What photo or file will you write to a disc?'
-    },
-    '/watermark': {
-        state: STATES.WATERMARK,
-        message: 'What photo or file will you brand?'
-    },
-    '/interrogate': {
-        state: STATES.INTERROGATION,
-        message: "Send in the photo you want to reverse engineer a prompt from."
-    },
+    // '/disc': {
+    //     state: STATES.DISC,
+    //     message: 'What photo or file will you write to a disc?'
+    // },
+    // '/watermark': {
+    //     state: STATES.WATERMARK,
+    //     message: 'What photo or file will you brand?'
+    // },
+    // '/interrogate': {
+    //     state: STATES.INTERROGATION,
+    //     message: "Send in the photo you want to reverse engineer a prompt from."
+    // },
     '/quit': {
         state: STATES.IDLE,
         message: 'okay i reset your station'
@@ -136,10 +137,10 @@ const commandStateMessages = {
         state: STATES.PFP,
         message: "Send in a photo and I will automatically img2img it with my own prompt"
     },
-    '/assist': {
-        state: STATES.ASSIST,
-        message: "Tell me the idea or key words you want a prompt for"
-    },
+    // '/assist': {
+    //     state: STATES.ASSIST,
+    //     message: "Tell me the idea or key words you want a prompt for"
+    // },
     // '/speak': {
     //     state: STATES.SPEAK,
     //     message: "What should I say"

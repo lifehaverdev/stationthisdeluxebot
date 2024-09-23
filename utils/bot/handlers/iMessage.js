@@ -195,6 +195,7 @@ const stateHandlers = {
     [STATES.MS2PROMPT]: (message) => safeExecute(message, iMake.handleMs2Prompt),
     [STATES.REQUEST]: (message) => safeExecute(message, iWork.handleRequest),
     [STATES.ASSIST]: (message) => safeExecute(message, iWork.shakeAssist),
+    [STATES.FLASSIST]: (message) => safeExecute(message, iWork.shakeFluxAssist),
     [STATES.SPEAK]: (message) => safeExecute(message, iWork.shakeSpeak),
     [STATES.IMG2IMG]: (message) => safeExecute(message, iMedia.handleMs2ImgFile),
     [STATES.MS3]: (message) => safeExecute(message,iMedia.handleMs3ImgFile),

@@ -242,7 +242,7 @@ function handleUtils(message) {
       if(lobby[message.from.id] && balance >= 300000){
         options.reply_markup.inline_keyboard.push(
             [
-                { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assist'},
+                { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assistMenu'},
                 { text: settings.advancedUser ? '🖼️➡️💬' : 'interrogate', callback_data: 'interMenu'},
             ],
             // [
@@ -717,8 +717,48 @@ function getInterrogateMenu() {
     };
 }
 
+function getAssistMenu() {
+
+    const interrogateKeyboard = [
+        [{text: 'SDXL', callback_data: 'assist'}],
+        [{text: 'FLUX', callback_data: 'flassist'}]
+    ]
+
+    return {
+        inline_keyboard: interrogateKeyboard
+    };
+}
+
 async function handleInterrogateMenu(message,user) {
     const reply_markup = getInterrogateMenu();
+    if(user){
+        console.log('we have user')
+        editMessage(
+            {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: 'Which prompt format?',
+                reply_markup
+            }
+        )
+    } else {
+        console.log('no user i guess')
+        const botMessage = await sendMessage(message, 'Which prompt format?');
+        const chat_id = botMessage.chat.id;
+        const message_id = botMessage.message_id;
+        editMessage(
+            {
+                reply_markup,
+                chat_id,
+                message_id
+            }
+        );
+    }
+            
+}
+
+async function handleAssistMenu(message,user) {
+    const reply_markup = getAssistMenu();
     if(user){
         console.log('we have user')
         editMessage(
@@ -762,5 +802,6 @@ module.exports = {
     handleBasePromptMenu,
     handleVoiceMenu,
     handleWatermarkMenu,
-    handleInterrogateMenu
+    handleInterrogateMenu,
+    handleAssistMenu, 
 }
