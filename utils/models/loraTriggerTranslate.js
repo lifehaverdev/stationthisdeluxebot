@@ -13,7 +13,7 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
         const weight = p1 ? (parseInt(p1, 10) / 10).toFixed(1) : lora.default_weight;
         if (
           !usedLoras.has(lora.lora_name) && 
-          (lora.gate <= balance) && 
+          //(lora.gate <= balance) && 
           checkpoint && lora.version == checkpointmenu.find(item => item.name === checkpoint)?.description &&
           !lora.disabled
         ) {
