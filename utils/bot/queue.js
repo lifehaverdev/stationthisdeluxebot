@@ -332,6 +332,11 @@ async function handleTaskCompletion(task, run) {
     if (status === 'success') {
         const operationSuccess = await retryOperation(operation);
         if(operationSuccess && sent){
+            if(promptObj.type == 'MS3.2') {
+                task.promptObj.rate = 2;
+            } else {
+                task.promptObj.rate = 1;
+            }
             addPoints(task)
             const out = {
                 urls: urls,

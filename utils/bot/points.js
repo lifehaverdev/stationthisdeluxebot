@@ -4,7 +4,7 @@ const { updateGroupPoints } = require('../../db/mongodb')
 
 function addPoints(task) {
     ({ promptObj, message } = task);
-    const pointsToAdd = (Date.now()-task.timestamp) / 1000;
+    const pointsToAdd = ((Date.now()-task.timestamp) / 1000) * promptObj.rate;
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
     //console.log('group',group)

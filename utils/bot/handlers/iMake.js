@@ -490,6 +490,64 @@ async function handleMilady(message) {
     }
 }
 
+async function handleChud(message) {
+    console.log('chud')
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+    const group = getGroup(message);
+
+    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MOG){
+        return;
+    }
+    message.text = message.text.replace('/chud','').replace(`@${process.env.BOT_NAME}`,'');
+    if(message.text == ''){
+        //startMog();
+        return
+    }
+
+    let settings;
+    if(group){
+        settings = group.settings;
+    } else {
+        settings = lobby[userId]
+    }
+
+    const thisSeed = makeSeed(userId);
+    let batch;
+    if(chatId < 0){
+        batch = 1;
+    } else {
+        batch = settings.batchMax;
+    }
+
+    //save these settings into lobby in case cook mode time
+    lobby[userId] = {
+        ...lobby[userId],
+        prompt: message.text,
+        type: 'CHUD',
+        lastSeed: thisSeed
+    }
+
+    const promptObj = {
+        ...settings,
+        prompt: message.text,
+        strength: 1,
+        seed: thisSeed,
+        batchMax: batch,
+        type: 'CHUD'
+    }
+        
+    try {
+        await react(message);
+        console.log('check out the prompt object')
+        console.log(promptObj);
+        enqueueTask({message,promptObj})
+        setUserState(message, STATES.IDLE);
+    } catch (error) {
+        console.error("Error generating and sending image:", error);
+    }
+}
+
 async function handleFlux(message) {
     console.log('flux')
     const chatId = message.chat.id;
@@ -669,6 +727,6 @@ module.exports = {
     handleMs2Prompt,
     handleInpaintPrompt,
     handleInpaintTarget,
-    handleMog, startMog, handleDegod, handleMilady,
+    handleMog, startMog, handleDegod, handleMilady, handleChud,
     handleFlux
 }

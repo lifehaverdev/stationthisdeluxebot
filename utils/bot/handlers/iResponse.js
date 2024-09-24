@@ -175,6 +175,7 @@ const fluxStarter = new StarterFunction(STATES.FLUX, 'What prompt for your flux 
 const pfpStarter = new StarterFunction(STATES.PFP, 'Send in the photo you want to img to img. I will do the prompt myself.', 300000, null);
 
 const ms3Starter = new StarterFunction(STATES.MS3, 'Send in the photo you want to img to video.', 600000);
+const ms3V2Starter = new StarterFunction(STATES.MS3V2, 'Send in the photo you want to img to video. (v2)', 600000);
 const rmbgStarter = new StarterFunction(STATES.RMBG, 'Send me the photo to remove the background from', 200000);
 const upscaleStarter = new StarterFunction(STATES.UPSCALE, 'Send me the photo you want to upscale', 200000);
 //const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?');
@@ -306,6 +307,7 @@ module.exports = {
     // pfpControlStarter,
     // pfpControlStyleStarter,
     ms3Starter,
+    ms3V2Starter,
     rmbgStarter,
     upscaleStarter,
     makeStarter,

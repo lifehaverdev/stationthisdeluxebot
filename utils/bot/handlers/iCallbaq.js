@@ -163,6 +163,7 @@ const actionMap = {
     'assist': iResponse.assistStarter.start.bind(iResponse.assistStarter),
     'flassist': iResponse.flassistStarter.start.bind(iResponse.flassistStarter),
     'ms3': iResponse.ms3Starter.start.bind(iResponse.ms3Starter),
+    'ms3.2': iResponse.ms3V2Starter.start.bind(iResponse.ms3V2Starter),
     'rmbg': iResponse.rmbgStarter.start.bind(iResponse.rmbgStarter),
     'upscale': iResponse.upscaleStarter.start.bind(iResponse.upscaleStarter),
     'watermark': iBrand.startWatermark ,//iResponse.watermarkStarter.start.bind(iResponse.watermarkStarter),
