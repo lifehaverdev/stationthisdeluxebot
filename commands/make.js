@@ -152,7 +152,7 @@ function promptPreProc(promptObj) {
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
         promptFinal = promptFinal.split(" ")
-                                    .map(word => word.replace(/[^\w\s]|_/g, ''))
+                                    // .map(word => word.replace(/[^\w\s]|_/g, ''))
                                     .filter(word => !censoredWords.includes(word))
                                     .join(" ");
     }
