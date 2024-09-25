@@ -80,6 +80,81 @@ function displayAccountSettingsMenu(message,dms) {
     const toLevelUpRatio = (totalExp-lastLevel) / (nextLevel-lastLevel);
     let bars = '🟩';
     let pointBars = '🔹'
+
+    const qoints = lobby[userId].qoints;//8000000;        // User's purchased qoints
+    
+    const maxPoints = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)
+    const regeneratingEmojiTiers = [
+        { emoji: '🌊', value: 100000 },
+        { emoji: '💎', value: 10000 },
+        { emoji: '💠', value: 1000 },
+        { emoji: '🔷', value: 100 },
+        { emoji: '🔹', value: 10 }
+    ];
+    // Threshold values for each emoji (for qoints)
+    const qointEmojiTiers = [
+        { emoji: '☀️', value: 1000000 },
+        { emoji: '🧀', value: 100000 },
+        { emoji: '🔶', value: 10000 },
+        { emoji: '🔸', value: 1000 }
+    ];
+    // Function to get the appropriate emoji for a given point value
+function getEmojiForPoints(points, tiers) {
+    for (const tier of tiers) {
+        if (points >= tier.value) {
+            return tier.emoji;
+        }
+    }
+    return '▫️'; // If no points are left
+}
+    function createPointBar(totalPoints, usedPoints, qoints, segments = 6) {
+        let bar = '';
+        let remainingQoints = qoints;
+        let remainingPoints = totalPoints;
+        let remainingSegments = segments;
+        let totalUsedPoints = usedPoints;
+    
+        console.log(`Total Points: ${totalPoints}, Used Points: ${usedPoints}, Qoints: ${qoints}, Segments: ${segments}`);
+    
+        // If qoints exist, represent them by a single emoji (largest tier possible)
+        if (qoints > 0 && remainingSegments > 1) {
+            const qointEmoji = getEmojiForPoints(remainingQoints, qointEmojiTiers);
+            bar += qointEmoji;  // Add one qoint emoji to the left
+            remainingSegments--;  // Reserve one segment for qoints
+            console.log(`Added Qoint Emoji: ${qointEmoji}, Remaining Segments: ${remainingSegments}`);
+        }
+    
+        // Handle regenerating points with the remaining segments
+        for (const tier of regeneratingEmojiTiers) {
+            console.log(`Processing Regenerating Point Tier: ${tier.emoji} (${tier.value} points per segment)`);
+    
+            while (remainingPoints >= tier.value && remainingSegments > 0) {
+                console.log(`Remaining Points: ${remainingPoints}, Remaining Segments: ${remainingSegments}`);
+    
+                if (totalUsedPoints >= remainingPoints) {
+                    bar += '▫️';  // Points used, add white square
+                    console.log(`Added White Square for Points: '▫️'`);
+                } else {
+                    bar += tier.emoji;  // Add regenerating point emoji for this tier
+                    console.log(`Added Regenerating Point Emoji: ${tier.emoji}`);
+                }
+    
+                remainingPoints -= tier.value;
+                remainingSegments--;
+                console.log(`After Adding Regenerating Segment - Remaining Points: ${remainingPoints}, Remaining Segments: ${remainingSegments}`);
+            }
+        }
+    
+        // Fill any remaining segments with white squares
+        while (remainingSegments > 0) {
+            bar += '▫️';
+            remainingSegments--;
+        }
+    
+        console.log(`Final Bar: ${bar}`);
+        return bar;
+    }
+    
     for(let i =0; i < 6; i++){
         if(i < toLevelUpRatio * 6){
             bars += '🟩';
@@ -87,17 +162,9 @@ function displayAccountSettingsMenu(message,dms) {
             bars += '⬜️'
         }
     }
-    const toPointRunOutRatio = lobby[userId].points / Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)
-    for(let i =0; i < 6; i++){
-        if(i < toPointRunOutRatio * 6){
-            pointBars += '🔹';
-        } else {
-            pointBars += '▫️'
-        }
-    }
-    const burned = getBurned(userId)
     
-    //let accountInfo = `Account:\n\n`;
+    pointBars = createPointBar(maxPoints,lobby[userId].points,qoints,7);
+    const burned = getBurned(userId)
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
     dms ? accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n` : null
@@ -105,7 +172,7 @@ function displayAccountSettingsMenu(message,dms) {
     accountInfo += `<b>LEVEL:</b>${level}\n`
     accountInfo += `<b>EXP:</b>        ${bars}\n`
     accountInfo += `<b>POINTS:</b> ${pointBars}\n`
-    accountInfo += `${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}\n\n`;
+    accountInfo += `${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)} ${qoints ? '+ '+qoints : ''}\n\n`;
     accountInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
     
     
