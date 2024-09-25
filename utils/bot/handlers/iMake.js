@@ -214,25 +214,14 @@ async function handleMake(message) {
     checkAndSetType(lobby[userId].type, lobby[userId], message, group, userId);
 
     let batch;
-    let params;
     if(message.chat.id < 0){
         batch = 1;
-        //batch = lobby[userId].batchMax
-        //console.log('index in handlemake for groupchat',group.id)
-        if(group){
-            params = group.settings
-        } else {
-            //react(message)
-            params = lobby[userId]
-        }
     } else {
-        //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
-        params = lobby[userId]
         batch = lobby[userId].batchMax;
     }
     
     const promptObj = {
-        ...params,
+        ...settings,
         strength: 1,
         prompt: message.text,
         seed: thisSeed,
@@ -698,6 +687,9 @@ async function handleRegen(message) {
         prompt: lobby[userId].prompt,
         seed: thisSeed,
         batchMax: batch
+    }
+    if(promptObj.type == 'FLUX'){
+        promptObj.checkpoint = 'flux-schnell'
     }
     react(message, '👍');
     enqueueTask({message, promptObj})

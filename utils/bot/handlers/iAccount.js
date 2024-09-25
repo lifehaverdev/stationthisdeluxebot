@@ -99,14 +99,14 @@ function displayAccountSettingsMenu(message,dms) {
         { emoji: '🔸', value: 1000 }
     ];
     // Function to get the appropriate emoji for a given point value
-function getEmojiForPoints(points, tiers) {
-    for (const tier of tiers) {
-        if (points >= tier.value) {
-            return tier.emoji;
+    function getEmojiForPoints(points, tiers) {
+        for (const tier of tiers) {
+            if (points >= tier.value) {
+                return tier.emoji;
+            }
         }
+        return '▫️'; // If no points are left
     }
-    return '▫️'; // If no points are left
-}
     function createPointBar(totalPoints, usedPoints, qoints, segments = 6) {
         let bar = '';
         let remainingQoints = qoints;
@@ -154,7 +154,7 @@ function getEmojiForPoints(points, tiers) {
         console.log(`Final Bar: ${bar}`);
         return bar;
     }
-    
+    pointBars = createPointBar(maxPoints,lobby[userId].points,qoints,7);
     for(let i =0; i < 6; i++){
         if(i < toLevelUpRatio * 6){
             bars += '🟩';
@@ -163,7 +163,7 @@ function getEmojiForPoints(points, tiers) {
         }
     }
     
-    pointBars = createPointBar(maxPoints,lobby[userId].points,qoints,7);
+    
     const burned = getBurned(userId)
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
