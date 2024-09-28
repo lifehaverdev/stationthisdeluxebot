@@ -12,6 +12,7 @@ let loraTriggers = [];
 let burns = [];
 let rooms = [];
 let flows = [];
+let processes = [];
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -195,7 +196,7 @@ function getBurned(userId) {
     const burnRecord = burns.find(burn => burn.wallet === lobby[userId].wallet);
     let burned = 0;
     if (burnRecord) {
-        console.log('burn record',burnRecord.burned)
+        //console.log('burn record',burnRecord.burned)
         burned += parseInt(burnRecord.burned) * 2 / 1000000;
     }
     return burned;
@@ -212,7 +213,7 @@ module.exports = {
     getBurned,
     lobby,
     rooms, flows, burns, loraTriggers,
-    taskQueue, waiting,
+    taskQueue, waiting, processes,
     startup,
     commandStateMessages,
     SET_COMMANDS,

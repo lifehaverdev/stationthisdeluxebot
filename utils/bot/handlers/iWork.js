@@ -106,11 +106,35 @@ Powered by $MS2
     sendMessage(message, helpMessage);
 }
 
+function convertTime(timeInSeconds) {
+    const secondsInMinute = 60;
+    const secondsInHour = 60 * 60;
+    const secondsInDay = 24 * 60 * 60;
+    const secondsInWeek = 7 * 24 * 60 * 60;
+
+    if (timeInSeconds >= secondsInWeek) {
+        const weeks = Math.floor(timeInSeconds / secondsInWeek);
+        return `${weeks} week${weeks > 1 ? 's' : ''}`;
+    } else if (timeInSeconds >= secondsInDay) {
+        const days = Math.floor(timeInSeconds / secondsInDay);
+        return `${days} day${days > 1 ? 's' : ''}`;
+    } else if (timeInSeconds >= secondsInHour) {
+        const hours = Math.floor(timeInSeconds / secondsInHour);
+        return `${hours} hour${hours > 1 ? 's' : ''}`;
+    } else if (timeInSeconds >= secondsInMinute) {
+        const minutes = Math.floor(timeInSeconds / secondsInMinute);
+        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+    } else {
+        return `${timeInSeconds} second${timeInSeconds > 1 ? 's' : ''}`;
+    }
+}
+
 async function handleStatus(message) {
     // console.log('message in handleStatus',message);
     //console.log('waiting in handleStatus',waiting);
+    const runtime = (Date.now() - startup) / 1000; // Time in seconds
     let msg = 
-    `I have been running for ${(Date.now() - startup) / 1000} seconds.\n`
+    `I have been running for ${convertTime(runtime)}.\n`
     taskQueue.length > 0 ? msg +=    
     `Waiting: \n${taskQueue.map(task => {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
