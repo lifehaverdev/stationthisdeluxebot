@@ -81,7 +81,9 @@ async function fetchOutput(run_id) {
 
 // Function to make the API request and handle the response
 async function generate(promptObj) {
-    if(promptObj.prompt == '' && promptObj.type != 'MS3'){
+    if(promptObj.prompt == '' && (promptObj.type != 'MS3' && promptObj.type != 'MS3.2')){
+        console.log(promptObj.type )
+        console.log('generate return by type none or vid')
         return;
     }
     try {
@@ -89,7 +91,7 @@ async function generate(promptObj) {
         imgPreProc(promptObj);
         promptPreProc(promptObj);
         const body = prepareRequest(promptObj);
-        //console.log(body);
+        console.log(body);
         let run_id;
         const response = await fetch("https://www.comfydeploy.com/api/run", {
             method: "POST",
@@ -99,11 +101,12 @@ async function generate(promptObj) {
             },
             body: body,
         });
+        console.log(response)
 
         if (response.ok) {
             const data = await response.json();
             ( run_id ) = data.run_id;
-            //console.log('runid',run_id);
+            console.log('runid',run_id);
             return run_id;
         } else {
                    // If the response is not ok, log the status and error message
@@ -298,6 +301,15 @@ function prepareRequest(promptObj) {
             }
             //console.log('body for mog',body)
             break;
+        case 'MS3.2':
+            body = {
+                deployment_id: comfydeployid,
+                webhook: webHook,
+                inputs: {
+                    input_image: promptObj.fileUrl || null,
+                    input_seed: promptObj.seed,
+                }
+            }
         case 'RMBG':
         case 'UPSCALE':
         case 'INTERROGATE':
