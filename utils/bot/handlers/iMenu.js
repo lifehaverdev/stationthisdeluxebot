@@ -388,9 +388,9 @@ function handleAnimate(message) {
             [   
                 { text: settings.advancedUser ? '🖼️➡️🎞️' : 'img2video', callback_data: 'ms3' },
             ],
-            // [
-            //     { text: settings.advancedUser ? '🖼️➡️🎞️V2' : 'img2videoV2', callback_data: 'ms3.2' },
-            // ]
+            [
+                { text: settings.advancedUser ? '🖼️➡️🎞️V2' : 'img2videoV2', callback_data: 'ms3.2' },
+            ]
         )
       }
       options.reply_markup.inline_keyboard.push(

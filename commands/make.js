@@ -79,8 +79,6 @@ async function fetchOutput(run_id) {
     }
 }
 
-// Function to handle sending the generated image
-
 // Function to make the API request and handle the response
 async function generate(promptObj) {
     if(promptObj.prompt == '' && promptObj.type != 'MS3'){
@@ -118,7 +116,6 @@ async function generate(promptObj) {
         console.error("Error generating image:", error);
     }
 }
-
 
 function imgPreProc(promptObj) {
     //console.log('processing image');

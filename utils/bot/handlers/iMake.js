@@ -107,8 +107,8 @@ function checkAndSetType(type, settings, message, group, userId) {
     if (settings.styleTransfer && settings.styleFileUrl) type += '_STYLE';
     if (settings.openPose && settings.poseFileUrl) type += '_POSE';
 
-    settings.type = type;
-    console.log(`Selected type: ${settings.type}`);
+    return type;
+    //console.log(`Selected type: ${settings.type}`);
 }
 
 function tokenGate(group, userId, message) {
@@ -175,7 +175,7 @@ async function startMog(message,user) {
         }
         //await sendMessage(message,'What prompt for your txt2img sd3');
         setUserState(message,STATES.MOG)
-    }
+}
 
 async function handleMake(message) {
     console.log('MAKING SOMETHING')
@@ -204,14 +204,15 @@ async function handleMake(message) {
 
     let thisSeed = makeSeed(userId)
     //save these settings into lobby in case cook mode time
+
+    const thisType = checkAndSetType('MAKE', lobby[userId], message, group, userId);
+
     lobby[userId] = {
         ...lobby[userId],
         prompt: message.text,
-        type: 'MAKE',
+        type: thisType,
         lastSeed: thisSeed
     }
-
-    checkAndSetType(lobby[userId].type, lobby[userId], message, group, userId);
 
     let batch;
     if(message.chat.id < 0){
@@ -222,6 +223,7 @@ async function handleMake(message) {
     
     const promptObj = {
         ...settings,
+        type: thisType,
         strength: 1,
         prompt: message.text,
         seed: thisSeed,
@@ -236,6 +238,7 @@ async function handleMake(message) {
         console.error("Error generating and sending image:", error);
     }
 }
+
 async function handleMake3(message) {
     console.log('MAK3ING SOMETHING')
     const chatId = message.chat.id;

@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "@collabland/sdk": "^0.61.0",
     "@solana/web3.js": "^1.91.4",
     "api": "^6.1.1",
     "comfydeploy": "^0.0.16",

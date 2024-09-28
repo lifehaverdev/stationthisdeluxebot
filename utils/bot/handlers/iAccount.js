@@ -79,82 +79,151 @@ function displayAccountSettingsMenu(message,dms) {
     const lastLevel = (level)**3;
     const toLevelUpRatio = (totalExp-lastLevel) / (nextLevel-lastLevel);
     let bars = '🟩';
-    let pointBars = '🔹'
+    //let pointBars = '🔹'
 
-    const qoints = lobby[userId].qoints;//8000000;        // User's purchased qoints
+    //const qoints = 80000//lobby[userId].qoints;//8000000;        // User's purchased qoints
     
     const maxPoints = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)
-    const regeneratingEmojiTiers = [
-        { emoji: '🌊', value: 100000 },
-        { emoji: '💎', value: 10000 },
-        { emoji: '💠', value: 1000 },
-        { emoji: '🔷', value: 100 },
-        { emoji: '🔹', value: 10 }
-    ];
-    // Threshold values for each emoji (for qoints)
-    const qointEmojiTiers = [
-        { emoji: '☀️', value: 1000000 },
-        { emoji: '🧀', value: 100000 },
-        { emoji: '🔶', value: 10000 },
-        { emoji: '🔸', value: 1000 }
-    ];
-    // Function to get the appropriate emoji for a given point value
-    function getEmojiForPoints(points, tiers) {
-        for (const tier of tiers) {
-            if (points >= tier.value) {
-                return tier.emoji;
-            }
-        }
-        return '▫️'; // If no points are left
-    }
-    function createPointBar(totalPoints, usedPoints, qoints, segments = 6) {
-        let bar = '';
-        let remainingQoints = qoints;
-        let remainingPoints = totalPoints;
-        let remainingSegments = segments;
-        let totalUsedPoints = usedPoints;
+    //let pointBars = '';
+    function createBalancedBar(totalPossiblePoints, spentPoints, qoints, segments = 7) {
+        let bar = [];
     
-        console.log(`Total Points: ${totalPoints}, Used Points: ${usedPoints}, Qoints: ${qoints}, Segments: ${segments}`);
+        // Threshold values for each emoji (for regenerative points)
+        const regeneratingEmojiTiers = [
+            { emoji: '💎', value: 10000 },
+            { emoji: '💠', value: 1000 },
+            { emoji: '🔷', value: 100 },
+            { emoji: '🔹', value: 10 }
+        ];
     
-        // If qoints exist, represent them by a single emoji (largest tier possible)
-        if (qoints > 0 && remainingSegments > 1) {
-            const qointEmoji = getEmojiForPoints(remainingQoints, qointEmojiTiers);
-            bar += qointEmoji;  // Add one qoint emoji to the left
-            remainingSegments--;  // Reserve one segment for qoints
-            console.log(`Added Qoint Emoji: ${qointEmoji}, Remaining Segments: ${remainingSegments}`);
-        }
+        // Threshold values for each emoji (for qoints)
+        const qointEmojiTiers = [
+            { emoji: '☀️', value: 10000 },
+            { emoji: '🧀', value: 1000 },
+            { emoji: '🔶', value: 100 },
+            { emoji: '🔸', value: 10 }
+        ];
     
-        // Handle regenerating points with the remaining segments
-        for (const tier of regeneratingEmojiTiers) {
-            console.log(`Processing Regenerating Point Tier: ${tier.emoji} (${tier.value} points per segment)`);
+        // Function to fill emojis based on remaining points, ensuring we hit exactly 7 emojis
+        function fillSegments(points, tiers, remainingSegments) {
+            const emojiBar = [];
+            let segmentCount = remainingSegments;
     
-            while (remainingPoints >= tier.value && remainingSegments > 0) {
-                console.log(`Remaining Points: ${remainingPoints}, Remaining Segments: ${remainingSegments}`);
-    
-                if (totalUsedPoints >= remainingPoints) {
-                    bar += '▫️';  // Points used, add white square
-                    console.log(`Added White Square for Points: '▫️'`);
-                } else {
-                    bar += tier.emoji;  // Add regenerating point emoji for this tier
-                    console.log(`Added Regenerating Point Emoji: ${tier.emoji}`);
+            for (const tier of tiers) {
+                while (points >= tier.value && segmentCount > 0) {
+                    emojiBar.push(tier.emoji);
+                    points -= tier.value;
+                    segmentCount--;
                 }
+            }
     
-                remainingPoints -= tier.value;
-                remainingSegments--;
-                console.log(`After Adding Regenerating Segment - Remaining Points: ${remainingPoints}, Remaining Segments: ${remainingSegments}`);
+            // If there are remaining segments, but not enough points for the largest emojis
+            while (segmentCount > 0) {
+                if (points > 0) {
+                    emojiBar.push('🔹'); // Use the smallest emoji for leftover points
+                    points -= 10; // Subtract small points
+                } else {
+                    emojiBar.push('▫️'); // Add white squares if no points remain
+                }
+                segmentCount--;
+            }
+    
+            return emojiBar;
+        }
+    
+        // Case 1: If the user has qoints and some regenerative points remain
+        if (qoints && qoints > 0 && totalPossiblePoints > 0) {
+            // First emoji is always qoints
+            bar = bar.concat(fillSegments(qoints, qointEmojiTiers, 1));
+    
+            // Remaining segments are regenerative points
+            const regenPoints = totalPossiblePoints - spentPoints;
+            bar = bar.concat(fillSegments(regenPoints, regeneratingEmojiTiers, segments - 1));
+    
+            // If spentPoints > 0, replace the last emoji with a white square
+            if (spentPoints > 0) {
+                bar[bar.length - 1] = '▫️'; // Replace the last emoji
             }
         }
     
-        // Fill any remaining segments with white squares
-        while (remainingSegments > 0) {
-            bar += '▫️';
-            remainingSegments--;
+        // Case 2: If the user only has regenerative points (no qoints)
+        else if (!qoints || qoints <= 0) {
+            // Fill the entire bar with regenerative points
+            const regenPoints = totalPossiblePoints - spentPoints;
+            bar = fillSegments(regenPoints, regeneratingEmojiTiers, segments);
+    
+            // If points have been spent, replace the last emoji with a white square
+            if (spentPoints > 0) {
+                bar[bar.length - 1] = '▫️'; // Replace the last emoji
+            }
         }
     
-        console.log(`Final Bar: ${bar}`);
-        return bar;
+        // Case 3: If the user has no regenerative points left, only qoints remain
+        else if (totalPossiblePoints <= spentPoints && qoints && qoints > 0) {
+            bar = fillSegments(qoints, qointEmojiTiers, segments);
+    
+            // If qoints are low, ensure the last segment is a white square
+            const lowestQointValue = qointEmojiTiers[qointEmojiTiers.length - 1].value;
+            if (qoints < lowestQointValue * segments) {
+                bar[bar.length - 1] = '▫️'; // Replace the last emoji
+            }
+        }
+    
+        // Ensure the bar is exactly 7 emojis long
+        while (bar.length > segments) {
+            bar.pop(); // Remove excess emojis if necessary
+        }
+    
+        return bar.join(''); // Convert array to string before returning
     }
-    pointBars = createPointBar(maxPoints,lobby[userId].points,qoints,7);
+    
+    // Test cases:
+    
+    // let pointBars = createBalancedBar(totalPossiblePoints, spentPoints, qoints);
+    // console.log(`Generated Bar: ${pointBars}`);
+    
+    // // Additional test cases
+    // let pointBars2 = createBalancedBar(4000, 1000, 0);
+    // console.log(`Generated Bar (no qoints, some spent): ${pointBars2}`);
+    
+    // let testCases = [
+    //     { totalPossiblePoints: 20000, spentPoints: 0, qoints: 10000 },
+    //     { totalPossiblePoints: 10000, spentPoints: 0, qoints: 5000 },
+    //     { totalPossiblePoints: 4000, spentPoints: 0, qoints: 2000 },
+    //     { totalPossiblePoints: 20000, spentPoints: 5000, qoints: 10000 },
+    //     { totalPossiblePoints: 15000, spentPoints: 3000, qoints: 5000 },
+    //     { totalPossiblePoints: 4000, spentPoints: 1000, qoints: 1000 },
+    //     { totalPossiblePoints: 20000, spentPoints: 25000, qoints: 10000 },
+    //     { totalPossiblePoints: 5000, spentPoints: 7000, qoints: 3000 },
+    //     { totalPossiblePoints: 4000, spentPoints: 6000, qoints: 1500 },
+    //     { totalPossiblePoints: 15000, spentPoints: 5000, qoints: 0 },
+    //     { totalPossiblePoints: 10000, spentPoints: 3000, qoints: 0 },
+    //     { totalPossiblePoints: 4000, spentPoints: 1000, qoints: 0 },
+    //     { totalPossiblePoints: 0, spentPoints: 0, qoints: 0 },
+    //     { totalPossiblePoints: 5000, spentPoints: 5000, qoints: 0 },
+    //     { totalPossiblePoints: 0, spentPoints: 0, qoints: 5000 },
+    //     { totalPossiblePoints: 0, spentPoints: 0, qoints: 10 }
+
+    // ];
+
+
+    // function checkBarLength(bar, expectedLength = 7) {
+    //     const actualLength = Array.from(bar).length; // Correctly count emojis
+    //     if (actualLength === expectedLength) {
+    //         console.log(`PASS: Bar is ${actualLength} emojis long.`);
+    //     } else {
+    //         console.log(`FAIL: Bar is ${actualLength} emojis long, expected ${expectedLength}.`);
+    //     }
+    // }
+    
+
+    // testCases.forEach(test => {
+    //     let pointBars = createBalancedBar(test.totalPossiblePoints, test.spentPoints, test.qoints);
+    //     console.log(`Generated Bar (${test.totalPossiblePoints} possible, ${test.spentPoints} spent, ${test.qoints} qoints): ${pointBars}`);
+    //     checkBarLength(pointBars); // Check if the bar is exactly 7 emojis long
+    // });
+    let qoints = lobby[userId].qoints;
+    pointBars = createBalancedBar(maxPoints,lobby[userId].points,qoints);
     for(let i =0; i < 6; i++){
         if(i < toLevelUpRatio * 6){
             bars += '🟩';
