@@ -310,6 +310,7 @@ function prepareRequest(promptObj) {
                     input_seed: promptObj.seed,
                 }
             }
+            break;
         case 'RMBG':
         case 'UPSCALE':
         case 'INTERROGATE':
