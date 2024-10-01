@@ -148,6 +148,51 @@ async function readRooms() {
     }
 }
 
+
+// Function to classify node types and extract relevant inputs
+function classifyNodeType(node) {
+    let relevantInputs = [];
+
+    switch (node.type) {
+        case 'ComfyUIDeployExternalImage':
+            relevantInputs.push('input_image');
+            break;
+        case 'ComfyUIDeployExternalNumberInt':
+            relevantInputs.push('input_seed');
+            break;
+        case 'ComfyUIDeployExternalNumber':
+            relevantInputs.push('input_number');
+            break;
+        case 'ComfyUIDeployExternalText':
+            relevantInputs.push('input_text');
+            break;
+        case 'ComfyUIDeployExternalCheckpoint':
+            relevantInputs.push('input_checkpoint');
+            break;
+        case 'ComfyUIDeployExternalTextAny':
+            relevantInputs.push('input_text_any');
+            break;
+        default:
+            console.log(`Unknown node type: ${node.type}`);
+    }
+
+    return relevantInputs;
+}
+
+// Parse the workflow JSON and extract desired inputs
+function parseWorkflow(workflow) {
+    let workflowInputs = [];
+
+    const deployNodes = workflow.nodes.filter(node => node.type.startsWith('ComfyUIDeploy'));
+
+    deployNodes.forEach(node => {
+        const inputs = classifyNodeType(node);
+        workflowInputs.push(...inputs); // Collect relevant inputs
+    });
+
+    return workflowInputs;
+}
+
 async function readWorkflows() {
     // Connection URI
     const uri = process.env.MONGO_PASS;
@@ -158,8 +203,6 @@ async function readWorkflows() {
     try {
         // Connect to the MongoDB server
         await client.connect();
-
-        // Access the database and the specified collection
         const db = client.db(process.env.BOT_NAME);
         const collection = db.collection('workflows');
 
@@ -169,12 +212,20 @@ async function readWorkflows() {
             // Parse the loraTriggers field and update the existing array
             flows.length = 0; // Clear the existing array
             //const parsedTriggers = 
-            document.flows.map(flow => flows.push(flow))//JSON.parse(triggerStr));
+            document.flows.map(flow => {
+                // Assuming flow includes a JSON workflow definition
+                const parsedInputs = parseWorkflow(flow.layout);
+                flows.push({
+                    name: flow.name,
+                    ids: flow.ids,
+                    inputs: parsedInputs  // Only store the relevant inputs
+                });
+            })//JSON.parse(triggerStr));
             
             //loraTriggers.push(...parsedTriggers); // Push new elements into the array
         }
         console.log('workflows loaded');
-        //console.log(JSON.stringify(loraTriggers))
+        console.log(JSON.stringify(flows))
     } catch (error) {
         console.error('Error getting workflows:', error);
     } finally {

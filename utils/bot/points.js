@@ -13,8 +13,9 @@ function addPoints(task) {
     const group = getGroup(message);
     //console.log('group',group)
     if((user && !group) || (user.verified && group)){
-        if(user && group) console.log('WE ADDING POINTS TO USER EVEN THO GROUP')
+        //if(user && group) console.log('WE ADDING POINTS TO USER EVEN THO GROUP')
         user.points += pointsToAdd;
+        user.doints -= promptObj.dointsAdded;
     } else if (group){
         group.points += pointsToAdd;
         updateGroupPoints(group,pointsToAdd)

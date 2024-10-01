@@ -8,7 +8,7 @@ let lastCleanTime = Date.now();
 const logLobby = true;
 const POINTMULTI = 540;
 const NOCOINERSTARTER = 199800;
-const LOBBY_CLEAN_MINUTE = 60 * 8;//8 hours
+const LOBBY_CLEAN_MINUTE = 15//15 minutes new rules //60 * 8;//8 hours
 const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
 const DB_REFRESH = 1000*60*15
 
@@ -35,11 +35,46 @@ let locks = 0;
 
 
 function cleanLobby() {
+    //this saves all points to exp in the database
+    addPointsToAllUsers()
+
+    //now we adjust the user object to reflect the same
     for (const userId in lobby) {
-        addPointsToAllUsers()
-        lobby[userId].exp += lobby[userId].points
+        const max = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI);
+        lobby[userId].exp += lobby[userId].points;
+
+        // Calculate the regenerated points for this cycle
+        let regeneratedPoints = max / 36;
+        
+        // Subtract regenerated points from the spent points (points), ensuring doints are non-negative
+        let newDoints = Math.max(lobby[userId].points - regeneratedPoints, 0);
+        
+        // If the user already has doints, add the new doints to the existing balance
+        if (lobby[userId].doints) {
+            newDoints += lobby[userId].doints;
+        }
+
+        // Update the user's doints and reset points to 0
+        lobby[userId].doints = newDoints;
         lobby[userId].points = 0;
+
+         // Check if the user has had any activity in the last 15 minutes
+         const lastRunTime = lobby[userId].runs[0].timeRequested;
+         if (Date.now() - lastRunTime > 15 * 60 * 1000) {
+             // Save user data and sign them out if no recent activity
+             // Important that it saves the doints and points 
+             // and a kickedAt key value we can refer to in the future 
+             // to calculate further point regeneration
+             writeUserData(userId, {
+                ...lobby[userId],
+                points: 0,  // Use the most up-to-date points from the lobby
+                doints: newDoints,
+                kickedAt: Date.now(),
+            });
+            delete lobby[userId];
+         }
     }
+    
     locks = 0;
     console.log("The lobby is clear");
     lastCleanTime = Date.now(); // Update the last clean time
@@ -68,6 +103,20 @@ async function checkLobby(message){
     if(!lobby.hasOwnProperty(userId)){
         //check db for settings
         userData = await getUserDataByUserId(userId);
+        
+            // If the user was previously signed out, calculate how much of their doints have regenerated
+            if (userData.kickedAt) {
+                const timeSinceSignOut = Date.now() - userData.kickedAt;
+                const minutesSinceSignOut = timeSinceSignOut / (1000 * 60);
+                const regenerationCycles = Math.floor(minutesSinceSignOut / 15);
+                
+                const max = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
+                const regeneratedPoints = max / 36 * regenerationCycles;
+
+                // Reduce doints by the regenerated amount, but ensure it doesn't go below 0
+                userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
+            }
+
         //check message for group
         if(group){
             if(group.credit > group.points){
@@ -88,7 +137,7 @@ async function checkLobby(message){
                 sendMessage(message,'use the signin command and connect a wallet to unlock $MS2 holder benefits',options);
             }
             balance = 0;
-        //we have a 
+        
         } else {
             balance = await getBalance(userData.wallet);
             let options;
@@ -97,13 +146,9 @@ async function checkLobby(message){
                     home
                 }
             }
-            //sendMessage(message, 'welcome back', options);
+            
         }
-        // if(userData.verified === false){
-        //     if(message.chat.id < 0){
-        //         sendMessage(message,'Unlock the full features of the bot by signing in and verifying')
-        //     //return false
-        // }
+       
         if(checkBlacklist(userData.wallet)){
             await sendMessage(message,`you are either on the blacklist or pretending to be the raydium pool lol gtfo`)
             return false;
@@ -116,11 +161,7 @@ async function checkLobby(message){
         }
         setUserState(message,STATES.IDLE);
         console.log(message.from.first_name,"has entered the chat");
-        //const welcomeMessage = `welcome, been here for ${(Date.now() - startup)/1000} seconds now`
-        //sendMessage(message, welcomeMessage);
-        //return true
-    // } else if (lobby[userId].verified === false) {
-    //     sendMessage(message,'You must be verified to use the bot. Try signout and signin to complete the verify process.')
+        
     } else {
         if(group){
             if(group.credit > group.points){
@@ -133,7 +174,7 @@ async function checkLobby(message){
         setUserState(message,STATES.IDLE);
     }
     let points = lobby[userId].points;
-
+    if(lobby[userId].doints){points += lobby[userId].doints};
     if (
             pointsCalc(points) > lobby[userId].balance + NOCOINERSTARTER
             || (group && group.credt < group.points)
