@@ -19,21 +19,28 @@ let isSorting = false;
 // LOBBY AND QUEUE
 //
 function enqueueTask(task) {
+    console.log('task at the top of enqueueTask',task)
     // Retrieve user ID from the task message
-    const userId = task.message.from.id;
+    const userId = task.promptObj.userId;
     // Count how many tasks are in the queue from the same user
-    const count = taskQueue.filter(t => t.message.from.id === userId).length;
+    const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
     // Check if the user has already 4 tasks in the queue
     if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
         sendMessage(task.message,"You have 5 things in the queue rn, chill out. Try setting batch or something damn.")
         return; // Exit the function without enqueuing the new task
     }
+    if (lobby[userId]) {
+        lobby[userId].doints ? lobby[userId].doints += 100 : lobby[userId].doints = 100;
+        //lobby[userId].doints = lobby[userId].doints + 100;
+        task.promptObj.dointsAdded = 100;
+    }
     taskQueue.push(task);
     task.timestamp = Date.now()
     task.status = 'thinking'
-    console.log(`Task enqueued for ${task.message.from.first_name}:`);
+    console.log(`Task enqueued for ${task.message.from.first_name}`);
     //console.log(task.promptObj.type,task.promptObj.prompt)
+    console.log('doints',lobby[userId].doints)
     if (!isSorting && taskQueue.length > 1) {
         // isSorting = true;
         sortTaskQueue();

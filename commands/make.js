@@ -101,7 +101,7 @@ async function generate(promptObj) {
             },
             body: body,
         });
-        console.log(response)
+        //console.log(response)
 
         if (response.ok) {
             const data = await response.json();

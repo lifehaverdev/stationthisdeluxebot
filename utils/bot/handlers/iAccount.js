@@ -223,7 +223,9 @@ function displayAccountSettingsMenu(message,dms) {
     //     checkBarLength(pointBars); // Check if the bar is exactly 7 emojis long
     // });
     let qoints = lobby[userId].qoints;
-    pointBars = createBalancedBar(maxPoints,lobby[userId].points,qoints);
+    let doints = 0;
+    lobby[userId].doints ? doints += lobby[userId].doints : doints = 0;
+    pointBars = createBalancedBar(maxPoints,lobby[userId].points+doints,qoints);
     for(let i =0; i < 6; i++){
         if(i < toLevelUpRatio * 6){
             bars += '🟩';
@@ -231,7 +233,6 @@ function displayAccountSettingsMenu(message,dms) {
             bars += '⬜️'
         }
     }
-    
     
     const burned = getBurned(userId)
     let accountInfo = '\n';
@@ -241,7 +242,7 @@ function displayAccountSettingsMenu(message,dms) {
     accountInfo += `<b>LEVEL:</b>${level}\n`
     accountInfo += `<b>EXP:</b>        ${bars}\n`
     accountInfo += `<b>POINTS:</b> ${pointBars}\n`
-    accountInfo += `${lobby[userId].points || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)} ${qoints ? '+ '+qoints : ''}\n\n`;
+    accountInfo += `${lobby[userId].points + doints || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)} ${qoints ? '+ '+qoints : ''}\n\n`;
     accountInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
     
     
@@ -255,23 +256,12 @@ function displayAccountSettingsMenu(message,dms) {
     } else {
         accountInfo += `<b>ALL ACCESS VIP STATION THIS</b>`
     }
-
-    // Send account settings menu with account information
-    // if(dms){
         sendMessage(message, accountInfo, {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: accountSettingsKeyboard
             }
         });
-    // } else {
-    //     sendMessage(message, 'Account Settings:', {
-    //         parse_mode: 'HTML',
-    //         reply_markup: {
-    //             inline_keyboard: accountSettingsKeyboard
-    //         }
-    //     });
-    // }
     
 }
 
