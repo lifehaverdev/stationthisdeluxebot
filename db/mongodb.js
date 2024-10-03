@@ -2,6 +2,7 @@ const { MongoClient, ObjectId } = require("mongodb");
 const { lobby } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
 const { DEV_DMS } = require("../utils/utils.js");
+const { getBalance } = require('../utils/users/checkBalance.js')
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
@@ -233,6 +234,7 @@ async function readStats() {
             if (walletSet.has(user.wallet)) {
                 // If the wallet is already in the set, add it to the doubleUseSet
                 doubleUseSet.add(user.wallet);
+                user.balance = await getBalance(user.wallet)
                 console.log(user.wallet);
             } else {
                 walletSet.add(user.wallet);
