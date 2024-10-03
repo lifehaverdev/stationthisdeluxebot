@@ -20,30 +20,66 @@ async function connectToMongoDB() {
     }
 }
 
+// async function writeUserData(userId, data) {
+//     const uri = process.env.MONGO_PASS;
+
+//     // Create a new MongoClient
+//     const client = new MongoClient(uri);
+    
+//     try {
+//         const collection = client.db(dbName).collection('users');
+//         // Upsert the document with wallet address as the filter
+//         const filter = { userId: userId };
+//         const { points, balance, ...dataToSave } = data;
+//         await collection.updateOne( filter,
+//             { $set: { ...dataToSave }}, { upsert: true} ,
+//         );
+//         console.log('User data written successfully');
+//         return true
+//     } catch (error) {
+//         console.error("Error writing user data:", error);
+//         return false
+//     } finally {
+//         // Close the connection if it was established within this function
+//         await client.close();
+//     }
+// }
 async function writeUserData(userId, data) {
     const uri = process.env.MONGO_PASS;
-
-    // Create a new MongoClient
     const client = new MongoClient(uri);
     
     try {
         const collection = client.db(dbName).collection('users');
-        // Upsert the document with wallet address as the filter
         const filter = { userId: userId };
-        const { points, balance, ...dataToSave } = data;
-        await collection.updateOne( filter,
-            { $set: { ...dataToSave } },
+
+        // Separate points and balance from the rest of the data
+        const { points, balance, _id, ...dataToSave } = data;
+
+        // Log what is being written to MongoDB for debugging
+        //console.log('Data to be saved:', dataToSave);
+
+        const result = await collection.updateOne(
+            filter,
+            { $set: { ...dataToSave } }
         );
-        console.log('User data written successfully');
-        return true
+
+        if (result.modifiedCount === 0) {
+            console.log(`No changes made to user ${userId} data.`);
+        } else {
+            console.log(`User data updated successfully for user ${userId}.`);
+        }
+        
+        return true;
     } catch (error) {
         console.error("Error writing user data:", error);
-        return false
+        return false;
     } finally {
-        // Close the connection if it was established within this function
         await client.close();
     }
 }
+
+
+
 
 async function getGroupDataByChatId(chatId) {
     //deleteUserSettingsByUserId(dbName,userId);
@@ -746,7 +782,7 @@ async function getUserDataByUserId(userId) {
         const userSettingsCollection = db.collection('users');
 
         // Query for the user settings by userId
-        userData = await userSettingsCollection.findOne({ userId: userId });
+        userData = await userSettingsCollection.findOne({ userId: userId },{ projection: { _id: 0 }});
         //console.log('userData in get userdatabyuserid',userData);
         if (userData != null){
             console.log('User settings found:', userData.userId);

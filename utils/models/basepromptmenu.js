@@ -54,8 +54,10 @@ const basepromptmenu = [
 ];
 
 function getBasePromptByName(name) {
-    const promptObj = basepromptmenu.find(prompt => prompt.name === name);
-    return promptObj ? promptObj.baseprompt : defaultPrompt;
+    console.log('name sent to getBasePromptByName',name)
+    const basePrompt = basepromptmenu.find(prompt => prompt.name === name);
+    console.log('baseprompt found',basePrompt)
+    return basePrompt ? basePrompt.baseprompt : defaultPrompt;
 }
 
 const defaultPrompt = "playstation 1 still7 low poly"

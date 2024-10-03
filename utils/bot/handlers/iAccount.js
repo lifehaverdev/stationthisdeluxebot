@@ -1,7 +1,7 @@
 const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId, writeData } = require('../../../db/mongodb')
-const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize } = require('../../utils')
+const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
 const { checkLobby, NOCOINERSTARTER, POINTMULTI } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
@@ -282,7 +282,7 @@ async function handleSeeSettings(message) {
     let settings;
 
     // Define keys to ignore
-    const keysToIgnore = ['_id', 'lastPhoto','userId', 'whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
+    const keysToIgnore = ['_id', 'runs','lastPhoto','userId', 'whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
 
     if (message.chat.id < 0 && group){
         settings = group.settings;

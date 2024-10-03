@@ -1,4 +1,4 @@
-const { STATES, lobby, rooms, makeSeed } = require('../bot')
+const { STATES, lobby, rooms, flows, makeSeed } = require('../bot')
 const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue')
 const { writeUserData } = require('../../../db/mongodb')
@@ -106,9 +106,8 @@ function checkAndSetType(type, settings, message, group, userId) {
     if (settings.controlNet && settings.controlFileUrl) type += '_CANNY';
     if (settings.styleTransfer && settings.styleFileUrl) type += '_STYLE';
     if (settings.openPose && settings.poseFileUrl) type += '_POSE';
-
+    console.log(`Selected type: ${settings.type}`);
     return type;
-    //console.log(`Selected type: ${settings.type}`);
 }
 
 function tokenGate(group, userId, message) {
@@ -177,526 +176,281 @@ async function startMog(message,user) {
         setUserState(message,STATES.MOG)
 }
 
-async function handleMake(message) {
-    console.log('MAKING SOMETHING')
-    const userId = message.from.id;
-    message.text = message.text.replace('/make','').replace(`@${process.env.BOT_NAME}`,'')
+async function startTaskPrompt(message, taskType, state, user = null, balanceCheck = null) {
+    const promptText = `What is the prompt for your ${taskType.toLowerCase()} creation?`;
 
-    if(message.text == ''){
-        startMake();
-        return
+    if (user) {
+        message.from.id = user;
+        await editMessage({
+            text: promptText,
+            chat_id: message.chat.id,
+            message_id: message.message_id
+        });
+    } else {
+        // Handle balance check if provided
+        if (balanceCheck && lobby[message.from.id] && lobby[message.from.id].balance <= balanceCheck) {
+            gated(message);
+            return;
+        }
+        sendMessage(message, promptText);
     }
 
+    // Set the user state
+    setUserState(message, state);
+}
+
+// Helper function to build the prompt object dynamically based on the workflow
+function buildPromptObjFromWorkflow(workflow, userContext, message) {
+    const promptObj = {};
+    //console.log('user context given',userContext)
+    // Always include type from userContext and add username from the message
+    promptObj.type = userContext.type || workflow.name;
+    promptObj.username = message.from.username || 'unknown_user';
+    promptObj.balance = userContext.balance
+    promptObj.photoStats = { height: 1024, width: 1024}
+    // Set required inputs based on the workflow type
+    if (workflow.name.startsWith('MAKE')) {
+        // Handle MAKE workflows and their variations
+        // FIX THESE LATER WHEN WE WANT TO TUCK IN
+        promptObj.batchMax = userContext.batchMax || 1;
+        promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
+        promptObj.basePrompt = userContext.basePrompt
+        promptObj.cfg = userContext.cfg || 7;
+        promptObj.steps = userContext.steps || 50;
+        promptObj.prompt = userContext.prompt || 'default prompt';
+        promptObj.negativePrompt = userContext.negativePrompt || '';
+        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.photoStats.height = userContext.photoStats.height || 1024;
+        promptObj.photoStats.width = userContext.photoStats.width || 1024;
+        promptObj.strength = 1.0;
+
+        // Add additional images for MAKE_CANNY, MAKE_STYLE, MAKE_POSE, etc.
+        if (userContext.controlNet) {
+            promptObj.styleFileUrl = userContext.styleFileUrl;
+        }
+        if (userContext.styleTransfer) {
+            promptObj.controlFileUrl = userContext.controlFileUrl;
+        }
+        if (userContext.openPose) {
+            promptObj.poseFileUrl = userContext.poseFileUrl;
+        }
+    } 
+    else if (workflow.name.startsWith('MAKE3')) {
+        // Handle MAKE3 workflow (simplest workflow)
+        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.prompt = userContext.prompt || 'default MAKE3 prompt';
+        promptObj.negativePrompt = userContext.negativePrompt || '';
+    }
+    else if (workflow.name.startsWith('FLUX')) {
+        // Handle FLUX workflows and derivatives (MOG, DEGOD, CHUD, MILADY, RADBRO)
+        console.log('photostats',userContext.photoStats)
+        promptObj.photoStats.width = userContext.photoStats.width || 1024;
+        promptObj.photoStats.height = userContext.photoStats.height || 1024;
+        promptObj.prompt = userContext.prompt || 'default FLUX prompt';
+        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+    }
+
+    // Add additional common properties such as prompt, seed, and batchMax
+    promptObj.prompt = userContext.prompt;
+    promptObj.seed = userContext.lastSeed;
+    promptObj.userBasePrompt = userContext.userBasePrompt
+    //promptObj.userBasePrompt = userContext.basePrompt
+    promptObj.userId = message.from.id
+    promptObj.timeRequested = Date.now()
+    //promptObj.batchMax = userContext.batchMax;
+
+    return promptObj;
+}
+
+
+
+async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
+    console.log(`HANDLING TASK: ${taskType}`);
+
+    const chatId = message.chat.id;
+    const userId = message.from.id;
     const group = getGroup(message);
 
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-    
-    if(settings && !group && settings.state.state != STATES.IDLE && settings.state.state != STATES.MAKE){
-        console.log('we not in the right state')
-        console.log(settings.state.state)
+    // Unified settings: get group settings or user settings from lobby
+    const settings = group ? group.settings : lobby[userId];
+
+    // Token gate check if minTokenAmount is provided
+    if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
+        console.log(`Token gate failed for task ${taskType}, user lacks sufficient tokens.`);
+        react(message,'👎')
         return;
     }
 
-    let thisSeed = makeSeed(userId)
-    //save these settings into lobby in case cook mode time
+    // Optional: State check to ensure the user is in the correct state
+    if (!group && settings.state.state !== STATES.IDLE && settings.state.state !== defaultState) {
+        return;
+    }
 
-    const thisType = checkAndSetType('MAKE', lobby[userId], message, group, userId);
+    // Clean the message text
+    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '');
 
-    lobby[userId] = {
-        ...lobby[userId],
+    // Check if the message text is empty, trigger the start prompt
+    if (message.text === '') {
+        await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount);  // Use the generalized start function
+        return;
+    }
+
+    const thisSeed = makeSeed(userId);
+
+    // If this is a special case (e.g., MAKE) and needs a type check
+    let finalType = taskType;
+    if (needsTypeCheck) {
+        finalType = checkAndSetType(taskType, settings, message, group, userId);
+        if (!finalType) {
+            // If the type could not be set (e.g., missing required files), stop the task
+            console.log('Task type could not be set due to missing files or settings.');
+            return;
+        }
+    }
+
+    // Update user settings in the lobby
+    Object.assign(lobby[userId], {
         prompt: message.text,
-        type: thisType,
+        type: finalType,  // Use the modified type
         lastSeed: thisSeed
-    }
+    });
 
-    let batch;
-    if(message.chat.id < 0){
-        batch = 1;
-    } else {
-        batch = lobby[userId].batchMax;
-    }
-    
-    const promptObj = {
+    // Prevent batch requests in group chats
+    const batch = chatId < 0 ? 1 : settings.batchMax;
+
+    // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
+    const workflow = flows.find(flow => flow.name === finalType);
+    //console.log(workflow)
+    const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
-        type: thisType,
-        strength: 1,
         prompt: message.text,
         seed: thisSeed,
         batchMax: batch
-    }
-        
+    }, message);
+
     try {
-        await react(message);
-        enqueueTask({message,promptObj})
+        await react(message);  // Acknowledge the command
+        enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
     } catch (error) {
-        console.error("Error generating and sending image:", error);
+        console.error(`Error generating and sending task for ${taskType}:`, error);
     }
+}
+
+async function handleMake(message) {
+    await handleTask(message, 'MAKE', STATES.MAKE, true, null);
 }
 
 async function handleMake3(message) {
-    console.log('MAK3ING SOMETHING')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if((lobby[userId] && lobby[userId].balance < 400000)
-    || (group && group.applied < 400000)
-    ) {
-        gated(message)
-        return true
-    }
-
-    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MAKE3){
-        return;
-    }
-
-    if(message.text.replace('/make3','').replace(`@${process.env.BOT_NAME}`,'') == ''){
-        startMake3();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'MAKE3',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch
-    }
-        
-    try {
-        await react(message);
-        //console.log('check out the prompt object')
-        //console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'MAKE3', STATES.MAKE3, false, 400000)
 }
 
 async function handleMog(message) {
-    console.log('MOGING SOMETHING')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    // if((lobby[userId] && lobby[userId].balance < 100000)
-    // || (group && group.applied < 100000)
-    // ) {
-    //     gated(message)
-    //     return true
-    // }
-
-    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MOG){
-        return;
-    }
-    message.text = message.text.replace('/joycat','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        startMog();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'MOG',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'MOG'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'MOG', STATES.MOG, false, 0)
 }
 
 async function handleDegod(message) {
     console.log('DEGODDING SOMETHING')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.MOG){
-        return;
-    }
-    message.text = message.text.replace('/degod','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'DEGOD',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'DEGOD'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'DEGOD', STATES.DEGOD, false, 0)
 }
 
 async function handleMilady(message) {
     console.log('milady')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if(!group && lobby[userId].state.state != STATES.IDLE){
-        return;
-    }
-    message.text = message.text.replace('/milady','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        startMog();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'MILADY',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'MILADY'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'MILADY', STATES.MILADY, false, 0)
 }
 
 async function handleChud(message) {
     console.log('chud')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if(!group && lobby[userId].state.state != STATES.IDLE){
-        return;
-    }
-    message.text = message.text.replace('/chud','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        //startMog();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'CHUD',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'CHUD'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'CHUD', STATES.CHUD, false, 0)
 }
 
 
 async function handleRadbro(message) {
     console.log('radbro')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.RADBRO){
-        return;
-    }
-    message.text = message.text.replace('/radbro','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        //startMog();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'RADBRO',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'RADBRO'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    await handleTask(message, 'RADBRO', STATES.RADBRO, false, 0)
 }
 
 async function handleFlux(message) {
     console.log('flux')
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-
-    if(!group && lobby[userId].state.state != STATES.IDLE && lobby[userId].state.state != STATES.FLUX){
-        return;
-    }
-    message.text = message.text.replace('/flux','').replace(`@${process.env.BOT_NAME}`,'');
-    if(message.text == ''){
-        console.log('no msg text')
-        // startMog();
-        return
-    }
-
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
-
-    const thisSeed = makeSeed(userId);
-    let batch;
-    if(chatId < 0){
-        batch = 1;
-    } else {
-        batch = settings.batchMax;
-    }
-
-    //save these settings into lobby in case cook mode time
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: message.text,
-        type: 'FLUX',
-        lastSeed: thisSeed
-    }
-
-    const promptObj = {
-        ...settings,
-        prompt: message.text,
-        strength: 1,
-        checkpoint: 'flux-schnell',
-        seed: thisSeed,
-        batchMax: batch,
-        type: 'FLUX'
-    }
-        
-    try {
-        await react(message);
-        console.log('check out the prompt object')
-        console.log(promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message, STATES.IDLE);
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
+    handleTask(message,'FLUX',STATES.FLUX,false,0)
 }
 
-async function handleRegen(message) {
-    const userId = message.from.id;
-    const thisSeed = makeSeed(userId);
-    const group = getGroup(message);
-    let settings;
-    if(group){
-        settings = group.settings
-    } else {
-        settings = lobby[userId]
+// async function handleRegen(message) {
+//     const userId = message.from.id;
+//     const thisSeed = makeSeed(userId);
+//     const group = getGroup(message);
+//     let settings;
+//     if(group){
+//         settings = group.settings
+//     } else {
+//         settings = lobby[userId]
+//     }
+//     lobby[userId].lastSeed = thisSeed;
+//     let batch;
+//     if(message.chat.id < 0){
+//         batch = 1;
+//         //batch = lobby[userId].batchMax
+//     } else {
+//         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
+//         batch = lobby[userId].batchMax;
+//     }
+//     let strength;
+//     // if(settings.type.startsWith('MAKE')){
+//     //     strength = 1;
+//     // } else {
+//     //     strength = settings.strength
+//     // }
+//     const promptObj = {
+//         ...settings,
+//         strength: strength,
+//         prompt: lobby[userId].prompt,
+//         seed: thisSeed,
+//         batchMax: batch
+//     }
+//     if(promptObj.type == 'FLUX'){
+//         promptObj.checkpoint = 'flux-schnell'
+//     }
+//     react(message, '👍');
+//     enqueueTask({message, promptObj})
+//     setUserState(message, STATES.IDLE);
+// }
+async function handleRegen(message, user = null) {
+    //console.log(JSON.stringify(lobby[message.from.id]))
+    const userId = message.from.id || user;
+
+    // Check if the user exists in the lobby
+    if (!lobby[userId]) {
+        await sendMessage(message, "It looks like you don't have any generations to regenerate.");
+        return;
     }
-    lobby[userId].lastSeed = thisSeed;
-    let batch;
-    if(message.chat.id < 0){
-        batch = 1;
-        //batch = lobby[userId].batchMax
-    } else {
-        //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
-        batch = lobby[userId].batchMax;
+
+    const userRuns = lobby[userId].runs;
+
+    // If no runs are available, inform the user
+    if (!userRuns || userRuns.length === 0) {
+        await sendMessage(message, "You don't have any previous generations to regenerate. Try generating something first!");
+        return;
     }
-    let strength;
-    // if(settings.type.startsWith('MAKE')){
-    //     strength = 1;
-    // } else {
-    //     strength = settings.strength
-    // }
-    const promptObj = {
-        ...settings,
-        strength: strength,
-        prompt: lobby[userId].prompt,
-        seed: thisSeed,
-        batchMax: batch
-    }
-    if(promptObj.type == 'FLUX'){
-        promptObj.checkpoint = 'flux-schnell'
-    }
-    react(message, '👍');
-    enqueueTask({message, promptObj})
-    setUserState(message, STATES.IDLE);
+
+    // Create menu options for each run, displaying the time since the gen was requested and the type
+    const buttons = userRuns.map((run, index) => {
+        const timeSinceRequest = Math.floor((Date.now() - run.timeRequested) / (1000 * 60)); // Time in minutes
+        const runType = run.type || 'Unknown Type'; // Fallback to 'Unknown Type' if type is missing
+
+        return [{
+            text: `${runType} ${run.seed} ${timeSinceRequest}m`,
+            callback_data: `regen_run_${index}`
+        }];
+    });
+
+    // Send the menu to the user with the list of generations to regenerate
+    const options = {
+        reply_markup: {
+            inline_keyboard: buttons
+        }
+    };
+
+    await sendMessage(message, "Choose which generation you'd like to regenerate:", options);
 }
 
 

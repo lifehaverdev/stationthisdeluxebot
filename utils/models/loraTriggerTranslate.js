@@ -18,6 +18,7 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
         let weight;
         // If p1 is provided, determine the weight based on its value
         if (p1) {
+          console.log('weight for loratriggertrans',p1)
           const p1Value = parseInt(p1, 10);
 
           // If p1Value > 10, allow weights greater than 1 (for example, 12 -> 1.2, 14 -> 1.4, etc.)
@@ -45,7 +46,8 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
     if (usedLoraNamesArray.length > 0) {
       incrementLoraUseCounter(usedLoraNamesArray); // Call the function to increment 'uses'
     }
-  console.log('before & after', prompt, modifiedPrompt)
+  console.log('before', prompt, )
+  console.log('after ',modifiedPrompt)
   return modifiedPrompt;
 }
 

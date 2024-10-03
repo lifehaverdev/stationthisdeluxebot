@@ -6,6 +6,7 @@ const {
     editMessage,
     safeExecute,
     setUserState,
+    react
 } = require('../../utils');
 const { displayAccountSettingsMenu } = require('./iAccount')
 const { handleStatus } = require('./iWork');
@@ -17,7 +18,7 @@ const iBrand = require('./iBrand')
 const iWork = require('./iWork')
 const bot = getBotInstance();
 const { getGroup } = require('./iGroup')
-
+const { enqueueTask } = require('../queue')
 /*
 Uniformity and confluence with iResponse
 private menus, must only be selectable by intended user
@@ -296,7 +297,40 @@ const actionMap = {
     'flux': iResponse.fluxStarter.start.bind(iResponse.fluxStarter),
 
     'interMenu': iMenu.handleInterrogateMenu,
-    'assistMenu': iMenu.handleAssistMenu
+    'assistMenu': iMenu.handleAssistMenu,
+    'regenRun': async(message, runIndex, user) => {
+        // Check if the user exists in the lobby
+        if (!lobby[user]) {
+            await sendMessage(message, 'Could not find your previous generations.');
+            return;
+        }
+
+        // Fetch the user's runs
+        console.log('regenrun user',user)
+        const userRuns = lobby[user].runs;
+        if (!userRuns || userRuns.length <= runIndex) {
+            await sendMessage(message, 'Invalid selection, please try again.');
+            return;
+        }
+
+        // Retrieve the run corresponding to the index
+        const selectedRun = { ...userRuns[runIndex], isRegen: true };
+        
+        // Create the task object using the original message and the selected run's promptObj
+        const task = {
+            message: {
+                ...message,
+                text: '/regen', // Mark this as a regen operation
+            },
+            promptObj: selectedRun
+        };
+
+        // Enqueue the task
+        enqueueTask(task);
+
+        // Acknowledge the callback query with a success message
+        await react(message,'👍')
+    }
 };
 
 
@@ -336,6 +370,9 @@ module.exports = function(bot) {
             } else if (callbackQuery.data.startsWith('swm_')) {
                 const selectedName = action.split('_').slice(1).join('_');
                 actionMap['setWatermark'](message, selectedName, user);
+            } else if (callbackQuery.data.startsWith('regen_run_')) {
+                const runIndex = parseInt(action.split('_')[2], 10);
+                actionMap['regenRun'](message, runIndex, user);
             } else if (setActions.includes(action)) {
                 handleSetAction(action, message, user);
             } else {
