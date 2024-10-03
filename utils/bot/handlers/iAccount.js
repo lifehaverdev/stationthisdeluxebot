@@ -2,7 +2,7 @@ const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodT
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId, writeData } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
-const { checkLobby, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL } = require('../gatekeep')
+const { checkLobby, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
