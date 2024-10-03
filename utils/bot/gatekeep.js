@@ -40,17 +40,19 @@ async function cleanLobby() {
 
     //now we adjust the user object to reflect the same
     for (const userId in lobby) {
-        if (!userId) {
+        if (!userId || !lobby[userId].runs) {
             // If userId is invalid or no valid runs array exists, delete the user from the lobby
             console.log(`Invalid or undefined userId found: ${userId}. Removing from lobby.`);
             delete lobby[userId];
             continue; // Skip to the next user
         }
+        //console.log(lobby[userId])
         const max = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI);
         lobby[userId].exp += lobby[userId].points;
-
+        //console.log('this is max',max)
         // Calculate the regenerated points for this cycle
         let regeneratedPoints = max / 18;
+        ///console.log('regen this now',regeneratedPoints)
         
         // Subtract regenerated points from the spent points (points), ensuring doints are non-negative
         let newDoints = 0;
@@ -336,5 +338,6 @@ module.exports =  {
     POINTMULTI,
     NOCOINERSTARTER,
     lastCleanTime,
-    LOBBY_CLEAN_INTERVAL
+    LOBBY_CLEAN_INTERVAL,
+    LOBBY_CLEAN_MINUTE
 }

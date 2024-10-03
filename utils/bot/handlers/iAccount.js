@@ -237,7 +237,7 @@ function displayAccountSettingsMenu(message,dms) {
         const currentTime = Date.now();
         const timePassed = currentTime - lastCleanTime;
         const minutesLeft = LOBBY_CLEAN_MINUTE - Math.floor((timePassed % (LOBBY_CLEAN_INTERVAL)) / (1000 * 60));
-    
+
     const burned = getBurned(userId)
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
