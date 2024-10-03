@@ -154,12 +154,9 @@ const actionMap = {
         handleRegen(message)
     },
     'make': iResponse.makeStarter.start.bind(iResponse.makeStarter),
-    
     'ms2': iResponse.ms2Starter.start.bind(iResponse.ms2Starter),
-    
     'make3': iResponse.make3Starter.start.bind(iResponse.make3Starter),
     'pfp': iResponse.pfpStarter.start.bind(iResponse.pfpStarter),
-    
     'interrogate' : iResponse.interrogateStarter.start.bind(iResponse.interrogateStarter),
     'assist': iResponse.assistStarter.start.bind(iResponse.assistStarter),
     'flassist': iResponse.flassistStarter.start.bind(iResponse.flassistStarter),
@@ -188,67 +185,67 @@ const actionMap = {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].advancedUser = !lobby[user].advancedUser;
         message.from.id = user;
-        displayAccountSettingsMenu(message);
+        displayAccountSettingsMenu(message.reply_to_message);
     },
     //for accountsettings
     'toggleStyleTransfer': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].styleTransfer = !lobby[user].styleTransfer;
         message.from.id = user;
-        displayAccountSettingsMenu(message);
+        displayAccountSettingsMenu(message.reply_to_message);
     },
     'toggleControlNet' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].controlNet = !lobby[user].controlNet;
         message.from.id = user;
-        displayAccountSettingsMenu(message);
+        displayAccountSettingsMenu(message.reply_to_message);
     },
     'toggleOpenPose' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].openPose = !lobby[user].openPose;
         message.from.id = user;
-        displayAccountSettingsMenu(message);
+        displayAccountSettingsMenu(message.reply_to_message);
     },
     //for create and effect menu
     'toggleStyleCreate': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].styleTransfer = !lobby[user].styleTransfer;
         message.from.id = user;
-        iMenu.handleCreate(message);
+        iMenu.handleCreate(message.reply_to_message);
     },
     'toggleStyleEffect': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].styleTransfer = !lobby[user].styleTransfer;
         message.from.id = user;
-        iMenu.handleEffect(message);
+        iMenu.handleEffect(message.reply_to_message);
     },
     'toggleControlCreate' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].controlNet = !lobby[user].controlNet;
         message.from.id = user;
-        iMenu.handleCreate(message);
+        iMenu.handleCreate(message.reply_to_message);
     },
     'toggleControlEffect' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].controlNet = !lobby[user].controlNet;
         message.from.id = user;
-        iMenu.handleEffect(message);
+        iMenu.handleEffect(message.reply_to_message);
     },
     'togglePoseCreate' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].openPose = !lobby[user].openPose;
         message.from.id = user;
-        iMenu.handleCreate(message);
+        iMenu.handleCreate(message.reply_to_message);
     },
     'togglePoseEffect' : async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
         lobby[user].openPose = !lobby[user].openPose;
         message.from.id = user;
-        iMenu.handleEffect(message);
+        iMenu.handleEffect(message.reply_to_message);
     },
     'refresh' : async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
-        handleStatus(message);
+        handleStatus(message.reply_to_message);
     },
     'cancel' : (message) => {
         bot.deleteMessage(message.chat.id, message.message_id);

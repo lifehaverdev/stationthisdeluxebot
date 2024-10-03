@@ -122,7 +122,7 @@ function tokenGate(group, userId, message) {
 }
 
 async function startMake(message, user = null) {
-
+    console.log('start make from iMake')
     if(user){
         message.from.id = user;
         await editMessage({

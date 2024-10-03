@@ -37,18 +37,23 @@ async function sendMessage(msg, text, options = {}) {
     if (text === '') {
         return null;
     }
+
     const chatId = msg.chat.id;
-    if (msg.message_id) {
+    
+    // Add reply_to_message_id if available
+    if (msg.message_id && !options.reply_to_message_id) {
         options.reply_to_message_id = msg.message_id;
     }
-    if (msg.message_thread_id) {
-        console.log('msg.msgthrdid in sendmessage',msg.message_thread_id)
+
+    // Add message_thread_id if available and it's a supergroup with topics
+    if (msg.message_thread_id && !options.message_thread_id) {
+        console.log('msg.msgthrdid in sendMessage:', msg.message_thread_id);
         options.message_thread_id = msg.message_thread_id;
     }
 
-    const attemptSendMessage = async (options) => {
+    const attemptSendMessage = async (opts) => {
         try {
-            const response = await bot.sendMessage(chatId, text, options);
+            const response = await bot.sendMessage(chatId, text, opts);
             return response;
         } catch (error) {
             console.error(`sendMessage error:`, {
@@ -61,15 +66,30 @@ async function sendMessage(msg, text, options = {}) {
         }
     };
 
-    // Try sending the message with different options
+    // Try sending the message with both reply_to_message_id and message_thread_id
     let response = await attemptSendMessage(options);
     if (response) return response;
-    options.reply_to_message_id = undefined;
-    response = await attemptSendMessage(options);
-    if (response) return response;
-    options.message_thread_id = undefined;
-    return await attemptSendMessage(options);
+
+    // Remove reply_to_message_id and try again (handles case where reply fails)
+    if (options.reply_to_message_id) {
+        console.log('Retrying without reply_to_message_id');
+        options.reply_to_message_id = undefined;
+        response = await attemptSendMessage(options);
+        if (response) return response;
+    }
+
+    // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
+    if (options.message_thread_id) {
+        console.log('Retrying without message_thread_id');
+        options.message_thread_id = undefined;
+        response = await attemptSendMessage(options);
+        if (response) return response;
+    }
+
+    // Return null if all retries failed
+    return null;
 }
+
 async function sendPhoto(msg, fileUrl, options = {}) {
     
     const chatId = msg.chat.id;
