@@ -317,8 +317,8 @@ const actionMap = {
         
         // Create the task object using the original message and the selected run's promptObj
         const msg = message.reply_to_message
-        console.log('regenrun message',message)
-        console.log('regenrun reply to message',msg)
+        //console.log('regenrun message',message)
+        //console.log('regenrun reply to message',msg)
         const task = {
             message: msg,
             promptObj: selectedRun

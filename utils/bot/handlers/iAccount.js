@@ -2,7 +2,7 @@ const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodT
 const bot = getBotInstance()
 const { writeUserData, getUserDataByUserId, writeData } = require('../../../db/mongodb')
 const { sendMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
-const { checkLobby, NOCOINERSTARTER, POINTMULTI } = require('../gatekeep')
+const { checkLobby, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut, home } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
@@ -234,6 +234,10 @@ function displayAccountSettingsMenu(message,dms) {
         }
     }
     
+        const currentTime = Date.now();
+        const timePassed = currentTime - lastCleanTime;
+        const minutesLeft = LOBBY_CLEAN_MINUTE - Math.floor((timePassed % (LOBBY_CLEAN_INTERVAL)) / (1000 * 60));
+    
     const burned = getBurned(userId)
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
@@ -242,8 +246,8 @@ function displayAccountSettingsMenu(message,dms) {
     accountInfo += `<b>LEVEL:</b>${level}\n`
     accountInfo += `<b>EXP:</b>        ${bars}\n`
     accountInfo += `<b>POINTS:</b> ${pointBars}\n`
-    accountInfo += `${lobby[userId].points + doints || 0} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)} ${qoints ? '+ '+qoints : ''}\n\n`;
-    accountInfo += `<b>Next Points Period in ${getNextPeriodTime(startup)}m</b>\n\n`
+    accountInfo += `${lobby[userId].points + doints || 0} / ${maxPoints} ${qoints ? '+ '+qoints : ''}\n\n`;
+    accountInfo += `<b>Next Points Replenish in ${minutesLeft}m</b>\n\n`
     
     
     // List locked features based on the user's balance

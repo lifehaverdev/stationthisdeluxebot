@@ -444,6 +444,8 @@ async function handleRegen(message, user = null) {
         }];
     });
 
+    buttons.push([{text: 'cancel',callback_data: 'cancel'}])
+
     // Send the menu to the user with the list of generations to regenerate
     const options = {
         reply_markup: {
