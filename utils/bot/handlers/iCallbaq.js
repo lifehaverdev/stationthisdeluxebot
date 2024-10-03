@@ -319,7 +319,7 @@ const actionMap = {
         
         // Create the task object using the original message and the selected run's promptObj
         const msg = message.reply_to_message
-        console.log(msg)
+        //console.log(msg)
         const task = {
             message: msg,
             promptObj: selectedRun
@@ -335,8 +335,9 @@ const actionMap = {
         if(message.message_thread_id) {
             messageThreadId = message.message_thread_id
             bot.deleteMessage(chatId, messageId, {message_thread_id: messageThreadId})
+        } else {
+            bot.deleteMessage(chatId, messageId)
         }
-        bot.deleteMessage(chatId, messageId)
         
         await react(message.reply_to_message,'👍')
     }
