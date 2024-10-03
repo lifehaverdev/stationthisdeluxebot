@@ -1,4 +1,4 @@
-const { lobby, getBotInstance, STATES, burns } = require('../bot');
+const { lobby, getBotInstance, STATES, burns, makeSeed } = require('../bot');
 const { getVoiceModelByName } = require('../../models/voiceModelMenu')
 const { getBasePromptByName } = require('../../models/basepromptmenu')
 const {
@@ -310,9 +310,10 @@ const actionMap = {
             await sendMessage(message, 'Invalid selection, please try again.');
             return;
         }
-
+        const thisSeed = makeSeed(user);
+        lobby[user].lastSeed = thisSeed;
         // Retrieve the run corresponding to the index
-        const selectedRun = { ...userRuns[runIndex], isRegen: true };
+        const selectedRun = { ...userRuns[runIndex], seed: thisSeed, isRegen: true };
         
         // Create the task object using the original message and the selected run's promptObj
         const msg = message.reply_to_message
