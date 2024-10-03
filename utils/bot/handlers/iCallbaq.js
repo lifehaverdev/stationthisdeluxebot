@@ -300,7 +300,7 @@ const actionMap = {
     'assistMenu': iMenu.handleAssistMenu,
     'regenRun': async(message, runIndex, user) => {
         // Check if the user exists in the lobby
-        console.log('message in regenrun callback',message)
+        //console.log('message in regenrun callback',message)
         if (!lobby[user]) {
             await sendMessage(message, 'Could not find your previous generations.');
             return;
@@ -319,8 +319,9 @@ const actionMap = {
         
         // Create the task object using the original message and the selected run's promptObj
         const msg = message.reply_to_message
+        console.log(msg)
         const task = {
-            msg,
+            message: msg,
             promptObj: selectedRun
         };
 
@@ -330,8 +331,13 @@ const actionMap = {
         // Acknowledge the callback query with a success message
         const chatId = message.chat.id
         const messageId = message.message_id
+        let messageThreadId = null;
+        if(message.message_thread_id) {
+            messageThreadId = message.message_thread_id
+            bot.deleteMessage(chatId, messageId, {message_thread_id: messageThreadId})
+        }
+        bot.deleteMessage(chatId, messageId)
         
-        await bot.deleteMessage(chatId, messageId)
         await react(message.reply_to_message,'👍')
     }
 };
