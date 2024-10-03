@@ -70,13 +70,7 @@ async function sendMessage(msg, text, options = {}) {
     let response = await attemptSendMessage(options);
     if (response) return response;
 
-    // Remove reply_to_message_id and try again (handles case where reply fails)
-    if (options.reply_to_message_id) {
-        console.log('Retrying without reply_to_message_id');
-        options.reply_to_message_id = undefined;
-        response = await attemptSendMessage(options);
-        if (response) return response;
-    }
+
 
     // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
     if (options.message_thread_id) {
@@ -85,6 +79,14 @@ async function sendMessage(msg, text, options = {}) {
         response = await attemptSendMessage(options);
         if (response) return response;
     }
+
+        // Remove reply_to_message_id and try again (handles case where reply fails)
+        if (options.reply_to_message_id) {
+            console.log('Retrying without reply_to_message_id');
+            options.reply_to_message_id = undefined;
+            response = await attemptSendMessage(options);
+            if (response) return response;
+        }
 
     // Return null if all retries failed
     return null;
