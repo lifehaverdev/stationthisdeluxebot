@@ -47,11 +47,11 @@ async function fetchOutput(run_id) {
                 status: data.status,
                 imgUrls: []
             };
-            console.log(JSON.stringify(data));
+            //console.log(JSON.stringify(data));
             const possibleTypes = ["images", "gifs", "videos"];
 
             if (data.outputs && data.outputs.length > 0) {
-                console.log("Outputs found:", data.outputs.length);
+                //console.log("Outputs found:", data.outputs.length);
                 data.outputs.forEach(outputItem => {
                     possibleTypes.forEach(type => {
                         if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
@@ -79,6 +79,28 @@ async function fetchOutput(run_id) {
     }
 }
 
+
+function promptPreProc(promptObj) {
+    const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
+    console.log('promptObj.baseprompt and userBasePrompt in promptpreproc',promptObj.basePrompt, promptObj.userBasePrompt)
+    const promptArrangement = promptObj.type == 'FLUX' ? 
+    `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}` :
+    `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
+    // let promptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`,promptObj.checkpoint, promptObj.balance);
+    // let finalPromptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}`, promptObj.checkpoint, promptObj.balance)
+    let promptFinal = handleLoraTrigger(promptArrangement, promptObj.checkpoint, promptObj.balance)
+    // Filter out censored words if applicable
+    if (promptObj.balance < 1000000) {
+        promptFinal = promptFinal.split(" ")
+                                    // .map(word => word.replace(/[^\w\s]|_/g, ''))
+                                    .filter(word => !censoredWords.includes(word))
+                                    .join(" ");
+    }
+    // Handle LoRa triggers or any other final modifications
+    //promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
+    promptObj.finalPrompt = promptFinal;
+    //promptObj.justPrompt = justPromptFinal;
+}
 // Function to make the API request and handle the response
 async function generate(promptObj) {
     if(promptObj.prompt == '' && (promptObj.type != 'MS3' && promptObj.type != 'MS3.2')){
@@ -91,7 +113,7 @@ async function generate(promptObj) {
         imgPreProc(promptObj);
         promptPreProc(promptObj);
         const body = prepareRequest(promptObj);
-        console.log(body);
+        //console.log(body);
         let run_id;
         const response = await fetch("https://www.comfydeploy.com/api/run", {
             method: "POST",
@@ -122,7 +144,10 @@ async function generate(promptObj) {
 
 function imgPreProc(promptObj) {
     //console.log('processing image');
-    if(promptObj.type.slice(0,4) == 'MAKE'){
+    if(promptObj.type.slice(0,3) != 'I2I' ||
+        promptObj.type.slice(0,3) != 'PFP' ||
+        promptObj.type.slice(0,3) != 'MS3'
+    ){
         //console.log('make type')
         return
     }
@@ -145,22 +170,7 @@ function imgPreProc(promptObj) {
     // }
 }
 
-function promptPreProc(promptObj) {
-    const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    let promptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`,promptObj.checkpoint, promptObj.balance);
-    let justPromptFinal = handleLoraTrigger(`${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}`, promptObj.checkpoint, promptObj.balance)
-    // Filter out censored words if applicable
-    if (promptObj.balance < 1000000) {
-        promptFinal = promptFinal.split(" ")
-                                    // .map(word => word.replace(/[^\w\s]|_/g, ''))
-                                    .filter(word => !censoredWords.includes(word))
-                                    .join(" ");
-    }
-    // Handle LoRa triggers or any other final modifications
-    //promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
-    promptObj.finalPrompt = promptFinal;
-    promptObj.justPrompt = justPromptFinal;
-}
+
 
 function chooseIdByMachine(ids,promptObj) {
     if(ids.length > 1){
@@ -196,7 +206,7 @@ function prepareRequest(promptObj) {
             input_pose_image: promptObj.poseFileUrl || null,
             input_width: promptObj.photoStats?.width || null,
             input_height: promptObj.photoStats?.height || null,
-            input_negative: promptObj.negativePrompt == '-1' ? '' : `${promptObj.negativePrompt} ${baseNegPrompt}`,
+            input_negative: promptObj.negativePrompt == '-1' ? baseNegPrompt : `${promptObj.negativePrompt} ${baseNegPrompt}`,
         }
     };
 
@@ -218,7 +228,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `j0yc4t ${promptObj.justPrompt}`,
+                    input_text: `j0yc4t ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -234,7 +244,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `man wearing d3g0d mask ${promptObj.justPrompt}`,
+                    input_text: `man wearing d3g0d mask ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -250,7 +260,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `milady ${promptObj.justPrompt}`,
+                    input_text: `milady ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -266,7 +276,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `chudjak ${promptObj.justPrompt}`,
+                    input_text: `chudjak ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -282,7 +292,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `radbro ${promptObj.justPrompt}`,
+                    input_text: `radbro ${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)
@@ -296,7 +306,7 @@ function prepareRequest(promptObj) {
                     cfg: promptObj.cfg,
                     input_height: promptObj.photoStats.height,
                     input_width: promptObj.photoStats.width,
-                    input_text: `${promptObj.justPrompt}`,
+                    input_text: `${promptObj.finalPrompt}`,
                 }
             }
             //console.log('body for mog',body)

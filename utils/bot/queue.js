@@ -19,38 +19,61 @@ let isSorting = false;
 // LOBBY AND QUEUE
 //
 function enqueueTask(task) {
-    console.log('task at the top of enqueueTask',task)
     // Retrieve user ID from the task message
     const userId = task.promptObj.userId;
+    
     // Count how many tasks are in the queue from the same user
     const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
+
     // Check if the user has already 4 tasks in the queue
     if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
-        sendMessage(task.message,"You have 5 things in the queue rn, chill out. Try setting batch or something damn.")
+        sendMessage(task.message, "You have 5 things in the queue rn, chill out. Try setting batch or something damn.");
         return; // Exit the function without enqueuing the new task
     }
+
+    // Check if this is a regeneration task by looking for a `isRegen` flag in the promptObj
+    const isRegenTask = task.promptObj.isRegen || false;
+
+    // Update doints for the user
     if (lobby[userId]) {
-        lobby[userId].doints ? lobby[userId].doints += 100 : lobby[userId].doints = 100;
-        //lobby[userId].doints = lobby[userId].doints + 100;
+        lobby[userId].doints = (lobby[userId].doints || 0) + 100;
         task.promptObj.dointsAdded = 100;
     }
+
+    // Add the task to the queue
     taskQueue.push(task);
-    task.timestamp = Date.now()
-    task.status = 'thinking'
+    task.timestamp = Date.now();
+    task.status = 'thinking';
     console.log(`Task enqueued for ${task.message.from.first_name}`);
-    //console.log(task.promptObj.type,task.promptObj.prompt)
-    console.log('doints',lobby[userId].doints)
+    //console.log('doints:', lobby[userId].doints);
+
+    // Add the promptObj to the user's runs array, pushing down other runs and removing the 5th if necessary
+
+    if (!isRegenTask) {
+        if (!lobby[userId].runs) {
+            lobby[userId].runs = [task.promptObj];
+        }
+        // Insert the new run at the beginning of the runs array
+        lobby[userId].runs.unshift(task.promptObj);
+        // Keep the array at a max length of 5
+        if (lobby[userId].runs.length > 5) {
+            lobby[userId].runs.pop();
+        }
+    }
+
+    // Check if sorting is required
     if (!isSorting && taskQueue.length > 1) {
-        // isSorting = true;
         sortTaskQueue();
         isSorting = false;
     }
+
+    // If queue was empty, start processing tasks
     if (taskQueue.length === 1) {
-        // If queue was empty, start processing tasks
         processQueue();
     }
 }
+
 function sortTaskQueue() {
         if (isSorting) {
         console.log('currently sorting')

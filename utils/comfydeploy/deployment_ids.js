@@ -4,7 +4,7 @@ function getDeploymentIdByType(type) {
     //console.log(flows)
     const workflow = flows.find(flow => flow.name === type);
     if (workflow) {
-        console.log('found workflow by name',workflow)
+        console.log('found workflow by name',workflow.name)
         return workflow.ids; //an array
     } else {
         throw new Error(`Deployment ID not found for type: ${type}`);

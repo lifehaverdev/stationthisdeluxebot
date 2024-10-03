@@ -54,7 +54,7 @@ async function getBalance(address) {
       }, {apiKey: process.env.ALCHEMY_SECRET})
     .then(({ data }) => {
         //
-        console.log('data in checkbalance response',data.result.value[0].account.data.info)
+        //console.log('data in checkbalance response',data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
         if(data.error || (data.result.value && data.result.value.length == 0)){
             balance = 0;
         } else if (data.result.value.length > 0){
@@ -76,10 +76,9 @@ async function getBalance(address) {
 
     const burnRecord = burns.find(burn => burn.wallet === address);
     if (burnRecord) {
-        console.log(burnRecord.burned)
+        //console.log(burnRecord.burned)
         balance += parseInt(burnRecord.burned) * 2 / 1000000;
     }
-
 
     return balance
 }

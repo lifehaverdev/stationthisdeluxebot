@@ -183,11 +183,18 @@ function classifyNodeType(node) {
 function parseWorkflow(workflow) {
     let workflowInputs = [];
 
+    // Filter nodes that start with 'ComfyUIDeploy'
     const deployNodes = workflow.nodes.filter(node => node.type.startsWith('ComfyUIDeploy'));
 
     deployNodes.forEach(node => {
-        const inputs = classifyNodeType(node);
-        workflowInputs.push(...inputs); // Collect relevant inputs
+        if (node.widgets_values && node.widgets_values.length > 0) {
+            // Collect relevant inputs from widgets_values
+            node.widgets_values.forEach(value => {
+                if (typeof value === 'string' && value.startsWith('input_')) {
+                    workflowInputs.push(value);
+                }
+            });
+        }
     });
 
     return workflowInputs;
@@ -214,7 +221,9 @@ async function readWorkflows() {
             //const parsedTriggers = 
             document.flows.map(flow => {
                 // Assuming flow includes a JSON workflow definition
-                const parsedInputs = parseWorkflow(flow.layout);
+                
+                const parsedInputs = parseWorkflow(JSON.parse(flow.layout));
+                
                 flows.push({
                     name: flow.name,
                     ids: flow.ids,
@@ -225,7 +234,7 @@ async function readWorkflows() {
             //loraTriggers.push(...parsedTriggers); // Push new elements into the array
         }
         console.log('workflows loaded');
-        console.log(JSON.stringify(flows))
+        //console.log(JSON.stringify(flows))
     } catch (error) {
         console.error('Error getting workflows:', error);
     } finally {
@@ -233,6 +242,61 @@ async function readWorkflows() {
         await client.close();
     }
 }
+
+// async function readWorkflows() {
+//     // Connection URI
+//     const uri = process.env.MONGO_PASS;
+
+//     // Create a new MongoClient
+//     const client = new MongoClient(uri);
+
+//     try {
+//         // Connect to the MongoDB server
+//         await client.connect();
+//         const db = client.db(process.env.BOT_NAME);
+//         const collection = db.collection('workflows');
+
+//         // Find all documents in the collection
+//         const document = await collection.findOne();
+//         if (document && document.flows) {
+//             flows.length = 0; // Clear the existing array
+//             const allInputsSet = new Set(); // To collect all unique input names
+
+//             document.flows.forEach(flow => {
+//                 // Parse the workflow layout for inputs
+//                 let parsedInputs = parseWorkflow(JSON.parse(flow.layout));
+
+//                 // Add inputs to the set for tracking
+//                 parsedInputs.forEach(input => allInputsSet.add(input));
+
+//                 // Add the workflow to the flows array
+//                 flows.push({
+//                     name: flow.name,
+//                     ids: flow.ids,
+//                     inputs: parsedInputs  // Store only relevant inputs
+//                 });
+
+//                 // Print the workflow details
+//                 console.log(`Workflow Name: ${flow.name}`);
+//                 console.log(`Workflow IDs: ${JSON.stringify(flow.ids)}`);
+//                 console.log(`Inputs: ${parsedInputs.join(', ')}`);
+//                 console.log('-----------------------------');
+//             });
+
+//             // Print all unique inputs found across workflows
+//             console.log('Unique Inputs Found:');
+//             allInputsSet.forEach(input => console.log(input));
+//         }
+
+//         console.log('Workflows loaded successfully.');
+//     } catch (error) {
+//         console.error('Error getting workflows:', error);
+//     } finally {
+//         // Close the connection
+//         await client.close();
+//     }
+// }
+
 
 async function initialize() {
     console.log('initializing...')
