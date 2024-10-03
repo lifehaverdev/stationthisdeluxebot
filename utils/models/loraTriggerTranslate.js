@@ -46,8 +46,8 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
     if (usedLoraNamesArray.length > 0) {
       incrementLoraUseCounter(usedLoraNamesArray); // Call the function to increment 'uses'
     }
-  console.log('before', prompt, )
-  console.log('after ',modifiedPrompt)
+  //console.log('before', prompt, )
+  //console.log('after ',modifiedPrompt)
   return modifiedPrompt;
 }
 
