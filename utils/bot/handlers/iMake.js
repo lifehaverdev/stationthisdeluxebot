@@ -207,6 +207,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     promptObj.type = userContext.type || workflow.name;
     promptObj.username = message.from.username || 'unknown_user';
     promptObj.balance = userContext.balance
+    promptObj.userId = userContext.userId
     promptObj.photoStats = { height: 1024, width: 1024}
     // Set required inputs based on the workflow type
     if (workflow.name.startsWith('MAKE')) {

@@ -19,12 +19,13 @@ let isSorting = false;
 // LOBBY AND QUEUE
 //
 function enqueueTask(task) {
+    console.log('task in enqueueTask',task)
     // Retrieve user ID from the task message
     const userId = task.promptObj.userId;
     
     // Count how many tasks are in the queue from the same user
     const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
-
+    console.log('task message in enqueue',task.message)
     // Check if the user has already 4 tasks in the queue
     if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
