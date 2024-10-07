@@ -16,6 +16,7 @@ Website route?
 */
 
 function displayAccountSettingsMenu(message,dms) {
+    //Fconsole.log('displaying account settings')
     // Create account settings menu keyboard
     const userId = message.from.id;
     let accountSettingsKeyboard = [
@@ -26,51 +27,23 @@ function displayAccountSettingsMenu(message,dms) {
             },
         ],
         [
+            {text: 'cancel',callback_data: 'cancel'}
         ],
-        [
-            {
-                text: 'Chart', 
-                url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
-            },
-            {
-                text: 'Buy',
-                url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
-            },
-            {
-                text: 'Site',
-                url: 'https://miladystation2.net'
-            }
-        ]
+        // [
+        //     {
+        //         text: 'Chart', 
+        //         url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
+        //     },
+        //     {
+        //         text: 'Buy',
+        //         url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
+        //     },
+        //     {
+        //         text: 'Site',
+        //         url: 'https://miladystation2.net'
+        //     }
+        // ]
     ];
-
-    if(lobby[userId].balance >= 400000){
-        accountSettingsKeyboard[1].push(
-            {
-                text: `ControlNet ${
-                    lobby[userId].controlNet && lobby[userId].controlFileUrl ? 
-                    '✅' : 
-                    lobby[userId].controlNet && !lobby[userId].controlFileUrl ? 
-                    '🆘' : '❌'}`,
-                callback_data: 'toggleControlNet',
-            },
-            {
-                text: `StyleTransfer ${
-                    lobby[userId].styleTransfer && lobby[userId].styleFileUrl ?
-                    '✅' : 
-                    lobby[userId].styleTransfer && !lobby[userId].styleFileUrl ?
-                    '🆘' : '❌'}`,
-                callback_data: 'toggleStyleTransfer',
-            },
-            {
-                text: `OpenPose ${
-                    lobby[userId].openPose && lobby[userId].poseFileUrl ? 
-                    '✅' : 
-                    lobby[userId].openPose && !lobby[userId].poseFileUrl ?
-                    '🆘' : '❌'}`,
-                callback_data: 'toggleOpenPose'
-            }
-        )
-    }
 
     // Create account information text
     const totalExp = (lobby[userId].exp + lobby[userId].points);
@@ -465,9 +438,9 @@ async function handleSignOut(message) {
 
 async function handleAccountSettings(message) {
     const chatId = message.chat.id;
-    if(!await checkLobby(message)){
-        return;
-    }
+    // if(!await checkLobby(message)){
+    //     return;
+    // }
     if(chatId < 0){
         //sendMessage(message,'ew do that in private messages you perv');
         displayAccountSettingsMenu(message,false);
