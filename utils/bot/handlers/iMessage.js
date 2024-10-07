@@ -334,7 +334,6 @@ module.exports = function(bot) {
                         const allowed = await checkLobby(message);
                         if (!allowed) {
                             // User is not allowed to execute the command
-                            
                             return;
                         } 
                     }
@@ -346,6 +345,9 @@ module.exports = function(bot) {
             //console.log('no commandpattern')
     
             // Process generic commands if no specific command was handled
+            //
+            //  LETS GET RID OF THIS THE COMMAND STATE MESSAGES WERE CREATED BECAUSE OF STATE HANDLING NONSENSE AND WE CAN JUST GET RID OF THIS
+            //
             if (!handled) {
                 const commandKey = Object.keys(commandStateMessages).find(key => 
                     message.text.startsWith(key));
