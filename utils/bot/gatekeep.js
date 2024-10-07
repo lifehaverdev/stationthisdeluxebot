@@ -77,9 +77,11 @@ class LobbyManager {
     }
 
     addUser(userId, userData) {
+        //console.log('lobby before add',lobby)
         if (!this.lobby[userId]) {
-            this.lobby[userId] = new User(userId, userData);
+            this.lobby[userId] = userData;
         }
+        //console.log('lobby after add',lobby)
     }
 
     async cleanLobby() {
@@ -135,65 +137,6 @@ let locks = 0;
 //so what do you need to buy to get one more gen?
 //if 37 * multi = 20k
 
-
-
-async function cleanLobby() {
-    //this saves all points to exp in the database
-    addPointsToAllUsers()
-    
-    //now we adjust the user object to reflect the same
-    for (const userId in lobby) {
-        if (!userId || !lobby[userId].runs) {
-            // If userId is invalid or no valid runs array exists, delete the user from the lobby
-            console.log(`Invalid or undefined userId found: ${userId}. Removing from lobby.`);
-            delete lobby[userId];
-            continue; // Skip to the next user
-        }
-        //console.log(lobby[userId])
-        const max = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI);
-        lobby[userId].exp += lobby[userId].points;
-        //console.log('this is max',max)
-        // Calculate the regenerated points for this cycle
-        let regeneratedPoints = max / 18;
-        ///console.log('regen this now',regeneratedPoints)
-        
-        // Subtract regenerated points from the spent points (points), ensuring doints are non-negative
-        let newDoints = 0;
-        
-        // If the user already has doints, add the new doints to the existing balance
-        if (lobby[userId].doints) {
-            newDoints = Math.max(lobby[userId].points + lobby[userId].doints - regeneratedPoints, 0);
-        } else {
-            newDoints = Math.max(lobby[userId].points - regeneratedPoints, 0);
-        }
-
-        // Update the user's doints and reset points to 0
-        lobby[userId].doints = newDoints;
-        lobby[userId].points = 0;
-
-         // Check if the user has had any activity in the last 15 minutes
-         
-         const lastRunTime = lobby[userId].runs[0].timeRequested;
-         if (Date.now() - lastRunTime > LOBBY_CLEAN_INTERVAL) {
-             // Save user data and sign them out if no recent activity
-             // Important that it saves the doints and points 
-             // and a kickedAt key value we can refer to in the future 
-             // to calculate further point regeneration
-             const userData = lobby[userId]
-             await writeUserData(parseInt(userId), {
-                ...userData,
-                points: 0,  // Use the most up-to-date points from the lobby
-                doints: newDoints,
-                kickedAt: Date.now(),
-            });
-            delete lobby[userId];
-         }
-    }
-    
-    locks = 0;
-    console.log("The lobby is clear");
-    lastCleanTime = Date.now(); // Update the last clean time
-}
 function printLobby(){
     console.log(`\n CURRENT LOBBY \n`)
     console.log(Object.keys(lobby).length);
@@ -209,130 +152,6 @@ function printLobby(){
         });
 }
 
-// async function checkLobby(message) {
-//     const userId = message.from.id;
-//     const group = getGroup(message);
-//     let userData, balance = 0;
-
-//     // Helper to regenerate doints if the user was signed out
-//     const regenerateDoints = (userData) => {
-//         if (userData.kickedAt) {
-//             const timeSinceSignOut = Date.now() - userData.kickedAt;
-//             const regenerationCycles = Math.floor(timeSinceSignOut / (1000 * 60 * 15)); // 15-minute cycles
-//             const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
-//             const regeneratedPoints = (maxPoints / 18) * regenerationCycles;
-
-//             userData.doints = Math.max(userData.doints - regeneratedPoints, 0); // Ensure it doesn't go below 0
-//         }
-//     };
-
-//     // Retrieve user data if not in lobby
-//     if (!lobby.hasOwnProperty(userId)) {
-//         userData = await getUserDataByUserId(userId);
-
-//         // Handle doints regeneration if kicked out
-//         regenerateDoints(userData);
-
-//         // Group credit check
-//         //change to qoints when its time
-//         //if(group && group.qoints > group.points + group.doints) {
-//         if (group && group.credit > group.points) {
-//             return true;
-//         }
-
-//         // Handle those with no wallet nor verification
-//         // Let them use the bot and we will kick them out with their point + doint is too high
-//         // after this point, there is a verified wallet
-//         if ((!userData.wallet || !userData.verified)) {
-//             if(message.chat.id > 0){
-//                 const options = {
-//                     reply_markup: {
-//                         keyboard: [[{ text: '/signin' }]],
-//                         resize_keyboard: true,
-//                         one_time_keyboard: true
-//                     }
-//                 };
-//                 sendMessage(message, 'Use the signin command and connect a wallet to unlock $MS2 holder benefits.', options);
-//                 //let them pass the gatekeep and gen
-//             }
-//             return true;
-//         }
-
-//         // Fetch user balance
-//         balance = await getBalance(userData.wallet);
-//         // Blacklist check
-//         if (checkBlacklist(userData.wallet)) {
-//             await sendMessage(message, 'You are either on the blacklist or pretending to be the raydium pool. GTFO.');
-//             return false;
-//         }
-
-//         // Add user to lobby with initial settings
-//         lobby[userId] = {
-//             ...userData,
-//             balance,
-//             points: 0
-//         };
-//         setUserState(message, STATES.IDLE);
-//         console.log(`${message.from.first_name} has entered the chat.`);
-//     } 
-//     else {
-//         // If user is already in the lobby
-//         userData = lobby[userId];
-
-//         //REGENERATE POINTS HERE
-
-//         // Group credit check
-//         if (group && group.credit > group.points) {
-//             return true;
-//         }
-
-//         // Update balance if necessary
-//         if (userData.wallet && userData.verified && userData.balance == '') {
-//             userData.balance = await getBalance(userData.wallet);
-//         }
-//         setUserState(message, STATES.IDLE);
-//     }
-
-//     // Calculate total points (regular points + doints)
-//     let totalPoints = lobby[userId].points + (lobby[userId].doints || 0);
-//     // Check if the user has exceeded their points limit
-//     if (pointsCalc(totalPoints) > (lobby[userId].balance + NOCOINERSTARTER) || (group && group.credit < group.points)) {
-//         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
-//         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
-//         react(message, randomReact);
-    
-//         // Calculate the time till the next regeneration cycle (15 minutes per cycle)
-//         const nextRegenTime = timeTillTurnover();
-    
-//         const messageText = `🚫 You’ve hit your point limit! 
-// ✨ Your points will regenerate every 15 minutes. 
-// 🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.
-// 💰 Want to continue now? Buy more MS2 and keep creating! 🥂`
-// //OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
-    
-//         // Button to buy MS2
-//         const options = {
-//             reply_markup: {
-//                 inline_keyboard: [
-//                 [
-//                     { text: 'Buy 🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
-//                     { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' },
-//                 ],
-//                 // [
-//                 //     { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge'}
-//                 // ]
-//             ]
-//             }
-//         };
-    
-//         sendMessage(message, messageText, options);
-//         userData.balance = '';
-//         ++locks;
-//         return false;
-//     }
-
-//     return true;
-// }
 async function checkLobby(message) {
     const userId = message.from.id;
     const group = getGroup(message);
@@ -396,7 +215,7 @@ async function checkLobby(message) {
 
     const user = lobby[userId];
     let totalPoints = user.points + (user.doints || 0);
-    console.log('balance after set user to lobby instance after checking balance for a different instance in a conditiona/',user.balance,balance)
+    //console.log('balance after set user to lobby instance after checking balance for a different instance in a conditiona/',user.balance,balance)
     if (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER) || (group && group.credit < group.points)) {
         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
