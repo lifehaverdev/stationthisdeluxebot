@@ -18,6 +18,11 @@ is_container_running() {
 # Ensure the log directory exists
 mkdir -p ${LOG_DIR}
 
+# Truncate the log file to the last 1000 lines if it exists
+if [ -f ${LOG_FILE} ]; then
+    tail -n 1000 ${LOG_FILE} > ${LOG_FILE}.tmp && mv ${LOG_FILE}.tmp ${LOG_FILE}
+fi
+
 # Pull the latest changes from the repository
 git reset --hard >> ${LOG_FILE} 2>&1
 git pull >> ${LOG_FILE} 2>&1
