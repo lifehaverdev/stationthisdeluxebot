@@ -42,10 +42,12 @@ class User {
 
     softResetPoints() {
         // Reset points without kicking the user
+        console.log('lets soft reset this',this.points, this.doints)
         const maxPoints = Math.floor((this.balance + NOCOINERSTARTER) / POINTMULTI);
         const regeneratedPoints = (maxPoints / 36);
 
-        this.doints = Math.max(this.doints - regeneratedPoints, 0);
+        this.doints = Math.max(this.points + this.doints - regeneratedPoints, 0);
+        console.log('did it work',this.points, this.doints)
     }
 
     shouldKick() {

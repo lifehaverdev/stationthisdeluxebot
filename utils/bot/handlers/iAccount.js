@@ -325,17 +325,17 @@ async function shakeSignIn (message) {
     lobby[userId] = chatData; //redundant i think
     console.log(message.from.first_name,'has entered the chat');
     // Confirm sign-in
-    sendMessage(message, `You are now signed in to ${message.text}`);
+    //sendMessage(message, `You are now signed in to ${message.text}`);
     safeExecute(message, handleVerify);
 }
 async function handleVerify(message) {
     const userId = message.from.id;
     if(lobby[userId]){
-        lobby[userId].verified ? sendMessage(message,'You are verified, dw') : sendMessage(message,'go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there')
+        lobby[userId].verified ? sendMessage(message,`You (${message.text}) are verified, dw`) : sendMessage(message,`Okay, ${message.text} go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`)
         lobby[userId].verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
     } else {
         const userData = await getUserDataByUserId(userId);
-        userData.verified ? sendMessage(message,'You are verified, dw') : sendMessage(message,'go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there')
+        userData.verified ? sendMessage(message,`You (${message.text}) are verified, dw`) : sendMessage(message,`Okay, ${message.text} go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`)
         userData.verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
     }
     ///console.log('userStates after handlever',lobby[userId].state.state)
