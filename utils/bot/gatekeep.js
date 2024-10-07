@@ -79,7 +79,10 @@ class LobbyManager {
     addUser(userId, userData) {
         //console.log('lobby before add',lobby)
         if (!this.lobby[userId]) {
-            this.lobby[userId] = userData;
+            //this.lobby[userId] = userData;
+            const user = new User(userId, userData)
+            Object.assign(user, userData)
+            this.lobby[userId] = user;
         }
         //console.log('lobby after add',lobby)
     }
@@ -89,12 +92,18 @@ class LobbyManager {
         for (const userId in this.lobby) {
             const user = this.lobby[userId];
 
-            if (user.shouldKick()) {
-                user.addExp()
-                await this.kickUser(userId);
+            if (user && typeof user.shouldKick === 'function') {
+                if (user.shouldKick()) {
+                    user.addExp();
+                    await this.kickUser(userId);
+                } else {
+                    user.addExp(); // Add experience to the user
+                    user.softResetPoints(); // Regenerate doints
+                }
             } else {
-                user.addExp(); // Add experience to the user
-                user.softResetPoints(); // Regenerate doints
+                // Log an error and kick out any undefined or invalid user
+                console.error(`Invalid or undefined user detected: ${userId}. Kicking them out.`);
+                delete this.lobby[userId]
             }
         }
     }
@@ -266,7 +275,8 @@ function pointsCalc(points) {
 
 module.exports =  {
     checkLobby,
-    cleanLobby,
+    //cleanLobby,
+    lobbyManager,
     POINTMULTI,
     NOCOINERSTARTER,
     lastCleanTime,
