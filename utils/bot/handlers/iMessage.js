@@ -1,7 +1,7 @@
-const { getBotInstance, lobby, burns, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
+const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
-const { cleanLobby, checkLobby } = require('../gatekeep')
+const { lobbyManager, checkLobby } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
@@ -107,7 +107,7 @@ const commandPatterns = {
         if(message.from.id != DEV_DMS){
             return;
         } else {
-            await cleanLobby();
+            await lobbyManager.cleanLobby();
             sendMessage(message,'ok we reset da points')
         }
     },
