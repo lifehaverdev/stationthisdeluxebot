@@ -14,5 +14,13 @@
     "node-telegram-bot-api": "^0.66.0",
     "openai": "^4.47.1",
     "path": "^0.12.7"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "jest": {
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ]
   }
 }

@@ -234,7 +234,7 @@ async function readWorkflows() {
             //loraTriggers.push(...parsedTriggers); // Push new elements into the array
         }
         console.log('workflows loaded');
-        //console.log(JSON.stringify(flows))
+        console.log((flows))
     } catch (error) {
         console.error('Error getting workflows:', error);
     } finally {

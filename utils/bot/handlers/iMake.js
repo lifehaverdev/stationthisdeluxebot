@@ -236,6 +236,37 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
             promptObj.poseFileUrl = userContext.poseFileUrl;
         }
     } 
+    else if (workflow.name === 'I2I') {
+        // Handle I2I workflow
+        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.fileUrl = userContext.fileUrl;
+        promptObj.photoStats.height = userContext.photoStats.height || 1024;
+        promptObj.photoStats.width = userContext.photoStats.width || 1024;
+        promptObj.prompt = userContext.prompt || 'default I2I prompt';
+        promptObj.negativePrompt = userContext.negativePrompt || '';
+
+        // Optional images for I2I CANNY, STYLE, POSE, etc.
+        if (workflow.name.includes('STYLE')) {
+            promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
+        }
+        if (workflow.name.includes('CANNY')) {
+            promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
+        }
+        if (workflow.name.includes('POSE')) {
+            promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
+        }
+    } 
+    else if (workflow.name === 'INPAINT') {
+        // Handle INPAINT workflow
+        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.fileUrl = userContext.fileUrl;
+        promptObj.maskUrl = userContext.maskUrl;  // INPAINT requires a mask
+        promptObj.photoStats.height = userContext.photoStats.height || 1024;
+        promptObj.photoStats.width = userContext.photoStats.width || 1024;
+        promptObj.prompt = userContext.prompt || 'default INPAINT prompt';
+        promptObj.negativePrompt = userContext.negativePrompt || '';
+        promptObj.strength = userContext.strength || 1.0;
+    }
     else if (workflow.name.startsWith('MAKE3')) {
         // Handle MAKE3 workflow (simplest workflow)
         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
@@ -457,61 +488,71 @@ async function handleRegen(message, user = null) {
 }
 
 
-async function handleMs2Prompt(message) {
-    const userId = message.from.id;
-    const group = getGroup(message)
-    let userInput = message.text;
-    //wtf does this do >
-    //userInput == '' ? userInput = '' : null;
+// async function handleMs2Prompt(message) {
+//     const userId = message.from.id;
+//     const group = getGroup(message)
+//     let userInput = message.text;
+//     //wtf does this do >
+//     //userInput == '' ? userInput = '' : null;
 
-    let settings;
-    if(group){
-        settings = group.settings;
-    } else {
-        settings = lobby[userId]
-    }
+//     let settings;
+//     if(group){
+//         settings = group.settings;
+//     } else {
+//         settings = lobby[userId]
+//     }
 
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: userInput,
-        type: 'I2I'
-    }
+//     lobby[userId] = {
+//         ...lobby[userId],
+//         prompt: userInput,
+//         type: 'I2I'
+//     }
 
-    checkAndSetType(lobby[userId].type, settings, message, group, userId);
+//     checkAndSetType(lobby[userId].type, settings, message, group, userId);
     
-    await react(message);
-    const promptObj = {
-        ...settings,
-        seed: lobby[userId].lastSeed,
-        photoStats: settings.tempSize
-    }
-    //return await shakeMs2(message,promptObj);
-    enqueueTask({message,promptObj})
-    setUserState(message,STATES.IDLE);
-    return true
+//     await react(message);
+//     const promptObj = {
+//         ...settings,
+//         seed: lobby[userId].lastSeed,
+//         photoStats: settings.tempSize
+//     }
+//     //return await shakeMs2(message,promptObj);
+//     enqueueTask({message,promptObj})
+//     setUserState(message,STATES.IDLE);
+//     return true
+// }
+
+async function handleMs2Prompt(message) {
+    // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
+    await handleTask(message, 'I2I', STATES.MS2PROMPT, true, null);
 }
 
+// async function handleInpaintPrompt(message) {
+//     const userId = message.from.id;
+//     let userInput = message.text;
+//     //const group = getGroup(message);
+//     userInput == '' ? userInput = '' : null;
+
+//     lobby[userId] = {
+//         ...lobby[userId],
+//         prompt: userInput,
+//         type: 'INPAINT'
+//     }
+//     await sendMessage(message, 'pls wait i will make in 1 second');
+//     const promptObj = {
+//         ...lobby[userId],
+//         seed: lobby[userId].lastSeed,
+//         photoStats: lobby[userId].tempSize
+//     }
+//     //return await shakeMs2(message,promptObj);
+//     enqueueTask({message,promptObj})
+//     setUserState(message,STATES.IDLE);
+// }
 async function handleInpaintPrompt(message) {
-    const userId = message.from.id;
-    let userInput = message.text;
-    //const group = getGroup(message);
-    userInput == '' ? userInput = '' : null;
-
-    lobby[userId] = {
-        ...lobby[userId],
-        prompt: userInput,
-        type: 'INPAINT'
-    }
-    await sendMessage(message, 'pls wait i will make in 1 second');
-    const promptObj = {
-        ...lobby[userId],
-        seed: lobby[userId].lastSeed,
-        photoStats: lobby[userId].tempSize
-    }
-    //return await shakeMs2(message,promptObj);
-    enqueueTask({message,promptObj})
-    setUserState(message,STATES.IDLE);
+    // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
+    await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
 }
+
 
 async function handleInpaintTarget(message) {
     const userId = message.from.id;

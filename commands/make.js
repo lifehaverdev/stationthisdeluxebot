@@ -6,6 +6,82 @@ const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js
 
 const webHook = 'http://'+process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
 const baseNegPrompt = 'embedding:easynegative'
+
+// Common prompt object fields
+function buildCommonPromptObj(userContext, message) {
+    return {
+        type: userContext.type || 'default_type',
+        username: message.from.username || 'unknown_user',
+        balance: userContext.balance,
+        userId: userContext.userId,
+        photoStats: { height: 1024, width: 1024 },
+        timeRequested: Date.now(),
+        userBasePrompt: userContext.userBasePrompt
+    };
+}
+
+// Helper function to build the prompt object dynamically based on the workflow
+function buildPromptObjFromWorkflow(workflow, userContext, message, typeMappings) {
+    const promptObj = buildCommonPromptObj(userContext, message);
+    
+    // Extract the base type and any appendages
+    const workflowParts = workflow.name.split('_');  // e.g., ['MAKE', 'STYLE', 'POSE']
+    const baseType = workflowParts[0];  // First part is the base, e.g., 'MAKE'
+
+    // Apply base type mappings (e.g., MAKE)
+    const baseMapping = typeMappings[baseType];
+    if (baseMapping) {
+        Object.keys(baseMapping).forEach(key => {
+            applyMapping(promptObj, userContext, key, baseMapping[key]);
+        });
+    }
+
+    // Apply appendage type mappings (e.g., STYLE, POSE)
+    workflowParts.slice(1).forEach(appendageType => {
+        const appendageMapping = typeMappings[appendageType];
+        if (appendageMapping) {
+            Object.keys(appendageMapping).forEach(key => {
+                applyMapping(promptObj, userContext, key, appendageMapping[key]);
+            });
+        }
+    });
+
+    return promptObj;
+}
+
+// Helper function to apply mappings, handling nested objects
+function applyMapping(promptObj, userContext, key, value) {
+    if (typeof value === 'object') {
+        // Handle nested mappings (e.g., photoStats)
+        Object.keys(value).forEach(subKey => {
+            promptObj[key][subKey] = userContext[value[subKey]] || promptObj[key][subKey];
+        });
+    } else if (userContext[key] !== undefined) {
+        // Map directly if it's a simple field
+        promptObj[key] = userContext[value] || promptObj[key];
+    } else {
+        // Default values for missing userContext fields
+        promptObj[key] = typeof value === 'number' ? value : 'default_value';
+    }
+}
+
+
+// Common prompt object fields
+function buildCommonPromptObj(userContext, message) {
+    return {
+        type: userContext.type || 'default_type',
+        username: message.from.username || 'unknown_user',
+        balance: userContext.balance,
+        userId: userContext.userId,
+        photoStats: { height: 1024, width: 1024 },
+        timeRequested: Date.now(),
+        userBasePrompt: userContext.userBasePrompt
+    };
+}
+
+
+
+
 // Function to extract type from the URL or outputItem.type field
 function extractType(url) {
     // Example logic to extract type from the URL or outputItem.type field
@@ -78,7 +154,6 @@ async function fetchOutput(run_id) {
         return null;
     }
 }
-
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
@@ -353,5 +428,6 @@ function prepareRequest(promptObj) {
 module.exports = {
     //sendGeneratedImage,
     generate,
-    fetchOutput
+    fetchOutput,
+    buildPromptObjFromWorkflow
 }

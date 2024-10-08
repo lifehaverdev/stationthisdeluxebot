@@ -767,6 +767,7 @@ async function readUserData(walletAddress) {
 }
 
 async function getUserDataByUserId(userId) {
+    
     //deleteUserSettingsByUserId(dbName,userId);
     // Connection URI
     const uri = process.env.MONGO_PASS;
