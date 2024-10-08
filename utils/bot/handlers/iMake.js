@@ -335,7 +335,8 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         if (!finalType) {
             // If the type could not be set (e.g., missing required files), stop the task
             console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
-            return 'MAKE';
+            //return 'MAKE';
+            finalType = 'MAKE'
         }
     }
 
