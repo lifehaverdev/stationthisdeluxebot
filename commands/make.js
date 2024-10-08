@@ -157,7 +157,7 @@ async function fetchOutput(run_id) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    console.log('promptObj.baseprompt and userBasePrompt in promptpreproc',promptObj.basePrompt, promptObj.userBasePrompt)
+    
     const promptArrangement = promptObj.type == 'FLUX' ? 
     `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}` :
     `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`

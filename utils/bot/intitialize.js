@@ -234,7 +234,7 @@ async function readWorkflows() {
             //loraTriggers.push(...parsedTriggers); // Push new elements into the array
         }
         console.log('workflows loaded');
-        console.log((flows))
+        //console.log((flows))
     } catch (error) {
         console.error('Error getting workflows:', error);
     } finally {
@@ -299,7 +299,7 @@ async function readWorkflows() {
 
 
 async function initialize() {
-    console.log('initializing...')
+    console.log('XXXXXXX ...initializing... XXXXXXX')
     console.log('getting lora list...');
     await readLoraList();
     console.log('reading burns...');
@@ -308,7 +308,7 @@ async function initialize() {
     await readRooms();
     console.log('reading workflows...')
     await readWorkflows();
-    console.log('ready...!')
+    console.log('!...ready...!')
 }
 
 module.exports = {

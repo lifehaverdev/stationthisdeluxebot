@@ -19,13 +19,13 @@ let isSorting = false;
 // LOBBY AND QUEUE
 //
 function enqueueTask(task) {
-    console.log('task in enqueueTask',task)
+    //console.log('task in enqueueTask',task)
     // Retrieve user ID from the task message
     const userId = task.promptObj.userId;
     
     // Count how many tasks are in the queue from the same user
     const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
-    console.log('task message in enqueue',task.message)
+    //console.log('task message in enqueue',task.message)
     // Check if the user has already 4 tasks in the queue
     if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
@@ -46,7 +46,7 @@ function enqueueTask(task) {
     taskQueue.push(task);
     task.timestamp = Date.now();
     task.status = 'thinking';
-    console.log(`Task enqueued for ${task.message.from.first_name}`);
+    //console.log(`Task enqueued for ${task.message.from.first_name}`);
     //console.log('doints:', lobby[userId].doints);
 
     // Add the promptObj to the user's runs array, pushing down other runs and removing the 5th if necessary
@@ -128,7 +128,7 @@ function sortTaskQueue() {
 
 async function processQueue() {
     if (taskQueue.length > 0 && waiting.length < 10) {
-        console.log('we got a live one')
+        //console.log('we got a live one')
         const task = taskQueue[0];
         waitlist(task);
         
@@ -147,7 +147,7 @@ async function processQueue() {
         if(taskQueue.length == 0 && waiting.length == 0){
             console.log('queues empty');
         } else if (taskQueue.length == 0 && waiting.length > 0){
-            console.log('queue empty, waiting')
+            //console.log('queue empty, waiting')
         } else if (taskQueue.length > 0 && waiting.length > 7) {
             console.log('we are full full')
         }
@@ -168,7 +168,7 @@ async function waitlist(task){
             timestamp: Date.now(),
         };
         waiting.push(task);
-        console.log(`Task enqueued for ${message.from.first_name}`);
+        console.log(`⭐️${message.from.first_name} asked for ${run_id}`);
     } else {
         console.log('no run id');
         sendMessage(message,'ah it didnt take. send your prompt to dev')
@@ -229,7 +229,7 @@ async function processWaitlist(status, run_id, outputs) {
             processingQueue[run_id] = [];
         }
         processingQueue[run_id].push({ status, outputs });
-        console.log(`Task with run_id ${run_id} is already being processed. Added to queue.`);
+        //console.log(`Task with run_id ${run_id} is already being processed. Added to queue.`);
         return;
     }
 
@@ -256,7 +256,7 @@ async function processWaitlist(status, run_id, outputs) {
             // console.log('before removing task',waiting.length)
             waiting.splice(taskIndex, 1);
             // console.log('after removing task',waiting.length);
-            console.log(`Task with run_id ${run_id} removed from the waiting array.`);
+            console.log(`👍 ${task.promptObj.username} ${run_id}`);
         } else if (result == 'failed') {
             console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
             waiting.splice(taskIndex, 1);
@@ -266,7 +266,7 @@ async function processWaitlist(status, run_id, outputs) {
                 waiting.splice(taskIndex, 1);
             } 
         } else {
-            console.log(`Task with run_id ${run_id} is incomplete, not removing from waiting array.`);
+            console.log(`... ${run_id} ...`);
         }
 
     } catch (err) {
