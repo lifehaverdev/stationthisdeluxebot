@@ -125,11 +125,14 @@ const commandPatterns = {
             sendMessage(message,'I reset burns, loralist and groups');
         }
     },
-    // '/brendonis': (message) => {
-    //     sendMessage(message,'Brendon is hacking into the satellite....')
-    //     sendMessage(message,'hacking...')
-    //     sendMessage(message,'CONNECTED');
-    // }
+    '/check': (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
+            const lob = lobby;
+            sendMessage(message,JSON.stringify(lob));
+        }
+    },
     '/see': async(message) => {
         if(message.from.id != DEV_DMS){
             return;
@@ -164,6 +167,11 @@ const commandPatterns = {
             lobby[message.from.id].forceLogo = false;
         }
         react(message, '👍');
+    },
+    '/dointify': (message) => {
+        if(lobby[message.from.id]) {
+            lobby[message.from.id].doints += 85204
+        }
     }
     // '/okaywhatisthis': async(message) => {
         
@@ -245,21 +253,23 @@ function messageFilter(message) {
             return false; // Early return to prevent further processing of this as a normal command
         }
     }
-    //console.log('message date in filter',message.date)
-    //console.log('startup date /1000 in filter',(startup/1000 - (5 * 60)))
-    //console.log(startup/1000 - (5 * 60))
+    
+    //Ignore old messages
     if(message.date < (startup/1000 - (5 * 60))){
         console.log('ignoring because its old')
         return true;
     }
     
     // // Initialize state for new users
-    if (!lobby[message.from.id]) {
-       console.log('no lobby')
-       lobby[message.from.userId] = defaultUserData;
-       return false
-    }
+    // THIS IS REDUNDANT YOU FOOL WE DO THAT IN CHECKLOBBY
+    // if (!lobby[message.from.id]) {
+    //    console.log('no lobby')
+    //    lobby[message.from.userId] = defaultUserData;
+    //    return false
+    // }
+
     if( 
+        lobby[message.from.id] &&
         //user is amidst call and response anywhere aka their state is set
         lobby[message.from.id].state.state != STATES.IDLE && 
         //commented out to fix groupname
