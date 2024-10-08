@@ -97,7 +97,7 @@ function checkAndSetType(type, settings, message, group, userId) {
     // Check if any required files are missing
     for (let file of requiredFiles) {
         if (!settings[file.name]) {
-            //sendMessage(message, `${file.message} use /set menu or turn off the fanciness in /accountsettings}`);
+            sendMessage(message, `${file.message} use /set menu or turn it off in /create or /effect menu`);
             return;
         }
     }
@@ -334,8 +334,8 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         finalType = checkAndSetType(taskType, settings, message, group, userId);
         if (!finalType) {
             // If the type could not be set (e.g., missing required files), stop the task
-            console.log('Task type could not be set due to missing files or settings.');
-            return;
+            console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
+            return 'MAKE';
         }
     }
 
