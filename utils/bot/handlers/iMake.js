@@ -83,9 +83,9 @@ async function handleDexMake(message, match) {
     }
 }
 
-function checkAndSetType(type, settings, message, group, userId) {
+function checkAndSetType(type, settings, message, group, userId, gated) {
     // Early return for token gate if needed
-    if (tokenGate(group, userId, message)) return;
+    if (gated, tokenGate(group, userId, message)) return;
 
     // Define required files based on settings
     const requiredFiles = [];
@@ -331,7 +331,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
     if (needsTypeCheck) {
-        finalType = checkAndSetType(taskType, settings, message, group, userId);
+        finalType = checkAndSetType(taskType, settings, message, group, userId, (minTokenAmount > 0));
         if (!finalType) {
             // If the type could not be set (e.g., missing required files), stop the task
             console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
@@ -486,41 +486,6 @@ async function handleRegen(message, user = null) {
 
     await sendMessage(message, "Choose which generation you'd like to regenerate:", options);
 }
-
-
-// async function handleMs2Prompt(message) {
-//     const userId = message.from.id;
-//     const group = getGroup(message)
-//     let userInput = message.text;
-//     //wtf does this do >
-//     //userInput == '' ? userInput = '' : null;
-
-//     let settings;
-//     if(group){
-//         settings = group.settings;
-//     } else {
-//         settings = lobby[userId]
-//     }
-
-//     lobby[userId] = {
-//         ...lobby[userId],
-//         prompt: userInput,
-//         type: 'I2I'
-//     }
-
-//     checkAndSetType(lobby[userId].type, settings, message, group, userId);
-    
-//     await react(message);
-//     const promptObj = {
-//         ...settings,
-//         seed: lobby[userId].lastSeed,
-//         photoStats: settings.tempSize
-//     }
-//     //return await shakeMs2(message,promptObj);
-//     enqueueTask({message,promptObj})
-//     setUserState(message,STATES.IDLE);
-//     return true
-// }
 
 async function handleMs2Prompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
