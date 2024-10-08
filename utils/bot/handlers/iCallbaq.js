@@ -183,7 +183,11 @@ const actionMap = {
     'setWatermark': handleSetWatermark,
     'toggleAdvancedUser': async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)
-        lobby[user].advancedUser = !lobby[user].advancedUser;
+        if(!lobby[user].advancedUser){
+            lobby[user].advancedUser = true;
+        } else {
+            lobby[user].advancedUser = false;
+        }
         message.from.id = user;
         displayAccountSettingsMenu(message.reply_to_message);
     },

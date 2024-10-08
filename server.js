@@ -17,7 +17,7 @@ app.get('api/webhook',() => {
 }) 
 
 app.post('/api/webhook', async (req, res) => {
-  console.log('Webhook post received');
+  //console.log('Webhook post received');
   
   try {
     const { status, run_id, outputs } = req.body;
@@ -31,13 +31,15 @@ app.post('/api/webhook', async (req, res) => {
     }
     
     // Log the parsed data
-    console.log(' Status:', status);
-    console.log(' Run ID:', run_id);
+    const logPrefix = '~~⚡~~';  // Spark-like
+
+    console.log(`${logPrefix} Run ID: ${run_id} Status: ${status} `);
+
     //console.log(' Outputs:', JSON.stringify(outputs));
     
     // Process the waitlist with the webhook data
     await processWaitlist(status, run_id, outputs);
-    console.log('Sent for processing');
+    //console.log('Sent for processing');
 
     res.status(200).json({ message: "success" });
   } catch (err) {

@@ -161,7 +161,7 @@ async function addGenDocument(collectionName, data) {
         const collection = client.db(dbName).collection(collectionName);
         // Insert the new document
         const result = await collection.insertOne(data);
-        console.log('New document inserted successfully:', result.insertedId);
+        //console.log('New document inserted successfully:', result.insertedId);
         return true;
     } catch (error) {
         console.error("Error inserting document:", error);
