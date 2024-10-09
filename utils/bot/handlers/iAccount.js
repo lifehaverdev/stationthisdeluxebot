@@ -219,7 +219,7 @@ function displayAccountSettingsMenu(message,dms) {
     accountInfo += `<b>LEVEL:</b>${level}\n`
     accountInfo += `<b>EXP:</b>        ${bars}\n`
     accountInfo += `<b>POINTS:</b> ${pointBars}\n`
-    accountInfo += `${lobby[userId].points + doints || 0} / ${maxPoints} ${qoints ? '+ '+qoints : ''}\n\n`;
+    accountInfo += `${Math.floor(lobby[userId].points + doints) || 0} / ${Math.floor(maxPoints)} ${qoints ? '+ '+Math.floor(qoints) : ''}\n\n`;
     accountInfo += `<b>Next Points Replenish in ${minutesLeft}m</b>\n\n`
     
     
