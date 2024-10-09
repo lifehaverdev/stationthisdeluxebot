@@ -172,6 +172,23 @@ const commandPatterns = {
         if(lobby[message.from.id]) {
             lobby[message.from.id].doints += 85204
         }
+    },
+    '/here': async (message) => {
+        if(message.from.id != DEV_DMS){
+            //console.log(message.from.id)
+            return;
+        } else {
+            const whom = message.reply_to_message.from.id
+            message.from.id = whom
+            const whoCares = await checkLobby(message)
+            console.log('whocares',whoCares)
+            if(lobby[whom]){
+                lobby[whom].doints = 0;
+                sendMessage(message,'it is done');
+            } else {
+                sendMessage(message,'sorry...')
+            }
+        }
     }
     // '/okaywhatisthis': async(message) => {
         
