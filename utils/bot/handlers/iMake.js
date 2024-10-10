@@ -83,9 +83,7 @@ async function handleDexMake(message, match) {
     }
 }
 
-function checkAndSetType(type, settings, message, group, userId, gated) {
-    // Early return for token gate if needed
-    if (gated, tokenGate(group, userId, message)) return;
+function checkAndSetType(type, settings, message, group, userId) {
 
     // Define required files based on settings
     const requiredFiles = [];
@@ -93,7 +91,8 @@ function checkAndSetType(type, settings, message, group, userId, gated) {
     if (settings.styleTransfer) requiredFiles.push({ name: 'styleFileUrl', message: 'You need to set a style image.' });
     if (settings.controlNet) requiredFiles.push({ name: 'controlFileUrl', message: 'You need to set a control image.' });
     if (settings.openPose) requiredFiles.push({ name: 'poseFileUrl', message: 'You need to set a pose image.' });
-
+    if (requiredFiles.length > 0 && tokenGate(group, userId, message)) return // Early return for token gate if needed
+    
     // Check if any required files are missing
     for (let file of requiredFiles) {
         if (!settings[file.name]) {
@@ -156,7 +155,6 @@ async function startMake3(message,user) {
     //await sendMessage(message,'What prompt for your txt2img sd3');
     setUserState(message,STATES.MAKE3)
 }
-
 async function startMog(message,user) {
         if(user){
             message.from.id = user;
@@ -226,10 +224,10 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.strength = 1.0;
 
         // Add additional images for MAKE_CANNY, MAKE_STYLE, MAKE_POSE, etc.
-        if (userContext.controlNet) {
+        if (userContext.styleTransfer) {
             promptObj.styleFileUrl = userContext.styleFileUrl;
         }
-        if (userContext.styleTransfer) {
+        if (userContext.controlNet) {
             promptObj.controlFileUrl = userContext.controlFileUrl;
         }
         if (userContext.openPose) {
@@ -331,7 +329,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
     if (needsTypeCheck) {
-        finalType = checkAndSetType(taskType, settings, message, group, userId, (minTokenAmount > 0));
+        finalType = checkAndSetType(taskType, settings, message, group, userId);
         if (!finalType) {
             // If the type could not be set (e.g., missing required files), stop the task
             console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
