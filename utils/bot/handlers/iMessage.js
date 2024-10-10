@@ -189,6 +189,25 @@ const commandPatterns = {
                 sendMessage(message,'sorry...')
             }
         }
+    },
+    '/vidthat': async(message) => {
+        console.log('made it into the function')
+        //if(lobby[message.from.id].balance < 600000) gated(message)
+        const target = message.reply_to_message;
+        if(target.photo) {
+            target.from.id = message.from.id;
+            target.message_id = message.message_id
+            iMedia.handleMs3V2ImgFile(target)
+        }
+    },
+    '/letspretendiamfrosty' : async (message) => {
+        if(message.from.id != DEV_DMS){
+            //console.log(message.from.id)
+            return;
+        } else {
+            if(!lobby[message.from.id]) if(!await checkLobby(message)) return
+            lobby[DEV_DMS].balance = 200000
+        }
     }
     // '/okaywhatisthis': async(message) => {
         
