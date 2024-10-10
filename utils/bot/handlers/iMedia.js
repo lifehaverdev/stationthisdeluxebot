@@ -131,7 +131,7 @@ async function handleMs2ImgFile(message) {
 // Helper function to build the prompt object dynamically based on the workflow
 function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const promptObj = {};
-
+    
     // Always include type from userContext and add username from the message
     promptObj.type = userContext.type || workflow.name;
     promptObj.username = message.from.username || 'unknown_user';
@@ -140,7 +140,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     promptObj.photoStats = { height: 1024, width: 1024 };
 
     // Set required inputs based on the workflow type
-    if (workflow.name.startsWith('PFP')) {
+    if (workflow.name.startsWith('I2I_AUTO')) {
         // Handle PFP workflows and their variations
         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
@@ -162,6 +162,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.steps = userContext.steps || 50;
         promptObj.prompt = userContext.prompt || 'default PFP prompt';
         promptObj.negativePrompt = userContext.negativePrompt || '';
+        promptObj.checkpoint = userContext.checkpoint;
         promptObj.strength = 1.0;
     } 
     else if (workflow.name.startsWith('I2I')) {
@@ -186,6 +187,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.steps = userContext.steps || 50;
         promptObj.prompt = userContext.prompt || 'default I2I prompt';
         promptObj.negativePrompt = userContext.negativePrompt || '';
+        promptObj.checkpoint = userContext.checkpoint;
         promptObj.strength = 1.0;
     } 
     else if (workflow.name === 'RMBG') {
@@ -216,18 +218,22 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 }
 
 
-function checkAndSetType(settings, message, group, userId) {
+function checkAndSetType(type, settings, message, group, userId) {
     // Early return for token gate if needed
-    if (tokenGate(group, userId, message)) return;
-    let typest = settings.type;
-
+    
+    let typest = type;
+    console.log('type',typest)
     // Dynamically build the type
     if (settings.controlNet) typest += '_CANNY';
     if (settings.styleTransfer) typest += '_STYLE';
     if (settings.openPose) typest += '_POSE';
-
+    console.log('post triple condit typest',typest)
+    if ((settings.controlNet || settings.styleTransfer || settings.openPose) && 
+        tokenGate(group, userId, message)
+    ) {console.log('triplecondit')
+        return;}
     //settings.type = type;
-    console.log(`Selected type: ${settings.type}`);
+    console.log(`Selected type: ${typest}`);
     return typest
 }
 
@@ -243,119 +249,119 @@ function tokenGate(group, userId, message) {
 }
 
 
-async function handlePfpImgFile(message) {
-    //sendMessage(message,'sorry this is broken rn');
-    if(!message.photo || message.document) {
-        return;
-    }
-    react(message,'🥰')
-    chatId = message.chat.id;
-    const userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
-    const group = getGroup(message);
-    //const{time,result} = await interrogateImage(message, fileUrl);
-    let settings;
-    if(group) {
-        settings = group.settings
-    } else {
-        settings = lobby[userId]
-    }
-    settings.type = 'I2I_AUTO'
-    try {
-        const photo = await Jimp.read(fileUrl);
-        const { width, height } = photo.bitmap;
+// async function handlePfpImgFile(message) {
+//     //sendMessage(message,'sorry this is broken rn');
+//     if(!message.photo || message.document) {
+//         return;
+//     }
+//     react(message,'🥰')
+//     chatId = message.chat.id;
+//     const userId = message.from.id;
+//     const fileUrl = await getPhotoUrl(message);
+//     const group = getGroup(message);
+//     //const{time,result} = await interrogateImage(message, fileUrl);
+//     let settings;
+//     if(group) {
+//         settings = group.settings
+//     } else {
+//         settings = lobby[userId]
+//     }
+//     settings.type = 'I2I_AUTO'
+//     try {
+//         const photo = await Jimp.read(fileUrl);
+//         const { width, height } = photo.bitmap;
 
-        const photoStats = {
-            width: width,
-            height: height
-        };
+//         const photoStats = {
+//             width: width,
+//             height: height
+//         };
 
-        const thisSeed = makeSeed(userId);
-        settings.type = checkAndSetType(settings,message, group, userId)
+//         const thisSeed = makeSeed(userId);
+//         settings.type = checkAndSetType(settings,message, group, userId)
 
-        lobby[userId] = {
-            ...lobby[userId],
-            lastSeed: thisSeed,
-            tempSize: photoStats,
-            fileUrl: fileUrl
-        }
+//         lobby[userId] = {
+//             ...lobby[userId],
+//             lastSeed: thisSeed,
+//             tempSize: photoStats,
+//             fileUrl: fileUrl
+//         }
         
-        const promptObj = {
-            ...settings,
-            seed: thisSeed,
-            photoStats: photoStats,
-            fileUrl: fileUrl
-        }
-        //return await shakeMs2(message,promptObj);
-        enqueueTask({message,promptObj})
-        setUserState(message,STATES.IDLE);
-        return true
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
-}
+//         const promptObj = {
+//             ...settings,
+//             seed: thisSeed,
+//             photoStats: photoStats,
+//             fileUrl: fileUrl
+//         }
+//         //return await shakeMs2(message,promptObj);
+//         enqueueTask({message,promptObj})
+//         setUserState(message,STATES.IDLE);
+//         return true
+//     } catch (error) {
+//         console.error("Error processing photo:", error);
+//         sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+//         return false
+//     }
+// }
 
-async function handleMs3ImgFile(message) {
-    if(!message.photo || message.document) {
-        return;
-    }
-    chatId = message.chat.id;
-    userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
+// async function handleMs3ImgFile(message) {
+//     if(!message.photo || message.document) {
+//         return;
+//     }
+//     chatId = message.chat.id;
+//     userId = message.from.id;
+//     const fileUrl = await getPhotoUrl(message);
 
-    const thisSeed = makeSeed(userId);
-    lobby[userId].lastSeed = thisSeed;
+//     const thisSeed = makeSeed(userId);
+//     lobby[userId].lastSeed = thisSeed;
 
-    const promptObj = {
-        ...lobby[userId],
-        fileUrl: fileUrl,
-        seed: thisSeed,
-        type: 'MS3',
-    }
-    try {
-        //enqueueTask({message, promptObj})
-        enqueueTask({message,promptObj})
-        setUserState(message,STATES.IDLE);
-        sendMessage(message, `Okay dont hold your breath`);        
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
-}
+//     const promptObj = {
+//         ...lobby[userId],
+//         fileUrl: fileUrl,
+//         seed: thisSeed,
+//         type: 'MS3',
+//     }
+//     try {
+//         //enqueueTask({message, promptObj})
+//         enqueueTask({message,promptObj})
+//         setUserState(message,STATES.IDLE);
+//         sendMessage(message, `Okay dont hold your breath`);        
+//         return true;
+//     } catch (error) {
+//         console.error("Error processing photo:", error);
+//         sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+//         return false
+//     }
+// }
 
-async function handleMs3V2ImgFile(message) {
-    if(!message.photo || message.document) {
-        return;
-    }
-    chatId = message.chat.id;
-    userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
+// async function handleMs3V2ImgFile(message) {
+//     if(!message.photo || message.document) {
+//         return;
+//     }
+//     chatId = message.chat.id;
+//     userId = message.from.id;
+//     const fileUrl = await getPhotoUrl(message);
 
-    const thisSeed = makeSeed(userId);
-    lobby[userId].lastSeed = thisSeed;
+//     const thisSeed = makeSeed(userId);
+//     lobby[userId].lastSeed = thisSeed;
     
-    const promptObj = {
-        ...lobby[userId],
-        fileUrl: fileUrl,
-        seed: thisSeed,
-        type: 'MS3.2',
-    }
-    try {
-        //enqueueTask({message, promptObj})
-        enqueueTask({message,promptObj})
-        setUserState(message,STATES.IDLE);
-        sendMessage(message, `Okay dont hold your breath`);        
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
-    }
-}
+//     const promptObj = {
+//         ...lobby[userId],
+//         fileUrl: fileUrl,
+//         seed: thisSeed,
+//         type: 'MS3.2',
+//     }
+//     try {
+//         //enqueueTask({message, promptObj})
+//         enqueueTask({message,promptObj})
+//         setUserState(message,STATES.IDLE);
+//         sendMessage(message, `Okay dont hold your breath`);        
+//         return true;
+//     } catch (error) {
+//         console.error("Error processing photo:", error);
+//         sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
+//         return false
+//     }
+// }
 
 async function handleInpaint(message) {
     chatId = message.chat.id;
@@ -453,6 +459,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
 
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
+    console.log('finalyType before checkset',finalType)
     if (needsTypeCheck) {
         finalType = checkAndSetType(taskType, settings, message, group, userId);
         if (!finalType) {
@@ -472,6 +479,8 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     const batch = chatId < 0 ? 1 : settings.batchMax;
 
     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
+    
+    console.log('finaltype before finding workflow',finalType)
     const workflow = flows.find(flow => flow.name === finalType);
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
@@ -499,7 +508,7 @@ async function handleRmbg(message) {
 }
 
 async function handlePfpImgFile(message) {
-    await handleImageTask(message, 'PFP', STATES.PFP, true, null)
+    await handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000)
 }
 
 async function handleMs3ImgFile(message) {
