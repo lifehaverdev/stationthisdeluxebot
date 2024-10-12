@@ -207,6 +207,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     promptObj.balance = userContext.balance
     promptObj.userId = userContext.userId
     promptObj.photoStats = { height: 1024, width: 1024}
+    promptObj.forcelogo = userContext.forcelogo || false
     // Set required inputs based on the workflow type
     if (workflow.name.startsWith('MAKE')) {
         // Handle MAKE workflows and their variations

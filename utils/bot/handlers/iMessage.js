@@ -7,6 +7,7 @@ const {
     sendMessage,
     setUserState,
     react,
+    gated,
     DEV_DMS
 } = require('../../utils')
 const { readStats } = require('../../../db/mongodb.js')
@@ -192,12 +193,18 @@ const commandPatterns = {
     },
     '/vidthat': async(message) => {
         console.log('made it into the function')
-        //if(lobby[message.from.id].balance < 600000) gated(message)
+        if(!await checkLobby(message)) return
+        if(lobby[message.from.id].balance < 600000){
+            gated(message)
+            return
+        } 
         const target = message.reply_to_message;
         if(target.photo) {
             target.from.id = message.from.id;
             target.message_id = message.message_id
             iMedia.handleMs3V2ImgFile(target)
+        } else {
+            react(message,"🤔")
         }
     },
     '/letspretendiamfrosty' : async (message) => {
