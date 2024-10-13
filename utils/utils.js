@@ -70,8 +70,6 @@ async function sendMessage(msg, text, options = {}) {
     let response = await attemptSendMessage(options);
     if (response) return response;
 
-
-
     // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
     if (options.message_thread_id) {
         console.log('Retrying without message_thread_id');
@@ -93,21 +91,24 @@ async function sendMessage(msg, text, options = {}) {
 }
 
 async function sendPhoto(msg, fileUrl, options = {}) {
-    
     const chatId = msg.chat.id;
-    if (msg.message_id) {
+
+    // Add reply_to_message_id if available
+    if (msg.message_id && !options.reply_to_message_id) {
         options.reply_to_message_id = msg.message_id;
     }
-    if (msg.message_thread_id) {
+
+    // Add message_thread_id if available and it's a supergroup with topics
+    if (msg.message_thread_id && !options.message_thread_id) {
         options.message_thread_id = msg.message_thread_id;
     }
 
-    const attemptSendPhoto = async (options) => {
+    const attemptSendPhoto = async (opts) => {
         try {
-            const response = await bot.sendPhoto(chatId, fileUrl, options);
+            const response = await bot.sendPhoto(chatId, fileUrl, opts);
             return response;
         } catch (error) {
-            console.error(`sendMessage error:`, {
+            console.error(`sendPhoto error:`, {
                 context: msg.text || '',
                 message: error.message || '',
                 name: error.name || '',
@@ -117,38 +118,48 @@ async function sendPhoto(msg, fileUrl, options = {}) {
         }
     };
 
-    // Try sending the message with different options
+    // Try sending the photo with both reply_to_message_id and message_thread_id
     let response = await attemptSendPhoto(options);
     if (response) return response;
-    options.reply_to_message_id = null;
-    response = await attemptSendPhoto(options);
-    if (response) return response;
-    options.message_thread_id = null;
-    return await attemptSendPhoto(options);
-    // try {
-    //     const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
-    //     return response;
-    // } catch (error) {
-    //     console.error('sendPhoto error:', error.message || error);
-    //     return null;
-    // }
+
+    // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
+    if (options.message_thread_id) {
+        console.log('Retrying without message_thread_id');
+        options.message_thread_id = undefined;
+        response = await attemptSendPhoto(options);
+        if (response) return response;
+    }
+
+    // Remove reply_to_message_id and try again (handles case where reply fails)
+    if (options.reply_to_message_id) {
+        console.log('Retrying without reply_to_message_id');
+        options.reply_to_message_id = undefined;
+        response = await attemptSendPhoto(options);
+        if (response) return response;
+    }
+
+    // Return null if all retries failed
+    return null;
 }
 async function sendDocument(msg, fileUrl, options = {}) {
-    
     const chatId = msg.chat.id;
-    if (msg.message_id) {
+
+    // Add reply_to_message_id if available
+    if (msg.message_id && !options.reply_to_message_id) {
         options.reply_to_message_id = msg.message_id;
     }
-    if (msg.message_thread_id) {
+
+    // Add message_thread_id if available and it's a supergroup with topics
+    if (msg.message_thread_id && !options.message_thread_id) {
         options.message_thread_id = msg.message_thread_id;
     }
 
-    const attemptSendFile = async (options) => {
+    const attemptSendFile = async (opts) => {
         try {
-            const response = await bot.sendDocument(chatId, fileUrl, options);
+            const response = await bot.sendDocument(chatId, fileUrl, opts);
             return response;
         } catch (error) {
-            console.error(`sendMessage error:`, {
+            console.error(`sendDocument error:`, {
                 context: msg.text || '',
                 message: error.message || '',
                 name: error.name || '',
@@ -158,22 +169,30 @@ async function sendDocument(msg, fileUrl, options = {}) {
         }
     };
 
-    // Try sending the message with different options
+    // Try sending the document with both reply_to_message_id and message_thread_id
     let response = await attemptSendFile(options);
     if (response) return response;
-    options.reply_to_message_id = null;
-    response = await attemptSendFile(options);
-    if (response) return response;
-    options.message_thread_id = null;
-    return await attemptSendFile(options);
-    // try {
-    //     const response = await bot.sendPhoto(msg.chat.id, fileUrl, optionAppendage(msg));
-    //     return response;
-    // } catch (error) {
-    //     console.error('sendPhoto error:', error.message || error);
-    //     return null;
-    // }
+
+    // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
+    if (options.message_thread_id) {
+        console.log('Retrying without message_thread_id');
+        options.message_thread_id = undefined;
+        response = await attemptSendFile(options);
+        if (response) return response;
+    }
+
+    // Remove reply_to_message_id and try again (handles case where reply fails)
+    if (options.reply_to_message_id) {
+        console.log('Retrying without reply_to_message_id');
+        options.reply_to_message_id = undefined;
+        response = await attemptSendFile(options);
+        if (response) return response;
+    }
+
+    // Return null if all retries failed
+    return null;
 }
+
 async function sendAnimation(msg, fileUrl) {
     try {
         const response = await bot.sendAnimation(msg.chat.id, fileUrl, optionAppendage(msg));
