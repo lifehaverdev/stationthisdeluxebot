@@ -3,7 +3,7 @@ const path = require('path');
 const { sendMessage, setUserState, editMessage, react } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
-const { lobby, STATES, startup, waiting, taskQueue, getBotInstance, getPhotoUrl } = require('../bot.js')
+const { lobby, STATES, startup, waiting, taskQueue, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
@@ -143,6 +143,12 @@ async function handleStatus(message) {
 
     waiting.length > 0 ? msg += 
     `Working on: \n${waiting.map(task => {
+        const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
+        const remainingTime = task.status; // Calculate remaining time until checkback
+        return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
+    }).join('\n')}\n` : null;
+    successors.length > 0 ? msg += 
+    `Sending: \n${successors.map(task => {
         const username = task.message.from.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         const remainingTime = task.status; // Calculate remaining time until checkback
         return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status

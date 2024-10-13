@@ -192,6 +192,11 @@ function statusRouter(task, taskIndex, status) {
             enqueueTask(task)
             waiting.splice(taskIndex, 1);
             break;
+        case undefined:
+        case null:
+        case 'undefined':
+            task.status = 'thinking..'
+            break;
         default: 
             //update waiting array task status
             task.status = status;
@@ -200,10 +205,12 @@ function statusRouter(task, taskIndex, status) {
 }
 
 async function deliver() {
+    console.log('❤️')
     if(successors.length > 0){
         const task = successors[0];
         try {
             // Handle sending the content to the user via handleTaskCompletion
+            console.log('send to handleTaskCompletion')
             const result = await handleTaskCompletion(task);
             // Remove the corresponding task from the waiting array only if successfully processed
             if (result == 'success') {
@@ -330,12 +337,10 @@ async function handleTaskCompletion(task) {
             console.log(`No outputs to process for status: ${status}`);
         }
     };
-    
-    task.status = status
 
     if (status === 'success') {
-        const operationSuccess = await retryOperation(operation);
-        if(operationSuccess && sent){
+        await operation();
+        if(sent){
             addPoints(task)
             const out = {
                 urls: urls,
