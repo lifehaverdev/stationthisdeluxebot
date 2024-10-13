@@ -273,7 +273,8 @@ async function processWaitlist(status, run_id, outputs) {
 
 async function handleTaskCompletion(task) {
     const { message, promptObj } = task;
-    const { status, outputs } = task.final;
+    const run = task.final;
+    const { status, outputs } = run;
     const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
     let urls = [];
     let texts = [];
