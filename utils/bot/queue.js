@@ -36,6 +36,7 @@ function capUserRequests(userId, message) {
 function handleEnqueueRegen(task) {
     // Check if this is a regeneration task by looking for a `isRegen` flag in the promptObj
     const isRegenTask = task.promptObj.isRegen || false;
+    const userId = task.promptObj.userId
     // Add the promptObj to the user's runs array, pushing down other runs and removing the 5th if necessary
     if (!isRegenTask) {
         if (!lobby[userId].runs) {
@@ -208,6 +209,7 @@ async function deliver() {
     console.log('❤️')
     if(successors.length > 0){
         const task = successors[0];
+        const run_id = task.run_id;
         try {
             // Handle sending the content to the user via handleTaskCompletion
             console.log('send to handleTaskCompletion')
