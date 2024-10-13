@@ -210,6 +210,7 @@ async function deliver() {
     if(successors.length > 0){
         const task = successors[0];
         const run_id = task.run_id;
+        successors.shift()
         try {
             // Handle sending the content to the user via handleTaskCompletion
             console.log('send to handleTaskCompletion')
@@ -217,7 +218,7 @@ async function deliver() {
             // Remove the corresponding task from the waiting array only if successfully processed
             if (result == 'success') {
                 // console.log('before removing task',waiting.length)
-                successors.shift()
+                //successors.shift()
                 // console.log('after removing task',waiting.length);
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
             } else if (result == 'not sent') {
@@ -225,16 +226,16 @@ async function deliver() {
                 if(task.deliveryFail){
                     if(task.deliveryFail > 2){
                         sendMessage(task.message, 'i... i failed you.')
-                        successors.shift()
+                        //successors.shift()
                         return
                     }
                     //increment deliverfail and send to back of send line
                     task.deliverFail ++;
-                    successors.shift()
+                    //successors.shift()
                     successors.push(task)
                 } else {
                     task.deliveryFail = 1;
-                    successors.shift()
+                    //successors.shift()
                     successors.push(task)
                 }
             } 
@@ -412,7 +413,7 @@ function extractType(url) {
     }
 }
 
-setInterval(deliver, 1000)
+setInterval(deliver, 2000)
 
 // Export variables and functions
 module.exports = {
