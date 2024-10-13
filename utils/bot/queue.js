@@ -211,7 +211,7 @@ function statusRouter(task, taskIndex, status) {
 }
 
 async function deliver() {
-    console.log('❤️')
+    //console.log('❤️')
     if(successors.length > 0){
         const task = successors[0];
         const run_id = task.run_id;
