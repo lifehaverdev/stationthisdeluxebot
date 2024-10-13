@@ -8,6 +8,7 @@ const startup = Date.now();
 const lobby = {};
 let taskQueue = []
 let waiting = []
+let successors = []
 let loraTriggers = [];
 let burns = [];
 let rooms = [];
@@ -213,7 +214,7 @@ module.exports = {
     getBurned,
     lobby,
     rooms, flows, burns, loraTriggers,
-    taskQueue, waiting, processes,
+    taskQueue, waiting, processes, successors,
     startup,
     commandStateMessages,
     SET_COMMANDS,

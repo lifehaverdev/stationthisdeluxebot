@@ -1,6 +1,7 @@
 const { MongoClient } = require("mongodb");
-const { loraTriggers, burns , rooms, flows} = require('../bot/bot')
+const { loraTriggers, burns , rooms, flows } = require('../bot/bot')
 // read mongodb for burns, return object for addresses
+let busy = false;
 async function readBurns() {
     // Connection URI
     const uri = process.env.MONGO_PASS;
@@ -299,6 +300,7 @@ async function readWorkflows() {
 
 
 async function initialize() {
+    busy = true;
     console.log('XXXXXXX ...initializing... XXXXXXX')
     console.log('getting lora list...');
     await readLoraList();
@@ -309,8 +311,10 @@ async function initialize() {
     console.log('reading workflows...')
     await readWorkflows();
     console.log('!...ready...!')
+    busy = false;
 }
 
 module.exports = {
-    initialize
+    initialize,
+    busy
 }

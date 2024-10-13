@@ -1,12 +1,13 @@
 
-const { taskQueue, waiting, lobby } = require('../bot/bot');
+const { taskQueue, waiting, successors, lobby, busy } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
     sendPhoto,
     sendAnimation,
     sendVideo,
-    sendDocument
+    sendDocument,
+    react
     // safeExecute
 } = require('../utils');
 const { addPoints } = require('./points')
@@ -14,43 +15,28 @@ const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
 const { saveGen } = require('../../db/mongodb');
 
-let isSorting = false; 
 //
 // LOBBY AND QUEUE
 //
-function enqueueTask(task) {
-    //console.log('task in enqueueTask',task)
-    // Retrieve user ID from the task message
-    const userId = task.promptObj.userId;
-    
+
+function capUserRequests(userId, message) {
+    let cap = false;
     // Count how many tasks are in the queue from the same user
     const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
     //console.log('task message in enqueue',task.message)
-    // Check if the user has already 4 tasks in the queue
+    // Check if the user has already 5 tasks in the queue
     if (count >= 5) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
-        sendMessage(task.message, "You have 5 things in the queue rn, chill out. Try setting batch or something damn.");
-        return; // Exit the function without enqueuing the new task
+        react(message, "😭");
+        cap = true; // Exit the function without enqueuing the new task
     }
-
+    return cap;
+}
+ 
+function handleEnqueueRegen(task) {
     // Check if this is a regeneration task by looking for a `isRegen` flag in the promptObj
     const isRegenTask = task.promptObj.isRegen || false;
-
-    // Update doints for the user
-    if (lobby[userId]) {
-        lobby[userId].doints = (lobby[userId].doints || 0) + 100;
-        task.promptObj.dointsAdded = 100;
-    }
-
-    // Add the task to the queue
-    taskQueue.push(task);
-    task.timestamp = Date.now();
-    task.status = 'thinking';
-    //console.log(`Task enqueued for ${task.message.from.first_name}`);
-    //console.log('doints:', lobby[userId].doints);
-
     // Add the promptObj to the user's runs array, pushing down other runs and removing the 5th if necessary
-
     if (!isRegenTask) {
         if (!lobby[userId].runs) {
             lobby[userId].runs = [task.promptObj];
@@ -62,12 +48,30 @@ function enqueueTask(task) {
             lobby[userId].runs.pop();
         }
     }
+}
 
-    // Check if sorting is required
-    if (!isSorting && taskQueue.length > 1) {
-        sortTaskQueue();
-        isSorting = false;
+function enqueueTask(task) {
+    //console.log('task in enqueueTask',task)
+    // Retrieve user ID from the task message
+    const userId = task.promptObj.userId;
+    
+    //make sure we dont let anyone spam too hard
+    if(capUserRequests(userId,task.message)) return
+    //make sure we are handling user runs key value
+    handleEnqueueRegen(task)
+    
+    // Update doints for the user
+    // Giving these placeholder doints makes it so that you can't spam requests without instant cost
+    if (lobby[userId]) {
+        lobby[userId].doints = (lobby[userId].doints || 0) + 100;
+        // adding this to promptObj makes sure we take them off when it is deliver
+        task.promptObj.dointsAdded = 100;
     }
+
+    // Add the task to the queue, which is waiting to be request
+    taskQueue.push(task);
+    task.timestamp = Date.now();
+    task.status = 'thinking';
 
     // If queue was empty, start processing tasks
     if (taskQueue.length === 1) {
@@ -75,59 +79,10 @@ function enqueueTask(task) {
     }
 }
 
-function sortTaskQueue() {
-        if (isSorting) {
-        console.log('currently sorting')
-        return; // Exit if sorting is already in progress
-    }
-    isSorting = true;
-    try {
-        taskQueue.sort((a, b) => {
-            // Check if a.promptObj and b.promptObj exist
-            if (!a.promptObj || !b.promptObj) {
-                console.warn('promptObj is undefined for some items:', a, b);
-                return 0; // No change in order
-            }
-
-            const balanceA = a.promptObj.balance || 0;
-            const balanceB = b.promptObj.balance || 0;
-
-            // Check if balanceA and balanceB are of the same type
-            if (typeof balanceA !== 'number' || typeof balanceB !== 'number') {
-                console.warn('balance is not a number for some items:', a, b);
-                return 0; // No change in order
-            }
-
-            const timestampA = a.timestamp || 0;
-            const timestampB = b.timestamp || 0;
-
-            // Calculate waiting time for each task
-            const waitingTimeA = Date.now() - timestampA;
-            const waitingTimeB = Date.now() - timestampB;
-
-            // If waiting time is over 20 seconds, prioritize it regardless of balance
-            if (waitingTimeA >= 20000 && waitingTimeB < 20000) {
-                return -1; // Move a to the front
-            } else if (waitingTimeB >= 20000 && waitingTimeA < 20000) {
-                return 1; // Move b to the front
-            }
-
-            // If waiting times are less than 20 seconds, prioritize based on balance
-            // If balance is the same, sort by longer waiting time first
-            if (balanceB === balanceA) {
-                return waitingTimeB - waitingTimeA; // Longer waiting time first
-            }
-
-            return balanceB - balanceA; // Descending order by balance
-        });
- 
-        } catch (error) {
-            console.error('Error sorting taskQueue:', error);
-        }
-}
-
+//processQueue takes tasks that have been prepared for request and puts them into waitlist
 async function processQueue() {
-    if (taskQueue.length > 0 && waiting.length < 10) {
+    const WAITLISTMAX = 10;
+    if (taskQueue.length > 0 && waiting.length < WAITLISTMAX) {
         //console.log('we got a live one')
         const task = taskQueue[0];
         waitlist(task);
@@ -143,24 +98,28 @@ async function processQueue() {
             }
         }
         processQueue(); // Continue processing next task
-    } else {
-        if(taskQueue.length == 0 && waiting.length == 0){
-            console.log('queues empty');
-        } else if (taskQueue.length == 0 && waiting.length > 0){
-            //console.log('queue empty, waiting')
-        } else if (taskQueue.length > 0 && waiting.length > 7) {
-            console.log('we are full full')
-        }
-        //console.log('All queue processed , or waitlist full')
-        //console.log('Waitlist',waiting.length);
-        //console.log('Tasks',taskQueue.length);
-    }
+    } 
+    // else {
+    //     if(taskQueue.length == 0 && waiting.length == 0){
+    //         //console.log('NO TASKQUEUE NO WAITING. we take deep breath... sigh');
+    //     } else if (taskQueue.length == 0 && waiting.length > 0){
+    //         //console.log('NO TASKQUQUE but waiting ... ',waiting.length)
+    //     } else if (taskQueue.length > 0 && waiting.length > WAITLISTMAX) {
+    //         //console.log('WAITLIST FULL, TAKE A NUMBER AND HAVE A SEAT ... ',taskQueue.length,' in line, ',waiting.length,' being served.')
+    //     }
+    //     //console.log('All queue processed , or waitlist full')
+    //     //console.log('Waitlist',waiting.length);
+    //     //console.log('Tasks',taskQueue.length);
+    // }
 }
 
+//makes request for the task and updates waiting array
 async function waitlist(task){
     const { message, promptObj } = task;
+
     let run_id;
     run_id = await generate(promptObj);
+
     if(run_id != -1 && run_id != undefined){
         task = {
             ...task,
@@ -171,7 +130,7 @@ async function waitlist(task){
         console.log(`⭐️${message.from.first_name} asked for ${run_id}`);
     } else {
         console.log('no run id');
-        sendMessage(message,'ah it didnt take. send your prompt to dev')
+        react(message,"😨")
     }
     
 }
@@ -219,22 +178,66 @@ function removeStaleTasks() {
     }
 }
 
+function statusRouter(task, taskIndex, status) {
+    switch(status) {
+        case 'success':
+            //add success to success bucket take off waiting
+            successors.push(task)
+            waiting.splice(taskIndex, 1)
+            break;
+        case 'failed':
+        case 'timeout':
+        case 'cancelled':
+            //re-enqueue new task
+            enqueueTask(task)
+            waiting.splice(taskIndex, 1);
+            break;
+        default: 
+            //update waiting array task status
+            task.status = status;
+            break;
+    }
+}
+
+async function deliver() {
+    if(successors.length > 0){
+        const task = successors[0];
+        try {
+            // Handle sending the content to the user via handleTaskCompletion
+            const result = await handleTaskCompletion(task);
+            // Remove the corresponding task from the waiting array only if successfully processed
+            if (result == 'success') {
+                // console.log('before removing task',waiting.length)
+                successors.shift()
+                // console.log('after removing task',waiting.length);
+                console.log(`👍 ${task.promptObj.username} ${run_id}`);
+            } else if (result == 'not sent') {
+                console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
+                if(task.deliveryFail){
+                    if(task.deliveryFail > 2){
+                        sendMessage(task.message, 'i... i failed you.')
+                        successors.shift()
+                        return
+                    }
+                    //increment deliverfail and send to back of send line
+                    task.deliverFail ++;
+                    successors.shift()
+                    successors.push(task)
+                } else {
+                    task.deliveryFail = 1;
+                    successors.shift()
+                    successors.push(task)
+                }
+            } 
+        } catch (err) {
+            console.error('Exception in deliver:', err);
+        } 
+    } 
+}
+
 async function processWaitlist(status, run_id, outputs) {
 
     removeStaleTasks();
-
-    // Avoid processing the same task multiple times
-    if (processingRunIds.has(run_id)) {
-        if (!processingQueue[run_id]) {
-            processingQueue[run_id] = [];
-        }
-        processingQueue[run_id].push({ status, outputs });
-        //console.log(`Task with run_id ${run_id} is already being processed. Added to queue.`);
-        return;
-    }
-
-    // Add the run_id to the set of processing tasks
-    processingRunIds.add(run_id);
 
     try {
         // Check the "waiting" task array for a matching ID
@@ -242,55 +245,25 @@ async function processWaitlist(status, run_id, outputs) {
 
         if (taskIndex === -1) {
             console.error('Task with run_id not found in the waiting array.');
-            processingRunIds.delete(run_id);
             return;
         }
 
         const task = waiting[taskIndex];
+        task.status = status;
         const run = { status, run_id, outputs };
+        task.final = run
 
-        // Handle sending the content to the user via handleTaskCompletion
-        const result = await handleTaskCompletion(task, run);
-        // Remove the corresponding task from the waiting array only if successfully processed
-        if (result == 'success') {
-            // console.log('before removing task',waiting.length)
-            waiting.splice(taskIndex, 1);
-            // console.log('after removing task',waiting.length);
-            console.log(`👍 ${task.promptObj.username} ${run_id}`);
-        } else if (result == 'failed') {
-            console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-            waiting.splice(taskIndex, 1);
-        } else if (result == 'not sent'){
-            const secondResult = await handleTaskCompletion(task, run);
-            if(secondResult == 'success'){
-                waiting.splice(taskIndex, 1);
-            } 
-        } else {
-            console.log(`... ${run_id} ...`);
-        }
+        statusRouter(task,taskIndex,status)
 
     } catch (err) {
         console.error('Exception in processWaitlist:', err);
-    } finally {
-        // Remove the run_id from the set of processing tasks
-        processingRunIds.delete(run_id);
-
-        // Process the next task in the queue for this run_id, if any
-        if (processingQueue[run_id] && processingQueue[run_id].length > 0) {
-            const nextTask = processingQueue[run_id].shift();
-            processWaitlist(nextTask.status, run_id, nextTask.outputs);
-            // Clean up the processingQueue if empty
-            if (processingQueue[run_id].length === 0) {
-                delete processingQueue[run_id];
-            }
-        }
-    }
+    } 
     processQueue();
 }
 
-async function handleTaskCompletion(task, run) {
+async function handleTaskCompletion(task) {
     const { message, promptObj } = task;
-    const { status, outputs } = run;
+    const { status, outputs } = task.final;
     const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
     let urls = [];
     let texts = [];
@@ -375,8 +348,6 @@ async function handleTaskCompletion(task, run) {
             return 'not sent'
         }
         //return operationSuccess && sent ? 'success' : 'not sent';
-    } else if (status === 'failed'){
-      return 'failed';  
     } else {
         if (status === undefined || status === 'undefined') {
             task.status = 'thinking';
@@ -434,13 +405,15 @@ function extractType(url) {
     }
 }
 
+setInterval(deliver, 1000)
+
 // Export variables and functions
 module.exports = {
     processingRunIds,
     waiting,
     taskQueue,
     enqueueTask,
-    sortTaskQueue,
-    processWaitlist
+    processWaitlist,
+    //deliver
     // Add other exports here if needed
 };
