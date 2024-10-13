@@ -1,5 +1,5 @@
 
-const { taskQueue, waiting, successors, lobby, busy } = require('../bot/bot');
+const { taskQueue, waiting, successors, lobby, failures } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
@@ -183,8 +183,13 @@ function statusRouter(task, taskIndex, status) {
     switch(status) {
         case 'success':
             //add success to success bucket take off waiting
+            task.runningStop = Date.now()
             successors.push(task)
             waiting.splice(taskIndex, 1)
+            break;
+        case 'running':
+            task.status = status;
+            task.runningStart = Date.now()
             break;
         case 'failed':
         case 'timeout':
@@ -225,6 +230,7 @@ async function deliver() {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
                 if(task.deliveryFail){
                     if(task.deliveryFail > 2){
+                        failures.push(task)
                         sendMessage(task.message, 'i... i failed you.')
                         //successors.shift()
                         return

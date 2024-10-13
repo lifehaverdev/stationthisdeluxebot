@@ -8,7 +8,7 @@ function addPoints(task) {
     if(promptObj.type == 'MS3.2') {
         task.promptObj.rate = 2;
     }
-    const pointsToAdd = ((Date.now()-task.timestamp) / 1000) * rate;
+    const pointsToAdd = ((task.runningStop-task.runningStart) / 1000) * rate;
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
     //console.log('group',group)
