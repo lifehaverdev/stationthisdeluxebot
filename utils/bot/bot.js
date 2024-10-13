@@ -9,6 +9,7 @@ const lobby = {};
 let taskQueue = []
 let waiting = []
 let successors = []
+let failures = []
 let loraTriggers = [];
 let burns = [];
 let rooms = [];
@@ -214,7 +215,7 @@ module.exports = {
     getBurned,
     lobby,
     rooms, flows, burns, loraTriggers,
-    taskQueue, waiting, processes, successors,
+    taskQueue, waiting, processes, successors, failures,
     startup,
     commandStateMessages,
     SET_COMMANDS,
