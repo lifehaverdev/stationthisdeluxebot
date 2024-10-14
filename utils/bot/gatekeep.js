@@ -39,9 +39,11 @@ function regenerateDoints(userId) {
 
     // Subtract the regenerated points from the doints and ensure it doesn't drop below 0
     const oldDoints = userData.doints;
-    userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
+    userData.doints = Math.max(oldDoints - regeneratedPoints, 0);
     //console.log(`Old doints: ${oldDoints}, New doints after regeneration: ${userData.doints}`);
-
+    lobby[userId] = {
+        ...userData
+    }
     console.log("========== regenerateDoints process complete ==========");
 }
 
@@ -55,10 +57,13 @@ function softResetPoints(userId) {
     const userData = lobby[userId];
     console.log("soft reset userData points doints balance",userData.userId, userData.points, userData.doints)
     const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
-    const regeneratedPoints = (maxPoints / 36);
+    const regeneratedPoints = (maxPoints / 18);
     console.log('soft reset regenerated calcualtion to subtract from doints', regeneratedPoints)
     userData.doints = Math.max(userData.points + userData.doints - regeneratedPoints, 0);
     console.log(`Points and doints reset: Points = ${userData.points}, Doints = ${userData.doints}`);
+    lobby[userId] = {
+        ...userData
+    }
 }
 
 function shouldKick(userId) {
@@ -71,6 +76,7 @@ function addExp(userId) {
     const userData = lobby[userId];
     userData.exp += userData.points;
     userData.doints += userData.points;
+    userData.boints = 0;
     userData.points = 0;
 }
 
@@ -213,7 +219,7 @@ async function checkLobby(message) {
         }
 
         // Group credit check (could switch to qoints when ready)
-        if (group && group.credit > group.points) {
+        if (group && group.qoints > 0) {
             return true;
         }
 
@@ -261,17 +267,23 @@ async function checkLobby(message) {
 
     // Check if the user has hit the generation limit
     const totalPoints = lobby[userId].points + (lobby[userId].doints || 0);
-    if (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER) || (group && group.credit < group.points)) {
+    if (
+        (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER)) 
+        ||
+        lobby[userId].qoints > 0 
+        ||
+        (group && group.credit < group.points)
+    ) {
         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
 
         const nextRegenTime = timeTillTurnover();
         const messageText = `🚫 You’ve hit your point limit! 
-✨ Your points will regenerate every 15 minutes. 
+✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they dont)
 🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.
-💰 Want to continue now? Buy more MS2 and keep creating! 🥂`;
-//OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!;
+💰 Want to continue now? Buy more MS2 and keep creating! 🥂
+OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
     
         const options = {
             reply_markup: {
@@ -279,10 +291,10 @@ async function checkLobby(message) {
                     [
                         { text: 'Buy 🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
                         { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' }
+                    ],
+                    å[
+                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge'}
                     ]
-                     // [
-//                 //     { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge'}
-//                 // ]
                 ]
             }
         };
@@ -295,7 +307,6 @@ async function checkLobby(message) {
 
     return true;
 }
-
 
 
 function timeTillTurnover() {

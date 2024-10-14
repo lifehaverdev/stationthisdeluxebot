@@ -192,10 +192,10 @@ async function updateGroupPoints(group, pointsToAdd) {
         const existingGroup = await collection.findOne(filter);
 
         // Calculate the new points
-        const updatedPoints = (existingGroup?.points || 0) + pointsToAdd;
+        const updatedPoints = Math.max(((existingGroup?.qoints || 0) - pointsToAdd),0);
 
         // Use the existing writeData function to save the updated points
-        await writeData('floorplan', filter, { points: updatedPoints });
+        await writeData('floorplan', filter, { qoints: updatedPoints });
 
         console.log('Group points updated successfully');
         return true;
@@ -508,7 +508,7 @@ async function addPointsToAllUsers() {
         for (const userId in lobby) {
             console.log('userId and type',userId, typeof userId)
             if (userId && lobby.hasOwnProperty(userId)) {
-                console.log('we can see the userid here');
+                //console.log('we can see the userid here');
                 if (processedUserIds.has(userId)) {
                     console.log(`Duplicate entry found for userId: ${userId}`);
                     continue;
@@ -517,7 +517,7 @@ async function addPointsToAllUsers() {
 
                 console.log('Adding points for:', userId);
                 const user = lobby[userId];
-                const pointsToAdd = user.points;
+                const pointsToAdd = user.points + user.boints;
                 
                 if (pointsToAdd > 0) {
                     try {

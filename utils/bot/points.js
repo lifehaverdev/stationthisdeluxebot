@@ -2,6 +2,12 @@ const { lobby } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { updateGroupPoints } = require('../../db/mongodb')
 
+// Helper function to get the user's max balance
+function getMaxBalance(userObject) {
+    const max = Math.floor((userObject.balance + NOCOINERSTARTER) / POINTMULTI)
+    return max; // Adjust this as needed if balance calculations are more complex
+}
+
 function addPoints(task) {
     ({ promptObj, message } = task);
     let rate = 1; 
@@ -13,11 +19,29 @@ function addPoints(task) {
     const group = getGroup(message);
     //console.log('group',group)
     if((user && !group) || (user.verified && group)){
-        //if(user && group) console.log('WE ADDING POINTS TO USER EVEN THO GROUP')
-        user.points += pointsToAdd;
+        const max = getMaxBalance(user)
+        const credit = user.points + user.doints
+        //somehow need to subtract from qoints however much is over max
+         //IF credit already == max, qoints are subtracted
+         //whateer qoints are subtracted , the same amount are added to boints
+        if(credit >= max){
+            user.qoints -= pointsToAdd;
+            user.boints += pointsToAdd;
+        //IF pointsToAdd exceeds the difference remaining between max and credit, the points are added until credit == max, then the rest are subtracted from qoints if they are there
+        } else if(pointsToAdd > max - credit){
+            user.points += max - credit;
+            pointsToAdd -= max - credit;
+            user.qoints -= pointsToAdd;
+            user.boints += pointsToAdd;
+        //IF pointsToAdd + credit doesnt exceed max, just add points
+        } else if (credit < max) {
+            user.points += pointsToAdd;
+        }
+        
+        //always remove the placeholder doints
         user.doints -= promptObj.dointsAdded;
     } else if (group){
-        group.points += pointsToAdd;
+        group.qoints -= pointsToAdd;
         updateGroupPoints(group,pointsToAdd)
     } else {
         console.log('no user id in lobby for points addition after task completion')
