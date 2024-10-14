@@ -218,10 +218,13 @@ async function deliver() {
         successors.shift()
         try {
             // Handle sending the content to the user via handleTaskCompletion
-            console.log('send to handleTaskCompletion')
+            
             let result;
-            if(task.backOff > Date.now()){
+            console.log('task backoff ',task.backOff)
+            if(!task.backOff ||(task.backOff && task.backOff > Date.now())){
+                console.log('send to handleTaskCompletion')
                 result = await handleTaskCompletion(task);
+                console.log('handletask result',result)
             } else {
                 successors.push(task)
                 return
@@ -321,7 +324,9 @@ async function handleTaskCompletion(task) {
                         promptObj.waterMark = 'mslogo'
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
+                    console.log('alright we send now',fileToSend)
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
+                    console.log('this is response from sendMedia',mediaResponse)
                     if (!mediaResponse) sent = false;
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);
@@ -356,13 +361,18 @@ async function handleTaskCompletion(task) {
     if (status === 'success') {
         await operation();
         if(sent){
+            console.log('apparently its sent',task)
             addPoints(task)
+            console.log(
+                'and we added pionts i guess'
+            )
             const out = {
                 urls: urls,
                 tags: tags,
                 texts: texts
             }
             saveGen({task,run,out})
+            console.log('and even saved it damn')
             return 'success'
         } else {
             return 'not sent'
