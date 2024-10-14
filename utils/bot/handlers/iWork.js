@@ -132,7 +132,7 @@ function convertTime(timeInSeconds) {
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
     let msg = 
-    `💫⏳ ${convertTime(runtime)}\n`
+    `💫⏳ ${convertTime(runtime)}\n\n`
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {
         const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
