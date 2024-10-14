@@ -1,7 +1,7 @@
 const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
-const { lobbyManager, checkLobby } = require('../gatekeep')
+const { lobbyManager, checkLobby, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
@@ -12,7 +12,7 @@ const {
 } = require('../../utils')
 const { readStats } = require('../../../db/mongodb.js')
 // const handlers = require('./handle');
-const defaultUserData = require('../../users/defaultUserData');
+//const defaultUserData = require('../../users/defaultUserData');
 
 const iMenu = require('./iMenu')
 const iAccount = require('./iAccount')
@@ -170,8 +170,11 @@ const commandPatterns = {
         react(message, '👍');
     },
     '/dointify': (message) => {
-        if(lobby[message.from.id]) {
-            lobby[message.from.id].doints += 85204
+        if(message.from.id != DEV_DMS){
+            //console.log(message.from.id)
+            return;
+        } else if(lobby[message.from.id]) {
+            lobby[message.from.id].doints = Math.floor((lobby[message.from.id].balance + NOCOINERSTARTER) / POINTMULTI)
         }
     },
     '/here': async (message) => {
@@ -181,8 +184,10 @@ const commandPatterns = {
         } else {
             const whom = message.reply_to_message.from.id
             message.from.id = whom
-            const whoCares = await checkLobby(message)
-            console.log('whocares',whoCares)
+            if(!lobby[whom]){
+                await checkLobby(message)
+            }
+            // console.log('whocares',whoCares)
             if(lobby[whom]){
                 lobby[whom].doints = 0;
                 sendMessage(message,'it is done');
