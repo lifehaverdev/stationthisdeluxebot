@@ -271,21 +271,19 @@ async function checkLobby(message) {
     if (
         (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER)) 
         ||
-        lobby[userId].qoints > 0 
+        lobby[userId].qoints <= 0 
         ||
-        (group && group.credit < group.points)
+        (group && group.qoints <= 0)
     ) {
         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
-
         const nextRegenTime = timeTillTurnover();
         const messageText = `🚫 You have hit your point limit! 
 ✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they dont)
 🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.
 💰 Want to continue now? Buy more MS2 and keep creating! 🥂
 OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
-    
         const options = {
             reply_markup: {
                 inline_keyboard: [
