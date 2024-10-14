@@ -177,6 +177,15 @@ const commandPatterns = {
             lobby[message.from.id].doints = Math.floor((lobby[message.from.id].balance + NOCOINERSTARTER) / POINTMULTI)
         }
     },
+    '/showmemyboints': (message) => {
+        if(message.from.id != DEV_DMS){
+            //console.log(message.from.id)
+            return;
+        } else if(lobby[message.from.id]) {
+            const userId = message.from.id;
+            sendMessage(message,`${lobby[userId].points},${lobby[userId].doints},${lobby[userId].qoints},${lobby[userId].boints}`)
+        }
+    },
     '/here': async (message) => {
         if(message.from.id != DEV_DMS){
             //console.log(message.from.id)
