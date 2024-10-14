@@ -234,9 +234,9 @@ async function deliver() {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
                 if(task.deliveryFail > 0){
                     if(task.deliveryFail > 2){
+                        console.log('task deliveryfail is adding')
                         failures.push(task)
                         sendMessage(task.message, 'i... i failed you.')
-                        //successors.shift()
                         return
                     }
                     //increment deliverfail and send to back of send line
