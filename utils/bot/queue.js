@@ -219,16 +219,20 @@ async function deliver() {
         try {
             // Handle sending the content to the user via handleTaskCompletion
             console.log('send to handleTaskCompletion')
-            const result = await handleTaskCompletion(task);
+            let result;
+            if(task.backOff > Date.now()){
+                result = await handleTaskCompletion(task);
+            } else {
+                successors.push(task)
+                return
+            }
+            
             // Remove the corresponding task from the waiting array only if successfully processed
             if (result == 'success') {
-                // console.log('before removing task',waiting.length)
-                //successors.shift()
-                // console.log('after removing task',waiting.length);
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
             } else if (result == 'not sent') {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-                if(task.deliveryFail){
+                if(task.deliveryFail > 0){
                     if(task.deliveryFail > 2){
                         failures.push(task)
                         sendMessage(task.message, 'i... i failed you.')
@@ -236,14 +240,12 @@ async function deliver() {
                         return
                     }
                     //increment deliverfail and send to back of send line
-                    task.deliverFail ++;
-                    //successors.shift()
-                    successors.push(task)
+                    task.deliverFail += 1;
                 } else {
                     task.deliveryFail = 1;
-                    //successors.shift()
-                    successors.push(task)
                 }
+                task.backOff = Date.now() + task.deliveryFail * task.deliveryFail * 2000
+                successors.push(task)
             } 
         } catch (err) {
             console.error('Exception in deliver:', err);
@@ -389,7 +391,7 @@ async function sendMedia(message, fileToSend, type, promptObj) {
         
         if(lobby[message.from.id].advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
-        if (promptObj.balance == '' || promptObj.balance < 200000){
+        if (response && (promptObj.balance == '' || promptObj.balance < 200000 || promptObj.forceLogo)){
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
         }
         return response;
