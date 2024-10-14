@@ -191,6 +191,7 @@ function printLobby(){
         });
 }
 
+
 async function checkLobby(message) {
     const userId = message.from.id;
     const group = getGroup(message);
@@ -279,7 +280,7 @@ async function checkLobby(message) {
         react(message, randomReact);
 
         const nextRegenTime = timeTillTurnover();
-        const messageText = `🚫 You’ve hit your point limit! 
+        const messageText = `🚫 You have hit your point limit! 
 ✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they dont)
 🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.
 💰 Want to continue now? Buy more MS2 and keep creating! 🥂
@@ -292,7 +293,7 @@ OR charge up your points directly 👾 with discounts for owning MS2 and using t
                         { text: 'Buy 🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
                         { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' }
                     ],
-                    å[
+                    [
                         { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge'}
                     ]
                 ]

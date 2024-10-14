@@ -324,6 +324,9 @@ async function handleTaskCompletion(task) {
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);
                 }
+                if(urls.length>1){
+                    await sleep(250);
+                }
             }
 
             for (const text of texts) {
@@ -370,6 +373,10 @@ async function handleTaskCompletion(task) {
         return 'incomplete'; 
     }
 }
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
 async function sendMedia(message, fileToSend, type, promptObj) {
     let options = {};
