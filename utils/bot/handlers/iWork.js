@@ -132,23 +132,24 @@ function convertTime(timeInSeconds) {
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
     let msg = 
-    `💫⏳${convertTime(runtime)}.\n`
+    `💫⏳ ${convertTime(runtime)}\n`
     taskQueue.length > 0 ? msg +=    
-    `Waiting: \n${taskQueue.map(task => {
+    `🪑 \n${taskQueue.map(task => {
         const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         return `${username}: ${task.promptObj.type}`; // Include remaining time in the status
     }).join('\n')}\n` : null
     waiting.length > 0 ? msg += 
-    `Working on: \n${waiting.map(task => {
+    `🪄 \n${waiting.map(task => {
         const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         const remainingTime = task.status; // Calculate remaining time until checkback
         return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
     }).join('\n')}\n` : null;
     successors.length > 0 ? msg += 
-    `Sending: \n${successors.map(task => {
+    `🕊️\n${successors.map(task => {
         const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         return `${username}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`; // Include the username in the status
     }).join('\n')}\n` : null
+    
     const callbackData = 'refresh'
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: callbackData}]]}
     sendMessage(message, msg, {reply_markup: reply_markup});
