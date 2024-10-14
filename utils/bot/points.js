@@ -1,6 +1,7 @@
 const { lobby } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { updateGroupPoints } = require('../../db/mongodb')
+const { NOCOINERSTARTER, POINTMULTI } = require('./gatekeep')
 
 // Helper function to get the user's max balance
 function getMaxBalance(userObject) {
