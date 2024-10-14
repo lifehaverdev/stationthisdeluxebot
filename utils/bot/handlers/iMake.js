@@ -105,7 +105,6 @@ function checkAndSetType(type, settings, message, group, userId) {
     if (settings.controlNet && settings.controlFileUrl) type += '_CANNY';
     if (settings.styleTransfer && settings.styleFileUrl) type += '_STYLE';
     if (settings.openPose && settings.poseFileUrl) type += '_POSE';
-    console.log(`Selected type: ${settings.type}`);
     return type;
 }
 

@@ -268,10 +268,17 @@ async function checkLobby(message) {
 
     // Check if the user has hit the generation limit
     const totalPoints = lobby[userId].points + (lobby[userId].doints || 0);
+    const outOfPoints = (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER)) 
+    
+    //if group and group qoints whatever
+    //if outof points AND no qoints... 
+    //if no qoints but have points left
+    //not having qoints only matters if you also dont have points
+
     if (
-        (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER)) 
+        (outOfPoints && lobby[userId].qoints && lobby[userId].qoints <= 0 )
         ||
-        lobby[userId].qoints <= 0 
+        (outOfPoints && !lobby[userId].qoints)
         ||
         (group && group.qoints <= 0)
     ) {
