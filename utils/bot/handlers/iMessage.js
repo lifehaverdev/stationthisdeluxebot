@@ -1,7 +1,7 @@
 const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
-const { lobbyManager, checkLobby, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
+const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
@@ -319,14 +319,6 @@ function messageFilter(message) {
         console.log('ignoring because its old')
         return true;
     }
-    
-    // // Initialize state for new users
-    // THIS IS REDUNDANT YOU FOOL WE DO THAT IN CHECKLOBBY
-    // if (!lobby[message.from.id]) {
-    //    console.log('no lobby')
-    //    lobby[message.from.userId] = defaultUserData;
-    //    return false
-    // }
 
     if( 
         lobby[message.from.id] &&
@@ -378,7 +370,9 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/utils','/set','/accountsettings','/create', '/inpaint','/effect','/animate','/make', '/make3','/dexmake', '/test', '/regen', '/speak','/assist','/interrogate'];
+const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/utils','/create','/inpaint','/effect','/animate','/make', '/make3','/regen', 
+    //'/speak','/assist','/interrogate'
+    ];
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
@@ -406,6 +400,8 @@ module.exports = function(bot) {
                             // User is not allowed to execute the command
                             return;
                         } 
+                    } else {
+                        await checkIn(message)
                     }
                     await safeExecute(message, () => handler(message, match));
                     handled = true;
