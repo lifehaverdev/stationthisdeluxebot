@@ -3,7 +3,7 @@ const { getUserDataByUserId, addPointsToAllUsers, writeUserData } = require('../
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
-const { home } = require('../models/userKeyboards');
+//const { home } = require('../models/userKeyboards');
 let lastCleanTime = Date.now();
 const logLobby = true;
 const POINTMULTI = 540;
@@ -25,14 +25,15 @@ function regenerateDoints(userId) {
 
     //console.log(`Last lobbied time: ${new Date(userData.kickedAt).toISOString()}`);
     const timeSinceLastRun = Date.now() - userData.kickedAt;
-    //console.log(`Time since kicked: ${Math.floor(timeSinceLastRun / 1000)} seconds`);
+    
+    console.log(`Time since kicked: ${Math.floor(timeSinceLastRun / 1000)} seconds`);
     //console.log('user balance', userData.balance);
 
     const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
     //console.log(`Max points based on balance: ${maxPoints}`);
 
-    const regenerationCycles = Math.floor(timeSinceLastRun / (1000 * 60 * LOBBY_CLEAN_MINUTE)); // 15-minute cycles
-    //console.log(`Regeneration cycles since last run: ${regenerationCycles}`);
+    const regenerationCycles = Math.floor(timeSinceLastRun / (LOBBY_CLEAN_INTERVAL)); // 15-minute cycles
+    console.log(`Regeneration cycles since last run: ${regenerationCycles}`);
 
     const regeneratedPoints = (maxPoints / 36) * regenerationCycles;
     //console.log(`Regenerated points: ${regeneratedPoints}`);
@@ -40,17 +41,11 @@ function regenerateDoints(userId) {
     // Subtract the regenerated points from the doints and ensure it doesn't drop below 0
     const oldDoints = userData.doints;
     userData.doints = Math.max(oldDoints - regeneratedPoints, 0);
-    //console.log(`Old doints: ${oldDoints}, New doints after regeneration: ${userData.doints}`);
+    console.log(`Old doints: ${oldDoints}, New doints after regeneration: ${userData.doints}`);
     lobby[userId] = {
         ...userData
     }
     console.log("========== regenerateDoints process complete ==========");
-}
-
-function hitGenerationLimit(userId) {
-    const userData = lobby[userId];
-    const totalPoints = userData.points + (userData.doints || 0);
-    return pointsCalc(totalPoints) > (userData.balance + NOCOINERSTARTER);
 }
 
 function softResetPoints(userId) {
@@ -106,6 +101,10 @@ class LobbyManager {
 
     async cleanLobby() {
         console.log("========== Starting cleanLobby ==========");
+        for (const userId in this.lobby){
+            const userTmp = lobby[userId]
+            console.log(userTmp.points,userTmp.doints,userTmp.qoints,userTmp.boints)
+        }
         addPointsToAllUsers();
         console.log("Points added to all users. Starting user-by-user cleanup...");
 
@@ -119,6 +118,7 @@ class LobbyManager {
                 if (shouldKick(userId)) {
                     console.log(`User ${userId} has been idle for too long. Adding experience and kicking them out.`);
                     addExp(userId); // Add experience to the user
+                    softResetPoints(userId)
                     await this.kickUser(userId);
                     console.log(`User ${userId} has been kicked out.`);
                 } else {
