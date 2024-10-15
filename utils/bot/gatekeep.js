@@ -191,6 +191,68 @@ function printLobby(){
         });
 }
 
+async function checkIn(message) {
+    const userId = message.from.id;
+    const group = getGroup(message);
+    let balance = 0;
+
+    // Check if the user is already in the lobby
+    if (!lobby.hasOwnProperty(userId)) {
+        let userData = await getUserDataByUserId(userId);
+        //console.log('UserData in checkLobby (new user)', userData);
+
+        // First, add the user to the lobby
+        lobbyManager.addUser(userId, userData);
+
+        // Fetch and update the user's balance if they are verified
+        if (userData.verified) {
+            balance = await getBalance(userData.wallet);
+            lobby[userId].balance = balance;
+        }
+
+        // Regenerate doints after the balance is updated
+        if (userData.kickedAt) {
+            console.log('Regenerating doints for kicked user');
+            regenerateDoints(userId);
+            // Remove the kickedAt key value after regenerating doints
+            delete userData.kickedAt;
+        }
+
+        // Group credit check (could switch to qoints when ready)
+        if (group && group.qoints > 0) {
+            return true;
+        }
+
+        // Blacklist check
+        if (checkBlacklist(userData.wallet)) {
+            await sendMessage(message, 'You are on the blacklist.');
+            return false;
+        }
+
+        setUserState(message, STATES.IDLE);
+        console.log(`${message.from.first_name} has entered the chat.`);
+    } else {
+        const userData = lobby[userId]; // Access user data directly from the lobby
+
+        // Group credit check
+        if (group && group.credit > group.points) {
+            return true;
+        }
+
+        // If the user's balance hasn't been fetched yet, retrieve it
+        if (userData.verified && userData.balance === '') {
+            const ms2Holding = await getBalance(userData.wallet);
+            userData.balance = ms2Holding;
+            balance = ms2Holding;
+        } else {
+            balance = userData.balance;
+        }
+        setUserState(message, STATES.IDLE);
+    }
+
+    return true;
+}
+
 
 async function checkLobby(message) {
     const userId = message.from.id;
@@ -327,7 +389,7 @@ function pointsCalc(points) {
 }
 
 module.exports =  {
-    checkLobby,
+    checkLobby, checkIn,
     //cleanLobby,
     lobbyManager,
     POINTMULTI,
