@@ -177,6 +177,11 @@ function removeStaleTasks() {
             waiting.splice(i, 1); // Remove stale tasks
         }
     }
+    for (let i = successors.length - 1; i>=0; i--) {
+        if ((now - successors[i].timestamp) > TEN_MINUTES) {
+            successors.splice(i, 1); // Remove stale tasks
+        }
+    }
 }
 
 function statusRouter(task, taskIndex, status) {
@@ -195,6 +200,14 @@ function statusRouter(task, taskIndex, status) {
         case 'timeout':
         case 'cancelled':
             //re-enqueue new task
+            if(task.retrying && task.retrying > 2){
+                console.log('thats it for you dude. its over. dont try again');
+                return
+            } else if (task.retrying) {
+                task.retrying += 1;
+            } else {
+                task.retrying = 1;
+            }
             enqueueTask(task)
             waiting.splice(taskIndex, 1);
             break;
@@ -220,11 +233,11 @@ async function deliver() {
             // Handle sending the content to the user via handleTaskCompletion
             
             let result;
-            console.log('task backoff ',task.backOff)
+            //console.log('task backoff ',task.backOff)
             if(!task.backOff ||(task.backOff && task.backOff > Date.now())){
-                console.log('send to handleTaskCompletion')
+                //console.log('send to handleTaskCompletion')
                 result = await handleTaskCompletion(task);
-                console.log('handletask result',result)
+                //console.log('handletask result',result)
             } else {
                 successors.push(task)
                 return
@@ -235,7 +248,7 @@ async function deliver() {
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
             } else if (result == 'not sent') {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-                if(task.deliveryFail > 0){
+                if(task.deliveryFail && task.deliveryFail > 0){
                     if(task.deliveryFail > 2){
                         console.log('task deliveryfail is adding')
                         failures.push(task)
@@ -248,6 +261,7 @@ async function deliver() {
                     task.deliveryFail = 1;
                 }
                 task.backOff = Date.now() + task.deliveryFail * task.deliveryFail * 2000
+                console.log("backoff ready send in ",(task.backOff-Date.now())/1000,'seconds')
                 successors.push(task)
             } 
         } catch (err) {
@@ -361,18 +375,13 @@ async function handleTaskCompletion(task) {
     if (status === 'success') {
         await operation();
         if(sent){
-            console.log('apparently its sent',task)
             addPoints(task)
-            console.log(
-                'and we added pionts i guess'
-            )
             const out = {
                 urls: urls,
                 tags: tags,
                 texts: texts
             }
             saveGen({task,run,out})
-            console.log('and even saved it damn')
             return 'success'
         } else {
             return 'not sent'
