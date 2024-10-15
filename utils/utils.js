@@ -193,24 +193,110 @@ async function sendDocument(msg, fileUrl, options = {}) {
     return null;
 }
 
-async function sendAnimation(msg, fileUrl) {
-    try {
-        const response = await bot.sendAnimation(msg.chat.id, fileUrl, optionAppendage(msg));
-        return response;
-    } catch (error) {
-        console.error('sendAnimation error:', error.message || error);
-        return null;
+async function sendAnimation(msg, fileUrl, options = {}) {
+    const chatId = msg.chat.id;
+
+    // Add reply_to_message_id if available
+    if (msg.message_id && !options.reply_to_message_id) {
+        options.reply_to_message_id = msg.message_id;
     }
-}
-async function sendVideo(msg, fileUrl) {
-    try {
-        const response = await bot.sendVideo(msg.chat.id, fileUrl, optionAppendage(msg));
-        return response;
-    } catch (error) {
-        console.error('sendVideo error:', error.message || error);
-        return null;
+
+    // Add message_thread_id if available and it's a supergroup with topics
+    if (msg.message_thread_id && !options.message_thread_id) {
+        options.message_thread_id = msg.message_thread_id;
     }
+
+    const attemptSendAnimation = async (opts) => {
+        try {
+            const response = await bot.sendAnimation(chatId, fileUrl, opts);
+            return response;
+        } catch (error) {
+            console.error(`sendAnimation error:`, {
+                context: msg.text || '',
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || ''
+            });
+            return null;
+        }
+    };
+
+    // Try sending the animation with both reply_to_message_id and message_thread_id
+    let response = await attemptSendAnimation(options);
+    if (response) return response;
+
+    // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
+    if (options.message_thread_id) {
+        console.log('Retrying without message_thread_id');
+        options.message_thread_id = undefined;
+        response = await attemptSendAnimation(options);
+        if (response) return response;
+    }
+
+    // Remove reply_to_message_id and try again (handles case where reply fails)
+    if (options.reply_to_message_id) {
+        console.log('Retrying without reply_to_message_id');
+        options.reply_to_message_id = undefined;
+        response = await attemptSendAnimation(options);
+        if (response) return response;
+    }
+
+    // Return null if all retries failed
+    return null;
 }
+
+async function sendVideo(msg, fileUrl, options = {}) {
+    const chatId = msg.chat.id;
+
+    // Add reply_to_message_id if available
+    if (msg.message_id && !options.reply_to_message_id) {
+        options.reply_to_message_id = msg.message_id;
+    }
+
+    // Add message_thread_id if available and it's a supergroup with topics
+    if (msg.message_thread_id && !options.message_thread_id) {
+        options.message_thread_id = msg.message_thread_id;
+    }
+
+    const attemptSendVideo = async (opts) => {
+        try {
+            const response = await bot.sendVideo(chatId, fileUrl, opts);
+            return response;
+        } catch (error) {
+            console.error(`sendVideo error:`, {
+                context: msg.text || '',
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || ''
+            });
+            return null;
+        }
+    };
+
+    // Try sending the video with both reply_to_message_id and message_thread_id
+    let response = await attemptSendVideo(options);
+    if (response) return response;
+
+    // Remove message_thread_id and try again (handles case where message_thread_id is invalid)
+    if (options.message_thread_id) {
+        console.log('Retrying without message_thread_id');
+        options.message_thread_id = undefined;
+        response = await attemptSendVideo(options);
+        if (response) return response;
+    }
+
+    // Remove reply_to_message_id and try again (handles case where reply fails)
+    if (options.reply_to_message_id) {
+        console.log('Retrying without reply_to_message_id');
+        options.reply_to_message_id = undefined;
+        response = await attemptSendVideo(options);
+        if (response) return response;
+    }
+
+    // Return null if all retries failed
+    return null;
+}
+
 function optionAppendage(msg){
     const options = {};
     if (msg.message_id) {
