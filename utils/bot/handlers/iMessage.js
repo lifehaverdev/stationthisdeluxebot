@@ -229,6 +229,9 @@ const commandPatterns = {
             if(!lobby[message.from.id]) if(!await checkLobby(message)) return
             lobby[DEV_DMS].balance = 200000
         }
+    },
+    '/showmetheseproperties': (message) => {
+        console.log(message)
     }
     // '/okaywhatisthis': async(message) => {
         
