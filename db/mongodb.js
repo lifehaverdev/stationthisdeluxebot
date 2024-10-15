@@ -501,12 +501,12 @@ async function addPointsToAllUsers() {
 
     try {
         const collection = client.db(dbName).collection('users');
-        console.log('Here is the lobby right now:', lobby);
+        //console.log('Here is the lobby right now:', lobby);
 
         const processedUserIds = new Set();  // To track processed user IDs
 
         for (const userId in lobby) {
-            console.log('userId and type',userId, typeof userId)
+            //console.log('userId and type',userId, typeof userId)
             if (userId && lobby.hasOwnProperty(userId)) {
                 //console.log('we can see the userid here');
                 if (processedUserIds.has(userId)) {
