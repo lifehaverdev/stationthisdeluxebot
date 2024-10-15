@@ -68,7 +68,7 @@ async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
 
     // If message_thread_id caused the error, remove it and try again
     if (options.message_thread_id) {
-        console.log('Retrying without message_thread_id');
+        console.log('Retrying without message_thread_id',options.message_thread_id);
         options.message_thread_id = undefined;
         response = await attemptSend(options);
         if (response) return response;
