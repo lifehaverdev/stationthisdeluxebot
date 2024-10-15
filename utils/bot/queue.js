@@ -249,6 +249,7 @@ async function deliver() {
             } else if (result == 'not sent') {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
                 if(task.deliveryFail && task.deliveryFail > 0){
+                    console.log('we made it here',task.deliveryFail)
                     if(task.deliveryFail > 2){
                         console.log('task deliveryfail is adding')
                         failures.push(task)
@@ -257,7 +258,9 @@ async function deliver() {
                     }
                     //increment deliverfail and send to back of send line
                     task.deliverFail += 1;
+                    console.log('guess we not adding?',task.deliveryFail)
                 } else {
+                    console.log('we are here',task.deliveryFail)
                     task.deliveryFail = 1;
                 }
                 task.backOff = Date.now() + task.deliveryFail * task.deliveryFail * 2000
