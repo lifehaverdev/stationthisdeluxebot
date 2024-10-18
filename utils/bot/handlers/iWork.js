@@ -152,6 +152,8 @@ async function handleStatus(message) {
     
     const callbackData = 'refresh'
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: callbackData}]]}
+    //const opt = iMenu.home
+    //opt.inline_keyboard= [[{ text: '🔄', callback_data: callbackData}]]
     sendMessage(message, msg, {reply_markup: reply_markup});
 }
 

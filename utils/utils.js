@@ -1,5 +1,10 @@
-const { getBotInstance, lobby } = require('./bot/bot.js'); 
+const { getBotInstance, lobby, rooms } = require('./bot/bot.js'); 
 const defaultUserData = require('./users/defaultUserData.js')
+
+function getGroup(message) {
+    const group = rooms.find(group => group.id == message.chat.id)
+    return group;
+}
 
 const bot = getBotInstance();
 
@@ -86,25 +91,129 @@ async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
     return null;
 }
 
+// Function to handle command context and set bot commands dynamically
+async function setCommandContext(bot, msg) {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    let context = 'default';
+
+    // Layered checks to determine context
+    if (chatId < 0) { // Group or group chat
+        const group = getGroup(msg);
+        if (group && group.commands) {
+            context = 'group';
+        } else if (lobby[userId] && lobby[userId].verified) {
+            context = 'verified_user';
+        } else {
+            context = 'group_chat';
+        }
+    } else { // Private chat
+        if (lobby[userId] && lobby[userId].verified) {
+            context = 'verified_private_chat';
+        } else {
+            context = 'private_chat';
+        }
+    }
+
+    let commands = [];
+
+    // Set commands based on context
+    switch (context) {
+        case 'group':
+            commands = group.commands;
+            break;
+        case 'verified_user':
+        case 'verified_private_chat':
+            commands = [
+                { command: 'create', description: 'Make something' },
+                { command: 'make', description: 'SDXL txt2img'},
+                { command: 'flux', description: 'FLUX txt2img'},
+                { command: 'effect', description: 'Change something' },
+                { command: 'animate', description: 'Movie maker' },
+                { command: 'vidthat', description: 'reply to image to create a gif'},
+                { command: 'status', description: 'Check on the bot and see if it has been reset lately' },
+                { command: 'regen', description: 'Make what you just did again, or with new settings' },
+                { command: 'set', description: 'Change your generation settings' },
+                { command: 'signin', description: 'Connect account' },
+                { command: 'signout', description: 'Disconnect account' },
+                { command: 'seesettings', description: 'Display your current settings' },
+                { command: 'account', description: 'Change account settings' },
+                { command: 'savesettings', description: 'Save your current settings to prevent loss' },
+                { command: 'resetaccount', description: 'Return to default settings' },
+                { command: 'quit', description: 'Exit a call and response UI' },
+                { command: 'getseed', description: 'Capture the seed used on your last generation' },
+                { command: 'loralist', description: 'See available LoRAs' },
+                { command: 'help', description: 'See help description' },
+                { command: 'ca', description: 'Check chart buy' }
+            ];
+            break;
+        case 'group_chat':
+            commands = [
+                { command: 'make', description: 'SDXL txt2img'},
+                { command: 'status', description: 'Check the group queue status' },
+            ];
+            break;
+        case 'private_chat':
+            commands = [
+                { command: 'make', description: 'SDXL txt2img'},
+                { command: 'status', description: 'Check the status' },
+                { command: 'signin', description: 'Connect account' },
+                { command: 'loralist', description: 'See available LoRAs' },
+            ];
+            break;
+    }
+
+    // Get existing commands and only set if different
+    const existingCommands = await bot.getMyCommands();
+    console.log('existing commands',existingCommands)
+    const newCommandsJson = JSON.stringify(commands);
+    console.log('new comands',newCommandsJson)
+    const existingCommandsJson = JSON.stringify(existingCommands);
+
+    if (newCommandsJson !== existingCommandsJson) {
+        console.log('new commands')
+        // Set commands dynamically
+        let scope = { type: 'default' };
+        if (context === 'group' || context === 'group_chat') {
+            scope = { type: 'chat', chat_id: chatId };
+        } else if (context === 'private_chat') {
+            scope = { type: 'all_private_chats' };
+        }
+
+        await bot.setMyCommands(commands, { scope });
+    }
+
+        // Set chat menu button for all cases except group_chat
+        if (context !== 'group_chat') {
+            console.log('menu button',await bot.getChatMenuButton())
+            await bot.setChatMenuButton({ type: 'commands' });
+        }
+}
+
 
 // Specific send functions using the helper function
 async function sendMessage(msg, text, options = {}) {
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
 }
 
 async function sendPhoto(msg, fileUrl, options = {}) {
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendPhoto.bind(bot), msg, fileUrl, options);
 }
 
 async function sendDocument(msg, fileUrl, options = {}) {
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
 }
 
 async function sendAnimation(msg, fileUrl, options = {}) {
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendAnimation.bind(bot), msg, fileUrl, options);
 }
 
 async function sendVideo(msg, fileUrl, options = {}) {
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendVideo.bind(bot), msg, fileUrl, options);
 }
 

@@ -73,6 +73,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
         promptObj.fileUrl = userContext.fileUrl;
+        promptObj.checkpoint = userContext.checkpoint
 
         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
         if (workflow.name.includes('STYLE')) {
@@ -98,6 +99,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
         promptObj.fileUrl = userContext.fileUrl;
+        promptObj.checkpoint = userContext.checkpoint
 
         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
         if (workflow.name.includes('STYLE')) {
