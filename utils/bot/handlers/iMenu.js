@@ -520,7 +520,7 @@ const home =  {
             [{ text: '/account' }]
         ],
         resize_keyboard: true,
-        one_time_keyboard: true,
+        one_time_keyboard: false,
         selective: true,
     }
 }

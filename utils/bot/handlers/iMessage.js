@@ -234,7 +234,7 @@ const commandPatterns = {
         console.log(message)
     },
     '/stationthis': (message) => {
-        sendMessage(message,'k',iMenu.home)
+        sendMessage(message,'$ms2',iMenu.home)
     }
     // '/okaywhatisthis': async(message) => {
         
