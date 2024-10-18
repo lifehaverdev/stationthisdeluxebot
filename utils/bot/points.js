@@ -18,10 +18,11 @@ function addPoints(task) {
     const pointsToAdd = ((task.runningStop-task.runningStart) / 1000) * rate;
     const user = lobby[promptObj.userId];
     const group = getGroup(message);
-    
-    if((user && !group) || (user.verified && group)){
-        const max = getMaxBalance(user)
-        const credit = user.points + user.doints
+    const max = getMaxBalance(user)
+    const credit = user.points + user.doints
+
+    if((user && !group) || (user.verified && group && credit < max)){        
+        
         //somehow need to subtract from qoints however much is over max
          //IF credit already == max, qoints are subtracted
          //whateer qoints are subtracted , the same amount are added to boints
@@ -30,7 +31,7 @@ function addPoints(task) {
             user.qoints -= pointsToAdd;
             user.boints += pointsToAdd;
         //IF pointsToAdd exceeds the difference remaining between max and credit, the points are added until credit == max, then the rest are subtracted from qoints if they are there
-        } else if(pointsToAdd > max - credit){
+        } else if(pointsToAdd > max - credit && qoints > 0){
             //console.log('we gon add a little to qoint a little to point')
             user.points += max - credit;
             pointsToAdd -= max - credit;
@@ -39,6 +40,8 @@ function addPoints(task) {
         //IF pointsToAdd + credit doesnt exceed max, just add points
         } else if (credit < max) {
             //console.log('classic points addition')
+            user.points += pointsToAdd;
+        } else {
             user.points += pointsToAdd;
         }
         

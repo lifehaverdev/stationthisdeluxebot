@@ -31,21 +31,21 @@ Classes for start, ask photo etc
 
 const commandPatterns = {
     '/signin': iAccount.handleSignIn,
-    '/make(?:@stationthisbot)?\\s+(.+)': iMake.handleMake,
-    '/make3(?:@stationthisbot)?\\s+(.+)': iMake.handleMake3,
+    '/make(?:@stationthisbot)?(?:\\s+(.*))?': iMake.handleMake,
+    '/make3(?:@stationthisbot)?(?:\\s+(.*))?': iMake.handleMake3,
     '/joycat\\s+(.+)': iMake.handleMog,
     '/degod\\s+(.+)': iMake.handleDegod,
     '/milady\\s+(.+)': iMake.handleMilady,
     '/chud\\s+(.+)': iMake.handleChud,
     '/flux\\s+(.+)': iMake.handleFlux,
     '/radbro\\s+(.+)': iMake.handleRadbro,
-    '/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
+    //'/dexmake(?:@stationthisbot)?\\s+(\\d+)': iMake.handleDexMake, 
     '/regen(?:@stationthisbot)?\\s*(.*)': iMake.handleRegen,
     '/getseed(.*)': iWork.saySeed,
     '/promptcatch\\s+(\\d+)': iMake.handlePromptCatch,
     '/savesettings(.*)': iAccount.handleSaveSettings,
     '/seesettings(.*)': iAccount.handleSeeSettings,
-    '/accountsettings(?:@stationthisbot)?': iAccount.handleAccountSettings,
+    '/account(?:@stationthisbot)?': iAccount.handleAccountSettings,
     '/loralist(?:@stationthisbot)?': iWork.loraList,//iWork.sendLoRaModelFilenames,
     '/groupsettings': iGroup.groupSettings,
     //'/disc(.*)': handleDisc,
@@ -69,10 +69,10 @@ const commandPatterns = {
             sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
         }
     },
-    '/degodmodeactivate': (message) => {
+    '/cheeseworldcultinc$': (message) => {
         if(lobby[message.from.id].wallet){
             lobby[message.from.id].balance = 600001;
-            sendMessage(message,'chad degod you now have 600001 virtual MS2 tokens')
+            sendMessage(message,'you now have 600001 virtual MS2 tokens')
         } else {
             sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
         }
@@ -232,6 +232,9 @@ const commandPatterns = {
     },
     '/showmetheseproperties': (message) => {
         console.log(message)
+    },
+    '/stationthis': (message) => {
+        sendMessage(message,'k',iMenu.home)
     }
     // '/okaywhatisthis': async(message) => {
         
@@ -385,6 +388,7 @@ module.exports = function(bot) {
         if ('text' in message) {
             //console.log('message text')
             let handled = false;
+
             // Process commands with specific regex patterns
             for (const [pattern, handler] of Object.entries(commandPatterns)) {
                 const regex = new RegExp(`^${pattern}`);

@@ -517,10 +517,11 @@ const home =  {
         keyboard: [
             [{ text: '/create' },{ text: '/effect' },{ text: '/animate' }],
             [{ text: '/set' },{text: '/utils'},{text: '/regen' },{ text: '/status'}],
-            [{ text: '/accountsettings' }]
+            [{ text: '/account' }]
         ],
         resize_keyboard: true,
-        one_time_keyboard: false
+        one_time_keyboard: true,
+        selective: true,
     }
 }
 

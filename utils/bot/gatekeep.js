@@ -284,7 +284,26 @@ async function checkLobby(message) {
         // Group credit check (could switch to qoints when ready)
         if (group && group.qoints > 0) {
             return true;
+        } else {
+            console.log('not a group')
         }
+//         create - make something
+// effect - change something
+// animate - movie maker
+// status - check on the bot and see if its been reset lately
+// regen - make what you just did again, or with your new settings you set
+// set - change your generation settings
+// signin - connect account
+// signout - disconnect account
+// seesettings - display what settings you have on your account
+// accountsettings - change account settings
+// savesettings - write your current account settings to my cpu so if the bot goes down you dont lose them
+// resetaccount - return to default settings
+// quit - exit a call and response ui
+// getseed - capture the seed used on your last gen
+// loralist - see what loras are available
+// help - see help description
+// ca - check chart buy
 
         // If the user is not verified, prompt them to sign in
         if (!userData.verified) {
@@ -313,7 +332,7 @@ async function checkLobby(message) {
         const userData = lobby[userId]; // Access user data directly from the lobby
 
         // Group credit check
-        if (group && group.credit > group.points) {
+        if (group && group.qoints > 0) {
             return true;
         }
 

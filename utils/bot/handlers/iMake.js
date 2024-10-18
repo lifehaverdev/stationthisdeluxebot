@@ -277,6 +277,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.prompt = userContext.prompt || 'default FLUX prompt';
         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.checkpoint = 'flux-schnell'
     }
 
     // Add additional common properties such as prompt, seed, and batchMax

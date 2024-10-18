@@ -22,9 +22,9 @@ function groupSettings(message) {
         // [
         //     {text: 'Edit Group', callback_data: 'editgroup'},
         // ],
-        [
-            {text: 'Apply Balance', callback_data: 'applygroupbalance'},
-        ],
+        // [
+        //     {text: 'Apply Balance', callback_data: 'applygroupbalance'},
+        // ],
         [],
         [
             {
@@ -45,19 +45,19 @@ function groupSettings(message) {
     
     let groupSettingsInfo = '\n';
     groupSettingsInfo += `<b>${group.name}</b> \n`;
-    groupSettingsInfo += `<b>MS2 Burn Balance:</b> ${group.applied}🎮\n`;
-    groupSettingsInfo += `<b>Points Remaining</b> ${group.credits - group.points}\n`
+    //groupSettingsInfo += `<b>MS2 Burn Balance:</b> ${group.qoints}🎮\n`;
+    groupSettingsInfo += `<b>Points Remaining</b> ${group.qoints}\n`
 
     // List locked features based on the user's balance
-    const lockedFeatures = features.filter(feature => group.applied < feature.gate);
-    if (lockedFeatures.length > 0) {
-        groupSettingsInfo += `<b>Limited Access</b>\n`;
-        // lockedFeatures.forEach(feature => {
-        //     groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
-        // });
-    } else {
-        groupSettingsInfo += `Full Access VIP GROUP\n`;
-    }
+    // const lockedFeatures = features.filter(feature => group.wallet < feature.gate);
+    // if (lockedFeatures.length > 0) {
+    //     groupSettingsInfo += `<b>Limited Access</b>\n`;
+    //     // lockedFeatures.forEach(feature => {
+    //     //     groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
+    //     // });
+    // } else {
+    //     groupSettingsInfo += `Full Access VIP GROUP\n`;
+    // }
 
     // Send account settings menu with account information
     sendMessage(message, groupSettingsInfo, {
