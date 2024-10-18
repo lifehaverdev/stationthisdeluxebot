@@ -165,13 +165,13 @@ async function setCommandContext(bot, msg) {
 
     // Get existing commands and only set if different
     const existingCommands = await bot.getMyCommands();
-    console.log('existing commands',existingCommands)
+    //console.log('existing commands',existingCommands)
     const newCommandsJson = JSON.stringify(commands);
-    console.log('new comands',newCommandsJson)
+    //console.log('new comands',newCommandsJson)
     const existingCommandsJson = JSON.stringify(existingCommands);
 
     if (newCommandsJson !== existingCommandsJson) {
-        console.log('new commands')
+        //console.log('new commands')
         // Set commands dynamically
         let scope = { type: 'default' };
         if (context === 'group' || context === 'group_chat') {
@@ -185,7 +185,7 @@ async function setCommandContext(bot, msg) {
 
         // Set chat menu button for all cases except group_chat
         if (context !== 'group_chat') {
-            console.log('menu button',await bot.getChatMenuButton())
+            //console.log('menu button',await bot.getChatMenuButton())
             await bot.setChatMenuButton({ type: 'commands' });
         }
 }
