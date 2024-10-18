@@ -10,7 +10,7 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
   const filteredLoraTriggers = loraTriggers.filter(lora =>
     checkpoint && lora.version === checkpointmenu.find(item => item.name === checkpoint)?.description
   );
-
+  console.log('here are the triggers we are checking for',filteredLoraTriggers)
   filteredLoraTriggers.forEach(lora => {
     lora.triggerWords.forEach(triggerWord => {
       const regex = new RegExp(`${triggerWord}(\\d*)`, 'gi');
