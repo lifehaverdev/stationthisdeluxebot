@@ -237,6 +237,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     else if (workflow.name === 'I2I') {
         // Handle I2I workflow
         promptObj.seed = userContext.lastSeed;
+        promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
         promptObj.fileUrl = userContext.fileUrl;
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
