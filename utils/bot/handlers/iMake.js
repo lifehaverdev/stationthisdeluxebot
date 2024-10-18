@@ -218,7 +218,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.steps = userContext.steps || 50;
         promptObj.prompt = userContext.prompt || 'default prompt';
         promptObj.negativePrompt = userContext.negativePrompt || '';
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.seed = userContext.lastSeed;
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
         promptObj.strength = 1.0;
@@ -236,7 +236,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     } 
     else if (workflow.name === 'I2I') {
         // Handle I2I workflow
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.seed = userContext.lastSeed;
         promptObj.fileUrl = userContext.fileUrl;
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
@@ -256,7 +256,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     } 
     else if (workflow.name === 'INPAINT') {
         // Handle INPAINT workflow
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.seed = userContext.lastSeed;
         promptObj.fileUrl = userContext.fileUrl;
         promptObj.maskUrl = userContext.maskUrl;  // INPAINT requires a mask
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
@@ -267,7 +267,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     }
     else if (workflow.name.startsWith('MAKE3')) {
         // Handle MAKE3 workflow (simplest workflow)
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.seed = userContext.lastSeed;
         promptObj.prompt = userContext.prompt || 'default MAKE3 prompt';
         promptObj.negativePrompt = userContext.negativePrompt || '';
     }
@@ -276,7 +276,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.photoStats.width = userContext.photoStats.width || 1024;
         promptObj.photoStats.height = userContext.photoStats.height || 1024;
         promptObj.prompt = userContext.prompt || 'default FLUX prompt';
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+        promptObj.seed = userContext.lastSeed;
         promptObj.checkpoint = 'flux-schnell'
     }
 
