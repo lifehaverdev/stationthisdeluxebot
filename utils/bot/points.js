@@ -12,7 +12,11 @@ function getMaxBalance(userObject) {
 function addPoints(task) {
     ({ promptObj, message } = task);
     let rate = 1; 
-    if(promptObj.type == 'MS3.2') {
+    // if(promptObj.type == 'MS3.2') {
+    //     task.promptObj.rate = 2;
+    // }
+    const doublePointTypes = ['MS3.2','FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG']
+    if (doublePointTypes.includes(promptObj.type)) {
         task.promptObj.rate = 2;
     }
     const pointsToAdd = ((task.runningStop-task.runningStart) / 1000) * rate;

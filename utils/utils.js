@@ -169,25 +169,34 @@ async function setCommandContext(bot, msg) {
     const newCommandsJson = JSON.stringify(commands);
     //console.log('new comands',newCommandsJson)
     const existingCommandsJson = JSON.stringify(existingCommands);
-
-    if (newCommandsJson !== existingCommandsJson) {
-        //console.log('new commands')
-        // Set commands dynamically
-        let scope = { type: 'default' };
-        if (context === 'group' || context === 'group_chat') {
-            scope = { type: 'chat', chat_id: chatId };
-        } else if (context === 'private_chat') {
-            scope = { type: 'all_private_chats' };
+    try {
+        if (newCommandsJson !== existingCommandsJson) {
+            //console.log('new commands')
+            // Set commands dynamically
+            let scope = { type: 'default' };
+            if (context === 'group' || context === 'group_chat') {
+                scope = { type: 'chat', chat_id: chatId };
+            } else if (context === 'private_chat') {
+                scope = { type: 'all_private_chats' };
+            }
+    
+            await bot.setMyCommands(commands, { scope });
         }
-
-        await bot.setMyCommands(commands, { scope });
+    
+            // Set chat menu button for all cases except group_chat
+            if (context !== 'group_chat') {
+                //console.log('menu button',await bot.getChatMenuButton())
+                await bot.setChatMenuButton({ type: 'commands' });
+            }
+    } catch(error) {
+        console.error(`Error while setting commands or menu:`, {
+            context: msg.text || '',
+            message: error.message || '',
+            name: error.name || '',
+            code: error.code || ''
+        });
     }
-
-        // Set chat menu button for all cases except group_chat
-        if (context !== 'group_chat') {
-            //console.log('menu button',await bot.getChatMenuButton())
-            await bot.setChatMenuButton({ type: 'commands' });
-        }
+    
 }
 
 
