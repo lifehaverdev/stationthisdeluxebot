@@ -343,7 +343,7 @@ async function handleTaskCompletion(task) {
                     }
                     console.log('alright we send now',fileToSend)
                     const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
-                    console.log('this is response from sendMedia',mediaResponse)
+                    //console.log('this is response from sendMedia',mediaResponse)
                     if (!mediaResponse) sent = false;
                 } catch (err) {
                     console.error('Error sending media:', err.message || err);

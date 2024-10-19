@@ -65,6 +65,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     promptObj.userId = userContext.userId;
     promptObj.photoStats = { height: 1024, width: 1024 };
     promptObj.forcelogo = userContext.forcelogo || false
+    promptObj.advancedUser = userContext.advancedUser
 
     // Set required inputs based on the workflow type
     if (workflow.name.startsWith('I2I_AUTO')) {
