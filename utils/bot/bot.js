@@ -6,6 +6,7 @@ const bot = new TelegramBot(botToken,
     });
 const startup = Date.now();
 const lobby = {};
+const workspace = {};
 let taskQueue = []
 let waiting = []
 let successors = []
@@ -22,6 +23,9 @@ const STATES = {
     MAKE: 'MAKE',
     MAKE3: 'MAKE3',
     MOG: 'MOG',
+    MILADY: 'MILADY',
+    CHUDJAK: 'CHUDJAK',
+    RADBRO: 'RADBRO',
     FLUX: 'FLUX',
     IMG2IMG: 'IMG2IMG',
     MS3: 'MS3',
@@ -62,6 +66,8 @@ const STATES = {
     GROUPAPPLY: 'GROUPAPPLY',
     GROUPNAME: 'GROUPNAME',
     WL: 'WL',
+
+    LORANAME: 'LORANAME',
 
     // Add more states as needed
 };
@@ -213,7 +219,7 @@ module.exports = {
     getPhotoUrl,
     getNextPeriodTime,
     getBurned,
-    lobby,
+    lobby, workspace,
     rooms, flows, burns, loraTriggers,
     taskQueue, waiting, processes, successors, failures,
     startup,

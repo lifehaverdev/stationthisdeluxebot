@@ -1,6 +1,6 @@
 const fs = require('fs')
 const path = require('path');
-const { sendMessage, setUserState, editMessage, react } = require('../../utils')
+const { sendMessage, setUserState, editMessage, react, DEV_DMS } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { lobby, STATES, startup, waiting, taskQueue, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
@@ -131,8 +131,11 @@ function convertTime(timeInSeconds) {
 
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
-    let msg = 
-    `💫⏳ ${convertTime(runtime)}\n\n`
+    const group = getGroup(message);
+    let msg = '';
+    message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : '⭐️\n\n'
+    group ? msg += `${group.name} : ${group.qoints}\n\n` : null
+    
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {
         const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available

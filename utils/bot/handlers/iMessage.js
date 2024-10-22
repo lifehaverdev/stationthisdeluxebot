@@ -23,6 +23,7 @@ const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
 const iResponse = require('./iResponse')
+const iTrain = require('./iTrain')
 
 /*
 Recognizes Groupchat Context
@@ -288,7 +289,8 @@ const stateHandlers = {
     [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
     [STATES.FLUXINTERROGATE] : (message) => safeExecute(message, iWork.shakeFluxInterrogate),
-    [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux)
+    [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux),
+    [STATES.LORANAME] : (message) => safeExecute(message,iTrain.createLora)
     //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 

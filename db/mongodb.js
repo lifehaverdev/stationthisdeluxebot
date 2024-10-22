@@ -9,23 +9,61 @@ const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
 const dbName = process.env.BOT_NAME;
 
-const client = new MongoClient(uri);
+//const client = await getCachedClient();
 
-// Connect to the MongoDB server
-async function connectToMongoDB() {
-    try {
-        await client.connect();
-        console.log('Connected to MongoDB');
-    } catch (error) {
-        console.error('Error connecting to MongoDB:', error);
+let cachedClient = null;
+let inactivityTimer = null;
+const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+
+// Function to get the cached client or create a new one
+async function getCachedClient() {
+    if (!cachedClient) {
+        cachedClient = new MongoClient(uri);
+        try {
+            await cachedClient.connect();
+            console.log('MongoClient connected successfully');
+        } catch (error) {
+            console.error('Error connecting MongoClient:', error);
+            cachedClient = null; // Reset cachedClient if connection fails
+            throw error; // Re-throw to ensure the caller knows it failed
+        }
+    } else if (!cachedClient.topology || !cachedClient.topology.isConnected()) {
+        // Ensure the cached client is connected before returning it
+        try {
+            await cachedClient.connect();
+            console.log('Reconnected MongoClient');
+        } catch (error) {
+            console.error('Error reconnecting MongoClient:', error);
+            cachedClient = null;
+            throw error;
+        }
     }
+    resetInactivityTimer();
+    return cachedClient;
+}
+
+
+
+// Function to reset the inactivity timer
+function resetInactivityTimer() {
+    if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+    }
+    inactivityTimer = setTimeout(async () => {
+        if (cachedClient) {
+            await cachedClient.close();
+            console.log('Cached MongoClient closed due to inactivity');
+            cachedClient = null;
+        }
+    }, INACTIVITY_TIMEOUT);
 }
 
 // async function writeUserData(userId, data) {
-//     const uri = process.env.MONGO_PASS;
+//   
 
 //     // Create a new MongoClient
-//     const client = new MongoClient(uri);
+//     const client = await getCachedClient();
     
 //     try {
 //         const collection = client.db(dbName).collection('users');
@@ -46,9 +84,7 @@ async function connectToMongoDB() {
 //     }
 // }
 async function writeUserData(userId, data) {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
-    
+    const client = await getCachedClient();
     try {
         const collection = client.db(dbName).collection('users');
         const filter = { userId: userId };
@@ -74,8 +110,6 @@ async function writeUserData(userId, data) {
     } catch (error) {
         console.error("Error writing user data:", error);
         return false;
-    } finally {
-        await client.close();
     }
 }
 
@@ -85,11 +119,10 @@ async function writeUserData(userId, data) {
 async function getGroupDataByChatId(chatId) {
     //deleteUserSettingsByUserId(dbName,userId);
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
     let groupData
+    const client = await getCachedClient();
     //console.log('this is what we think default is',defaultUserData)
     try {
         // Connect to the MongoDB server
@@ -117,17 +150,13 @@ async function getGroupDataByChatId(chatId) {
         console.error('Error getting user settings:', error);
         //throw error;
         return false;
-    } finally {
-        // Close the connection
-        await client.close();
-    }
+    } 
 }
 
 async function writeData(collectionName, filter, data) {
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     
     try {
         const collection = client.db(dbName).collection(collectionName);
@@ -142,17 +171,33 @@ async function writeData(collectionName, filter, data) {
     } catch (error) {
         console.error("Error writing user data:", error);
         return false
-    } finally {
-        // Close the connection if it was established within this function
-        await client.close();
     }
 }
 
+
+
+
+async function createTraining(loraData) {
+    const collectionName = 'trains';
+    try {
+        const client = await getCachedClient();
+        const collection = client.db(dbName).collection(collectionName);
+        // Insert the new LoRA document
+        await collection.insertOne(loraData);
+        console.log('LoRA data added successfully');
+        return true;
+    } catch (error) {
+        console.error("Error adding new LoRA data:", error);
+        return false;
+    }
+}
+
+
+
 async function addGenDocument(collectionName, data) {
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     
     try {
         // Connect to the client
@@ -181,8 +226,7 @@ function saveGen({task, run, out}) {
 }
 
 async function updateGroupPoints(group, pointsToAdd) {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         const collection = client.db(dbName).collection('floorplan');
@@ -208,8 +252,7 @@ async function updateGroupPoints(group, pointsToAdd) {
 }
 
 async function readStats() {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     // Sets and variables to track stats
     const walletSet = new Set();
@@ -289,8 +332,7 @@ async function readStats() {
 }
 
 async function incrementLoraUseCounter(names) {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         const collection = client.db(dbName).collection('loralist');
@@ -334,10 +376,9 @@ async function incrementLoraUseCounter(names) {
 //
 
 async function createRoom(chatId, userId, value) {
-    const uri = process.env.MONGO_PASS;
     console.log(value)
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     
     try {
         await client.connect();
@@ -377,9 +418,6 @@ async function createRoom(chatId, userId, value) {
     } catch (error) {
         console.error("Error writing room data:", error);
         return false;
-    } finally {
-        // Close the connection if it was established within this function
-        await client.close();
     }
 }
 
@@ -395,10 +433,9 @@ async function writeBurnData(userId, amount) {
       //res.status(400).json({ message: 'Missing required fields' });
       return;
     }
-    const uri = process.env.MONGO_PASS;
     //console.log(value)
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     amount = -amount * 1000000;
     try {
         await client.connect();
@@ -452,8 +489,7 @@ async function writeBurnData(userId, amount) {
 
 
 async function updateAllUserSettings() {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         await client.connect();
@@ -496,8 +532,7 @@ async function updateAllUserSettings() {
     }
 }
 async function addPointsToAllUsers() {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         const collection = client.db(dbName).collection('users');
@@ -550,8 +585,7 @@ async function addPointsToAllUsers() {
     }
 }
 async function updateAllUsersWithCheckpoint() {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         await client.connect();
@@ -700,8 +734,7 @@ async function editCollectionBasePrompt(userId,collectionName,basePrompt) {
     }
 }
 async function performCollectionDatabaseAction(action, dbName, collectionName, filter, update) {
-    const uri = process.env.MONGO_PASS;
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         await client.connect();
@@ -735,10 +768,9 @@ async function performCollectionDatabaseAction(action, dbName, collectionName, f
 }
 
 async function readUserData(walletAddress) {
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     const collection = client.db(dbName).collection('users');
     try {
         // Find the document with the given wallet address
@@ -770,10 +802,9 @@ async function getUserDataByUserId(userId) {
     
     //deleteUserSettingsByUserId(dbName,userId);
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
     let userData
     //console.log('this is what we think default is',defaultUserData)
     try {
@@ -810,10 +841,9 @@ async function getUserDataByUserId(userId) {
 
 async function deleteUserSettingsByUserId(dbName, userId) {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -841,10 +871,9 @@ async function deleteUserSettingsByUserId(dbName, userId) {
 
 async function listDatabases() {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -867,10 +896,9 @@ async function listDatabases() {
 
 async function createDatabase(dbName) {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -897,10 +925,9 @@ async function createDatabase(dbName) {
 
 async function printAllDocuments(dbName, collectionName) {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -927,10 +954,9 @@ async function printAllDocuments(dbName, collectionName) {
 
 async function printAllCollections(dbName) {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -960,10 +986,9 @@ async function printAllCollections(dbName) {
 const collectionName = 'users';
 async function removeDuplicates(dbName, collectionName, criteria) {
     // Connection URI
-    const uri = process.env.MONGO_PASS;
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -1009,7 +1034,7 @@ async function removeDuplicates(dbName, collectionName, criteria) {
 async function deleteAllDocuments(dbName, collectionName) {
 
     // Create a new MongoClient
-    const client = new MongoClient(uri);
+    const client = await getCachedClient();
 
     try {
         // Connect to the MongoDB server
@@ -1081,5 +1106,6 @@ module.exports = {
     readStats,
     updateGroupPoints,
     incrementLoraUseCounter,
-    saveGen
+    saveGen,
+    createTraining
 };
