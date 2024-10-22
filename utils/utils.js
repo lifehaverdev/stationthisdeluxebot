@@ -10,6 +10,46 @@ const bot = getBotInstance();
 
 const DEV_DMS = 5472638766;
 
+politeCommandList = [
+    { command: 'make', description: 'SDXL txt2img'},
+    { command: 'flux', description: 'FLUX txt2img'},
+    { command: 'status', description: 'Check the group queue status' },
+    { command: 'stationthis', description: 'Configure this stationthisbot for this chat'},
+];
+
+introductoryCommandList = [
+    { command: 'help', description: 'See help description' },
+    { command: 'make', description: 'SDXL txt2img'},
+    { command: 'signin', description: 'Connect account' },
+    { command: 'ca', description: 'Check chart buy' },
+    { command: 'loralist', description: 'See available LoRAs' },
+    { command: 'status', description: 'Check the group queue status' },
+]
+
+fullCommandList = [
+    { command: 'stationthis', description: 'Load command keyboard'},
+    { command: 'status', description: 'Check on the bot and see if it has been reset lately' },
+    { command: 'regen', description: 'Make what you just did again, or with new settings' },
+    { command: 'create', description: 'Make something' },
+    { command: 'effect', description: 'Change something' },
+    { command: 'animate', description: 'Movie maker' },
+    { command: 'make', description: 'SDXL txt2img'},
+    { command: 'flux', description: 'FLUX txt2img'},
+    { command: 'vidthat', description: 'reply to image to create a gif'},
+    { command: 'set', description: 'Change your generation settings' },
+    { command: 'signin', description: 'Connect account' },
+    { command: 'signout', description: 'Disconnect account' },
+    { command: 'seesettings', description: 'Display your current settings' },
+    { command: 'account', description: 'Change account settings' },
+    { command: 'savesettings', description: 'Save your current settings to prevent loss' },
+    { command: 'resetaccount', description: 'Return to default settings' },
+    { command: 'quit', description: 'Exit a call and response UI' },
+    { command: 'getseed', description: 'Capture the seed used on your last generation' },
+    { command: 'loralist', description: 'See available LoRAs' },
+    { command: 'help', description: 'See help description' },
+    { command: 'ca', description: 'Check chart buy' }
+];
+
 function setUserState(message,state) {
     const stateObj = {
         state: state,
@@ -120,46 +160,17 @@ async function setCommandContext(bot, msg) {
     // Set commands based on context
     switch (context) {
         case 'group':
-            commands = group.commands;
+            group.commmands ? commands = group.commands : commands = politeCommandList
             break;
         case 'verified_user':
         case 'verified_private_chat':
-            commands = [
-                { command: 'create', description: 'Make something' },
-                { command: 'make', description: 'SDXL txt2img'},
-                { command: 'flux', description: 'FLUX txt2img'},
-                { command: 'effect', description: 'Change something' },
-                { command: 'animate', description: 'Movie maker' },
-                { command: 'vidthat', description: 'reply to image to create a gif'},
-                { command: 'status', description: 'Check on the bot and see if it has been reset lately' },
-                { command: 'regen', description: 'Make what you just did again, or with new settings' },
-                { command: 'set', description: 'Change your generation settings' },
-                { command: 'signin', description: 'Connect account' },
-                { command: 'signout', description: 'Disconnect account' },
-                { command: 'seesettings', description: 'Display your current settings' },
-                { command: 'account', description: 'Change account settings' },
-                { command: 'savesettings', description: 'Save your current settings to prevent loss' },
-                { command: 'resetaccount', description: 'Return to default settings' },
-                { command: 'quit', description: 'Exit a call and response UI' },
-                { command: 'getseed', description: 'Capture the seed used on your last generation' },
-                { command: 'loralist', description: 'See available LoRAs' },
-                { command: 'help', description: 'See help description' },
-                { command: 'ca', description: 'Check chart buy' }
-            ];
+            commands = fullCommandList
             break;
         case 'group_chat':
-            commands = [
-                { command: 'make', description: 'SDXL txt2img'},
-                { command: 'status', description: 'Check the group queue status' },
-            ];
+            commands = politeCommandList
             break;
         case 'private_chat':
-            commands = [
-                { command: 'make', description: 'SDXL txt2img'},
-                { command: 'status', description: 'Check the status' },
-                { command: 'signin', description: 'Connect account' },
-                { command: 'loralist', description: 'See available LoRAs' },
-            ];
+            commands = introductoryCommandList
             break;
     }
 
@@ -175,19 +186,20 @@ async function setCommandContext(bot, msg) {
             // Set commands dynamically
             let scope = { type: 'default' };
             if (context === 'group' || context === 'group_chat') {
-                scope = { type: 'chat', chat_id: chatId };
+                console.log('what is this anyways')
+                scope = { type: 'chat_member', chat_id: chatId, user_id: userId };
             } else if (context === 'private_chat') {
+                console.log('what is this anyways p2s')
                 scope = { type: 'all_private_chats' };
-            }
+            } 
     
             await bot.setMyCommands(commands, { scope });
         }
     
-            // Set chat menu button for all cases except group_chat
-            if (context !== 'group_chat') {
-                //console.log('menu button',await bot.getChatMenuButton())
-                await bot.setChatMenuButton({ type: 'commands' });
-            }
+        // Set chat menu button for all cases except group_chat
+        if (context !== 'group_chat') {
+            await bot.setChatMenuButton({ type: 'commands' });
+        }
     } catch(error) {
         console.error(`Error while setting commands or menu:`, {
             context: msg.text || '',
@@ -285,41 +297,53 @@ function makeBaseData(message,userId) {
         userId: userId
     };
 }
-
-async function editMessage({reply_markup = null, chat_id, message_id, text = null}) {
-    if(text){
-        await bot.editMessageText(
+async function editMessage({ reply_markup = null, chat_id, message_id, text = null, photo = null, caption = null, options = {} }) {
+    
+    // Helper function for error handling
+    const handleError = (error, context) => {
+        console.error(`Error editing message ${context}:`, {
+            message: error.message || '',
+            name: error.name || '',
+            code: error.code || '',
+            chat_id,
+            message_id,
             text,
-            {
-                chat_id,
-                message_id
-            }
-        ).catch(error => {
-            console.error("Error editing message text:", 
-            {
-                message: error.message ? error.message : '',
-                name: error.name ? error.name : '',
-                code: error.code ? error.code : ''
-            });
         });
-    }
-    if(reply_markup) {
-        await bot.editMessageReplyMarkup(
-            reply_markup,
-            {
-                chat_id, 
-                message_id,
-            }
-        ).catch(error => {
-            console.error("Error editing message reply markup:", 
-            {
-                message: error.message ? error.message : '',
-                name: error.name ? error.name : '',
-                code: error.code ? error.code : ''
-            });
-        });
+    };
+
+    try {
+        //console.log('Editing message with the following details:', { chat_id, message_id, text, reply_markup, ...options });
+
+        // Edit the message text if provided
+        if (text) {
+            await bot.editMessageText(text, { chat_id, message_id, ...options });
+        }
+
+        // Edit the reply markup if provided
+        if (reply_markup) {
+            await bot.editMessageReplyMarkup(reply_markup, { chat_id, message_id, ...options });
+        }
+
+        // Edit the message media if a photo URL is provided
+        if (photo) {
+            const media = {
+                type: 'photo',
+                media: photo
+            };
+            await bot.editMessageMedia(media, { chat_id, message_id, reply_markup, ...options });
+        }
+
+        // Edit the message caption if provided
+        if (caption) {
+            await bot.editMessageCaption(caption, { chat_id, message_id, ...options });
+        }
+
+    } catch (error) {
+        handleError(error, text ? "text" : photo ? "photo" : caption ? "caption" : "reply markup");
     }
 }
+
+
 
 
 

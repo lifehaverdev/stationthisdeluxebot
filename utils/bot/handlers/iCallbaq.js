@@ -12,9 +12,11 @@ const { displayAccountSettingsMenu } = require('./iAccount')
 const { handleStatus } = require('./iWork');
 const { startSet } = require('./iSettings');
 const { handleRegen } = require('./iMake')
+const { returnToAccountMenu } = require('./iAccount')
 const iMenu = require('./iMenu');
 const iResponse = require('./iResponse');
 const iBrand = require('./iBrand')
+const iTrain = require('./iTrain')
 const iWork = require('./iWork')
 const bot = getBotInstance();
 const { getGroup } = require('./iGroup')
@@ -343,7 +345,10 @@ const actionMap = {
         }
         
         await react(message.reply_to_message,'👍')
-    }
+    },
+    'trainingMenu': iTrain.handleTrainingMenu,
+    'accountSettingsMenu': returnToAccountMenu,
+    'newLora': iTrain.newLora
 };
 
 

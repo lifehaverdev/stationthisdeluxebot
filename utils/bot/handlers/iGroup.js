@@ -154,6 +154,30 @@ async function toggleAdmin(message) {
     console.log('rewrote the room')
 }
 
+
+
+/*
+
+NEW GROUPCHAT SYSTEM
+
+1. /GROUPSETTINGS SUCKS
+command should be like /stationthis 
+global super command that gives you a different menu in different contexts
+in the groupchat context theres multiple cases:
+if a group is virgin and it hasnt been claimed, you get the claim offer
+if its claimed, then you get the help instructions that provides the chosen commands for the group...
+idk
+
+
+interesting methods
+
+getChatAdministrators
+setMyCommands
+
+*/
+
+
+
 module.exports = {
     groupSettings,
     handleApplyBalance,
