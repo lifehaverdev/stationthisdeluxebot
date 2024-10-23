@@ -331,25 +331,25 @@ async function createTraining(loraData) {
 async function saveWorkspace(loraObject) {
     const collectionName = 'trains';
     try {
-        const client = await getCachedClient();
-        const collection = client.db(dbName).collection(collectionName);
-
-        // Extract the loraId from the loraObject
-        const { loraId, images, captions } = loraObject;
-
-        // Update the corresponding document in the database
-        await collection.updateOne(
-            { loraId: loraId }, // Filter to find the specific document by loraId
-            { $set: { images: images, captions: captions } } // Update images and captions
-        );
-
-        console.log('LoRA data saved successfully');
-        return true;
+      const client = await getCachedClient();
+      const collection = client.db(dbName).collection(collectionName);
+  
+      // Extract the loraId from the loraObject
+      const { loraId, ...dataToSave } = loraObject;
+  
+      // Update the corresponding document in the database
+      await collection.updateOne(
+        { loraId: loraId }, // Filter to find the specific document by loraId
+        { $set: { ...dataToSave } } // Update all key-value pairs in loraObject
+      );
+  
+      console.log('LoRA data saved successfully');
+      return true;
     } catch (error) {
-        console.error("Error saving LoRA data:", error);
-        return false;
+      console.error("Error saving LoRA data:", error);
+      return false;
     }
-}
+  }
 
 async function deleteWorkspace(loraId) {
     const collectionName = 'trains';
