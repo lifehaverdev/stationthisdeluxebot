@@ -68,6 +68,7 @@ const STATES = {
     WL: 'WL',
 
     LORANAME: 'LORANAME',
+    ADDLORAIMAGE: 'ADDLORAIMAGE',
 
     // Add more states as needed
 };

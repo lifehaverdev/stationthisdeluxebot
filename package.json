@@ -2,6 +2,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.91.4",
     "api": "^6.1.1",
+    "axios": "^1.7.7",
     "comfydeploy": "^0.0.16",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.0.3",
