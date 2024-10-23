@@ -182,6 +182,7 @@ function resetInactivityTimer() {
 
 // Save image to MongoDB using GridFS
 async function saveImageToGridFS(fileUrl, loraId, slotId) {
+    console.log('calling save image to grid')
     const client = await getCachedClient();
     try {
         const db = client.db(dbName);

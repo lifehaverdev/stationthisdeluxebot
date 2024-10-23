@@ -171,20 +171,32 @@ function makeSeed(userId) {
 
 
 
-async function getPhotoUrl(message) {
+async function getPhotoUrl(input) {
     let fileId;
-    if (message.photo) {
-        fileId = message.photo[message.photo.length - 1].file_id;
-    } else if (message.document) {
-        fileId = message.document.file_id;
+
+    if (input.photo) {
+        // Case when the entire message object is passed
+        fileId = input.photo[input.photo.length - 1].file_id;
+    } else if (input.document) {
+        // Case when the message contains a document
+        fileId = input.document.file_id;
+    } else if (input.file_id) {
+        // Case when a single photo or document is passed directly
+        fileId = input.file_id;
     } else {
-        return
+        return;
     }
-    const photoInfo = await bot.getFile(fileId);
-    const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
-    //console.log(photoUrl);
-    return photoUrl
+
+    try {
+        const photoInfo = await bot.getFile(fileId);
+        const photoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${photoInfo.file_path}`;
+        return photoUrl;
+    } catch (error) {
+        console.error("Error fetching photo URL:", error);
+        return null;
+    }
 }
+
 
 function getNextPeriodTime(startup) {
     const currentTime = Date.now();

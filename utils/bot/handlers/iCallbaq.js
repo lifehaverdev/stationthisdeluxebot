@@ -253,8 +253,10 @@ const actionMap = {
         await bot.deleteMessage(message.chat.id, message.message_id);
         handleStatus(message.reply_to_message);
     },
-    'cancel' : (message) => {
+    'cancel' : (message, user) => {
         bot.deleteMessage(message.chat.id, message.message_id);
+        message.from.id = user;
+        setUserState(message,STATES.IDLE)
     },
     'applygroupbalance': (message) => {
         console.log(message)
