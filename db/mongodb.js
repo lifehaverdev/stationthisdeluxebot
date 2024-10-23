@@ -427,7 +427,6 @@ async function deleteImageFromWorkspace(loraId, slotId) {
 
 async function addGenDocument(collectionName, data) {
     try {
-        
         // Create a new MongoClient
         const client = await getCachedClient();
         const collection = client.db(dbName).collection(collectionName);
@@ -438,9 +437,6 @@ async function addGenDocument(collectionName, data) {
     } catch (error) {
         console.error("Error inserting document:", error);
         return false;
-    } finally {
-        // Close the connection
-        await client.close();
     }
 }
 
@@ -473,8 +469,6 @@ async function updateGroupPoints(group, pointsToAdd) {
     } catch (error) {
         console.error("Error updating group points:", error);
         return false;
-    } finally {
-        await client.close();
     }
 }
 
@@ -552,9 +546,7 @@ async function readStats() {
     } catch (error) {
         console.error("Error updating user settings:", error);
         return false;
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 async function incrementLoraUseCounter(names) {
@@ -587,9 +579,7 @@ async function incrementLoraUseCounter(names) {
     } catch (error) {
         console.error("Error updating group points:", error);
         return false;
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 //write room settings
@@ -834,9 +824,7 @@ async function updateAllUserSettings() {
     } catch (error) {
         console.error("Error updating user settings:", error);
         return false;
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 
