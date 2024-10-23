@@ -290,7 +290,8 @@ const stateHandlers = {
     [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
     [STATES.FLUXINTERROGATE] : (message) => safeExecute(message, iWork.shakeFluxInterrogate),
     [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux),
-    [STATES.LORANAME] : (message) => safeExecute(message,iTrain.createLora)
+    [STATES.LORANAME] : (message) => safeExecute(message,iTrain.createLora),
+    [STATES.ADDLORAIMAGE] : (message) => safeExecute(message,iTrain.addLoraSlotImage)
     //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 

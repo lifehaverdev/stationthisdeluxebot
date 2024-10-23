@@ -348,53 +348,121 @@ const actionMap = {
     },
     'trainingMenu': iTrain.handleTrainingMenu,
     'accountSettingsMenu': returnToAccountMenu,
-    'newLora': iTrain.newLora
+    'newLora': iTrain.newLora,
+    'trainMenu': iTrain.trainMenu,
+    'trainSlot': iTrain.trainSlot,
+    'viewSlotImage': iTrain.viewSlotImage,
+    'viewSlotCaption': iTrain.viewSlotCaption,
+    'deleteSlotImage': iTrain.deleteLoraSlot,
+    'submitTraining': iTrain.submitTraining
 };
 
 
-module.exports = function(bot) {
+// Define prefix handlers map outside of the main exported function
+const prefixHandlers = {
+    'sbp_': (action, message, user) => {
+        const selectedName = action.split('_')[1];
+        actionMap['setBasePrompt'](message, selectedName, user);
+    },
+    'sv_': (action, message, user) => {
+        const selectedName = action.split('_').slice(1).join('_');
+        actionMap['setVoice'](message, selectedName, user);
+    },
+    'scp_': (action, message, user) => {
+        const selectedName = action.split('_').slice(1).join('_');
+        actionMap['setCheckpoint'](message, selectedName, user);
+    },
+    'swm_': (action, message, user) => {
+        const selectedName = action.split('_').slice(1).join('_');
+        actionMap['setWatermark'](message, selectedName, user);
+    },
+    'regen_run_': (action, message, user) => {
+        const runIndex = parseInt(action.split('_')[2], 10);
+        actionMap['regenRun'](message, runIndex, user);
+    },
+    //edit lora
+    'el_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        actionMap['trainMenu'](message, user, loraId);
+    },
+    //edit training slot
+    'et_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        const slotId = parseInt(action.split('_')[2]);
+        actionMap['trainSlot'](message, user, loraId, slotId);
+    },
+    //remove lora training set
+    'rml_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        iTrain.removeTraining(user, loraId);
+        actionMap['trainingMenu'](message, user);
+    },
+    //view slot image
+    'vsi_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        const slotId = parseInt(action.split('_')[2]);
+        actionMap['viewSlotImage'](message,user,loraId,slotId);
+    },
+    'vsc_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        const slotId = parseInt(action.split('_')[2]);
+        actionMap['viewSlotCaption'](message,user,loraId,slotId);
+    },
+    //remove slot image
+    'rms_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        const slotId = parseInt(action.split('_')[2]);
+        actionMap['deleteSlotImage'](message,user,loraId,slotId);
+    },
+    //submit training
+    'st_': (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        actionMap['submitTraining'](message,user,loraId);
+    }
+    //view slot text
+};
+
+// Main export function
+module.exports = function (bot) {
     bot.on('callback_query', (callbackQuery) => {
-        //console.log('callback querey itself',callbackQuery,'/n/n');
-        //console.log('message reply to message from',callbackQuery.message.reply_to_message)
         try {
-            //const userId = callbackQuery.from.id;
-            const {action, message, user} = parseCallbackData(callbackQuery);
-            //console.log('in callback query data', action, message, user)
-            //console.log('before the first if')
-            if(
+            const { action, message, user } = parseCallbackData(callbackQuery);
+
+            // Check if the callback query is from the correct user
+            if (
                 (
-                    callbackQuery.from.id && callbackQuery.message.reply_to_message && callbackQuery.from.id != callbackQuery.message.reply_to_message.from.id 
-                    && message.from.id != process.env.BOT_ID
-                    //|| callbackQuery.from.id != callbackQuery.message.from.id
-                )
-                && action != 'refresh' 
-                //
-            ){ //6864632060){//6324772900 ){
-                console.log('wrong user');
-                return
+                    callbackQuery.from.id &&
+                    callbackQuery.from.id != message.chat.id &&
+                    callbackQuery.message.reply_to_message &&
+                    callbackQuery.from.id !== callbackQuery.message.reply_to_message.from.id &&
+                    message.from.id !== process.env.BOT_ID
+                ) &&
+                action !== 'refresh'
+            ) {
+                console.log('wrong user',callbackQuery.from.id,callbackQuery.message.reply_to_message, message.from.id);
+                return;
             }
-            //console.log('after first if')
+
+            // If the action is mapped directly in actionMap, call it
             if (actionMap[action]) {
                 actionMap[action](message, user);
-            } else if (callbackQuery.data.startsWith('sbp_')) {
-                const selectedName = action.split('_')[1];
-                actionMap['setBasePrompt'](message, selectedName, user);
-            } else if (callbackQuery.data.startsWith('sv_')) {
-                const selectedName = action.split('_').slice(1).join('_');
-                actionMap['setVoice'](message, selectedName, user);
-            } else if (callbackQuery.data.startsWith('scp_')) {
-                const selectedName = action.split('_').slice(1).join('_');
-                actionMap['setCheckpoint'](message, selectedName, user);
-            } else if (callbackQuery.data.startsWith('swm_')) {
-                const selectedName = action.split('_').slice(1).join('_');
-                actionMap['setWatermark'](message, selectedName, user);
-            } else if (callbackQuery.data.startsWith('regen_run_')) {
-                const runIndex = parseInt(action.split('_')[2], 10);
-                actionMap['regenRun'](message, runIndex, user);
-            } else if (setActions.includes(action)) {
-                handleSetAction(action, message, user);
             } else {
-                console.log(`Unhandled action: ${action}`);
+                // Loop through the prefixHandlers to find a match
+                let handled = false;
+                for (const prefix in prefixHandlers) {
+                    if (action.startsWith(prefix)) {
+                        prefixHandlers[prefix](action, message, user);
+                        handled = true;
+                        break;
+                    }
+                }
+
+                // If not handled by prefixHandlers and it is a set action
+                if (!handled && setActions.includes(action)) {
+                    handleSetAction(action, message, user);
+                } else if (!handled) {
+                    console.log(`Unhandled action: ${action}`);
+                }
             }
 
         } catch (error) {
