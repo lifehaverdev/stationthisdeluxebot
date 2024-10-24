@@ -461,9 +461,9 @@ const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/uti
 // Helper function to parse the command and arguments from the message
 function parseCommand(message) {
     const commandEntity = message.entities?.find(entity => entity.type === 'bot_command');
-    if (commandEntity) {
+    if (commandEntity && commandEntity.offset === 0) {
         let command = message.text.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
-        const args = message.text.slice(commandEntity.length).trim();
+        const args = message.text.slice(commandEntity.offset + commandEntity.length).trim();
 
         // Normalize command by removing bot mention if present (e.g., /make@stationthisbot => /make)
         const botMentionIndex = command.indexOf('@');
@@ -475,6 +475,7 @@ function parseCommand(message) {
     }
     return { command: null, args: null };
 }
+
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
