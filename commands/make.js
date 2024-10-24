@@ -372,6 +372,22 @@ function prepareRequest(promptObj) {
             }
             //console.log('body for mog',body)
             break;
+        case 'LOSER':
+        console.log('oh loser alright')
+        console.log(comfydeployid)
+        body = {
+            deployment_id: comfydeployid,
+            webhook: webHook,
+            inputs: {
+                noise_seed: promptObj.seed,
+                cfg: promptObj.cfg,
+                input_height: promptObj.photoStats.height,
+                input_width: promptObj.photoStats.width,
+                input_text: `${promptObj.finalPrompt}`,
+            }
+        }
+        //console.log('body for mog',body)
+            break;
         case 'FLUX': 
             body = {
                 deployment_id: comfydeployid,
