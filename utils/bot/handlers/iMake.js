@@ -550,6 +550,6 @@ module.exports = {
     handleMs2Prompt,
     handleInpaintPrompt,
     handleInpaintTarget,
-    handleMog, startMog, handleDegod, handleMilady, handleChud, handleRadbro,
+    handleMog, startMog, handleDegod, handleMilady, handleChud, handleRadbro, handleLoser,
     handleFlux
 }
