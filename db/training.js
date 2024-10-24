@@ -7,7 +7,8 @@ require('dotenv').config();
 // Define constants
 const uri = process.env.MONGO_PASS;
 const dbName = 'stationthisbot'//process.env.MONGO_DB_NAME;
-const parentFolderPath = '/path/to/parent/folder'; // Set this to the desired parent directory for datasets
+const parentFolderPath = '/Users/lifehaver/Desktop/test';
+
 
 // Create a new MongoClient
 let client;
@@ -150,7 +151,6 @@ async function rejectDataset(loraId) {
 }
 
 // 4. Display Info
-// 4. Display Info
 async function displayInfo() {
     try {
       const client = await getCachedClient();
@@ -158,10 +158,29 @@ async function displayInfo() {
   
       const trainings = await collection.find({ status: { $ne: 'completed' } }).sort({ submitted: 1 }).toArray();
       console.log('Training Information:');
-      trainings.forEach((training) => {
-        const submittedDate = training.submitted ? new Date(training.submitted).toLocaleString() : '';
-        console.log(`LoRA ID: ${training.loraId}, Name: ${training.name}, Status: ${training.status} ${submittedDate}`);
-      });
+  
+      // Organize trainings by status
+      const organizedTrainings = trainings.reduce((acc, training) => {
+        if (!acc[training.status]) {
+          acc[training.status] = [];
+        }
+        acc[training.status].push(training);
+        return acc;
+      }, {});
+  
+      // Display organized trainings with highest priority status first
+      const statusOrder = ['SUBMITTED', 'incomplete', 'pending review', 'rejected', 'training'];
+      for (const status of statusOrder) {
+        if (organizedTrainings[status]) {
+          console.log(`
+  Status: ${status.toUpperCase()}`);
+          console.log('----------------------------------------');
+          organizedTrainings[status].forEach((training) => {
+            const submittedDate = training.submitted ? new Date(training.submitted).toLocaleString() : 'Not Submitted';
+            console.log(`LoRA ID: ${training.loraId}, Name: ${training.name}, Submitted: ${submittedDate}`);
+          });
+        }
+      }
   
       // Display global status
       const globalStatus = await getGlobalStatus();
@@ -173,6 +192,7 @@ async function displayInfo() {
       console.error('Error displaying training info:', error);
     }
   }
+  
 
 // Set Global Status
 async function setGlobalStatus(status) {

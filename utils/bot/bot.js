@@ -26,6 +26,7 @@ const STATES = {
     MILADY: 'MILADY',
     CHUDJAK: 'CHUDJAK',
     RADBRO: 'RADBRO',
+    LOSER: 'LOSER',
     FLUX: 'FLUX',
     IMG2IMG: 'IMG2IMG',
     MS3: 'MS3',
