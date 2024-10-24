@@ -197,6 +197,9 @@ function statusRouter(task, taskIndex, status) {
             task.runningStart = Date.now()
             break;
         case 'failed':
+            task.status = status;
+            waiting.splice(taskIndex, 1)
+            break;
         case 'timeout':
         case 'cancelled':
             //re-enqueue new task

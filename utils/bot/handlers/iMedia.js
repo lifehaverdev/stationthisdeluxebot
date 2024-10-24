@@ -4,56 +4,71 @@ const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
 const Jimp = require('jimp');
 
+const iMake = require('./iMake')
+
 async function handleMs2ImgFile(message) {
-    if(!message.photo || message.document) {
-        return;
-    }
-    const sent = await sendMessage(message,'okay lemme see...');
-    chatId = message.chat.id;
+    const chatId = message.chat.id;
     const userId = message.from.id;
 
-    const fileUrl = await getPhotoUrl(message)
-    
-    try {
-        const photo = await Jimp.read(fileUrl);
-        const { width, height } = photo.bitmap;
+    // Scenario 1: /ms2 command by itself, ask for an image
+    if (!message.photo && !message.document && !message.text && !message.reply_to_message) {
+        setUserState(message, STATES.IMG2IMG);
+        await sendMessage(message, 'Please provide a photo to proceed.');
+        return;
+    }
 
-        const photoStats = {
-            width: width,
-            height: height
-        };
+    // Scenarios where an image or document is present
+    const targetMessage = message.reply_to_message || message;
+    if (targetMessage.photo || targetMessage.document) {
+        const sent = await sendMessage(message, 'okay lemme see...');
+        const fileUrl = await getPhotoUrl(targetMessage);
+        
+        try {
+            const photo = await Jimp.read(fileUrl);
+            const { width, height } = photo.bitmap;
 
-        const thisSeed = makeSeed(userId);
+            const photoStats = {
+                width: width,
+                height: height
+            };
 
-        lobby[userId] = {
-            ...lobby[userId],
-            lastSeed: thisSeed,
-            tempSize: photoStats,
-            fileUrl: fileUrl
-        }
-        //console.log(lobby[userId])
+            const thisSeed = makeSeed(userId);
 
-        await editMessage(
-            {
-                text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
-                chat_id: sent.chat.id,
-                message_id: sent.message_id
+            lobby[userId] = {
+                ...lobby[userId],
+                lastSeed: thisSeed,
+                tempSize: photoStats,
+                fileUrl: fileUrl
+            };
+
+            if (targetMessage.caption) {
+                // Scenario 3: /ms2 command with an image and a caption (prompt), send for generation
+                message.text = targetMessage.caption;
+                await iMake.handleMs2Prompt(message);
+                return;
+            } else {
+                // Scenario 2 and 4: Ask for a prompt after processing the image
+                await editMessage({
+                    text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
+                    chat_id: sent.chat.id,
+                    message_id: sent.message_id
+                });
+                setUserState(message, STATES.MS2PROMPT);
+                return true;
             }
-        );        
-        setUserState(message,STATES.MS2PROMPT);
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        await editMessage(
-            {
+        } catch (error) {
+            console.error("Error processing photo:", error);
+            await editMessage({
                 text: "An error occurred while processing the photo. Please send it again, or another photo.",
                 chat_id: sent.chat.id,
                 message_id: sent.message_id
-            }
-        );      
-        return false
+            });
+            return false;
+        }
     }
 }
+
+
 // Helper function to build the prompt object dynamically based on the workflow
 function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const promptObj = {};
@@ -150,7 +165,6 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 
 function checkAndSetType(type, settings, message, group, userId) {
     // Early return for token gate if needed
-    
     let typest = type;
     console.log('type',typest)
     // Dynamically build the type
@@ -178,40 +192,78 @@ function tokenGate(group, userId, message) {
     }
 }
 
-
 async function handleInpaint(message) {
-    chatId = message.chat.id;
+    const chatId = message.chat.id;
     const userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message)
-    
-    try {
-        const photo = await Jimp.read(fileUrl);
-        const { width, height } = photo.bitmap;
 
-        const photoStats = {
-            width: width,
-            height: height
-        };
+    // Scenario 1: /inpaint command by itself, ask for an image
+    if (!message.photo && !message.document && !message.text && !message.reply_to_message) {
+        setUserState(message, STATES.INPAINT);
+        await sendMessage(message, 'Please provide a photo to proceed.');
+        return;
+    }
 
-        const thisSeed = makeSeed(userId);
+    // Scenarios where an image or document is present
+    const targetMessage = message.reply_to_message || message;
+    if (targetMessage.photo || targetMessage.document) {
+        const sent = await sendMessage(message, 'okay lemme see...');
+        const fileUrl = await getPhotoUrl(targetMessage);
 
-        lobby[userId] = {
-            ...lobby[userId],
-            lastSeed: thisSeed,
-            tempSize: photoStats,
-            fileUrl: fileUrl
+        try {
+            const photo = await Jimp.read(fileUrl);
+            const { width, height } = photo.bitmap;
+
+            const photoStats = {
+                width: width,
+                height: height
+            };
+
+            const thisSeed = makeSeed(userId);
+
+            lobby[userId] = {
+                ...lobby[userId],
+                lastSeed: thisSeed,
+                tempSize: photoStats,
+                fileUrl: fileUrl
+            };
+
+            if (targetMessage.caption) {
+                // Scenario 3: /inpaint command with an image and a caption containing delimiter
+                const [prompt, target] = targetMessage.caption.split('|');
+                if (prompt && target) {
+                    message.text = prompt.trim();
+                    await iMake.handleInpaintPrompt(message);
+                    message.text = target.trim();
+                    await iMake.handleInpaintTarget(message);
+                    return;
+                } else {
+                    // If only one part is provided, treat it as the first prompt
+                    message.text = targetMessage.caption;
+                    await iMake.handleInpaintPrompt(message);
+                    return;
+                }
+            } else {
+                // Scenario 2 and 4: Ask for a prompt after processing the image
+                await editMessage({
+                    text: `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`,
+                    chat_id: sent.chat.id,
+                    message_id: sent.message_id
+                });
+                setUserState(message, STATES.INPAINTTARGET);
+                return true;
+            }
+        } catch (error) {
+            console.error("Error processing photo:", error);
+            await editMessage({
+                text: "An error occurred while processing the photo. Please send it again, or another photo.",
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            });
+            return false;
         }
-        //console.log(lobby[userId])
-        await sendMessage(message, `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`);       
-        //sendMessage(message,'Ok now go here: https://imagemasker.github.io/ put that same photo in there and draw white over the part you want to inpaint and black over everything else then post it back here') 
-        setUserState(message,STATES.INPAINTTARGET);
-        return true;
-    } catch (error) {
-        console.error("Error processing photo:", error);
-        sendMessage(message, "An error occurred while processing the photo. Please send it again, or another photo.");   
-        return false
     }
 }
+
 
 async function handleInterrogation(message) {
     sendMessage(message,'hmm what should i call this..');
@@ -314,7 +366,6 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     }
 }
 
-
 async function handleUpscale(message) {
     await handleImageTask(message, 'UPSCALE', STATES.UPSCALE, false, null);
 }
@@ -334,7 +385,6 @@ async function handleMs3ImgFile(message) {
 async function handleMs3V2ImgFile(message) {
     await handleImageTask(message, 'MS3.2', STATES.MS3V2, false, 600000);
 }
-
 
 module.exports = 
 {

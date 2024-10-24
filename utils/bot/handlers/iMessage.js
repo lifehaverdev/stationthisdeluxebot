@@ -40,6 +40,12 @@ const commandRegistry = {
     '/make3': {
         handler: iMake.handleMake3,
     },
+    '/flux': {
+        handler: iMake.handleFlux,
+    },
+    '/ms2': {
+        handler: iMedia.handleMs2ImgFile
+    },
     '/joycat': {
         handler: iMake.handleMog,
     },
@@ -55,13 +61,9 @@ const commandRegistry = {
     '/chud': {
         handler: iMake.handleChud,
     },
-    '/flux': {
-        handler: iMake.handleFlux,
-    },
     '/radbro': {
         handler: iMake.handleRadbro,
     },
-    // '/dexmake(?:@stationthisbot)?\s+(\d+)': iMake.handleDexMake, 
     '/regen': {
         handler: iMake.handleRegen,
     },
@@ -109,7 +111,15 @@ const commandRegistry = {
     '/utils': {
         handler: iMenu.handleUtils,
     },
-    // '/inpaint': startInpaint,
+    '/quit': {
+        handler: (message) => {
+            setUserState(message, STATES.IDLE);
+            react(message,'👍')
+        }
+    },
+    '/inpaint': {
+        handler: iMedia.handleInpaint,
+    },
     '/help': {
         handler: iWork.handleHelp,
     },
@@ -372,7 +382,6 @@ const stateHandlers = {
     //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
 };
 
-
 const setStates = [
     STATES.SETBATCH, STATES.SETSTEPS, STATES.SETCFG, 
     STATES.SETSTRENGTH, STATES.SETPROMPT, STATES.SETUSERPROMPT, 
@@ -459,23 +468,52 @@ const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/uti
 
 // Helper function to parse the command and arguments from the message
 // Helper function to parse the command and arguments from the message
+// Helper function to parse the command and arguments from the message
+// Helper function to parse the command and arguments from the message
+// Helper function to parse the command and arguments from the message
 function parseCommand(message) {
-    const commandEntity = message.entities?.find(entity => entity.type === 'bot_command');
-    if (commandEntity && commandEntity.offset === 0) {
-        let command = message.text.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
-        const args = message.text.slice(commandEntity.offset + commandEntity.length).trim();
+    let commandEntity;
 
-        // Normalize command by removing bot mention if present (e.g., /make@stationthisbot => /make)
+    // Determine whether to use entities from text or caption
+    if (message.text && message.entities) {
+        commandEntity = message.entities.find(entity => entity.type === 'bot_command');
+    } else if (message.caption && message.caption_entities) {
+        commandEntity = message.caption_entities.find(entity => entity.type === 'bot_command');
+    }
+
+    // If a command entity exists and starts at the beginning of the message, proceed to parse
+    if (commandEntity && commandEntity.offset === 0) {
+        let command;
+        let args;
+
+        // If the message contains text, extract the command and arguments from the text
+        if (message.text) {
+            // Extract the command from the message text based on the entity length
+            command = message.text.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
+            // Extract the arguments, which come after the command
+            args = message.text.slice(commandEntity.offset + commandEntity.length).trim();
+        } 
+        // If the message contains a caption, extract the command and arguments from the caption
+        else if (message.caption) {
+            // Extract the command from the message caption based on the entity length
+            command = message.caption.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
+            // Extract the arguments, which come after the command
+            args = message.caption.slice(commandEntity.offset + commandEntity.length).trim();
+        }
+
+        // Normalize the command by removing the bot mention if present (e.g., /make@stationthisbot => /make)
         const botMentionIndex = command.indexOf('@');
         if (botMentionIndex !== -1) {
             command = command.slice(0, botMentionIndex);
         }
 
+        // Return the parsed command and arguments
         return { command, args };
     }
+
+    // If no command entity is found, return null values for command and arguments
     return { command: null, args: null };
 }
-
 
 module.exports = function(bot) {
     bot.on('message', async (message) => {
@@ -486,9 +524,9 @@ module.exports = function(bot) {
             return;
         }
     
-        if ('text' in message) {
+        if ('text' in message || 'caption' in message) {
             const { command, args } = parseCommand(message);
-
+            //console.log('command and args',command,args)
             // Handle command if it exists
             if (command && commandRegistry.hasOwnProperty(command)) {
                 // Gatekeeping check if needed
@@ -508,29 +546,7 @@ module.exports = function(bot) {
                     handled = true;
                     return; // Stop after the first match to avoid multiple command executions
             }
-            //console.log('no commandpattern')
-    
-            // Process generic commands if no specific command was handled
-            //
-            //  LETS GET RID OF THIS THE COMMAND STATE MESSAGES WERE CREATED BECAUSE OF STATE HANDLING NONSENSE AND WE CAN JUST GET RID OF THIS
-            //
-            if (!handled) {
-                const commandKey = Object.keys(commandStateMessages).find(key => 
-                    message.text.startsWith(key));
-                if (commandKey) {
-                    const commandInfo = commandStateMessages[commandKey];
-    
-                    if (commandKey !== '/quit' && !(await checkLobby(message))) {
-                        console.log("Lobby check failed, not processing command:", commandKey);
-                        return; // Exit if lobby check fails
-                    }
-                    //console.log('command key')
-                    setUserState(message, commandInfo.state);
-                    await sendMessage(message, commandInfo.message, {reply_to_message_id: message.message_id});
-                    handled = true;
-                }
-            }
-            //console.log('no command key')
+            
             // If no command has handled the message, use watch for further processing
             if (!handled) {
                 //console.log('imessage text watch')
