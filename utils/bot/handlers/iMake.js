@@ -1,87 +1,87 @@
 const { STATES, lobby, rooms, flows, makeSeed } = require('../bot')
 const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue')
-const { writeUserData } = require('../../../db/mongodb')
-const { checkLobby } = require('../gatekeep')
+//const { writeUserData } = require('../../../db/mongodb')
+//const { checkLobby } = require('../gatekeep')
 const { getGroup } = require('./iGroup')
 
-async function handlePromptCatch(message, match) {
-    const slot = parseInt(match[1]); // Ensure it's an integer
-    const userId = message.from.id
-    if (slot < 1 || slot > 6) {
-        sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-        return;
-    }
-    const userSettings = lobby[userId];
-    if (!userSettings) {
-        sendMessage(message, "User settings not found.");
-        return;
-    }
-    const prompt = userSettings.prompt;
-    userSettings.promptdex[slot - 1] = prompt;
-    writeUserData(userId,userSettings);
-    sendMessage(message, `Prompt saved to slot ${slot} and settings saved`);
-}
+// async function handlePromptCatch(message, match) {
+//     const slot = parseInt(match[1]); // Ensure it's an integer
+//     const userId = message.from.id
+//     if (slot < 1 || slot > 6) {
+//         sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
+//         return;
+//     }
+//     const userSettings = lobby[userId];
+//     if (!userSettings) {
+//         sendMessage(message, "User settings not found.");
+//         return;
+//     }
+//     const prompt = userSettings.prompt;
+//     userSettings.promptdex[slot - 1] = prompt;
+//     writeUserData(userId,userSettings);
+//     sendMessage(message, `Prompt saved to slot ${slot} and settings saved`);
+// }
 
-async function handleDexMake(message, match) {
-    const chatId = message.chat.id;
-    const userId = message.from.id;
-    const group = getGroup(message);
-    if (!await checkLobby(message)) {
-        return;
-    }
-    const slot = parseInt(match[1], 10);
-    if (isNaN(slot) || slot < 1 || slot > 6) {
-        sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-        return;
-    }
-    let settings;
-    if(group) {
-        settings = group.settings
-    } else {
-        settings = lobby[userId]
-    }
-    const userSettings = lobby[userId];
-    if (!settings) {
-        sendMessage(message, "User settings not found.");
-        return;
-    }
+// async function handleDexMake(message, match) {
+//     const chatId = message.chat.id;
+//     const userId = message.from.id;
+//     const group = getGroup(message);
+//     if (!await checkLobby(message)) {
+//         return;
+//     }
+//     const slot = parseInt(match[1], 10);
+//     if (isNaN(slot) || slot < 1 || slot > 6) {
+//         sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
+//         return;
+//     }
+//     let settings;
+//     if(group) {
+//         settings = group.settings
+//     } else {
+//         settings = lobby[userId]
+//     }
+//     const userSettings = lobby[userId];
+//     if (!settings) {
+//         sendMessage(message, "User settings not found.");
+//         return;
+//     }
     
-    const prompt = userSettings.promptdex[slot - 1];
-    if (!prompt) {
-        sendMessage(message, `No prompt saved in slot ${slot}.`);
-        return;
-    }
+//     const prompt = userSettings.promptdex[slot - 1];
+//     if (!prompt) {
+//         sendMessage(message, `No prompt saved in slot ${slot}.`);
+//         return;
+//     }
 
-    const thisSeed = makeSeed(userId);
-    lobby[userId].lastSeed = thisSeed;
+//     const thisSeed = makeSeed(userId);
+//     lobby[userId].lastSeed = thisSeed;
 
-    let batch;
-    if (chatId < 0) {
-        batch = 1;
-    } else {
-        batch = userSettings.batchMax;
-    }
+//     let batch;
+//     if (chatId < 0) {
+//         batch = 1;
+//     } else {
+//         batch = userSettings.batchMax;
+//     }
 
-    settings.prompt = prompt; // Update prompt with selected slot
-    userSettings.type = 'MAKE';
-    userSettings.lastSeed = thisSeed;
+//     settings.prompt = prompt; // Update prompt with selected slot
+//     userSettings.type = 'MAKE';
+//     userSettings.lastSeed = thisSeed;
 
-    const promptObj = {
-        ...settings,
-        strength: 1,
-        seed: thisSeed,
-        batchMax: batch,
-        prompt: prompt
-    };
+//     const promptObj = {
+//         ...settings,
+//         strength: 1,
+//         seed: thisSeed,
+//         batchMax: batch,
+//         prompt: prompt
+//     };
     
-    try {
-        await react(message);
-        enqueueTask({ message, promptObj });
-    } catch (error) {
-        console.error("Error generating and sending image:", error);
-    }
-}
+//     try {
+//         await react(message);
+//         enqueueTask({ message, promptObj });
+//     } catch (error) {
+//         console.error("Error generating and sending image:", error);
+//     }
+// }
 
 function checkAndSetType(type, settings, message, group, userId) {
 
@@ -119,59 +119,59 @@ function tokenGate(group, userId, message) {
     }
 }
 
-async function startMake(message, user = null) {
-    console.log('start make from iMake')
-    if(user){
-        message.from.id = user;
-        await editMessage({
-            text: 'What prompt for your txt2img?',
-            chat_id: message.chat.id,
-            message_id: message.message_id
-        })
-    } else {
-        sendMessage(message, 'What prompt for your txt2img?')
-    }
-    //await sendMessage(message,'What prompt for your txt2img?')
-    //console.log('user in start make',message.from.id);
-    //console.log('message in start make',message);
-    setUserState(message,STATES.MAKE)
-}
-async function startMake3(message,user) {
-    if(user){
-        message.from.id = user;
-        await editMessage({
-            text: 'What prompt for your txt2img sd3',
-            chat_id: message.chat.id,
-            message_id: message.message_id
-        })
-    } else {
-        if(lobby[message.from.id] && lobby[message.from.id].balance <= 500000){
-            gated(message)
-            return
-        }
-        sendMessage(message, 'What prompt for your txt2img sd3')
-    }
-    //await sendMessage(message,'What prompt for your txt2img sd3');
-    setUserState(message,STATES.MAKE3)
-}
-async function startMog(message,user) {
-        if(user){
-            message.from.id = user;
-            await editMessage({
-                text: 'What prompt for your txt2img mogflux',
-                chat_id: message.chat.id,
-                message_id: message.message_id
-            })
-        } else {
-            // if(lobby[message.from.id] && lobby[message.from.id].balance <= 100000){
-            //     gated(message)
-            //     return
-            // }
-            sendMessage(message, 'What prompt for your txt2img mogflux')
-        }
-        //await sendMessage(message,'What prompt for your txt2img sd3');
-        setUserState(message,STATES.MOG)
-}
+// async function startMake(message, user = null) {
+//     console.log('start make from iMake')
+//     if(user){
+//         message.from.id = user;
+//         await editMessage({
+//             text: 'What prompt for your txt2img?',
+//             chat_id: message.chat.id,
+//             message_id: message.message_id
+//         })
+//     } else {
+//         sendMessage(message, 'What prompt for your txt2img?')
+//     }
+//     //await sendMessage(message,'What prompt for your txt2img?')
+//     //console.log('user in start make',message.from.id);
+//     //console.log('message in start make',message);
+//     setUserState(message,STATES.MAKE)
+// }
+// async function startMake3(message,user) {
+//     if(user){
+//         message.from.id = user;
+//         await editMessage({
+//             text: 'What prompt for your txt2img sd3',
+//             chat_id: message.chat.id,
+//             message_id: message.message_id
+//         })
+//     } else {
+//         if(lobby[message.from.id] && lobby[message.from.id].balance <= 500000){
+//             gated(message)
+//             return
+//         }
+//         sendMessage(message, 'What prompt for your txt2img sd3')
+//     }
+//     //await sendMessage(message,'What prompt for your txt2img sd3');
+//     setUserState(message,STATES.MAKE3)
+// }
+// async function startMog(message,user) {
+//         if(user){
+//             message.from.id = user;
+//             await editMessage({
+//                 text: 'What prompt for your txt2img mogflux',
+//                 chat_id: message.chat.id,
+//                 message_id: message.message_id
+//             })
+//         } else {
+//             // if(lobby[message.from.id] && lobby[message.from.id].balance <= 100000){
+//             //     gated(message)
+//             //     return
+//             // }
+//             sendMessage(message, 'What prompt for your txt2img mogflux')
+//         }
+//         //await sendMessage(message,'What prompt for your txt2img sd3');
+//         setUserState(message,STATES.MOG)
+// }
 
 async function startTaskPrompt(message, taskType, state, user = null, balanceCheck = null) {
     const promptText = `What is the prompt for your ${taskType.toLowerCase()} creation?`;
@@ -295,8 +295,6 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     return promptObj;
 }
 
-
-
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING TASK: ${taskType}`);
 
@@ -414,45 +412,6 @@ async function handleFlux(message) {
     handleTask(message,'FLUX',STATES.FLUX,false,0)
 }
 
-// async function handleRegen(message) {
-//     const userId = message.from.id;
-//     const thisSeed = makeSeed(userId);
-//     const group = getGroup(message);
-//     let settings;
-//     if(group){
-//         settings = group.settings
-//     } else {
-//         settings = lobby[userId]
-//     }
-//     lobby[userId].lastSeed = thisSeed;
-//     let batch;
-//     if(message.chat.id < 0){
-//         batch = 1;
-//         //batch = lobby[userId].batchMax
-//     } else {
-//         //lobby[userId] ? batch = lobby[userId.batchMax] : batch = 1
-//         batch = lobby[userId].batchMax;
-//     }
-//     let strength;
-//     // if(settings.type.startsWith('MAKE')){
-//     //     strength = 1;
-//     // } else {
-//     //     strength = settings.strength
-//     // }
-//     const promptObj = {
-//         ...settings,
-//         strength: strength,
-//         prompt: lobby[userId].prompt,
-//         seed: thisSeed,
-//         batchMax: batch
-//     }
-//     if(promptObj.type == 'FLUX'){
-//         promptObj.checkpoint = 'flux-schnell'
-//     }
-//     react(message, '👍');
-//     enqueueTask({message, promptObj})
-//     setUserState(message, STATES.IDLE);
-// }
 async function handleRegen(message, user = null) {
     //console.log(JSON.stringify(lobby[message.from.id]))
     const userId = message.from.id || user;
@@ -499,27 +458,6 @@ async function handleMs2Prompt(message) {
     await handleTask(message, 'I2I', STATES.MS2PROMPT, true, null);
 }
 
-// async function handleInpaintPrompt(message) {
-//     const userId = message.from.id;
-//     let userInput = message.text;
-//     //const group = getGroup(message);
-//     userInput == '' ? userInput = '' : null;
-
-//     lobby[userId] = {
-//         ...lobby[userId],
-//         prompt: userInput,
-//         type: 'INPAINT'
-//     }
-//     await sendMessage(message, 'pls wait i will make in 1 second');
-//     const promptObj = {
-//         ...lobby[userId],
-//         seed: lobby[userId].lastSeed,
-//         photoStats: lobby[userId].tempSize
-//     }
-//     //return await shakeMs2(message,promptObj);
-//     enqueueTask({message,promptObj})
-//     setUserState(message,STATES.IDLE);
-// }
 async function handleInpaintPrompt(message) {
     // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
     await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
@@ -541,16 +479,20 @@ async function handleInpaintTarget(message) {
 }
 
 module.exports = { 
-    startMake, 
-    startMake3, 
-    handleMake, 
+    // startMake, 
+    // startMake3, 
+    //handleDexMake, 
+    //handlePromptCatch,
+    //startMog, 
+
     handleRegen, 
+    
+    handleMake, 
     handleMake3, 
-    handleDexMake, 
-    handlePromptCatch,
     handleMs2Prompt,
     handleInpaintPrompt,
     handleInpaintTarget,
-    handleMog, startMog, handleDegod, handleMilady, handleChud, handleRadbro, handleLoser,
+    handleMog, 
+    handleDegod, handleMilady, handleChud, handleRadbro, handleLoser,
     handleFlux
 }

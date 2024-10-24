@@ -125,30 +125,30 @@ const commandStateMessages = {
     //     state: STATES.INTERROGATION,
     //     message: "Send in the photo you want to reverse engineer a prompt from."
     // },
-    '/quit': {
-        state: STATES.IDLE,
-        message: 'okay i reset your station'
-    },
-    '/request': {
-        state: STATES.REQUEST,
-        message: `Give us the link to the model you want`
-    },
-    '/inpaint': {
-        state: STATES.INPAINT,
-        message: 'What image are you inpainting?'
-    },
-    '/ms2': {
-        state: STATES.IMG2IMG,
-        message: "Send in the photo you want to img to img."
-    },
-    '/ms3': {
-        state: STATES.MS3,
-        message: "Send in a photo you want to img2vid, better be a square"
-    },
-    '/pfp': {
-        state: STATES.PFP,
-        message: "Send in a photo and I will automatically img2img it with my own prompt"
-    },
+    // '/quit': {
+    //     state: STATES.IDLE,
+    //     message: 'okay i reset your station'
+    // },
+    // '/request': {
+    //     state: STATES.REQUEST,
+    //     message: `Give us the link to the model you want`
+    // },
+    // '/inpaint': {
+    //     state: STATES.INPAINT,
+    //     message: 'What image are you inpainting?'
+    // },
+    // '/ms2': {
+    //     state: STATES.IMG2IMG,
+    //     message: "Send in the photo you want to img to img."
+    // },
+    // '/ms3': {
+    //     state: STATES.MS3,
+    //     message: "Send in a photo you want to img2vid, better be a square"
+    // },
+    // '/pfp': {
+    //     state: STATES.PFP,
+    //     message: "Send in a photo and I will automatically img2img it with my own prompt"
+    // },
     // '/assist': {
     //     state: STATES.ASSIST,
     //     message: "Tell me the idea or key words you want a prompt for"
