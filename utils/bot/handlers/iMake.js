@@ -397,6 +397,11 @@ async function handleChud(message) {
     await handleTask(message, 'CHUD', STATES.CHUD, false, 0)
 }
 
+async function handleLoser(message) {
+    console.log('loser')
+    await handleTask(message, 'LOSER', STATES.LOSER, false, 0)
+}
+
 
 async function handleRadbro(message) {
     console.log('radbro')
