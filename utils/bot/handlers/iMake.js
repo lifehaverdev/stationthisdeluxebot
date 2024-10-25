@@ -102,9 +102,9 @@ function checkAndSetType(type, settings, message, group, userId) {
     }
 
     // Dynamically build the type
-    if (settings.controlNet && settings.controlFileUrl) type += '_CANNY';
-    if (settings.styleTransfer && settings.styleFileUrl) type += '_STYLE';
-    if (settings.openPose && settings.poseFileUrl) type += '_POSE';
+    if (settings.controlNet && settings.input_control_image) type += '_CANNY';
+    if (settings.styleTransfer && settings.input_style_image) type += '_STYLE';
+    if (settings.openPose && settings.input_pose_image) type += '_POSE';
     return type;
 }
 
