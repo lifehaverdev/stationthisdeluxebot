@@ -230,7 +230,7 @@ async function writeUserData(userId, data) {
         const { points, qoints, balance, exp, _id, ...dataToSave } = data;
 
         // Log the data being written, omitting sensitive fields
-        console.log('General user data to be saved:', dataToSave);
+        //console.log('General user data to be saved:', dataToSave);
 
         // Perform an update to save non-protected user data
         const result = await collection.updateOne(
@@ -479,6 +479,7 @@ async function readStats() {
     const walletSet = new Set();
     const doubleUseSet = new Set();
     const nonUserSet = new Set();
+    const keySet = new Set();
     let totalExp = 0;
     let totalHeld = 0;
     let totalBurned = 0;
@@ -491,56 +492,71 @@ async function readStats() {
         const users = await collection.find().toArray();
         let count = 0;
         for (let user of users) {
-         // Add user wallet to wallet set
-            count++
-         if (user.wallet) {
-            if (walletSet.has(user.wallet)) {
-                // If the wallet is already in the set, add it to the doubleUseSet
-                doubleUseSet.add(user.wallet);
-                user.balance = await getBalance(user.wallet)
-                console.log(user.wallet);
+            count++;
+            console.log(`Processing user ${count}: userId = ${user.userId}`);
+
+            // Track all keys in user object
+            Object.keys(user).forEach(key => {
+                if (!keySet.has(key)) {
+                    keySet.add(key);
+                }
+            });
+
+            // Add user wallet to wallet set
+            if (user.wallet) {
+                if (walletSet.has(user.wallet)) {
+                    // If the wallet is already in the set, add it to the doubleUseSet
+                    doubleUseSet.add(user.wallet);
+                    console.log(`Duplicate wallet found: ${user.wallet}`);
+                } else {
+                    walletSet.add(user.wallet);
+                    // Only check balance for non-duplicate wallets
+                    user.balance = await getBalance(user.wallet);
+                    //console.log(`Checking balance for wallet: ${user.wallet}`);
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // Add 1-second delay to avoid API rate limits
+                }
             } else {
-                walletSet.add(user.wallet);
+                console.log(`No wallet found for userId: ${user.userId}`);
+            }
+
+            // Add user exp to totalExp
+            if (user.exp) {
+                totalExp += user.exp;
+            }
+
+            // Add user balance to totalHeld
+            if (user.balance) {
+                totalHeld += user.balance;
+            }
+
+            // Add user burns to totalBurned (commented out for now)
+            // if (user.burned) {
+            //     totalBurned += user.burned;
+            // }
+
+            // Add the number of promptDex prompts to totalDex
+            if (user.promptDex && Array.isArray(user.promptDex)) {
+                totalDex += user.promptDex.length;
+            }
+
+            // If exp == 0, add userId to nonUserSet
+            if (user.exp === 0) {
+                nonUserSet.add(user._id);
             }
         }
 
-        // Add user exp to totalExp
-        if (user.exp) {
-            totalExp += user.exp;
-        }
+        let msg = '';
+        msg += 'total Users ' + count + '\n';
+        msg += 'tourists ' + nonUserSet.size + '\n';
+        msg += 'net users ' + (count - nonUserSet.size) + '\n';
+        msg += 'net wallets ' + walletSet.size + '\n\n';
+        // msg += 'double wallets ' + doubleUseSet.size + '\n';
+        msg += 'total Exp ' + totalExp + '\n';
+        msg += 'total Balance Held ' + totalHeld + ' MS2\n';
+        // msg += 'total Dex ' + totalDex + '\n';
+        // msg += 'totalBurned';
 
-        // Add user balance to totalHeld
-        if (user.balance) {
-            totalHeld += user.balance;
-        }
-
-        // Add user burns to totalBurned
-        // if (user.burned) {
-        //     totalBurned += user.burned;
-        // }
-
-        // Add the number of promptDex prompts to totalDex
-        if (user.promptDex && Array.isArray(user.promptDex)) {
-            totalDex += user.promptdex.length;
-        }
-
-        // If exp == 0, add userId to nonUserSet
-        if (user.exp === 0) {
-            nonUserSet.add(user._id);
-        }
-        }
-        let msg = ''
-        msg += 'total Users '+count+`\n`
-        msg += 'tourists ' + nonUserSet.size+'\n'
-        msg += 'net users ' + (count - nonUserSet.size) +'\n'
-        msg += 'net wallets ' + walletSet.size+`\n\n`
-        //msg += 'double wallets ' + doubleUseSet.size+`\n`
-        msg += 'total Exp '+totalExp+`\n`
-        msg += 'total Balance Held '+totalHeld+`MS2\n`
-        //msg += 'total Dex ' + totalDex+`\n`
-        
-        //msg += 'totalBurned'
-        //bot.sendMessage(DEV_DMS, msg);
+        console.log('All unique keys found in user objects:', [...keySet]);
         console.log('All user settings analyzed successfully');
         return msg;
     } catch (error) {
@@ -548,6 +564,8 @@ async function readStats() {
         return false;
     } 
 }
+
+
 
 async function incrementLoraUseCounter(names) {
     const client = await getCachedClient();

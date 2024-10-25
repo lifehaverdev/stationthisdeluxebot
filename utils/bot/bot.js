@@ -96,75 +96,28 @@ const SETTER_TO_STATE = {
     // Add more mappings as needed
 };
 const STATE_TO_LOBBYPARAM = {
-    'SETBATCH': "batchMax",
-    'SETSTEPS': "steps",
-    'SETCFG': "cfg",
-    'SETSTRENGTH': "strength",
+    'SETBATCH': "input_batch",
+    'SETSTEPS': "input_steps",
+    'SETCFG': "input_cfg",
+    'SETSTRENGTH': "input_strength",
     'SETPROMPT': "prompt",
-    'SETUSERPROMPT': "userBasePrompt",
-    'SETNEGATIVEPROMPT': "negativePrompt",
-    'SETSEED': 'seed',
-    'SETPHOTO': 'fileUrl',
+    'SETUSERPROMPT': "userPrompt",
+    'SETNEGATIVEPROMPT': "input_negative",
+    'SETSEED': 'input_seed',
+    'SETPHOTO': 'input_image',
     'SETSIZE': 'photoStats',
-    'SETSTYLE': 'styleFileUrl',
-    'SETCONTROL': 'controlFileUrl',
-    'SETPOSE': 'poseFileUrl'
+    'SETSTYLE': 'input_style_image',
+    'SETCONTROL': 'input_control_image',
+    'SETPOSE': 'input_pose_image'
     //'SETGROUPAPPLY': 'group'
 }
 
-const commandStateMessages = {
-    // '/disc': {
-    //     state: STATES.DISC,
-    //     message: 'What photo or file will you write to a disc?'
-    // },
-    // '/watermark': {
-    //     state: STATES.WATERMARK,
-    //     message: 'What photo or file will you brand?'
-    // },
-    // '/interrogate': {
-    //     state: STATES.INTERROGATION,
-    //     message: "Send in the photo you want to reverse engineer a prompt from."
-    // },
-    // '/quit': {
-    //     state: STATES.IDLE,
-    //     message: 'okay i reset your station'
-    // },
-    // '/request': {
-    //     state: STATES.REQUEST,
-    //     message: `Give us the link to the model you want`
-    // },
-    // '/inpaint': {
-    //     state: STATES.INPAINT,
-    //     message: 'What image are you inpainting?'
-    // },
-    // '/ms2': {
-    //     state: STATES.IMG2IMG,
-    //     message: "Send in the photo you want to img to img."
-    // },
-    // '/ms3': {
-    //     state: STATES.MS3,
-    //     message: "Send in a photo you want to img2vid, better be a square"
-    // },
-    // '/pfp': {
-    //     state: STATES.PFP,
-    //     message: "Send in a photo and I will automatically img2img it with my own prompt"
-    // },
-    // '/assist': {
-    //     state: STATES.ASSIST,
-    //     message: "Tell me the idea or key words you want a prompt for"
-    // },
-    // '/speak': {
-    //     state: STATES.SPEAK,
-    //     message: "What should I say"
-    // }
-    // Add other commands as needed
-};
 
 function makeSeed(userId) {
-    if(userId == -1 || lobby[userId].seed == -1){
+    if(userId == -1 || lobby[userId].input_seed == -1){
         return Math.floor(Math.random() * 1000000);
     } else if(lobby[userId]){
-        return lobby[userId].seed;
+        return lobby[userId].input_seed;
     } else {
         return Math.floor(Math.random() * 1000000);
     }
@@ -237,7 +190,6 @@ module.exports = {
     rooms, flows, burns, loraTriggers,
     taskQueue, waiting, processes, successors, failures,
     startup,
-    commandStateMessages,
     SET_COMMANDS,
     STATE_TO_LOBBYPARAM,
     SETTER_TO_STATE,

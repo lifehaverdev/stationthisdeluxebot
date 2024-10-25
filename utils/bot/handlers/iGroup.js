@@ -154,8 +154,6 @@ async function toggleAdmin(message) {
     console.log('rewrote the room')
 }
 
-
-
 /*
 
 NEW GROUPCHAT SYSTEM

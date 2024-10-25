@@ -89,7 +89,7 @@ const handleSetCheckpoint = (message, selectedName, userId) => {
         settings = lobby[userId]
     }
     if (selectedName !== undefined) {
-        settings.checkpoint = selectedName;
+        settings.input_checkpoint = selectedName;
         const messageTitle = `Checkpoint set to: ${selectedName} ✅`;
         editMessage({
             text: messageTitle,

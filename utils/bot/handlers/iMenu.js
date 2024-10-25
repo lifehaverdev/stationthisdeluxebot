@@ -26,9 +26,9 @@ function setMenu(message) {
                 { text: settings.userPrompt != "-1" ? 'userprompt ✅' : 'userprompt ❌', callback_data: 'setuserprompt' },
             ],
             [
-                { text: 'batch '+settings.batchMax, callback_data: 'setbatch' },
+                { text: 'batch '+settings.input_batch, callback_data: 'setbatch' },
                 { text: 'size', callback_data: 'setsize' },
-                { text: 'steps '+settings.steps, callback_data: 'setsteps'},
+                { text: 'steps '+settings.input_steps, callback_data: 'setsteps'},
             ],
             [
                 {
@@ -60,9 +60,9 @@ function setMenu(message) {
                 // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
             ],
             [
-                { text: 'cfg '+settings.cfg, callback_data: 'setcfg'},
-                { text: 'strength '+settings.strength, callback_data: 'setstrength' },
-                { text: 'seed '+settings.seed, callback_data: 'setseed' },
+                { text: 'cfg '+settings.input_cfg, callback_data: 'setcfg'},
+                { text: 'strength '+settings.input_strength, callback_data: 'setstrength' },
+                { text: 'seed '+settings.input_seed, callback_data: 'setseed' },
             ],
             [
                 //{ text: 'checkpoint', callback_data: 'checkpointmenu' },
@@ -81,7 +81,7 @@ function setMenu(message) {
         || (group)){
         options.reply_markup.inline_keyboard[4].push(
             { text: settings.basePrompt+' ✅', callback_data: 'basepromptmenu' },
-            { text: settings.checkpoint+' ✅', callback_data: 'checkpointmenu' },
+            { text: settings.input_checkpoint+' ✅', callback_data: 'checkpointmenu' },
         )
       }
     //   if(lobby[message.from.id] && lobby[message.from.id].balance >= 600000){

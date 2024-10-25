@@ -2,6 +2,7 @@ const { sendMessage, editMessage, setUserState, react, gated } = require('../../
 const { getPhotoUrl, lobby, STATES, flows, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
+const { buildPromptObjFromWorkflow } = require('./iMake')
 const Jimp = require('jimp');
 
 const iMake = require('./iMake')
@@ -38,7 +39,7 @@ async function handleMs2ImgFile(message) {
                 ...lobby[userId],
                 lastSeed: thisSeed,
                 tempSize: photoStats,
-                fileUrl: fileUrl
+                input_image: fileUrl
             };
 
             if (targetMessage.caption) {
@@ -69,98 +70,98 @@ async function handleMs2ImgFile(message) {
 }
 
 
-// Helper function to build the prompt object dynamically based on the workflow
-function buildPromptObjFromWorkflow(workflow, userContext, message) {
-    const promptObj = {};
+// // Helper function to build the prompt object dynamically based on the workflow
+// function buildPromptObjFromWorkflow(workflow, userContext, message) {
+//     const promptObj = {};
     
-    // Always include type from userContext and add username from the message
-    promptObj.type = userContext.type || workflow.name;
-    promptObj.username = message.from.username || 'unknown_user';
-    promptObj.balance = userContext.balance;
-    promptObj.userId = userContext.userId;
-    promptObj.photoStats = { height: 1024, width: 1024 };
-    promptObj.forcelogo = userContext.forcelogo || false
-    promptObj.advancedUser = userContext.advancedUser
+//     // Always include type from userContext and add username from the message
+//     promptObj.type = userContext.type || workflow.name;
+//     promptObj.username = message.from.username || 'unknown_user';
+//     promptObj.balance = userContext.balance;
+//     promptObj.userId = userContext.userId;
+//     promptObj.photoStats = { height: 1024, width: 1024 };
+//     promptObj.forcelogo = userContext.forcelogo || false
+//     promptObj.advancedUser = userContext.advancedUser
 
-    // Set required inputs based on the workflow type
-    if (workflow.name.startsWith('I2I_AUTO')) {
-        // Handle PFP workflows and their variations
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.checkpoint = userContext.checkpoint
+//     // Set required inputs based on the workflow type
+//     if (workflow.name.startsWith('I2I_AUTO')) {
+//         // Handle PFP workflows and their variations
+//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.checkpoint = userContext.checkpoint
 
-        // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
-        if (workflow.name.includes('STYLE')) {
-            promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('CANNY')) {
-            promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('POSE')) {
-            promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-        }
+//         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
+//         if (workflow.name.includes('STYLE')) {
+//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('CANNY')) {
+//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('POSE')) {
+//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
+//         }
 
-        promptObj.cfg = userContext.cfg || 7;
-        promptObj.steps = userContext.steps || 50;
-        promptObj.prompt = userContext.prompt || 'default PFP prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-        promptObj.checkpoint = userContext.checkpoint;
-        promptObj.strength = 1.0;
-    } 
-    else if (workflow.name.startsWith('I2I')) {
-        // Handle I2I workflows and their variations
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.checkpoint = userContext.checkpoint
+//         promptObj.cfg = userContext.cfg || 7;
+//         promptObj.steps = userContext.steps || 50;
+//         promptObj.prompt = userContext.prompt || 'default PFP prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+//         promptObj.checkpoint = userContext.checkpoint;
+//         promptObj.strength = 1.0;
+//     } 
+//     else if (workflow.name.startsWith('I2I')) {
+//         // Handle I2I workflows and their variations
+//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.checkpoint = userContext.checkpoint
 
-        // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
-        if (workflow.name.includes('STYLE')) {
-            promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('CANNY')) {
-            promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('POSE')) {
-            promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-        }
+//         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
+//         if (workflow.name.includes('STYLE')) {
+//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('CANNY')) {
+//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('POSE')) {
+//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
+//         }
 
-        promptObj.cfg = userContext.cfg || 7;
-        promptObj.steps = userContext.steps || 50;
-        promptObj.prompt = userContext.prompt || 'default I2I prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-        promptObj.checkpoint = userContext.checkpoint;
-        promptObj.strength = 1.0;
-    } 
-    else if (workflow.name === 'RMBG') {
-        // Handle RMBG workflow
-        promptObj.fileUrl = userContext.fileUrl;
-    }
-    else if (workflow.name === 'UPSCALE') {
-        // Handle UPSCALE workflow
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-    }
-    else if (workflow.name === 'MS3' || workflow.name === 'MS3.2') {
-        // Handle MS3 and MS3.2 workflows
-        promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.photoStats = userContext.photoStats || { height: 1024, width: 1024 };
-    }
+//         promptObj.cfg = userContext.cfg || 7;
+//         promptObj.steps = userContext.steps || 50;
+//         promptObj.prompt = userContext.prompt || 'default I2I prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+//         promptObj.checkpoint = userContext.checkpoint;
+//         promptObj.strength = 1.0;
+//     } 
+//     else if (workflow.name === 'RMBG') {
+//         // Handle RMBG workflow
+//         promptObj.fileUrl = userContext.fileUrl;
+//     }
+//     else if (workflow.name === 'UPSCALE') {
+//         // Handle UPSCALE workflow
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//     }
+//     else if (workflow.name === 'MS3' || workflow.name === 'MS3.2') {
+//         // Handle MS3 and MS3.2 workflows
+//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.photoStats = userContext.photoStats || { height: 1024, width: 1024 };
+//     }
 
-    // Add additional common properties such as prompt, seed, and batchMax
-    promptObj.prompt = userContext.prompt;
-    promptObj.seed = userContext.lastSeed;
-    promptObj.userBasePrompt = userContext.userBasePrompt;
-    promptObj.userId = message.from.id;
-    promptObj.timeRequested = Date.now();
+//     // Add additional common properties such as prompt, seed, and batchMax
+//     promptObj.prompt = userContext.prompt;
+//     promptObj.seed = userContext.lastSeed;
+//     promptObj.userBasePrompt = userContext.userBasePrompt;
+//     promptObj.userId = message.from.id;
+//     promptObj.timeRequested = Date.now();
 
-    return promptObj;
-}
+//     return promptObj;
+// }
 
 
 function checkAndSetType(type, settings, message, group, userId) {
@@ -224,7 +225,7 @@ async function handleInpaint(message) {
                 ...lobby[userId],
                 lastSeed: thisSeed,
                 tempSize: photoStats,
-                fileUrl: fileUrl
+                input_image: fileUrl
             };
 
             if (targetMessage.caption) {
@@ -271,7 +272,7 @@ async function handleInterrogation(message) {
     try {
         const promptObj = {
             ...lobby[message.from.id],
-            fileUrl: photoUrl,
+            input_image: photoUrl,
             type: 'INTERROGATE'
         }
         //enqueueTask({message,promptObj})
@@ -338,7 +339,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
 
     // Update user settings in the lobby
     Object.assign(lobby[userId], {
-        fileUrl: fileUrl,  // Set the image file URL
+        input_image: fileUrl,  // Set the image file URL
         type: finalType,   // Use the modified type
         lastSeed: thisSeed
     });
@@ -352,9 +353,9 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     const workflow = flows.find(flow => flow.name === finalType);
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
-        fileUrl: fileUrl,  // Set the image URL in the promptObj
-        seed: thisSeed,
-        batchMax: batch
+        input_image: fileUrl,  // Set the image URL in the promptObj
+        input_seed: thisSeed,
+        input_batch: batch
     }, message);
 
     try {

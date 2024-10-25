@@ -1,10 +1,10 @@
 const { MongoClient } = require("mongodb");
-//const { updateAllUsersWithCheckpoint, updateAllUserSettings } = require('./mongodb')
+const { updateAllUsersWithCheckpoint, updateAllUserSettings } = require('./mongodb')
 require("dotenv").config()
 const { loraTriggers } = require('../utils/models/loraTriggerTranslate')
 
 //updateAllUsersWithCheckpoint();
-//updateAllUserSettings()
+updateAllUserSettings()
 
 async function insertLoraTriggers() {
     // Connection URI
@@ -34,4 +34,4 @@ async function insertLoraTriggers() {
 }
 
 // Call the function to insert the loraTriggers array
-insertLoraTriggers();
+//insertLoraTriggers();

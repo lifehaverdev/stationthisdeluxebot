@@ -246,6 +246,11 @@ const commandRegistry = {
             }
         }
     },
+    // '/snipe': {
+    //     handler: async(message) => {
+    //         if(message)
+    //     }
+    // }
     '/slamtest': {
         handler: async (message) => {
             sendMessage(message,`${lobby[message.from.id].state.state}`)
