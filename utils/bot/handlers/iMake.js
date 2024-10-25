@@ -214,7 +214,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
             promptObj[input] = userContext[input];
         }
     });
-
+    if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
     // Derived fields based on internal logic
     if (userContext.styleTransfer) {
         promptObj.input_style_image = userContext.input_style_image;
