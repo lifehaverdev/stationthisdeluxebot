@@ -132,25 +132,25 @@ async function handleCreate(message) {
             [
                 {
                     text: 
-                        settings.controlNet && settings.controlFileUrl ? 
+                        settings.controlNet && settings.input_control_image ? 
                         'control ✅' : 
-                        settings.controlNet && !settings.controlFileUrl ? 
+                        settings.controlNet && !settings.input_control_image ? 
                         'control 🆘' : 'control ❌',
                     callback_data: 'toggleControlCreate',
                 },
                 {
                     text:
-                        settings.styleTransfer && settings.styleFileUrl ?
+                        settings.styleTransfer && settings.input_style_image ?
                         'style ✅' : 
-                        settings.styleTransfer && !settings.styleFileUrl ?
+                        settings.styleTransfer && !settings.input_style_image ?
                         'style 🆘' : 'style ❌',
                     callback_data: 'toggleStyleCreate',
                 },
                 {
                     text:
-                        settings.openPose && settings.poseFileUrl ? 
+                        settings.openPose && settings.input_pose_image ? 
                         'pose ✅' : 
-                        settings.openPose && !settings.poseFileUrl ?
+                        settings.openPose && !settings.input_pose_image ?
                         'pose 🆘' : 'pose ❌',
                     callback_data: 'togglePoseCreate'
                 }
@@ -298,25 +298,25 @@ function handleEffect(message) {
             [
                 {
                     text: 
-                        settings.controlNet && settings.controlFileUrl ? 
+                        settings.controlNet && settings.input_control_image ? 
                         'control ✅' : 
-                        settings.controlNet && !settings.controlFileUrl ? 
+                        settings.controlNet && !settings.input_control_image ? 
                         'control ♻️' : 'control ❌',
                     callback_data: 'toggleControlEffect',
                 },
                 {
                     text:
-                        settings.styleTransfer && settings.styleFileUrl ?
+                        settings.styleTransfer && settings.input_style_image ?
                         'style ✅' : 
-                        settings.styleTransfer && !settings.styleFileUrl ?
+                        settings.styleTransfer && !settings.input_style_image ?
                         'style ♻️' : 'style ❌',
                     callback_data: 'toggleStyleEffect',
                 },
                 {
                     text:
-                        settings.openPose && settings.poseFileUrl ? 
+                        settings.openPose && settings.input_pose_image ? 
                         'pose ✅' : 
-                        settings.openPose && !settings.poseFileUrl ?
+                        settings.openPose && !settings.input_pose_image ?
                         'pose ♻️' : 'pose ❌',
                     callback_data: 'togglePoseEffect'
                 }
