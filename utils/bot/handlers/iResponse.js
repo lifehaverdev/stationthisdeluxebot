@@ -145,14 +145,16 @@ class CallAndResponse {
         const userLobby = lobby[userId];
 
         if (userLobby.styleTransfer && !userLobby.controlNet) {
-            if (!userLobby.styleFileUrl) {
-                sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            if (!userLobby.input_style_image) {
+                sendMessage(message, 'pls first send a style image');
+                setUserState(message, STATES.SETSTYLE)
                 return false;
             }
             userLobby.type = 'MS2_STYLE';
         } else if (userLobby.styleTransfer && userLobby.controlNet) {
-            if (!userLobby.styleFileUrl && !userLobby.controlFileUrl) {
-                sendMessage(message, 'hey use the setstyle command to pick a style photo');
+            if (!userLobby.input_style_image && !userLobby.input_control_image) {
+                setUserState(message, STATES.SETSTYLE)
+                sendMessage(message, 'pls first send a style iamge');
                 return false;
             }
             userLobby.type = 'MS2_CONTROL_STYLE';
@@ -207,7 +209,7 @@ const ms2Flow = new CallAndResponse(STATES.MS2, [
                     ...lobby[userId],
                     lastSeed: makeSeed(userId),
                     tempSize: { width, height },
-                    fileUrl: fileUrl
+                    input_image: fileUrl
                 };
 
                 await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);
@@ -252,7 +254,7 @@ const inpaintFlow = new CallAndResponse(STATES.INPAINT, [
                     ...lobby[userId],
                     lastSeed: makeSeed(userId),
                     tempSize: { width, height },
-                    fileUrl: fileUrl
+                    input_image: fileUrl
                 };
 
                 await sendMessage(message, `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`);
@@ -292,7 +294,7 @@ const inpaintFlow = new CallAndResponse(STATES.INPAINT, [
                 prompt: userInput || ''
             };
 
-            enqueueTask({ message, promptObj: { ...lobby[userId], seed: lobby[userId].lastSeed, photoStats: lobby[userId].tempSize } });
+            enqueueTask({ message, promptObj: { ...lobby[userId], input_seed: lobby[userId].lastSeed, input_width: lobby[userId].tempSize.width, input_height: lobby[userId].tempSize.height } });
             return true;
         }
     }

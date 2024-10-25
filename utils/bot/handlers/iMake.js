@@ -88,9 +88,9 @@ function checkAndSetType(type, settings, message, group, userId) {
     // Define required files based on settings
     const requiredFiles = [];
     
-    if (settings.styleTransfer) requiredFiles.push({ name: 'styleFileUrl', message: 'You need to set a style image.' });
-    if (settings.controlNet) requiredFiles.push({ name: 'controlFileUrl', message: 'You need to set a control image.' });
-    if (settings.openPose) requiredFiles.push({ name: 'poseFileUrl', message: 'You need to set a pose image.' });
+    if (settings.styleTransfer) requiredFiles.push({ name: 'input_style_image', message: 'You need to set a style image.' });
+    if (settings.controlNet) requiredFiles.push({ name: 'input_control_image', message: 'You need to set a control image.' });
+    if (settings.openPose) requiredFiles.push({ name: 'input_pose_image', message: 'You need to set a pose image.' });
     if (requiredFiles.length > 0 && tokenGate(group, userId, message)) return // Early return for token gate if needed
     
     // Check if any required files are missing
@@ -196,104 +196,141 @@ async function startTaskPrompt(message, taskType, state, user = null, balanceChe
     setUserState(message, state);
 }
 
-// Helper function to build the prompt object dynamically based on the workflow
 function buildPromptObjFromWorkflow(workflow, userContext, message) {
+    // Start by creating a promptObj with direct mappings from userContext based on workflow input names
     const promptObj = {};
-    //console.log('user context given',userContext)
-    // Always include type from userContext and add username from the message
-    promptObj.type = userContext.type || workflow.name;
-    promptObj.username = message.from.username || 'unknown_user';
-    promptObj.balance = userContext.balance
-    promptObj.userId = userContext.userId
-    promptObj.photoStats = { height: 1024, width: 1024}
-    promptObj.forcelogo = userContext.forcelogo || false
-    promptObj.advancedUser = userContext.advancedUser
-    promptObj.basePrompt = userContext.basePrompt
-    // Set required inputs based on the workflow type
-    if (workflow.name.startsWith('MAKE')) {
-        // Handle MAKE workflows and their variations
-        // FIX THESE LATER WHEN WE WANT TO TUCK IN
-        promptObj.batchMax = userContext.batchMax || 1;
-        promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
-        promptObj.basePrompt = userContext.basePrompt
-        promptObj.cfg = userContext.cfg || 7;
-        promptObj.steps = userContext.steps || 50;
-        promptObj.prompt = userContext.prompt || 'default prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-        promptObj.seed = userContext.lastSeed;
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.strength = 1.0;
-
-        // Add additional images for MAKE_CANNY, MAKE_STYLE, MAKE_POSE, etc.
-        if (userContext.styleTransfer) {
-            promptObj.styleFileUrl = userContext.styleFileUrl;
-        }
-        if (userContext.controlNet) {
-            promptObj.controlFileUrl = userContext.controlFileUrl;
-        }
-        if (userContext.openPose) {
-            promptObj.poseFileUrl = userContext.poseFileUrl;
-        }
-    } 
-    else if (workflow.name === 'I2I') {
-        // Handle I2I workflow
-        promptObj.seed = userContext.lastSeed;
-        promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.prompt = userContext.prompt || 'default I2I prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-
-        // Optional images for I2I CANNY, STYLE, POSE, etc.
-        if (workflow.name.includes('STYLE')) {
-            promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('CANNY')) {
-            promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-        }
-        if (workflow.name.includes('POSE')) {
-            promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-        }
-    } 
-    else if (workflow.name === 'INPAINT') {
-        // Handle INPAINT workflow
-        promptObj.seed = userContext.lastSeed;
-        promptObj.fileUrl = userContext.fileUrl;
-        promptObj.maskUrl = userContext.maskUrl;  // INPAINT requires a mask
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.prompt = userContext.prompt || 'default INPAINT prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-        promptObj.strength = userContext.strength || 1.0;
-    }
-    else if (workflow.name.startsWith('MAKE3')) {
-        // Handle MAKE3 workflow (simplest workflow)
-        promptObj.seed = userContext.lastSeed;
-        promptObj.prompt = userContext.prompt || 'default MAKE3 prompt';
-        promptObj.negativePrompt = userContext.negativePrompt || '';
-    }
-    else if (workflow.name.startsWith('FLUX')) {
-        // Handle FLUX workflows and derivatives (MOG, DEGOD, CHUD, MILADY, RADBRO)
-        promptObj.photoStats.width = userContext.photoStats.width || 1024;
-        promptObj.photoStats.height = userContext.photoStats.height || 1024;
-        promptObj.prompt = userContext.prompt || 'default FLUX prompt';
-        promptObj.seed = userContext.lastSeed;
-        promptObj.checkpoint = 'flux-schnell'
-    }
-
-    // Add additional common properties such as prompt, seed, and batchMax
+    promptObj.type = userContext.type;
+    promptObj.userPrompt = userContext.userPrompt;
+    promptObj.timeRequested = Date.now();
     promptObj.prompt = userContext.prompt;
-    promptObj.seed = userContext.lastSeed;
-    promptObj.userBasePrompt = userContext.userBasePrompt
-    //promptObj.userBasePrompt = userContext.basePrompt
-    promptObj.userId = message.from.id
-    promptObj.timeRequested = Date.now()
-    //promptObj.batchMax = userContext.batchMax;
+    promptObj.forcelogo = userContext.forcelogo || false;
+    promptObj.advancedUser = userContext.advancedUser;
+    promptObj.balance = userContext.balance;
+    promptObj.userId = userContext.userId;
+
+    // Loop through workflow inputs and populate promptObj from userContext
+    workflow.inputs.forEach((input) => {
+        if (userContext.hasOwnProperty(input)) {
+            promptObj[input] = userContext[input];
+        }
+    });
+
+    // Derived fields based on internal logic
+    if (userContext.styleTransfer) {
+        promptObj.input_style_image = userContext.input_style_image;
+    }
+    if (userContext.openPose) {
+        promptObj.input_pose_image = userContext.input_pose_image;
+    }
+    if (userContext.controlNet) {
+        promptObj.input_control_image = userContext.input_control_image;
+    }
+
+    // Include message details for tracking and additional context
+    promptObj.username = message.from?.username;
 
     return promptObj;
 }
+
+
+// // Helper function to build the prompt object dynamically based on the workflow
+// function buildPromptObjFromWorkflow(workflow, userContext, message) {
+//     const promptObj = {};
+//     //console.log('user context given',userContext)
+//     // Always include type from userContext and add username from the message
+//     promptObj.type = userContext.type || workflow.name;
+//     promptObj.username = message.from.username || 'unknown_user';
+//     promptObj.balance = userContext.balance
+//     promptObj.userId = userContext.userId
+//     promptObj.photoStats = { height: 1024, width: 1024}
+//     promptObj.forcelogo = userContext.forcelogo || false
+//     promptObj.advancedUser = userContext.advancedUser
+//     promptObj.basePrompt = userContext.basePrompt
+//     // Set required inputs based on the workflow type
+//     if (workflow.name.startsWith('MAKE')) {
+//         // Handle MAKE workflows and their variations
+//         // FIX THESE LATER WHEN WE WANT TO TUCK IN
+//         promptObj.batchMax = userContext.batchMax || 1;
+//         promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
+//         promptObj.basePrompt = userContext.basePrompt
+//         promptObj.cfg = userContext.cfg || 7;
+//         promptObj.steps = userContext.steps || 50;
+//         promptObj.prompt = userContext.prompt || 'default prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+//         promptObj.seed = userContext.lastSeed;
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.strength = 1.0;
+
+//         // Add additional images for MAKE_CANNY, MAKE_STYLE, MAKE_POSE, etc.
+//         if (userContext.styleTransfer) {
+//             promptObj.styleFileUrl = userContext.styleFileUrl;
+//         }
+//         if (userContext.controlNet) {
+//             promptObj.controlFileUrl = userContext.controlFileUrl;
+//         }
+//         if (userContext.openPose) {
+//             promptObj.poseFileUrl = userContext.poseFileUrl;
+//         }
+//     } 
+//     else if (workflow.name === 'I2I') {
+//         // Handle I2I workflow
+//         promptObj.seed = userContext.lastSeed;
+//         promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.prompt = userContext.prompt || 'default I2I prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+
+//         // Optional images for I2I CANNY, STYLE, POSE, etc.
+//         if (workflow.name.includes('STYLE')) {
+//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('CANNY')) {
+//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
+//         }
+//         if (workflow.name.includes('POSE')) {
+//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
+//         }
+//     } 
+//     else if (workflow.name === 'INPAINT') {
+//         // Handle INPAINT workflow
+//         promptObj.seed = userContext.lastSeed;
+//         promptObj.fileUrl = userContext.fileUrl;
+//         promptObj.maskUrl = userContext.maskUrl;  // INPAINT requires a mask
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.prompt = userContext.prompt || 'default INPAINT prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+//         promptObj.strength = userContext.strength || 1.0;
+//     }
+//     else if (workflow.name.startsWith('MAKE3')) {
+//         // Handle MAKE3 workflow (simplest workflow)
+//         promptObj.seed = userContext.lastSeed;
+//         promptObj.prompt = userContext.prompt || 'default MAKE3 prompt';
+//         promptObj.negativePrompt = userContext.negativePrompt || '';
+//     }
+//     else if (workflow.name.startsWith('FLUX')) {
+//         // Handle FLUX workflows and derivatives (MOG, DEGOD, CHUD, MILADY, RADBRO)
+//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
+//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
+//         promptObj.prompt = userContext.prompt || 'default FLUX prompt';
+//         promptObj.seed = userContext.lastSeed;
+//         promptObj.checkpoint = 'flux-schnell'
+//     }
+
+//     // Add additional common properties such as prompt, seed, and batchMax
+//     promptObj.prompt = userContext.prompt;
+//     promptObj.seed = userContext.lastSeed;
+//     promptObj.userPrompt = userContext.userPrompt
+//     //promptObj.userBasePrompt = userContext.basePrompt
+//     promptObj.userId = message.from.id
+//     promptObj.timeRequested = Date.now()
+//     //promptObj.batchMax = userContext.batchMax;
+
+//     return promptObj;
+// }
 
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING TASK: ${taskType}`);
@@ -356,8 +393,8 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
         prompt: message.text,
-        seed: thisSeed,
-        batchMax: batch
+        input_seed: thisSeed,
+        input_batch: batch
     }, message);
 
     try {
@@ -484,7 +521,7 @@ module.exports = {
     //handleDexMake, 
     //handlePromptCatch,
     //startMog, 
-
+    buildPromptObjFromWorkflow,
     handleRegen, 
     
     handleMake, 

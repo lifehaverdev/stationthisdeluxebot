@@ -76,7 +76,7 @@ HOW TO MAKE SILLY PICTURES AND BEAUTIFUL GENERATIONS WITH OUR PRECIOUS STATIONTH
 /getseed - Check the seed used for the last image to farm good generation seeds
 
 4. Advanced Features
-/accountsettings - view point balance, $MS2 holdings, and toggle control/style/pose
+/account - view point balance, $MS2 holdings, access preferences and training menu
 /loralist - view the lora activation trigger words. Include a number after the trigger word to contorl the strength of the lora
 TROUBLESHOOTING
 
@@ -132,6 +132,7 @@ function convertTime(timeInSeconds) {
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
     const group = getGroup(message);
+    const user = message.from.id
     let msg = '';
     message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : '⭐️\n\n'
     group ? msg += `${group.name} : ${group.qoints}\n\n` : null
@@ -158,31 +159,6 @@ async function handleStatus(message) {
     //const opt = iMenu.home
     //opt.inline_keyboard= [[{ text: '🔄', callback_data: callbackData}]]
     sendMessage(message, msg, {reply_markup: reply_markup});
-}
-
-function handleRequest(message) {
-    const chatId = message.chat.id;
-    const userId = message.from.first_name;
-    const messageContent = message.text || message.caption || ''; // Get message text or caption
-
-    // Create directory if it doesn't exist
-    const directoryPath = path.join(__dirname, 'modelRequests');
-    if (!fs.existsSync(directoryPath)) {
-        fs.mkdirSync(directoryPath, { recursive: true });
-    }
-
-    // Generate filename based on chatId and current timestamp
-    const timestamp = Date.now();
-    const filename = `message_${chatId}_${timestamp}.txt`;
-    const filePath = path.join(directoryPath, filename);
-
-    // Write message content to file
-    fs.writeFileSync(filePath, userId + '\n' + messageContent, 'utf8');
-
-    console.log(`Message written to file: ${filePath}`);
-    sendMessage(message,'okay we will take a look and try to get it on the bot soon');
-    setUserState(message,STATES.IDLE);
-    return true;
 }
 
 async function loraList(message) {
@@ -628,8 +604,6 @@ async function startSpeak(message, user) {
     setUserState(message,STATES.SPEAK)
 }
 
-
-
 async function shakeSpeak(message) {
     const userId = message.from.id;
     // if(!lobby[userId].voiceModel){
@@ -658,7 +632,7 @@ async function seeGlorp(address) {
 
 module.exports = {
     saySeed,
-    handleRequest, sendLoRaModelFilenames, 
+    sendLoRaModelFilenames, 
     loraList, featuredLoRaList,
     fluxLoraList,
     shakeAssist, shakeFluxAssist,

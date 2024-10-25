@@ -428,7 +428,6 @@ async function handleAccountReset(message) {
     chatData.exp = exp;
     chatData.wallet = wallet;
     chatData.verified = verified;
-    chatData.promptDex = promptDex;
 
     // Update lobby if necessary
     if (lobby[userId]) {

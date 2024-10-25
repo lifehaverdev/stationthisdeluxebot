@@ -241,25 +241,22 @@ async function handleSet(message) {
                 const { width, height } = photo.bitmap;
 
                 if(currentState == STATES.SETPHOTO) {
-                    const photoStats = {
-                        width: width,
-                        height: height
-                    };
                     
-                    settings.fileUrl = fileUrl
-                    settings.photoStats = photoStats
+                    settings.input_image = fileUrl
+                    settings.input_width = width
+                    settings.input_height = height
                     await sendMessage(message, `k got it. The dimensions of the photo are ${width}x${height}`, iMenu.justSet);
                 } else if(currentState == STATES.SETCONTROL) {
                     
-                    settings.controlFileUrl = fileUrl
+                    settings.input_control_image = fileUrl
                     
                     await sendMessage(message, `very nice. if controlnet is enabled, this image will be applied.`, iMenu.justSet);
                 } else if(currentState == STATES.SETPOSE) {
-                    settings.poseFileUrl = fileUrl
+                    settings.input_pose_image = fileUrl
                     await sendMessage(message, `very nice. if pose is enabled, this image will be applied.`, iMenu.justSet)
                 
                 } else if(currentState == STATES.SETSTYLE) {
-                    settings.styleFileUrl = fileUrl
+                    settings.input_style_image = fileUrl
                     // console.log('settings in setstyle',settings);
                     // console.log('lobby in setstyle',lobby[userId])
                     await sendMessage(message, `looks dope. if style transfer is enabled, this image will be applied`, iMenu.justSet);
@@ -303,7 +300,8 @@ async function handleSet(message) {
             }
             sizeValues[0] > SIZELIMIT ? sizeValues[0] = SIZELIMIT : null;
             sizeValues[1] > SIZELIMIT ? sizeValues[1] = SIZELIMIT : null;
-            settings[lobbyParam] = { width: sizeValues[0], height: sizeValues[1] };
+            settings[lobbyParam].input_width = sizeValues[0]
+            settings[lobbyParam].input_height = sizeValues[1]
             sendMessage(message, `You set size to ${sizeValues[0]},${sizeValues[1]}`, iMenu.justSet);
             setUserState(message,STATES.IDLE);
             break;
