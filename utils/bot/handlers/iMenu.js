@@ -33,25 +33,25 @@ function setMenu(message) {
             [
                 {
                     text: 
-                        settings.controlNet && settings.controlFileUrl ? 
+                        settings.controlNet && settings.input_control_image ? 
                         'control ✅' : 
-                        settings.controlNet && !settings.controlFileUrl ? 
+                        settings.controlNet && !settings.input_control_image ? 
                         'control 🆘' : 'control ❌',
                     callback_data: 'setcontrol',
                 },
                 {
                     text:
-                        settings.styleTransfer && settings.styleFileUrl ?
+                        settings.styleTransfer && settings.input_style_image ?
                         'style ✅' : 
-                        settings.styleTransfer && !settings.styleFileUrl ?
+                        settings.styleTransfer && !settings.input_style_image ?
                         'style 🆘' : 'style ❌',
                     callback_data: 'setstyle',
                 },
                 {
                     text:
-                        settings.openPose && settings.poseFileUrl ? 
+                        settings.openPose && settings.input_pose_image ? 
                         'pose ✅' : 
-                        settings.openPose && !settings.poseFileUrl ?
+                        settings.openPose && !settings.input_pose_image ?
                         'pose 🆘' : 'pose ❌',
                     callback_data: 'setpose'
                 }
