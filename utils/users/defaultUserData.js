@@ -36,7 +36,7 @@ const defaultUserData = {
     type: '',
     voiceModel: "165UvtZp7kKnmrVrVQwx",
     waterMark: 'mslogo',
-    inpaintTarget,
+    inpaintTarget: '',
     controlNet: false,
     styleTransfer: false,
     openPose: false,
