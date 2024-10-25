@@ -275,8 +275,8 @@ function prepareRequest(promptObj) {
 
     // Add additional metadata or necessary fields for the request
     body.inputs.input_negative = promptObj.input_negative == '-1' 
-        ? process.env.BASE_NEG_PROMPT 
-        : `${promptObj.input_negative} ${process.env.BASE_NEG_PROMPT}`;
+        ? ''
+        : `${promptObj.input_negative}`;
 
     body.inputs.input_prompt = promptObj.finalPrompt
 
