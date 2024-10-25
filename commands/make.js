@@ -263,7 +263,7 @@ function prepareRequest(promptObj) {
     
     const body = {
         deployment_id: comfydeployid,
-        webhook: process.env.WEBHOOK_URL,
+        webhook: webHook,
         inputs: {}
     };
 
