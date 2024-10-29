@@ -218,12 +218,18 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     // Derived fields based on internal logic
     if (userContext.styleTransfer) {
         promptObj.input_style_image = userContext.input_style_image;
+    } else {
+        delete promptObj.input_style_image;
     }
     if (userContext.openPose) {
         promptObj.input_pose_image = userContext.input_pose_image;
+    } else {
+        delete promptObj.input_pose_image
     }
     if (userContext.controlNet) {
         promptObj.input_control_image = userContext.input_control_image;
+    } else {
+        delete promptObj.input_control_image
     }
 
     // Include message details for tracking and additional context

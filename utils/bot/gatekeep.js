@@ -1,5 +1,5 @@
 const { lobby, STATES } = require('./bot'); 
-const { getUserDataByUserId, addPointsToAllUsers, writeUserData } = require('../../db/mongodb')
+const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
 const { getBalance, checkBlacklist } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
@@ -143,9 +143,6 @@ class LobbyManager {
     }
 }
 
-
-
-
 const { getGroup } = require('./handlers/iGroup')
 
 const lobbyManager = new LobbyManager(lobby);
@@ -200,10 +197,12 @@ async function checkIn(message) {
     if (!lobby.hasOwnProperty(userId)) {
         let userData = await getUserDataByUserId(userId);
         //console.log('UserData in checkLobby (new user)', userData);
-
+        if(!userData) {
+            userData = await createDefaultUserData(userId)
+        }
         // First, add the user to the lobby
         lobbyManager.addUser(userId, userData);
-
+        //console.log(lobby)
         // Fetch and update the user's balance if they are verified
         if (userData.verified) {
             balance = await getBalance(userData.wallet);
@@ -263,7 +262,9 @@ async function checkLobby(message) {
     if (!lobby.hasOwnProperty(userId)) {
         let userData = await getUserDataByUserId(userId);
         //console.log('UserData in checkLobby (new user)', userData);
-
+        if(!userData) {
+            userData = await createDefaultUserData(userId)
+        }
         // First, add the user to the lobby
         lobbyManager.addUser(userId, userData);
 
