@@ -13,300 +13,506 @@ const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
 const dbName = process.env.BOT_NAME;
 
-//const client = await getCachedClient();
-
 let cachedClient = null;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
+class DatabaseQueue {
+    constructor() {
+        this.queue = [];
+        this.processing = false;
+    }
 
-// Function to get the cached client or create a new one
-async function getCachedClient() {
-    if (!cachedClient) {
-        cachedClient = new MongoClient(uri);
-        try {
-            await cachedClient.connect();
-            console.log('MongoClient connected successfully');
-        } catch (error) {
-            console.error('Error connecting MongoClient:', error);
-            cachedClient = null; // Reset cachedClient if connection fails
-            throw error; // Re-throw to ensure the caller knows it failed
+    // Add a job to the queue and return a promise that resolves with the result
+    enqueue(job) {
+        return new Promise((resolve, reject) => {
+            this.queue.push(async () => {
+                try {
+                    const result = await job(); // Execute the job
+                    resolve(result); // Resolve the promise with the job's result
+                } catch (error) {
+                    reject(error); // Reject if the job fails
+                }
+            });
+
+            this.processNext();
+        });
+    }
+
+    // Process the next job in the queue
+    async processNext() {
+        if (this.processing) {
+            return; // A job is already being processed
         }
-    } else if (!cachedClient.topology || !cachedClient.topology.isConnected()) {
-        // Ensure the cached client is connected before returning it
+
+        if (this.queue.length === 0) {
+            return; // No jobs left in the queue
+        }
+
+        // Mark the queue as processing
+        this.processing = true;
+
+        // Get the next job
+        const job = this.queue.shift();
         try {
-            await cachedClient.connect();
-            console.log('Reconnected MongoClient');
+            await job(); // Execute the job
         } catch (error) {
-            console.error('Error reconnecting MongoClient:', error);
-            cachedClient = null;
+            console.error('Error processing job:', error);
+        } finally {
+            // Mark the processing as done and process the next job
+            this.processing = false;
+            this.processNext();
+        }
+    }
+}
+
+
+const dbQueue = new DatabaseQueue();
+
+let connectionInProgress = null;
+
+async function getCachedClient() {
+    console.log('[getCachedClient] Called');
+
+    // If there's an existing connection attempt in progress, wait for it
+    if (connectionInProgress) {
+        console.log('[getCachedClient] Connection in progress. Awaiting current connection...');
+        await connectionInProgress;
+        console.log('[getCachedClient] Existing connection completed. Returning cached client.');
+        return cachedClient;
+    }
+
+    if (!cachedClient) {
+        console.log('[getCachedClient] No cached client found. Initiating new connection...');
+
+        // Begin a new connection attempt
+        connectionInProgress = (async () => {
+            cachedClient = new MongoClient(uri);
+            console.log('[getCachedClient] New MongoClient instance created.');
+
+            try {
+                await cachedClient.connect();
+                console.log('[getCachedClient] MongoClient connected successfully.');
+            } catch (error) {
+                console.error('[getCachedClient] Error connecting MongoClient:', error);
+                cachedClient = null; // Reset cachedClient if connection fails
+                throw error; // Re-throw to ensure the caller knows it failed
+            } finally {
+                console.log('[getCachedClient] Connection attempt finished. Clearing connectionInProgress flag.');
+                connectionInProgress = null; // Reset in-progress flag
+            }
+        })();
+
+        try {
+            await connectionInProgress;  // Wait for connection to complete
+            console.log('[getCachedClient] New connection completed successfully.');
+        } catch (error) {
+            console.error('[getCachedClient] Failed to complete new connection:', error);
+            throw error;
+        }
+
+    } else if (!cachedClient.topology || !cachedClient.topology.isConnected()) {
+        console.log('[getCachedClient] Cached client found, but not connected. Attempting reconnection...');
+
+        connectionInProgress = (async () => {
+            try {
+                await cachedClient.connect();
+                console.log('[getCachedClient] Reconnected MongoClient successfully.');
+            } catch (error) {
+                console.error('[getCachedClient] Error reconnecting MongoClient:', error);
+                cachedClient = null; // Reset cachedClient if reconnection fails
+                throw error;
+            } finally {
+                console.log('[getCachedClient] Reconnection attempt finished. Clearing connectionInProgress flag.');
+                connectionInProgress = null; // Reset in-progress flag
+            }
+        })();
+
+        try {
+            await connectionInProgress;  // Wait for reconnection to complete
+            console.log('[getCachedClient] Reconnection completed successfully.');
+        } catch (error) {
+            console.error('[getCachedClient] Failed to complete reconnection:', error);
             throw error;
         }
     }
+
+    console.log('[getCachedClient] Returning cached client.');
     resetInactivityTimer();
     return cachedClient;
 }
 
+
+
 async function readUserData(walletAddress) {
     // Create a new MongoClient
-    const client = await getCachedClient();
-    const collection = client.db(dbName).collection('users');
-    try {
-        // Find the document with the given wallet address
-        let userData = await collection.findOne({ wallet: walletAddress });
+    const job = async () => {
+        const client = await getCachedClient();
+        const collection = client.db(dbName).collection('users');
+        try {
+            // Find the document with the given wallet address
+            let userData = await collection.findOne({ wallet: walletAddress });
 
-        // If document doesn't exist, insert default user data
-        if (!userData) {
-            const defaultUserData = { /* Your default user data */ };
-            await collection.insertOne({
-                wallet: walletAddress,
-                ...defaultUserData
-            });
-            userData = defaultUserData;
-            console.log('Default user data inserted');
-        }
-
-        console.log('User data retrieved successfully');
-        return userData;
-    } catch (error) {
-        console.error("Error getting user data:", error);
-        //throw error;
-        return false
-    }
-}
-async function getUserDataByUserId(userId) {
-    const client = await getCachedClient();
-    let userData;
-
-    try {
-        const db = client.db(dbName);
-        const userSettingsCollection = db.collection('users');
-
-        // First query for user settings by userId
-        userData = await userSettingsCollection.findOne({ userId: userId }, { projection: { _id: 0 } });
-        if (userData != null) {
-            console.log('User settings found:', userData.userId);
-            return userData;
-        } else {
-            // Add a secondary check before inserting defaults
-            console.log('Initial lookup for user settings returned null, performing a double-check.');
-            userData = await userSettingsCollection.findOne({ userId: userId }, { projection: { _id: 0 } });
-            if (userData != null) {
-                console.log('User settings found on second check:', userData.userId);
-                return userData;
+            // If document doesn't exist, insert default user data
+            if (!userData) {
+                const defaultUserData = { /* Your default user data */ };
+                await collection.insertOne({
+                    wallet: walletAddress,
+                    ...defaultUserData
+                });
+                userData = defaultUserData;
+                console.log('Default user data inserted');
             }
 
-            // If the user still isn't found, create default settings
-            console.log('User settings not found, creating new user settings.');
+            console.log('User data retrieved successfully');
+            return userData;
+        } catch (error) {
+            console.error("Error getting user data:", error);
+            //throw error;
+            return false
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
+    }
+}
+// Function to get user data by userId
+async function getUserDataByUserId(userId) {
+    console.log('[getUserDataByUserId] Called for userId:', userId);
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(async () => {
+            const client = await getCachedClient();
+            console.log('[getUserDataByUserId] hitting get user data');
+            try {
+                const db = client.db(dbName);
+                const userSettingsCollection = db.collection('users');
+                //console.log('[getUserDataByUserId] db:', db);
+                //console.log('[getUserDataByUserId] usersettingcollection:', userSettingsCollection);
+
+                // Query for user settings by userId
+                const userData = await userSettingsCollection.findOne({ userId: userId }, { projection: { _id: 0 } });
+                //console.log('[getUserDataByUserId] user data:', userData);
+                if (userData) {
+                    console.log('[getUserDataByUserId] User settings found:', userData.userId);
+                    return userData;
+                } else {
+                    console.log('[getUserDataByUserId] User settings not found for userId:', userId);
+                    return null; // Return null if user data isn't found
+                }
+            } catch (error) {
+                console.error('[getUserDataByUserId] Error getting user settings:', error);
+                throw error; // Throw error so the caller knows the request failed
+            }
+        });
+
+        return userData;
+    } catch (error) {
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
+    }
+}
+
+// Function to create new user data with default settings
+async function createDefaultUserData(userId) {
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const db = client.db(dbName);
+            const userSettingsCollection = db.collection('users');
+
+            // Create default user settings
             const userSettings = { ...defaultUserData, userId: userId };
             await userSettingsCollection.insertOne(userSettings);
             console.log('New user settings created:', userSettings.userId);
             return userSettings;
+        } catch (error) {
+            console.error('Error creating user settings:', error);
+            throw error; // Throw error so the caller knows the request failed
         }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('Error getting user settings:', error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 
+
 async function loadLora(hashId) {
-    const collectionName = 'trains';
-    try {
-        const client = await getCachedClient();
-        const collection = client.db(dbName).collection(collectionName);
-        // Find the document with the provided hashId, excluding the _id field
-        const loraData = await collection.findOne({ loraId: hashId }, { projection: { _id: 0 } });
-        if (loraData) {
-            console.log('LoRA data loaded successfully');
-            return loraData;
-        } else {
-            console.log('LoRA data not found');
+    const job = async () => {
+        const collectionName = 'trains';
+        try {
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            // Find the document with the provided hashId, excluding the _id field
+            const loraData = await collection.findOne({ loraId: hashId }, { projection: { _id: 0 } });
+            if (loraData) {
+                console.log('LoRA data loaded successfully');
+                return loraData;
+            } else {
+                console.log('LoRA data not found');
+                return null;
+            }
+        } catch (error) {
+            console.error("Error loading LoRA data:", error);
             return null;
         }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error loading LoRA data:", error);
-        return null;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 // Function to pull a file from GridFS and save it to the /tmp folder
 async function bucketPull(loraId, slotId) {
-    const client = await getCachedClient();
-    try {
-        const db = client.db(dbName);
-        const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const db = client.db(dbName);
+            const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
 
-        // Define the local file path in the /tmp directory
-        const tempFilePath = path.join('/tmp', `slot_image_${loraId}_${slotId}.jpg`);
-        const fileId = workspace[loraId].images[slotId];
+            // Define the local file path in the /tmp directory
+            const tempFilePath = path.join('/tmp', `slot_image_${loraId}_${slotId}.jpg`);
+            const fileId = workspace[loraId].images[slotId];
 
-        if (!fileId) {
-            console.error('No file found in this slot');
+            if (!fileId) {
+                console.error('No file found in this slot');
+                return false;
+            }
+
+            const downloadStream = bucket.openDownloadStream(fileId);
+            const writeStream = fs.createWriteStream(tempFilePath);
+
+            // Pipe the download stream to the write stream
+            downloadStream.pipe(writeStream);
+
+            // Wait for the file to be fully written
+            await new Promise((resolve, reject) => {
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+            });
+
+            console.log(`Image for lora ${loraId}, slot ${slotId} saved to /tmp.`);
+            return tempFilePath;
+        } catch (error) {
+            console.error('Error pulling image from GridFS:', error);
             return false;
         }
+    };
 
-        const downloadStream = bucket.openDownloadStream(fileId);
-        const writeStream = fs.createWriteStream(tempFilePath);
-
-        // Pipe the download stream to the write stream
-        downloadStream.pipe(writeStream);
-
-        // Wait for the file to be fully written
-        await new Promise((resolve, reject) => {
-            writeStream.on('finish', resolve);
-            writeStream.on('error', reject);
-        });
-
-        console.log(`Image for lora ${loraId}, slot ${slotId} saved to /tmp.`);
-        return tempFilePath;
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('Error pulling image from GridFS:', error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 // Function to reset the inactivity timer
 function resetInactivityTimer() {
-    if (inactivityTimer) {
-        clearTimeout(inactivityTimer);
-    }
-    inactivityTimer = setTimeout(async () => {
-        if (cachedClient) {
-            await cachedClient.close();
-            console.log('Cached MongoClient closed due to inactivity');
-            cachedClient = null;
+        if (inactivityTimer) {
+            clearTimeout(inactivityTimer);
         }
-    }, INACTIVITY_TIMEOUT);
+        inactivityTimer = setTimeout(async () => {
+            if (cachedClient) {
+                await cachedClient.close();
+                console.log('Cached MongoClient closed due to inactivity');
+                cachedClient = null;
+            }
+        }, INACTIVITY_TIMEOUT);
 }
 
 // Save image to MongoDB using GridFS
 async function saveImageToGridFS(fileUrl, loraId, slotId) {
-    console.log('calling save image to grid')
-    const client = await getCachedClient();
+    const job = async () => {
+        console.log('calling save image to grid')
+        const client = await getCachedClient();
+        try {
+            const db = client.db(dbName);
+            const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+
+            // Get the image file from the URL
+            const response = await axios({
+                method: 'GET',
+                url: fileUrl,
+                responseType: 'stream',
+            });
+
+            // Create a stream to upload the file to GridFS
+            const uploadStream = bucket.openUploadStream(`lora_${loraId}_slot_${slotId}.jpg`);
+
+            // Pipe the image stream into the GridFS upload stream
+            response.data.pipe(uploadStream);
+
+            // Return a promise that resolves when the upload completes
+            return new Promise((resolve, reject) => {
+                uploadStream.on('finish', () => {
+                    console.log(`Image for lora ${loraId}, slot ${slotId} saved to GridFS.`);
+                    resolve(uploadStream.id);
+                });
+
+                uploadStream.on('error', (error) => {
+                    console.error('Error saving image to GridFS:', error);
+                    reject(error);
+                });
+            });
+        } catch (error) {
+            console.error("Error saving image to GridFS:", error);
+            throw error;
+        }
+    };
+
+    // Enqueue the job and await its result
     try {
-        const db = client.db(dbName);
-        const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
-
-        // Get the image file from the URL
-        const response = await axios({
-            method: 'GET',
-            url: fileUrl,
-            responseType: 'stream',
-        });
-
-        // Create a stream to upload the file to GridFS
-        const uploadStream = bucket.openUploadStream(`lora_${loraId}_slot_${slotId}.jpg`);
-
-        // Pipe the image stream into the GridFS upload stream
-        response.data.pipe(uploadStream);
-
-        // Return a promise that resolves when the upload completes
-        return new Promise((resolve, reject) => {
-            uploadStream.on('finish', () => {
-                console.log(`Image for lora ${loraId}, slot ${slotId} saved to GridFS.`);
-                resolve(uploadStream.id);
-            });
-
-            uploadStream.on('error', (error) => {
-                console.error('Error saving image to GridFS:', error);
-                reject(error);
-            });
-        });
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error saving image to GridFS:", error);
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
         throw error;
     }
 }
 
 
 async function writeUserData(userId, data) {
-    const client = await getCachedClient();
-    try {
-        const collection = client.db(dbName).collection('users');
-        const filter = { userId: userId };
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const collection = client.db(dbName).collection('users');
+            const filter = { userId: userId };
 
-        // Separate protected fields from general user data
-        const { points, qoints, balance, exp, _id, ...dataToSave } = data;
+            // Separate protected fields from general user data
+            const { points, qoints, balance, exp, _id, ...dataToSave } = data;
 
-        // Log the data being written, omitting sensitive fields
-        //console.log('General user data to be saved:', dataToSave);
+            // Log the data being written, omitting sensitive fields
+            //console.log('General user data to be saved:', dataToSave);
 
-        // Perform an update to save non-protected user data
-        const result = await collection.updateOne(
-            filter,
-            { $set: { ...dataToSave } },
-            { upsert: false } // Ensure we do not create new records here
-        );
+            // Perform an update to save non-protected user data
+            const result = await collection.updateOne(
+                filter,
+                { $set: { ...dataToSave } },
+                { upsert: false } // Ensure we do not create new records here
+            );
 
-        if (result.modifiedCount === 0) {
-            console.log(`No changes made to user ${userId} data.`);
-        } else {
-            console.log(`User data updated successfully for user ${userId}.`);
+            if (result.modifiedCount === 0) {
+                console.log(`No changes made to user ${userId} data.`);
+            } else {
+                console.log(`User data updated successfully for user ${userId}.`);
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Error writing user data:", error);
+            return false;
         }
+    };
 
-        return true;
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error writing user data:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 async function getGroupDataByChatId(chatId) {
-    //deleteUserSettingsByUserId(dbName,userId);
-    // Connection URI
+    const job = async () => {
+        //deleteUserSettingsByUserId(dbName,userId);
+        // Connection URI
 
-    // Create a new MongoClient
-    let groupData
-    const client = await getCachedClient();
-    //console.log('this is what we think default is',defaultUserData)
+        // Create a new MongoClient
+        let groupData
+        const client = await getCachedClient();
+        //console.log('this is what we think default is',defaultUserData)
+        try {
+            // Connect to the MongoDB server
+            //await client.connect();
+
+            // Access the database and the "users" collection
+            const db = client.db(dbName);
+            const groupSettingsCollection = db.collection('rooms');
+
+            // Query for the user settings by userId
+            groupData = await groupSettingsCollection.findOne({ id: chatId });
+            //console.log('groupData in get groupDatabyuserid',userData);
+            if (groupData != null){
+                console.log('Group settings found:', groupData.userId);
+                return groupData;
+            } else {
+                console.log('empty group settings');
+                groupSettings = { ...defaultGroupData, id: chatId };
+                console.log('groupSettings we are writing',groupSettings.userId);
+                await groupSettingsCollection.insertOne(groupSettings);
+                console.log('New group settings created:', groupSettings.userId);
+                return groupSettings
+            }
+        } catch (error) {
+            console.error('Error getting user settings:', error);
+            //throw error;
+            return false;
+        } 
+    };
+
+    // Enqueue the job and await its result
     try {
-        // Connect to the MongoDB server
-        //await client.connect();
-
-        // Access the database and the "users" collection
-        const db = client.db(dbName);
-        const groupSettingsCollection = db.collection('rooms');
-
-        // Query for the user settings by userId
-        groupData = await groupSettingsCollection.findOne({ id: chatId });
-        //console.log('groupData in get groupDatabyuserid',userData);
-        if (groupData != null){
-            console.log('Group settings found:', groupData.userId);
-            return groupData;
-        } else {
-            console.log('empty group settings');
-            groupSettings = { ...defaultGroupData, id: chatId };
-            console.log('groupSettings we are writing',groupSettings.userId);
-            await groupSettingsCollection.insertOne(groupSettings);
-            console.log('New group settings created:', groupSettings.userId);
-            return groupSettings
-        }
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('Error getting user settings:', error);
-        //throw error;
-        return false;
-    } 
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
+    }
 }
 
 async function writeData(collectionName, filter, data) {
+    const job = async () => {
+        // Create a new MongoClient
+        const client = await getCachedClient();
+        
+        try {
+            const collection = client.db(dbName).collection(collectionName);
+            // Upsert the document with wallet address as the filter
+            //const filter = { userId: userId };
+            const { ...dataToSave } = data;
+            await collection.updateOne( filter,
+                { $set: { ...dataToSave } },
+            );
+            console.log('User data written successfully');
+            return true
+        } catch (error) {
+            console.error("Error writing user data:", error);
+            return false
+        }
+    };
 
-    // Create a new MongoClient
-    const client = await getCachedClient();
-    
+    // Enqueue the job and await its result
     try {
-        const collection = client.db(dbName).collection(collectionName);
-        // Upsert the document with wallet address as the filter
-        //const filter = { userId: userId };
-        const { ...dataToSave } = data;
-        await collection.updateOne( filter,
-            { $set: { ...dataToSave } },
-        );
-        console.log('User data written successfully');
-        return true
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error writing user data:", error);
-        return false
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
@@ -314,133 +520,189 @@ async function writeData(collectionName, filter, data) {
 
 
 async function createTraining(loraData) {
-    const collectionName = 'trains';
+    const job = async () => {
+        const collectionName = 'trains';
+        try {
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            // Insert the new LoRA document
+            await collection.insertOne(loraData);
+            console.log('LoRA data added successfully');
+            return true;
+        } catch (error) {
+            console.error("Error adding new LoRA data:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
     try {
-        const client = await getCachedClient();
-        const collection = client.db(dbName).collection(collectionName);
-        // Insert the new LoRA document
-        await collection.insertOne(loraData);
-        console.log('LoRA data added successfully');
-        return true;
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error adding new LoRA data:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 async function saveWorkspace(loraObject) {
-    const collectionName = 'trains';
+    const job = async () => {
+        const collectionName = 'trains';
+        try {
+        const client = await getCachedClient();
+        const collection = client.db(dbName).collection(collectionName);
+    
+        // Extract the loraId from the loraObject
+        const { loraId, ...dataToSave } = loraObject;
+    
+        // Update the corresponding document in the database
+        await collection.updateOne(
+            { loraId: loraId }, // Filter to find the specific document by loraId
+            { $set: { ...dataToSave } } // Update all key-value pairs in loraObject
+        );
+    
+        console.log('LoRA data saved successfully');
+        return true;
+        } catch (error) {
+        console.error("Error saving LoRA data:", error);
+        return false;
+        }
+    };
+
+    // Enqueue the job and await its result
     try {
-      const client = await getCachedClient();
-      const collection = client.db(dbName).collection(collectionName);
-  
-      // Extract the loraId from the loraObject
-      const { loraId, ...dataToSave } = loraObject;
-  
-      // Update the corresponding document in the database
-      await collection.updateOne(
-        { loraId: loraId }, // Filter to find the specific document by loraId
-        { $set: { ...dataToSave } } // Update all key-value pairs in loraObject
-      );
-  
-      console.log('LoRA data saved successfully');
-      return true;
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-      console.error("Error saving LoRA data:", error);
-      return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
   }
 
 async function deleteWorkspace(loraId) {
-    const collectionName = 'trains';
-    try {
-        const client = await getCachedClient();
-        const db = client.db(dbName);
-        const collection = db.collection(collectionName);
-        const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+    const job = async () => {
+        const collectionName = 'trains';
+        try {
+            const client = await getCachedClient();
+            const db = client.db(dbName);
+            const collection = db.collection(collectionName);
+            const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
 
-        // Find the LoRA document by loraId to get the image IDs
-        const loraData = await collection.findOne({ loraId: loraId });
-        if (!loraData) {
-            console.log('LoRA data not found, nothing to delete.');
-            return false;
-        }
+            // Find the LoRA document by loraId to get the image IDs
+            const loraData = await collection.findOne({ loraId: loraId });
+            if (!loraData) {
+                console.log('LoRA data not found, nothing to delete.');
+                return false;
+            }
 
-        // Delete each image from GridFS if it exists
-        if (loraData.images && Array.isArray(loraData.images)) {
-            for (const fileId of loraData.images) {
-                if (fileId) {
-                    try {
-                        await bucket.delete(new ObjectId(fileId));
-                        console.log(`Image with ID ${fileId} deleted successfully from GridFS.`);
-                    } catch (error) {
-                        console.error(`Error deleting image with ID ${fileId}:`, error);
+            // Delete each image from GridFS if it exists
+            if (loraData.images && Array.isArray(loraData.images)) {
+                for (const fileId of loraData.images) {
+                    if (fileId) {
+                        try {
+                            await bucket.delete(new ObjectId(fileId));
+                            console.log(`Image with ID ${fileId} deleted successfully from GridFS.`);
+                        } catch (error) {
+                            console.error(`Error deleting image with ID ${fileId}:`, error);
+                        }
                     }
                 }
             }
+
+            // Delete the corresponding document in the database
+            await collection.deleteOne({ loraId: loraId });
+
+            console.log('LoRA data deleted successfully');
+            return true;
+        } catch (error) {
+            console.error("Error deleting LoRA data:", error);
+            return false;
         }
+    };
 
-        // Delete the corresponding document in the database
-        await collection.deleteOne({ loraId: loraId });
-
-        console.log('LoRA data deleted successfully');
-        return true;
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error deleting LoRA data:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 async function deleteImageFromWorkspace(loraId, slotId) {
-    const collectionName = 'trains';
-    try {
-        const client = await getCachedClient();
-        const db = client.db(dbName);
-        const collection = db.collection(collectionName);
-        const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+    const job = async () => {
+        const collectionName = 'trains';
+        try {
+            const client = await getCachedClient();
+            const db = client.db(dbName);
+            const collection = db.collection(collectionName);
+            const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
 
-        // Find the LoRA document by loraId
-        const loraData = await collection.findOne({ loraId: loraId });
-        if (!loraData || !loraData.images || !loraData.images[slotId]) {
-            console.log('Image not found in the specified slot.');
+            // Find the LoRA document by loraId
+            const loraData = await collection.findOne({ loraId: loraId });
+            if (!loraData || !loraData.images || !loraData.images[slotId]) {
+                console.log('Image not found in the specified slot.');
+                return false;
+            }
+
+            const fileId = loraData.images[slotId];
+
+            // Delete the image from GridFS
+            await bucket.delete(new ObjectId(fileId));
+            console.log(`Image with ID ${fileId} deleted successfully from GridFS.`);
+
+            // Update the LoRA document to remove the image reference
+            loraData.images[slotId] = ''; // Or set to null, depending on your preference
+            await collection.updateOne({ loraId: loraId }, { $set: { images: loraData.images } });
+
+            console.log(`Image reference removed from slot ${slotId} in LoRA document.`);
+            return true;
+        } catch (error) {
+            console.error("Error deleting image from LoRA data:", error);
             return false;
         }
+    };
 
-        const fileId = loraData.images[slotId];
-
-        // Delete the image from GridFS
-        await bucket.delete(new ObjectId(fileId));
-        console.log(`Image with ID ${fileId} deleted successfully from GridFS.`);
-
-        // Update the LoRA document to remove the image reference
-        loraData.images[slotId] = ''; // Or set to null, depending on your preference
-        await collection.updateOne({ loraId: loraId }, { $set: { images: loraData.images } });
-
-        console.log(`Image reference removed from slot ${slotId} in LoRA document.`);
-        return true;
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error deleting image from LoRA data:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 
 async function addGenDocument(collectionName, data) {
+    const job = async () => {
+        try {
+            // Create a new MongoClient
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            // Insert the new document
+            const result = await collection.insertOne(data);
+            //console.log('New document inserted successfully:', result.insertedId);
+            return true;
+        } catch (error) {
+            console.error("Error inserting document:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
     try {
-        // Create a new MongoClient
-        const client = await getCachedClient();
-        const collection = client.db(dbName).collection(collectionName);
-        // Insert the new document
-        const result = await collection.insertOne(data);
-        //console.log('New document inserted successfully:', result.insertedId);
-        return true;
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error inserting document:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 function saveGen({task, run, out}) {
+
     // Combine the data into one object
     const dataToSave = {...task, ...run, ...out};
     
@@ -449,30 +711,42 @@ function saveGen({task, run, out}) {
 }
 
 async function updateGroupPoints(group, pointsToAdd) {
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
+        try {
+            const collection = client.db(dbName).collection('floorplan');
+            const filter = { owner: group.owner };
+
+            // Retrieve the current points
+            const existingGroup = await collection.findOne(filter);
+
+            // Calculate the new points
+            const updatedPoints = Math.max(((existingGroup?.qoints || 0) - pointsToAdd),0);
+
+            // Use the existing writeData function to save the updated points
+            await writeData('floorplan', filter, { qoints: updatedPoints });
+
+            console.log('Group points updated successfully');
+            return true;
+        } catch (error) {
+            console.error("Error updating group points:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
     try {
-        const collection = client.db(dbName).collection('floorplan');
-        const filter = { owner: group.owner };
-
-        // Retrieve the current points
-        const existingGroup = await collection.findOne(filter);
-
-        // Calculate the new points
-        const updatedPoints = Math.max(((existingGroup?.qoints || 0) - pointsToAdd),0);
-
-        // Use the existing writeData function to save the updated points
-        await writeData('floorplan', filter, { qoints: updatedPoints });
-
-        console.log('Group points updated successfully');
-        return true;
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error updating group points:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 async function readStats() {
+    
     const client = await getCachedClient();
 
     // Sets and variables to track stats
@@ -568,36 +842,47 @@ async function readStats() {
 
 
 async function incrementLoraUseCounter(names) {
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
-    try {
-        const collection = client.db(dbName).collection('loralist');
-                // Find the single document in the collection
-                const loraListDoc = await collection.findOne({});
-        
-                if (!loraListDoc) {
-                    console.error('No loraList document found');
-                    return false;
-                }
-        
-                // Iterate over the 'names' array and find the corresponding object to update
-                const updatedLoraTriggers = loraListDoc.loraTriggers.map(lora => {
-                    if (names.includes(lora.lora_name)) {
-                        // Increment or set the 'uses' key
-                        lora.uses = (lora.uses || 0) + 1;
+        try {
+            const collection = client.db(dbName).collection('loralist');
+                    // Find the single document in the collection
+                    const loraListDoc = await collection.findOne({});
+            
+                    if (!loraListDoc) {
+                        console.error('No loraList document found');
+                        return false;
                     }
-                    return lora;
-                });
-        
-                // Update the document in the collection with the modified array
-                await collection.updateOne({}, { $set: { loraTriggers: updatedLoraTriggers } });
-        
-        console.log('Lora Use Counter updated successfully',names);
-        return true;
+            
+                    // Iterate over the 'names' array and find the corresponding object to update
+                    const updatedLoraTriggers = loraListDoc.loraTriggers.map(lora => {
+                        if (names.includes(lora.lora_name)) {
+                            // Increment or set the 'uses' key
+                            lora.uses = (lora.uses || 0) + 1;
+                        }
+                        return lora;
+                    });
+            
+                    // Update the document in the collection with the modified array
+                    await collection.updateOne({}, { $set: { loraTriggers: updatedLoraTriggers } });
+            
+            console.log('Lora Use Counter updated successfully',names);
+            return true;
+        } catch (error) {
+            console.error("Error updating group points:", error);
+            return false;
+        } 
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error updating group points:", error);
-        return false;
-    } 
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
+    }
 }
 
 //write room settings
@@ -610,239 +895,294 @@ async function incrementLoraUseCounter(names) {
 //
 
 async function createRoom(chatId, userId, value) {
-    console.log(value)
-    // Create a new MongoClient
-    const client = await getCachedClient();
-    
-    try {
-        const collection = client.db(dbName).collection('floorplan');
+    const job = async () => {
+        console.log(value)
+        // Create a new MongoClient
+        const client = await getCachedClient();
         
-        // Fetch the creator's settings from the lobby
-        const settings = lobby[userId];
-        if (!settings) {
-            throw new Error("User settings not found");
-        }
-        const room = {
-            owner: userId,
-            name: lobby[userId].group, // This can be parameterized
-            admins: [],
-            wallet: lobby[userId].wallet,
-            applied: parseInt(value), // This can be parameterized
-            points: 0,
-            credits: parseInt(value) * 2 / 540,
-            id: chatId,
-            settings: {
-                ...settings
-            }
-        };
         try {
-            await collection.updateOne( 
-                { id: chatId},
-                { $set: { ...room } },
-                { upsert: true }
-            );
-        } catch(err) {
-            console.log('error writing room')
-        }
-        
+            const collection = client.db(dbName).collection('floorplan');
+            
+            // Fetch the creator's settings from the lobby
+            const settings = lobby[userId];
+            if (!settings) {
+                throw new Error("User settings not found");
+            }
+            const room = {
+                owner: userId,
+                name: lobby[userId].group, // This can be parameterized
+                admins: [],
+                wallet: lobby[userId].wallet,
+                applied: parseInt(value), // This can be parameterized
+                points: 0,
+                credits: parseInt(value) * 2 / 540,
+                id: chatId,
+                settings: {
+                    ...settings
+                }
+            };
+            try {
+                await collection.updateOne( 
+                    { id: chatId},
+                    { $set: { ...room } },
+                    { upsert: true }
+                );
+            } catch(err) {
+                console.log('error writing room')
+            }
+            
 
-        console.log('Room written successfully');
-        return true;
+            console.log('Room written successfully');
+            return true;
+        } catch (error) {
+            console.error("Error writing room data:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error writing room data:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 async function writeBurnData(userId, amount) {
-    //this is for subtracting from burns when applying balance to group chats
-    //const { wallet, amount, service, projectName, twitterHandle, telegramHandle, hash } = {...lobby[userId]}
-    const wallet = lobby[userId].wallet;
-    const service = 'Group apply';
-    const projectName = lobby[userId].group;
-    const telegramHandle = userId;
-    const hash = 'botTx(;'
-    if (!wallet || !amount || !service || !hash) {
-      //res.status(400).json({ message: 'Missing required fields' });
-      return;
-    }
-    //console.log(value)
-    // Create a new MongoClient
-    const client = await getCachedClient();
-    amount = -amount * 1000000;
-    try {
-        const collection = client.db(dbName).collection('burns');
+    const job = async () => {
+        //this is for subtracting from burns when applying balance to group chats
+        //const { wallet, amount, service, projectName, twitterHandle, telegramHandle, hash } = {...lobby[userId]}
+        const wallet = lobby[userId].wallet;
+        const service = 'Group apply';
+        const projectName = lobby[userId].group;
+        const telegramHandle = userId;
+        const hash = 'botTx(;'
+        if (!wallet || !amount || !service || !hash) {
+        //res.status(400).json({ message: 'Missing required fields' });
+        return;
+        }
+        //console.log(value)
+        // Create a new MongoClient
+        const client = await getCachedClient();
+        amount = -amount * 1000000;
+        try {
+            const collection = client.db(dbName).collection('burns');
 
-      // Find the wallet document
-      let walletDoc = await collection.findOne({ wallet });
+        // Find the wallet document
+        let walletDoc = await collection.findOne({ wallet });
 
-      if (walletDoc) {
-        // If the document exists, push the new burn data to the wallet array
-        await collection.updateOne(
-          { wallet },
-          {
-            $push: {
-              burns: {
+        if (walletDoc) {
+            // If the document exists, push the new burn data to the wallet array
+            await collection.updateOne(
+            { wallet },
+            {
+                $push: {
+                burns: {
+                    amount,
+                    service,
+                    projectName,
+                    //twitterHandle,
+                    telegramHandle,
+                    hash,
+                },
+                },
+            }
+            );
+        } else {
+            // If the document does not exist, create a new document
+            await collection.insertOne({
+            wallet,
+            burns: [
+                {
                 amount,
                 service,
                 projectName,
                 //twitterHandle,
                 telegramHandle,
                 hash,
-              },
-            },
-          }
-        );
-      } else {
-        // If the document does not exist, create a new document
-        await collection.insertOne({
-          wallet,
-          burns: [
-            {
-              amount,
-              service,
-              projectName,
-              //twitterHandle,
-              telegramHandle,
-              hash,
-            },
-          ],
-        });
-      }
+                },
+            ],
+            });
+        }
 
-     
-      console.log('anti burn successful')
+        
+        console.log('anti burn successful')
+        } catch (error) {
+        console.error('Error saving burn data:', error);
+        
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-      console.error('Error saving burn data:', error);
-      
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 
 
 async function addPointsToAllUsers() {
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
-    try {
-        const collection = client.db(dbName).collection('users');
-        //console.log('Here is the lobby right now:', lobby);
+        try {
+            const collection = client.db(dbName).collection('users');
+            //console.log('Here is the lobby right now:', lobby);
 
-        const processedUserIds = new Set();  // To track processed user IDs
+            const processedUserIds = new Set();  // To track processed user IDs
 
-        for (const userId in lobby) {
-            //console.log('userId and type',userId, typeof userId)
-            if (userId && lobby.hasOwnProperty(userId)) {
-                //console.log('we can see the userid here');
-                if (processedUserIds.has(userId)) {
-                    console.log(`Duplicate entry found for userId: ${userId}`);
-                    continue;
-                }
-                processedUserIds.add(userId);
-
-                console.log('Adding points for:', userId);
-                const user = lobby[userId];
-                const pointsToAdd = user.points + user.boints;
-                
-                if (pointsToAdd > 0) {
-                    try {
-                        const result = await collection.updateOne(
-                            { userId: parseInt(userId) },  // Ensure userId is treated as a string
-                            { $inc: { exp: pointsToAdd } }
-                        );
-                        
-                        if (result.matchedCount === 0) {
-                            console.log(`User with ID ${userId} not found in the database.`);
-                        } else if (result.modifiedCount === 0) {
-                            console.log(`Points for user ${userId} were not updated.`);
-                        } else {
-                            console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
-                        }
-                    } catch (err) {
-                        console.log('Failed to update points, error:', err);
+            for (const userId in lobby) {
+                //console.log('userId and type',userId, typeof userId)
+                if (userId && lobby.hasOwnProperty(userId)) {
+                    //console.log('we can see the userid here');
+                    if (processedUserIds.has(userId)) {
+                        console.log(`Duplicate entry found for userId: ${userId}`);
+                        continue;
                     }
-                } else {
-                    console.log(`No points to add for user ${userId} in this period`);
+                    processedUserIds.add(userId);
+
+                    console.log('Adding points for:', userId);
+                    const user = lobby[userId];
+                    const pointsToAdd = user.points + user.boints;
+                    
+                    if (pointsToAdd > 0) {
+                        try {
+                            const result = await collection.updateOne(
+                                { userId: parseInt(userId) },  // Ensure userId is treated as a string
+                                { $inc: { exp: pointsToAdd } }
+                            );
+                            
+                            if (result.matchedCount === 0) {
+                                console.log(`User with ID ${userId} not found in the database.`);
+                            } else if (result.modifiedCount === 0) {
+                                console.log(`Points for user ${userId} were not updated.`);
+                            } else {
+                                console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
+                            }
+                        } catch (err) {
+                            console.log('Failed to update points, error:', err);
+                        }
+                    } else {
+                        console.log(`No points to add for user ${userId} in this period`);
+                    }
                 }
             }
+            return true;
+        } catch (error) {
+            console.error("Error adding points to all users:", error);
+            return false;
         }
-        return true;
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error adding points to all users:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 async function updateAllUsersWithCheckpoint() {
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
-    try {
-        const collection = client.db(dbName).collection('users');
+        try {
+            const collection = client.db(dbName).collection('users');
 
-        // Fetch all user settings
-        const users = await collection.find().toArray();
-        console.log(defaultUserData.points)
-        for (let user of users) {
-            // Update user's checkpoint to match defaultUserData
-            const filter = { userId: user.userId };
-            
-            const updateDoc = {
-                $set: { points: defaultUserData.points }
-            };
+            // Fetch all user settings
+            const users = await collection.find().toArray();
+            console.log(defaultUserData.points)
+            for (let user of users) {
+                // Update user's checkpoint to match defaultUserData
+                const filter = { userId: user.userId };
+                
+                const updateDoc = {
+                    $set: { points: defaultUserData.points }
+                };
 
-            // Update the document in the collection
-            const result = await collection.updateOne(filter, updateDoc);
+                // Update the document in the collection
+                const result = await collection.updateOne(filter, updateDoc);
 
-            if (result.modifiedCount === 1) {
-                console.log(`Checkpoint updated successfully for userId: ${user.userId}`);
-            } else {
-                console.log(`No update needed for userId: ${user.userId}`);
+                if (result.modifiedCount === 1) {
+                    console.log(`Checkpoint updated successfully for userId: ${user.userId}`);
+                } else {
+                    console.log(`No update needed for userId: ${user.userId}`);
+                }
             }
-        }
 
-        console.log('All users updated with checkpoint successfully');
-        return true;
+            console.log('All users updated with checkpoint successfully');
+            return true;
+        } catch (error) {
+            console.error("Error updating users with checkpoint:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error updating users with checkpoint:", error);
-        return false;
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
     }
 }
 async function updateAllUserSettings() {
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
+        try {
+            const collection = client.db(dbName).collection('users');
+            
+            // Fetch all user settings
+            const users = await collection.find().toArray();
+            
+            for (let user of users) {
+                let updatedUserSettings = { ...user };
+
+                // Add missing keys from defaultUserData
+                for (const key in defaultUserData) {
+                    if (!updatedUserSettings.hasOwnProperty(key)) {
+                        updatedUserSettings[key] = defaultUserData[key];
+                    }
+                }
+
+                // Remove keys not present in defaultUserData
+                for (const key in updatedUserSettings) {
+                    if (!defaultUserData.hasOwnProperty(key)) {
+                        delete updatedUserSettings[key];
+                    }
+                }
+
+                // Upsert the updated user settings
+                const filter = { userId: user.userId };
+                await collection.updateOne(filter, { $set: updatedUserSettings });
+
+                console.log(`User settings updated for userId: ${user.userId}`);
+            }
+
+            console.log('All user settings updated successfully');
+            return true;
+        } catch (error) {
+            console.error("Error updating user settings:", error);
+            return false;
+        } 
+    };
+
+    // Enqueue the job and await its result
     try {
-        const collection = client.db(dbName).collection('users');
-        
-        // Fetch all user settings
-        const users = await collection.find().toArray();
-        
-        for (let user of users) {
-            let updatedUserSettings = { ...user };
-
-            // Add missing keys from defaultUserData
-            for (const key in defaultUserData) {
-                if (!updatedUserSettings.hasOwnProperty(key)) {
-                    updatedUserSettings[key] = defaultUserData[key];
-                }
-            }
-
-            // Remove keys not present in defaultUserData
-            for (const key in updatedUserSettings) {
-                if (!defaultUserData.hasOwnProperty(key)) {
-                    delete updatedUserSettings[key];
-                }
-            }
-
-            // Upsert the updated user settings
-            const filter = { userId: user.userId };
-            await collection.updateOne(filter, { $set: updatedUserSettings });
-
-            console.log(`User settings updated for userId: ${user.userId}`);
-        }
-
-        console.log('All user settings updated successfully');
-        return true;
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
     } catch (error) {
-        console.error("Error updating user settings:", error);
-        return false;
-    } 
+        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        throw error;
+    }
 }
 
 
@@ -1044,6 +1384,7 @@ module.exports = {
     writeBurnData,
     updateAllUserSettings,
     getUserDataByUserId, 
+    createDefaultUserData,
     updateAllUsersWithCheckpoint,
     addPointsToAllUsers,
     createRoom,

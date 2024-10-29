@@ -23,7 +23,7 @@ function setMenu(message) {
             inline_keyboard: [[
                 { text: 'prompt', callback_data: 'setprompt' },
                 { text: 'negprompt', callback_data: 'setnegprompt' },
-                { text: settings.userPrompt != "-1" ? 'userprompt ✅' : 'userprompt ❌', callback_data: 'setuserprompt' },
+                { text: settings.userPrompt != "-1" ? 'userprompt ✅' : 'userprompt', callback_data: 'setuserprompt' },
             ],
             [
                 { text: 'batch '+settings.input_batch, callback_data: 'setbatch' },
