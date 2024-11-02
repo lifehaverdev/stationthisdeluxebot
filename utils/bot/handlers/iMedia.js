@@ -69,6 +69,68 @@ async function handleMs2ImgFile(message) {
     }
 }
 
+async function handleFluxImgFile(message) {
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+
+    // Scenario 1: /ms2 command by itself, ask for an image
+    if (!message.photo && !message.document && !message.text && !message.reply_to_message) {
+        setUserState(message, STATES.FLUX2IMG);
+        await sendMessage(message, 'Please provide a photo to proceed.');
+        return;
+    }
+
+    // Scenarios where an image or document is present
+    const targetMessage = message.reply_to_message || message;
+    if (targetMessage.photo || targetMessage.document) {
+        const sent = await sendMessage(message, 'okay lemme see...');
+        const fileUrl = await getPhotoUrl(targetMessage);
+        
+        try {
+            const photo = await Jimp.read(fileUrl);
+            const { width, height } = photo.bitmap;
+
+            const photoStats = {
+                width: width,
+                height: height
+            };
+
+            const thisSeed = makeSeed(userId);
+
+            lobby[userId] = {
+                ...lobby[userId],
+                lastSeed: thisSeed,
+                tempSize: photoStats,
+                input_image: fileUrl
+            };
+
+            if (targetMessage.caption) {
+                // Scenario 3: /ms2 command with an image and a caption (prompt), send for generation
+                message.text = targetMessage.caption;
+                await iMake.handleFluxPrompt(message);
+                return;
+            } else {
+                // Scenario 2 and 4: Ask for a prompt after processing the image
+                await editMessage({
+                    text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
+                    chat_id: sent.chat.id,
+                    message_id: sent.message_id
+                });
+                setUserState(message, STATES.FLUXPROMPT);
+                return true;
+            }
+        } catch (error) {
+            console.error("Error processing photo:", error);
+            await editMessage({
+                text: "An error occurred while processing the photo. Please send it again, or another photo.",
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            });
+            return false;
+        }
+    }
+}
+
 
 function checkAndSetType(type, settings, message, group, userId) {
     // Early return for token gate if needed
@@ -309,6 +371,7 @@ async function handleMs3V2ImgFile(message) {
 module.exports = 
 {
     handleMs2ImgFile,
+    handleFluxImgFile,
     handlePfpImgFile,
     handleRmbg,
     handleUpscale,

@@ -307,6 +307,7 @@ const actionMap = {
     },
     'finterrogate': iWork.startFluxInterrogate,
     'flux': iResponse.fluxStarter.start.bind(iResponse.fluxStarter),
+    'fluxi2i': iResponse.fluxi2iStarter.start.bind(iResponse.fluxi2iStarter),
     'interMenu': iMenu.handleInterrogateMenu,
     'assistMenu': iMenu.handleAssistMenu,
     'regenRun': async(message, runIndex, user) => {

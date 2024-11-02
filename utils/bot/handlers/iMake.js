@@ -153,8 +153,12 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     } else {
         delete promptObj.input_control_image
     }
-    if (userContext.type == 'FLUX') {
+    if (userContext.type == 'FLUX' || userContext.type == 'FLUXI2I') {
         promptObj.input_checkpoint = 'flux-schnell'
+    }
+    if (userContext.type.includes('MAKE')) {
+        console.log('we are taking out strneght')
+        delete promptObj.input_strength
     }
 
     // Include message details for tracking and additional context
@@ -387,6 +391,11 @@ async function handleMs2Prompt(message) {
     await handleTask(message, 'I2I', STATES.MS2PROMPT, true, null);
 }
 
+async function handleFluxPrompt(message) {
+    // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
+    await handleTask(message, 'FLUXI2I', STATES.FLUXPROMPT, null, null);
+}
+
 async function handleInpaintPrompt(message) {
     // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
     await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
@@ -419,6 +428,7 @@ module.exports = {
     handleMake, 
     handleMake3, 
     handleMs2Prompt,
+    handleFluxPrompt,
     handleInpaintPrompt,
     handleInpaintTarget,
     handleMog, 

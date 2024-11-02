@@ -359,11 +359,13 @@ const stateHandlers = {
     [STATES.MAKE]: (message) => safeExecute(message, iMake.handleMake),
     [STATES.MAKE3]: (message) => safeExecute(message, iMake.handleMake3),
     [STATES.MS2PROMPT]: (message) => safeExecute(message, iMake.handleMs2Prompt),
-    [STATES.REQUEST]: (message) => safeExecute(message, iWork.handleRequest),
+    [STATES.FLUXPROMPT] : (message) => safeExecute(message, iMake.handleFluxPrompt),
+    //[STATES.REQUEST]: (message) => safeExecute(message, iWork.handleRequest),
     [STATES.ASSIST]: (message) => safeExecute(message, iWork.shakeAssist),
     [STATES.FLASSIST]: (message) => safeExecute(message, iWork.shakeFluxAssist),
     [STATES.SPEAK]: (message) => safeExecute(message, iWork.shakeSpeak),
     [STATES.IMG2IMG]: (message) => safeExecute(message, iMedia.handleMs2ImgFile),
+    [STATES.FLUX2IMG]:(message) => safeExecute(message, iMedia.handleFluxImgFile),
     [STATES.MS3]: (message) => safeExecute(message,iMedia.handleMs3ImgFile),
     [STATES.MS3V2] : (message) => safeExecute(message,iMedia.handleMs3V2ImgFile),
     [STATES.PFP]: (message) => safeExecute(message, iMedia.handlePfpImgFile),
@@ -453,7 +455,7 @@ function watch(message) {
         const handler = stateHandlers[currentState.state];
         if (handler) {
             console.log('sending to',handler)
-            console.log('workspace in watch',workspace)
+            //console.log('workspace in watch',workspace)
             handler(message);
         } else {
             console.log('no handler',currentState)

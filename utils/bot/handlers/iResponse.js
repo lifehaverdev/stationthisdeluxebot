@@ -196,6 +196,7 @@ class CallAndResponse {
 
 // Example usage for each starter function:
 const ms2Starter = new StarterFunction(STATES.IMG2IMG, 'Send in the photo you want to img to img.',null,null);
+const fluxi2iStarter = new StarterFunction(STATES.FLUX2IMG, 'Send in the photo you want to flux img to img.',null,null);
 
 const makeStarter = new StarterFunction(STATES.MAKE, 'What prompt for your txt2img?',null,null);
 const fluxStarter = new StarterFunction(STATES.FLUX, 'What prompt for your flux txt2img?',null,null);
@@ -358,7 +359,8 @@ module.exports = {
     ms2Flow,
     inpaintFlow,
 
-    fluxStarter
+    fluxStarter,
+    fluxi2iStarter,
 
     // ms2PoseStarter, ms2StylePoseStarter, ms2ControlPoseStarter, ms2ControlStylePoseStarter,
     // makePoseStarter, makeStylePoseStarter, makeControlPoseStarter, makeControlStylePoseStarter,
