@@ -159,8 +159,8 @@ function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
     
     const promptArrangement = promptObj.type == 'FLUX' ? 
-    `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}` :
-    `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
+    `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '}` :
+    `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
     let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance)
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
