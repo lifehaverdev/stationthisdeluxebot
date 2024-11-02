@@ -238,106 +238,6 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     return promptObj;
 }
 
-
-// // Helper function to build the prompt object dynamically based on the workflow
-// function buildPromptObjFromWorkflow(workflow, userContext, message) {
-//     const promptObj = {};
-//     //console.log('user context given',userContext)
-//     // Always include type from userContext and add username from the message
-//     promptObj.type = userContext.type || workflow.name;
-//     promptObj.username = message.from.username || 'unknown_user';
-//     promptObj.balance = userContext.balance
-//     promptObj.userId = userContext.userId
-//     promptObj.photoStats = { height: 1024, width: 1024}
-//     promptObj.forcelogo = userContext.forcelogo || false
-//     promptObj.advancedUser = userContext.advancedUser
-//     promptObj.basePrompt = userContext.basePrompt
-//     // Set required inputs based on the workflow type
-//     if (workflow.name.startsWith('MAKE')) {
-//         // Handle MAKE workflows and their variations
-//         // FIX THESE LATER WHEN WE WANT TO TUCK IN
-//         promptObj.batchMax = userContext.batchMax || 1;
-//         promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
-//         promptObj.basePrompt = userContext.basePrompt
-//         promptObj.cfg = userContext.cfg || 7;
-//         promptObj.steps = userContext.steps || 50;
-//         promptObj.prompt = userContext.prompt || 'default prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-//         promptObj.seed = userContext.lastSeed;
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.strength = 1.0;
-
-//         // Add additional images for MAKE_CANNY, MAKE_STYLE, MAKE_POSE, etc.
-//         if (userContext.styleTransfer) {
-//             promptObj.styleFileUrl = userContext.styleFileUrl;
-//         }
-//         if (userContext.controlNet) {
-//             promptObj.controlFileUrl = userContext.controlFileUrl;
-//         }
-//         if (userContext.openPose) {
-//             promptObj.poseFileUrl = userContext.poseFileUrl;
-//         }
-//     } 
-//     else if (workflow.name === 'I2I') {
-//         // Handle I2I workflow
-//         promptObj.seed = userContext.lastSeed;
-//         promptObj.checkpoint = userContext.checkpoint || 'zavychromaxl_v60';
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.prompt = userContext.prompt || 'default I2I prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-
-//         // Optional images for I2I CANNY, STYLE, POSE, etc.
-//         if (workflow.name.includes('STYLE')) {
-//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('CANNY')) {
-//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('POSE')) {
-//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-//         }
-//     } 
-//     else if (workflow.name === 'INPAINT') {
-//         // Handle INPAINT workflow
-//         promptObj.seed = userContext.lastSeed;
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.maskUrl = userContext.maskUrl;  // INPAINT requires a mask
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.prompt = userContext.prompt || 'default INPAINT prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-//         promptObj.strength = userContext.strength || 1.0;
-//     }
-//     else if (workflow.name.startsWith('MAKE3')) {
-//         // Handle MAKE3 workflow (simplest workflow)
-//         promptObj.seed = userContext.lastSeed;
-//         promptObj.prompt = userContext.prompt || 'default MAKE3 prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-//     }
-//     else if (workflow.name.startsWith('FLUX')) {
-//         // Handle FLUX workflows and derivatives (MOG, DEGOD, CHUD, MILADY, RADBRO)
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.prompt = userContext.prompt || 'default FLUX prompt';
-//         promptObj.seed = userContext.lastSeed;
-//         promptObj.checkpoint = 'flux-schnell'
-//     }
-
-//     // Add additional common properties such as prompt, seed, and batchMax
-//     promptObj.prompt = userContext.prompt;
-//     promptObj.seed = userContext.lastSeed;
-//     promptObj.userPrompt = userContext.userPrompt
-//     //promptObj.userBasePrompt = userContext.basePrompt
-//     promptObj.userId = message.from.id
-//     promptObj.timeRequested = Date.now()
-//     //promptObj.batchMax = userContext.batchMax;
-
-//     return promptObj;
-// }
-
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING TASK: ${taskType}`);
 
@@ -391,7 +291,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     });
 
     // Prevent batch requests in group chats
-    const batch = chatId < 0 ? 1 : settings.batchMax;
+    const batch = chatId < 0 ? 1 : settings.input_batch;
 
     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
     const workflow = flows.find(flow => flow.name === finalType);
@@ -444,7 +344,6 @@ async function handleLoser(message) {
     await handleTask(message, 'LOSER', STATES.LOSER, false, 0)
 }
 
-
 async function handleRadbro(message) {
     console.log('radbro')
     await handleTask(message, 'RADBRO', STATES.RADBRO, false, 0)
@@ -456,7 +355,6 @@ async function handleFlux(message) {
 }
 
 async function handleRegen(message, user = null) {
-    //console.log(JSON.stringify(lobby[message.from.id]))
     const userId = message.from.id || user;
 
     // Check if the user exists in the lobby
@@ -473,18 +371,24 @@ async function handleRegen(message, user = null) {
         return;
     }
 
+    // Create a button for current settings
+    const buttons = [
+        [{ text: '🔫 raw regen', callback_data: 'regen_current_settings' }]
+    ];
+
     // Create menu options for each run, displaying the time since the gen was requested and the type
-    const buttons = userRuns.map((run, index) => {
+    userRuns.forEach((run, index) => {
         const timeSinceRequest = Math.floor((Date.now() - run.timeRequested) / (1000 * 60)); // Time in minutes
         const runType = run.type || 'Unknown Type'; // Fallback to 'Unknown Type' if type is missing
+        const promptSnippet = run.input_prompt ? run.input_prompt.substring(0, 10) : '';
 
-        return [{
-            text: `${runType} ${run.seed} ${timeSinceRequest}m`,
+        buttons.push([{
+            text: `${runType} ${promptSnippet} ${timeSinceRequest}m`,
             callback_data: `regen_run_${index}`
-        }];
+        }]);
     });
 
-    buttons.push([{text: 'cancel',callback_data: 'cancel'}])
+    buttons.push([{ text: 'cancel', callback_data: 'cancel' }]);
 
     // Send the menu to the user with the list of generations to regenerate
     const options = {
@@ -495,6 +399,65 @@ async function handleRegen(message, user = null) {
 
     await sendMessage(message, "Choose which generation you'd like to regenerate:", options);
 }
+
+async function handleHipFire(message, user) {
+    
+    const userId = user;
+
+    const thisSeed = makeSeed(userId);
+    const chatId = message.chat.id;
+    // If this is a special case (e.g., MAKE) and needs a type check
+    const settings = lobby[userId]
+    const group = getGroup(message)
+    let finalType = lobby[userId].type;
+    const needsTypeCheck = finalType.startsWith('MAKE') || finalType.startsWith('I2I')
+    if (needsTypeCheck) {
+        finalType = checkAndSetType(finalType, settings, message, group, userId);
+        if (!finalType) {
+            // If the type could not be set (e.g., missing required files), stop the task
+            console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
+            //return 'MAKE';
+            finalType = 'MAKE'
+        }
+    }
+
+    // Update user settings in the lobby
+    Object.assign(lobby[userId], {
+        prompt: message.text,
+        type: finalType,  // Use the modified type
+        lastSeed: thisSeed
+    });
+
+    // Prevent batch requests in group chats
+    const batch = chatId < 0 ? 1 : settings.input_batch;
+
+    // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
+    const workflow = flows.find(flow => flow.name === finalType);
+    //console.log(workflow)
+    const promptObj = buildPromptObjFromWorkflow(workflow, {
+        ...settings,
+        prompt: message.text,
+        input_seed: thisSeed,
+        input_batch: batch
+    }, message);
+
+    try {
+        const messageId = message.message_id;
+        enqueueTask({ message, promptObj });
+        setUserState(message, STATES.IDLE);
+        await editMessage({
+            reply_markup: {inline_keyboard: [[{}]]},
+            message_id: messageId,
+            chat_id: chatId,
+            text: 'k'
+        })
+        await react(message);  // Acknowledge the command
+    } catch (error) {
+        console.error(`Error generating and sending task for ${taskType}:`, error);
+    }
+}
+
+
 
 async function handleMs2Prompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
@@ -529,7 +492,7 @@ module.exports = {
     //startMog, 
     buildPromptObjFromWorkflow,
     handleRegen, 
-    
+    handleHipFire,
     handleMake, 
     handleMake3, 
     handleMs2Prompt,

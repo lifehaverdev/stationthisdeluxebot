@@ -8,90 +8,81 @@ const { compactSerialize, sendMessage, editMessage, makeBaseData, gated } = requ
 const {getGroup} = require('./iGroup')
 
 function setMenu(message) {
+    const settings = getSettings(message);
     const group = getGroup(message);
-    //console.log('group',group.name)
-    let settings;
-    if(group){
-        console.log('yes to group')
-        settings = group.settings
-    } else {
-        settings = lobby[message.from.id]
-    }
-    //settings = lobby[message.from.id]
-    const options = {
-        reply_markup: {
-            inline_keyboard: [[
-                { text: 'prompt', callback_data: 'setprompt' },
-                { text: 'negprompt', callback_data: 'setnegprompt' },
-                { text: settings.userPrompt != "-1" ? 'userprompt ✅' : 'userprompt', callback_data: 'setuserprompt' },
-            ],
-            [
-                { text: 'batch '+settings.input_batch, callback_data: 'setbatch' },
-                { text: 'size', callback_data: 'setsize' },
-                { text: 'steps '+settings.input_steps, callback_data: 'setsteps'},
-            ],
-            [
-                {
-                    text: 
-                        settings.controlNet && settings.input_control_image ? 
-                        'control ✅' : 
-                        settings.controlNet && !settings.input_control_image ? 
-                        'control 🆘' : 'control ❌',
-                    callback_data: 'setcontrol',
-                },
-                {
-                    text:
-                        settings.styleTransfer && settings.input_style_image ?
-                        'style ✅' : 
-                        settings.styleTransfer && !settings.input_style_image ?
-                        'style 🆘' : 'style ❌',
-                    callback_data: 'setstyle',
-                },
-                {
-                    text:
-                        settings.openPose && settings.input_pose_image ? 
-                        'pose ✅' : 
-                        settings.openPose && !settings.input_pose_image ?
-                        'pose 🆘' : 'pose ❌',
-                    callback_data: 'setpose'
-                }
-                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
-                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
-                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
-            ],
-            [
-                { text: 'cfg '+settings.input_cfg, callback_data: 'setcfg'},
-                { text: 'strength '+settings.input_strength, callback_data: 'setstrength' },
-                { text: 'seed '+settings.input_seed, callback_data: 'setseed' },
-            ],
-            [
-                //{ text: 'checkpoint', callback_data: 'checkpointmenu' },
-                //{ text: 'baseprompt', callback_data: 'basepromptmenu' }
-            ],
-            [
-                { text: 'cancel', callback_data: 'cancel' }
-            ]
-        ],
-          resize_keyboard: true,
-          one_time_keyboard: true
-        }
+    const userBalance = lobby[message.from.id] ? lobby[message.from.id].balance : 0;
 
-      };
-      if((lobby[message.from.id] && lobby[message.from.id].balance >= 100000)
-        || (group)){
-        options.reply_markup.inline_keyboard[4].push(
-            { text: settings.basePrompt+' ✅', callback_data: 'basepromptmenu' },
-            { text: settings.input_checkpoint+' ✅', callback_data: 'checkpointmenu' },
-        )
-      }
-    //   if(lobby[message.from.id] && lobby[message.from.id].balance >= 600000){
-    //     options.reply_markup.inline_keyboard[4].push(
-    //         { text: 'checkpoint', callback_data: 'checkpointmenu' },
-    //     )
-    //   }
-    
-      // Sending an empty message to set the keyboard
-    sendMessage(message,'Settings', options);
+    const options = buildSetMenu(settings,group,userBalance)
+
+    // Sending an empty message to set the keyboard
+    sendMessage(message, 'Settings', options);
+}
+
+function buildSetMenu(settings, group, userBalance) {
+    const inlineKeyboard = [
+        createPromptOption(settings),
+        [
+            { text: `batch ${settings.input_batch}`, callback_data: 'setbatch' },
+            { text: 'size', callback_data: 'setsize' },
+            { text: `steps ${settings.input_steps}`, callback_data: 'setsteps' }
+        ],
+        [
+            { text: `control ${getStatusIcon(settings.controlNet, settings.input_control_image)}`, callback_data: 'setcontrol' },
+            { text: `style ${getStatusIcon(settings.styleTransfer, settings.input_style_image)}`, callback_data: 'setstyle' },
+            { text: `pose ${getStatusIcon(settings.openPose, settings.input_pose_image)}`, callback_data: 'setpose' }
+        ],
+        [
+            { text: `cfg ${settings.input_cfg}`, callback_data: 'setcfg' },
+            { text: `strength ${settings.input_strength}`, callback_data: 'setstrength' },
+            { text: `seed ${settings.input_seed}`, callback_data: 'setseed' }
+        ],
+        [],
+        [
+            { text: 'cancel', callback_data: 'cancel' }
+        ]
+    ];
+
+    if (userBalance >= 100000 || group) {
+        inlineKeyboard[4] = inlineKeyboard[4] || [];
+        inlineKeyboard[4].push(
+            { text: `${settings.basePrompt} ✅`, callback_data: 'basepromptmenu' },
+            { text: `${settings.input_checkpoint} ✅`, callback_data: 'checkpointmenu' }
+        );
+    }
+
+    return {
+        reply_markup: {
+            inline_keyboard: inlineKeyboard,
+            resize_keyboard: true,
+            one_time_keyboard: true
+        }
+    };
+}
+
+
+function getStatusIcon(setting, imageSet) {
+    if (setting && imageSet) return '✅';
+    if (setting && !imageSet) return '🆘';
+    return '❌';
+}
+
+function getSettings(message) {
+    const group = getGroup(message);
+    if (group) {
+        console.log('yes to group');
+        return group.settings;
+    } else {
+        return lobby[message.from.id];
+    }
+}
+
+function createPromptOption(settings) {
+    //console.log(settings.userPrompt)
+    return [
+        { text: 'prompt', callback_data: 'setprompt' },
+        { text: settings.input_negative != '-1' && settings.input_negativve ? 'negprompt ✅' : 'negprompt', callback_data: 'setnegprompt' },
+        { text: settings.userPrompt != "-1" && settings.userPrompt ? 'userprompt ✅' : 'userprompt', callback_data: 'setuserprompt' }
+    ];
 }
 
 // Look good?
@@ -108,12 +99,7 @@ async function handleCreate(message) {
     }
     //const settings = lobby[message.from.id]
     const sent = await sendMessage(message, `what shall I create for you, @${message.from.username} ?`);
-    //console.log('message in help status',message)
-    //console.log('sent message in help status',sent)
-    //const baseData = makeBaseData(sent,message.from.id);
-    //const callbackData = compactSerialize({ ...baseData, action: `refresh`});
-    //console.log(baseData);
-    //console.log(compactSerialize({ ...baseData, action: 'make' }))
+    
     const chat_id = sent.chat.id;
     const message_id = sent.message_id;
     
@@ -798,7 +784,7 @@ module.exports = {
     getVoiceMenu,
     getWatermarkMenu,
     handleCreate,
-    setMenu,
+    setMenu, buildSetMenu,
     handleEffect,
     handleAnimate,
     handleUtils,

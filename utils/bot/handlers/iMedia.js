@@ -70,100 +70,6 @@ async function handleMs2ImgFile(message) {
 }
 
 
-// // Helper function to build the prompt object dynamically based on the workflow
-// function buildPromptObjFromWorkflow(workflow, userContext, message) {
-//     const promptObj = {};
-    
-//     // Always include type from userContext and add username from the message
-//     promptObj.type = userContext.type || workflow.name;
-//     promptObj.username = message.from.username || 'unknown_user';
-//     promptObj.balance = userContext.balance;
-//     promptObj.userId = userContext.userId;
-//     promptObj.photoStats = { height: 1024, width: 1024 };
-//     promptObj.forcelogo = userContext.forcelogo || false
-//     promptObj.advancedUser = userContext.advancedUser
-
-//     // Set required inputs based on the workflow type
-//     if (workflow.name.startsWith('I2I_AUTO')) {
-//         // Handle PFP workflows and their variations
-//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.checkpoint = userContext.checkpoint
-
-//         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
-//         if (workflow.name.includes('STYLE')) {
-//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('CANNY')) {
-//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('POSE')) {
-//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-//         }
-
-//         promptObj.cfg = userContext.cfg || 7;
-//         promptObj.steps = userContext.steps || 50;
-//         promptObj.prompt = userContext.prompt || 'default PFP prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-//         promptObj.checkpoint = userContext.checkpoint;
-//         promptObj.strength = 1.0;
-//     } 
-//     else if (workflow.name.startsWith('I2I')) {
-//         // Handle I2I workflows and their variations
-//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.checkpoint = userContext.checkpoint
-
-//         // Handle optional suffixes (e.g., STYLE, CANNY, POSE)
-//         if (workflow.name.includes('STYLE')) {
-//             promptObj.styleFileUrl = userContext.styleFileUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('CANNY')) {
-//             promptObj.cannyImageUrl = userContext.cannyImageUrl || userContext.fileUrl;
-//         }
-//         if (workflow.name.includes('POSE')) {
-//             promptObj.poseFileUrl = userContext.poseFileUrl || userContext.fileUrl;
-//         }
-
-//         promptObj.cfg = userContext.cfg || 7;
-//         promptObj.steps = userContext.steps || 50;
-//         promptObj.prompt = userContext.prompt || 'default I2I prompt';
-//         promptObj.negativePrompt = userContext.negativePrompt || '';
-//         promptObj.checkpoint = userContext.checkpoint;
-//         promptObj.strength = 1.0;
-//     } 
-//     else if (workflow.name === 'RMBG') {
-//         // Handle RMBG workflow
-//         promptObj.fileUrl = userContext.fileUrl;
-//     }
-//     else if (workflow.name === 'UPSCALE') {
-//         // Handle UPSCALE workflow
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.photoStats.width = userContext.photoStats.width || 1024;
-//         promptObj.photoStats.height = userContext.photoStats.height || 1024;
-//     }
-//     else if (workflow.name === 'MS3' || workflow.name === 'MS3.2') {
-//         // Handle MS3 and MS3.2 workflows
-//         promptObj.seed = userContext.lastSeed || makeSeed(message.from.id);
-//         promptObj.fileUrl = userContext.fileUrl;
-//         promptObj.photoStats = userContext.photoStats || { height: 1024, width: 1024 };
-//     }
-
-//     // Add additional common properties such as prompt, seed, and batchMax
-//     promptObj.prompt = userContext.prompt;
-//     promptObj.seed = userContext.lastSeed;
-//     promptObj.userBasePrompt = userContext.userBasePrompt;
-//     promptObj.userId = message.from.id;
-//     promptObj.timeRequested = Date.now();
-
-//     return promptObj;
-// }
-
-
 function checkAndSetType(type, settings, message, group, userId) {
     // Early return for token gate if needed
     let typest = type;
@@ -309,15 +215,28 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
         return;
     }
 
-    // Ensure there's a valid image in the message
+    // Ensure there's a valid image in the message or in the replied message
+    let imageMessage = message;
     if (!message.photo && !message.document) {
-        console.log('No image or document provided for task.');
-        await sendMessage(message, "Please provide an image for processing.");
-        return;
+        // Check if the message is a reply and contains an image or document
+        if (message.reply_to_message) {
+            if (message.reply_to_message.photo) {
+                imageMessage = message.reply_to_message;
+            } else if (message.reply_to_message.document) {
+                imageMessage = message.reply_to_message;
+            }
+        }
+
+        // If neither the original message nor the replied message contains an image
+        if (!imageMessage.photo && !imageMessage.document) {
+            console.log('No image or document provided for task.');
+            await sendMessage(message, "Please provide an image for processing.");
+            return;
+        }
     }
 
-    // Fetch the file URL from the message
-    const fileUrl = await getPhotoUrl(message);
+    // Fetch the file URL from the determined image message
+    const fileUrl = await getPhotoUrl(imageMessage);
     if (!fileUrl) {
         console.log('Failed to retrieve the file URL.');
         await sendMessage(message, "An error occurred while retrieving the image. Please try again.");
@@ -328,7 +247,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
 
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
-    console.log('finalyType before checkset',finalType)
+    console.log('finalyType before checkset', finalType);
     if (needsTypeCheck) {
         finalType = checkAndSetType(taskType, settings, message, group, userId);
         if (!finalType) {
@@ -348,8 +267,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     const batch = chatId < 0 ? 1 : settings.batchMax;
 
     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
-    
-    console.log('finaltype before finding workflow',finalType)
+    console.log('finaltype before finding workflow', finalType);
     const workflow = flows.find(flow => flow.name === finalType);
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
@@ -366,6 +284,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }
 }
+
 
 async function handleUpscale(message) {
     await handleImageTask(message, 'UPSCALE', STATES.UPSCALE, false, null);

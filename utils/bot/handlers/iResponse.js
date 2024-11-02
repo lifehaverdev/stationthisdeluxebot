@@ -1,5 +1,6 @@
 const { STATES, lobby } = require('../bot')
 const { sendMessage, editMessage, setUserState } = require('../../utils')
+const { stateHandlers } = require('./iMessage')
 
 class StarterFunction {
     constructor(state, customMessage, balanceThreshold = null, preconditions = null) {
@@ -18,24 +19,36 @@ class StarterFunction {
                 lobby[user].controlNet = this.preconditions.controlNet;
             }
             if (this.preconditions.openPose !== undefined) {
-                lobby[user].openPose = this.preconditions.openPose
+                lobby[user].openPose = this.preconditions.openPose;
             }
         }
     }
 
     async start(message, user = null) {
-        ///console.log('we are using the new starter class')
+        console.log('we are in a start')
         // Apply preconditions if user is provided
         if (user) {
             this.applyPreconditions(user);
         }
 
+        const userId = user ? user : message.from.id;
+
         // Check balance if threshold is set and user is not passed in
-        if (this.balanceThreshold !== null && !user && lobby[message.from.id] && lobby[message.from.id].balance < this.balanceThreshold) {
+        if (this.balanceThreshold !== null && !user && lobby[userId] && lobby[userId].balance < this.balanceThreshold) {
             return this.gated(message);
         }
 
-        // Edit message if user is provided, otherwise send a new message
+        // If reply_to_message contains a photo or document, proceed to handle it directly
+        if (message.reply_to_message) {
+            console.log('reply found',message.reply_to_message)
+            if (message.reply_to_message.photo || message.reply_to_message.document) {
+                console.log('Image or document found in reply_to_message, forwarding to state handler directly.');
+                // Forward the reply_to_message to the appropriate state handler
+                return this.forwardToStateHandler(message.reply_to_message, userId);
+            }
+        }
+
+        // If no image found, prompt the user
         if (user) {
             message.from.id = user;
             await this.editMessage(message);
@@ -45,6 +58,18 @@ class StarterFunction {
 
         // Set the user's state
         this.setUserState(message);
+    }
+
+    async forwardToStateHandler(replyMessage, userId) {
+        // Ensure that the message is attributed to the original user
+        replyMessage.from = { id: userId };
+
+        // Use the state handler to process the image or document
+        if (stateHandlers[this.state]) {
+            await stateHandlers[this.state](replyMessage);
+        } else {
+            console.error(`No handler found for state: ${this.state}`);
+        }
     }
 
     async editMessage(message) {
@@ -69,6 +94,7 @@ class StarterFunction {
         gated(message);
     }
 }
+
 
 class CallAndResponse {
     constructor(initialState, steps) {
