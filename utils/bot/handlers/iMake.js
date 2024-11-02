@@ -5,84 +5,6 @@ const { enqueueTask } = require('../queue')
 //const { checkLobby } = require('../gatekeep')
 const { getGroup } = require('./iGroup')
 
-// async function handlePromptCatch(message, match) {
-//     const slot = parseInt(match[1]); // Ensure it's an integer
-//     const userId = message.from.id
-//     if (slot < 1 || slot > 6) {
-//         sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-//         return;
-//     }
-//     const userSettings = lobby[userId];
-//     if (!userSettings) {
-//         sendMessage(message, "User settings not found.");
-//         return;
-//     }
-//     const prompt = userSettings.prompt;
-//     userSettings.promptdex[slot - 1] = prompt;
-//     writeUserData(userId,userSettings);
-//     sendMessage(message, `Prompt saved to slot ${slot} and settings saved`);
-// }
-
-// async function handleDexMake(message, match) {
-//     const chatId = message.chat.id;
-//     const userId = message.from.id;
-//     const group = getGroup(message);
-//     if (!await checkLobby(message)) {
-//         return;
-//     }
-//     const slot = parseInt(match[1], 10);
-//     if (isNaN(slot) || slot < 1 || slot > 6) {
-//         sendMessage(message, "Invalid slot number. Please choose a slot between 1 and 6.");
-//         return;
-//     }
-//     let settings;
-//     if(group) {
-//         settings = group.settings
-//     } else {
-//         settings = lobby[userId]
-//     }
-//     const userSettings = lobby[userId];
-//     if (!settings) {
-//         sendMessage(message, "User settings not found.");
-//         return;
-//     }
-    
-//     const prompt = userSettings.promptdex[slot - 1];
-//     if (!prompt) {
-//         sendMessage(message, `No prompt saved in slot ${slot}.`);
-//         return;
-//     }
-
-//     const thisSeed = makeSeed(userId);
-//     lobby[userId].lastSeed = thisSeed;
-
-//     let batch;
-//     if (chatId < 0) {
-//         batch = 1;
-//     } else {
-//         batch = userSettings.batchMax;
-//     }
-
-//     settings.prompt = prompt; // Update prompt with selected slot
-//     userSettings.type = 'MAKE';
-//     userSettings.lastSeed = thisSeed;
-
-//     const promptObj = {
-//         ...settings,
-//         strength: 1,
-//         seed: thisSeed,
-//         batchMax: batch,
-//         prompt: prompt
-//     };
-    
-//     try {
-//         await react(message);
-//         enqueueTask({ message, promptObj });
-//     } catch (error) {
-//         console.error("Error generating and sending image:", error);
-//     }
-// }
-
 function checkAndSetType(type, settings, message, group, userId) {
 
     // Define required files based on settings
@@ -214,7 +136,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
             promptObj[input] = userContext[input];
         }
     });
-    if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
+    //if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
     // Derived fields based on internal logic
     if (userContext.styleTransfer) {
         promptObj.input_style_image = userContext.input_style_image;
@@ -230,6 +152,9 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.input_control_image = userContext.input_control_image;
     } else {
         delete promptObj.input_control_image
+    }
+    if (userContext.type == 'FLUX') {
+        promptObj.input_checkpoint = 'flux-schnell'
     }
 
     // Include message details for tracking and additional context
