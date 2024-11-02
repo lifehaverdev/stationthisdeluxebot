@@ -161,7 +161,7 @@ function promptPreProc(promptObj) {
     const promptArrangement = promptObj.type == 'FLUX' ? 
     `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '}` :
     `${promptObj.prompt} ${promptObj.userBasePrompt == '-1' ?  '' : ', ' + promptObj.userBasePrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
-    let promptFinal = handleLoraTrigger(promptArrangement, promptObj.checkpoint, promptObj.balance)
+    let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance)
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
         promptFinal = promptFinal.split(" ")
@@ -235,12 +235,6 @@ function imgPreProc(promptObj) {
         promptObj.input_height = Math.floor((defaultSettings.HEIGHT * ratio) / 8) * 8;
         promptObj.input_width = defaultSettings.WIDTH;
     }
-    // if(promptObj.fileUrl[0] == "i"){
-    //     promptObj.fileUrl = promptObj.fileUrl.slice(7)
-    //     metaIPFS= `https://mony.mypinata.cloud/ipfs/${promptObj.fileUrl}`,
-    //     urlAppend= process.env.PINATA_APPEND
-    //     promptObj.fileUrl  = `${metaIPFS}/${urlAppend}`
-    // }
 }
 
 
@@ -282,189 +276,6 @@ function prepareRequest(promptObj) {
 
     return body;
 }
-
-// function prepareRequest(promptObj) {
-//     //let basePrompt = handleLoraTrigger(getBasePromptByName(promptObj.basePrompt),promptObj.balance);
-//     const comfydeployids = getDeploymentIdByType(promptObj.type);
-//     const comfydeployid = chooseIdByMachine(comfydeployids, promptObj);
-//     //console.log('prepareRequest', comfydeployid)
-//     // Base structure that works for most complex cases like PFP_CONTROL_STYLE
-//     let body = {
-//         deployment_id: comfydeployid,
-//         webhook: webHook,
-//         inputs: {
-//             input_seed: promptObj.seed,
-//             input_batch: promptObj.batchMax,
-//             input_steps: promptObj.steps,
-//             input_cfg: promptObj.cfg,
-//             input_prompt: promptObj.finalPrompt,
-//             input_checkpoint: `${promptObj.checkpoint}.safetensors`,
-//             input_image: promptObj.fileUrl || null,
-//             input_strength: promptObj.strength || null,
-//             input_style_image: promptObj.styleFileUrl || null,
-//             input_canny_image: promptObj.controlFileUrl || null,
-//             input_pose_image: promptObj.poseFileUrl || null,
-//             input_width: promptObj.photoStats?.width || null,
-//             input_height: promptObj.photoStats?.height || null,
-//             input_negative: promptObj.negativePrompt == '-1' ? baseNegPrompt : `${promptObj.negativePrompt} ${baseNegPrompt}`,
-//         }
-//     };
-
-//         // Remove any null or undefined fields from the `inputs`
-//         body.inputs = Object.fromEntries(
-//             Object.entries(body.inputs).filter(([_, value]) => value !== null && value !== undefined)
-//         );
-
-//     // Handle special cases where fewer fields are needed
-//     switch (promptObj.type) {
-//         case 'MOG':
-//             console.log('oh we mogging alright')
-//             console.log(comfydeployid)
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `j0yc4t ${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'DEGOD':
-//             console.log('oh we degod alright')
-//             console.log(comfydeployid)
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `man wearing d3g0d mask ${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'MILADY':
-//             console.log('oh milady alright')
-//             console.log(comfydeployid)
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `milady ${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'CHUD':
-//             console.log('oh chud alright')
-//             console.log(comfydeployid)
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `chudjak ${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'RADBRO':
-//             console.log('oh radbro alright')
-//             console.log(comfydeployid)
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `radbro ${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'LOSER':
-//         console.log('oh loser alright')
-//         console.log(comfydeployid)
-//         body = {
-//             deployment_id: comfydeployid,
-//             webhook: webHook,
-//             inputs: {
-//                 noise_seed: promptObj.seed,
-//                 cfg: promptObj.cfg,
-//                 input_height: promptObj.photoStats.height,
-//                 input_width: promptObj.photoStats.width,
-//                 input_text: `${promptObj.finalPrompt}`,
-//             }
-//         }
-//         //console.log('body for mog',body)
-//             break;
-//         case 'FLUX': 
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     noise_seed: promptObj.seed,
-//                     cfg: promptObj.cfg,
-//                     input_height: promptObj.photoStats.height,
-//                     input_width: promptObj.photoStats.width,
-//                     input_text: `${promptObj.finalPrompt}`,
-//                 }
-//             }
-//             //console.log('body for mog',body)
-//             break;
-//         case 'MS3.2':
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     input_image: promptObj.fileUrl || null,
-//                     input_seed: promptObj.seed,
-//                 }
-//             }
-//             break;
-//         case 'RMBG':
-//         case 'UPSCALE':
-//         case 'INTERROGATE':
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     input_image: promptObj.fileUrl
-//                 }
-//             };
-//             break;
-//         case 'INPAINT':
-//             body = {
-//                 deployment_id: comfydeployid,
-//                 webhook: webHook,
-//                 inputs: {
-//                     input_image_url: promptObj.fileUrl,
-//                     positive_prompt: `${promptObj.finalPrompt}`,
-//                     negative_prompt: promptObj.negativePrompt,
-//                     inpainting_area: promptObj.inpaintTarget,
-//                     noise: promptObj.strength
-//                 }
-//             };
-//             break;
-//     }
-
-//     return JSON.stringify(body);
-// }
 
 module.exports = {
     //sendGeneratedImage,

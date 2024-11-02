@@ -5,14 +5,14 @@ const stream = require('stream');
 const fs = require('fs')
 const { lobby, workspace } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
-const { DEV_DMS } = require("../utils/utils.js");
+//const { DEV_DMS } = require("../utils/utils.js");
 const { getBalance } = require('../utils/users/checkBalance.js')
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
 const dbName = process.env.BOT_NAME;
-
+const DEV_DMS = 5472638766;
 let cachedClient = null;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
@@ -1141,34 +1141,96 @@ async function updateAllUserSettings() {
             const collection = client.db(dbName).collection('users');
             
             // Fetch all user settings
-            //const users = await collection.find().toArray();
-            const users = await collection.find({ userId: DEV_DMS }).toArray();
+            const users = await collection.find().toArray();
+            //const users = await collection.find({ userId: DEV_DMS }).toArray();
             
-            for (let user of users) {
-                let updatedUserSettings = { ...user };
+    //         for (let user of users) {
+    //             let updatedUserSettings = { ...user };
 
-                // Add missing keys from defaultUserData
-                for (const key in defaultUserData) {
-                    if (!updatedUserSettings.hasOwnProperty(key)) {
-                        updatedUserSettings[key] = defaultUserData[key];
-                    }
-                }
 
-                // Remove keys not present in defaultUserData
-                for (const key in updatedUserSettings) {
-                    if (!defaultUserData.hasOwnProperty(key)) {
-                        delete updatedUserSettings[key];
-                    }
-                }
+    // // Remove the _id field to avoid attempting to update it
+    // delete updatedUserSettings._id;
 
-                // Upsert the updated user settings
-                const filter = { userId: user.userId };
-                await collection.updateOne(filter, { $set: updatedUserSettings });
+    //             // Add missing keys from defaultUserData
+    //             for (const key in defaultUserData) {
+    //                 if (!updatedUserSettings.hasOwnProperty(key)) {
+    //                     updatedUserSettings[key] = defaultUserData[key];
+    //                 }
+    //             }
+    //             let unsetFields = {}
+    //             for (const key in updatedUserSettings) {
+    //                 if (!defaultUserData.hasOwnProperty(key)) {
+    //                     unsetFields[key] = "";
+    //                 }
+    //             }
 
-                console.log(`User settings updated for userId: ${user.userId}`);
+        
+    //             // Upsert the updated user settings
+    //             const filter = { userId: user.userId };
+    //             if (Object.keys(unsetFields).length > 0) {
+    //                 await collection.updateOne(filter, { $set: updatedUserSettings, $unset: unsetFields });
+    //             } else {
+    //                 await collection.updateOne(filter, { $set: updatedUserSettings });
+    //             }
+                
+    //             //await collection.updateOne(filter, { $set: updatedUserSettings });
+
+    //             console.log(`User settings updated for userId: ${user.userId}`);
+    //         }
+
+    //         console.log('All user settings updated successfully');
+    for (let user of users) {
+        let updatedUserSettings = { ...user };
+    
+        // Remove the _id field to avoid attempting to update it
+        delete updatedUserSettings._id;
+    
+        // Add missing keys from defaultUserData
+        for (const key in defaultUserData) {
+            if (!updatedUserSettings.hasOwnProperty(key)) {
+                updatedUserSettings[key] = defaultUserData[key];
             }
-
-            console.log('All user settings updated successfully');
+        }
+    
+        // Initialize unsetFields as an empty object
+        let unsetFields = {};
+    
+        // Remove keys not present in defaultUserData
+        for (const key in updatedUserSettings) {
+            if (!defaultUserData.hasOwnProperty(key)) {
+                unsetFields[key] = "";
+            }
+        }
+    
+        // Log the values before updating
+        console.log(`Updating user settings for userId: ${user.userId}`);
+        console.log('Updated User Settings:', updatedUserSettings);
+        console.log('Unset Fields:', unsetFields);
+    
+        const filter = { userId: user.userId };
+    
+        // Upsert the updated user settings first
+        try {
+            await collection.updateOne(filter, { $set: updatedUserSettings });
+            console.log(`User settings successfully updated for userId: ${user.userId}`);
+        } catch (error) {
+            console.error(`Error updating user settings for userId ${user.userId}:`, error);
+        }
+    
+        // Now unset deprecated fields
+        try {
+            if (Object.keys(unsetFields).length > 0) {
+                await collection.updateOne(filter, { $unset: unsetFields });
+                console.log(`Deprecated fields successfully removed for userId: ${user.userId}`);
+            }
+        } catch (error) {
+            console.error(`Error unsetting fields for userId ${user.userId}:`, error);
+        }
+    }
+    
+    console.log('All user settings updated successfully');
+    
+    
             return true;
         } catch (error) {
             console.error("Error updating user settings:", error);
