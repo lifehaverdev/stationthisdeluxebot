@@ -1141,7 +1141,8 @@ async function updateAllUserSettings() {
             const collection = client.db(dbName).collection('users');
             
             // Fetch all user settings
-            const users = await collection.find().toArray();
+            //const users = await collection.find().toArray();
+            const users = await collection.find({ userId: DEV_DMS }).toArray();
             
             for (let user of users) {
                 let updatedUserSettings = { ...user };

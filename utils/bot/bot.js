@@ -114,7 +114,8 @@ const STATE_TO_LOBBYPARAM = {
 
 
 function makeSeed(userId) {
-    if(userId == -1 || lobby[userId].input_seed == -1){
+    console.log(lobby[userId])
+    if(lobby[userId] && (userId == -1 || (lobby[userId].input_seed && lobby[userId].input_seed == -1) || lobby[userId].seed == -1)){
         return Math.floor(Math.random() * 1000000);
     } else if(lobby[userId]){
         return lobby[userId].input_seed;

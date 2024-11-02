@@ -1,4 +1,4 @@
-const { lobby, getBotInstance, STATES, burns, makeSeed } = require('../bot');
+const { lobby, getBotInstance, STATES, burns, workspace, makeSeed } = require('../bot');
 const { getVoiceModelByName } = require('../../models/voiceModelMenu')
 const { getBasePromptByName } = require('../../models/basepromptmenu')
 const {
@@ -11,7 +11,7 @@ const {
 const { displayAccountSettingsMenu } = require('./iAccount')
 const { handleStatus } = require('./iWork');
 const { startSet } = require('./iSettings');
-const { handleRegen } = require('./iMake')
+const { handleRegen, handleHipFire } = require('./iMake')
 const { returnToAccountMenu } = require('./iAccount')
 const iMenu = require('./iMenu');
 const iResponse = require('./iResponse');
@@ -49,6 +49,9 @@ const setActions = [
 ];
 
 const handleSetAction = (action, message, user) => {
+    //console.log('message in handlesetaction',message)
+    workspace[user] = { chat_id: message.chat.id, message_id: message.message_id }
+    console.log('workspace in handleset after add',workspace)
     message.from.id = user;
     message.text = `/${action}`;
     safeExecute(message, () => {startSet(message,user)});
@@ -68,7 +71,9 @@ const handleSetBasePrompt = (message, selectedName, userId) => {
     if (basePrompt !== undefined) {
         settings.basePrompt = selectedName;
         const messageTitle = `Base prompt set to: ${selectedName} ✅`;
+        const reply_markup = iMenu.buildSetMenu(settings,group,settings.balance)
         editMessage({
+            ...reply_markup,
             text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
@@ -91,7 +96,9 @@ const handleSetCheckpoint = (message, selectedName, userId) => {
     if (selectedName !== undefined) {
         settings.input_checkpoint = selectedName;
         const messageTitle = `Checkpoint set to: ${selectedName} ✅`;
+        const reply_markup = iMenu.buildSetMenu(settings,group,settings.balance)
         editMessage({
+            ...reply_markup,
             text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
@@ -258,17 +265,17 @@ const actionMap = {
         message.from.id = user;
         setUserState(message,STATES.IDLE)
     },
-    'applygroupbalance': (message) => {
-        console.log(message)
-        const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
-        let burned = 0;
-        if (burnRecord) {
-            console.log(burnRecord.burned)
-            burned += parseInt(burnRecord.burned) * 2 / 1000000;
-        }
-        sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
-        setUserState(message.reply_to_message, STATES.GROUPAPPLY)
-    },
+    // 'applygroupbalance': (message) => {
+    //     console.log(message)
+    //     const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
+    //     let burned = 0;
+    //     if (burnRecord) {
+    //         console.log(burnRecord.burned)
+    //         burned += parseInt(burnRecord.burned) * 2 / 1000000;
+    //     }
+    //     sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
+    //     setUserState(message.reply_to_message, STATES.GROUPAPPLY)
+    // },
     // 'createGroup': async (message) => {
     //     console.log('this is createGroup rn');
     //     console.log('message',message);
@@ -355,7 +362,8 @@ const actionMap = {
     'viewSlotImage': iTrain.viewSlotImage,
     'viewSlotCaption': iTrain.viewSlotCaption,
     'deleteSlotImage': iTrain.deleteLoraSlot,
-    'submitTraining': iTrain.submitTraining
+    'submitTraining': iTrain.submitTraining,
+    'regen_current_settings': handleHipFire
 };
 
 

@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, SET_COMMANDS } = require('../bot.js'); 
+const { getBotInstance, lobby, startup, STATES, commandStateMessages, workspace, SET_COMMANDS } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
@@ -453,6 +453,7 @@ function watch(message) {
         const handler = stateHandlers[currentState.state];
         if (handler) {
             console.log('sending to',handler)
+            console.log('workspace in watch',workspace)
             handler(message);
         } else {
             console.log('no handler',currentState)
