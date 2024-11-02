@@ -423,7 +423,6 @@ async function handleHipFire(message, user) {
 
     // Update user settings in the lobby
     Object.assign(lobby[userId], {
-        prompt: message.text,
         type: finalType,  // Use the modified type
         lastSeed: thisSeed
     });
