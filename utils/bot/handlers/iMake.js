@@ -360,7 +360,6 @@ async function handleHipFire(message, user) {
     //console.log(workflow)
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
-        prompt: message.text,
         input_seed: thisSeed,
         input_batch: batch
     }, message);
