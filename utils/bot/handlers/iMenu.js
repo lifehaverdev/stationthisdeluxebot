@@ -266,6 +266,7 @@ function handleEffect(message) {
             [   
                 { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
             ],
+
         ],
           resize_keyboard: true,
           one_time_keyboard: true
@@ -279,6 +280,11 @@ function handleEffect(message) {
             { text: settings.advancedUser ? '🖼️👾➡️🖼️' : 'autoi2i', callback_data: 'pfp' },
         ];
     }
+    options.reply_markup.inline_keyboard.push(
+        [
+            { text: settings.advancedUser ? '🖼️➡️FLUX🖼️' : 'image2fluximage', callback_data: 'fluxi2i' },
+        ]
+    )
     if(lobby[message.from.id] && balance >= 400000){
         options.reply_markup.inline_keyboard.unshift(
             [
