@@ -3,6 +3,7 @@ const { incrementLoraUseCounter } = require('../../db/mongodb')
 const { checkpointmenu } = require('./checkpointmenu')
 
 function handleLoraTrigger(prompt, checkpoint, balance) {
+  console.log('handleloratrigger args',prompt,checkpoint,balance)
   let usedLoras = new Set();
   let modifiedPrompt = prompt;
 
