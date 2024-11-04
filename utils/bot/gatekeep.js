@@ -64,7 +64,7 @@ function softResetPoints(userId) {
 function shouldKick(userId) {
     const userData = lobby[userId];
     if(!lobby[userId].runs) return true
-    return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
+    if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
 }
 
 function addExp(userId) {
