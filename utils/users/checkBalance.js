@@ -32,7 +32,7 @@ const blessings = {
 
 const curses = {
     'Edsmy5Nqr3bCy8XcU33nsKtADkq22evY4P1XccS5jxYP': 2000000,
-    "EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb": 10000000,
+    //"EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb": 10000000,
 }
 
 //token shit
@@ -98,7 +98,7 @@ function checkBlacklist(wallet) {
         "FtSobG6Bw36QnZ6gbbvj2ssYC9xnj5L6tKRN7rEfWzwQ",
         "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
         "ECzNcuvo6ww28n41JHb84Pd4u8ofuKPkdCVPMp1uiSGU",
-        "EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb"
+        //"EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb"
     ]
     if(blacklist.includes(wallet)){
         return true;
