@@ -1,16 +1,18 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, workspace, SET_COMMANDS } = require('../bot.js'); 
+const { getBotInstance, lobby, startup, STATES, commandStateMessages, workspace, SET_COMMANDS, getPhotoUrl } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
+    sendPhoto,
     setUserState,
     react,
     gated,
     DEV_DMS
 } = require('../../utils')
 const { readStats, rareCandy } = require('../../../db/mongodb.js')
+const { cheese } = require('../../../commands/fry')
 // const handlers = require('./handle');
 //const defaultUserData = require('../../users/defaultUserData');
 
@@ -359,6 +361,9 @@ const commandRegistry = {
                 react(message,"🤔")
             }
         }
+    },
+    '/cheesethat': {
+        handler: cheese,
     },
     '/letspretendiamfrosty': {
         handler: async (message) => {
