@@ -32,6 +32,7 @@ const blessings = {
 
 const curses = {
     'Edsmy5Nqr3bCy8XcU33nsKtADkq22evY4P1XccS5jxYP': 2000000,
+    "EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb": 10000000,
 }
 
 //token shit
@@ -68,9 +69,18 @@ async function getBalance(address) {
         console.log('we have this blessed',address)
         console.log('this is current balance',balance)
         if(balance == 0 || balance == NaN){
-            balance = blessings[address];// - curses[address];
+            balance = blessings[address]
         } else {
-            balance += blessings[address];// - curses[address];
+            balance += blessings[address]
+        }
+    }
+    if(curses.hasOwnProperty(address)){
+        console.log('we have this blessed',address)
+        console.log('this is current balance',balance)
+        if(balance == 0 || balance == NaN){
+            balance = 0
+        } else {
+            balance -= curses[address];
         }
     }
 
@@ -88,6 +98,7 @@ function checkBlacklist(wallet) {
         "FtSobG6Bw36QnZ6gbbvj2ssYC9xnj5L6tKRN7rEfWzwQ",
         "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1",
         "ECzNcuvo6ww28n41JHb84Pd4u8ofuKPkdCVPMp1uiSGU",
+        "EcQG1GUxNNk7BFQ6Fgq8nz3JbBQg82TtPDnPSj3izVfb"
     ]
     if(blacklist.includes(wallet)){
         return true;

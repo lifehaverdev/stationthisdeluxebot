@@ -134,7 +134,7 @@ async function handleStatus(message) {
     const group = getGroup(message);
     const user = message.from.id
     let msg = '';
-    message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : '⭐️\n\n'
+    message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : msg += '⭐️\n\n'
     group ? msg += `${group.name} : ${group.qoints}\n\n` : null
     
     taskQueue.length > 0 ? msg +=    

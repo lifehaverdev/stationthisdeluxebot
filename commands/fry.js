@@ -19,7 +19,7 @@ const settings = {
 };
 
 // Function to apply watermark to an image
-async function applyWatermark(img, watermarkPath) {
+async function applyWatermark(img, watermarkPath, uniqueId) {
     const canvas = createCanvas(img.bitmap.width, img.bitmap.height);
     const ctx = canvas.getContext('2d');
 
@@ -42,7 +42,7 @@ async function applyWatermark(img, watermarkPath) {
 }
 
 // Function to apply deepfry effects to an image
-async function applyDeepfryEffect(image) {
+async function applyDeepfryEffect(image, uniqueId) {
     image = image.brightness(settings.brightness);
     image = image.contrast(settings.contrast);
 
@@ -54,22 +54,24 @@ async function applyDeepfryEffect(image) {
         image.bitmap.data[idx + 2] = Math.min(255, Math.max(0, image.bitmap.data[idx + 2] + rand)); // Blue
     });
 
-    await image.writeAsync('/tmp/temp_deepfried.jpg');
-    return await Jimp.read('/tmp/temp_deepfried.jpg');
+    const tempDeepfriedPath = `/tmp/temp_deepfried_${uniqueId}.jpg`;
+    await image.writeAsync(tempDeepfriedPath);
+    return await Jimp.read(tempDeepfriedPath);
 }
 
 // Function to apply JPEG compression repeatedly
-async function applyJPEGCompression(image) {
+async function applyJPEGCompression(image, uniqueId) {
     for (let i = 0; i < settings.jpegRepetitions; i++) {
-        await image.quality(settings.jpegQuality * 100).writeAsync('/tmp/temp_compressed.jpg');
-        image = await Jimp.read('/tmp/temp_compressed.jpg');
+        const tempCompressedPath = `/tmp/temp_compressed_${uniqueId}.jpg`;
+        await image.quality(settings.jpegQuality * 100).writeAsync(tempCompressedPath);
+        image = await Jimp.read(tempCompressedPath);
     }
     return image;
 }
 
 // Main function to process an image
 async function processImage(imagePath) {
-    console.log('image path',imagePath)
+    const uniqueId = Date.now() + '_' + Math.floor(Math.random() * 10000);
     const watermarkPath = './watermarks/watermark_new.png'
     try {
         let img;
@@ -87,13 +89,13 @@ async function processImage(imagePath) {
             img = await Jimp.read(imagePath);
         }
 
-        let canvas = await applyWatermark(img, watermarkPath);
+        let canvas = await applyWatermark(img, watermarkPath, uniqueId);
         img = await Jimp.read(canvas.toBuffer());
-        img = await applyDeepfryEffect(img);
-        img = await applyJPEGCompression(img);
+        img = await applyDeepfryEffect(img, uniqueId);
+        img = await applyJPEGCompression(img, uniqueId);
 
         // Save the final image
-        const outputFilePath = path.resolve('/tmp', `deepfried_${Date.now()}.jpg`);
+        const outputFilePath = path.resolve('/tmp', `deepfried_${uniqueId}.jpg`);
         await img.writeAsync(outputFilePath);
 
         // Check if the file was written successfully
@@ -139,7 +141,6 @@ async function cheese(message) {
 
 // Export the main function
 module.exports = {
-    processImage,
     cheese
 };
 
