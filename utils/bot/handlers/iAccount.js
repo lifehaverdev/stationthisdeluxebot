@@ -268,12 +268,12 @@ async function shakeSignIn (message) {
     const usersWithSameWallet = await getUsersByWallet(walletAddress);
 
     for (const user of usersWithSameWallet) {
-        if (user.verified && user.id !== userId) {
+        if (user.verified && user.userId !== userId) {
             isDuplicate = true;
             break;
         }
     }
-    
+
     if (isDuplicate) {
         sendMessage(message, "This wallet address is already associated with another verified user.");
         return;
