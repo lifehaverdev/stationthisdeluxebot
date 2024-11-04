@@ -220,6 +220,31 @@ async function getUserDataByUserId(userId) {
     }
 }
 
+async function getUsersByWallet(walletAddress) {
+    // Assuming you have a MongoDB database
+    const job = async () => {
+        
+        try {
+            const client = await getCachedClient();
+            const db = client.db(dbName);
+            const users = await db.collection('users').find({ wallet: walletAddress }).toArray();
+            return users;
+        } catch (error) {
+            console.error('Error retrieving users by wallet:', error);
+            return [];
+        }
+    }
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[getUsersByWallet] Failed to get user data:', error);
+        throw error;
+    }
+}
+
 // Function to create new user data with default settings
 async function createDefaultUserData(userId) {
     const job = async () => {
@@ -1266,6 +1291,59 @@ async function updateAllUserSettings() {
     }
 }
 
+async function removeDuplicateWallets() {
+    const job = async () => {
+        const client = await getCachedClient();
+        console.log('removing duplicate wallets')
+        try {
+            const collection = client.db(dbName).collection('users');
+            
+            // Fetch all user settings
+            const users = await collection.find().toArray();
+
+            // Step 1: Gather all wallet addresses and track userIds
+            const walletMap = new Map();
+            for (const user of users) {
+                if (user.wallet) {
+                    if (!walletMap.has(user.wallet)) {
+                        walletMap.set(user.wallet, []);
+                    }
+                    walletMap.get(user.wallet).push(user._id); // Assuming _id is the unique user identifier
+                }
+            }
+
+            // Step 2: Identify duplicate wallets
+            const duplicateWallets = Array.from(walletMap.entries())
+                .filter(([, userIds]) => userIds.length > 1);
+
+            // Step 3: Cleanse duplicate wallets
+            for (const [wallet, userIds] of duplicateWallets) {
+                for (const userId of userIds) {
+                    await collection.updateOne(
+                        { _id: userId },
+                        { $set: { wallet: '', verified: false } }
+                    );
+                }
+                console.log(`Cleared wallet: ${wallet} for users: ${userIds.join(', ')}`);
+            }
+
+            return { message: 'Duplicate wallets removed successfully' };
+        } catch (err) {
+            console.log('[removeDuplicateWallets] Error:', err);
+            throw err;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[removeDuplicateWallets] Failed to get user data:', error);
+        throw error;
+    }
+}
+
 
 
 // Replace dbName with your desired database name
@@ -1464,9 +1542,9 @@ module.exports = {
     writeUserData, 
     writeBurnData,
     updateAllUserSettings,
-    getUserDataByUserId, 
+    getUserDataByUserId, getUsersByWallet,
     createDefaultUserData,
-    updateAllUsersWithCheckpoint,
+    updateAllUsersWithCheckpoint, removeDuplicateWallets,
     addPointsToAllUsers,
     createRoom,
     writeData, rareCandy,

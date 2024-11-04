@@ -1,13 +1,14 @@
 const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
-const { writeUserData, getUserDataByUserId, writeData } = require('../../../db/mongodb')
+const { writeUserData, getUserDataByUserId, writeData, getUsersByWallet } = require('../../../db/mongodb')
 const { sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
-const { checkLobby, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
+const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
-const { signedOut, home } = require('../../models/userKeyboards.js')
+const { signedOut } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
 const defaultUserData = require('../../users/defaultUserData.js')
 const { getGroup } = require('./iGroup')
+const { home } = require("./iMenu")
 /*
 Let's upgrade protection
 Cull mutliple userids on same wallet address
@@ -230,11 +231,12 @@ async function handleSignIn (message) {
     if(lobby[userId]){
         userData = lobby[userId]
     } else {
+        console.log('THIS SHOUDLNT HAPPEN WE ARE GETTING USERDATA CASUE THE USER ISNT IN THE LOBBY IN HANDLESIGNIN')
         userData = await getUserDataByUserId(userId);
     }
     
     if(userData != false){
-        lobby[userId] = userData;
+        //lobby[userId] = userData;
         if(userData.wallet != ''){
             sendMessage(message, `You are signed in to ${userData.wallet}`);
             if(userData.verified == true){
@@ -261,9 +263,25 @@ async function shakeSignIn (message) {
     }
     let chatData = lobby[userId];
     chatData.wallet = message.text;
+    // Check if the wallet address is already associated with another verified user in the database
+    let isDuplicate = false;
+    const usersWithSameWallet = await getUsersByWallet(walletAddress);
+
+    for (const user of usersWithSameWallet) {
+        if (user.verified && user.id !== userId) {
+            isDuplicate = true;
+            break;
+        }
+    }
+    
+    if (isDuplicate) {
+        sendMessage(message, "This wallet address is already associated with another verified user.");
+        return;
+    }
     //console.log('chatdata wallet in shake',chatData.wallet);
-    writeUserData(userId,chatData)
-    lobby[userId] = chatData; //redundant i think
+    await writeUserData(userId,chatData)
+    ///lobby[userId] = chatData; //redundant i think
+    lobbyManager.addUser(userId,chatData)
     console.log(message.from.first_name,'has entered the chat');
     // Confirm sign-in
     //sendMessage(message, `You are now signed in to ${message.text}`);
@@ -275,9 +293,7 @@ async function handleVerify(message) {
         lobby[userId].verified ? sendMessage(message,`You (${message.text}) are verified, dw`) : sendMessage(message,`Okay, ${message.text} go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`)
         lobby[userId].verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
     } else {
-        const userData = await getUserDataByUserId(userId);
-        userData.verified ? sendMessage(message,`You (${message.text}) are verified, dw`) : sendMessage(message,`Okay, ${message.text} go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`)
-        userData.verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
+        sendMessage(message,'some ting wong :(',signedOut)
     }
     ///console.log('userStates after handlever',lobby[userId].state.state)
 }

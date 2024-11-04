@@ -1,11 +1,13 @@
 //const { MongoClient } = require("mongodb");
 const { //updateAllUsersWithCheckpoint, 
-    updateAllUserSettings } = require('./mongodb')
+    //updateAllUserSettings, 
+    removeDuplicateWallets} = require('./mongodb')
 //require("dotenv").config()
 //const { loraTriggers } = require('../utils/models/loraTriggerTranslate')
 
 //updateAllUsersWithCheckpoint();
-updateAllUserSettings()
+//updateAllUserSettings()
+removeDuplicateWallets()
 
 // async function insertLoraTriggers() {
 //     // Connection URI
