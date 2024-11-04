@@ -381,13 +381,13 @@ async function handleTaskCompletion(task) {
     if (status === 'success') {
         await operation();
         if(sent){
-            addPoints(task)
+            await addPoints(task)
             const out = {
                 urls: urls,
                 tags: tags,
                 texts: texts
             }
-            saveGen({task,run,out})
+            await saveGen({task,run,out})
             return 'success'
         } else {
             return 'not sent'
@@ -414,7 +414,7 @@ async function sendMedia(message, fileToSend, type, promptObj) {
         }
         console.log('Sending photo:', fileToSend);
         
-        if(lobby[message.from.id].advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
+        if(promptObj.advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
         if (response && (promptObj.balance == '' || promptObj.balance < 200000 || promptObj.forceLogo)){
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file

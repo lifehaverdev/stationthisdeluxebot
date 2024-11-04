@@ -63,6 +63,7 @@ function softResetPoints(userId) {
 
 function shouldKick(userId) {
     const userData = lobby[userId];
+    console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs',lobby[userId].runs,'and the first one has time requested',lobby[userId].runs[0].timeRequested,'and between that time and now, it is greater than lobby clean interval',Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL)
     if(!lobby[userId].runs) return true
     if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
 }
@@ -105,8 +106,8 @@ class LobbyManager {
             const userTmp = lobby[userId]
             console.log(userTmp.points,userTmp.doints,userTmp.qoints,userTmp.boints)
         }
-        addPointsToAllUsers();
-        console.log("Points added to all users. Starting user-by-user cleanup...");
+        const didwe = await addPointsToAllUsers();
+        console.log("Points added to all users: ",didwe," Starting user-by-user cleanup...");
 
         for (const userId in this.lobby) {
             const userData = this.lobby[userId]; // Fetch user data directly from the lobby
