@@ -153,7 +153,8 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     } else {
         delete promptObj.input_control_image
     }
-    if (userContext.type == 'FLUX' || userContext.type == 'FLUXI2I') {
+    const fluxTypes = ['FLUX','FLUXI2I','LOSER']
+    if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
     }
     if (userContext.type.includes('MAKE')) {
@@ -189,14 +190,15 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         return;
     }
 
-    // Clean the message text
-    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '');
 
     // Check if the message text is empty, trigger the start prompt
     if (message.text === '') {
         await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount);  // Use the generalized start function
         return;
     }
+
+    // Clean the message text
+    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '');
 
     const thisSeed = makeSeed(userId);
 
