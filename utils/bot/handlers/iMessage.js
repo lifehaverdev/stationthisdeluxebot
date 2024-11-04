@@ -391,6 +391,7 @@ const commandRegistry = {
                 // Step 3: If no group is returned, check if the user is an admin
                 if (!group) {
                     const chatAdmins = await bot.getChatAdministrators(message.chat.id);
+                    console.log(chatAdmins)
                     const isAdmin = chatAdmins.some(admin => admin.status !== 'bot' && admin.user.id === message.from.id);
 
                     if (isAdmin) {
@@ -401,18 +402,14 @@ const commandRegistry = {
                                     [{
                                         text: 'Initialize',
                                         callback_data: `ig_${message.chat.id}`
-                                    }],
-                                    ...iMenu.home.reply_markup.keyboard.map(row => row.map(button => ({
-                                        text: button.text,
-                                        callback_data: `home_${button.text.replace('/', '')}_${message.chat.id}`
-                                    })))
+                                    }]
                                 ]
                             }
                         };
                         sendMessage(message, "This group is unclaimed. Would you like to initialize it?", initializeKeyboard);
                         return;
                     } else {
-                        sendMessage(message, "This group is unclaimed. Please contact an admin to initialize it.");
+                        sendMessage(message, '$ms2', iMenu.home);
                         return;
                     }
                 }
