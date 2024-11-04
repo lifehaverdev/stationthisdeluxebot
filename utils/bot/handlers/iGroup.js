@@ -1,6 +1,6 @@
 const { sendMessage, setUserState, makeBaseData, compactSerialize } = require('../../utils');
 const { rooms, getBurned, lobby, STATES } = require('../bot')
-const { features } = require('../../models/tokengatefeatures.js')
+//const { features } = require('../../models/tokengatefeatures.js')
 const { createRoom, writeData, writeBurnData } = require('../../../db/mongodb.js')
 const { initialize } = require('../intitialize.js');
 

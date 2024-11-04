@@ -5,7 +5,6 @@ const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = requi
 const {
     safeExecute,
     sendMessage,
-    sendPhoto,
     setUserState,
     react,
     gated,
@@ -381,9 +380,46 @@ const commandRegistry = {
             console.log(message)
         }
     },
+    // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
-        handler: (message) => {
-            sendMessage(message,'$ms2',iMenu.home)
+        handler: async (message) => {
+            // Step 1: Check if the message is coming from a group chat
+            if (message.chat.id < 0) {
+                // Step 2: Use getGroup function to see if the group is initialized
+                const group = await iGroup.getGroup(message);
+                
+                // Step 3: If no group is returned, check if the user is an admin
+                if (!group) {
+                    const chatAdmins = await bot.getChatAdministrators(message.chat.id);
+                    const isAdmin = chatAdmins.some(admin => admin.status !== 'bot' && admin.user.id === message.from.id);
+
+                    if (isAdmin) {
+                        // Step 4: If user is an admin and group is unclaimed, add an inline keyboard to initialize
+                        const initializeKeyboard = {
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{
+                                        text: 'Initialize',
+                                        callback_data: `ig_${message.chat.id}`
+                                    }],
+                                    ...iMenu.home.reply_markup.keyboard.map(row => row.map(button => ({
+                                        text: button.text,
+                                        callback_data: `home_${button.text.replace('/', '')}_${message.chat.id}`
+                                    })))
+                                ]
+                            }
+                        };
+                        sendMessage(message, "This group is unclaimed. Would you like to initialize it?", initializeKeyboard);
+                        return;
+                    } else {
+                        sendMessage(message, "This group is unclaimed. Please contact an admin to initialize it.");
+                        return;
+                    }
+                }
+            }
+
+            // If the group is already initialized or it's not a group chat, send the home menu
+            sendMessage(message, '$ms2', iMenu.home);
         }
     }
 };
@@ -396,7 +432,6 @@ const stateHandlers = {
     [STATES.MAKE3]: (message) => safeExecute(message, iMake.handleMake3),
     [STATES.MS2PROMPT]: (message) => safeExecute(message, iMake.handleMs2Prompt),
     [STATES.FLUXPROMPT] : (message) => safeExecute(message, iMake.handleFluxPrompt),
-    //[STATES.REQUEST]: (message) => safeExecute(message, iWork.handleRequest),
     [STATES.ASSIST]: (message) => safeExecute(message, iWork.shakeAssist),
     [STATES.FLASSIST]: (message) => safeExecute(message, iWork.shakeFluxAssist),
     [STATES.SPEAK]: (message) => safeExecute(message, iWork.shakeSpeak),
