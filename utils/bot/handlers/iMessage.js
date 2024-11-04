@@ -334,7 +334,7 @@ const commandRegistry = {
                     
                     console.log(whom,exp)
                     await rareCandy(whom,exp)
-                    //lobby[whom].
+                    lobby[whom].exp = exp;
                     sendMessage(message,'it is done');
                 } else {
                     sendMessage(message,'sorry...')
