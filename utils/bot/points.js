@@ -1,7 +1,7 @@
 const { lobby } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { updateGroupPoints } = require('../../db/mongodb')
-const { NOCOINERSTARTER, POINTMULTI } = require('./gatekeep')
+const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
 
 // Helper function to get the user's max balance
 function getMaxBalance(userObject) {
@@ -9,18 +9,20 @@ function getMaxBalance(userObject) {
     return max; // Adjust this as needed if balance calculations are more complex
 }
 
-function addPoints(task) {
+async function addPoints(task) {
     ({ promptObj, message } = task);
+    const userId = promptObj.userId;
+    if(!lobby[userId]){
+        await checkIn(message)
+        console.log('we didnt see user in add points in the lobby so here is boolean of whether userId is in lobby after we pull a checkin',lobby.hasOwnProperty(userId))
+    }
     let rate = 1; 
-    // if(promptObj.type == 'MS3.2') {
-    //     task.promptObj.rate = 2;
-    // }
-    const doublePointTypes = ['MS3.2','FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG']
+    const doublePointTypes = ['MS3.2','FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG','LOSER','FLUXI2I']
     if (doublePointTypes.includes(promptObj.type)) {
         task.promptObj.rate = 2;
     }
     const pointsToAdd = ((task.runningStop-task.runningStart) / 1000) * rate;
-    const user = lobby[promptObj.userId];
+    const user = lobby[userId];
     const group = getGroup(message);
     const max = getMaxBalance(user)
     const credit = user.points + user.doints

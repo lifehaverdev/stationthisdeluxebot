@@ -10,7 +10,7 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
-const { readStats } = require('../../../db/mongodb.js')
+const { readStats, rareCandy } = require('../../../db/mongodb.js')
 // const handlers = require('./handle');
 //const defaultUserData = require('../../users/defaultUserData');
 
@@ -304,6 +304,37 @@ const commandRegistry = {
                 // console.log('whocares',whoCares)
                 if(lobby[whom]){
                     lobby[whom].doints = 0;
+                    sendMessage(message,'it is done');
+                } else {
+                    sendMessage(message,'sorry...')
+                }
+            }
+        }
+    },
+    '/rarecandy': {
+        handler: async (message) => {
+            if(message.from.id != DEV_DMS){
+                // console.log(message.from.id)
+                return;
+            } else {
+                const whom = message.reply_to_message.from.id
+                message.from.id = whom
+                if(!lobby[whom]){
+                    await checkIn(message)
+                }
+                // console.log('whocares',whoCares)
+                if(lobby[whom]){
+                    const level = parseInt(message.text.replace('/rarecandy ',''));
+                    //console.log('typeof level',level,typeof level)
+                    if(isNaN(level)){
+                        console.log('typeof exp',level)
+                        return
+                    }
+                    const exp = level*level*level; 
+                    
+                    console.log(whom,exp)
+                    await rareCandy(whom,exp)
+                    //lobby[whom].
                     sendMessage(message,'it is done');
                 } else {
                     sendMessage(message,'sorry...')

@@ -485,6 +485,24 @@ async function getGroupDataByChatId(chatId) {
     }
 }
 
+async function rareCandy(whom, exp) {
+    // Define the collection name and the filter for the user
+    const collectionName = 'users';
+    const filter = { userId: whom };
+
+    // Define the data to write (updating the user's exp)
+    const data = { exp: exp };
+
+    // Use the writeData function to perform the update
+    const success = await writeData(collectionName, filter, data);
+
+    if (success) {
+        console.log(`Successfully updated exp for user ${whom} to ${exp}`);
+    } else {
+        console.error(`Failed to update exp for user ${whom}`);
+    }
+}
+
 async function writeData(collectionName, filter, data) {
     const job = async () => {
         // Create a new MongoClient
@@ -701,13 +719,13 @@ async function addGenDocument(collectionName, data) {
     }
 }
 
-function saveGen({task, run, out}) {
+async function saveGen({task, run, out}) {
 
     // Combine the data into one object
     const dataToSave = {...task, ...run, ...out};
     
     // Call addGenDocument to save the new document to the 'gens' collection
-    addGenDocument('gens', dataToSave);
+    await addGenDocument('gens', dataToSave);
 }
 
 async function updateGroupPoints(group, pointsToAdd) {
@@ -1451,7 +1469,7 @@ module.exports = {
     updateAllUsersWithCheckpoint,
     addPointsToAllUsers,
     createRoom,
-    writeData,
+    writeData, rareCandy,
     readStats,
     updateGroupPoints,
     incrementLoraUseCounter,
