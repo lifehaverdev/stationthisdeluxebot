@@ -232,7 +232,9 @@ async function handleSignIn (message) {
         userData = lobby[userId]
     } else {
         console.log('THIS SHOUDLNT HAPPEN WE ARE GETTING USERDATA CASUE THE USER ISNT IN THE LOBBY IN HANDLESIGNIN')
-        userData = await getUserDataByUserId(userId);
+        //userData = await getUserDataByUserId(userId);
+        sendMessage(message,'try again sorry')
+        return
     }
     
     if(userData != false){
@@ -265,7 +267,7 @@ async function shakeSignIn (message) {
     chatData.wallet = message.text;
     // Check if the wallet address is already associated with another verified user in the database
     let isDuplicate = false;
-    const usersWithSameWallet = await getUsersByWallet(walletAddress);
+    const usersWithSameWallet = await getUsersByWallet(message.text);
 
     for (const user of usersWithSameWallet) {
         if (user.verified && user.userId !== userId) {
