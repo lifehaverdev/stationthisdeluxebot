@@ -63,7 +63,9 @@ function softResetPoints(userId) {
 
 function shouldKick(userId) {
     const userData = lobby[userId];
-    console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',lobby[userId].runs[0].timeRequested,'and between that time and now, it is greater than lobby clean interval',Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL)
+    if(lobby[userId].runs[0].timeRequested){
+        console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',lobby[userId].runs[0].timeRequested ? lobby[userId].runs[0].timeRequested : '','and between that time and now, it is greater than lobby clean interval',Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL)
+    }
     if(!lobby[userId].runs) return true
     if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
 }

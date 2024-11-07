@@ -114,19 +114,6 @@ async function readRooms() {
         // Access the database and the specified collection
         const db = client.db(process.env.BOT_NAME);
         const collection = db.collection('floorplan');
-
-        // Find all documents in the collection
-        // const document = await collection.findOne()
-        // console.log('document found',document)
-        // if (document && document.rooms) {
-        //     // Parse the loraTriggers field and update the existing array
-        //     rooms.length = 0; // Clear the existing array
-        //     //const parsedTriggers = 
-        //     document.rooms.map(room => rooms.push(room))//JSON.parse(triggerStr));
-            
-        //     //loraTriggers.push(...parsedTriggers); // Push new elements into the array
-        // }
-        // Find all documents in the collection
         const documents = await collection.find().toArray();
         // Initialize a map to store the total burned amount for each wallet
         rooms.length = 0;
@@ -137,7 +124,7 @@ async function readRooms() {
 
         console.log('found the rooms')//,rooms)
         rooms.forEach(room => {
-            console.log(room.name)
+            console.log(room.title)
         })
 
 

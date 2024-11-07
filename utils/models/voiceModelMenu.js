@@ -3,12 +3,12 @@ voiceModels = [
         name: "BAP",
         modelId: "3HZp3vUTOWTRWPWaY47Q"
     },
+    // {
+    //     name: "miladystation",
+    //     modelId: "165UvtZp7kKnmrVrVQwx"
+    // },
     {
-        name: "miladystation",
-        modelId: "165UvtZp7kKnmrVrVQwx"
-    },
-    {
-        name: "trapaholics",
+        name: "evil empire",
         modelId: "34Qj692rRGjm1fA8zudD"
     },
     {
@@ -26,6 +26,10 @@ voiceModels = [
     {
         name: 'Joe',
         modelId: 'eJnCdPneH7e8OxO6azGV'
+    },
+    {
+        name: 'Dom',
+        modelId: 'mO9CvFCq3LacDoevi4kO'
     }
 ]
 

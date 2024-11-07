@@ -383,6 +383,12 @@ const commandRegistry = {
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
         handler: async (message) => {
+            const getAdmin = async (message) => {
+                const chatAdmins = await bot.getChatAdministrators(message.chat.id);
+                //console.log('chat admins',chatAdmins)
+                const isAdmin = chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id);
+                return isAdmin
+            }
             // Step 1: Check if the message is coming from a group chat
             if (message.chat.id < 0) {
                 // Step 2: Use getGroup function to see if the group is initialized
@@ -390,10 +396,7 @@ const commandRegistry = {
                 
                 // Step 3: If no group is returned, check if the user is an admin
                 if (!group) {
-                    const chatAdmins = await bot.getChatAdministrators(message.chat.id);
-                    console.log(chatAdmins)
-                    const isAdmin = chatAdmins.some(admin => admin.status !== 'bot' && admin.user.id === message.from.id);
-
+                    const isAdmin = await getAdmin(message)
                     if (isAdmin) {
                         // Step 4: If user is an admin and group is unclaimed, add an inline keyboard to initialize
                         const initializeKeyboard = {
@@ -412,6 +415,16 @@ const commandRegistry = {
                         sendMessage(message, '$ms2', iMenu.home);
                         return;
                     }
+                } else {
+                    const isAdmin = await getAdmin(message)
+                    if(isAdmin){
+                        iGroup.groupMenu(message)
+                        return
+                    } else {
+                        sendMessage(message, '$ms2', iMenu.home);
+                        return;
+                    }
+
                 }
             }
 
