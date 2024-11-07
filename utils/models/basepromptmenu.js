@@ -54,7 +54,7 @@ const basepromptmenu = [
 ];
 
 function getBasePromptByName(name) {
-    console.log('name sent to getBasePromptByName',name)
+    //console.log('name sent to getBasePromptByName',name)
     const basePrompt = basepromptmenu.find(prompt => prompt.name === name);
     //console.log('baseprompt found',basePrompt)
     return basePrompt ? basePrompt.baseprompt : defaultPrompt;
