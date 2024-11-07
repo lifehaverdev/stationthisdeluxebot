@@ -14,6 +14,7 @@ const { startSet } = require('./iSettings');
 const { handleRegen, handleHipFire } = require('./iMake')
 const { returnToAccountMenu } = require('./iAccount')
 const iMenu = require('./iMenu');
+const iGroup = require('./iGroup')
 const iResponse = require('./iResponse');
 const iBrand = require('./iBrand')
 const iTrain = require('./iTrain')
@@ -265,26 +266,6 @@ const actionMap = {
         message.from.id = user;
         setUserState(message,STATES.IDLE)
     },
-    // 'applygroupbalance': (message) => {
-    //     console.log(message)
-    //     const burnRecord = burns.find(burn => burn.wallet === lobby[message.reply_to_message.from.id].wallet);
-    //     let burned = 0;
-    //     if (burnRecord) {
-    //         console.log(burnRecord.burned)
-    //         burned += parseInt(burnRecord.burned) * 2 / 1000000;
-    //     }
-    //     sendMessage(message.reply_to_message,`You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`)
-    //     setUserState(message.reply_to_message, STATES.GROUPAPPLY)
-    // },
-    // 'createGroup': async (message) => {
-    //     console.log('this is createGroup rn');
-    //     console.log('message',message);
-    //     console.log('reply',message.reply_to_message);
-    //     message.from.id = message.reply_to_message.from.id;
-    //     //message.message_thread_id = message.message_thread_id;
-    //     sendMessage(message.reply_to_message,'What is the name of your group?')
-    //     setUserState(message.reply_to_message, STATES.GROUPNAME)
-    // }
     'featuredLora': async (message) => {
         await bot.deleteMessage(message.chat.id, message.message_id);
         iWork.featuredLoRaList(message);
@@ -364,24 +345,34 @@ const actionMap = {
     'viewSlotCaption': iTrain.viewSlotCaption,
     'deleteSlotImage': iTrain.deleteLoraSlot,
     'submitTraining': iTrain.submitTraining,
-    'regen_current_settings': handleHipFire
+    'regen_current_settings': handleHipFire,
+    'initializeGroup': iGroup.initializeGroup,
+    'backToGroupMenu': iGroup.backToGroupSettingsMenu,
+    'gateKeepMenu': iGroup.groupGatekeepMenu,
+    'commandsMenu': iGroup.groupCommandMenu,
+    'promptsMenu': iGroup.groupPromptMenu,
+    'unlockMenu': iGroup.groupUnlockMenu
 };
 
 
 // Define prefix handlers map outside of the main exported function
 const prefixHandlers = {
+    //setbaseprompt
     'sbp_': (action, message, user) => {
         const selectedName = action.split('_')[1];
         actionMap['setBasePrompt'](message, selectedName, user);
     },
+    //setvoicemodel
     'sv_': (action, message, user) => {
         const selectedName = action.split('_').slice(1).join('_');
         actionMap['setVoice'](message, selectedName, user);
     },
+    //setcheckpoint
     'scp_': (action, message, user) => {
         const selectedName = action.split('_').slice(1).join('_');
         actionMap['setCheckpoint'](message, selectedName, user);
     },
+    //setwatermark
     'swm_': (action, message, user) => {
         const selectedName = action.split('_').slice(1).join('_');
         actionMap['setWatermark'](message, selectedName, user);
@@ -413,6 +404,7 @@ const prefixHandlers = {
         const slotId = parseInt(action.split('_')[2]);
         actionMap['viewSlotImage'](message,user,loraId,slotId);
     },
+    //view slot caption
     'vsc_': (action, message, user) => {
         const loraId = parseInt(action.split('_')[1]);
         const slotId = parseInt(action.split('_')[2]);
@@ -428,8 +420,34 @@ const prefixHandlers = {
     'st_': (action, message, user) => {
         const loraId = parseInt(action.split('_')[1]);
         actionMap['submitTraining'](message,user,loraId);
-    }
-    //view slot text
+    },
+    //initialize gorup
+    'ig_': (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['initializeGroup'](message,user,groupChatId)
+    },
+    //edit group (back to group menu)
+    'eg_': (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['backToGroupMenu'](message,user,groupChatId)
+    },
+    'gatekeep_' : (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['gateKeepMenu'](message,user,groupChatId)
+    },
+    'commands_': (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['commandsMenu'](message,user,groupChatId)
+    },
+    'prompts_': (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['promptsMenu'](message,user,groupChatId)
+    },
+    'unlock_':(action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['unlockMenu'](message,user,groupChatId)
+    },
+    
 };
 
 // Main export function

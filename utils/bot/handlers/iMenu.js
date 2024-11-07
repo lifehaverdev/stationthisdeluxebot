@@ -1,21 +1,28 @@
-const { lobby } = require('../bot')
+const { lobby, rooms } = require('../bot')
 const { basepromptmenu } = require('../../models/basepromptmenu')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { voiceModels } = require('../../models/voiceModelMenu')
 const { watermarkmenu } = require('../../models/watermarks')
 const { compactSerialize, sendMessage, editMessage, makeBaseData, gated } = require('../../utils')
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
-const {getGroup} = require('./iGroup')
+
+function getGroup(message) {
+    const group = rooms.find(group => group.chat.id == message.chat.id)
+    return group;
+}
 
 function setMenu(message) {
+    
+    console.log(getGroup)
     const settings = getSettings(message);
+    
     const group = getGroup(message);
     const userBalance = lobby[message.from.id] ? lobby[message.from.id].balance : 0;
 
     const options = buildSetMenu(settings,group,userBalance)
 
     // Sending an empty message to set the keyboard
-    sendMessage(message, 'Settings', options);
+    sendMessage(message, group ? `${group.title} Settings` : 'Settings', options);
 }
 
 function buildSetMenu(settings, group, userBalance) {
@@ -63,6 +70,7 @@ function buildSetMenu(settings, group, userBalance) {
 function getStatusIcon(setting, imageSet) {
     if (setting && imageSet) return '✅';
     if (setting && !imageSet) return '🆘';
+    if (!setting && imageSet) return '💤';
     return '❌';
 }
 

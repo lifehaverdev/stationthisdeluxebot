@@ -17,11 +17,11 @@ const defaultUserData = {
     input_width: 1024,
     prompt: '',
     userPrompt: '-1',
+    basePrompt: "MS2",
     input_negative: '-1',
     input_checkpoint: "zavychromaxl_v60",
     input_seed: -1,
     lastSeed: -1,
-    basePrompt: "MS2",
     advancedUser: false,
     lastImage: '',
     tempSize: {

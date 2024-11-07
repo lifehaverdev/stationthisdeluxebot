@@ -17,7 +17,7 @@ async function startSet(message,user) {
     //console.log('group',group.wallet, group.owner)
     //console.log('user',message.from.id)
     if(group){
-        if(user == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return user == appointed ? true : false}))){
+        if((group.admins.length > 0 && group.admins.some((appointed) => {return user == appointed ? true : false}))){
             console.log('we got it , you are group owner')
             settings = group.settings;
         } else {
@@ -191,7 +191,7 @@ async function handleSet(message) {
     // console.log('found it!',originalMsg)
     //console.log('group in handleset',group.id);
     if(group){
-        if(userId == group.owner || (group.admin.length > 0 && group.admin.some((appointed) => {return message.from.id == appointed ? true : false}))){
+        if((group.admins.length > 0 && group.admins.some((appointed) => {return message.from.id == appointed ? true : false}))){
             settings = group.settings;
         } else {
             sendMessage(message,'Only admin can change group settings')

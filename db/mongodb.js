@@ -937,33 +937,17 @@ async function incrementLoraUseCounter(names) {
 
 //
 
-async function createRoom(chatId, userId, value) {
+async function createRoom(chatId, groupData) {
     const job = async () => {
-        console.log(value)
+        console.log(groupData)
         // Create a new MongoClient
         const client = await getCachedClient();
         
         try {
             const collection = client.db(dbName).collection('floorplan');
             
-            // Fetch the creator's settings from the lobby
-            const settings = lobby[userId];
-            if (!settings) {
-                throw new Error("User settings not found");
-            }
-            const room = {
-                owner: userId,
-                name: lobby[userId].group, // This can be parameterized
-                admins: [],
-                wallet: lobby[userId].wallet,
-                applied: parseInt(value), // This can be parameterized
-                points: 0,
-                credits: parseInt(value) * 2 / 540,
-                id: chatId,
-                settings: {
-                    ...settings
-                }
-            };
+            const room = groupData;
+            
             try {
                 await collection.updateOne( 
                     { id: chatId},
@@ -974,7 +958,6 @@ async function createRoom(chatId, userId, value) {
                 console.log('error writing room')
             }
             
-
             console.log('Room written successfully');
             return true;
         } catch (error) {
@@ -988,7 +971,7 @@ async function createRoom(chatId, userId, value) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[createRoom] Failed to get user data:', error);
         throw error;
     }
 }
@@ -1063,7 +1046,7 @@ async function writeBurnData(userId, amount) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[writeBurnData] Failed to get user data:', error);
         throw error;
     }
 }
@@ -1127,7 +1110,7 @@ async function addPointsToAllUsers() {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[Add points to all users] Failed to get user data:', error);
         throw error;
     }
 }

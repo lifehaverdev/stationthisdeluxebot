@@ -132,10 +132,10 @@ function convertTime(timeInSeconds) {
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
     const group = getGroup(message);
-    const user = message.from.id
+    //const user = message.from.id
     let msg = '';
     message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : msg += '⭐️\n\n'
-    group ? msg += `${group.name} : ${group.qoints}\n\n` : null
+    group && group.admins.includes(message.from.id) ? msg += `${group.title}\n ${group.qoints}\n\n` : null
     
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {
@@ -154,10 +154,7 @@ async function handleStatus(message) {
         return `${username}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`; // Include the username in the status
     }).join('\n')}\n` : null
     
-    const callbackData = 'refresh'
-    const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: callbackData}]]}
-    //const opt = iMenu.home
-    //opt.inline_keyboard= [[{ text: '🔄', callback_data: callbackData}]]
+    const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: 'refresh'}]]}
     sendMessage(message, msg, {reply_markup: reply_markup});
 }
 
@@ -171,7 +168,6 @@ async function loraList(message) {
         .filter(lora => lora.uses && !lora.hidden) // Filter out hidden LoRAs and those without `uses`
         .sort((a, b) => b.uses - a.uses) // Sort by `uses` in descending order
         .slice(0, 10); // Get the top 10
-
     
     // Build message for the top 10 LoRAs
     top10Loras.forEach(lora => {

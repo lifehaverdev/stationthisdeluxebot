@@ -218,6 +218,13 @@ async function sendMessage(msg, text, options = {}) {
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
 }
 
+async function sendPrivateMessage(user, msg, text, options = {}) {
+    msg.chat.id = user
+    delete msg.message_thread_id
+    delete msg.message_id
+    return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options)
+}
+
 async function sendPhoto(msg, fileUrl, options = {}) {
     await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendPhoto.bind(bot), msg, fileUrl, options);
@@ -351,7 +358,7 @@ module.exports = {
     sendPhoto,
     sendDocument,
     sendAnimation,
-    sendMessage,
+    sendMessage, sendPrivateMessage,
     sendVideo,
     safeExecute,
     setUserState,

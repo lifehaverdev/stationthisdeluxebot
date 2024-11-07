@@ -36,6 +36,13 @@ watermarkmenu = [
         ratio: .2,
         positiondX: 8,
         positiondY: -300
+    },
+    {
+        name: 'whitemonster',
+        fileName: 'whitemonster.jpg',
+        ratio: .2,
+        positiondX: 8,
+        positiondY: -300
     }
 ]
 
