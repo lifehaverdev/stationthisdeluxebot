@@ -123,6 +123,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const promptObj = {};
     promptObj.type = userContext.type;
     promptObj.userPrompt = userContext.userPrompt;
+    promptObj.basePrompt = userContext.basePrompt;
     promptObj.timeRequested = Date.now();
     promptObj.prompt = userContext.prompt;
     promptObj.forcelogo = userContext.forcelogo || false;
@@ -156,9 +157,11 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const fluxTypes = ['FLUX','FLUXI2I','LOSER']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
+        delete promptObj.basePrompt;
     }
     if (userContext.type.includes('MAKE')) {
         console.log('we are taking out strneght')
+        delete promptObj.input_image
         delete promptObj.input_strength
     }
 
