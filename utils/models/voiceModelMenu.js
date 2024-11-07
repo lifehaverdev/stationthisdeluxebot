@@ -8,7 +8,7 @@ voiceModels = [
     //     modelId: "165UvtZp7kKnmrVrVQwx"
     // },
     {
-        name: "evil empire",
+        name: "evilempire",
         modelId: "34Qj692rRGjm1fA8zudD"
     },
     {
