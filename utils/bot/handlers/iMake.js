@@ -162,7 +162,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (userContext.type.includes('MAKE')) {
         console.log('we are taking out strneght')
         delete promptObj.input_image
-        delete promptObj.input_strength
+        promptObj.input_strength = 1;
     }
 
     // Include message details for tracking and additional context
