@@ -3,7 +3,6 @@ const { incrementLoraUseCounter } = require('../../db/mongodb')
 const { checkpointmenu } = require('./checkpointmenu')
 
 function handleLoraTrigger(prompt, checkpoint, balance) {
-  console.log('handleloratrigger args',prompt,checkpoint,balance)
   let usedLoras = new Set();
   let modifiedPrompt = prompt;
 
@@ -11,7 +10,6 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
   const filteredLoraTriggers = loraTriggers.filter(lora =>
     checkpoint && lora.version === checkpointmenu.find(item => item.name === checkpoint)?.description
   );
-  //console.log('here are the triggers we are checking for',filteredLoraTriggers)
   filteredLoraTriggers.forEach(lora => {
     lora.triggerWords.forEach(triggerWord => {
       const regex = new RegExp(`${triggerWord}(\\d*)`, 'gi');
@@ -19,7 +17,6 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
         let weight;
         // If p1 is provided, determine the weight based on its value
         if (p1) {
-          console.log('weight for loratriggertrans',p1)
           const p1Value = parseInt(p1, 10);
 
           // If p1Value > 10, allow weights greater than 1 (for example, 12 -> 1.2, 14 -> 1.4, etc.)
@@ -47,8 +44,6 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
     if (usedLoraNamesArray.length > 0) {
       incrementLoraUseCounter(usedLoraNamesArray); // Call the function to increment 'uses'
     }
-  //console.log('before', prompt, )
-  //console.log('after ',modifiedPrompt)
   return modifiedPrompt;
 }
 

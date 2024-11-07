@@ -300,7 +300,7 @@ const actionMap = {
         }
 
         // Fetch the user's runs
-        console.log('regenrun user',user)
+        //console.log('regenrun user',user)
         const userRuns = lobby[user].runs;
         if (!userRuns || userRuns.length <= runIndex) {
             await sendMessage(message, 'Invalid selection, please try again.');
@@ -310,7 +310,7 @@ const actionMap = {
         lobby[user].lastSeed = thisSeed;
         // Retrieve the run corresponding to the index
         const selectedRun = { ...userRuns[runIndex], seed: thisSeed, isRegen: true };
-        
+        console.log('regen run',selectedRun)
         // Create the task object using the original message and the selected run's promptObj
         const msg = message.reply_to_message
         //console.log('regenrun message',message)
@@ -333,7 +333,6 @@ const actionMap = {
         } else {
             bot.deleteMessage(chatId, messageId)
         }
-        
         await react(message.reply_to_message,'👍')
     },
     'trainingMenu': iTrain.handleTrainingMenu,

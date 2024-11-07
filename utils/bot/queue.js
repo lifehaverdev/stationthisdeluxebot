@@ -48,6 +48,8 @@ function handleEnqueueRegen(task) {
         if (lobby[userId].runs.length > 5) {
             lobby[userId].runs.pop();
         }
+    } else {
+        task.promptObj.prompt = task.promptObj.finalPrompt
     }
 }
 

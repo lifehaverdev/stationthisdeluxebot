@@ -41,60 +41,6 @@ function tokenGate(group, userId, message) {
     }
 }
 
-// async function startMake(message, user = null) {
-//     console.log('start make from iMake')
-//     if(user){
-//         message.from.id = user;
-//         await editMessage({
-//             text: 'What prompt for your txt2img?',
-//             chat_id: message.chat.id,
-//             message_id: message.message_id
-//         })
-//     } else {
-//         sendMessage(message, 'What prompt for your txt2img?')
-//     }
-//     //await sendMessage(message,'What prompt for your txt2img?')
-//     //console.log('user in start make',message.from.id);
-//     //console.log('message in start make',message);
-//     setUserState(message,STATES.MAKE)
-// }
-// async function startMake3(message,user) {
-//     if(user){
-//         message.from.id = user;
-//         await editMessage({
-//             text: 'What prompt for your txt2img sd3',
-//             chat_id: message.chat.id,
-//             message_id: message.message_id
-//         })
-//     } else {
-//         if(lobby[message.from.id] && lobby[message.from.id].balance <= 500000){
-//             gated(message)
-//             return
-//         }
-//         sendMessage(message, 'What prompt for your txt2img sd3')
-//     }
-//     //await sendMessage(message,'What prompt for your txt2img sd3');
-//     setUserState(message,STATES.MAKE3)
-// }
-// async function startMog(message,user) {
-//         if(user){
-//             message.from.id = user;
-//             await editMessage({
-//                 text: 'What prompt for your txt2img mogflux',
-//                 chat_id: message.chat.id,
-//                 message_id: message.message_id
-//             })
-//         } else {
-//             // if(lobby[message.from.id] && lobby[message.from.id].balance <= 100000){
-//             //     gated(message)
-//             //     return
-//             // }
-//             sendMessage(message, 'What prompt for your txt2img mogflux')
-//         }
-//         //await sendMessage(message,'What prompt for your txt2img sd3');
-//         setUserState(message,STATES.MOG)
-// }
-
 async function startTaskPrompt(message, taskType, state, user = null, balanceCheck = null) {
     const promptText = `What is the prompt for your ${taskType.toLowerCase()} creation?`;
 
@@ -158,6 +104,8 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
+        // delete promptObj. delete negative
+        
     }
     if (userContext.type.includes('MAKE')) {
         console.log('we are taking out strneght')
@@ -344,16 +292,6 @@ async function handleHipFire(message, user) {
     const settings = lobby[userId]
     const group = getGroup(message)
     let finalType = lobby[userId].type;
-    const needsTypeCheck = finalType.startsWith('MAKE') || finalType.startsWith('I2I')
-    if (needsTypeCheck) {
-        finalType = checkAndSetType(finalType, settings, message, group, userId);
-        if (!finalType) {
-            // If the type could not be set (e.g., missing required files), stop the task
-            console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
-            //return 'MAKE';
-            finalType = 'MAKE'
-        }
-    }
 
     // Update user settings in the lobby
     Object.assign(lobby[userId], {

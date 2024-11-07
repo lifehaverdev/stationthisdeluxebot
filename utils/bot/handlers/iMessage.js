@@ -294,7 +294,6 @@ const commandRegistry = {
     '/here': {
         handler: async (message) => {
             if(message.from.id != DEV_DMS){
-                // console.log(message.from.id)
                 return;
             } else {
                 const whom = message.reply_to_message.from.id
@@ -302,7 +301,6 @@ const commandRegistry = {
                 if(!lobby[whom]){
                     await checkLobby(message)
                 }
-                // console.log('whocares',whoCares)
                 if(lobby[whom]){
                     lobby[whom].doints = 0;
                     sendMessage(message,'it is done');
@@ -323,12 +321,9 @@ const commandRegistry = {
                 if(!lobby[whom]){
                     await checkIn(message)
                 }
-                // console.log('whocares',whoCares)
                 if(lobby[whom]){
                     const level = parseInt(message.text.replace('/rarecandy ',''));
-                    //console.log('typeof level',level,typeof level)
                     if(isNaN(level)){
-                        console.log('typeof exp',level)
                         return
                     }
                     const exp = level*level*level; 
@@ -367,7 +362,6 @@ const commandRegistry = {
     '/letspretendiamfrosty': {
         handler: async (message) => {
             if(message.from.id != DEV_DMS){
-                // console.log(message.from.id)
                 return;
             } else {
                 if(!lobby[message.from.id]) if(!await checkLobby(message)) return
@@ -385,7 +379,6 @@ const commandRegistry = {
         handler: async (message) => {
             const getAdmin = async (message) => {
                 const chatAdmins = await bot.getChatAdministrators(message.chat.id);
-                //console.log('chat admins',chatAdmins)
                 const isAdmin = chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id);
                 return isAdmin
             }
