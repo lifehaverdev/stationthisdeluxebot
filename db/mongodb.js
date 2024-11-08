@@ -541,7 +541,7 @@ async function writeData(collectionName, filter, data) {
             await collection.updateOne( filter,
                 { $set: { ...dataToSave } },
             );
-            console.log('User data written successfully');
+            console.log(`${collectionName} ${filter} data written successfully`);
             return true
         } catch (error) {
             console.error("Error writing user data:", error);

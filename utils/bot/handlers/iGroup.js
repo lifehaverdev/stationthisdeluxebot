@@ -245,6 +245,8 @@ ${commonInstructions}`;
             
             requiredWords: [],
 
+            selectedLoras: [],
+
             gateKeeping: {
                 style: 'none',//['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
                 chain: 'sol', //'eth'
@@ -282,12 +284,18 @@ function buildGroupSettingsMenu(groupChatId) {
     const menu = {
         reply_markup: {
             inline_keyboard: [
-                [{ text: 'unlock', callback_data: `unlock_${groupChatId}`}],
+                
                 [{ text: 'gatekeep', callback_data: `gatekeep_${groupChatId}`}],
                 [{ text: 'commands', callback_data: `commands_${groupChatId}`}],
                 [{ text: 'prompts', callback_data: `prompts_${groupChatId}`}]
             ]
         }
+    }
+    const group = getGroupById(groupChatId)
+    console.log(group)
+    if(group && group.burnedQoints && group.burnedQoints < 600000) {
+        console.log('some things to unlock')
+        menu.reply_markup.inline_keyboard.unshift([{ text: 'unlock', callback_data: `unlock_${groupChatId}`}],)
     }
     return menu;
 }
@@ -310,7 +318,7 @@ async function groupGatekeepMenu(message,user,groupChatId) {
     const menu = buildEditGroupSubMenu(groupChatId)
     menu.reply_markup.inline_keyboard.push([{text: `gatekeep type ${group.gateKeeping.style}`, callback_data: `gks_${groupChatId}`}])
     if(group.gateKeeping.style == 'token' || group.gateKeeping.style == 'nft') {
-        menu.reply_markup.inline_keyboard.push([{text: `set token`, callback_data: `gkca_${groupChatId}`}])
+        menu.reply_markup.inline_keyboard.push([{text: `set token`, callback_data: `gkca_${group.gateKeeping.style}_${groupChatId}`}])
         menu.reply_markup.inline_keyboard.push([{text: `set gate`, callback_data: `gkmin_${groupChatId}`}])
     }
     await editMessage({
@@ -376,6 +384,8 @@ async function backToGroupSettingsMenu(message,user,groupChatId) {
     const messageId = message.message_id;
     const chatId = message.chat.id;
     const options = buildGroupSettingsMenu(groupChatId)
+    message.from.id = user
+    setUserState(message,STATES.IDLE)
     await editMessage({
         reply_markup: options.reply_markup,
         chat_id: chatId,
@@ -397,9 +407,10 @@ async function groupGatekeepTypeMenu(message,user,groupChatId) {
     //for this menu, we check the group gatekeeping type
     const style = group.gateKeeping.style
     menu.reply_markup.inline_keyboard.push([{text: style == 'none' ? `none ✅`:`none`, callback_data: `sgks_none_${groupChatId}'}`}])
-    menu.reply_markup.inline_keyboard.push([{text: style == 'token' ? `token ✅`:`token`, callback_data: `sgks_token_${groupChatId}'}`}])
-    menu.reply_markup.inline_keyboard.push([{text: style == 'none' ? `none ✅`:`none`, callback_data: `sgks_none_${groupChatId}'}`}])
-    menu.reply_markup.inline_keyboard.push([{text: style == 'none' ? `none ✅`:`none`, callback_data: `sgks_none_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'token' ? `token 🪙 ✅`:`token 🪙`, callback_data: `sgks_token_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'nft' ? `nft 🖼️ ✅`:`nft 🖼️`, callback_data: `sgks_nft_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'adminOnly 👔' ? `adminOnly 👔 ✅`:`adminOnly`, callback_data: `sgks_adminOnly_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'select 📇' ? `select 📇 ✅`:`select`, callback_data: `sgks_select_${groupChatId}'}`}])
     //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
     await editMessage({
         reply_markup: menu.reply_markup,
@@ -408,8 +419,57 @@ async function groupGatekeepTypeMenu(message,user,groupChatId) {
         text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
     })
 }
+
+async function groupGatekeepTypeSelect(message,user,groupChatId,type) {
+    const group = getGroupById(groupChatId)
+    group.gateKeeping.style = type;
+    await groupGatekeepTypeMenu(message,user,groupChatId)
+}
 /*
 setting token contract address,
+*/
+async function groupGatekeepSetCA(message,user,groupChatId,which){
+    const group = getGroupById(groupChatId)
+    //console.log('got our group',group)
+    const chatId = message.chat.id
+    const messageId = message.message_id
+    const menu = buildEditGroupSubMenu(groupChatId)
+    message.from.id = user;
+    if(which == 'token') {
+        setUserState(message,STATES.SETGROUPTOKENCA)
+    }else if (which == 'nft') {
+        setUserState(message,STATES.SETGROUPNFTCA)
+    }
+    //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
+    group.flag = { 
+        what: 'setCa',
+        which,
+        user, 
+    }
+    const thing = which == 'token' || which == 'nft' ? 'CA' : 'Ticker'
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: chatId,
+        message_id: messageId,
+        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nTell me the ${thing} we are gatekeeping with` : `${group.title}\n$MS2 stationthisbot\nSet ${thing}`}`
+    })
+}
+
+async function handleSetTick(message) {
+    const group = rooms.find(group => group.flag.user == message.from.id)
+    //console.log('group',group)
+    // group.gateKeeping.token 
+    if (group.flag.what == 'setCa'){
+        console.log(group.gateKeeping[group.flag.which])
+        group.gateKeeping[group.flag.which] = message.text
+        console.log(group.gateKeeping[group.flag.which])
+    }
+    const {_id, flag, ...dataToSave} = group //isolate out _id 
+    await writeData('floorplan',{id: group.chat.id}, dataToSave) 
+    setUserState(message,STATES.IDLE)
+    delete group.flag
+}
+/*
 setting gate threshold,
 setting custom command mapping
 setting restricted commands
@@ -424,16 +484,18 @@ module.exports = {
     // groupSettings,
     // handleApplyBalance,
     // handleGroupName,
-    getGroup,
+    getGroup, getGroupById,
     // createGroup,
     // toggleAdmin,
     groupMenu,
     backToGroupSettingsMenu,
 
-    groupGatekeepMenu,
+    groupGatekeepMenu, groupGatekeepTypeMenu, groupGatekeepTypeSelect, groupGatekeepSetCA,
     groupCommandMenu,
     groupPromptMenu,
     groupUnlockMenu,
+
+    handleSetTick,
 
     initializeGroup
 }

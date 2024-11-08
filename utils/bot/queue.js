@@ -132,7 +132,7 @@ async function waitlist(task){
         waiting.push(task);
         console.log(`⭐️${message.from.first_name} asked for ${run_id}`);
     } else {
-        console.log('no run id');
+        console.log('no run id',promptObj);
         react(message,"😨")
     }
     

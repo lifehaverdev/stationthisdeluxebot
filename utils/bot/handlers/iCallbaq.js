@@ -348,7 +348,8 @@ const actionMap = {
     'regen_current_settings': handleHipFire,
     'initializeGroup': iGroup.initializeGroup,
     'backToGroupMenu': iGroup.backToGroupSettingsMenu,
-    'gateKeepMenu': iGroup.groupGatekeepMenu,
+    'gateKeepMenu': iGroup.groupGatekeepMenu, 
+        'gateKeepTypeMenu' : iGroup.groupGatekeepTypeMenu, 'gateKeepTypeSelect': iGroup.groupGatekeepTypeSelect, 'gateKeepSetCA': iGroup.groupGatekeepSetCA,
     'commandsMenu': iGroup.groupCommandMenu,
     'promptsMenu': iGroup.groupPromptMenu,
     'unlockMenu': iGroup.groupUnlockMenu,
@@ -459,6 +460,21 @@ const prefixHandlers = {
             lobby[user][key] = '-1'
         }
         actionMap['backToSet'](message,user)
+    },
+    //gatekeepstyle
+    'gks_': (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['gateKeepTypeMenu'](message,user,groupChatId)
+    },
+    'sgks_': (action, message, user) => {
+        const type = action.split('_')[1];
+        const groupChatId = parseInt(action.split('_')[2]);
+        actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
+    },
+    'gkca_': (action, message, user) => {
+        const type = action.split('_')[1];
+        const groupChatId = parseInt(action.split('_')[2]);
+        actionMap['gateKeepSetCA'](message,user,groupChatId,type)
     }
     
 };

@@ -146,7 +146,8 @@ class LobbyManager {
     }
 }
 
-const { getGroup } = require('./handlers/iGroup')
+const { getGroup } = require('./handlers/iGroup');
+const { get } = require('https');
 
 const lobbyManager = new LobbyManager(lobby);
 
@@ -161,7 +162,6 @@ setInterval(initialize, DB_REFRESH); // This handles your DB refresh interval
 //setInterval(initialize, DB_REFRESH); //update burns, lora list etc from db
 if(logLobby){setInterval(printLobby, 8*60*60*1000);} //every 8 hours
 let locks = 0;
-
 
 //10 images for a free user, 37 points a pop
 //thats 370 points no multi
@@ -287,7 +287,25 @@ async function checkLobby(message) {
 
         // Group credit check (could switch to qoints when ready)
         if (group && group.qoints > 0) {
-            return true;
+            if(
+                group.gateKeeping && 
+                group.gateKeeping.style == 'token' &&
+                group.gateKeeping.token
+            ) {
+                console.log("here we are")
+                if(
+                    lobby[userId].verified //&&
+                ){
+                    console.log("here we are")
+                    const tokenBal = await getBalance(lobby[userId].wallet, group.gateKeeping.token)
+                    console.log('this nigga has ', tokenBal)
+                    return true
+                } else {
+                    return false
+                }
+            } else {
+                return true;
+            }
         } else {
             console.log('not a group')
         }
