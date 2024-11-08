@@ -162,7 +162,7 @@ function promptPreProc(promptObj) {
     `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '}` :
     `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
     let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance)
-    promptObj.input_checkpoint = promptObj.input_checkpoint + '.safetensors'
+    promptObj.input_checkpoint.includes('.safetensors') ? null : promptObj.input_checkpoint = promptObj.input_checkpoint + '.safetensors'
     // Filter out censored words if applicable
     if (promptObj.balance < 1000000) {
         promptFinal = promptFinal.split(" ")
