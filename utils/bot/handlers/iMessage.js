@@ -459,8 +459,11 @@ const stateHandlers = {
     [STATES.FLUXINTERROGATE] : (message) => safeExecute(message, iWork.shakeFluxInterrogate),
     [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux),
     [STATES.LORANAME] : (message) => safeExecute(message,iTrain.createLora),
-    [STATES.ADDLORAIMAGE] : (message) => safeExecute(message,iTrain.addLoraSlotImage)
+    [STATES.ADDLORAIMAGE] : (message) => safeExecute(message,iTrain.addLoraSlotImage),
     //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
+    [STATES.SETGROUPNFTCA]: (message) => safeExecute(message,iGroup.handleSetTick),
+    [STATES.SETGROUPTOKENCA]: (message) => safeExecute(message,iGroup.handleSetTick),
+    [STATES.SETGROUPTICKER]: (message) => safeExecute(message,iGroup.handleSetTick),
 };
 
 const setStates = [

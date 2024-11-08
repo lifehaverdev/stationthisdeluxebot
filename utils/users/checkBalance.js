@@ -36,7 +36,7 @@ const curses = {
 }
 
 //token shit
-async function getBalance(address) {
+async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg") {
     //console.log('checking balalnce')
     let balance = null;
     await sdk.getTokenAccountBalance({
@@ -46,7 +46,7 @@ async function getBalance(address) {
         "params": [
           address,
           {
-              "mint": "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg"
+              "mint": ca
           },
           {
               "encoding": "jsonParsed"
