@@ -449,11 +449,11 @@ const prefixHandlers = {
     },
     'empty_': (action, message, user) => {
         const key = action.replace(/^empty_/, '');
-        console.log(key)
-        console.log(lobby[user][key])
+        //console.log(key)
+        //console.log(lobby[user][key])
         if(action.includes('image')){
             lobby[user][key] = ''
-        } else if (key == seed) {
+        } else if (key == 'seed') {
             lobby[user].input_seed = -1
         }else {
             lobby[user][key] = '-1'
