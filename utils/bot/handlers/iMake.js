@@ -105,7 +105,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
         // delete promptObj. delete negative
-        
+
     }
     if (userContext.type.includes('MAKE')) {
         console.log('we are taking out strneght')
@@ -316,7 +316,6 @@ async function handleHipFire(message, user) {
         enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
         await editMessage({
-            reply_markup: {inline_keyboard: [[{}]]},
             message_id: messageId,
             chat_id: chatId,
             text: 'k'

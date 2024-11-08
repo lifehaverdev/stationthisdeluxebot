@@ -45,65 +45,101 @@ async function startSet(message,user) {
     const editPayload = {
         chat_id: message.chat.id,
         message_id: message.message_id,
-        force_reply: true
     };
+
+    const buildOptionalInline = (type, justBack = null) => {
+        if(justBack){
+                return {
+                    inline_keyboard: [
+                    [{text: '↖︎', callback_data: 'backToSet'}],
+                ]
+            }
+        }
+        if(type == 'seed'){
+            return {
+                inline_keyboard: [
+                [{text: '↖︎', callback_data: 'backToSet'}],
+                [{text: 'set to random', callback_data: `empty_${type}` }],
+            ]
+        }
+        }
+        return {
+                inline_keyboard: [
+                [{text: '↖︎', callback_data: 'backToSet'}],
+                [{text: 'set as empty', callback_data: `empty_${type}` }],
+                
+            ]
+        }
+    }
 
     const sendOrEditMessage = async (text, reply_markup = null) => {
         let keyboard;
-        reply_markup ? keyboard = reply_markup : keyboard = iMenu.justSet
+        reply_markup ? keyboard = reply_markup : keyboard = null
         console.log(keyboard)
         if (user) {
             editMessage({
                 text,
-                keyboard,
-                ...editPayload
+                reply_markup: keyboard,
+                ...editPayload,
+                options: { parse_mode: 'Markdown'}
             });
         } else {
-            await sendMessage(message, text, { keyboard, force_reply: true });
+            await sendMessage(message, text, { reply_markup: keyboard, force_reply: true, parse_mode: 'MarkdownV2' });
         }
     };
-
     if(currentValue == 'notset'){
         console.log('not set');
         setUserState(STATES.IDLE)
     } else {
+        let keys;
         switch (command) {
             case 'batch':
+                keys = buildOptionalInline(command,true)
                 const maxBatch = calcBatch(message); // Assume calcBatch is defined elsewhere
-                await sendOrEditMessage( `What batch do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxBatch}`);
+                await sendOrEditMessage( `What batch do you want to set to? ${currentValue == 1 ? `` : `Rn it is set to ${currentValue}.`} You can go up to ${maxBatch}`,keys);
                 break;
             case 'steps':
+                keys = buildOptionalInline(command,true)
                 const maxSteps = calcSteps(message); // Assume calcSteps is defined elsewhere
-                await sendOrEditMessage( `What steps do you want to set to? Rn it is set to ${currentValue}. You can go up to ${maxSteps}`);
+                await sendOrEditMessage( `What steps do you want to set to? ${currentValue == 30 ? `` : `Rn it is set to ${currentValue}.`} You can go up to ${maxSteps}`,keys);
                 break;
             case 'size':
+                keys = buildOptionalInline(command,true)
                 const maxSize = calcSize(message); // Assume calcSize is defined elsewhere
-                await sendOrEditMessage(`What size do you want to set to? Rn it is set to ${currentValue.width},${currentValue.height}. Your maximum size is ${maxSize},${maxSize}`);
+                await sendOrEditMessage(`What size do you want to set to? ('W,H' format) ${settings.input_width == 1024 && settings.input_height == 1024 ? `` : `Rn it is set to ${settings.input_width},${settings.input_height}.`} Your maximum size is ${maxSize},${maxSize}`,keys);
                 break;
             case 'cfg':
-                await sendOrEditMessage( `What CFG do you want to set to? Rn it is set to ${currentValue}. Please enter a value between 0 and 30`);
+                keys = buildOptionalInline(command,true)
+                await sendOrEditMessage( `What CFG do you want to set to? ${currentValue == 6 ? `` : `Rn it is set to ${currentValue}.`} Please enter a value between 0 and 20`,keys);
                 break;
             case 'strength':
-                await sendOrEditMessage( `What strength do you want to set to? Rn it is set to ${currentValue}. Please enter a decimal value (i.e. '.4' or '0.5') between 0 and 1`);
+                keys = buildOptionalInline(command,true)
+                await sendOrEditMessage( `What strength do you want to set to? Rn it is set to ${currentValue}. Please enter a decimal value (i.e. '.4' or '0.5') between 0 and 1`,keys);
                 break;
             case 'prompt':
             case 'userprompt':
             case 'negprompt': 
-                await sendOrEditMessage( `What ${command} do you want to set it to? Rn it is set to:`);
-                message.message_id = null;
-                await sendMessage(message, `\`${currentValue}\``,{parse_mode: 'MarkdownV2'});
+                const blank = currentValue == -1
+                keys = buildOptionalInline('prompt',true)
+                if(command == 'negprompt'){keys = buildOptionalInline('input_negative',blank)} 
+                if(command == 'userprompt'){keys = buildOptionalInline('userPrompt',blank)}
+                await sendOrEditMessage( `What ${command} do you want to set it to? ${blank ? '' : `Rn it is set to:\n\n\`${currentValue}\`\n`}`,{...keys,parse_mode: 'MarkdownV2' });
                 break;
             case 'photo':
-                await sendOrEditMessage( 'What photo do you want to set')
+                keys = buildOptionalInline('input_image')
+                await sendOrEditMessage( 'What photo do you want to set',keys)
                 break;
             case 'style':
-                await sendOrEditMessage( 'Send in a photo to apply style transfer on')
+                keys = buildOptionalInline('input_style_image')
+                await sendOrEditMessage( 'Send in a photo to apply style transfer on',keys)
                 break;
             case 'control':
-                await sendOrEditMessage( 'Send in a photo to apply controlnet from')
+                keys = buildOptionalInline('input_control_image')
+                await sendOrEditMessage( 'Send in a photo to apply controlnet from',keys)
                 break;
             case 'pose':
-                await sendOrEditMessage( 'Send in a photo to apply openPose on')
+                keys = buildOptionalInline('input_pose_image')
+                await sendOrEditMessage( 'Send in a photo to apply openPose on',keys)
                 break;
             case 'checkpoint':
                 botMessage = await sendOrEditMessage( 'Checkpoint Menu:');
@@ -111,14 +147,21 @@ async function startSet(message,user) {
                 message_id = botMessage.message_id;
                 reply_markup = getCheckpointMenu(message.from.id, botMessage);
                 editReply(reply_markup, chat_id, message_id,);
+                break
             case 'baseprompt':
                 botMessage = await sendOrEditMessage( 'Base Prompt Menu:');
                 chat_id = botMessage.chat.id;
                 message_id = botMessage.message_id;
                 reply_markup = getPromptMenu(message.from.id, botMessage);
                 editReply(reply_markup, chat_id, message_id,);
+                break
+            case 'seed': 
+                keys = buildOptionalInline('seed')
+                await sendOrEditMessage( `What seed do you want to set to? ${currentValue == -1 ? `Rn it is random` : `Rn it is set to ${currentValue}.`}`,keys);
+                break;
             default:
-                await sendOrEditMessage( `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`);
+                keys = buildOptionalInline(command,true)
+                await sendOrEditMessage( `Rn it is set to ${currentValue}. What ${command} do you want to set it to?`,keys);
                 break;
         }
         setUserState(message,state);
@@ -325,8 +368,8 @@ async function handleSet(message) {
             }
             sizeValues[0] > SIZELIMIT ? sizeValues[0] = SIZELIMIT : null;
             sizeValues[1] > SIZELIMIT ? sizeValues[1] = SIZELIMIT : null;
-            settings[lobbyParam].input_width = sizeValues[0]
-            settings[lobbyParam].input_height = sizeValues[1]
+            settings.input_width = sizeValues[0]
+            settings.input_height = sizeValues[1]
             sendOrEdit(`You set size to ${sizeValues[0]},${sizeValues[1]}`);
             setUserState(message,STATES.IDLE);
             break;

@@ -79,6 +79,25 @@ async function safeExecute(message, callback) {
     }
 }
 
+async function safeExecuteCallback(message, user, callback, action = null) {
+    try {
+        if(!action){
+            return await callback(message,user);
+        } else {
+            return await callback(action, message, user);
+        }
+        
+    } catch (err) {
+        if(err.body){
+            console.log(err.body)
+        } else {
+            console.log(err);
+        }
+        await bot.sendMessage(DEV_DMS, 'Oh no, this happened: ' + err.message);
+        return false
+    }
+}
+
 async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
     const chatId = msg.chat.id;
 
@@ -360,7 +379,7 @@ module.exports = {
     sendAnimation,
     sendMessage, sendPrivateMessage,
     sendVideo,
-    safeExecute,
+    safeExecute, safeExecuteCallback,
     setUserState,
     react,
     compactSerialize,
