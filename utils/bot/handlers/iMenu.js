@@ -1,9 +1,9 @@
-const { lobby, rooms } = require('../bot')
+const { lobby, rooms, STATES } = require('../bot')
 const { basepromptmenu } = require('../../models/basepromptmenu')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { voiceModels } = require('../../models/voiceModelMenu')
 const { watermarkmenu } = require('../../models/watermarks')
-const { compactSerialize, sendMessage, editMessage, makeBaseData, gated } = require('../../utils')
+const { compactSerialize, sendMessage, editMessage, makeBaseData, gated, setUserState } = require('../../utils')
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
 
 function getGroup(message) {
@@ -12,8 +12,6 @@ function getGroup(message) {
 }
 
 function setMenu(message) {
-    
-    console.log(getGroup)
     const settings = getSettings(message);
     
     const group = getGroup(message);
@@ -23,6 +21,25 @@ function setMenu(message) {
 
     // Sending an empty message to set the keyboard
     sendMessage(message, group ? `${group.title} Settings` : 'Settings', options);
+}
+
+async function backToSet(message,user) {
+    //console.log(message)
+    message.from.id = user
+    const chatId = message.chat.id;
+    const messageId = message.message_id;
+    const group = getGroup(message)
+    const settings = getSettings(message);
+    //console.log(settings)
+    const userBalance = lobby[user] ? lobby[user].balance : 0;
+    const options = buildSetMenu(settings,group,userBalance)
+    setUserState(message,STATES.IDLE);
+    await editMessage({
+        ...options,
+        chat_id: chatId,
+        message_id: messageId,
+        text: group ? `${group.title} Settings` : 'Settings'
+    })
 }
 
 function buildSetMenu(settings, group, userBalance) {
@@ -88,7 +105,7 @@ function createPromptOption(settings) {
     //console.log(settings.userPrompt)
     return [
         { text: 'prompt', callback_data: 'setprompt' },
-        { text: settings.input_negative != '-1' && settings.input_negativve ? 'negprompt ✅' : 'negprompt', callback_data: 'setnegprompt' },
+        { text: settings.input_negative != '-1' && settings.input_negative ? 'negprompt ✅' : 'negprompt', callback_data: 'setnegprompt' },
         { text: settings.userPrompt != "-1" && settings.userPrompt ? 'userprompt ✅' : 'userprompt', callback_data: 'setuserprompt' }
     ];
 }
@@ -798,7 +815,7 @@ module.exports = {
     getVoiceMenu,
     getWatermarkMenu,
     handleCreate,
-    setMenu, buildSetMenu,
+    setMenu, buildSetMenu, backToSet,
     handleEffect,
     handleAnimate,
     handleUtils,

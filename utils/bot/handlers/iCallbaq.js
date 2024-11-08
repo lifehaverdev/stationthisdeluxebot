@@ -4,7 +4,7 @@ const { getBasePromptByName } = require('../../models/basepromptmenu')
 const {
     sendMessage,
     editMessage,
-    safeExecute,
+    safeExecute, safeExecuteCallback,
     setUserState,
     react
 } = require('../../utils');
@@ -182,6 +182,7 @@ const actionMap = {
         message.from.id = user;
         iMenu.setMenu(message)
     },
+    'backToSet':  iMenu.backToSet,
     'voiceMenu': iMenu.handleVoiceMenu,
     'checkpointmenu': iMenu.handleCheckpointMenu,
     'basepromptmenu': iMenu.handleBasePromptMenu,
@@ -350,7 +351,7 @@ const actionMap = {
     'gateKeepMenu': iGroup.groupGatekeepMenu,
     'commandsMenu': iGroup.groupCommandMenu,
     'promptsMenu': iGroup.groupPromptMenu,
-    'unlockMenu': iGroup.groupUnlockMenu
+    'unlockMenu': iGroup.groupUnlockMenu,
 };
 
 
@@ -446,6 +447,19 @@ const prefixHandlers = {
         const groupChatId = parseInt(action.split('_')[1]);
         actionMap['unlockMenu'](message,user,groupChatId)
     },
+    'empty_': (action, message, user) => {
+        const key = action.replace(/^empty_/, '');
+        console.log(key)
+        console.log(lobby[user][key])
+        if(action.includes('image')){
+            lobby[user][key] = ''
+        } else if (key == seed) {
+            lobby[user].input_seed = -1
+        }else {
+            lobby[user][key] = '-1'
+        }
+        actionMap['backToSet'](message,user)
+    }
     
 };
 
@@ -472,13 +486,13 @@ module.exports = function (bot) {
 
             // If the action is mapped directly in actionMap, call it
             if (actionMap[action]) {
-                actionMap[action](message, user);
+                safeExecuteCallback(message,user,actionMap[action]);
             } else {
                 // Loop through the prefixHandlers to find a match
                 let handled = false;
                 for (const prefix in prefixHandlers) {
                     if (action.startsWith(prefix)) {
-                        prefixHandlers[prefix](action, message, user);
+                        safeExecuteCallback(message,user,prefixHandlers[prefix],action);
                         handled = true;
                         break;
                     }
