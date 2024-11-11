@@ -45,6 +45,19 @@ const defaultUserData = {
     collections: [],
     groups: [],
     runs: [],
+    commandList:  [
+        { command: 'help', description: 'See help description' },
+        { command: 'make', description: 'SDXL txt2img'},
+        { command: 'signin', description: 'Connect account' },
+        { command: 'ca', description: 'Check chart buy' },
+        { command: 'loralist', description: 'See available LoRAs' },
+        { command: 'status', description: 'Check the group queue status' },
+    ],
+    favorites: {
+        basePrompt: [],
+        gens: [],
+        loras: [],
+    },
     kickedAt: '',
     lastRunTime: '',
 };

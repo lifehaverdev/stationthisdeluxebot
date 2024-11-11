@@ -1,6 +1,6 @@
 const { lobby, STATES } = require('./bot'); 
 const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
-const { getBalance, checkBlacklist } = require('../users/checkBalance')
+const { getBalance, checkBlacklist, getNFTBalance } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
 //const { home } = require('../models/userKeyboards');
@@ -257,9 +257,65 @@ async function checkIn(message) {
 
 
 async function checkLobby(message) {
+    
     const userId = message.from.id;
     const group = getGroup(message);
     let balance = 0;
+
+    const groupCheck = async () => {
+        // Group credit check (could switch to qoints when ready)
+        if (group && group.qoints > 0) {
+            console.log('gatekeeping, we in group, group has points')
+            const type = group.gateKeeping.style
+            if(
+                group.gateKeeping && 
+                (
+                    (type == 'token' && group.gateKeeping.token) || 
+                    (type == 'nft' && group.gateKeeping.nft)
+                ) 
+            ) {
+                console.log("here we are")
+                if(
+                    lobby[userId].verified //&&
+                ){
+                    console.log("here we are")
+                    // let tokenBal = lobby[userId][group.gateKeeping.token]
+                    let tokenBal = null
+                    let taht = group.gateKeeping[type];
+                    if(!tokenBal) {
+                        if(type == 'token'){
+                            tokenBal = await getBalance(lobby[userId].wallet, taht)
+                        } else if (type == 'nft') {
+                            tokenBal = await getNFTBalance(lobby[userId].wallet, taht)
+                        }
+                        lobby[userId][taht] = tokenBal
+                    }
+                    console.log('this nigga has ', tokenBal)
+                    if(tokenBal && tokenBal > group.gateKeeping.minBalance){
+                        return true
+                    } else {
+                        await sendMessage(message,group.gateKeeping.Msg)
+                        return false
+                    }
+                    
+                } else {
+                    await sendMessage(message,'I dont know you'+group.gateKeeping.Msg)
+                    return false
+                }
+            } else {
+                console.log('oops no gateKeeping no style no token')
+                return true;
+            }
+        } else {
+            if(group && group.qoints <= 0) {
+                await sendMessage(message,'hey.. this group is out of qoints (cheese). you can /donate some if you ahve any. otherwise.. im sorry. You can still maek stuff with me in dms tho.')
+                return false
+            }
+            if(!group){
+                console.log('not a group')
+            }
+        }
+    }
 
     // Check if the user is already in the lobby
     if (!lobby.hasOwnProperty(userId)) {
@@ -270,7 +326,12 @@ async function checkLobby(message) {
         }
         // First, add the user to the lobby
         lobbyManager.addUser(userId, userData);
-
+        const groupPass = await groupCheck()
+        if(groupPass) {
+            return true
+        } else if (!groupPass) {
+            return false
+        }
         // Fetch and update the user's balance if they are verified
         if (userData.verified) {
             balance = await getBalance(userData.wallet);
@@ -284,48 +345,6 @@ async function checkLobby(message) {
             // Remove the kickedAt key value after regenerating doints
             delete userData.kickedAt;
         }
-
-        // Group credit check (could switch to qoints when ready)
-        if (group && group.qoints > 0) {
-            if(
-                group.gateKeeping && 
-                group.gateKeeping.style == 'token' &&
-                group.gateKeeping.token
-            ) {
-                console.log("here we are")
-                if(
-                    lobby[userId].verified //&&
-                ){
-                    console.log("here we are")
-                    const tokenBal = await getBalance(lobby[userId].wallet, group.gateKeeping.token)
-                    console.log('this nigga has ', tokenBal)
-                    return true
-                } else {
-                    return false
-                }
-            } else {
-                return true;
-            }
-        } else {
-            console.log('not a group')
-        }
-//         create - make something
-// effect - change something
-// animate - movie maker
-// status - check on the bot and see if its been reset lately
-// regen - make what you just did again, or with your new settings you set
-// set - change your generation settings
-// signin - connect account
-// signout - disconnect account
-// seesettings - display what settings you have on your account
-// accountsettings - change account settings
-// savesettings - write your current account settings to my cpu so if the bot goes down you dont lose them
-// resetaccount - return to default settings
-// quit - exit a call and response ui
-// getseed - capture the seed used on your last gen
-// loralist - see what loras are available
-// help - see help description
-// ca - check chart buy
 
         // If the user is not verified, prompt them to sign in
         if (!userData.verified) {
@@ -350,12 +369,15 @@ async function checkLobby(message) {
 
         setUserState(message, STATES.IDLE);
         console.log(`${message.from.first_name} has entered the chat.`);
+        
     } else {
         const userData = lobby[userId]; // Access user data directly from the lobby
 
-        // Group credit check
-        if (group && group.qoints > 0) {
-            return true;
+        const groupPass = await groupCheck()
+        if(groupPass) {
+            return true
+        } else if (!groupPass) {
+            return false
         }
 
         // If the user's balance hasn't been fetched yet, retrieve it
@@ -368,6 +390,8 @@ async function checkLobby(message) {
         }
         setUserState(message, STATES.IDLE);
     }
+    
+    
 
     // Check if the user has hit the generation limit
     const totalPoints = lobby[userId].points + (lobby[userId].doints || 0);
@@ -413,6 +437,7 @@ OR charge up your points directly 👾 with discounts for owning MS2 and using t
         ++locks;
         return false;
     }
+    
 
     return true;
 }

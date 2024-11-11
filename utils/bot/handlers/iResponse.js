@@ -1,6 +1,6 @@
-const { STATES, lobby } = require('../bot')
+const { STATES, lobby, stateHandlers } = require('../bot')
 const { sendMessage, editMessage, setUserState } = require('../../utils')
-const { stateHandlers } = require('./iMessage')
+//const { stateHandlers } = require('./iMessage')
 
 class StarterFunction {
     constructor(state, customMessage, balanceThreshold = null, preconditions = null) {

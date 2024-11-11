@@ -1,4 +1,9 @@
-const { getBotInstance, lobby, startup, STATES, commandStateMessages, workspace, SET_COMMANDS, getPhotoUrl } = require('../bot.js'); 
+const { 
+    getBotInstance, lobby, startup, STATES, 
+    stateHandlers,
+    commandStateMessages, workspace, 
+    SET_COMMANDS, getPhotoUrl 
+} = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
@@ -428,43 +433,47 @@ const commandRegistry = {
 };
 
 
-const stateHandlers = {
-    [STATES.SIGN_IN]: (message) => safeExecute(message, iAccount.shakeSignIn),
-    [STATES.VERIFY]: (message) => safeExecute(message, iAccount.shakeVerify),
-    [STATES.MAKE]: (message) => safeExecute(message, iMake.handleMake),
-    [STATES.MAKE3]: (message) => safeExecute(message, iMake.handleMake3),
-    [STATES.MS2PROMPT]: (message) => safeExecute(message, iMake.handleMs2Prompt),
-    [STATES.FLUXPROMPT] : (message) => safeExecute(message, iMake.handleFluxPrompt),
-    [STATES.ASSIST]: (message) => safeExecute(message, iWork.shakeAssist),
-    [STATES.FLASSIST]: (message) => safeExecute(message, iWork.shakeFluxAssist),
-    [STATES.SPEAK]: (message) => safeExecute(message, iWork.shakeSpeak),
-    [STATES.IMG2IMG]: (message) => safeExecute(message, iMedia.handleMs2ImgFile),
-    [STATES.FLUX2IMG]:(message) => safeExecute(message, iMedia.handleFluxImgFile),
-    [STATES.MS3]: (message) => safeExecute(message,iMedia.handleMs3ImgFile),
-    [STATES.MS3V2] : (message) => safeExecute(message,iMedia.handleMs3V2ImgFile),
-    [STATES.PFP]: (message) => safeExecute(message, iMedia.handlePfpImgFile),
-    [STATES.INTERROGATION]: (message) => safeExecute(message, iMedia.handleInterrogation),
-    [STATES.DISC]: (message) => safeExecute(message, iBrand.handleDiscWrite),
-    [STATES.WATERMARK]: (message) => safeExecute(message, iBrand.handleWatermark),
-    [STATES.SETPHOTO]: (message) => safeExecute(message, iSettings.handleSet),
-    [STATES.SETSTYLE]: (message) => safeExecute(message,iSettings.handleSet),
-    [STATES.SETCONTROL]: (message) => safeExecute(message,iSettings.handleSet),
-    [STATES.SETPOSE]: (message) => safeExecute(message, iSettings.handleSet),
-    [STATES.INPAINT]: (message) => safeExecute(message, iMedia.handleInpaint),
-    [STATES.INPAINTTARGET]: (message) => safeExecute(message, iMake.handleInpaintTarget),
-    [STATES.INPAINTPROMPT]: (message) => safeExecute(message, iMake.handleInpaintPrompt),
-    [STATES.UPSCALE] : (message) => safeExecute(message, iMedia.handleUpscale),
-    [STATES.RMBG] : (message) => safeExecute(message, iMedia.handleRmbg),
-    [STATES.GROUPAPPLY] : (message) => safeExecute(message, iGroup.handleApplyBalance),
-    [STATES.FLUXINTERROGATE] : (message) => safeExecute(message, iWork.shakeFluxInterrogate),
-    [STATES.FLUX] : (message) => safeExecute(message,iMake.handleFlux),
-    [STATES.LORANAME] : (message) => safeExecute(message,iTrain.createLora),
-    [STATES.ADDLORAIMAGE] : (message) => safeExecute(message,iTrain.addLoraSlotImage),
-    //[STATES.GROUPNAME] : (message) => safeExecute(message, iGroup.handleGroupName)
-    [STATES.SETGROUPNFTCA]: (message) => safeExecute(message,iGroup.handleSetTick),
-    [STATES.SETGROUPTOKENCA]: (message) => safeExecute(message,iGroup.handleSetTick),
-    [STATES.SETGROUPTICKER]: (message) => safeExecute(message,iGroup.handleSetTick),
-};
+//const stateHandlers = {
+    stateHandlers[STATES.SIGN_IN]= (message) => safeExecute(message, iAccount.shakeSignIn)
+    stateHandlers[STATES.VERIFY]= (message) => safeExecute(message, iAccount.shakeVerify)
+    stateHandlers[STATES.MAKE]= (message) => safeExecute(message, iMake.handleMake)
+    stateHandlers[STATES.MAKE3]= (message) => safeExecute(message, iMake.handleMake3)
+    stateHandlers[STATES.MS2PROMPT]= (message) => safeExecute(message, iMake.handleMs2Prompt)
+    stateHandlers[STATES.FLUXPROMPT] = (message) => safeExecute(message, iMake.handleFluxPrompt)
+    stateHandlers[STATES.ASSIST]= (message) => safeExecute(message, iWork.shakeAssist)
+    stateHandlers[STATES.FLASSIST]= (message) => safeExecute(message, iWork.shakeFluxAssist)
+    stateHandlers[STATES.SPEAK]= (message) => safeExecute(message, iWork.shakeSpeak)
+    stateHandlers[STATES.IMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
+    stateHandlers[STATES.FLUX2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
+    stateHandlers[STATES.MS3]= (message) => safeExecute(message,iMedia.handleMs3ImgFile)
+    stateHandlers[STATES.MS3V2] = (message) => safeExecute(message,iMedia.handleMs3V2ImgFile)
+    stateHandlers[STATES.PFP]= (message) => safeExecute(message, iMedia.handlePfpImgFile)
+
+    stateHandlers[STATES.INTERROGATION]= (message) => safeExecute(message, iMedia.handleInterrogation)
+
+    stateHandlers[STATES.DISC]= (message) => safeExecute(message, iBrand.handleDiscWrite)
+    stateHandlers[STATES.WATERMARK]= (message) => safeExecute(message, iBrand.handleWatermark)
+
+    stateHandlers[STATES.SETPHOTO]= (message) => safeExecute(message, iSettings.handleSet)
+    stateHandlers[STATES.SETSTYLE]= (message) => safeExecute(message,iSettings.handleSet)
+    stateHandlers[STATES.SETCONTROL]= (message) => safeExecute(message,iSettings.handleSet)
+    stateHandlers[STATES.SETPOSE]= (message) => safeExecute(message, iSettings.handleSet)
+
+    stateHandlers[STATES.INPAINT]= (message) => safeExecute(message, iMedia.handleInpaint)
+    stateHandlers[STATES.INPAINTTARGET]= (message) => safeExecute(message, iMake.handleInpaintTarget)
+    stateHandlers[STATES.INPAINTPROMPT]= (message) => safeExecute(message, iMake.handleInpaintPrompt)
+
+    stateHandlers[STATES.UPSCALE] = (message) => safeExecute(message, iMedia.handleUpscale)
+    stateHandlers[STATES.RMBG] = (message) => safeExecute(message, iMedia.handleRmbg)
+    //[STATES.GROUPAPPLY] = (message) => safeExecute(message, iGroup.handleApplyBalance)
+    stateHandlers[STATES.FLUXINTERROGATE] = (message) => safeExecute(message, iWork.shakeFluxInterrogate)
+    stateHandlers[STATES.FLUX] = (message) => safeExecute(message,iMake.handleFlux)
+
+    stateHandlers[STATES.LORANAME] = (message) => safeExecute(message,iTrain.createLora)
+    stateHandlers[STATES.ADDLORAIMAGE] = (message) => safeExecute(message,iTrain.addLoraSlotImage)
+
+    
+//};
 
 const setStates = [
     STATES.SETBATCH, STATES.SETSTEPS, STATES.SETCFG, 
@@ -547,7 +556,11 @@ SET_COMMANDS.forEach(command => {
     });
 });
 
-const commandsRequiringGatekeeping = ['/flux','/milady','/degod','/joycat','/utils','/create','/inpaint','/effect','/animate','/make', '/make3','/regen', 
+const commandsRequiringGatekeeping = [
+    '/flux','/make', '/make3',
+    '/milady','/degod','/joycat',
+    '/utils','/create','/effect','/animate',
+    '/inpaint','/regen', 
     //'/speak','/assist','/interrogate'
     ];
 
