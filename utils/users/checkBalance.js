@@ -1,4 +1,5 @@
 const sdk = require('api')('@alchemy-docs/v1.0#1qz7y1elt7gubvr');
+const sdk2 = require('api')('@alchemy-docs/v1.0#eyr736lt7gueji');
 const { burns } = require('../bot/bot');
 
 const blessings = {
@@ -37,7 +38,8 @@ const curses = {
 
 //token shit
 async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg") {
-    //console.log('checking balalnce')
+    console.log('checking balalnce',ca)
+    const isMS2 = ca == "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg" ? true : false
     let balance = null;
     await sdk.getTokenAccountBalance({
         id: 1,
@@ -55,7 +57,7 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
       }, {apiKey: process.env.ALCHEMY_SECRET})
     .then(({ data }) => {
         //
-        //console.log('data in checkbalance response',data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
+        console.log('data in checkbalance response',JSON.stringify(data))//.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
         if(data.error || (data.result.value && data.result.value.length == 0)){
             balance = 0;
         } else if (data.result.value.length > 0){
@@ -65,7 +67,7 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
         }
     })
     .catch(err => console.error(err));
-    if(blessings.hasOwnProperty(address)){
+    if(isMS2 && blessings.hasOwnProperty(address)){
         console.log('we have this blessed',address)
         console.log('this is current balance',balance)
         if(balance == 0 || balance == NaN){
@@ -74,7 +76,7 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
             balance += blessings[address]
         }
     }
-    if(curses.hasOwnProperty(address)){
+    if(isMS2 && curses.hasOwnProperty(address)){
         console.log('we have this blessed',address)
         console.log('this is current balance',balance)
         if(balance == 0 || balance == NaN){
@@ -85,12 +87,110 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
     }
 
     const burnRecord = burns.find(burn => burn.wallet === address);
-    if (burnRecord) {
+    if (isMS2 && burnRecord) {
         //console.log(burnRecord.burned)
         balance += parseInt(burnRecord.burned) * 2 / 1000000;
     }
 
     return balance
+}
+
+// async function getNFTBalance(address, ca) {
+//     //console.log('checking balalnce')
+//     let balance = null;
+//     await sdk.getTokenAccountBalance({
+//         id: 1,
+//         jsonrpc: '2.0',
+//         method: 'getTokenAccountBalance',
+//         "params": [
+//           address,
+//           //ca,
+//         //   {
+//         //       "programId": ca
+//         //   },
+//         //   {
+//         //       "encoding": "jsonParsed"
+//         //   }
+//       ]
+//       }, {apiKey: process.env.ALCHEMY_SECRET})
+//     .then(({ data }) => {
+//         //
+//         console.log('data in nft response',data)//data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
+//         if(data.error || (data.result.value && data.result.value.length == 0)){
+//             balance = 0;
+//         } else if (data.result.value.length > 0){
+//             balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount
+//         } else {
+//             balance = 0
+//         }
+//     })
+//     .catch(err => console.error(err));
+
+//     return balance
+// }
+async function getNFTBalance(address, mintAddress) {
+    console.log('this is me', address)
+    console.log('Checking balance for mint:', mintAddress);
+    address = address.trim();
+    mintAddress = mintAddress.trim()
+    // Step 1: Get all token accounts owned by the address
+    let tokenAccounts = [];
+    await sdk2.getTokenAccountsByOwner({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'getTokenAccountsByOwner',
+        "params": [
+            address,
+            {
+                'mint': mintAddress // SPL Token Program ID
+            },
+        ]
+    }, { apiKey: process.env.ALCHEMY_SECRET })
+    .then(({ data }) => {
+        if (data.error) {
+            throw new Error(`Error fetching token accounts: ${data.error.message}`);
+        }
+        tokenAccounts = data.result.value;
+    })
+    .catch(err => console.error('Error fetching token accounts:', err));
+
+    // Step 2: Find the token account for the specified mint
+    let tokenAccount = null;
+    for (const accountInfo of tokenAccounts) {
+        if (accountInfo.account.data.parsed.info.mint === mintAddress) {
+            tokenAccount = accountInfo.pubkey;
+            break;
+        }
+    }
+
+    if (!tokenAccount) {
+        console.error('Token account for the specified mint not found.');
+        return 0; // No token account found for the mint address
+    }
+
+    // Step 3: Get the balance for the token account
+    let balance = 0;
+    await sdk.getTokenAccountBalance({
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'getTokenAccountBalance',
+        "params": [
+            tokenAccount,
+            {
+                "commitment": "finalized" // Optional: Specify commitment level
+            }
+        ]
+    }, { apiKey: process.env.ALCHEMY_SECRET })
+    .then(({ data }) => {
+        if (data.error) {
+            throw new Error(`Error fetching token account balance: ${data.error.message}`);
+        }
+        console.log('Data in balance response:', JSON.stringify(data));
+        balance = parseFloat(data.result.value.uiAmountString);
+    })
+    .catch(err => console.error('Error fetching token account balance:', err));
+
+    return balance;
 }
 
 function checkBlacklist(wallet) {
@@ -108,6 +208,6 @@ function checkBlacklist(wallet) {
 }
 
 module.exports = {
-    getBalance,
+    getBalance, getNFTBalance,
     checkBlacklist
 }

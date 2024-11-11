@@ -2,8 +2,13 @@ const {
     sendMessage, setUserState, makeBaseData, 
     sendPrivateMessage,
     editMessage,
+    safeExecute,
 } = require('../../utils');
-const { rooms, getBurned, lobby, STATES, getBotInstance } = require('../bot')
+const { 
+    stateHandlers,
+    prefixHandlers, actionMap,
+    rooms, getBurned, lobby, STATES, getBotInstance 
+} = require('../bot')
 //const { features } = require('../../models/tokengatefeatures.js')
 const { createRoom, writeData, writeBurnData } = require('../../../db/mongodb.js')
 const { initialize } = require('../intitialize.js');
@@ -20,154 +25,60 @@ function getGroupById(groupChatId) {
     return group;
 }
 
-// function groupSettings(message) {
-//     baseData = makeBaseData(message,message.from.id);
-//     const group = getGroup(message);
-//     if(!group){
-//         console.log('handling groupname','message',message.text)
-//         handleGroupName(message);
-//         console.log('exiting groupSettings')
-//         return
-//     }
-//     let groupSettingsKeyboard = [
-//         // [
-//         //     {text: 'Edit Group', callback_data: 'editgroup'},
-//         // ],
-//         // [
-//         //     {text: 'Apply Balance', callback_data: 'applygroupbalance'},
-//         // ],
-//         [],
-//         [
-//             {
-//                 text: 'Chart', 
-//                 url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
-//             },
-//             {
-//                 text: 'Buy',
-//                 url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
-//             },
-//             {
-//                 text: 'Charge',
-//                 url: 'https://miladystation2.net/charge'
-//             }
-//         ]
-//     ];
+const defaultGroupSchema = {
+    chat: { id: null },
+    title: "",
+    admins: [],
+    initialized: false,
+    qoints: 0,
+    burnedQoints: 0,
+    allowCustomCommands: false,
+    customCommandMap: {},
+    restrictedCommands: [],
+    basePrompt: "",
+    requiredWords: [],
+    selectedLoras: [],
+    gateKeeping: {
+        style: 'none',
+        chain: 'sol',
+        token: '',
+        nft: '',
+        minBalance: 0,
+        msg: '',
+        chosen: [],
+    },
+    settings: { ...defaultUserData }
+};
 
-    
-//     let groupSettingsInfo = '\n';
-//     groupSettingsInfo += `<b>${group.name}</b> \n`;
-//     //groupSettingsInfo += `<b>MS2 Burn Balance:</b> ${group.qoints}🎮\n`;
-//     groupSettingsInfo += `<b>Points Remaining</b> ${group.qoints}\n`
+async function updateMessage(chatId, messageId, menu, text) {
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: chatId,
+        message_id: messageId,
+        text: text
+    });
+}
 
-//     // List locked features based on the user's balance
-//     // const lockedFeatures = features.filter(feature => group.wallet < feature.gate);
-//     // if (lockedFeatures.length > 0) {
-//     //     groupSettingsInfo += `<b>Limited Access</b>\n`;
-//     //     // lockedFeatures.forEach(feature => {
-//     //     //     groupSettingsInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
-//     //     // });
-//     // } else {
-//     //     groupSettingsInfo += `Full Access VIP GROUP\n`;
-//     // }
+function generateInlineKeyboard(buttons) {
+    return {
+        reply_markup: {
+            inline_keyboard: buttons
+        }
+    };
+}
 
-//     // Send account settings menu with account information
-//     sendMessage(message, groupSettingsInfo, {
-//         parse_mode: 'HTML',
-//         reply_markup: {
-//             inline_keyboard: groupSettingsKeyboard
-//         }
-//     });
-    
-// }
+function setGroupFlag(group, flagType, user, message_id) {
+    group.flag = { what: flagType, user, targetMessageId: message_id };
+}
 
-// function handleGroupName(message) {
-//     console.log('handling group name')
-//     console.log(message)
-//     const userId = message.from.id
-//     lobby[userId].group = message.chat.title;
-//     const burned = getBurned(userId)/2
-//     const msg = `You have burned a total of ${burned} MS2, tell me how much you would like to apply to this group`
-//     console.log('i would be saying this now'+msg)
-//     sendMessage(message,msg)
-//     setUserState(message, STATES.GROUPAPPLY)
-//     console.log('now the user',userId,' state is ',lobby[userId].state)
-// }
+function clearGroupFlag(group) {
+    const { _id, flag, ...dataToSave } = group; // isolate out _id
+    delete group.flag;
+    return dataToSave;
+}
+
 
 /*
-Needs to be updated so anyone can request to 
-*/
-
-// async function handleApplyBalance(message) {
-//     console.log('handling apply balance')
-//     const burned = getBurned(message.from.id)/2;
-//     const value = message.text;
-//     const group = getGroup(message);
-//     if (isNaN(value)) {
-//         sendMessage(message, 'Please enter a valid integer');
-//         return
-//     }
-//     console.log('value',value,'burned',burned)
-//     if(parseInt(value) > burned || burned == undefined){
-//         sendMessage(message,'Hey you never burned that much MS2 in ur life, try again')
-//         return
-//     }
-//     if(parseInt(value) < 100000){
-//         sendMessage(message,'yea thats not really worth it btw, try again')
-//         return
-//     }
-//     if(group == undefined){
-//         createGroup(message)
-//         await writeBurnData(message.from.id,parseInt(value))
-//         setUserState(message,STATES.IDLE)
-//     } else {
-//         if(group.owner == message.from.id || (group.admin.length > 0 && group.admin.includes(message.from.id))){
-//             group.applied += parseInt(value)
-//             await writeData('floorplan',{id: message.chat.id},{applied: group.applied})
-//             await writeBurnData(message.from.id,parseInt(value))
-//             sendMessage(message,'nice you just added some more burn to the pile')
-//             setUserState(message,STATES.IDLE)
-//         }
-//     }
-// }
-
-// async function createGroup(message) {
-//     console.log('creating group')
-//         // Check if any room has an owner that matches the current message's owner
-//         if (rooms.some(room => room.owner === message.from.id)) {
-//             console.log('Owner already has a group');
-//             sendMessage(message,'you are already group owner')
-//             return; // Exit the function if the owner already has a group
-//         }
-//     const owner = message.from.id;
-//     const chat = message.chat.id;
-//     await createRoom(chat,owner,message.text);
-//     await initialize();
-//     //const group = rooms.find(group => group.id == message.chat.id)
-//     setUserState(message,STATES.IDLE)
-//     groupSettings(message);
-// }
-
-// async function toggleAdmin(message) {
-//     const group = getGroup(message);
-//     if(!group) return
-//     if(message.from.id != group.owner || !group.admins.includes(message.from.id)) return
-//     if(group && group.admins.length > 0
-//         && group.admins.includes(message.reply_to_message.from.id)
-//     ) {
-//         group.admins = group.admins.filter(adminId => adminId !== message.reply_to_message.from.id);
-//         react(message,'✍️');
-//         //return; // Exit the function after removing the admin
-//     } else {
-//         group.admins.push(message.reply_to_message.from.id);
-//         react(message,"💅");
-//         //return
-//     }
-//     await writeData('floorplan',{id: message.chat.id},{admins: group.admins})
-//     console.log('rewrote the room')
-// }
-
-/*
-
 NEW GROUPCHAT SYSTEM
 
 1. stationthis in teh groupchat
@@ -179,14 +90,9 @@ if the user is the only admin or its not a super group, bot dms them directly. G
 
 // Function to handle the group initialization process
 async function initializeGroup(message,user,groupChatId) {
-    const messageId = message.message_id;
-    const chatId = message.chat.id;
-    await editMessage({
-        //reply_markup: replym,
-        chat_id: chatId,
-        message_id: messageId,
-        text: '$ms2'
-    })
+    
+    await updateMessage(message.chat.id,message.message_id,null,'$MS2')
+    
     try {
         // Step 1: Create an admin groupchat
         // Extract chat ID from the callback query
@@ -219,46 +125,13 @@ To access the menu again, use the /stationthis command again.
 
 ${commonInstructions}`;
 
-        
-
         // Step 2: Create a default group configuration for the original group chat
         const defaultGroup = {
-            chat: {
-                id: groupChatId,
-            },
+            ...defaultGroupSchema,
+            chat: { id: groupChatId },
             title: groupTitle,
             admins: adminUserIds,
             initialized: true,
-            qoints: 0,
-            burnedQoints: 0,
-            
-            allowCustomCommands: false,
-            customCommandMap: {},
-
-            // customKeyboard: [
-            //     [{text: '/'}]
-            // ]
-
-            restrictedCommands: [],
-
-            basePrompt: "",
-            
-            requiredWords: [],
-
-            selectedLoras: [],
-
-            gateKeeping: {
-                style: 'none',//['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
-                chain: 'sol', //'eth'
-                token: '',
-                nft: '',
-                minBalance: 0,
-                chosen: [],
-            },
-
-            settings: {
-                ...defaultUserData
-            }
         };
         
         // Save the default group to the databasex
@@ -276,124 +149,116 @@ ${commonInstructions}`;
 async function groupMenu(message) {
     const group = getGroup(message)
     const menu = buildGroupSettingsMenu(message.chat.id)
-    await sendMessage(message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,iMenu.home)
-    await sendPrivateMessage(message.from.id, message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,menu)
+    await sendMessage(message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,menu)
 }
 
-function buildGroupSettingsMenu(groupChatId) {
-    const menu = {
-        reply_markup: {
-            inline_keyboard: [
-                
-                [{ text: 'gatekeep', callback_data: `gatekeep_${groupChatId}`}],
-                [{ text: 'commands', callback_data: `commands_${groupChatId}`}],
-                [{ text: 'prompts', callback_data: `prompts_${groupChatId}`}]
-            ]
-        }
-    }
+async function privateGroupMenu(message, user, groupChatId) {
+    const bot = getBotInstance()
+    await bot.deleteMessage(message.chat.id, message.message_id)
     const group = getGroupById(groupChatId)
-    console.log(group)
+    const menu = buildGroupSettingsMenu(groupChatId,true)
+    //console.log(menu.reply_markup.inline_keyboard.shift())
+    await sendPrivateMessage(user, message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,menu)
+}
+
+function buildGroupSettingsMenu(groupChatId, isDms = false) {
+    const menu = generateInlineKeyboard([
+                //[{ text: '👀 edit in dms ⬆️', callback_data: `peg_${groupChatId}`}],
+                [{ text: '⛩️ gatekeep 🛂', callback_data: `gatekeep_${groupChatId}`}],
+                [{ text: '🗣️ commands 🪖', callback_data: `commands_${groupChatId}`}],
+                [{ text: '📋 prompts 📑', callback_data: `prompts_${groupChatId}`}],
+                [{text: 'cancel', callback_data: 'cancel'}]
+            ])
+            console.log('menu',menu)
+    const group = getGroupById(groupChatId)
+    //console.log(group)
     if(group && group.burnedQoints && group.burnedQoints < 600000) {
         console.log('some things to unlock')
-        menu.reply_markup.inline_keyboard.unshift([{ text: 'unlock', callback_data: `unlock_${groupChatId}`}],)
+        menu.reply_markup.inline_keyboard.unshift([{ text: '🔒 unlock 🔑', callback_data: `unlock_${groupChatId}`}],)
+    }
+    if(!isDms){
+        menu.reply_markup.inline_keyboard.unshift([{ text: '👀 edit in dms ⬆️', callback_data: `peg_${groupChatId}`}])
     }
     return menu;
 }
 
-function buildEditGroupSubMenu(groupChatId) {
-    const subMenuScaffold = {
-        reply_markup: {
-            inline_keyboard: [
-                [{text: '↖︎', callback_data: `eg_${groupChatId}`}]
-            ]
-        }    
+function buildEditGroupSubMenu(groupChatId, target = null) {
+    let callback = 'eg_'
+    if(target){
+        callback = target
     }
+    const subMenuScaffold = generateInlineKeyboard([[{text: '↖︎', callback_data: `${callback}${groupChatId}`}]])
     return subMenuScaffold
 }
 
-async function groupGatekeepMenu(message,user,groupChatId) {
-    const group = getGroupById(groupChatId)
-    const chatId = message.chat.id
-    const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
-    menu.reply_markup.inline_keyboard.push([{text: `gatekeep type ${group.gateKeeping.style}`, callback_data: `gks_${groupChatId}`}])
-    if(group.gateKeeping.style == 'token' || group.gateKeeping.style == 'nft') {
-        menu.reply_markup.inline_keyboard.push([{text: `set token`, callback_data: `gkca_${group.gateKeeping.style}_${groupChatId}`}])
-        menu.reply_markup.inline_keyboard.push([{text: `set gate`, callback_data: `gkmin_${groupChatId}`}])
+async function handleGroupMenu(message, user, groupChatId, menuType) {
+    const group = getGroupById(groupChatId);
+    let menu = buildEditGroupSubMenu(groupChatId);
+    switch (menuType) {
+        case 'gatekeep':
+            menu.reply_markup.inline_keyboard.push([{ text: `🚪 set gatekeep type: ${group.gateKeeping.style} 🪟`, callback_data: `gks_${groupChatId}` }]);
+            if (group.gateKeeping.style === 'token' || group.gateKeeping.style === 'nft') {
+                menu.reply_markup.inline_keyboard.push([{ text: `set ca 🪙`, callback_data: `gkca_${group.gateKeeping.style}_${groupChatId}` }]);
+                menu.reply_markup.inline_keyboard.push([{ text: `set gate 🧮`, callback_data: `gkmin_${groupChatId}` }]);
+            }
+            menu.reply_markup.inline_keyboard.push([{ text: `set gate message 🛃`, callback_data: `gkmsg_${groupChatId}` }]);
+            break;
+
+        case 'command':
+            menu.reply_markup.inline_keyboard.push([{ text: `🆒 custom commands 🆗`, callback_data: `egcc_${groupChatId}` }]);
+            menu.reply_markup.inline_keyboard.push([{ text: `☑️ allowed commands 🗯️`, callback_data: `egac_${groupChatId}` }]);
+            break;
+
+        case 'prompt':
+            menu.reply_markup.inline_keyboard.push([{ text: `📧 required words 🔫`, callback_data: `egrw_${groupChatId}` }]);
+            menu.reply_markup.inline_keyboard.push([{ text: `🧠 assist instruction 👩🏼‍🏫`, callback_data: `egai_${groupChatId}` }]);
+            break;
+
+        default:
+            console.error("Invalid menu type provided");
+            return;
     }
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
-    })
+    const marquee = `Gatekeep: ${group.gateKeeping.style}${group.gateKeeping.token}\n`
+    await updateMessage(message.chat.id,message.message_id,menu,
+        `${group.ticker ? 
+            `${group.title}\nstationthisbot X ${group.ticker}\n${capitalizeFirstLetter(menuType)} Menu${marquee}` : 
+            `${group.title}\n$MS2 stationthisbot\n${capitalizeFirstLetter(menuType)} menu\n${marquee}`}`
+    )
+}
+
+function capitalizeFirstLetter(string) {
+    if (!string) return ''; // Handle empty or undefined strings
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+async function groupGatekeepMenu(message,user,groupChatId) {
+    handleGroupMenu(message, user, groupChatId, 'gatekeep')
 }
 
 async function groupCommandMenu(message,user,groupChatId) {
-    const group = getGroupById(groupChatId)
-    const chatId = message.chat.id
-    const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
-    menu.reply_markup.inline_keyboard.push([{text: `custom commands`, callback_data: `egcc_${groupChatId}`}])
-    menu.reply_markup.inline_keyboard.push([{text: `allowed commands`, callback_data: `egac_${groupChatId}`}])
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nCommands Menu` : `${group.title}\n$MS2 stationthisbot\nCommands menu`}`
-    })
+    handleGroupMenu(message, user, groupChatId, 'command')
 }
 
 async function groupPromptMenu(message,user,groupChatId) {
-    const group = getGroupById(groupChatId)
-    const chatId = message.chat.id
-    const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
-    menu.reply_markup.inline_keyboard.push([{text: `required words`, callback_data: `egrw_${groupChatId}`}])
-    menu.reply_markup.inline_keyboard.push([{text: `assist instruction`, callback_data: `egai_${groupChatId}`}])
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nPrompts Menu` : `${group.title}\n$MS2 stationthisbot\nPrompts menu`}`
-    })
+    handleGroupMenu(message, user, groupChatId, 'prompt')
 }
 
 async function groupUnlockMenu(message,user,groupChatId) {
-    const group = getGroupById(groupChatId)
-    const chatId = message.chat.id
-    const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
-
-    //build unlock text
-    //based on burnedQoints, show features yet to be unlocked and the price they can pay to unlock them
-    //one time unlock for now, in the future, renting?
-
-    // menu.reply_markup.inline_keyboard.push([{text: `required words`, callback_data: `egrw_${groupChatId}`}])
-    // menu.reply_markup.inline_keyboard.push([{text: `assist instruction`, callback_data: `egai_${groupChatId}`}])
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        //text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nPrompts Menu` : `${group.title}\n$MS2 stationthisbot\nPrompts menu`}`
-    })
+    handleGroupMenu(message, user, groupChatId, 'unlock')
 }
 
 async function backToGroupSettingsMenu(message,user,groupChatId) {
+    console.log('backtogroupsettings my g')
     const group = getGroupById(groupChatId)
-    const messageId = message.message_id;
-    const chatId = message.chat.id;
-    const options = buildGroupSettingsMenu(groupChatId)
+    let isDm = false
+    if(message.chat.id > 0) {isDm = true}
+    const options = buildGroupSettingsMenu(groupChatId,isDm)
     message.from.id = user
     setUserState(message,STATES.IDLE)
-    await editMessage({
-        reply_markup: options.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: `${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`
-    })
+    await updateMessage(message.chat.id,message.message_id,options,
+        `${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`
+    )
 }
-
 
 /*
 layer 2 menus, menus within the submenu, doing things like 
@@ -403,7 +268,7 @@ async function groupGatekeepTypeMenu(message,user,groupChatId) {
     const group = getGroupById(groupChatId)
     const chatId = message.chat.id
     const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
+    const menu = buildEditGroupSubMenu(groupChatId,'gatekeep_')
     //for this menu, we check the group gatekeeping type
     const style = group.gateKeeping.style
     menu.reply_markup.inline_keyboard.push([{text: style == 'none' ? `none ✅`:`none`, callback_data: `sgks_none_${groupChatId}'}`}])
@@ -418,57 +283,224 @@ async function groupGatekeepTypeMenu(message,user,groupChatId) {
         message_id: messageId,
         text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
     })
+    message.from.id = user;
+    setUserState(message,STATES.IDLE)
 }
 
 async function groupGatekeepTypeSelect(message,user,groupChatId,type) {
     const group = getGroupById(groupChatId)
     group.gateKeeping.style = type;
-    await groupGatekeepTypeMenu(message,user,groupChatId)
+    //await groupGatekeepTypeMenu(message,user,groupChatId)
+    await handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
 }
 /*
 setting token contract address,
 */
-async function groupGatekeepSetCA(message,user,groupChatId,which){
-    const group = getGroupById(groupChatId)
-    //console.log('got our group',group)
-    const chatId = message.chat.id
-    const messageId = message.message_id
-    const menu = buildEditGroupSubMenu(groupChatId)
-    message.from.id = user;
-    if(which == 'token') {
-        setUserState(message,STATES.SETGROUPTOKENCA)
-    }else if (which == 'nft') {
-        setUserState(message,STATES.SETGROUPNFTCA)
+
+// Class definition for handling group settings
+class GroupSettingHandler {
+    constructor(groupChatId, options) {
+        this.groupChatId = groupChatId; // The ID of the group being configured
+        this.settingName = options.settingName; // Name of the setting being handled (e.g., 'minBalance', 'gateMessage')
+        this.promptText = options.promptText; // Instructional text to guide the user when setting the parameter
+        this.description = options.description; // Description to provide more context for advanced users
+        this.state = options.state; // State identifier for the bot
+        this.flagWhat = options.flagWhat; // Flag identifier for the group
+        this.processHandler = options.processHandler; // Function to handle processing the user's input
+        this.prefix = options.prefix; // The prefix used for the callback action (e.g., 'gkmsg_')
+        this.actionKey = options.actionKey; // The action key for `actionMap`
+        this.callbackPrefix = options.callbackPrefix; // Prefix for the callback data
+        this.onCompleteCallback = options.onCompleteCallback; // Callback to activate upon completion of the process
+        options.alt ? this.alt = options.alt : this.alt = 1
+        // Register the handlers
+        this.registerHandlers(this.alt);
     }
-    //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
-    group.flag = { 
-        what: 'setCa',
-        which,
-        user, 
+
+    // Register prefixHandlers, actionMap, and stateHandlers
+    registerHandlers(alt = 1) {
+        // Prefix handler to trigger the setting prompt
+        prefixHandlers[this.prefix] = (action, message, user) => {
+            const groupChatId = parseInt(action.split('_')[alt]);
+            this.groupChatId = groupChatId; // Set correct groupChatId dynamically
+            this.showSettingPrompt(message, user);
+        };
+
+        // Action map handler for the given action key
+        actionMap[this.actionKey] = (message, user, groupChatId) => {
+            this.groupChatId = groupChatId; // Set correct groupChatId dynamically
+            this.showSettingPrompt(message, user);
+        };
+
+        // State handler to process the user's response
+        stateHandlers[this.state] = (message) => {
+            safeExecute(message, this.processSettingInput.bind(this));
+        };
     }
-    const thing = which == 'token' || which == 'nft' ? 'CA' : 'Ticker'
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nTell me the ${thing} we are gatekeeping with` : `${group.title}\n$MS2 stationthisbot\nSet ${thing}`}`
-    })
+
+    // Show the setting prompt to the user
+    async showSettingPrompt(message, user) {
+        const group = getGroupById(this.groupChatId);
+        const menu = buildEditGroupSubMenu(this.groupChatId, this.callbackPrefix);
+        message.from.id = user;
+
+        setUserState(message, this.state);
+        group.flag = {
+            what: this.flagWhat,
+            user,
+            targetMessageId: message.message_id, // Store the original message ID to return to later
+        };
+
+        // Determine whether to include the description based on user type
+        const userId = message.from.id;
+        const userIsAdvanced = lobby[userId]?.advancedUser;
+        const descriptionText = userIsAdvanced && this.description ? `\n\n${this.description}` : '';
+
+        // Update the message to prompt user for the setting
+        await editMessage({
+            reply_markup: menu.reply_markup,
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: `${lobby[userId] && lobby[userId].advancedUser ? `${group.title}\nstationthisbot X ${group.ticker}` : `${group.title}\n$MS2 stationthisbot`}\n${descriptionText}\n\n${this.promptText}`
+        });
+    }
+
+    // Process the user input for the given setting
+    async processSettingInput(message) {
+        const group = rooms.find(group => group.flag.user === message.from.id);
+        if (group && group.flag.what === this.flagWhat) {
+            // Call the specific handler for processing input
+            await this.processHandler(group, message);
+
+            const { _id, flag, ...dataToSave } = group; // Isolate out _id
+            await writeData('floorplan', { id: group.chat.id }, dataToSave);
+            setUserState(message, STATES.IDLE);
+            delete group.flag;
+
+            // Activate the callback to return to the original menu
+            if (this.onCompleteCallback) {
+                await this.onCompleteCallback(message, group, flag.targetMessageId);
+            }
+        }
+    }
 }
 
-async function handleSetTick(message) {
-    const group = rooms.find(group => group.flag.user == message.from.id)
-    //console.log('group',group)
-    // group.gateKeeping.token 
-    if (group.flag.what == 'setCa'){
-        console.log(group.gateKeeping[group.flag.which])
-        group.gateKeeping[group.flag.which] = message.text
-        console.log(group.gateKeeping[group.flag.which])
+// Gatekeeping message setting handler with inline processHandler
+const gateMessageHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'gateMessage',
+    promptText: 'What should I say if someone gets gatekept?',
+    description: 'This message will be displayed to users who do not meet the gatekeeping requirements. It can be customized to provide additional instructions or a friendly message.',
+    state: STATES.SETGROUPGATEMSG,
+    flagWhat: 'setGateMsg',
+    processHandler: async (group, message) => {
+        group.gateKeeping.Msg = message.text;
+    },
+    prefix: 'gkmsg_',
+    actionKey: 'gateKeepSetGateMsg',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
     }
-    const {_id, flag, ...dataToSave} = group //isolate out _id 
-    await writeData('floorplan',{id: group.chat.id}, dataToSave) 
-    setUserState(message,STATES.IDLE)
-    delete group.flag
-}
+});
+
+// Gatekeeping limit setting handler with inline processHandler
+const gateLimitHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'minBalance',
+    promptText: `How much token is necessary to use the bot on the groups' tab?`,
+    description: 'This setting defines the minimum balance a user must have to access the bot. It can be used to restrict access based on token holdings.',
+    state: STATES.SETGROUPGATE,
+    flagWhat: 'setGate',
+    processHandler: async (group, message) => {
+        const inputValue = parseInt(message.text);
+        if (!isNaN(inputValue)) {
+            group.gateKeeping.minBalance = inputValue;
+        } else {
+            console.error("Invalid number input for gate limit.");
+        }
+    },
+    prefix: 'gkmin_',
+    actionKey: 'gateKeepSetGate',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+    }
+});
+
+// Gatekeeping token contract address setting handler
+const gateTokenCAHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'tokenContractAddress',
+    promptText: 'Tell me the token Contract Address (CA) we are gatekeeping with',
+    description: 'This setting allows you to specify the contract address (CA) for tokens used for gatekeeping. It determines the access control based on token ownership.',
+    state: STATES.SETGROUPTOKENCA,
+    flagWhat: 'setTokenCA',
+    alt: 2,
+    processHandler: async (group, message) => {
+        group.gateKeeping.token = message.text;
+    },
+    prefix: 'gkca_token_',
+    actionKey: 'gateKeepSetTokenCA',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+    }
+});
+
+// Gatekeeping NFT contract address setting handler
+const gateNFTCAHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'nftContractAddress',
+    promptText: 'Tell me the NFT Contract Address (CA) we are gatekeeping with',
+    description: 'This setting allows you to specify the contract address (CA) for NFTs used for gatekeeping. It determines the access control based on NFT ownership.',
+    state: STATES.SETGROUPNFTCA,
+    flagWhat: 'setNFTCA',
+    alt: 2,
+    processHandler: async (group, message) => {
+        group.gateKeeping.nft = message.text;
+    },
+    prefix: 'gkca_nft_',
+    actionKey: 'gateKeepSetNFTCA',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+    }
+});
+
+// Gatekeeping ticker setting handler
+const gateTickerHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'gateTicker',
+    promptText: 'Tell me the Ticker we are gatekeeping with',
+    description: 'This setting allows you to specify the ticker symbol for gatekeeping. It determines the access control based on ticker information.',
+    state: STATES.SETGROUPTICKER,
+    flagWhat: 'setTicker',
+    alt: 2,
+    processHandler: async (group, message) => {
+        group.gateKeeping.ticker = message.text;
+    },
+    prefix: 'gkca_ticker_',
+    actionKey: 'gateKeepSetTicker',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+    }
+});
+
+// Adjust prefix handler to handle different scenarios
+prefixHandlers['gkca_'] = (action, message, user) => {
+    const which = action.split('_')[1];
+    const groupChatId = parseInt(action.split('_')[2]);
+    gateCAHandler.groupChatId = groupChatId; // Set correct groupChatId dynamically
+    gateCAHandler.showSettingPrompt(message, user);
+};
+
+// Register appropriate state handlers for each scenario
+stateHandlers[STATES.SETGROUPNFTCA] = (message) => safeExecute(message, gateNFTCAHandler.processSettingInput.bind(gateNFTCAHandler));
+stateHandlers[STATES.SETGROUPTOKENCA] = (message) => safeExecute(message, gateTokenCAHandler.processSettingInput.bind(gateTokenCAHandler));
+stateHandlers[STATES.SETGROUPTICKER] = (message) => safeExecute(message, gateTickerHandler.processSettingInput.bind(gateTickerHandler));
+
+
 /*
 setting gate threshold,
 setting custom command mapping
@@ -479,23 +511,59 @@ unlocking stuff by "burning" qoints
 */
 
 
+function handlePrefix(action, message, user, actionKey) {
+    const groupChatId = parseInt(action.split('_')[1]);
+    actionMap[actionKey](message, user, groupChatId);
+}
+prefixHandlers['unlock_']=(action, message, user) => {
+    const groupChatId = parseInt(action.split('_')[1]);
+    actionMap['unlockMenu'](message,user,groupChatId)
+}
+prefixHandlers['gks_']= (action, message, user) => {
+    const groupChatId = parseInt(action.split('_')[1]);
+    actionMap['gateKeepTypeMenu'](message,user,groupChatId)
+}
+prefixHandlers['sgks_']= (action, message, user) => {
+    const type = action.split('_')[1];
+    const groupChatId = parseInt(action.split('_')[2]);
+    actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
+}
+
+prefixHandlers['ig_'] = (action, message, user) => handlePrefix(action, message, user, 'initializeGroup');
+prefixHandlers['eg_'] = (action, message, user) => handlePrefix(action, message, user, 'backToGroupMenu');
+prefixHandlers['peg_'] = (action, message, user) => handlePrefix(action, message, user, 'privateGroupMenu');
+prefixHandlers['gatekeep_'] = (action, message, user) => handlePrefix(action, message, user, 'gateKeepMenu');
+prefixHandlers['commands_'] = (action, message, user) => handlePrefix(action, message, user, 'commandsMenu');
+prefixHandlers['prompts_'] = (action, message, user) => handlePrefix(action, message, user, 'promptsMenu');
+
+
+actionMap['initializeGroup']= initializeGroup
+    actionMap['privateGroupMenu']= privateGroupMenu
+    actionMap['backToGroupMenu']= backToGroupSettingsMenu
+    actionMap['gateKeepMenu']= groupGatekeepMenu 
+        actionMap[ 'gateKeepTypeMenu'] = groupGatekeepTypeMenu 
+            actionMap['gateKeepTypeSelect'] = groupGatekeepTypeSelect
+            
+            
+    actionMap['commandsMenu']= groupCommandMenu
+    actionMap['promptsMenu']= groupPromptMenu
+    actionMap['unlockMenu']= groupUnlockMenu
+
 
 module.exports = {
-    // groupSettings,
-    // handleApplyBalance,
-    // handleGroupName,
     getGroup, getGroupById,
-    // createGroup,
-    // toggleAdmin,
     groupMenu,
     backToGroupSettingsMenu,
 
-    groupGatekeepMenu, groupGatekeepTypeMenu, groupGatekeepTypeSelect, groupGatekeepSetCA,
+    groupGatekeepMenu, 
+        groupGatekeepTypeMenu, 
+            groupGatekeepTypeSelect, //groupGatekeepSetCA, handleSetTick,
+            //groupGatekeepSetGateLimit, handleSetGateLimit,
+            //groupGatekeepSetGateMsg, handleSetGateMsg,
+
     groupCommandMenu,
     groupPromptMenu,
     groupUnlockMenu,
-
-    handleSetTick,
 
     initializeGroup
 }

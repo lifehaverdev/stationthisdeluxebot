@@ -6,6 +6,8 @@ const bot = new TelegramBot(botToken,
     });
 const startup = Date.now();
 const lobby = {};
+const stateHandlers = {};//from imessage
+const actionMap = {}; const prefixHandlers = {};
 const workspace = {};
 let taskQueue = []
 let waiting = []
@@ -76,6 +78,8 @@ const STATES = {
     SETGROUPNFTCA: 'SETGROUPNFTCA',
     SETGROUPTOKENCA: 'SETGROUPTOKENCA',
     SETGROUPTICKER: 'SETGROUPTICKER',
+    SETGROUPGATE: 'SETGROUPGATE',
+    SETGROUPGATEMSG: 'SETGROUPGATEMSG',
 
     // Add more states as needed
 };
@@ -193,7 +197,9 @@ module.exports = {
     getPhotoUrl,
     getNextPeriodTime,
     getBurned,
-    lobby, workspace,
+    lobby, workspace, 
+    stateHandlers,
+    actionMap, prefixHandlers,
     rooms, flows, burns, loraTriggers,
     taskQueue, waiting, processes, successors, failures,
     startup,

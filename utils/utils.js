@@ -100,7 +100,7 @@ async function safeExecuteCallback(message, user, callback, action = null) {
 
 async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
     const chatId = msg.chat.id;
-
+    
     // Add reply_to_message_id if available
     if (msg.message_id && !options.reply_to_message_id) {
         options.reply_to_message_id = msg.message_id;
@@ -241,6 +241,8 @@ async function sendPrivateMessage(user, msg, text, options = {}) {
     msg.chat.id = user
     delete msg.message_thread_id
     delete msg.message_id
+    delete msg.reply_to_message_id
+    //console.log('send private message')
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options)
 }
 
