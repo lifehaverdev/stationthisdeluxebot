@@ -63,10 +63,10 @@ function softResetPoints(userId) {
 
 function shouldKick(userId) {
     const userData = lobby[userId];
-    if(lobby[userId].runs[0].timeRequested){
-        console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',lobby[userId].runs[0].timeRequested ? lobby[userId].runs[0].timeRequested : '','and between that time and now, it is greater than lobby clean interval',Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL)
+    if(userData.runs && userData.runs[0].timeRequested){
+        console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',userData.runs[0].timeRequested ? userData.runs[0].timeRequested : '','and between that time and now, it is greater than lobby clean interval',userData.runs[0].timerequested ? Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL : null)
     }
-    if(!lobby[userId].runs) return true
+    if(!userData.runs) return true
     if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
 }
 
@@ -255,113 +255,84 @@ async function checkIn(message) {
     return true;
 }
 
+const CACHE_EXPIRY_TIME = 1000 * 60 * 60 * 24; //1 day expiry on asset balance cache
 
-async function checkLobby(message) {
-    
-    const userId = message.from.id;
-    const group = getGroup(message);
-    let balance = 0;
-
-    const groupCheck = async () => {
-        // Group credit check (could switch to qoints when ready)
-        if (group && group.qoints > 0) {
-            console.log('gatekeeping, we in group, group has points')
-            const type = group.gateKeeping.style
-            if(
-                group.gateKeeping && 
-                (
-                    (type == 'token' && group.gateKeeping.token) || 
-                    (type == 'nft' && group.gateKeeping.nft)
-                ) 
-            ) {
-                console.log("here we are")
-                if(
-                    lobby[userId].verified //&&
-                ){
-                    console.log("here we are")
-                    // let tokenBal = lobby[userId][group.gateKeeping.token]
-                    let tokenBal = null
-                    let taht = group.gateKeeping[type];
-                    if(!tokenBal) {
-                        if(type == 'token'){
-                            tokenBal = await getBalance(lobby[userId].wallet, taht)
-                        } else if (type == 'nft') {
-                            tokenBal = await getNFTBalance(lobby[userId].wallet, taht)
+// Function to handle group-specific logic
+async function handleGroupCheck(group, userId, message) {
+    if (group && group.qoints > 0) {
+        console.log('Gatekeeping: group has points');
+        const { gateKeeping } = group;
+        if (gateKeeping) {
+            const { style, token, nft, minBalance, Msg } = gateKeeping;
+            if ((style === 'token' && token) || (style === 'nft' && nft)) {
+                if (lobby[userId].verified) {
+                    const assetKey = gateKeeping[style];
+                    let assetData = lobby[userId].assets?.[assetKey] || null;
+                    if (!assetData || (Date.now() - assetData.checked) > CACHE_EXPIRY_TIME) {
+                        console.log('Gatekeeping: balance check');
+                        const tokenBal = style === 'token'
+                            ? await getBalance(lobby[userId].wallet, assetKey)
+                            : await getNFTBalance(lobby[userId].wallet, assetKey);
+                        if (!lobby[userId].assets) {
+                            lobby[userId].assets = {};
                         }
-                        lobby[userId][taht] = tokenBal
+                        lobby[userId].assets[assetKey] = {
+                            bal: tokenBal,
+                            checked: Date.now()
+                        };
+                        assetData = lobby[userId].assets[assetKey];
                     }
-                    console.log('this nigga has ', tokenBal)
-                    if(tokenBal && tokenBal > group.gateKeeping.minBalance){
-                        return true
-                    } else {
-                        await sendMessage(message,group.gateKeeping.Msg)
-                        return false
-                    }
-                    
-                } else {
-                    await sendMessage(message,'I dont know you'+group.gateKeeping.Msg)
-                    return false
-                }
-            } else {
-                console.log('oops no gateKeeping no style no token')
-                return true;
-            }
-        } else {
-            if(group && group.qoints <= 0) {
-                await sendMessage(message,'hey.. this group is out of qoints (cheese). you can /donate some if you ahve any. otherwise.. im sorry. You can still maek stuff with me in dms tho.')
-                return false
-            }
-            if(!group){
-                console.log('not a group')
-            }
-        }
-    }
 
-    // Check if the user is already in the lobby
+                    if (assetData.bal && assetData.bal > minBalance) {
+                        console.log('Gatekeeping: balance check pass');
+                        return true;
+                    } else {
+                        await sendMessage(message, Msg);
+                        return false;
+                    }
+                } else {
+                    await sendMessage(message, `I don't know you` + Msg);
+                    return false;
+                }
+            }
+        }
+        return true;
+    } else if (group && group.qoints <= 0) {
+        await sendMessage(message, 'Hey, this group is out of qoints. You can /donate some if you have any, or continue in DMs.');
+        return false;
+    }
+    return true;
+}
+
+// Function to handle user data in the lobby
+async function handleUserData(userId, message) {
+    console.log('handling user data')
     if (!lobby.hasOwnProperty(userId)) {
-        let userData = await getUserDataByUserId(userId);
-        //console.log('UserData in checkLobby (new user)', userData);
-        if(!userData) {
-            userData = await createDefaultUserData(userId)
-        }
-        // First, add the user to the lobby
+        let userData = await getUserDataByUserId(userId) || await createDefaultUserData(userId);
         lobbyManager.addUser(userId, userData);
-        const groupPass = await groupCheck()
-        if(groupPass) {
-            return true
-        } else if (!groupPass) {
-            return false
-        }
-        // Fetch and update the user's balance if they are verified
+
         if (userData.verified) {
-            balance = await getBalance(userData.wallet);
+            const balance = await getBalance(userData.wallet);
             lobby[userId].balance = balance;
         }
 
-        // Regenerate doints after the balance is updated
         if (userData.kickedAt) {
             console.log('Regenerating doints for kicked user');
             regenerateDoints(userId);
-            // Remove the kickedAt key value after regenerating doints
             delete userData.kickedAt;
         }
 
-        // If the user is not verified, prompt them to sign in
-        if (!userData.verified) {
-            if (message.chat.id > 0) {
-                const options = {
-                    reply_markup: {
-                        keyboard: [[{ text: '/signin' }]],
-                        resize_keyboard: true,
-                        one_time_keyboard: true
-                    }
-                };
-                sendMessage(message, 'Use the signin command and connect a wallet to unlock $MS2 holder benefits.', options);
-            }
-            return true;
+        if (!userData.verified && message.chat.id > 0) {
+            const options = {
+                reply_markup: {
+                    keyboard: [[{ text: '/signin' }]],
+                    resize_keyboard: true,
+                    one_time_keyboard: true
+                }
+            };
+            sendMessage(message, 'Use the signin command and connect a wallet to unlock $MS2 holder benefits.', options);
         }
 
-        // Blacklist check
         if (checkBlacklist(userData.wallet)) {
             await sendMessage(message, 'You are on the blacklist.');
             return false;
@@ -369,55 +340,24 @@ async function checkLobby(message) {
 
         setUserState(message, STATES.IDLE);
         console.log(`${message.from.first_name} has entered the chat.`);
-        
-    } else {
-        const userData = lobby[userId]; // Access user data directly from the lobby
-
-        const groupPass = await groupCheck()
-        if(groupPass) {
-            return true
-        } else if (!groupPass) {
-            return false
-        }
-
-        // If the user's balance hasn't been fetched yet, retrieve it
-        if (userData.verified && userData.balance === '') {
-            const ms2Holding = await getBalance(userData.wallet);
-            userData.balance = ms2Holding;
-            balance = ms2Holding;
-        } else {
-            balance = userData.balance;
-        }
-        setUserState(message, STATES.IDLE);
     }
-    
-    
+    return true;
+}
 
-    // Check if the user has hit the generation limit
-    const totalPoints = lobby[userId].points + (lobby[userId].doints || 0);
-    const outOfPoints = (pointsCalc(totalPoints) > (balance + NOCOINERSTARTER)) 
-    
-    //if group and group qoints whatever
-    //if outof points AND no qoints... 
-    //if no qoints but have points left
-    //not having qoints only matters if you also dont have points
+// Function to handle balance and points check
+function checkUserPoints(userId, group, message) {
+    console.log('checking user points')
+    const user = lobby[userId];
+    const totalPoints = user.points + (user.doints || 0);
+    const outOfPoints = pointsCalc(totalPoints) > (user.balance + NOCOINERSTARTER);
 
-    if (
-        (outOfPoints && lobby[userId].qoints && lobby[userId].qoints <= 0 )
-        ||
-        (outOfPoints && !lobby[userId].qoints)
-        ||
-        (group && group.qoints <= 0)
-    ) {
+    if ((outOfPoints && user.qoints <= 0) || (outOfPoints && !user.qoints) || (group && group.qoints <= 0)) {
         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
+
         const nextRegenTime = timeTillTurnover();
-        const messageText = `🚫 You have hit your point limit! 
-✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they dont)
-🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.
-💰 Want to continue now? Buy more MS2 and keep creating! 🥂
-OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
+        const messageText = `🚫 You have hit your point limit!\n✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they don’t)\n🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.\n💰 Want to continue now? Buy more MS2 and keep creating! 🥂 OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
         const options = {
             reply_markup: {
                 inline_keyboard: [
@@ -426,21 +366,42 @@ OR charge up your points directly 👾 with discounts for owning MS2 and using t
                         { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' }
                     ],
                     [
-                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge'}
+                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
                     ]
                 ]
             }
         };
 
         sendMessage(message, messageText, options);
-        lobby[userId].balance = ''; // Reset balance after the limit is hit
+        user.balance = '';
         ++locks;
         return false;
     }
-    
-
     return true;
 }
+
+// Main lobby check function
+async function checkLobby(message) {
+    const userId = message.from.id;
+    const group = getGroup(message);
+
+    if (!(await handleUserData(userId, message))) {
+        return false;
+    }
+
+    if (!(await handleGroupCheck(group, userId, message))) {
+        return false;
+    }
+
+    if (!checkUserPoints(userId, group, message)) {
+        return false;
+    }
+
+    setUserState(message, STATES.IDLE);
+    console.log(`${message.from.first_name} is ready.`);
+    return true;
+}
+
 
 
 function timeTillTurnover() {

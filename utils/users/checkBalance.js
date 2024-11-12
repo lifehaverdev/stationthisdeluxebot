@@ -10,7 +10,7 @@ const blessings = {
     //"GDSa1MaSTYKbNwcvJqhhgUEx97UsCTNKVPDKVE6ASzT8": 1000000,
     //"85vHqjTYuWjpURT1vLkQPXBourkzAF6SjTohbxhwAZgs": 1000000,
     //egmund
-    "qDYNYPYcMiBy4R5yvjrpQvpdkBQuB8q3aehmSr7EoBt": 1000000,
+    //"qDYNYPYcMiBy4R5yvjrpQvpdkBQuB8q3aehmSr7EoBt": 1000000,
     //42069
     //"J8w8wRLewHwjAmckHEgncC6GpBkc1EdeLUaoV35bN73w": 1000000,
     //"4PygoXdiNArUNWbpTLF6rUKgmaMqD8FW4hJAZcZJksW9": 1000000,
@@ -18,17 +18,17 @@ const blessings = {
     //aefek
     "4rrJak8BHdMKbQU387jWrf8QLhnCtZcwn1oTKURYTZRk": 1000000,
     //anon
-    "5ycSW3RiSWv87a4diRNRLR1Wk5Ygig4XENMyVeNi4xxk": 1000000,
+    //"5ycSW3RiSWv87a4diRNRLR1Wk5Ygig4XENMyVeNi4xxk": 1000000,
     //veil
-    "6sHPndv6XLhCwjPW5kbejwAaeWAWi9DhCWfvGvmWUUzu": 1000000,
+    //"6sHPndv6XLhCwjPW5kbejwAaeWAWi9DhCWfvGvmWUUzu": 1000000,
     //"egmund"
-    "36NQZbu7KzFKj3YTjfWEDFaaZqNodEc4QywA8yAagjwB": 1000000,
+    //"36NQZbu7KzFKj3YTjfWEDFaaZqNodEc4QywA8yAagjwB": 1000000,
     //xdrar
-    "9D2UVKHKmaCNwizw6iPS3NmideY2Qvq7A2jvLvVGfyVZ": 5000000,
+    //"9D2UVKHKmaCNwizw6iPS3NmideY2Qvq7A2jvLvVGfyVZ": 5000000,
     //wifeystation
     //"BiFSjP1uDi9D9euchgYzwJGmYbfomBexXDzN6iJNC5Gv": 10000000,
     //tom
-    "UrTz5ydH7gg2XpJoG6CNRuForc5PSHH14mtd4hhW9a2": 5000000
+    //"UrTz5ydH7gg2XpJoG6CNRuForc5PSHH14mtd4hhW9a2": 5000000
 }
 
 const curses = {
@@ -94,105 +94,83 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
 
     return balance
 }
+const getNFTBalance = async (ownerAddress, mintAddress) => {
+    const url = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_KEY}`;
+    let page = 1;
+    let allAssets = [];
+    let hasMore = true;
 
-// async function getNFTBalance(address, ca) {
-//     //console.log('checking balalnce')
-//     let balance = null;
-//     await sdk.getTokenAccountBalance({
-//         id: 1,
-//         jsonrpc: '2.0',
-//         method: 'getTokenAccountBalance',
-//         "params": [
-//           address,
-//           //ca,
-//         //   {
-//         //       "programId": ca
-//         //   },
-//         //   {
-//         //       "encoding": "jsonParsed"
-//         //   }
-//       ]
-//       }, {apiKey: process.env.ALCHEMY_SECRET})
-//     .then(({ data }) => {
-//         //
-//         console.log('data in nft response',data)//data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
-//         if(data.error || (data.result.value && data.result.value.length == 0)){
-//             balance = 0;
-//         } else if (data.result.value.length > 0){
-//             balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount
-//         } else {
-//             balance = 0
-//         }
-//     })
-//     .catch(err => console.error(err));
+    while (hasMore) {
+        try {
+            console.log('Checking page:', page);
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'my-id',
+                    method: 'getAssetsByOwner',
+                    params: {
+                        ownerAddress,
+                        page,
+                        limit: 1000,
+                    },
+                }),
+            });
 
-//     return balance
-// }
-async function getNFTBalance(address, mintAddress) {
-    console.log('this is me', address)
-    console.log('Checking balance for mint:', mintAddress);
-    address = address.trim();
-    mintAddress = mintAddress.trim()
-    // Step 1: Get all token accounts owned by the address
-    let tokenAccounts = [];
-    await sdk2.getTokenAccountsByOwner({
-        id: 1,
-        jsonrpc: '2.0',
-        method: 'getTokenAccountsByOwner',
-        "params": [
-            address,
-            {
-                'mint': mintAddress // SPL Token Program ID
-            },
-        ]
-    }, { apiKey: process.env.ALCHEMY_SECRET })
-    .then(({ data }) => {
-        if (data.error) {
-            throw new Error(`Error fetching token accounts: ${data.error.message}`);
-        }
-        tokenAccounts = data.result.value;
-    })
-    .catch(err => console.error('Error fetching token accounts:', err));
+            const { result } = await response.json();
 
-    // Step 2: Find the token account for the specified mint
-    let tokenAccount = null;
-    for (const accountInfo of tokenAccounts) {
-        if (accountInfo.account.data.parsed.info.mint === mintAddress) {
-            tokenAccount = accountInfo.pubkey;
-            break;
-        }
-    }
-
-    if (!tokenAccount) {
-        console.error('Token account for the specified mint not found.');
-        return 0; // No token account found for the mint address
-    }
-
-    // Step 3: Get the balance for the token account
-    let balance = 0;
-    await sdk.getTokenAccountBalance({
-        id: 1,
-        jsonrpc: '2.0',
-        method: 'getTokenAccountBalance',
-        "params": [
-            tokenAccount,
-            {
-                "commitment": "finalized" // Optional: Specify commitment level
+            if (result && result.items.length > 0) {
+                allAssets = allAssets.concat(result.items);
+                page++;
+            } else {
+                hasMore = false;
             }
-        ]
-    }, { apiKey: process.env.ALCHEMY_SECRET })
-    .then(({ data }) => {
-        if (data.error) {
-            throw new Error(`Error fetching token account balance: ${data.error.message}`);
+
+        } catch (err) {
+            console.error('Error fetching assets:', err);
+            hasMore = false;
         }
-        console.log('Data in balance response:', JSON.stringify(data));
-        balance = parseFloat(data.result.value.uiAmountString);
-    })
-    .catch(err => console.error('Error fetching token account balance:', err));
+    }
 
-    return balance;
-}
+    // Print a sample of the assets to inspect their structure
+    if (allAssets.length > 0) {
+        // console.log('Sample of assets owned by the address:');
+        // console.log(JSON.stringify(allAssets.slice(0, 5), null, 2));
+    } else {
+        console.log('No assets found for the given owner address.');
+    }
 
+    // Now let's try filtering by the provided mint address or collection address
+    const filteredAssets = allAssets.filter(asset => {
+        // Check if the asset `id` matches the `mintAddress`
+        if (asset.id === mintAddress) {
+            return true;
+        }
+
+        // Check if the asset belongs to a specific collection using the grouping field
+        if (asset.grouping && Array.isArray(asset.grouping)) {
+            return asset.grouping.some(group => group.group_key === 'collection' && group.group_value === mintAddress);
+        }
+
+        return false;
+    });
+
+    // Get the count of filtered NFTs
+    const nftCount = filteredAssets.length;
+
+    console.log(`Number of NFTs owned by ${ownerAddress} for mint ${mintAddress}:`, nftCount);
+    return nftCount;
+};
+
+// Example Usage
+// const ownerAddress = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
+// const mintAddress = 'BUjZjAS2vbbb65g7Z1Ca9ZRVYoJscURG5L3AkVvHP9ac';
+// getNFTBalance(ownerAddress, mintAddress);
+
+  
 function checkBlacklist(wallet) {
     const blacklist = [
         "FtSobG6Bw36QnZ6gbbvj2ssYC9xnj5L6tKRN7rEfWzwQ",
