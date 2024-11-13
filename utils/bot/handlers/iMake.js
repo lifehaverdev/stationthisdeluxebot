@@ -5,6 +5,29 @@ const { enqueueTask } = require('../queue')
 //const { checkLobby } = require('../gatekeep')
 const { getGroup } = require('./iGroup')
 
+// Function to get unified settings for a user in a group or individual context
+function getSettings(userId, group) {
+    let settings = {};
+
+    // If group exists, start with group settings as a base
+    if (group) {
+        settings = { ...group.settings };
+        console.log('Using group settings as base');
+    } else {
+        // If no group, initialize with default settings from user context
+        settings = { ...lobby[userId] };
+        console.log('Using user settings as base');
+    }
+
+    // Ensure user-specific features are correctly included
+    settings.userId = userId;
+    settings.balance = lobby[userId].balance || 0;
+    settings.advancedUser = lobby[userId].advancedUser || false;
+    settings.forcelogo = lobby[userId].forcelogo || false;
+
+    return settings;
+}
+
 function checkAndSetType(type, settings, message, group, userId) {
 
     // Define required files based on settings
@@ -127,7 +150,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     const group = getGroup(message);
 
     // Unified settings: get group settings or user settings from lobby
-    const settings = group ? group.settings : lobby[userId];
+    const settings = getSettings(userId,group)
 
     // Token gate check if minTokenAmount is provided
     if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
@@ -156,7 +179,9 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
     if (needsTypeCheck) {
+        console.log('we in here')
         finalType = checkAndSetType(taskType, settings, message, group, userId);
+        //console.log('final type',finalType)
         if (!finalType) {
             // If the type could not be set (e.g., missing required files), stop the task
             console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
@@ -180,11 +205,12 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     //console.log(workflow)
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
+        type: finalType,
         prompt: message.text,
         input_seed: thisSeed,
         input_batch: batch
     }, message);
-
+    // console.log('promptObj',promptObj)
     try {
         await react(message);  // Acknowledge the command
         enqueueTask({ message, promptObj });
@@ -325,8 +351,6 @@ async function handleHipFire(message, user) {
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }
 }
-
-
 
 async function handleMs2Prompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state

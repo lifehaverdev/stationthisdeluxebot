@@ -61,6 +61,7 @@ function enqueueTask(task) {
     //make sure we dont let anyone spam too hard
     if(capUserRequests(userId,task.message)) return
     //make sure we are handling user runs key value
+    console.log(task)
     handleEnqueueRegen(task)
     
     // Update doints for the user
