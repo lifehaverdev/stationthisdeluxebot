@@ -379,6 +379,11 @@ const commandRegistry = {
             console.log(message)
         }
     },
+    '/showmemyruns': {
+        handler: (message) => {
+            console.log(lobby[message.from.id].runs[0])
+        }
+    },
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
         handler: async (message) => {
