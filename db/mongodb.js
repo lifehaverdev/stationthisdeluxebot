@@ -588,6 +588,32 @@ async function createTraining(loraData) {
     }
 }
 
+async function createCollection(collectionData) {
+    const job = async () => {
+        const collectionName = 'gallery';
+        try {
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            // Insert the new LoRA document
+            await collection.insertOne(loraData);
+            console.log('Collection data added successfully');
+            return true;
+        } catch (error) {
+            console.error("Error adding new Collection data:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[createCollection] Failed to get user data:', error);
+        throw error;
+    }
+}
+
 async function saveWorkspace(loraObject) {
     const job = async () => {
         const collectionName = 'trains';

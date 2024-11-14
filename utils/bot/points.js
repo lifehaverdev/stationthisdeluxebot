@@ -37,7 +37,7 @@ async function addPoints(task) {
             user.qoints -= pointsToAdd;
             user.boints += pointsToAdd;
         //IF pointsToAdd exceeds the difference remaining between max and credit, the points are added until credit == max, then the rest are subtracted from qoints if they are there
-        } else if(pointsToAdd > max - credit && qoints > 0){
+        } else if(pointsToAdd > max - credit && user.qoints > 0){
             //console.log('we gon add a little to qoint a little to point')
             user.points += max - credit;
             pointsToAdd -= max - credit;

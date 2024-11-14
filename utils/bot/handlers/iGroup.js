@@ -11,8 +11,8 @@ const {
 } = require('../bot')
 //const { features } = require('../../models/tokengatefeatures.js')
 const { createRoom, writeData, writeBurnData } = require('../../../db/mongodb.js')
-const { initialize } = require('../intitialize.js');
-const iMenu = require('./iMenu');
+//const { initialize } = require('../intitialize.js');
+//const iMenu = require('./iMenu');
 const defaultUserData = require('../../users/defaultUserData.js');
 
 function getGroup(message) {
@@ -47,6 +47,8 @@ const defaultGroupSchema = {
         msg: '',
         chosen: [],
     },
+    settingsType: 'total', //'some', 'pass'
+    settingsMusts: [],
     settings: { ...defaultUserData }
 };
 
@@ -110,8 +112,7 @@ async function initializeGroup(message,user,groupChatId) {
         
 1. gatekeeping style
 2. custom commands
-3. restricted commands
-4. base prompt
+3. generation settings
 
 `;
 
@@ -120,7 +121,6 @@ async function initializeGroup(message,user,groupChatId) {
         //const user_name = chatAdmins.filter(admin => admin.user.id)
         const instructions = `Hello ${chatAdmins[0].user.first_name},
 
-Since this group requires configuration, we will do this via direct messages.
 To access the menu again, use the /stationthis command again.
 
 ${commonInstructions}`;
@@ -133,6 +133,8 @@ ${commonInstructions}`;
             admins: adminUserIds,
             initialized: true,
         };
+        defaultGroup.settings.username = groupTitle
+        defaultGroup.settings.userId = user
         
         // Save the default group to the databasex
         await createRoom(groupChatId,defaultGroup);
@@ -149,7 +151,8 @@ ${commonInstructions}`;
 async function groupMenu(message) {
     const group = getGroup(message)
     const menu = buildGroupSettingsMenu(message.chat.id)
-    await sendMessage(message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,menu)
+    //console.log(group)
+    await sendMessage(message,`${group.gateKeeping.ticker ? `$MS2 X $${group.gateKeeping.ticker}` : '$MS2'}`,menu)
 }
 
 async function privateGroupMenu(message, user, groupChatId) {
@@ -158,7 +161,8 @@ async function privateGroupMenu(message, user, groupChatId) {
     const group = getGroupById(groupChatId)
     const menu = buildGroupSettingsMenu(groupChatId,true)
     //console.log(menu.reply_markup.inline_keyboard.shift())
-    await sendPrivateMessage(user, message,`${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`,menu)
+    
+    await sendPrivateMessage(user, message,`${group.gateKeeping.ticker ? `$MS2 X $${group.gateKeeping.ticker}` : '$MS2'}`,menu)
 }
 
 function buildGroupSettingsMenu(groupChatId, isDms = false) {
@@ -166,7 +170,7 @@ function buildGroupSettingsMenu(groupChatId, isDms = false) {
                 //[{ text: '👀 edit in dms ⬆️', callback_data: `peg_${groupChatId}`}],
                 [{ text: '⛩️ gatekeep 🛂', callback_data: `gatekeep_${groupChatId}`}],
                 [{ text: '🗣️ commands 🪖', callback_data: `commands_${groupChatId}`}],
-                [{ text: '📋 prompts 📑', callback_data: `prompts_${groupChatId}`}],
+                [{ text: '📋 params 📑', callback_data: `prompts_${groupChatId}`}],
                 [{text: 'cancel', callback_data: 'cancel'}]
             ])
             console.log('menu',menu)
@@ -202,6 +206,7 @@ async function handleGroupMenu(message, user, groupChatId, menuType) {
                 menu.reply_markup.inline_keyboard.push([{ text: `set gate 🧮`, callback_data: `gkmin_${groupChatId}` }]);
             }
             menu.reply_markup.inline_keyboard.push([{ text: `set gate message 🛃`, callback_data: `gkmsg_${groupChatId}` }]);
+            menu.reply_markup.inline_keyboard.push([{ text: `set ticker 📈`, callback_data: `gktick_${groupChatId}`}])
             break;
 
         case 'command':
@@ -210,6 +215,7 @@ async function handleGroupMenu(message, user, groupChatId, menuType) {
             break;
 
         case 'prompt':
+            menu.reply_markup.inline_keyboard.push([{ text: `🌡️ group param type: ${group.settingsType} 🧪`, callback_data: `egpt_${groupChatId}`}])
             menu.reply_markup.inline_keyboard.push([{ text: `📧 required words 🔫`, callback_data: `egrw_${groupChatId}` }]);
             menu.reply_markup.inline_keyboard.push([{ text: `🧠 assist instruction 👩🏼‍🏫`, callback_data: `egai_${groupChatId}` }]);
             break;
@@ -220,11 +226,13 @@ async function handleGroupMenu(message, user, groupChatId, menuType) {
     }
     const marquee = `Gatekeep: ${group.gateKeeping.style}${group.gateKeeping.token}\n`
     await updateMessage(message.chat.id,message.message_id,menu,
-        `${group.ticker ? 
-            `${group.title}\nstationthisbot X ${group.ticker}\n${capitalizeFirstLetter(menuType)} Menu${marquee}` : 
+        `${group.gateKeeping.ticker ? 
+            `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}\n${capitalizeFirstLetter(menuType)} Menu${marquee}` : 
             `${group.title}\n$MS2 stationthisbot\n${capitalizeFirstLetter(menuType)} menu\n${marquee}`}`
     )
 }
+
+
 
 function capitalizeFirstLetter(string) {
     if (!string) return ''; // Handle empty or undefined strings
@@ -256,7 +264,7 @@ async function backToGroupSettingsMenu(message,user,groupChatId) {
     message.from.id = user
     setUserState(message,STATES.IDLE)
     await updateMessage(message.chat.id,message.message_id,options,
-        `${group.ticker ? `$MS2 X ${group.ticker}` : '$MS2'}`
+        `${group.gateKeeping.ticker ? `$MS2 X $${group.gateKeeping.ticker}` : '$MS2'}`
     )
 }
 
@@ -281,7 +289,7 @@ async function groupGatekeepTypeMenu(message,user,groupChatId) {
         reply_markup: menu.reply_markup,
         chat_id: chatId,
         message_id: messageId,
-        text: `${group.ticker ? `${group.title}\nstationthisbot X ${group.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
+        text: `${group.gateKeeping.ticker ? `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
     })
     message.from.id = user;
     setUserState(message,STATES.IDLE)
@@ -360,7 +368,7 @@ class GroupSettingHandler {
             reply_markup: menu.reply_markup,
             chat_id: message.chat.id,
             message_id: message.message_id,
-            text: `${lobby[userId] && lobby[userId].advancedUser ? `${group.title}\nstationthisbot X ${group.ticker}` : `${group.title}\n$MS2 stationthisbot`}\n${descriptionText}\n\n${this.promptText}`
+            text: `${lobby[userId] && lobby[userId].advancedUser ? `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}` : `${group.title}\n$MS2 stationthisbot`}\n${descriptionText}\n\n${this.promptText}`
         });
     }
 
@@ -396,6 +404,25 @@ const gateMessageHandler = new GroupSettingHandler('groupChatId', {
     },
     prefix: 'gkmsg_',
     actionKey: 'gateKeepSetGateMsg',
+    callbackPrefix: 'gatekeep_',
+    onCompleteCallback: async (message, group, targetMessageId) => {
+        message.message_id = targetMessageId
+        handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+    }
+});
+
+// Gatekeeping message setting handler with inline processHandler
+const tickerHandler = new GroupSettingHandler('groupChatId', {
+    settingName: 'ticker',
+    promptText: 'What is the ticker?',
+    description: 'is a vanity thing. about hype and intrigue. I will display the ticker on our messages so that people know you are cool with me.',
+    state: STATES.SETGROUPTICKER,
+    flagWhat: 'setTicker',
+    processHandler: async (group, message) => {
+        group.gateKeeping.ticker = message.text;
+    },
+    prefix: 'gktick_',
+    actionKey: 'gateKeepSetTicker',
     callbackPrefix: 'gatekeep_',
     onCompleteCallback: async (message, group, targetMessageId) => {
         message.message_id = targetMessageId
@@ -503,6 +530,40 @@ stateHandlers[STATES.SETGROUPTICKER] = (message) => safeExecute(message, gateTic
 
 /*
 setting gate threshold,
+*/
+/*
+setting the way the group settings interact with user ssettings and generations
+*/
+
+async function groupSettingsTypeMenu(message,user,groupChatId) {
+    const group = getGroupById(groupChatId)
+    const chatId = message.chat.id
+    const messageId = message.message_id
+    const menu = buildEditGroupSubMenu(groupChatId,'prompt_')
+    //for this menu, we check the group gatekeeping type
+    const style = group.settingsType
+    menu.reply_markup.inline_keyboard.push([{text: style == 'pass' ? `pass ✅`:`pass`, callback_data: `sst_pass_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'some' ? `some ✅`:`some`, callback_data: `sst_some_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'total' ? `total ✅`:`total`, callback_data: `sst_total_${groupChatId}'}`}])
+    //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: chatId,
+        message_id: messageId,
+        text: `${group.gateKeeping.ticker ? `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
+    })
+    message.from.id = user;
+    setUserState(message,STATES.IDLE)
+}
+
+async function groupSettingsTypeSelect(message,user,groupChatId,type) {
+    const group = getGroupById(groupChatId)
+    group.settingsType = type;
+    //await groupGatekeepTypeMenu(message,user,groupChatId)
+    await handleGroupMenu(message, message.from.id, group.chat.id,'prompt')
+}
+
+/*
 setting custom command mapping
 setting restricted commands
 setting required words in prompts
@@ -510,33 +571,35 @@ setting custom assist gpt instruction
 unlocking stuff by "burning" qoints
 */
 
-
-function handlePrefix(action, message, user, actionKey) {
-    const groupChatId = parseInt(action.split('_')[1]);
-    actionMap[actionKey](message, user, groupChatId);
-}
-prefixHandlers['unlock_']=(action, message, user) => {
-    const groupChatId = parseInt(action.split('_')[1]);
-    actionMap['unlockMenu'](message,user,groupChatId)
-}
-prefixHandlers['gks_']= (action, message, user) => {
-    const groupChatId = parseInt(action.split('_')[1]);
-    actionMap['gateKeepTypeMenu'](message,user,groupChatId)
-}
-prefixHandlers['sgks_']= (action, message, user) => {
-    const type = action.split('_')[1];
-    const groupChatId = parseInt(action.split('_')[2]);
-    actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
-}
-
 prefixHandlers['ig_'] = (action, message, user) => handlePrefix(action, message, user, 'initializeGroup');
 prefixHandlers['eg_'] = (action, message, user) => handlePrefix(action, message, user, 'backToGroupMenu');
 prefixHandlers['peg_'] = (action, message, user) => handlePrefix(action, message, user, 'privateGroupMenu');
 prefixHandlers['gatekeep_'] = (action, message, user) => handlePrefix(action, message, user, 'gateKeepMenu');
+    function handlePrefix(action, message, user, actionKey) {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap[actionKey](message, user, groupChatId);
+    }
+    prefixHandlers['unlock_']=(action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['unlockMenu'](message,user,groupChatId)
+    }
+    prefixHandlers['gks_']= (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['gateKeepTypeMenu'](message,user,groupChatId)
+    }
+    prefixHandlers['sgks_']= (action, message, user) => {
+        const type = action.split('_')[1];
+        const groupChatId = parseInt(action.split('_')[2]);
+        actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
+    }
 prefixHandlers['commands_'] = (action, message, user) => handlePrefix(action, message, user, 'commandsMenu');
 prefixHandlers['prompts_'] = (action, message, user) => handlePrefix(action, message, user, 'promptsMenu');
-
-
+    prefixHandlers['egpt_'] = (action, message, user) => handlePrefix(action, message, user, 'settingsTypeMenu');
+    prefixHandlers['sst_']= (action, message, user) => {
+        const type = action.split('_')[1];
+        const groupChatId = parseInt(action.split('_')[2]);
+        actionMap['groupSettingsTypeSelect'](message,user,groupChatId,type)
+    }
 actionMap['initializeGroup']= initializeGroup
     actionMap['privateGroupMenu']= privateGroupMenu
     actionMap['backToGroupMenu']= backToGroupSettingsMenu
@@ -547,6 +610,8 @@ actionMap['initializeGroup']= initializeGroup
             
     actionMap['commandsMenu']= groupCommandMenu
     actionMap['promptsMenu']= groupPromptMenu
+        actionMap['settingsTypeMenu'] = groupSettingsTypeMenu
+        actionMap['groupSettingsTypeSelect'] = groupSettingsTypeSelect
     actionMap['unlockMenu']= groupUnlockMenu
 
 

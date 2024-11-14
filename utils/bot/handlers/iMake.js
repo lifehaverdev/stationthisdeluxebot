@@ -11,8 +11,26 @@ function getSettings(userId, group) {
 
     // If group exists, start with group settings as a base
     if (group) {
-        settings = { ...group.settings };
-        console.log('Using group settings as base');
+        //3 different group settings type:
+        //1 pass through, hust use user settings
+        if(group.settingsType == 'pass'){
+            settings = { ...lobby[userId]}
+            console.log('Using user settings as base, cause of group setting');
+        // 2. Some settings from group: use user settings as base, then apply specific group settings
+        } else if (group.settingsType == 'some') {
+            settings = { ...lobby[userId] };
+            console.log('Using user settings as base, then some choice settings from group');
+            if (group.settingsMusts && Array.isArray(group.settingsMusts)) {
+                group.settingsMusts.forEach(key => {
+                    if (group.settings.hasOwnProperty(key)) {
+                        settings[key] = group.settings[key];
+                    }
+                });
+            }
+        }  else if (group.settingsType == 'total' || !group.settingsType) {
+            settings = { ...group.settings };
+            console.log('Using group settings as base');
+        }
     } else {
         // If no group, initialize with default settings from user context
         settings = { ...lobby[userId] };
