@@ -426,84 +426,84 @@ const commandRegistry = {
             return message.chat.type !== 'private' && group && group.gateKeeping.style == 'select' && group.admins.includes(message.from.id);
         }
     },
-    '/donate': {
-        handler: async (message) => {
-            const userId = message.from.id
-            const group = getGroup(message)
-            if(!group){
-                await react(message,"🤨")
-                return
-            }
-            const current = group.qoints
-            message.text = message.text.replace('/donate','')
-            message.text = message.text.replace(`@stationthisdeluxebot`,'')
-            const howMuch = parseInt(message.text)
-            const balance = lobby[userId].qoints
-            console.log('donate before',current,howMuch,balance)
-            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
-                group.qoints += howMuch
-                lobby[userId].qoints -= howMuch
-                await writeQoints('users',{userId},lobby[userId].qoints)
-                await writeQoints('floorplan',{ 'chat': {'id': message.chat.id}},group.qoints)
-                await react(message,'✍️')
-                sendMessage(message,'thank you for your contribution.')
-            } else {
-                if(isNaN(howMuch)){
-                    sendMessage(message,'um pls send a number')
-                }
-                if(howMuch > balance){
-                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
-                }
-                if(howMuch <= 0) {
-                    sendMessage(message,'very funny.')
-                }
-            }
-        }
-    },
-    '/gift': {
-        handler: async (message) => {
-            const userId = message.from.id
-            const target = message.reply_to_message;
-            console.log('message from',message.from.id,'target from',target.from.id)
-            if(!target){
-                return
-            }
-            if(lobby.hasOwnProperty(target.from.id)){
-                console.log('good,have target and they in the lobby')
-            } else {
-                console.log('lets check this sucker in')
-                await checkIn(target)
-            }
-            console.log('do we have lobbby for target?',lobby[target.from.id].qoints,lobby[target.from.id].pendingQoints ? lobby[target.from.id].pendingQoints : 'NA')
-            if(!lobby[target.from.id].pendingQoints){
-                lobby[target.from.id].pendingQoints = 0;
-            }
-            const current = lobby[target.from.id].pendingQoints
-            message.text = message.text.replace('/gift','')
-            message.text = message.text.replace(`@stationthisdeluxebot`,'')
-            const howMuch = parseInt(message.text)
-            const balance = lobby[userId].qoints
-            console.log('gift before',current,howMuch,balance)
-            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
-                lobby[target.from.id].pendingQoints += howMuch
-                lobby[userId].qoints -= howMuch
-                await writeQoints('users',{'userId': userId},lobby[userId].qoints)
-                await writeUserData(userId,lobby[target.from.id])
-                await react(message,'✍️')
-                sendMessage(message,`@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift`)
-            } else {
-                if(isNaN(howMuch)){
-                    sendMessage(message,'um pls send a number')
-                }
-                if(howMuch > balance){
-                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
-                }
-                if(howMuch <= 0) {
-                    sendMessage(message, 'very funny')
-                }
-            }
-        }
-    },
+    // '/donate': {
+    //     handler: async (message) => {
+    //         const userId = message.from.id
+    //         const group = getGroup(message)
+    //         if(!group){
+    //             await react(message,"🤨")
+    //             return
+    //         }
+    //         const current = group.qoints
+    //         message.text = message.text.replace('/donate','')
+    //         message.text = message.text.replace(`@stationthisdeluxebot`,'')
+    //         const howMuch = parseInt(message.text)
+    //         const balance = lobby[userId].qoints
+    //         console.log('donate before',current,howMuch,balance)
+    //         if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+    //             group.qoints += howMuch
+    //             lobby[userId].qoints -= howMuch
+    //             await writeQoints('users',{userId},lobby[userId].qoints)
+    //             await writeQoints('floorplan',{ 'chat': {'id': message.chat.id}},group.qoints)
+    //             await react(message,'✍️')
+    //             sendMessage(message,'thank you for your contribution.')
+    //         } else {
+    //             if(isNaN(howMuch)){
+    //                 sendMessage(message,'um pls send a number')
+    //             }
+    //             if(howMuch > balance){
+    //                 sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+    //             }
+    //             if(howMuch <= 0) {
+    //                 sendMessage(message,'very funny.')
+    //             }
+    //         }
+    //     }
+    // },
+    // '/gift': {
+    //     handler: async (message) => {
+    //         const userId = message.from.id
+    //         const target = message.reply_to_message;
+    //         console.log('message from',message.from.id,'target from',target.from.id)
+    //         if(!target){
+    //             return
+    //         }
+    //         if(lobby.hasOwnProperty(target.from.id)){
+    //             console.log('good,have target and they in the lobby')
+    //         } else {
+    //             console.log('lets check this sucker in')
+    //             await checkIn(target)
+    //         }
+    //         console.log('do we have lobbby for target?',lobby[target.from.id].qoints,lobby[target.from.id].pendingQoints ? lobby[target.from.id].pendingQoints : 'NA')
+    //         if(!lobby[target.from.id].pendingQoints){
+    //             lobby[target.from.id].pendingQoints = 0;
+    //         }
+    //         const current = lobby[target.from.id].pendingQoints
+    //         message.text = message.text.replace('/gift','')
+    //         message.text = message.text.replace(`@stationthisdeluxebot`,'')
+    //         const howMuch = parseInt(message.text)
+    //         const balance = lobby[userId].qoints
+    //         console.log('gift before',current,howMuch,balance)
+    //         if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+    //             lobby[target.from.id].pendingQoints += howMuch
+    //             lobby[userId].qoints -= howMuch
+    //             await writeQoints('users',{'userId': userId},lobby[userId].qoints)
+    //             await writeUserData(userId,lobby[target.from.id])
+    //             await react(message,'✍️')
+    //             sendMessage(message,`@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift`)
+    //         } else {
+    //             if(isNaN(howMuch)){
+    //                 sendMessage(message,'um pls send a number')
+    //             }
+    //             if(howMuch > balance){
+    //                 sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+    //             }
+    //             if(howMuch <= 0) {
+    //                 sendMessage(message, 'very funny')
+    //             }
+    //         }
+    //     }
+    // },
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
         handler: async (message) => {
