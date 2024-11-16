@@ -178,7 +178,7 @@ async function readUserData(walletAddress) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[readuserdata] Failed to get user data:', error);
         throw error;
     }
 }
@@ -247,31 +247,31 @@ async function getUsersByWallet(walletAddress) {
 
 // Function to create new user data with default settings
 async function createDefaultUserData(userId) {
-    const job = async () => {
-        const client = await getCachedClient();
+    //const job = async () => {
+        //const client = await getCachedClient();
         try {
-            const db = client.db(dbName);
-            const userSettingsCollection = db.collection('users');
+            //const db = client.db(dbName);
+            //const userSettingsCollection = db.collection('users');
 
             // Create default user settings
-            const userSettings = { ...defaultUserData, userId: userId };
-            await userSettingsCollection.insertOne(userSettings);
+            const userSettings = { ...defaultUserData, userId: userId, 'newb': true };
+            //await userSettingsCollection.insertOne(userSettings);
             console.log('New user settings created:', userSettings.userId);
             return userSettings;
         } catch (error) {
             console.error('Error creating user settings:', error);
             throw error; // Throw error so the caller knows the request failed
         }
-    };
+    //};
 
     // Enqueue the job and await its result
-    try {
-        const userData = await dbQueue.enqueue(job);
-        return userData;  // Return the result to the caller
-    } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
-        throw error;
-    }
+    // try {
+    //     const userData = await dbQueue.enqueue(job);
+    //     return userData;  // Return the result to the caller
+    // } catch (error) {
+    //     console.error('[getUserDataByUserId] Failed to get user data:', error);
+    //     throw error;
+    // }
 }
 
 
@@ -462,6 +462,43 @@ async function writeUserData(userId, data) {
     }
 }
 
+async function writeQoints(targetCollection, targetFilter, qoints) {
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const collection = client.db(dbName).collection(targetCollection);
+            const filter = targetFilter//{ userId: userId };
+
+            // Perform an update to save non-protected user data
+            const result = await collection.updateOne(
+                filter,
+                { $set: { qoints } },
+                { upsert: false } // Ensure we do not create new records here
+            );
+
+            if (result.modifiedCount === 0) {
+                console.log(`No changes made to ${JSON.stringify(targetCollection)} ${JSON.stringify(filter)} qoints.`);
+            } else {
+                console.log(`User data updated successfully for ${JSON.stringify(targetCollection)} ${JSON.stringify(filter)}  qoints.`);
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Error writing user qoints:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[writeqoints] Failed to get user data:', error);
+        throw error;
+    }
+}
+
 async function getGroupDataByChatId(chatId) {
     const job = async () => {
         //deleteUserSettingsByUserId(dbName,userId);
@@ -554,7 +591,7 @@ async function writeData(collectionName, filter, data) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[writeData] Failed to get user data:', error);
         throw error;
     }
 }
@@ -583,7 +620,7 @@ async function createTraining(loraData) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[createTraining] Failed to get user data:', error);
         throw error;
     }
 }
@@ -643,7 +680,7 @@ async function saveWorkspace(loraObject) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[saveWorkspace] Failed to get user data:', error);
         throw error;
     }
   }
@@ -694,7 +731,7 @@ async function deleteWorkspace(loraId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[deleteWorkspace] Failed to get user data:', error);
         throw error;
     }
 }
@@ -738,7 +775,7 @@ async function deleteImageFromWorkspace(loraId, slotId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[deleteImagefromworkspace] Failed to get user data:', error);
         throw error;
     }
 }
@@ -765,7 +802,7 @@ async function addGenDocument(collectionName, data) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[addgendocument] Failed to get user data:', error);
         throw error;
     }
 }
@@ -809,7 +846,7 @@ async function updateGroupPoints(group, pointsToAdd) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[updategrouppoints] Failed to get user data:', error);
         throw error;
     }
 }
@@ -949,7 +986,7 @@ async function incrementLoraUseCounter(names) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[incrementloracounter] Failed to get user data:', error);
         throw error;
     }
 }
@@ -1181,7 +1218,7 @@ async function updateAllUsersWithCheckpoint() {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[updatealluserswithcheckpoint] Failed to get user data:', error);
         throw error;
     }
 }
@@ -1196,41 +1233,7 @@ async function updateAllUserSettings() {
             const users = await collection.find().toArray();
             //const users = await collection.find({ userId: DEV_DMS }).toArray();
             
-    //         for (let user of users) {
-    //             let updatedUserSettings = { ...user };
-
-
-    // // Remove the _id field to avoid attempting to update it
-    // delete updatedUserSettings._id;
-
-    //             // Add missing keys from defaultUserData
-    //             for (const key in defaultUserData) {
-    //                 if (!updatedUserSettings.hasOwnProperty(key)) {
-    //                     updatedUserSettings[key] = defaultUserData[key];
-    //                 }
-    //             }
-    //             let unsetFields = {}
-    //             for (const key in updatedUserSettings) {
-    //                 if (!defaultUserData.hasOwnProperty(key)) {
-    //                     unsetFields[key] = "";
-    //                 }
-    //             }
-
-        
-    //             // Upsert the updated user settings
-    //             const filter = { userId: user.userId };
-    //             if (Object.keys(unsetFields).length > 0) {
-    //                 await collection.updateOne(filter, { $set: updatedUserSettings, $unset: unsetFields });
-    //             } else {
-    //                 await collection.updateOne(filter, { $set: updatedUserSettings });
-    //             }
-                
-    //             //await collection.updateOne(filter, { $set: updatedUserSettings });
-
-    //             console.log(`User settings updated for userId: ${user.userId}`);
-    //         }
-
-    //         console.log('All user settings updated successfully');
+    
     for (let user of users) {
         let updatedUserSettings = { ...user };
     
@@ -1295,7 +1298,7 @@ async function updateAllUserSettings() {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[updateallusersettings] Failed to get user data:', error);
         throw error;
     }
 }
@@ -1548,7 +1551,7 @@ async function deleteAllDocuments(dbName, collectionName) {
 module.exports = { 
     
     readUserData, 
-    writeUserData, 
+    writeUserData, writeQoints,
     writeBurnData,
     updateAllUserSettings,
     getUserDataByUserId, getUsersByWallet,

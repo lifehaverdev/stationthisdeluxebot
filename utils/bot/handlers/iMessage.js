@@ -2,7 +2,8 @@ const {
     getBotInstance, lobby, startup, STATES, 
     stateHandlers,
     commandStateMessages, workspace, 
-    SET_COMMANDS, getPhotoUrl 
+    SET_COMMANDS, getPhotoUrl ,
+    getGroup, getGroupById,
 } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
@@ -15,7 +16,7 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
-const { readStats, rareCandy } = require('../../../db/mongodb.js')
+const { readStats, rareCandy, writeUserData, writeQoints } = require('../../../db/mongodb.js')
 const { cheese } = require('../../../commands/fry')
 // const handlers = require('./handle');
 //const defaultUserData = require('../../users/defaultUserData');
@@ -76,9 +77,9 @@ const commandRegistry = {
     '/getseed': {
         handler: iWork.saySeed,
     },
-    '/promptcatch': {
-        handler: iMake.handlePromptCatch,
-    },
+    // '/promptcatch': {
+    //     handler: iMake.handlePromptCatch,
+    // },
     '/savesettings': {
         handler: iAccount.handleSaveSettings,
     },
@@ -91,9 +92,9 @@ const commandRegistry = {
     '/loralist': {
         handler: iWork.loraList, // iWork.sendLoRaModelFilenames
     },
-    '/groupsettings': {
-        handler: iGroup.groupSettings,
-    },
+    // '/groupsettings': {
+    //     handler: iGroup.groupSettings,
+    // },
     // '/disc(.*)': handleDisc,
     // '/watermark(.*)': handleWatermark,
     '/signout': {
@@ -133,16 +134,16 @@ const commandRegistry = {
         handler: iWork.handleStatus,
     },
     // '/speak(?:@stationthisbot)?': iWork.startSpeak,
-    '/mogmogmogmogmogmogmogmog$': {
-        handler: (message) => {
-            if(lobby[message.from.id].wallet){
-                lobby[message.from.id].balance = 200001;
-                sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens')
-            } else {
-                sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
-            }
-        }
-    },
+    // '/mogmogmogmogmogmogmogmog$': {
+    //     handler: (message) => {
+    //         if(lobby[message.from.id].wallet){
+    //             lobby[message.from.id].balance = 200001;
+    //             sendMessage(message,'based mog cousin you now how 200001 virtual MS2 tokens')
+    //         } else {
+    //             sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
+    //         }
+    //     }
+    // },
     '/cheeseworldcultinc$': {
         handler: (message) => {
             if(lobby[message.from.id].wallet){
@@ -384,6 +385,125 @@ const commandRegistry = {
             console.log(lobby[message.from.id].runs[0])
         }
     },
+    '/bestow': {
+        handler: async (message) => {
+            console.log('made it into the function')
+            const target = message.reply_to_message;
+            if(!target){
+                return
+            }
+            const group = getGroup(message)
+            if(!group){
+                return
+            }
+            group.gateKeeping.chosen.push(target.from.id)
+            console.log('chosen now',group.gateKeeping.chosen)
+            await react(message,'😎')
+        },
+        condition: (message) => {
+            const group = getGroup(message)
+            return message.chat.type !== 'private' && group && group.gateKeeping.style == 'select' && group.admins.includes(message.from.id);
+        }
+    },
+    '/revoke': {
+        handler: async (message) => {
+            console.log('made it into the function')
+            const target = message.reply_to_message;
+            if(!target){
+                return
+            }
+            const group = getGroup(message)
+            if(!group){
+                return
+            }
+
+            group.gateKeeping.chosen = group.gateKeeping.chosen.filter(val => val !== target.from.id)
+            console.log('chosen now',group.gateKeeping.chosen)
+            await react(message,"💅")
+        },
+        condition: (message) => {
+            const group = getGroup(message)
+            return message.chat.type !== 'private' && group && group.gateKeeping.style == 'select' && group.admins.includes(message.from.id);
+        }
+    },
+    '/donate': {
+        handler: async (message) => {
+            const userId = message.from.id
+            const group = getGroup(message)
+            if(!group){
+                await react(message,"🤨")
+                return
+            }
+            const current = group.qoints
+            message.text = message.text.replace('/donate','')
+            message.text = message.text.replace(`@stationthisdeluxebot`,'')
+            const howMuch = parseInt(message.text)
+            const balance = lobby[userId].qoints
+            console.log('donate before',current,howMuch,balance)
+            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+                group.qoints += howMuch
+                lobby[userId].qoints -= howMuch
+                await writeQoints('users',{userId},lobby[userId].qoints)
+                await writeQoints('floorplan',{ 'chat': {'id': message.chat.id}},group.qoints)
+                await react(message,'✍️')
+                sendMessage(message,'thank you for your contribution.')
+            } else {
+                if(isNaN(howMuch)){
+                    sendMessage(message,'um pls send a number')
+                }
+                if(howMuch > balance){
+                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+                }
+                if(howMuch <= 0) {
+                    sendMessage(message,'very funny.')
+                }
+            }
+        }
+    },
+    '/gift': {
+        handler: async (message) => {
+            const userId = message.from.id
+            const target = message.reply_to_message;
+            console.log('message from',message.from.id,'target from',target.from.id)
+            if(!target){
+                return
+            }
+            if(lobby.hasOwnProperty(target.from.id)){
+                console.log('good,have target and they in the lobby')
+            } else {
+                console.log('lets check this sucker in')
+                await checkIn(target)
+            }
+            console.log('do we have lobbby for target?',lobby[target.from.id].qoints,lobby[target.from.id].pendingQoints ? lobby[target.from.id].pendingQoints : 'NA')
+            if(!lobby[target.from.id].pendingQoints){
+                lobby[target.from.id].pendingQoints = 0;
+            }
+            const current = lobby[target.from.id].pendingQoints
+            message.text = message.text.replace('/gift','')
+            message.text = message.text.replace(`@stationthisdeluxebot`,'')
+            const howMuch = parseInt(message.text)
+            const balance = lobby[userId].qoints
+            console.log('gift before',current,howMuch,balance)
+            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+                lobby[target.from.id].pendingQoints += howMuch
+                lobby[userId].qoints -= howMuch
+                await writeQoints('users',{'userId': userId},lobby[userId].qoints)
+                await writeUserData(userId,lobby[target.from.id])
+                await react(message,'✍️')
+                sendMessage(message,`@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift`)
+            } else {
+                if(isNaN(howMuch)){
+                    sendMessage(message,'um pls send a number')
+                }
+                if(howMuch > balance){
+                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+                }
+                if(howMuch <= 0) {
+                    sendMessage(message, 'very funny')
+                }
+            }
+        }
+    },
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
         handler: async (message) => {
@@ -494,6 +614,9 @@ function messageFilter(message) {
     if (!message || !message.chat || !message.chat.id || !message.from || !message.from.id) {
         console.error('Invalid message format:', message);
         return true;
+    }
+    if (message.text == '/quit'){
+        return false
     }
     // Check if the message is a reply
     if (message.reply_to_message) {

@@ -1,6 +1,6 @@
 const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
-const { writeUserData, getUserDataByUserId, writeData, getUsersByWallet } = require('../../../db/mongodb')
+const { writeUserData, getUserDataByUserId, writeData, writeQoints, getUsersByWallet } = require('../../../db/mongodb')
 const { sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
 const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
@@ -35,7 +35,7 @@ async function returnToAccountMenu(message, user) {
     const accountInfo = buildUserProfile(message, message.chat.id > 0);
     const messageId = message.message_id;
     const chatId = message.chat.id;
-    console.log('message: ',message)
+    //console.log('message: ',message)
     await editMessage({
         reply_markup: { 
             inline_keyboard: accountSettingsKeyboard,
@@ -50,6 +50,9 @@ async function returnToAccountMenu(message, user) {
 function buildAccountSettingsKeyboard(userId) {
     return [
         [
+           { text: '🔄', callback_data: 'refreshQoints' }
+        ],
+        [
             {
                 text: `Advanced User: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
                 callback_data: 'toggleAdvancedUser',
@@ -63,6 +66,8 @@ function buildAccountSettingsKeyboard(userId) {
         ],
     ];
 }
+
+
 
 function buildUserProfile(message, dms) {
     message.from.is_bot ? message = message.reply_to_message : null 
@@ -102,12 +107,12 @@ function buildUserProfile(message, dms) {
 
     const lockedFeatures = features.filter(feature => lobby[userId].balance < feature.gate);
     if (lockedFeatures.length > 0) {
-        accountInfo += `<b>Locked Features:</b>\n`;
+        accountInfo += `<b>🔒Locked Features:</b>\n`;
         lockedFeatures.forEach(feature => {
-            accountInfo += `<b>-</b> ${feature.gate} $MS2: ${feature.name}\n`;
+            accountInfo += `🚪<b>${feature.name}</b>  🔐$MS2: ${feature.gate}\n`;
         });
     } else {
-        accountInfo += `<b>ALL ACCESS VIP STATION THIS</b>`;
+        accountInfo += `<b>🎖️🏅🥇🏵️👑🈺🔑</b>`;
     }
 
     return accountInfo;
@@ -201,7 +206,7 @@ async function handleSeeSettings(message) {
     let settings;
 
     // Define keys to ignore
-    const keysToIgnore = ['_id', 'runs','lastPhoto','userId', 'whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
+    const keysToIgnore = ['_id', 'runs','lastPhoto','userId', 'input_image','input_control_image', 'input_style_image','input_pose_image','whaleMode', 'collections', 'loras', 'blessing', 'curse', 'fileUrl', 'collectionConfig', 'tempSize'];
 
     if (message.chat.id < 0 && group){
         settings = group.settings;
@@ -435,7 +440,7 @@ async function handleAccountReset(message) {
     //console.log('chatdata in reset account', chatData);
 
     // Preserve specific keys
-    let { points, exp, wallet, verified, promptDex } = chatData;
+    let { points, qoints, doints, kickedAt, boints, exp, wallet, verified, promptDex } = chatData;
     
     // Reset to default settings
     chatData = { ...defaultUserData };
@@ -443,6 +448,11 @@ async function handleAccountReset(message) {
     // Restore preserved keys
     chatData.userId = userId;
     chatData.points = points;
+    chatData.doints = doints;
+    chatData.qoints = qoints;
+    chatData.boints = boints;
+    chatData.kickedAt = kickedAt;
+
     chatData.exp = exp;
     chatData.wallet = wallet;
     chatData.verified = verified;
@@ -457,16 +467,56 @@ async function handleAccountReset(message) {
     setUserState(message, STATES.IDLE);
 }
 
+async function handleRefreshQoints(message,user) {
+    const now = Date.now()
+    if(!lobby[user]){
+        return
+    }
+    if(lobby[user] && lobby[user].checkedQointsAt && now - lobby[user].checkedQointsAt < 1000 * 60) {
+        sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lobby[user].checkedQointsAt) / 1000) } seconds`)
+        return
+    }
+    if(lobby[user] && lobby[user].pendingQoints && lobby[user].pendingQoints > 0){
+        lobby[user].qoints = lobby[user].qoints + lobby[user].pendingQoints
+        lobby[user].pendingQoints = 0;
+        lobby[user].checkedQointsAt = now
+        //await writeData('users',{'userId': user},{...lobby[user]})
+        await writeUserData(user,{...lobby[user]})
+        await writeQoints('users',{'userId': user},lobby[user].qoints)
+        await returnToAccountMenu(message,user)
+        return
+    } else {
+        console.log('i dont see any pendingQoints...')
+        console.log('lets check db')
+        const newRead = await getUserDataByUserId(user)
+        if(!newRead){
+            console.log('failed newread','iquit')
+            lobby[user].checkedQointsAt = now
+        }
+        const {pendingQoints} = newRead;
+        if(pendingQoints && pendingQoints > 0){
+            lobby[user].qoints = lobby[user].qoints + pendingQoints
+            lobby[user].pendingQoints = 0;
+            lobby[user].checkedQointsAt = now
+            await writeUserData(user,lobby[user])
+            await writeQoints('users',{'userId': user},lobby[user].qoints)
+            await returnToAccountMenu(message,user)
+            return
+        } else {
+            console.log('none there either. oh well')
+            lobby[user].checkedQointsAt = now
+        }
+        await returnToAccountMenu(message,user)
+    }
+}
+
 module.exports = {
     //displayAccountSettingsMenu,
     returnToAccountMenu,
-    handleSaveSettings,
-    handleSeeSettings,
-    handleSignIn,
-    handleSignOut,
-    handleAccountReset,
-    handleAccountSettings,
-    displayAccountSettingsMenu,
+    handleSaveSettings, handleSeeSettings,
+    handleSignIn, handleSignOut, handleAccountReset,
+    handleAccountSettings, displayAccountSettingsMenu,
+    handleRefreshQoints,
     shakeVerify,
     shakeSignIn
 }

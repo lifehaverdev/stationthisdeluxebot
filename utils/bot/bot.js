@@ -188,6 +188,16 @@ function getBurned(userId) {
     return burned;
 }
 
+function getGroup(message) {
+    const group = rooms.find(group => group.chat.id == message.chat.id)
+    return group;
+}
+
+function getGroupById(groupChatId) {
+    const group = rooms.find(group => group.chat.id == groupChatId)
+    return group;
+}
+
 
 module.exports = {
     getBotInstance: function () {
@@ -197,6 +207,7 @@ module.exports = {
     getPhotoUrl,
     getNextPeriodTime,
     getBurned,
+    getGroup, getGroupById,
     lobby, workspace, 
     stateHandlers,
     actionMap, prefixHandlers,
