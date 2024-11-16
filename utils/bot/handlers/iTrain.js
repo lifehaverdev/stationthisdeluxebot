@@ -91,14 +91,12 @@ async function newLora(message) {
 }
 
 async function createLora(message) {
-    if(false){
-        sendMessage(message,'🚂')
-        setUserState(message,STATES.IDLE)
-        return
-    }
     const name = message.text;
     const userId = message.from.id
     const hashId = Math.floor(10000000000000 * Math.random())
+    if(!lobby.hasOwnProperty(userId)){
+        return
+    }
     const userContext = lobby[userId]
     const thisLora = {
         loraId: hashId,

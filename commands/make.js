@@ -177,7 +177,11 @@ function promptPreProc(promptObj) {
 }
 // Function to make the API request and handle the response
 async function generate(promptObj) {
-    if(promptObj.prompt == '' && (promptObj.type != 'MS3' && promptObj.type != 'MS3.2')){
+    const promptless = [
+        'MS3', 'MS3.2',
+        'UPSCALE', 'RMBG'
+    ]
+    if(promptObj.prompt == '' && (!promptless.includes(promptObj.type))){
         console.log(promptObj.type )
         console.log('generate return by type none or vid')
         return;
