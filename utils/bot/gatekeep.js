@@ -63,11 +63,16 @@ function softResetPoints(userId) {
 
 function shouldKick(userId) {
     const userData = lobby[userId];
+    if(userData.newb) {
+        console.log('newb spotted,',userData.userId)
+        return false
+    }
     if(!userData || !userData.runs) return true
-    if(userData.runs && userData.runs[0].timeRequested){
+    if(userData.runs && userData.runs[0] && userData.runs[0].timeRequested){
         console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',userData.runs[0].timeRequested ? userData.runs[0].timeRequested : '','and between that time and now, it is greater than lobby clean interval',userData.runs[0].timerequested ? Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL : null)
     }
     if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
+    return true
 }
 
 function addExp(userId) {
@@ -117,8 +122,9 @@ class LobbyManager {
 
             if (userData) {
                 console.log(`User ${userId} is valid. Checking if they should be kicked...`);
-
-                if (shouldKick(userId)) {
+                const should = shouldKick(userId)
+                console.log('here is the should read',should)
+                if (should) {
                     console.log(`User ${userId} has been idle for too long. Adding experience and kicking them out.`);
                     addExp(userId); // Add experience to the user
                     softResetPoints(userId)
@@ -193,65 +199,13 @@ function printLobby(){
 
 async function checkIn(message) {
     const userId = message.from.id;
-    const group = getGroup(message);
-    let balance = 0;
 
-    // Check if the user is already in the lobby
-    if (!lobby.hasOwnProperty(userId)) {
-        let userData = await getUserDataByUserId(userId);
-        //console.log('UserData in checkLobby (new user)', userData);
-        if(!userData) {
-            userData = await createDefaultUserData(userId)
-        }
-        // First, add the user to the lobby
-        lobbyManager.addUser(userId, userData);
-        //console.log(lobby)
-        // Fetch and update the user's balance if they are verified
-        if (userData.verified) {
-            balance = await getBalance(userData.wallet);
-            lobby[userId].balance = balance;
-        }
-
-        // Regenerate doints after the balance is updated
-        if (userData.kickedAt) {
-            console.log('Regenerating doints for kicked user');
-            regenerateDoints(userId);
-            // Remove the kickedAt key value after regenerating doints
-            delete userData.kickedAt;
-        }
-
-        // Group credit check (could switch to qoints when ready)
-        if (group && group.qoints > 0) {
-            return true;
-        }
-
-        // Blacklist check
-        if (checkBlacklist(userData.wallet)) {
-            await sendMessage(message, 'You are on the blacklist.');
-            return false;
-        }
-
-        setUserState(message, STATES.IDLE);
-        console.log(`${message.from.first_name} has entered the chat.`);
-    } else {
-        const userData = lobby[userId]; // Access user data directly from the lobby
-
-        // Group credit check
-        if (group && group.credit > group.points) {
-            return true;
-        }
-
-        // If the user's balance hasn't been fetched yet, retrieve it
-        if (userData.verified && userData.balance === '') {
-            const ms2Holding = await getBalance(userData.wallet);
-            userData.balance = ms2Holding;
-            balance = ms2Holding;
-        } else {
-            balance = userData.balance;
-        }
-        setUserState(message, STATES.IDLE);
+    if (!(await handleUserData(userId, message))) {
+        return false;
     }
 
+    setUserState(message, STATES.IDLE);
+    console.log(`${message.from.first_name} is checked in.`);
     return true;
 }
 
@@ -261,9 +215,9 @@ const CACHE_EXPIRY_TIME = 1000 * 60 * 60 * 24; //1 day expiry on asset balance c
 async function handleGroupCheck(group, userId, message) {
     if (group && group.qoints > 0) {
         console.log('Gatekeeping: group has points');
-        const { gateKeeping } = group;
+        const { gateKeeping, admins } = group;
         if (gateKeeping) {
-            const { style, token, nft, minBalance, Msg } = gateKeeping;
+            const { style, token, nft, minBalance, Msg, chosen } = gateKeeping;
             if ((style === 'token' && token) || (style === 'nft' && nft)) {
                 if (lobby[userId].verified) {
                     const assetKey = gateKeeping[style];
@@ -294,6 +248,23 @@ async function handleGroupCheck(group, userId, message) {
                     await sendMessage(message, `I don't know you` + Msg);
                     return false;
                 }
+            } else if (style == 'select') {
+                if(chosen.includes(userId) || admins.includes[userId]){
+                    return true
+                } else {
+                    await sendMessage(message,Msg)
+                    return false
+                }
+            } else if (style == 'adminOnly') {
+                //console.log('admins and user id',admins, userId)
+                if(admins.includes(userId)){
+                    return true
+                } else {
+                    await sendMessage(message, Msg)
+                    return false
+                }
+            } else if (style == 'none') {
+                return true
             }
         }
         return true;
@@ -308,8 +279,9 @@ async function handleGroupCheck(group, userId, message) {
 async function handleUserData(userId, message) {
     console.log('handling user data')
     if (!lobby.hasOwnProperty(userId)) {
-        let userData = await getUserDataByUserId(userId) || await createDefaultUserData(userId);
-        lobbyManager.addUser(userId, userData);
+        let userData = await getUserDataByUserId(userId)// || await createDefaultUserData(userId);
+        if(!userData) userData = await createDefaultUserData(userId) //defanged
+        lobbyManager.addUser(userId, userData); 
 
         if (userData.verified) {
             const balance = await getBalance(userData.wallet);

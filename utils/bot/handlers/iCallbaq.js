@@ -11,11 +11,10 @@ const {
     setUserState,
     react
 } = require('../../utils');
-const { displayAccountSettingsMenu } = require('./iAccount')
 const { handleStatus } = require('./iWork');
 const { startSet } = require('./iSettings');
 const { handleRegen, handleHipFire } = require('./iMake')
-const { returnToAccountMenu } = require('./iAccount')
+const { returnToAccountMenu, displayAccountSettingsMenu, handleRefreshQoints } = require('./iAccount')
 const iMenu = require('./iMenu');
 const iGroup = require('./iGroup')
 const iResponse = require('./iResponse');
@@ -349,6 +348,8 @@ const handleSetWatermark = (message, selectedName, userId) => {
     actionMap['deleteSlotImage']= iTrain.deleteLoraSlot
     actionMap['submitTraining']= iTrain.submitTraining
     actionMap['regen_current_settings']= handleHipFire
+
+    actionMap['refreshQoints'] = handleRefreshQoints
     
     
 //};

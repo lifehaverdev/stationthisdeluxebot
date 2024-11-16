@@ -57,7 +57,7 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
       }, {apiKey: process.env.ALCHEMY_SECRET})
     .then(({ data }) => {
         //
-        console.log('data in checkbalance response',JSON.stringify(data))//.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
+        //console.log('data in checkbalance response',JSON.stringify(data))//.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
         if(data.error || (data.result.value && data.result.value.length == 0)){
             balance = 0;
         } else if (data.result.value.length > 0){
