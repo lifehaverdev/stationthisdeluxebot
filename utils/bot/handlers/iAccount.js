@@ -370,10 +370,9 @@ async function handleSignOut(message) {
     if (userData) {
         // Ensure the most current points (from lobby) are saved to the database
         if (lobby[userId]) {
-            // Update the database with the latest points and user data from the lobby
+            // Update database with latest preferences and remove wallet and verification
             await writeUserData(userId, {
                 ...userData,
-                points: lobby[userId].points,  // Use the most up-to-date points from the lobby
                 wallet: '',  // Clearing wallet as part of sign out
                 verified: false  // Reset verification status
             });
@@ -493,7 +492,12 @@ async function handleRefreshQoints(message,user) {
             console.log('failed newread','iquit')
             lobby[user].checkedQointsAt = now
         }
-        const {pendingQoints} = newRead;
+        let pendingQoints;
+        if(newRead.pendingQoints){
+            pendingQoints = newRead.pendingQoints
+        } else {
+            pendingQoints = 0
+        }
         if(pendingQoints && pendingQoints > 0){
             lobby[user].qoints = lobby[user].qoints + pendingQoints
             lobby[user].pendingQoints = 0;

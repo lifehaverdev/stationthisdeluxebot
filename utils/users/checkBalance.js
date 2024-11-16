@@ -38,8 +38,9 @@ const curses = {
 
 //token shit
 async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg") {
-    console.log('checking balalnce',ca)
+    
     const isMS2 = ca == "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg" ? true : false
+    console.log('checking balalnce, ms2',isMS2)
     let balance = null;
     await sdk.getTokenAccountBalance({
         id: 1,

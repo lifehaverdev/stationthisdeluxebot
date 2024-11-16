@@ -13,7 +13,8 @@ const {
     deleteWorkspace,
     saveWorkspace,
     saveImageToGridFS, bucketPull,
-    deleteImageFromWorkspace
+    deleteImageFromWorkspace,
+    writeQoints
  } = require('../../../db/mongodb')
  const fs = require('fs')
  const { checkIn } = require('../gatekeep')
@@ -656,6 +657,7 @@ async function addLoraSlotCaption(message) {
 6. SUBMIT 
 changes lora status from working to pending review
 */
+const loraPrice = 86400
 
 async function submitTraining(message, user, loraId) {
     let loraData;
@@ -667,6 +669,17 @@ async function submitTraining(message, user, loraId) {
             throw new Error('LoRA data not found');
         }
         workspace[loraId] = loraData;
+    }
+    if(!lobby.hasOwnProperty(user)){
+        return
+    }
+    const userDat = lobby[user]
+    if(userDat.qoints < loraPrice){
+        await sendMessage(message,`Submitting a training to make a lora costs 86,400 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,{reply_markup: {inlineKeyboard: [[{text: 'Charge⚡️', url: 'https://miladystation2.net/charge'}]]}})
+        return
+    } else {
+        userDat.qoints -= loraPrice;
+        await writeQoints('users',{'userId': user},userDat.qoints)
     }
     workspace[loraId].status = 'SUBMITTED'
     workspace[loraId].submitted = Date.now();

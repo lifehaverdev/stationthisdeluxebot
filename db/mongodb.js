@@ -418,7 +418,7 @@ async function saveImageToGridFS(fileUrl, loraId, slotId) {
     }
 }
 
-
+//defanged doesnt touch points
 async function writeUserData(userId, data) {
     const job = async () => {
         const client = await getCachedClient();
@@ -427,7 +427,7 @@ async function writeUserData(userId, data) {
             const filter = { userId: userId };
 
             // Separate protected fields from general user data
-            const { points, qoints, balance, exp, _id, ...dataToSave } = data;
+            const { points, doints, qoints, boints, balance, exp, _id, ...dataToSave } = data;
 
             // Log the data being written, omitting sensitive fields
             //console.log('General user data to be saved:', dataToSave);
