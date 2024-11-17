@@ -77,6 +77,7 @@ function buildUserProfile(message, dms) {
     const userId = message.from.id;
     const totalExp = (lobby[userId].exp + lobby[userId].points);
     const level = Math.floor(Math.cbrt(totalExp));
+    
     const nextLevel = (level + 1) ** 3;
     const lastLevel = (level) ** 3;
     const toLevelUpRatio = (totalExp - lastLevel) / (nextLevel - lastLevel);
@@ -486,10 +487,10 @@ async function handleRefreshQoints(message,user) {
         sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lastCheck) / 1000) } seconds`)
         return
     }
-    if(!userData.hasOwnProperty(pendingQoints)){
+    if(!userData.hasOwnProperty('pendingQoints')){
         userData.pendingQoints = 0;
     }
-    if(lobby.hasOwnProperty([user]) && userData.hasOwnProperty(pendingQoints) && userData.pendingQoints > 0){
+    if(lobby.hasOwnProperty([user]) && userData.hasOwnProperty("pendingQoints") && userData.pendingQoints > 0){
         userData.qoints = userData.qoints + userData.pendingQoints
         userData.pendingQoints = 0;
         userData.checkedQointsAt = now
