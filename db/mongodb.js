@@ -302,7 +302,7 @@ async function loadLora(hashId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[loadlora] Failed to get user data:', error);
         throw error;
     }
 }
@@ -349,7 +349,7 @@ async function bucketPull(loraId, slotId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[bucketpull] Failed to get user data:', error);
         throw error;
     }
 }
@@ -413,7 +413,7 @@ async function saveImageToGridFS(fileUrl, loraId, slotId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[saveimagetogrid] Failed to get user data:', error);
         throw error;
     }
 }
@@ -427,10 +427,10 @@ async function writeUserData(userId, data) {
             const filter = { userId: userId };
 
             // Separate protected fields from general user data
-            const { points, doints, qoints, boints, balance, exp, _id, ...dataToSave } = data;
+            const { points, doints, qoints, boints, balance, exp, newb, _id, ...dataToSave } = data;
 
             // Log the data being written, omitting sensitive fields
-            //console.log('General user data to be saved:', dataToSave);
+            console.log('General user data to be saved:', dataToSave);
 
             // Perform an update to save non-protected user data
             const result = await collection.updateOne(
@@ -457,10 +457,78 @@ async function writeUserData(userId, data) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[writeuserdata] Failed to get user data:', error);
         throw error;
     }
 }
+
+async function writeNewUserData(userId, data) {
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const collection = client.db(dbName).collection('users');
+            const filter = { userId: userId };
+
+            // Log the incoming data and filter
+            console.log('[writeNewUserData] Input userId:', userId);
+            console.log('[writeNewUserData] Input data:', JSON.stringify(data, null, 2));
+            console.log('[writeNewUserData] Filter:', JSON.stringify(filter, null, 2));
+
+            // Check if the user already exists
+            const existingDoc = await collection.findOne(filter);
+            if (existingDoc) {
+                console.log('[writeNewUserData] Existing document found:', JSON.stringify(existingDoc, null, 2));
+            } else {
+                console.log('[writeNewUserData] No existing document found for userId:', userId);
+            }
+
+            // Log fields being written, excluding protected fields
+            const { points, doints, qoints, boints, balance, exp, newb, _id, ...dataToSave } = data;
+            console.log('[writeNewUserData] Data to save (excluding protected fields):', JSON.stringify(dataToSave, null, 2));
+
+            // Perform the update with upsert enabled
+            console.log('[writeNewUserData] Attempting updateOne with upsert: true...');
+            const result = await collection.updateOne(
+                filter,
+                {
+                    $setOnInsert: { createdAt: new Date(), userId: userId }, // Insert default fields if new
+                    $set: dataToSave // Update other fields
+                },
+                { upsert: true }
+            );
+
+            // Log the result of the update operation
+            console.log('[writeNewUserData] Update result:', JSON.stringify(result, null, 2));
+            console.log('[writeNewUserData] Matched count:', result.matchedCount);
+            console.log('[writeNewUserData] Modified count:', result.modifiedCount);
+            console.log('[writeNewUserData] Upserted ID (if new document):', result.upsertedId);
+
+            // Post-write diagnostics
+            if (result.matchedCount === 0 && result.upsertedId) {
+                console.log(`[writeNewUserData] New document created with ID: ${result.upsertedId._id}`);
+            } else if (result.modifiedCount === 0) {
+                console.warn(`[writeNewUserData] No changes made to user ${userId} data. Data may already match.`);
+            } else {
+                console.log(`[writeNewUserData] Document successfully updated for user ${userId}.`);
+            }
+
+            return true; // Indicate success
+        } catch (error) {
+            console.error('[writeNewUserData] Error during write operation:', error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData; // Return the result to the caller
+    } catch (error) {
+        console.error('[writeNewUserData] Failed to complete operation:', error);
+        throw error;
+    }
+}
+
 
 async function writeQoints(targetCollection, targetFilter, qoints) {
     const job = async () => {
@@ -1118,65 +1186,66 @@ async function writeBurnData(userId, amount) {
 async function addPointsToAllUsers() {
     const job = async () => {
         const client = await getCachedClient();
+        const collection = client.db(dbName).collection('users');
+        const bulkOperations = [];
+        const results = {
+            updated: 0,
+            skipped: 0,
+            errors: []
+        };
 
-        try {
-            const collection = client.db(dbName).collection('users');
-            //console.log('Here is the lobby right now:', lobby);
+        for (const userId in lobby) {
+            if (lobby.hasOwnProperty(userId)) {
+                const user = lobby[userId];
+                if (!user || typeof user.points !== 'number' || typeof user.boints !== 'number') {
+                    console.log(`Skipping invalid user data for userId: ${userId}`);
+                    results.skipped++;
+                    continue;
+                }
 
-            const processedUserIds = new Set();  // To track processed user IDs
-
-            for (const userId in lobby) {
-                //console.log('userId and type',userId, typeof userId)
-                if (userId && lobby.hasOwnProperty(userId)) {
-                    //console.log('we can see the userid here');
-                    if (processedUserIds.has(userId)) {
-                        console.log(`Duplicate entry found for userId: ${userId}`);
-                        continue;
-                    }
-                    processedUserIds.add(userId);
-
-                    console.log('Adding points for:', userId);
-                    const user = lobby[userId];
-                    const pointsToAdd = user.points + user.boints;
-                    
-                    if (pointsToAdd > 0) {
-                        try {
-                            const result = await collection.updateOne(
-                                { userId: parseInt(userId) },  // Ensure userId is treated as a string
-                                { $inc: { exp: pointsToAdd } }
-                            );
-                            
-                            if (result.matchedCount === 0) {
-                                console.log(`User with ID ${userId} not found in the database.`);
-                            } else if (result.modifiedCount === 0) {
-                                console.log(`Points for user ${userId} were not updated.`);
-                            } else {
-                                console.log(`Added ${pointsToAdd} points to user ${userId} exp successfully`);
-                            }
-                        } catch (err) {
-                            console.log('Failed to update points, error:', err);
+                const pointsToAdd = user.points + user.boints;
+                if (pointsToAdd > 0) {
+                    bulkOperations.push({
+                        updateOne: {
+                            filter: { userId }, // Ensure userId matches the database type
+                            update: { $inc: { exp: pointsToAdd } },
+                            upsert: true
                         }
-                    } else {
-                        console.log(`No points to add for user ${userId} in this period`);
-                    }
+                    });
+                } else {
+                    console.log(`No points to add for userId: ${userId}`);
+                    results.skipped++;
                 }
             }
-            return true;
-        } catch (error) {
-            console.error("Error adding points to all users:", error);
-            return false;
         }
+
+        // Execute bulk operations
+        if (bulkOperations.length > 0) {
+            try {
+                const bulkResult = await collection.bulkWrite(bulkOperations);
+                results.updated = bulkResult.modifiedCount;
+                console.log(`${results.updated} users updated successfully.`);
+            } catch (error) {
+                console.error('Bulk update failed:', error);
+                results.errors.push(error);
+            }
+        } else {
+            console.log('No updates to perform.');
+        }
+
+        return results;
     };
 
     // Enqueue the job and await its result
     try {
-        const userData = await dbQueue.enqueue(job);
-        return userData;  // Return the result to the caller
+        const result = await dbQueue.enqueue(job);
+        return result;
     } catch (error) {
-        console.error('[Add points to all users] Failed to get user data:', error);
+        console.error('[addPointsToAllUsers] Failed to process job:', error);
         throw error;
     }
 }
+
 async function updateAllUsersWithCheckpoint() {
     const job = async () => {
         const client = await getCachedClient();
@@ -1551,7 +1620,7 @@ async function deleteAllDocuments(dbName, collectionName) {
 module.exports = { 
     
     readUserData, 
-    writeUserData, writeQoints,
+    writeUserData, writeQoints, writeNewUserData,
     writeBurnData,
     updateAllUserSettings,
     getUserDataByUserId, getUsersByWallet,

@@ -63,17 +63,41 @@ function softResetPoints(userId) {
 
 function shouldKick(userId) {
     const userData = lobby[userId];
-    if(userData.newb) {
-        console.log('newb spotted,',userData.userId)
-        return false
+
+    // If no user data exists in the lobby, kick the user
+    if (!userData) {
+        console.log(`User ${userId} not found in the lobby. Kicking.`);
+        return true;
     }
-    if(!userData || !userData.runs) return true
-    if(userData.runs && userData.runs[0] && userData.runs[0].timeRequested){
-        console.log('in judging kick criteria we can see that there is userId in the lobby',lobby.hasOwnProperty(userId),'we can see that the user has runs and the first one has time requested',userData.runs[0].timeRequested ? userData.runs[0].timeRequested : '','and between that time and now, it is greater than lobby clean interval',userData.runs[0].timerequested ? Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL : null)
+
+    // New users ("newb") are exempt from being kicked
+    if (userData.newb) {
+        console.log(`User ${userId} is a newb and won't be kicked.`);
+        return false;
     }
-    if(userData.runs.length > 0 && userData.runs[0].timeRequested) return Date.now() - userData.runs[0].timeRequested > LOBBY_CLEAN_INTERVAL;
-    return true
+
+    // Check lastTouch timestamp
+    const now = Date.now();
+    const lastTouch = userData.lastTouch || 0; // Fallback to 0 if lastTouch is missing
+    const timeSinceLastTouch = now - lastTouch;
+
+    console.log(
+        `Evaluating kick for userId ${userId}:`,
+        `lastTouch=${new Date(lastTouch).toISOString()}`,
+        `timeSinceLastTouch=${timeSinceLastTouch}ms`,
+        `LOBBY_CLEAN_INTERVAL=${LOBBY_CLEAN_INTERVAL}ms`
+    );
+
+    // Kick if time since last interaction exceeds the lobby clean interval
+    if (timeSinceLastTouch > LOBBY_CLEAN_INTERVAL) {
+        console.log(`User ${userId} is inactive. Kicking.`);
+        return true;
+    }
+
+    console.log(`User ${userId} is active and will not be kicked.`);
+    return false;
 }
+
 
 function addExp(userId) {
     const userData = lobby[userId];
@@ -275,46 +299,74 @@ async function handleGroupCheck(group, userId, message) {
     return true;
 }
 
-// Function to handle user data in the lobby
 async function handleUserData(userId, message) {
-    console.log('handling user data')
-    if (!lobby.hasOwnProperty(userId)) {
-        let userData = await getUserDataByUserId(userId)// || await createDefaultUserData(userId);
-        if(!userData) userData = await createDefaultUserData(userId) //defanged
-        lobbyManager.addUser(userId, userData); 
+    console.log(`Handling user data for userId: ${userId}`);
 
-        if (userData.verified) {
-            const balance = await getBalance(userData.wallet);
-            lobby[userId].balance = balance;
-        }
+    try {
+        // Check if the user is already in the lobby
+        if (!lobby.hasOwnProperty(userId)) {
+            let userData;
 
-        if (userData.kickedAt) {
-            console.log('Regenerating doints for kicked user');
-            regenerateDoints(userId);
-            delete userData.kickedAt;
-        }
-
-        if (!userData.verified && message.chat.id > 0) {
-            const options = {
-                reply_markup: {
-                    keyboard: [[{ text: '/signin' }]],
-                    resize_keyboard: true,
-                    one_time_keyboard: true
+            // Fetch or create user data
+            try {
+                userData = await getUserDataByUserId(userId);
+                if (!userData) {
+                    userData = await createDefaultUserData(userId);
                 }
-            };
-            sendMessage(message, 'Use the signin command and connect a wallet to unlock $MS2 holder benefits.', options);
-        }
+                if (!userData) throw new Error("Failed to initialize user data.");
+            } catch (error) {
+                console.error(`Error initializing user data for userId ${userId}:`, error);
+                return false;
+            }
 
-        if (checkBlacklist(userData.wallet)) {
-            await sendMessage(message, 'You are on the blacklist.');
-            return false;
-        }
+            // Add user to the lobby
+            lobbyManager.addUser(userId, userData);
+            console.log(`User ${userId} added to the lobby.`);
 
-        setUserState(message, STATES.IDLE);
-        console.log(`${message.from.first_name} has entered the chat.`);
+            // Fetch balance if user is verified
+            if (userData.verified) {
+                try {
+                    const balance = await getBalance(userData.wallet);
+                    lobby[userId].balance = balance;
+                    console.log(`User ${userId} balance updated: ${balance}`);
+                } catch (error) {
+                    console.warn(`Failed to fetch balance for userId ${userId}:`, error);
+                    lobby[userId].balance = 0; // Default balance
+                }
+            }
+
+            // Handle returning users
+            if (userData.kickedAt) {
+                console.log(`User ${userId} is returning. Regenerating points.`);
+                regenerateDoints(userId);
+                delete userData.kickedAt; // Remove kickedAt
+            }
+
+            // Check blacklist
+            if (checkBlacklist(userData.wallet)) {
+                await sendMessage(message, 'You are on the blacklist.');
+                return false;
+            }
+
+            // Track user activity
+            lobby[userId].lastTouch = Date.now();
+
+            // Set user state to IDLE
+            setUserState(message, STATES.IDLE);
+            console.log(`${message.from.first_name} has entered the chat.`);
+        } else {
+            // User is already in the lobby; update their lastTouch timestamp
+            lobby[userId].lastTouch = Date.now();
+            console.log(`Updated lastTouch for userId ${userId}: ${new Date(lobby[userId].lastTouch)}`);
+        }
+    } catch (error) {
+        console.error(`Error handling user data for userId ${userId}:`, error);
+        return false;
     }
+
     return true;
 }
+
 
 // Function to handle balance and points check
 function checkUserPoints(userId, group, message) {

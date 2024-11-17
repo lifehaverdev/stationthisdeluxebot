@@ -1,6 +1,9 @@
 const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
 const bot = getBotInstance()
-const { writeUserData, getUserDataByUserId, writeData, writeQoints, getUsersByWallet } = require('../../../db/mongodb')
+const { 
+    writeUserData, writeQoints, writeNewUserData,
+    getUserDataByUserId, writeData,  getUsersByWallet 
+} = require('../../../db/mongodb')
 const { sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
 const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
@@ -287,7 +290,6 @@ async function shakeSignIn (message) {
     }
     //console.log('chatdata wallet in shake',chatData.wallet);
     await writeUserData(userId,chatData)
-    ///lobby[userId] = chatData; //redundant i think
     lobbyManager.addUser(userId,chatData)
     console.log(message.from.first_name,'has entered the chat');
     // Confirm sign-in
@@ -307,7 +309,6 @@ async function handleVerify(message) {
 async function shakeVerify(message) {
     // Example data received from user
     console.log('shaking verify');
-    const chatId = message.chat.id;
     const userId = message.from.id;
     setUserState(message,STATES.IDLE);
     const validity = (userData) => {
@@ -331,7 +332,7 @@ async function shakeVerify(message) {
         }
         return isValid;
     }
-    const handleValidity = (userData,isValid) => {
+    const handleValidity = async (userData,isValid) => {
         if (isValid) {
             console.log('Verification successful: the user controls the wallet.');
             try {
@@ -339,7 +340,15 @@ async function shakeVerify(message) {
                     lobby[userId].verified = true;
                 }
                 userData.verified = true;
-                writeUserData(userId,userData);
+                
+                if(userData.newb){
+                    console.log('$$$supposedly this is a new user so they dont exist, we will write a new user data')
+                    delete userData.newb
+                    await writeNewUserData(userId,userData);
+                } else {
+                    await writeUserData(userId, userData)
+                }
+                
                 return true
             } catch(err) {
                 console.log('verify shake error: ',err)
@@ -353,12 +362,12 @@ async function shakeVerify(message) {
     if(lobby[userId]){
         isValid = validity(lobby[userId]);
         sendMessage(message,`${isValid ? 'you are verified now' : 'not verified'}`);
-        return handleValidity(lobby[userId],isValid);
+        return await handleValidity(lobby[userId],isValid);
     } else {
         const userData = await getUserDataByUserId(userId);
         isValid = validity(userData);
         sendMessage(message,`${isValid ? 'you are verified now' : 'not verified'}`);
-        return handleValidity(userData,isValid);
+        return await handleValidity(userData,isValid);
     }
 }
 async function handleSignOut(message) {
@@ -468,23 +477,26 @@ async function handleAccountReset(message) {
 
 async function handleRefreshQoints(message,user) {
     const now = Date.now()
-    if(!lobby[user]){
+    if(!lobby.hasOwnProperty([user])){
         return
     }
-    if(lobby[user] && lobby[user].checkedQointsAt && now - lobby[user].checkedQointsAt < 1000 * 60) {
-        sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lobby[user].checkedQointsAt) / 1000) } seconds`)
+    const userData = lobby[user];
+    const lastCheck = userData.checkedQointsAt;
+    if(lobby.hasOwnProperty([user]) && lastCheck && now - lastCheck < 1000 * 60) {
+        sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lastCheck) / 1000) } seconds`)
         return
     }
-    if(!lobby[user].pendingQoints){
-        lobby[user].pendingQoints = 0;
+    if(!userData.hasOwnProperty(pendingQoints)){
+        userData.pendingQoints = 0;
     }
-    if(lobby[user] && lobby[user].pendingQoints && lobby[user].pendingQoints > 0){
-        lobby[user].qoints = lobby[user].qoints + lobby[user].pendingQoints
-        lobby[user].pendingQoints = 0;
-        lobby[user].checkedQointsAt = now
-        //await writeData('users',{'userId': user},{...lobby[user]})
-        await writeUserData(user,{...lobby[user]})
-        await writeQoints('users',{'userId': user},lobby[user].qoints)
+    if(lobby.hasOwnProperty([user]) && userData.hasOwnProperty(pendingQoints) && userData.pendingQoints > 0){
+        userData.qoints = userData.qoints + userData.pendingQoints
+        userData.pendingQoints = 0;
+        userData.checkedQointsAt = now
+        //write new pendingQoints
+        await writeUserData(user,userData)
+        //write new qoints
+        await writeQoints('users',{'userId': user},userData.qoints)
         await returnToAccountMenu(message,user)
         return
     } else {
@@ -493,25 +505,25 @@ async function handleRefreshQoints(message,user) {
         const newRead = await getUserDataByUserId(user)
         if(!newRead){
             console.log('failed newread','iquit')
-            lobby[user].checkedQointsAt = now
+            userData.checkedQointsAt = now
         }
         let pendingQoints;
-        if(newRead.pendingQoints){
+        if(newRead.hasOwnProperty('pendingQoints')){
             pendingQoints = newRead.pendingQoints
         } else {
             pendingQoints = 0
         }
         if(pendingQoints && pendingQoints > 0){
-            lobby[user].qoints = lobby[user].qoints + pendingQoints
-            lobby[user].pendingQoints = 0;
-            lobby[user].checkedQointsAt = now
-            await writeUserData(user,lobby[user])
-            await writeQoints('users',{'userId': user},lobby[user].qoints)
+            userData.qoints = userData.qoints + pendingQoints
+            userData.pendingQoints = 0;
+            userData.checkedQointsAt = now
+            await writeUserData(user,userData)
+            await writeQoints('users',{'userId': user},userData.qoints)
             await returnToAccountMenu(message,user)
             return
         } else {
             console.log('none there either. oh well')
-            lobby[user].checkedQointsAt = now
+            userData.checkedQointsAt = now
         }
         await returnToAccountMenu(message,user)
     }
