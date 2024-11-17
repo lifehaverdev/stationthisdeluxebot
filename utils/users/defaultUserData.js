@@ -8,6 +8,7 @@ const defaultUserData = {
     doints: 0,
     qoints: 0,
     boints: 0,
+    pendingQoints: 0,
     input_batch: 1,
     input_steps: 30,
     input_cfg: 7,

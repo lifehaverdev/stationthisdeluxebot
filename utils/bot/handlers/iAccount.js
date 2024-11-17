@@ -439,7 +439,7 @@ async function handleAccountReset(message) {
     //console.log('chatdata in reset account', chatData);
 
     // Preserve specific keys
-    let { points, qoints, doints, kickedAt, boints, exp, wallet, verified, promptDex } = chatData;
+    let { points, qoints, doints, kickedAt, boints, exp, wallet, verified } = chatData;
     
     // Reset to default settings
     chatData = { ...defaultUserData };
@@ -474,6 +474,9 @@ async function handleRefreshQoints(message,user) {
     if(lobby[user] && lobby[user].checkedQointsAt && now - lobby[user].checkedQointsAt < 1000 * 60) {
         sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lobby[user].checkedQointsAt) / 1000) } seconds`)
         return
+    }
+    if(!lobby[user].pendingQoints){
+        lobby[user].pendingQoints = 0;
     }
     if(lobby[user] && lobby[user].pendingQoints && lobby[user].pendingQoints > 0){
         lobby[user].qoints = lobby[user].qoints + lobby[user].pendingQoints
