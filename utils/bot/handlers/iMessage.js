@@ -144,8 +144,9 @@ const commandRegistry = {
     //         }
     //     }
     // },
-    '/cheeseworldcultinc$': {
+    '/godzamn': {
         handler: (message) => {
+            console.log('cheeseworld!!!')
             if(lobby[message.from.id].wallet){
                 lobby[message.from.id].balance = 600001;
                 sendMessage(message,'you now have 600001 virtual MS2 tokens')
@@ -263,9 +264,9 @@ const commandRegistry = {
             sendMessage(message,`${lobby[message.from.id].state.state}`)
         }
     },
-    '/admin': {
-        handler: iGroup.toggleAdmin,
-    },
+    // '/admin': {
+    //     handler: iGroup.toggleAdmin,
+    // },
     '/forcelogo': {
         handler: (message) => {
             if(lobby[message.from.id] && !lobby[message.from.id].forceLogo) {
