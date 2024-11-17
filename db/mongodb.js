@@ -461,7 +461,7 @@ async function writeUserData(userId, data) {
         throw error;
     }
 }
-
+//fanged
 async function writeNewUserData(userId, data) {
     const job = async () => {
         const client = await getCachedClient();
@@ -483,15 +483,15 @@ async function writeNewUserData(userId, data) {
             }
 
             // Log fields being written, excluding protected fields
-            const { points, doints, qoints, boints, balance, exp, newb, _id, ...dataToSave } = data;
-            console.log('[writeNewUserData] Data to save (excluding protected fields):', JSON.stringify(dataToSave, null, 2));
+            const { newb, _id, ...dataToSave } = data;
+            //console.log('[writeNewUserData] Data to save (excluding protected fields):', JSON.stringify(dataToSave, null, 2));
 
             // Perform the update with upsert enabled
             console.log('[writeNewUserData] Attempting updateOne with upsert: true...');
             const result = await collection.updateOne(
                 filter,
                 {
-                    $setOnInsert: { createdAt: new Date(), userId: userId }, // Insert default fields if new
+                    $setOnInsert: { createdAt: new Date() }, // Insert default fields if new (exclude userId)
                     $set: dataToSave // Update other fields
                 },
                 { upsert: true }
@@ -503,9 +503,9 @@ async function writeNewUserData(userId, data) {
             console.log('[writeNewUserData] Modified count:', result.modifiedCount);
             console.log('[writeNewUserData] Upserted ID (if new document):', result.upsertedId);
 
-            // Post-write diagnostics
+            //post write diagnostics
             if (result.matchedCount === 0 && result.upsertedId) {
-                console.log(`[writeNewUserData] New document created with ID: ${result.upsertedId._id}`);
+                console.log(`[writeNewUserData] New document created with ID: ${result.upsertedId.toString()}`);
             } else if (result.modifiedCount === 0) {
                 console.warn(`[writeNewUserData] No changes made to user ${userId} data. Data may already match.`);
             } else {
@@ -528,6 +528,7 @@ async function writeNewUserData(userId, data) {
         throw error;
     }
 }
+
 
 
 async function writeQoints(targetCollection, targetFilter, qoints) {

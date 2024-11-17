@@ -300,7 +300,7 @@ async function handleGroupCheck(group, userId, message) {
 }
 
 async function handleUserData(userId, message) {
-    console.log(`Handling user data for userId: ${userId}`);
+    ///console.log(`Handling user data for userId: ${userId}`);
 
     try {
         // Check if the user is already in the lobby
@@ -357,7 +357,17 @@ async function handleUserData(userId, message) {
         } else {
             // User is already in the lobby; update their lastTouch timestamp
             lobby[userId].lastTouch = Date.now();
-            console.log(`Updated lastTouch for userId ${userId}: ${new Date(lobby[userId].lastTouch)}`);
+            if(lobby[userId].balance == '' && lobby[userId].verified) {
+                try {
+                    const balance = await getBalance(lobby[userId].wallet);
+                    lobby[userId].balance = balance;
+                    console.log(`User ${userId} balance updated: ${balance}`);
+                } catch (error) {
+                    console.warn(`Failed to fetch balance for userId ${userId}:`, error);
+                    lobby[userId].balance = 0; // Default balance
+                }
+            }
+            console.log(`${new Date(lobby[userId].lastTouch)} Updated lastTouch for userId ${userId} ${message.from.username}`);
         }
     } catch (error) {
         console.error(`Error handling user data for userId ${userId}:`, error);
