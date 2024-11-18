@@ -81,6 +81,8 @@ const STATES = {
     SETGROUPGATE: 'SETGROUPGATE',
     SETGROUPGATEMSG: 'SETGROUPGATEMSG',
 
+    COLLECTIONNAME: 'COLLECTIONNAME',
+
     // Add more states as needed
 };
 //for setters
