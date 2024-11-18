@@ -529,6 +529,44 @@ async function writeNewUserData(userId, data) {
     }
 }
 
+async function writeUserDataPoint(userId, key, value) {
+    const job = async () => {
+        const client = await getCachedClient();
+        try {
+            const collection = client.db(dbName).collection('users');
+            const filter = { userId: userId };
+
+            // Build the update object dynamically
+            const update = { $set: { [key]: value } };
+
+            // Log the key and value being updated
+            console.log(`[writeUserDataPoint] Updating user ${userId}:`, update);
+
+            // Perform the update operation
+            const result = await collection.updateOne(filter, update, { upsert: false });
+
+            if (result.modifiedCount === 0) {
+                console.log(`[writeUserDataPoint] No changes made to user ${userId} data.`);
+            } else {
+                console.log(`[writeUserDataPoint] Successfully updated key '${key}' for user ${userId}.`);
+            }
+
+            return true;
+        } catch (error) {
+            console.error(`[writeUserDataPoint] Error updating key '${key}' for user ${userId}:`, error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const updateSuccess = await dbQueue.enqueue(job);
+        return updateSuccess; // Return the result to the caller
+    } catch (error) {
+        console.error('[writeUserDataPoint] Failed to enqueue job:', error);
+        throw error;
+    }
+}
 
 
 async function writeQoints(targetCollection, targetFilter, qoints) {
@@ -754,7 +792,7 @@ async function saveWorkspace(loraObject) {
     }
   }
 
-async function deleteWorkspace(loraId) {
+  async function deleteWorkspace(loraId) {
     const job = async () => {
         const collectionName = 'trains';
         try {
@@ -763,15 +801,15 @@ async function deleteWorkspace(loraId) {
             const collection = db.collection(collectionName);
             const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
 
-            // Find the LoRA document by loraId to get the image IDs
-            const loraData = await collection.findOne({ loraId: loraId });
+            // Find the LoRa document by loraId
+            const loraData = await collection.findOne({ loraId });
             if (!loraData) {
-                console.log('LoRA data not found, nothing to delete.');
+                console.log(`LoRA data with ID ${loraId} not found. Nothing to delete.`);
                 return false;
             }
 
-            // Delete each image from GridFS if it exists
-            if (loraData.images && Array.isArray(loraData.images)) {
+            // Delete each image from GridFS
+            if (Array.isArray(loraData.images)) {
                 for (const fileId of loraData.images) {
                     if (fileId) {
                         try {
@@ -784,10 +822,14 @@ async function deleteWorkspace(loraId) {
                 }
             }
 
-            // Delete the corresponding document in the database
-            await collection.deleteOne({ loraId: loraId });
+            // Delete the LoRa document
+            const deleteResult = await collection.deleteOne({ loraId });
+            if (deleteResult.deletedCount > 0) {
+                console.log(`LoRA data with ID ${loraId} deleted successfully.`);
+            } else {
+                console.warn(`LoRA data with ID ${loraId} was not found for deletion.`);
+            }
 
-            console.log('LoRA data deleted successfully');
             return true;
         } catch (error) {
             console.error("Error deleting LoRA data:", error);
@@ -797,13 +839,14 @@ async function deleteWorkspace(loraId) {
 
     // Enqueue the job and await its result
     try {
-        const userData = await dbQueue.enqueue(job);
-        return userData;  // Return the result to the caller
+        const success = await dbQueue.enqueue(job);
+        return success;
     } catch (error) {
-        console.error('[deleteWorkspace] Failed to get user data:', error);
+        console.error('[deleteWorkspace] Failed to enqueue job:', error);
         throw error;
     }
 }
+
 
 async function deleteImageFromWorkspace(loraId, slotId) {
     const job = async () => {
@@ -1621,7 +1664,7 @@ async function deleteAllDocuments(dbName, collectionName) {
 module.exports = { 
     
     readUserData, 
-    writeUserData, writeQoints, writeNewUserData,
+    writeUserData, writeQoints, writeNewUserData, writeUserDataPoint,
     writeBurnData,
     updateAllUserSettings,
     getUserDataByUserId, getUsersByWallet,

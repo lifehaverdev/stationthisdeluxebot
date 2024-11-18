@@ -17,7 +17,7 @@ async function addPoints(task) {
         console.log('we didnt see user in add points in the lobby so here is boolean of whether userId is in lobby after we pull a checkin',lobby.hasOwnProperty(userId))
     }
     let rate = 3; 
-    const doublePointTypes = ['MS3.2','FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG','LOSER','FLUXI2I']
+    const doublePointTypes = ['MS3.2']//,'FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG','LOSER','FLUXI2I']
     if (doublePointTypes.includes(promptObj.type)) {
         task.promptObj.rate = 6;
     }
