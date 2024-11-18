@@ -29,6 +29,7 @@ const iMedia = require('./iMedia')
 const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
+const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
 

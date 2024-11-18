@@ -120,7 +120,7 @@ async function createLora(message) {
         status: 'incomplete'
     }
     userContext.loras.push(thisLora.loraId)
-    workspace[thisLora.loraId] = thisLora
+    workspace[userId][thisLora.loraId] = thisLora
     try {
         const success = await createTraining(thisLora)
         if(!success){
@@ -477,133 +477,6 @@ async function deleteLoraSlot(message, user, loraId, slotId) {
 handler for LORASLOTIMG and LORASLOTTXT, saves whatever to the lora db entry for the slot
 
 */
-// async function addLoraSlotImage(message) {
-//     const userId = message.from.id;
-//     console.log(`Function addLoraSlotImage called for user ${userId}`);
-
-//     // Find the workspace LoRA corresponding with the userId
-//     const loraId = findUserBench(userId);
-//     if (!loraId) {
-//         console.error(`No LoRA found for user ${userId}`);
-//         sendMessage(message, "Something went wrong. No LoRA data found. Please try again.");
-//         return;
-//     }
-
-//     // Ensure `workspace[userId][loraId]` is properly initialized
-//     if (!workspace[userId][loraId]) {
-//         console.error(`LoRA ${loraId} not found in workspace.`);
-//         sendMessage(message, "Something went wrong. No LoRA found in workspace. Please try again.");
-//         return;
-//     }
-
-//     // Ensure `images` array is initialized
-//     if (!workspace[userId][loraId].images) {
-//         workspace[userId][loraId].images = new Array(20).fill('');
-//     }
-
-//     const instanceId = Date.now() + Math.random(); // Unique identifier for this function instance
-//     const MAX_RETRIES = 5;
-//     let retries = 0;
-
-//     console.log(`Attempting to lock workspace for LoRA ${loraId} by instance ${instanceId}`);
-
-//     // Retry mechanism if the workspace is locked
-//     while (workspace[userId][loraId].locked && retries < MAX_RETRIES) {
-//         console.log(`Workspace for LoRA ${loraId} is locked, retrying (${retries + 1}/${MAX_RETRIES})...`);
-//         const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2^retries seconds (converted to ms)
-//         await new Promise(resolve => setTimeout(resolve, waitTime)); // Wait with exponential backoff
-//         retries++;
-//     }
-
-//     // If retries exceed MAX_RETRIES, inform the user and return
-//     if (workspace[userId][loraId].locked) {
-//         console.error(`Workspace for LoRA ${loraId} is still locked after ${MAX_RETRIES} retries.`);
-//         sendMessage(message, "The server is currently processing other requests. Please try again in a moment.");
-//         return;
-//     }
-
-//     // Lock to prevent concurrent modifications
-//     console.log(`Locking workspace for LoRA ${loraId} by instance ${instanceId}`);
-//     workspace[userId][loraId].locked = instanceId;
-
-//     try {
-//         let files = [];
-
-//         // If the message contains multiple photos, use only the largest version
-//         if (message.photo) {
-//             const largestPhoto = message.photo[message.photo.length - 1]; // Use the highest quality version
-//             files.push({
-//                 type: 'photo',
-//                 file: largestPhoto,
-//             });
-//         } else if (message.document) {
-//             files.push({
-//                 type: 'document',
-//                 file: message.document,
-//             });
-//         }
-
-//         let tool = findTool(loraId);
-//         if (tool === undefined || tool < 0 || tool >= 20) {
-//             tool = workspace[userId][loraId].images.findIndex(image => image === '');
-//             if (tool === -1) {
-//                 console.error(`No available slot found for LoRA ${loraId}`);
-//                 sendMessage(message, "No available slots to add more images. Please remove some images or try again later.");
-//                 return;
-//             }
-//         }
-
-//         for (const fileData of files) {
-//             if (tool >= 20) {
-//                 console.error(`All slots are filled for LoRA ${loraId}`);
-//                 sendMessage(message, "No available slots to add more images.");
-//                 break;
-//             }
-
-//             console.log(`Calling saveImageToGridFS for loraId: ${loraId}, slot: ${tool}`);
-//             const telegramFileUrl = await getPhotoUrl(fileData.file);
-//             if (!telegramFileUrl) {
-//                 console.error(`Failed to get URL for file in slot ${tool}`);
-//                 continue;
-//             }
-//             const fileUrl = await saveImageToGridFS(telegramFileUrl, loraId, tool);
-
-//             // Set the image URL in the appropriate slot
-//             workspace[userId][loraId].images[tool] = fileUrl;
-
-//             // Move to the next available slot
-//             workspace[userId][loraId].tool = workspace[userId][loraId].images.findIndex((image, index) => image === '' && index > tool);
-//             if (tool === -1) {
-//                 tool = 20; // Set tool to 20 if no slots are available
-//             }
-//         }
-
-//         // Save workspace
-//         const isSaved = await saveWorkspace(workspace[userId][loraId]);
-
-//         if (isSaved) {
-//             console.log(`LoRA ${loraId} successfully saved by instance ${instanceId}`);
-//             setUserState(message, STATES.IDLE);
-//             react(message, '👍');
-//             //const { text, reply_markup } = await buildTrainingMenu(loraId);
-//             //sendMessage(message, text, { reply_markup });
-//         } else {
-//             sendMessage(message, 'Ah... wait. Something messed up. Try again.');
-//         }
-
-//     } catch (error) {
-//         console.error('Error adding images to LoRA:', error);
-//         sendMessage(message, 'Something went wrong while processing your request. Please try again.');
-//     } finally {
-//         // Release the lock if the current instance owns it
-//         if (workspace[userId][loraId].locked === instanceId) {
-//             console.log(`Releasing lock for LoRA ${loraId} by instance ${instanceId}`);
-//             workspace[userId][loraId].locked = false;
-//         } else {
-//             console.log(`Instance ${instanceId} attempted to release lock for LoRA ${loraId}, but did not own the lock.`);
-//         }
-//     }
-// }
 
 function releaseWorkspaceLock(userId, loraId, instanceId) {
     if (workspace[userId][loraId].locked === instanceId) {

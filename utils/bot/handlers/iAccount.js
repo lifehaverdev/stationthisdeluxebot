@@ -62,10 +62,13 @@ function buildAccountSettingsKeyboard(userId) {
             },
         ],
         [
-            { text: 'Train', callback_data: 'trainingMenu' },
+            { text: 'Create 👩‍🎨🖼️', callback_data: 'collectionModeMenu' },
         ],
         [
-            { text: 'cancel', callback_data: 'cancel' }
+            { text: 'Train 🚂🦾', callback_data: 'trainingMenu' },
+        ],
+        [
+            { text: 'nvm', callback_data: 'cancel' }
         ],
     ];
 }
