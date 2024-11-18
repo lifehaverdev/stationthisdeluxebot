@@ -233,7 +233,7 @@ async function setCommandContext(bot, msg) {
 
 // Specific send functions using the helper function
 async function sendMessage(msg, text, options = {}) {
-    await setCommandContext(bot, msg)
+    //await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
 }
 
@@ -247,22 +247,22 @@ async function sendPrivateMessage(user, msg, text, options = {}) {
 }
 
 async function sendPhoto(msg, fileUrl, options = {}) {
-    await setCommandContext(bot, msg)
+    //await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendPhoto.bind(bot), msg, fileUrl, options);
 }
 
 async function sendDocument(msg, fileUrl, options = {}) {
-    await setCommandContext(bot, msg)
+    //await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
 }
 
 async function sendAnimation(msg, fileUrl, options = {}) {
-    await setCommandContext(bot, msg)
+    //await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendAnimation.bind(bot), msg, fileUrl, options);
 }
 
 async function sendVideo(msg, fileUrl, options = {}) {
-    await setCommandContext(bot, msg)
+    //await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendVideo.bind(bot), msg, fileUrl, options);
 }
 
