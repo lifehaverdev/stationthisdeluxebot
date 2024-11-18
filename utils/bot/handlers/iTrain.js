@@ -43,7 +43,7 @@ async function getMyLoras(userId) {
             }
         }
     }
-    if (lobby[userId].loras?.length < 3) {
+    if (lobby[userId]?.loras?.length < 3) {
         loraKeyboardOptions.push([{ text: '➕', callback_data: 'newLora' }]);
     }
     return loraKeyboardOptions;
@@ -116,6 +116,7 @@ async function createLora(message) {
         version: '',
         images: new Array(20).fill(''),
         captions: new Array(20).fill(''),
+        initiated: Date.now(),
         status: 'incomplete'
     }
     userContext.loras.push(thisLora.loraId)
@@ -209,7 +210,14 @@ async function trainMenu(message, user, loraId) {
         console.error(`Error in trainMenu for user ${user} and LoRa ${loraId}:`, error);
     }
 }
-
+function unlockWorkspace(userId, loraId) {
+    if (workspace[userId] && workspace[userId][loraId] && workspace[userId][loraId].locked) {
+        console.log(`[unlockWorkspace] Unlocking workspace for LoRA ${loraId} for user ${userId}`);
+        workspace[userId][loraId].locked = false;
+    } else {
+        console.warn(`[unlockWorkspace] Workspace for LoRA ${loraId} is not locked or does not exist.`);
+    }
+}
 async function buildTrainingMenu(userId,loraId) {
     try {
         const COMPLETION_THRESHOLD = 50; // Threshold for enabling submission
@@ -253,7 +261,7 @@ async function buildTrainingMenu(userId,loraId) {
                 inlineKeyboard.push([{ text: 'Submit', callback_data: `st_${loraId}` }]);
             }
         }
-
+        unlockWorkspace(userId, loraId)
         return {
             text: menuText,
             reply_markup: {
@@ -270,7 +278,6 @@ async function trainSlot(message, user, loraId, slotId) {
     const userId = user;
     const messageId = message.message_id;
     const chatId = message.chat.id;
-    
 
     try {
         let loraData = await getOrLoadLora(user,loraId);
@@ -299,14 +306,15 @@ async function trainSlot(message, user, loraId, slotId) {
 
             // Initialize the `tool` property in the workspace
             workspace[user][loraId] = workspace[user][loraId] || {};
+            workspace[user][loraId].workingMessage = messageId
             workspace[user][loraId].tool = slotId;
 
             // Update user state
-            setUserState(message, STATES.ADDLORAIMAGE);
+            setUserState({...message, 'from': {'id': userId}}, STATES.ADDLORAIMAGE);
             console.log(`User ${userId} state updated to ADDLORAIMAGE for slot ${slotId}`);
         } else {
             // Build and display the slot menu
-            const { text, reply_markup } = await buildSlotMenu(loraId, slotId);
+            const { text, reply_markup } = await buildSlotMenu(userId, loraId, slotId);
             await editMessage({
                 text,
                 reply_markup,
@@ -333,11 +341,11 @@ if its a full slot,
 
 */
 
-async function buildSlotMenu(loraId, slotId) {
+async function buildSlotMenu(userId, loraId, slotId) {
     try {
-        let loraData = await getOrLoadLora(user,loraId);
+        let loraData = await getOrLoadLora(userId,loraId);
         if (!loraData) {
-            console.error(`LoRA data not found for user ${user} and LoRA ${loraId}`);
+            console.error(`LoRA data not found for userId ${userId} and LoRA ${loraId}`);
             return {
                 text: 'LoRA data is unavailable. Please try again later.',
                 reply_markup: { inline_keyboard: [[{ text: '↖︎', callback_data: `el_${loraId}` }]] }
@@ -392,7 +400,7 @@ async function viewSlotImage(message, user, loraId, slotId) {
             return;
         }
 
-        const tempFilePath = await bucketPull(loraId, slotId);
+        const tempFilePath = await bucketPull(user, loraId, slotId);
         if (!tempFilePath) {
             await sendMessage(message.reply_to_message, 'Failed to retrieve the image. Please try again later.');
             return;
@@ -469,132 +477,327 @@ async function deleteLoraSlot(message, user, loraId, slotId) {
 handler for LORASLOTIMG and LORASLOTTXT, saves whatever to the lora db entry for the slot
 
 */
-async function addLoraSlotImage(message) {
-    const userId = message.from.id;
-    console.log(`Function addLoraSlotImage called for user ${userId}`);
+// async function addLoraSlotImage(message) {
+//     const userId = message.from.id;
+//     console.log(`Function addLoraSlotImage called for user ${userId}`);
 
-    // Find the workspace LoRA corresponding with the userId
-    const loraId = findUserBench(userId);
-    if (!loraId) {
-        console.error(`No LoRA found for user ${userId}`);
-        sendMessage(message, "Something went wrong. No LoRA data found. Please try again.");
-        return;
+//     // Find the workspace LoRA corresponding with the userId
+//     const loraId = findUserBench(userId);
+//     if (!loraId) {
+//         console.error(`No LoRA found for user ${userId}`);
+//         sendMessage(message, "Something went wrong. No LoRA data found. Please try again.");
+//         return;
+//     }
+
+//     // Ensure `workspace[userId][loraId]` is properly initialized
+//     if (!workspace[userId][loraId]) {
+//         console.error(`LoRA ${loraId} not found in workspace.`);
+//         sendMessage(message, "Something went wrong. No LoRA found in workspace. Please try again.");
+//         return;
+//     }
+
+//     // Ensure `images` array is initialized
+//     if (!workspace[userId][loraId].images) {
+//         workspace[userId][loraId].images = new Array(20).fill('');
+//     }
+
+//     const instanceId = Date.now() + Math.random(); // Unique identifier for this function instance
+//     const MAX_RETRIES = 5;
+//     let retries = 0;
+
+//     console.log(`Attempting to lock workspace for LoRA ${loraId} by instance ${instanceId}`);
+
+//     // Retry mechanism if the workspace is locked
+//     while (workspace[userId][loraId].locked && retries < MAX_RETRIES) {
+//         console.log(`Workspace for LoRA ${loraId} is locked, retrying (${retries + 1}/${MAX_RETRIES})...`);
+//         const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2^retries seconds (converted to ms)
+//         await new Promise(resolve => setTimeout(resolve, waitTime)); // Wait with exponential backoff
+//         retries++;
+//     }
+
+//     // If retries exceed MAX_RETRIES, inform the user and return
+//     if (workspace[userId][loraId].locked) {
+//         console.error(`Workspace for LoRA ${loraId} is still locked after ${MAX_RETRIES} retries.`);
+//         sendMessage(message, "The server is currently processing other requests. Please try again in a moment.");
+//         return;
+//     }
+
+//     // Lock to prevent concurrent modifications
+//     console.log(`Locking workspace for LoRA ${loraId} by instance ${instanceId}`);
+//     workspace[userId][loraId].locked = instanceId;
+
+//     try {
+//         let files = [];
+
+//         // If the message contains multiple photos, use only the largest version
+//         if (message.photo) {
+//             const largestPhoto = message.photo[message.photo.length - 1]; // Use the highest quality version
+//             files.push({
+//                 type: 'photo',
+//                 file: largestPhoto,
+//             });
+//         } else if (message.document) {
+//             files.push({
+//                 type: 'document',
+//                 file: message.document,
+//             });
+//         }
+
+//         let tool = findTool(loraId);
+//         if (tool === undefined || tool < 0 || tool >= 20) {
+//             tool = workspace[userId][loraId].images.findIndex(image => image === '');
+//             if (tool === -1) {
+//                 console.error(`No available slot found for LoRA ${loraId}`);
+//                 sendMessage(message, "No available slots to add more images. Please remove some images or try again later.");
+//                 return;
+//             }
+//         }
+
+//         for (const fileData of files) {
+//             if (tool >= 20) {
+//                 console.error(`All slots are filled for LoRA ${loraId}`);
+//                 sendMessage(message, "No available slots to add more images.");
+//                 break;
+//             }
+
+//             console.log(`Calling saveImageToGridFS for loraId: ${loraId}, slot: ${tool}`);
+//             const telegramFileUrl = await getPhotoUrl(fileData.file);
+//             if (!telegramFileUrl) {
+//                 console.error(`Failed to get URL for file in slot ${tool}`);
+//                 continue;
+//             }
+//             const fileUrl = await saveImageToGridFS(telegramFileUrl, loraId, tool);
+
+//             // Set the image URL in the appropriate slot
+//             workspace[userId][loraId].images[tool] = fileUrl;
+
+//             // Move to the next available slot
+//             workspace[userId][loraId].tool = workspace[userId][loraId].images.findIndex((image, index) => image === '' && index > tool);
+//             if (tool === -1) {
+//                 tool = 20; // Set tool to 20 if no slots are available
+//             }
+//         }
+
+//         // Save workspace
+//         const isSaved = await saveWorkspace(workspace[userId][loraId]);
+
+//         if (isSaved) {
+//             console.log(`LoRA ${loraId} successfully saved by instance ${instanceId}`);
+//             setUserState(message, STATES.IDLE);
+//             react(message, '👍');
+//             //const { text, reply_markup } = await buildTrainingMenu(loraId);
+//             //sendMessage(message, text, { reply_markup });
+//         } else {
+//             sendMessage(message, 'Ah... wait. Something messed up. Try again.');
+//         }
+
+//     } catch (error) {
+//         console.error('Error adding images to LoRA:', error);
+//         sendMessage(message, 'Something went wrong while processing your request. Please try again.');
+//     } finally {
+//         // Release the lock if the current instance owns it
+//         if (workspace[userId][loraId].locked === instanceId) {
+//             console.log(`Releasing lock for LoRA ${loraId} by instance ${instanceId}`);
+//             workspace[userId][loraId].locked = false;
+//         } else {
+//             console.log(`Instance ${instanceId} attempted to release lock for LoRA ${loraId}, but did not own the lock.`);
+//         }
+//     }
+// }
+
+function releaseWorkspaceLock(userId, loraId, instanceId) {
+    if (workspace[userId][loraId].locked === instanceId) {
+        workspace[userId][loraId].locked = false;
+    } else {
+        console.warn(`Instance ${instanceId} attempted to release lock for LoRA ${loraId}, but did not own the lock.`);
+    }
+}
+async function saveAndReact(userId, loraId, messages, instanceId) {
+    console.log('[saveAndReact] Messages:', JSON.stringify(messages, null, 2)); // Debugging messages structure
+    const isSaved = await saveWorkspace(workspace[userId][loraId]);
+    if (isSaved) {
+        console.log(`LoRA ${loraId} successfully saved by instance ${instanceId}`);
+        for (const message in messages) {
+            await react(messages[message], '👍');
+        }
+    } else {
+        sendMessage(messages[0], 'Ah... wait. Something messed up. Try again.');
+    }
+    // Delete and re-send the prompting message
+    console.log('old working message id',workspace[userId][loraId].workingMessage)
+    const bot = getBotInstance();
+    try{
+        await bot.deleteMessage(messages[messages.length-1].chat.id, workspace[userId][loraId].workingMessage);
+    } catch (err) {
+        console.log('unable to delete the message')
+    }
+    console.log('we delete old working message no?')
+    const { text, reply_markup } = await buildTrainingMenu(userId,loraId);
+    const newWorkingMessage = await sendMessage(messages[messages.length-1], text, { reply_markup });
+    workspace[userId][loraId].workingMessage = newWorkingMessage.message_id
+    console.log('new working message id',workspace[userId][loraId].workingMessage)
+    // Keep user in ADDLORAIMAGE state
+    setUserState(messages[messages.length-1], STATES.ADDLORAIMAGE);
+}
+async function assignToSlot(userId, loraId, fileData,tool) {
+    if (tool === undefined || tool < 0 || tool >= 20) {
+        tool = workspace[userId][loraId].images.findIndex(image => image === '');
+        if (tool === -1) {
+            console.error(`No available slot found for LoRA ${loraId}`);
+            //sendMessage(message, "No available slots to add more images.");
+            return false;
+        }
     }
 
-    // Ensure `workspace[userId][loraId]` is properly initialized
-    if (!workspace[userId][loraId]) {
-        console.error(`LoRA ${loraId} not found in workspace.`);
-        sendMessage(message, "Something went wrong. No LoRA found in workspace. Please try again.");
-        return;
+    const telegramFileUrl = await getPhotoUrl(fileData.file);
+    if (!telegramFileUrl) {
+        console.error(`Failed to get URL for file in slot ${tool}`);
+        return false;
     }
 
-    // Ensure `images` array is initialized
-    if (!workspace[userId][loraId].images) {
-        workspace[userId][loraId].images = new Array(20).fill('');
-    }
+    const fileUrl = await saveImageToGridFS(telegramFileUrl, loraId, tool);
+    workspace[userId][loraId].images[tool] = fileUrl;
 
-    const instanceId = Date.now() + Math.random(); // Unique identifier for this function instance
+    return true;
+}
+async function processFiles(messages) {
+    const files = [];
+    for (const message of messages){
+        if (message.photo) {
+            const largestPhoto = message.photo[message.photo.length - 1];
+            files.push({ type: 'photo', file: largestPhoto });
+        } else if (message.document) {
+            files.push({ type: 'document', file: message.document });
+        }
+    }
+    return files;
+}
+async function lockWorkspace(userId, loraId, instanceId) {
     const MAX_RETRIES = 5;
     let retries = 0;
 
-    console.log(`Attempting to lock workspace for LoRA ${loraId} by instance ${instanceId}`);
-
-    // Retry mechanism if the workspace is locked
     while (workspace[userId][loraId].locked && retries < MAX_RETRIES) {
-        console.log(`Workspace for LoRA ${loraId} is locked, retrying (${retries + 1}/${MAX_RETRIES})...`);
-        const waitTime = Math.pow(2, retries) * 1000; // Exponential backoff: 2^retries seconds (converted to ms)
-        await new Promise(resolve => setTimeout(resolve, waitTime)); // Wait with exponential backoff
+        const waitTime = Math.pow(2, retries) * 1000;
+        await new Promise(resolve => setTimeout(resolve, waitTime));
         retries++;
     }
 
-    // If retries exceed MAX_RETRIES, inform the user and return
     if (workspace[userId][loraId].locked) {
         console.error(`Workspace for LoRA ${loraId} is still locked after ${MAX_RETRIES} retries.`);
-        sendMessage(message, "The server is currently processing other requests. Please try again in a moment.");
+        //sendMessage(message, "The server is currently processing other requests. Please try again in a moment.");
+        return false;
+    }
+
+    workspace[userId][loraId].locked = instanceId;
+    return true;
+}
+function initializeWorkspace(userId, loraId) {
+    if (!workspace[userId] || !workspace[userId][loraId]) {
+        console.error(`LoRA ${loraId} not found in workspace.`);
+        //sendMessage(message, "Something went wrong. No LoRA found in workspace. Please try again.");
+        return false;
+    }
+    if (!workspace[userId][loraId].images) {
+        workspace[userId][loraId].images = new Array(20).fill('');
+    }
+    return true;
+}
+const mediaGroups = {};
+async function addLoraSlotImage(message) {
+    const userId = message.from.id;
+    console.log(`[addLoraSlotImage] Called for user ${userId}`);
+    //console.log('addloraslotimagemessage',message)
+    const mediaGroupId = message.media_group_id;
+    if(mediaGroupId) {
+        console.log(`[addLoraSlotImage] Detected media_group_id: ${mediaGroupId}`);
+
+        // Initialize media group if not present
+        if (!mediaGroups[mediaGroupId]) {
+            mediaGroups[mediaGroupId] = [];
+        }
+
+        // Add message to the media group
+        mediaGroups[mediaGroupId].push(message);
+
+        // Wait briefly to ensure all parts of the group are received
+        setTimeout(() => {
+            const messages = mediaGroups[mediaGroupId];
+            if (messages) {
+                console.log(`[addLoraSlotImage] Processing media group ${mediaGroupId}`);
+                processMediaGroup(messages, userId);
+                delete mediaGroups[mediaGroupId]; // Clean up after processing
+            }
+        }, 1000); // Adjust timeout as needed
         return;
     }
 
-    // Lock to prevent concurrent modifications
-    console.log(`Locking workspace for LoRA ${loraId} by instance ${instanceId}`);
-    workspace[userId][loraId].locked = instanceId;
+    // Single message (no media_group_id) - Process immediately
+    console.log(`[addLoraSlotImage] Single message received. Processing directly.`);
+    await processSingleMessage(message, userId);
+}
+
+// Function to process a media group
+async function processMediaGroup(messages, userId) {
+    console.log(`[processMediaGroup] Processing messages for user ${userId}:`, messages);
+
+    
+    // Initialize workspace
+    console.log(`[addLoraSlotImage] Attempting to find and initialize workspace for user ${userId}`);
+    const loraId = findUserBench(userId);
+    if (!loraId) {
+        console.error(`[addLoraSlotImage] No LoRA found for user ${userId}`);
+        //sendMessage(message, "Something went wrong. No LoRA data found. Please try again.");
+        return;
+    }
+
+    const workspaceInitialized = initializeWorkspace(userId, loraId);
+    console.log(`[addLoraSlotImage] Workspace initialized: ${workspaceInitialized}`);
+    if (!workspaceInitialized) return;
+
+    // Lock workspace
+    const instanceId = Date.now() + Math.random();
+    console.log(`[addLoraSlotImage] Attempting to lock workspace for LoRA ${loraId} with instance ID ${instanceId}`);
+    const lockAcquired = await lockWorkspace(userId, loraId, instanceId);
+    console.log(`[addLoraSlotImage] Lock acquired: ${lockAcquired}`);
+    if (!lockAcquired) return;
+
 
     try {
-        let files = [];
+        // Process attached files (photos or documents)
+        console.log(`[addLoraSlotImage] Processing files for user ${userId} and LoRA ${loraId}`);
+        const files = await processFiles(messages);
+        console.log(`[addLoraSlotImage] Files processed: ${JSON.stringify(files)}`);
 
-        // If the message contains multiple photos, use only the largest version
-        if (message.photo) {
-            const largestPhoto = message.photo[message.photo.length - 1]; // Use the highest quality version
-            files.push({
-                type: 'photo',
-                file: largestPhoto,
-            });
-        } else if (message.document) {
-            files.push({
-                type: 'document',
-                file: message.document,
-            });
+        if (!files.length) {
+            console.warn(`[addLoraSlotImage] No valid files found for user ${userId}`);
+            sendMessage(messages[0], "No valid files found. Please try again.");
+            return;
         }
-
-        let tool = findTool(loraId);
-        if (tool === undefined || tool < 0 || tool >= 20) {
-            tool = workspace[userId][loraId].images.findIndex(image => image === '');
-            if (tool === -1) {
-                console.error(`No available slot found for LoRA ${loraId}`);
-                sendMessage(message, "No available slots to add more images. Please remove some images or try again later.");
-                return;
-            }
-        }
-
+        let tool = findTool(userId, loraId);
+        let it = 0
+        // Assign files to slots
         for (const fileData of files) {
-            if (tool >= 20) {
-                console.error(`All slots are filled for LoRA ${loraId}`);
-                sendMessage(message, "No available slots to add more images.");
-                break;
-            }
-
-            console.log(`Calling saveImageToGridFS for loraId: ${loraId}, slot: ${tool}`);
-            const telegramFileUrl = await getPhotoUrl(fileData.file);
-            if (!telegramFileUrl) {
-                console.error(`Failed to get URL for file in slot ${tool}`);
-                continue;
-            }
-            const fileUrl = await saveImageToGridFS(telegramFileUrl, loraId, tool);
-
-            // Set the image URL in the appropriate slot
-            workspace[userId][loraId].images[tool] = fileUrl;
-
-            // Move to the next available slot
-            workspace[userId][loraId].tool = workspace[userId][loraId].images.findIndex((image, index) => image === '' && index > tool);
-            if (tool === -1) {
-                tool = 20; // Set tool to 20 if no slots are available
-            }
+            tool += it
+            console.log(`[addLoraSlotImage] Attempting to assign file ${fileData.type} to a slot for LoRA ${loraId}`);
+            const slotAssigned = await assignToSlot(userId, loraId, fileData);
+            console.log(`[addLoraSlotImage] File assigned to slot: ${slotAssigned}`);
+            if (!slotAssigned) break;
+            it++
         }
 
-        // Save workspace
-        const isSaved = await saveWorkspace(workspace[userId][loraId]);
-
-        if (isSaved) {
-            console.log(`LoRA ${loraId} successfully saved by instance ${instanceId}`);
-            setUserState(message, STATES.IDLE);
-            react(message, '👍');
-            //const { text, reply_markup } = await buildTrainingMenu(loraId);
-            //sendMessage(message, text, { reply_markup });
-        } else {
-            sendMessage(message, 'Ah... wait. Something messed up. Try again.');
-        }
-
+        // Save workspace and update the user interface
+        console.log(`[addLoraSlotImage] Attempting to save workspace for LoRA ${loraId}`);
+        await saveAndReact(userId, loraId, messages, instanceId);
     } catch (error) {
-        console.error('Error adding images to LoRA:', error);
-        sendMessage(message, 'Something went wrong while processing your request. Please try again.');
+        console.error(`[addLoraSlotImage] Error occurred: ${error}`);
+        console.log(messages[messages.length-1])
+        sendMessage(messages[messages.length-1], 'Something went wrong while processing your request. Please try again.');
     } finally {
-        // Release the lock if the current instance owns it
-        if (workspace[userId][loraId].locked === instanceId) {
-            console.log(`Releasing lock for LoRA ${loraId} by instance ${instanceId}`);
-            workspace[userId][loraId].locked = false;
-        } else {
-            console.log(`Instance ${instanceId} attempted to release lock for LoRA ${loraId}, but did not own the lock.`);
-        }
+        // Release lock
+        console.log(`[addLoraSlotImage] Releasing lock for LoRA ${loraId} with instance ID ${instanceId}`);
+        releaseWorkspaceLock(userId, loraId, instanceId);
     }
+        
 }
 
 
@@ -663,7 +866,16 @@ async function submitTraining(message, user, loraId) {
     }
     const userDat = lobby[user]
     if(userDat.qoints < loraPrice){
-        await sendMessage(message,`Submitting a training to make a lora costs 86,400 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,{reply_markup: {inlineKeyboard: [[{text: 'Charge⚡️', url: 'https://miladystation2.net/charge'}]]}})
+        const options = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
+                    ]
+                ]
+            }
+        };
+        await sendMessage(message,`Submitting a training to make a lora costs 86,400 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
         return
     } else {
         userDat.qoints -= loraPrice;
@@ -742,29 +954,30 @@ function focusWorkspace(loraId, userId) {
         delete workspace[userId]; // Clean up empty user workspace
     }
 }
-
-
 function findUserBench(userId) {
-    console.log(userId)
-    for (const key in workspace) {
-        if (workspace.hasOwnProperty(key)) {
-            const trainingObject = workspace[key];
-            console.log(trainingObject)
-            if (trainingObject.userId === userId) {
-                return key; // Return the loraId key value
-            }
+    if (workspace[userId]) {
+        const keys = Object.keys(workspace[userId]);
+        if (keys.length > 0) {
+            return keys[0]; // Return the first loraId under the userId
         }
     }
-    return null; // If no matching object is found
+    console.warn(`No LoRAs found for user ${userId}`);
+    return null;
 }
 
-function findTool(userId,loraId) {
-    const trainingObject = workspace[userId][loraId];
-    if (trainingObject) {
-        return trainingObject.tool; // Return the value from the 'tool' key
+function findTool(userId, loraId) {
+    if (workspace[userId] && workspace[userId][loraId]) {
+        const trainingObject = workspace[userId][loraId];
+        if (trainingObject.tool !== undefined) {
+            return trainingObject.tool;
+        }
+        console.warn(`No 'tool' key found for LoRA ${loraId} under user ${userId}`);
+    } else {
+        console.warn(`Training object for LoRA ${loraId} not found under user ${userId}`);
     }
-    return null; // If no matching object is found
+    return null;
 }
+
 
 module.exports = {
     handleTrainingMenu,

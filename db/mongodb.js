@@ -7,6 +7,7 @@ const { lobby, workspace } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
 //const { DEV_DMS } = require("../utils/utils.js");
 const { getBalance } = require('../utils/users/checkBalance.js')
+const { updateLoraStatus } = require('./training.js')
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
@@ -307,8 +308,10 @@ async function loadLora(hashId) {
     }
 }
 
+
+
 // Function to pull a file from GridFS and save it to the /tmp folder
-async function bucketPull(loraId, slotId) {
+async function bucketPull(userId, loraId, slotId) {
     const job = async () => {
         const client = await getCachedClient();
         try {
@@ -317,7 +320,8 @@ async function bucketPull(loraId, slotId) {
 
             // Define the local file path in the /tmp directory
             const tempFilePath = path.join('/tmp', `slot_image_${loraId}_${slotId}.jpg`);
-            const fileId = workspace[loraId].images[slotId];
+            console.log(workspace)
+            const fileId = workspace[userId][loraId].images[slotId];
 
             if (!fileId) {
                 console.error('No file found in this slot');
@@ -1677,7 +1681,7 @@ module.exports = {
     updateGroupPoints,
     incrementLoraUseCounter,
     saveGen,
-    createTraining, loadLora, 
+    createTraining, loadLora, updateLoraStatus,
     saveWorkspace, deleteWorkspace,
     saveImageToGridFS, bucketPull, deleteImageFromWorkspace,
 };
