@@ -90,9 +90,9 @@ async function newCollection(message) {
     })
 }
 
-stateHandlers[STATES.COLLECTIONNAME] = (message) => safeExecute(message,createCollection)
+stateHandlers[STATES.COLLECTIONNAME] = (message) => safeExecute(message,createConfig)
 
-async function createCollection(message) {
+async function createConfig(message) {
     const name = message.text;
     const userId = message.from.id
     const hashId = Math.floor(10000000000000 * Math.random())
