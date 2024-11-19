@@ -356,7 +356,7 @@ async function clearLoraImagesBucket() {
   }
 }
 // Run the main function
-main();
+//main();
 //clearLoraImagesBucket();
 
 module.exports = {

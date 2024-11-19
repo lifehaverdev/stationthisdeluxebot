@@ -9,6 +9,7 @@ const lobby = {};
 const stateHandlers = {};//from imessage
 const actionMap = {}; const prefixHandlers = {};
 const workspace = {};
+const studio = {};
 let taskQueue = []
 let waiting = []
 let successors = []
@@ -210,7 +211,8 @@ module.exports = {
     getNextPeriodTime,
     getBurned,
     getGroup, getGroupById,
-    lobby, workspace, 
+    lobby, 
+    workspace, studio,
     stateHandlers,
     actionMap, prefixHandlers,
     rooms, flows, burns, loraTriggers,

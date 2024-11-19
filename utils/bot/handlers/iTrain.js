@@ -10,7 +10,7 @@ const {
 const { 
     createTraining, 
     loadLora, 
-    writeUserData, writeUserDataPoint,
+    writeUserDataPoint,
     deleteWorkspace,
     saveWorkspace,
     saveImageToGridFS, bucketPull,
@@ -120,6 +120,9 @@ async function createLora(message) {
         status: 'incomplete'
     }
     userContext.loras.push(thisLora.loraId)
+    if (!workspace.hasOwnProperty(userId)) {
+        workspace[userId] = {};
+    }
     workspace[userId][thisLora.loraId] = thisLora
     try {
         const success = await createTraining(thisLora)
@@ -801,7 +804,6 @@ async function getOrLoadLora(userId, loraId) {
     workspace[userId][loraId] = loraData;
     return loraData;
 }
-
 
 function focusWorkspace(loraId, userId) {
     const userWorkspace = workspace[userId];
