@@ -309,6 +309,38 @@ async function loadLora(hashId) {
 }
 
 
+async function loadCollection(hashId) {
+    const job = async () => {
+        const collectionName = 'gallery';
+        try {
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            // Find the document with the provided hashId, excluding the _id field
+            const collectionData = await collection.findOne({ collectionId: hashId }, { projection: { _id: 0 } });
+            if (collectionData) {
+                console.log('LoRA data loaded successfully');
+                return collectionData;
+            } else {
+                console.log('LoRA data not found');
+                return null;
+            }
+        } catch (error) {
+            console.error("Error loading LoRA data:", error);
+            return null;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[loadCollection] Failed to get user data:', error);
+        throw error;
+    }
+}
+
+
 
 // Function to pull a file from GridFS and save it to the /tmp folder
 async function bucketPull(userId, loraId, slotId) {
@@ -743,7 +775,7 @@ async function createCollection(collectionData) {
             const client = await getCachedClient();
             const collection = client.db(dbName).collection(collectionName);
             // Insert the new LoRA document
-            await collection.insertOne(loraData);
+            await collection.insertOne(collectionData);
             console.log('Collection data added successfully');
             return true;
         } catch (error) {
@@ -796,6 +828,40 @@ async function saveWorkspace(loraObject) {
     }
   }
 
+async function saveStudio(collectionObject) {
+    const job = async () => {
+        const collectionName = 'gallery';
+        try {
+        const client = await getCachedClient();
+        const collection = client.db(dbName).collection(collectionName);
+    
+        // Extract the loraId from the loraObject
+        const { collectionId, ...dataToSave } = collectionObject;
+    
+        // Update the corresponding document in the database
+        await collection.updateOne(
+            { collectionId: collectionId }, // Filter to find the specific document by loraId
+            { $set: { ...dataToSave } } // Update all key-value pairs in loraObject
+        );
+    
+        console.log('collection data saved successfully');
+        return true;
+        } catch (error) {
+        console.error("Error saving collection data:", error);
+        return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const userData = await dbQueue.enqueue(job);
+        return userData;  // Return the result to the caller
+    } catch (error) {
+        console.error('[saveStudio] Failed to get user data:', error);
+        throw error;
+    }
+  }
+
   async function deleteWorkspace(loraId) {
     const job = async () => {
         const collectionName = 'trains';
@@ -832,6 +898,47 @@ async function saveWorkspace(loraObject) {
                 console.log(`LoRA data with ID ${loraId} deleted successfully.`);
             } else {
                 console.warn(`LoRA data with ID ${loraId} was not found for deletion.`);
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Error deleting LoRA data:", error);
+            return false;
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const success = await dbQueue.enqueue(job);
+        return success;
+    } catch (error) {
+        console.error('[deleteWorkspace] Failed to enqueue job:', error);
+        throw error;
+    }
+}
+
+
+async function deleteStudio(collectionId) {
+    const job = async () => {
+        const collectionName = 'gallery';
+        try {
+            const client = await getCachedClient();
+            const db = client.db(dbName);
+            const collection = db.collection(collectionName);
+
+            // Find the LoRa document by collectionId
+            const loraData = await collection.findOne({ collectionId });
+            if (!loraData) {
+                console.log(`LoRA data with ID ${collectionId} not found. Nothing to delete.`);
+                return false;
+            }
+
+            // Delete the LoRa document
+            const deleteResult = await collection.deleteOne({ collectionId });
+            if (deleteResult.deletedCount > 0) {
+                console.log(`LoRA data with ID ${collectionId} deleted successfully.`);
+            } else {
+                console.warn(`LoRA data with ID ${collectionId} was not found for deletion.`);
             }
 
             return true;
@@ -1683,5 +1790,7 @@ module.exports = {
     saveGen,
     createTraining, loadLora, updateLoraStatus,
     saveWorkspace, deleteWorkspace,
+    createCollection, loadCollection,
+    saveStudio, deleteStudio,
     saveImageToGridFS, bucketPull, deleteImageFromWorkspace,
 };
