@@ -117,7 +117,6 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     promptObj.advancedUser = userContext.advancedUser;
     promptObj.balance = userContext.balance;
     promptObj.userId = userContext.userId;
-    promptObj.dointsAdded = 100;
 
     // Loop through workflow inputs and populate promptObj from userContext
     workflow.inputs.forEach((input) => {

@@ -12,9 +12,12 @@ function getMaxBalance(userObject) {
 async function addPoints(task) {
     ({ promptObj, message } = task);
     const userId = promptObj.userId;
-    if(!lobby[userId]){
-        await checkIn(message)
-        console.log('we didnt see user in add points in the lobby so here is boolean of whether userId is in lobby after we pull a checkin',lobby.hasOwnProperty(userId))
+    if (!lobby[userId]) {
+        await checkIn(message);
+        if (!lobby.hasOwnProperty(userId)) {
+            console.error(`User ID ${userId} not found in lobby after check-in, unable to subtract doints.`);
+            return; // Exit if user is still not present, avoiding further inconsistencies
+        }
     }
     let rate = 3; 
     const doublePointTypes = ['MS3.2']//,'FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG','LOSER','FLUXI2I']
@@ -53,6 +56,7 @@ async function addPoints(task) {
         
         //always remove the placeholder doints
         //console.log('made it to doints praise be')
+        console.log('PromptObj before subtracting doints:', promptObj);
         user.doints -= promptObj.dointsAdded;
     } else if (group){
         group.qoints -= pointsToAdd;

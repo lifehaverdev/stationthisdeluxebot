@@ -61,11 +61,11 @@ function buildAccountSettingsKeyboard(userId) {
                 callback_data: 'toggleAdvancedUser',
             },
         ],
-        // [
-        //     { text: 'Create 👩‍🎨🖼️', callback_data: 'collectionModeMenu' },
-        // ],
         [
-            { text: 'Train 🚂🦾', callback_data: 'trainingMenu' },
+            { text: 'Create 👩‍🎨🖼️🏭', callback_data: 'collectionModeMenu' },
+        ],
+        [
+            { text: 'Train 🚂🦾🧠', callback_data: 'trainingMenu' },
         ],
         [
             { text: 'nvm', callback_data: 'cancel' }

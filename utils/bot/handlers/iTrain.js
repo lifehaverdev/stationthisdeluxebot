@@ -609,7 +609,7 @@ async function addLoraSlotImage(message) {
 
     // Single message (no media_group_id) - Process immediately
     console.log(`[addLoraSlotImage] Single message received. Processing directly.`);
-    await processSingleMessage(message, userId);
+    await processMediaGroup([message], userId);
 }
 
 // Function to process a media group

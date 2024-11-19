@@ -202,6 +202,7 @@ function statusRouter(task, taskIndex, status) {
         case 'failed':
             task.status = status;
             waiting.splice(taskIndex, 1)
+            removeDoints(task);
             break;
         case 'timeout':
         case 'cancelled':
@@ -401,6 +402,15 @@ async function handleTaskCompletion(task) {
             task.status = 'thinking';
         }
         return 'incomplete'; 
+    }
+
+}
+
+function removeDoints(task) {
+    const userId = task.promptObj.userId;
+    if (lobby[userId]) {
+        lobby[userId].doints -= (task.promptObj.dointsAdded || 0);
+        console.log(`Removed doints for incomplete task for user: ${userId}`);
     }
 }
 
