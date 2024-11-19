@@ -56,8 +56,10 @@ async function addPoints(task) {
         
         //always remove the placeholder doints
         //console.log('made it to doints praise be')
-        console.log('PromptObj before subtracting doints:', promptObj);
-        user.doints -= promptObj.dointsAdded;
+        console.log('Attempting to subtract doints, current value:', user.doints);
+        user.doints = (Number(user.doints)) - (Number(promptObj.dointsAdded) || 100);
+        console.log('Doints after subtraction:', user.doints);
+
     } else if (group){
         group.qoints -= pointsToAdd;
         updateGroupPoints(group,pointsToAdd)
