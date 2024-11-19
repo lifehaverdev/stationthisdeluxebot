@@ -149,77 +149,86 @@ async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
     // Return null if all retries failed
     return null;
 }
-
 // Function to handle command context and set bot commands dynamically
 async function setCommandContext(bot, msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    let context = 'default';
+    const group = getGroup(msg);
+    console.log(`Setting command context for userId: ${userId}, chatId: ${chatId}`);
 
-    // Layered checks to determine context
-    if (chatId < 0) { // Group or group chat
-        const group = getGroup(msg);
-        if (group && group.commands) {
-            context = 'group';
-        } else if (lobby[userId] && lobby[userId].verified) {
-            context = 'verified_user';
-        } else {
-            context = 'group_chat';
-        }
-    } else { // Private chat
-        if (lobby[userId] && lobby[userId].verified) {
-            context = 'verified_private_chat';
-        } else {
-            context = 'private_chat';
-        }
+    if (!lobby.hasOwnProperty(userId)) {
+        console.log(`User ${userId} is not in the lobby.`,msg);
+        return;
+    }
+
+    if (lobby[userId].stationed && lobby[userId].stationed[chatId]) {
+        console.log(`User ${userId} is already stationed for chatId: ${chatId}.`);
+        return;
     }
 
     let commands = [];
+    let scope = { type: 'default' };
 
-    // Set commands based on context
-    switch (context) {
-        case 'group':
-            group.commmands ? commands = group.commands : commands = politeCommandList
-            break;
-        case 'verified_user':
-        case 'verified_private_chat':
-            commands = fullCommandList
-            break;
-        case 'group_chat':
-            commands = politeCommandList
-            break;
-        case 'private_chat':
-            commands = introductoryCommandList
-            break;
+    // Layered checks to determine context
+    if (chatId < 0) { // Group or group chat
+        
+        //console.log(`Group detected for chatId: ${chatId}, group: ${group ? JSON.stringify(group) : 'none'}`);
+        if (group && group.commandList) {
+            commands = group.commandList;
+            scope = { type: 'chat', chat_id: chatId };
+            console.log(`Using group-specific commands for chatId: ${chatId}`);
+        } else if (lobby.hasOwnProperty(userId) && lobby[userId].verified) {
+            // User is verified, use their preferred commands
+            commands = lobby[userId].commandList;
+            scope = { type: 'chat_member', chat_id: chatId, user_id: userId };
+            console.log(`User ${userId} is verified, using personalized commands in group chatId: ${chatId}`);
+        } else {
+            // Default to a polite command list for group chats
+            commands = politeCommandList;
+            scope = { type: 'all_group_chats' };
+            console.log(`Using politeCommandList for group chatId: ${chatId}`);
+        }
+    } else { // Private chat
+        // Use user's customized command list or default introductory commands
+        commands = lobby[userId] && lobby[userId].commandList.length > 0 ? lobby[userId].commandList : introductoryCommandList;
+        scope = { type: 'chat', chat_id: chatId };
+        console.log(`Private chat detected for userId: ${userId}, using commands: ${JSON.stringify(commands)}`);
     }
 
     // Get existing commands and only set if different
-    const existingCommands = await bot.getMyCommands();
-    //console.log('existing commands',existingCommands)
-    const newCommandsJson = JSON.stringify(commands);
-    //console.log('new comands',newCommandsJson)
-    const existingCommandsJson = JSON.stringify(existingCommands);
     try {
+        const existingCommands = await bot.getMyCommands({ scope });
+        console.log(`Existing commands for scope ${JSON.stringify(scope)}: ${JSON.stringify(existingCommands)}`);
+        const newCommandsJson = JSON.stringify(commands);
+        console.log(`New commands to be set: ${newCommandsJson}`);
+        const existingCommandsJson = JSON.stringify(existingCommands);
+
         if (newCommandsJson !== existingCommandsJson) {
-            //console.log('new commands')
+            console.log(`Commands are different, updating commands for scope: ${JSON.stringify(scope)}`);
             // Set commands dynamically
-            let scope = { type: 'default' };
-            if (context === 'group' || context === 'group_chat') {
-                console.log('what is this anyways')
-                scope = { type: 'chat_member', chat_id: chatId, user_id: userId };
-            } else if (context === 'private_chat') {
-                console.log('what is this anyways p2s')
-                scope = { type: 'all_private_chats' };
-            } 
-    
             await bot.setMyCommands(commands, { scope });
+            console.log(`Commands set successfully for userId: ${userId}`);
+        } else {
+            console.log(`Commands are the same, no update needed for userId: ${userId}`);
         }
-    
-        // Set chat menu button for all cases except group_chat
-        if (context !== 'group_chat') {
+
+        // Set chat menu button for all cases except group-specific commands
+        if (chatId >= 0 || (group && group.commandButton)) {
             await bot.setChatMenuButton({ type: 'commands' });
+            console.log(`Chat menu button set for userId: ${userId}`);
         }
-    } catch(error) {
+
+        // Mark the user as stationed to avoid redundant updates
+        if (lobby[userId]) {
+            if (!lobby[userId].stationed) {
+                lobby[userId].stationed = {};
+            }
+            if (typeof chatId !== 'undefined') {
+                lobby[userId].stationed[chatId] = true;
+                console.log(`User ${userId} is now stationed for chatId: ${chatId}.`);
+            }
+        }
+    } catch (error) {
         console.error(`Error while setting commands or menu:`, {
             context: msg.text || '',
             message: error.message || '',
@@ -227,7 +236,6 @@ async function setCommandContext(bot, msg) {
             code: error.code || ''
         });
     }
-    
 }
 
 async function updateMessage(chatId, messageId, menu, text) {
@@ -241,7 +249,7 @@ async function updateMessage(chatId, messageId, menu, text) {
 
 // Specific send functions using the helper function
 async function sendMessage(msg, text, options = {}) {
-    //await setCommandContext(bot, msg)
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
 }
 
@@ -255,22 +263,22 @@ async function sendPrivateMessage(user, msg, text, options = {}) {
 }
 
 async function sendPhoto(msg, fileUrl, options = {}) {
-    //await setCommandContext(bot, msg)
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendPhoto.bind(bot), msg, fileUrl, options);
 }
 
 async function sendDocument(msg, fileUrl, options = {}) {
-    //await setCommandContext(bot, msg)
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
 }
 
 async function sendAnimation(msg, fileUrl, options = {}) {
-    //await setCommandContext(bot, msg)
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendAnimation.bind(bot), msg, fileUrl, options);
 }
 
 async function sendVideo(msg, fileUrl, options = {}) {
-    //await setCommandContext(bot, msg)
+    await setCommandContext(bot, msg)
     return await sendWithRetry(bot.sendVideo.bind(bot), msg, fileUrl, options);
 }
 
@@ -396,5 +404,6 @@ module.exports = {
     makeBaseData,
     editMessage, updateMessage,
     gated,
-    DEV_DMS
+    DEV_DMS,
+    fullCommandList,
 }

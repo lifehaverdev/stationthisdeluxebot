@@ -16,7 +16,7 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
-const { readStats, rareCandy, writeUserData, writeQoints } = require('../../../db/mongodb.js')
+const { readStats, rareCandy, writeUserData, writeQoints, writeUserDataPoint } = require('../../../db/mongodb.js')
 const { cheese } = require('../../../commands/fry')
 // const handlers = require('./handle');
 //const defaultUserData = require('../../users/defaultUserData');
@@ -428,84 +428,86 @@ const commandRegistry = {
             return message.chat.type !== 'private' && group && group.gateKeeping.style == 'select' && group.admins.includes(message.from.id);
         }
     },
-    // '/donate': {
-    //     handler: async (message) => {
-    //         const userId = message.from.id
-    //         const group = getGroup(message)
-    //         if(!group){
-    //             await react(message,"🤨")
-    //             return
-    //         }
-    //         const current = group.qoints
-    //         message.text = message.text.replace('/donate','')
-    //         message.text = message.text.replace(`@stationthisdeluxebot`,'')
-    //         const howMuch = parseInt(message.text)
-    //         const balance = lobby[userId].qoints
-    //         console.log('donate before',current,howMuch,balance)
-    //         if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
-    //             group.qoints += howMuch
-    //             lobby[userId].qoints -= howMuch
-    //             await writeQoints('users',{userId},lobby[userId].qoints)
-    //             await writeQoints('floorplan',{ 'chat': {'id': message.chat.id}},group.qoints)
-    //             await react(message,'✍️')
-    //             sendMessage(message,'thank you for your contribution.')
-    //         } else {
-    //             if(isNaN(howMuch)){
-    //                 sendMessage(message,'um pls send a number')
-    //             }
-    //             if(howMuch > balance){
-    //                 sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
-    //             }
-    //             if(howMuch <= 0) {
-    //                 sendMessage(message,'very funny.')
-    //             }
-    //         }
-    //     }
-    // },
-    // '/gift': {
-    //     handler: async (message) => {
-    //         const userId = message.from.id
-    //         const target = message.reply_to_message;
-    //         console.log('message from',message.from.id,'target from',target.from.id)
-    //         if(!target){
-    //             return
-    //         }
-    //         if(lobby.hasOwnProperty(target.from.id)){
-    //             console.log('good,have target and they in the lobby')
-    //         } else {
-    //             console.log('lets check this sucker in')
-    //             await checkIn(target)
-    //         }
-    //         console.log('do we have lobbby for target?',lobby[target.from.id].qoints,lobby[target.from.id].pendingQoints ? lobby[target.from.id].pendingQoints : 'NA')
-    //         if(!lobby[target.from.id].pendingQoints){
-    //             lobby[target.from.id].pendingQoints = 0;
-    //         }
-    //         const current = lobby[target.from.id].pendingQoints
-    //         message.text = message.text.replace('/gift','')
-    //         message.text = message.text.replace(`@stationthisdeluxebot`,'')
-    //         const howMuch = parseInt(message.text)
-    //         const balance = lobby[userId].qoints
-    //         console.log('gift before',current,howMuch,balance)
-    //         if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
-    //             lobby[target.from.id].pendingQoints += howMuch
-    //             lobby[userId].qoints -= howMuch
-    //             await writeQoints('users',{'userId': userId},lobby[userId].qoints)
-    //             await writeUserData(userId,lobby[target.from.id])
-    //             await react(message,'✍️')
-    //             sendMessage(message,`@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift`)
-    //         } else {
-    //             if(isNaN(howMuch)){
-    //                 sendMessage(message,'um pls send a number')
-    //             }
-    //             if(howMuch > balance){
-    //                 sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
-    //             }
-    //             if(howMuch <= 0) {
-    //                 sendMessage(message, 'very funny')
-    //             }
-    //         }
-    //     }
-    // },
+    '/donate': {
+        handler: async (message) => {
+            const userId = message.from.id
+            const group = getGroup(message)
+            if(!group){
+                await react(message,"🤨")
+                return
+            }
+            const current = group.qoints
+            message.text = message.text.replace('/donate','')
+            message.text = message.text.replace(`@stationthisdeluxebot`,'')
+            const howMuch = parseInt(message.text)
+            const balance = lobby[userId].qoints
+            console.log('donate before',current,howMuch,balance)
+            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+                group.qoints += howMuch
+                lobby[userId].qoints -= howMuch
+                await writeUserDataPoint(userId,'qoints',lobby[userId].qoints)
+                await writeQoints('floorplan',{ 'id': message.chat.id},group.qoints)
+                await react(message,'✍️')
+                sendMessage(message,'thank you for your contribution.')
+            } else {
+                if(isNaN(howMuch)){
+                    sendMessage(message,'um pls send a number')
+                }
+                if(howMuch > balance){
+                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+                }
+                if(howMuch <= 0) {
+                    sendMessage(message,'very funny.')
+                }
+            }
+        }
+    },
+    '/gift': {
+        handler: async (message) => {
+            const userId = message.from.id
+            const target = message.reply_to_message;
+            console.log('message from',message.from.id,'target from',target.from.id)
+            if(!target){
+                return
+            }
+            if(lobby.hasOwnProperty(target.from.id)){
+                console.log('good,have target and they in the lobby')
+            } else {
+                console.log('lets check this sucker in')
+                await checkIn(target)
+            }
+            console.log('do we have lobbby for target?',lobby[target.from.id].qoints,lobby[target.from.id].pendingQoints ? lobby[target.from.id].pendingQoints : 'NA')
+            if(!lobby[target.from.id].pendingQoints){
+                lobby[target.from.id].pendingQoints = 0;
+            }
+            const current = lobby[target.from.id].pendingQoints
+            message.text = message.text.replace('/gift','')
+            message.text = message.text.replace(`@stationthisdeluxebot`,'')
+            const howMuch = parseInt(message.text)
+            const balance = lobby[userId].qoints
+            console.log('gift before',current,howMuch,balance)
+            if(!isNaN(howMuch) && howMuch < balance && howMuch > 0){
+                lobby[target.from.id].pendingQoints += howMuch
+                lobby[userId].qoints -= howMuch
+                //await writeQoints('users',{'userId': userId},lobby[userId].qoints)
+                await writeUserDataPoint(userId, 'qoints', lobby[userId].qoints)
+                // await writeUserDataPoint/(userId,lobby[target.from.id])
+                await writeUserDataPoint(target.from.id, 'pendingQoints',lobby[target.from.id].pendingQoints)
+                await react(message,'✍️')
+                sendMessage(message,`@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift`)
+            } else {
+                if(isNaN(howMuch)){
+                    sendMessage(message,'um pls send a number')
+                }
+                if(howMuch > balance){
+                    sendMessage(message,`actually.. you only have ${lobby[userId].qoints} so you can't donate ${howMuch} obviously`)
+                }
+                if(howMuch <= 0) {
+                    sendMessage(message, 'very funny')
+                }
+            }
+        }
+    },
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
         handler: async (message) => {
@@ -754,9 +756,20 @@ module.exports = function(bot) {
     
         if ('text' in message || 'caption' in message) {
             const { command, args } = parseCommand(message);
-            //console.log('command and args',command,args)
+            console.log('command and args',command,args)
+            // Get group context if available
+            const group = getGroup(message);
+            let groupCommandList = group ? group.commandList : null;
+            let groupRestrictedCommands = group ? group.restrictedCommandList : null;
+            
             // Handle command if it exists
             if (command && commandRegistry.hasOwnProperty(command)) {
+                // Check if the command is restricted in the group
+                //console.log('group chek',groupRestrictedCommands,groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')),command.replace('/',''),group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')))
+                if (group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/',''))) {
+                    console.log(`Command ${command} is restricted in group ${group.title}`);
+                    return; // Skip restricted commands
+                }
                 // Gatekeeping check if needed
                 const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => command.startsWith(cmd));
                 if (requiresGatekeeping) {
@@ -768,15 +781,22 @@ module.exports = function(bot) {
                     await checkIn(message);
                 }
                     // Execute the handler with the message and parsed arguments
-                    //await safeExecute(message, () => commandRegistry[command](message, args));
                     await safeExecute(message, () => commandRegistry[command].handler(message, args));
-
                     handled = true;
                     return; // Stop after the first match to avoid multiple command executions
             }
-            
             // If no command has handled the message, use watch for further processing
             if (!handled) {
+                // If group commands are available, handle potential group custom commands
+                if (group && groupCommandList) {
+                    const customCommand = groupCommandList.find(cmd => cmd.command === command);
+                    if (customCommand) {
+                        console.log(`Handling custom group command ${command} for group ${group.chatId}`);
+                        await safeExecute(message, () => commandRegistry[customCommand.command].handler(message, args));
+                        handled = true;
+                        return;
+                    }
+                }
                 //console.log('imessage text watch')
                 watch(message);
             } else {
