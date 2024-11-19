@@ -308,24 +308,36 @@ async function loadLora(hashId) {
     }
 }
 
-
 async function loadCollection(hashId) {
     const job = async () => {
         const collectionName = 'gallery';
         try {
+            console.log('Attempting to load collection with hashId:', hashId);
             const client = await getCachedClient();
             const collection = client.db(dbName).collection(collectionName);
-            // Find the document with the provided hashId, excluding the _id field
-            const collectionData = await collection.findOne({ collectionId: hashId }, { projection: { _id: 0 } });
+
+            // Convert hashId to number to match the stored type in MongoDB
+            const parsedHashId = Number(hashId);
+            if (isNaN(parsedHashId)) {
+                console.error(`Invalid hashId passed for loading collection: ${hashId}`);
+                return null;
+            }
+
+            // Find the document with the provided hashId
+            const collectionData = await collection.findOne(
+                { collectionId: parsedHashId }, 
+                { projection: { _id: 0 } }
+            );
+
             if (collectionData) {
-                console.log('LoRA data loaded successfully');
+                console.log('Collection data loaded successfully:', collectionData);
                 return collectionData;
             } else {
-                console.log('LoRA data not found');
+                console.log('Collection data not found');
                 return null;
             }
         } catch (error) {
-            console.error("Error loading LoRA data:", error);
+            console.error("Error loading collection data:", error);
             return null;
         }
     };
@@ -927,9 +939,9 @@ async function deleteStudio(collectionId) {
             const collection = db.collection(collectionName);
 
             // Find the LoRa document by collectionId
-            const loraData = await collection.findOne({ collectionId });
-            if (!loraData) {
-                console.log(`LoRA data with ID ${collectionId} not found. Nothing to delete.`);
+            const collectionData = await collection.findOne({ collectionId });
+            if (!collectionData) {
+                console.log(`collection data with ID ${collectionId} not found. Nothing to delete.`);
                 return false;
             }
 

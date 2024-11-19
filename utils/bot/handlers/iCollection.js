@@ -1,7 +1,7 @@
 const { 
     lobby, 
     studio, 
-    STATES, getPhotoUrl, getBotInstance,
+    STATES, getBotInstance,
     stateHandlers,
     actionMap,
     prefixHandlers,
@@ -11,13 +11,11 @@ const {
     editMessage, 
     setUserState, 
     safeExecute,
-    sendPhoto,
+    updateMessage,
     react 
 } = require('../../utils')
 const { 
-    //createTraining, 
     createCollection,
-    //loadcollection, 
     loadCollection,
     writeUserDataPoint,
     deleteStudio,
@@ -35,11 +33,12 @@ async function getMyCollections(userId) {
     let collectionKeyboardOptions = [];
     //console.log(lobby[userId])
     if (lobby[userId]?.collections?.length > 0) {
-        //console.log('made it in')
+        
         for (const collectionIdHash of lobby[userId].collections) {
+            console.log('made it in',collectionIdHash)    
             try {
-                const collectionInfo = await loadCollection(collectionIdHash);
-                collectionKeyboardOptions.push([{ text: `${collectionInfo.name}`, callback_data: `el_${collectionIdHash}` }]);
+                const collectionInfo = await getOrLoadCollection(userId,collectionIdHash);
+                collectionKeyboardOptions.push([{ text: `${collectionInfo.name}`, callback_data: `ec_${collectionIdHash}` }]);
             } catch (error) {
                 console.error(`Failed to load collection with ID ${collectionIdHash}:`, error);
             }
@@ -50,6 +49,9 @@ async function getMyCollections(userId) {
     }
     return collectionKeyboardOptions;
 }
+
+prefixHandlers['ec_'] = (action, message, user) => handlePrefix(action, message, user, 'editCollection')
+actionMap['editCollection'] = handleCollectionMenu
 
 async function handleCollectionModeMenu(message, user) {
     const chatId = message.chat.id;
@@ -149,6 +151,12 @@ async function createConfig(message) {
     setUserState(message,STATES.IDLE)
 }
 
+async function handleCollectionMenu(message,user,collectionId) {
+    const { text, reply_markup } = await buildCollectionMenu(user,collectionId)
+    updateMessage(message.chat.id,message.message_id,{reply_markup},text)
+    setUserState(message,STATES.IDLE)
+}
+
 function calculateCompletionPercentage(collectionData) {
     const { config } = collectionData;
     const traitTypes = config.traitTypes;
@@ -170,9 +178,8 @@ function calculateCompletionPercentage(collectionData) {
 
 async function buildCollectionMenu(userId,collectionId) {
     try {
-
+        const COMPLETION_THRESHOLD = 100
         let collectionData = await getOrLoadCollection(userId,collectionId)
-        const COMPLETION_THRESHOLD = calculateCompletionPercentage(collectionData); // Threshold for enabling submission
         const { name, status, submitted } = collectionData;
 
         let menuText = `${name}\nSTATUS: ${status}`;
@@ -182,37 +189,22 @@ async function buildCollectionMenu(userId,collectionId) {
         }
 
         const inlineKeyboard = [];
-        
+
         inlineKeyboard.push([{ text: '↖︎', callback_data: 'collectionModeMenu' }]);
         inlineKeyboard.push([{ text: 'metadata', callback_data: 'collectionMetaData' }])
         inlineKeyboard.push([{ text: 'config', callback_data: 'collectionConfigMenu' }])
         inlineKeyboard.push([{ text: 'consult', callback_data: 'collectionConsult' }])
 
         if (!submitted) {
-            let completedCount = 0;
+            let completedCount = calculateCompletionPercentage(collectionData);
+            
+            inlineKeyboard.push([{ text: '🗑️', callback_data: `rmc_${collectionId}` }]);
 
-            for (let row = 0; row < ROWS; row++) {
-                const rowButtons = [];
-                for (let col = 0; col < COLS; col++) {
-                    const slotId = row * COLS + col;
-                    let buttonText = '📥';
-                    if (images[slotId]) {
-                        buttonText = captions[slotId] ? '✅' : '🖼️';
-                        completedCount++;
-                    }
-                    rowButtons.push({ text: buttonText, callback_data: `et_${collectionId}_${slotId}` });
-                }
-                inlineKeyboard.push(rowButtons);
-            }
-
-            const completionPercentage = (completedCount / images.length) * 100;
-            inlineKeyboard.push([{ text: '🗑️', callback_data: `rml_${collectionId}` }]);
-
-            if (completionPercentage >= COMPLETION_THRESHOLD) {
-                inlineKeyboard.push([{ text: 'Submit', callback_data: `st_${collectionId}` }]);
+            if (completedCount >= COMPLETION_THRESHOLD) {
+                inlineKeyboard.push([{ text: 'Submit', callback_data: `sc_${collectionId}` }]);
             }
         }
-        //unlockWorkspace(userId, collectionId)
+        
         return {
             text: menuText,
             reply_markup: {
@@ -220,14 +212,21 @@ async function buildCollectionMenu(userId,collectionId) {
             }
         };
     } catch (error) {
-        console.error("Error building training menu:", error);
+        console.error("Error building collection menu:", error);
         return null;
     }
 }
 
 //prefixHandlers['rmc_'] = 
+// prefixHandlers['rmc_'] = (action, message, user) => handlePrefix(action, message, user, 'removeCollection');
+actionMap['removeCollection'] = removeCollection
+prefixHandlers['rmc_']= (action, message, user) => {
+    const collectionId = parseInt(action.split('_')[1]);
+    actionMap['removeCollection'](message,user,collectionId)
+}
 
-async function removeCollection(user, collectionId) {
+async function removeCollection(message,user, collectionId) {
+    console.log('remove collection',user,collectionId)
     if (!lobby[user]) {
         console.log(`User ${user} not found in lobby, checking in.`);
         await checkIn({ from: { id: user }, chat: { id: user } });
@@ -240,18 +239,21 @@ async function removeCollection(user, collectionId) {
         console.log(`User ${user} has no collections to remove.`);
     }
 
-    // Remove the collection from the workspace
-    if (workspace[user][collectionId]) {
-        delete workspace[user][collectionId];
-        console.log(`Workspace entry for collection ${collectionId} removed.`);
+    // Remove the collection from the studio
+    if (studio.hasOwnProperty(user) && studio[user].hasOwnProperty(collectionId)) {
+        delete studio[user][collectionId];
+        console.log(`studio entry for collection ${collectionId} removed.`);
     }
 
     // Delete the collection data from the database and associated files
     await deleteStudio(collectionId);
+    await writeUserDataPoint(user,'collections',lobby[user].collections)
+    await handleCollectionModeMenu(message,user)
 }
 
 
 async function getOrLoadCollection(userId, collectionId) {
+    console.log('userId',userId,'collectionId',collectionId)
     if (studio[userId]?.[collectionId]) {
         console.log(`Using cached collection data for user ${userId}, collection ${collectionId}`);
         return studio[userId][collectionId];
@@ -273,3 +275,10 @@ async function getOrLoadCollection(userId, collectionId) {
     studio[userId][collectionId] = collectionData;
     return collectionData;
 }
+
+
+function handlePrefix(action, message, user, actionKey) {
+    const collectionId = parseInt(action.split('_')[1]);
+    actionMap[actionKey](message, user, collectionId);
+}
+

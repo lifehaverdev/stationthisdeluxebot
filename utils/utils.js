@@ -230,6 +230,14 @@ async function setCommandContext(bot, msg) {
     
 }
 
+async function updateMessage(chatId, messageId, menu, text) {
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: chatId,
+        message_id: messageId,
+        text: text
+    });
+}
 
 // Specific send functions using the helper function
 async function sendMessage(msg, text, options = {}) {
@@ -386,7 +394,7 @@ module.exports = {
     react,
     compactSerialize,
     makeBaseData,
-    editMessage,
+    editMessage, updateMessage,
     gated,
     DEV_DMS
 }

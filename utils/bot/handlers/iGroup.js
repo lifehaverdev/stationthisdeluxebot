@@ -3,6 +3,7 @@ const {
     sendPrivateMessage,
     editMessage,
     safeExecute,
+    updateMessage,
 } = require('../../utils');
 const { 
     stateHandlers,
@@ -62,14 +63,6 @@ const defaultGroupSchema = {
     settings: { ...defaultUserData }
 };
 
-async function updateMessage(chatId, messageId, menu, text) {
-    await editMessage({
-        reply_markup: menu.reply_markup,
-        chat_id: chatId,
-        message_id: messageId,
-        text: text
-    });
-}
 
 function generateInlineKeyboard(buttons) {
     return {
