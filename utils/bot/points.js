@@ -16,57 +16,59 @@ async function addPoints(task) {
         await checkIn(message);
         if (!lobby.hasOwnProperty(userId)) {
             console.error(`User ID ${userId} not found in lobby after check-in, unable to subtract doints.`);
-            return; // Exit if user is still not present, avoiding further inconsistencies
+            return;
         }
     }
-    let rate = 3; 
-    const doublePointTypes = ['MS3.2']//,'FLUX','MILADY','RADBRO','CHUD','DEGOD','MOG','LOSER','FLUXI2I']
+
+    let rate = 3;
+    const doublePointTypes = ['MS3.2']; // You can add more types here if needed
     if (doublePointTypes.includes(promptObj.type)) {
-        task.promptObj.rate = 6;
+        rate = 6;
     }
-    const pointsToAdd = ((task.runningStop-task.runningStart) / 1000) * rate;
+    
+    const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     const user = lobby[userId];
     const group = getGroup(message);
-    const max = getMaxBalance(user)
-    const credit = user.points + user.doints
+    const max = getMaxBalance(user);
+    const credit = user.points + user.doints;
 
-    if((user && !group) || (user.verified && group && credit < max)){        
-        
-        //somehow need to subtract from qoints however much is over max
-         //IF credit already == max, qoints are subtracted
-         //whateer qoints are subtracted , the same amount are added to boints
-        if(credit >= max){
-            //console.log('doing qoint work thankfully')
-            user.qoints -= pointsToAdd;
-            user.boints += pointsToAdd;
-        //IF pointsToAdd exceeds the difference remaining between max and credit, the points are added until credit == max, then the rest are subtracted from qoints if they are there
-        } else if(pointsToAdd > max - credit && user.qoints > 0){
-            //console.log('we gon add a little to qoint a little to point')
-            user.points += max - credit;
-            pointsToAdd -= max - credit;
-            user.qoints -= pointsToAdd;
-            user.boints += pointsToAdd;
-        //IF pointsToAdd + credit doesnt exceed max, just add points
-        } else if (credit < max) {
-            //console.log('classic points addition')
-            user.points += pointsToAdd;
-        } else {
-            user.points += pointsToAdd;
-        }
-        
-        //always remove the placeholder doints
-        //console.log('made it to doints praise be')
-        console.log('Attempting to subtract doints, current value:', user.doints);
-        user.doints = (Number(user.doints)) - (Number(promptObj.dointsAdded) || 100);
-        console.log('Doints after subtraction:', user.doints);
-
-    } else if (group){
+    // Handling based on group point accounting strategy
+    if (group && group.gateKeeping.pointAccounting === 'house') {
+        // House pays for all point addition/subtraction
+        console.log(`Group ${group.chatId} point accounting is set to 'house'. Deducting from group.`);
         group.qoints -= pointsToAdd;
-        updateGroupPoints(group,pointsToAdd)
+        updateGroupPoints(group, pointsToAdd);
     } else {
-        console.log('no user id in lobby for points addition after task completion')
+        // User pays first until reaching max, then group covers remaining
+        if (credit < max) {
+            // User has room to add points up to their max
+            const pointsToUser = Math.min(pointsToAdd, max - credit);
+            user.points += pointsToUser;
+
+            // If points exceed the user's max, the rest are charged to the group
+            if (pointsToAdd > pointsToUser) {
+                const pointsToGroup = pointsToAdd - pointsToUser;
+                if (group && group.qoints > 0) {
+                    group.qoints -= pointsToGroup;
+                    updateGroupPoints(group, pointsToGroup);
+                }
+            }
+        } else {
+            // User is at max, so the group must cover the entire addition
+            if (group && group.qoints > 0) {
+                group.qoints -= pointsToAdd;
+                updateGroupPoints(group, pointsToAdd);
+            }
+        }
+    }
+
+    // Always remove placeholder doints
+    const beforeSub = user.doints;
+    user.doints = (Number(user.doints)) - (Number(promptObj.dointsAdded) || 100);
+    const afterSub = user.doints;
+    if (beforeSub - afterSub != promptObj.dointsAdded) {
+        console.log('its still broken arth');
     }
 }
-
 
 module.exports = { addPoints };

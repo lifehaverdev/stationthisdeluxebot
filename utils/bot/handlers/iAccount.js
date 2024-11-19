@@ -1,10 +1,17 @@
-const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime } = require('../bot'); 
+const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodTime ,
+    actionMap,
+    prefixHandlers
+} = require('../bot'); 
 const bot = getBotInstance()
 const { 
     writeUserData, writeQoints, writeNewUserData,
-    getUserDataByUserId, writeData,  getUsersByWallet 
+    getUserDataByUserId, writeData,  getUsersByWallet, 
+    writeUserDataPoint
 } = require('../../../db/mongodb')
-const { sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS } = require('../../utils')
+const { 
+    sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS ,
+    fullCommandList
+} = require('../../utils')
 const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut } = require('../../models/userKeyboards.js')
@@ -56,10 +63,7 @@ function buildAccountSettingsKeyboard(userId) {
            { text: '🔄', callback_data: 'refreshQoints' }
         ],
         [
-            {
-                text: `Advanced User: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
-                callback_data: 'toggleAdvancedUser',
-            },
+            {text: 'Settings ⚙️', callback_data: 'preferencesMenu'}
         ],
         [
             { text: 'Create 👩‍🎨🖼️🏭', callback_data: 'collectionModeMenu' },
@@ -73,7 +77,212 @@ function buildAccountSettingsKeyboard(userId) {
     ];
 }
 
+actionMap['preferencesMenu'] = accountPreferencesMenu
 
+async function accountPreferencesMenu(message, user) {
+    const userId = user;
+    const preferencesKeyboard = buildPreferencesKeyboard(userId);
+    const accountInfo = buildUserProfile(message, message.chat.id > 0);
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    //console.log('message: ',message)
+    await editMessage({
+        reply_markup: { 
+            inline_keyboard: preferencesKeyboard,
+        },
+        chat_id: chatId,
+        message_id: messageId,
+        text: accountInfo,
+        options: { parse_mode: 'HTML' }
+    })
+}
+
+function buildPreferencesKeyboard(userId) {
+    return [
+        [
+            {
+                text: 'Commands', callback_data: 'commandlist_1'
+            }
+        ],
+        [
+            {
+                text: `Emoji buttons: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
+                callback_data: 'toggleAdvancedUser',
+            },
+        ],
+    ]
+}
+actionMap['toggleAdvancedUser']= async (message, user) => {
+    if(!lobby[user].advancedUser){
+        lobby[user].advancedUser = true;
+    } else {
+        lobby[user].advancedUser = false;
+    }
+    accountPreferencesMenu(message, user);
+}
+
+prefixHandlers['commandlist_'] = (action,message,user) => {
+    const page = parseInt(action.split('_')[1]);
+    actionMap['commandMenu'](message, page, user);
+}
+actionMap['commandMenu'] = commandListMenu
+
+async function commandListMenu(message, page, user) {
+    const commandKeyboard = buildCommandListMenu(message, page, user);
+    const accountInfo = buildUserProfile(message, message.chat.id > 0);
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    await editMessage({
+        reply_markup: { 
+            inline_keyboard: commandKeyboard,
+        },
+        chat_id: chatId,
+        message_id: messageId,
+        text: accountInfo,
+        options: { parse_mode: 'HTML' }
+    })
+}
+
+// Function 1: buildCommandListMenu
+// This function will iterate over the user's command list and generate the menu UI
+function buildCommandListMenu(message, page = 1, user, pageSize = 5) {
+    // Combine user command list with commands not used from the fullCommandList
+    const userCommands = lobby[user].commandList;
+    const unusedCommands = fullCommandList.filter(cmd => !userCommands.some(userCmd => userCmd.command === cmd.command));
+    const combinedCommandList = [...userCommands, ...unusedCommands];
+
+    const totalPages = Math.ceil(combinedCommandList.length / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, combinedCommandList.length);
+    
+    // Create buttons for commands in the current page
+    let menuButtons = [];
+    for (let i = startIndex; i < endIndex; i++) {
+        const command = combinedCommandList[i];
+        const commandButtons = buildCommandButtons(user, command, i);
+        menuButtons.push(...commandButtons);
+    }
+    
+    // Add navigation buttons for pagination if needed
+    if (page > 1 && page < totalPages) {
+        menuButtons.push([
+            { text: '←', callback_data: `commandlist_${page - 1}` },
+            { text: '→', callback_data: `commandlist_${page + 1}` }
+        ]);
+    } else if (page == 1) {
+        menuButtons.push([{ text: '→', callback_data: `commandlist_${page + 1}` }]);
+    } else if (page == totalPages) {
+        menuButtons.push([{ text: '←', callback_data: `commandlist_${page - 1}` }])
+    }
+
+    menuButtons.push([{text: 'nvm', callback_data: 'cancel'},{text: '💾', callback_data: 'saveCommandList'}])
+    return menuButtons;
+}
+
+actionMap['saveCommandList'] = async (message, user) => {
+    if(!lobby.hasOwnProperty(user)){
+        return
+    }
+    if (!lobby[user].stationed || typeof lobby[user].stationed == 'boolean') {
+        lobby[user].stationed = {};
+    }
+    if (typeof chatId !== 'undefined') {
+        lobby[user].stationed[chatId] = true;
+        console.log(`User ${user} is now stationed for chatId: ${chatId}.`);
+    }
+    lobby[user].stationed[message.chat.id] = false
+    await writeUserDataPoint(user, 'commandList', lobby[user].commandList)
+    await returnToAccountMenu(message,user)
+}
+
+// Function 2: buildCommandButtons
+// This function generates buttons for each command, allowing users to enable/disable, move, or delete them
+function buildCommandButtons(user, command, index) {
+    let buttons = [];
+    
+    // Add the command label
+    buttons.push([{ text: command.command, callback_data: `noop` }]);
+    
+    // Add enable/disable and movement buttons in a separate row
+    const isEnabled = lobby[user].commandList.some(cmd => cmd.command === command.command);
+    let actionButtons = [];
+    if (isEnabled) {
+        buttons[0].push({ text: '🗑️', callback_data: `remove_command_${index}` });
+    } else {
+        buttons[0].push({ text: '➕', callback_data: `add_command_${index}` });
+    }
+    if (index > 0 && isEnabled) {
+        actionButtons.push({ text: '⬆️', callback_data: `move_up_${index}` });
+    }
+    if (index <= lobby[user].commandList.length - 1 && isEnabled) {
+        actionButtons.push({ text: '⬇️', callback_data: `move_down_${index}` });
+        actionButtons.push({ text: '⏫', callback_data: `move_top_${index}` });
+    }
+    buttons.push(actionButtons);
+    return buttons;
+}
+
+const handlePrefix = (action, message, user) => {
+    const index = parseInt(action.split('_')[2]);
+    const command = action.split('_').slice(0,2).join('_');
+    console.log('handle prefix command index',command,index)
+    actionMap['editCommandList'](message, user, index, command);
+} 
+
+prefixHandlers['move_up_'] = (action,message,user) => handlePrefix(action,message,user)
+prefixHandlers['add_command_']= (action,message,user) => handlePrefix(action,message,user)
+prefixHandlers['remove_command_']= (action,message,user) => handlePrefix(action,message,user)
+prefixHandlers['move_top_']= (action,message,user) => handlePrefix(action,message,user)
+prefixHandlers['mode_down_']= (action,message,user) => handlePrefix(action,message,user)
+
+actionMap['editCommandList'] = handleCommandListEdit
+// Function 3: handleCommandListEdit
+// This function handles editing the user's command list based on the given command
+function handleCommandListEdit(message, user, index, command) {
+    // Combine user command list with commands not used from the fullCommandList
+    const userCommands = lobby[user].commandList;
+    const unusedCommands = fullCommandList.filter(cmd => !userCommands.some(userCmd => userCmd.command === cmd.command));
+    const combinedCommandList = [...userCommands, ...unusedCommands];
+
+    switch (command) {
+        case 'move_down':
+            if (index < userCommands.length - 1) {
+                [userCommands[index], userCommands[index + 1]] = [userCommands[index + 1], userCommands[index]];
+            }
+            break;
+        case 'move_up':
+            if (index > 0) {
+                [userCommands[index], userCommands[index - 1]] = [userCommands[index - 1], userCommands[index]];
+            }
+            break;
+        case 'move_top':
+            if (index > 0) {
+                const [movedCommand] = userCommands.splice(index, 1);
+                userCommands.unshift(movedCommand);
+            }
+            break;
+        case 'remove_command':
+            if (index < userCommands.length) {
+                const [removedCommand] = userCommands.splice(index, 1);
+                unusedCommands.push(removedCommand);
+            }
+            break;
+        case 'add_command':
+            if (index >= userCommands.length) {
+                const addedCommand = combinedCommandList[index];
+                userCommands.push(addedCommand);
+            }
+            break;
+        default:
+            console.error('Unknown command:', command);
+    }
+
+    // Update the lobby with the modified command list
+    lobby[user].commandList = userCommands;
+
+    // Refresh the command list menu
+    commandListMenu(message, 1, user);
+}
 
 function buildUserProfile(message, dms) {
     message.from.is_bot ? message = message.reply_to_message : null 
@@ -487,7 +696,7 @@ async function handleRefreshQoints(message,user) {
     const userData = lobby[user];
     const lastCheck = userData.checkedQointsAt;
     if(lobby.hasOwnProperty([user]) && lastCheck && now - lastCheck < 1000 * 60) {
-        sendMessage(message,`hey just wait a minute okay. i can check again in ${60 - ((now - lastCheck) / 1000) } seconds`)
+        sendMessage(message,`hey just wait a minute okay. i can check again in ${Math.floor(60 - ((now - lastCheck) / 1000))} seconds`)
         return
     }
     if(!userData.hasOwnProperty('pendingQoints')){

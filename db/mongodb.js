@@ -1057,7 +1057,7 @@ async function updateGroupPoints(group, pointsToAdd) {
 
         try {
             const collection = client.db(dbName).collection('floorplan');
-            const filter = { owner: group.owner };
+            const filter = { id: group.id };
 
             // Retrieve the current points
             const existingGroup = await collection.findOne(filter);

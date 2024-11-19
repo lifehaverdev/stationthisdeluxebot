@@ -194,16 +194,7 @@ const handleSetWatermark = (message, selectedName, userId) => {
     actionMap['setBasePrompt']= handleSetBasePrompt
     actionMap['setCheckpoint']= handleSetCheckpoint
     actionMap['setWatermark']= handleSetWatermark
-    actionMap['toggleAdvancedUser']= async (message, user) => {
-        await bot.deleteMessage(message.chat.id, message.message_id)
-        if(!lobby[user].advancedUser){
-            lobby[user].advancedUser = true;
-        } else {
-            lobby[user].advancedUser = false;
-        }
-        message.from.id = user;
-        displayAccountSettingsMenu(message.reply_to_message);
-    }
+    
     //for accountsettings
     actionMap['toggleStyleTransfer']= async (message, user) => {
         await bot.deleteMessage(message.chat.id, message.message_id)

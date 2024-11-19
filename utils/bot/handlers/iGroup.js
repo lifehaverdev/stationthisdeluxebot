@@ -17,8 +17,6 @@ const { createRoom, writeData } = require('../../../db/mongodb.js')
 //const iMenu = require('./iMenu');
 const defaultUserData = require('../../users/defaultUserData.js');
 
-
-
 // Function to build a header for group settings messages
 function buildGroupSettingsHeader(groupChatId, title) {
     const group = getGroupById(groupChatId);
@@ -44,8 +42,9 @@ const defaultGroupSchema = {
     qoints: 0,
     burnedQoints: 0,
     allowCustomCommands: false,
+    commandList: [],
     customCommandMap: {},
-    restrictedCommands: [],
+    restrictedCommandList: [],
     basePrompt: "",
     requiredWords: [],
     selectedLoras: [],
@@ -229,12 +228,14 @@ async function handleGroupMenu(message, user, groupChatId, menuType) {
                 menu.reply_markup.inline_keyboard.push([{ text: 'refresh 🔄 admin', callback_data: `refreshAdmin_${groupChatId}`}])
             }
             menu.reply_markup.inline_keyboard.push([{ text: `set gate message 🛃`, callback_data: `gkmsg_${groupChatId}` }]);
+            menu.reply_markup.inline_keyboard.push([{ text: `set point accounting 🧾`, callback_data: `gkpa_${groupChatId}` }]);
             menu.reply_markup.inline_keyboard.push([{ text: `set ticker 📈`, callback_data: `gktick_${groupChatId}`}])
             break;
 
         case 'command':
+            menu.reply_markup.inline_keyboard.push([{ text: `☑️ command list 🗯️`, callback_data: `gcommandlist_1_${groupChatId}` }]);
             menu.reply_markup.inline_keyboard.push([{ text: `🆒 custom commands 🆗`, callback_data: `egcc_${groupChatId}` }]);
-            menu.reply_markup.inline_keyboard.push([{ text: `☑️ allowed commands 🗯️`, callback_data: `egac_${groupChatId}` }]);
+            
             break;
 
         case 'prompt':
@@ -334,6 +335,43 @@ async function groupGatekeepTypeSelect(message,user,groupChatId,type) {
         return 
     }
     group.gateKeeping.style = type;
+    //await groupGatekeepTypeMenu(message,user,groupChatId)
+    await handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
+}
+
+/*
+changing point accounting style
+*/
+async function groupPointAccountingTypeMenu(message,user,groupChatId) {
+    const group = getGroupById(groupChatId)
+    if(!group){
+        return
+    }
+    const chatId = message.chat.id
+    const messageId = message.message_id
+    const menu = buildEditGroupSubMenu(groupChatId,'gatekeep_')
+    //for this menu, we check the group gatekeeping type
+    const style = group.gateKeeping.pointAccounting
+    menu.reply_markup.inline_keyboard.push([{text: style == 'house' ? `on the house ✅`:`on the house`, callback_data: `sgkpa_house_${groupChatId}'}`}])
+    menu.reply_markup.inline_keyboard.push([{text: style == 'user' ? `user first ✅`:`user first`, callback_data: `sgkpa_user_${groupChatId}'}`}])
+    //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: chatId,
+        message_id: messageId,
+        text: `${group.gateKeeping.ticker ? `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}\nGatekeeping Menu` : `${group.title}\n$MS2 stationthisbot\nGatekeeping menu`}`
+    })
+    message.from.id = user;
+    setUserState(message,STATES.IDLE)
+}
+
+
+async function groupGatekeepPointAccountingSelect(message,user,groupChatId,type) {
+    const group = getGroupById(groupChatId)
+    if(!group){
+        return 
+    }
+    group.gateKeeping.pointAccounting = type;
     //await groupGatekeepTypeMenu(message,user,groupChatId)
     await handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
 }
@@ -691,6 +729,216 @@ async function mustHaveSelect(message,user,groupChatId,mustHave) {
 /*
 setting custom command mapping
 setting restricted commands
+*/
+
+// &&&&&&&&&&&&&&& //
+//GROUP COMMAND LIST
+/////////////////////
+
+prefixHandlers['gcommandlist_'] = (action,message,user) => {
+    const page = parseInt(action.split('_')[1]);
+    const groupChatId = parseInt(action.split('_')[2])
+    actionMap['gCommandMenu'](message, page, user, groupChatId);
+}
+actionMap['gCommandMenu'] = groupCommandListMenu
+
+async function groupCommandListMenu(message, page, user, groupChatId) {
+    const group = getGroupById(groupChatId)
+    if(!group){
+        console.log('we didnt see a group in groupCommandListMenu',rooms)
+        return
+    }
+    const commandKeyboard = buildGCommandListMenu(message, page, group);
+    //const groupInfo = buildUserProfile(message, message.chat.id > 0);
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    await editMessage({
+        reply_markup: { 
+            inline_keyboard: commandKeyboard,
+        },
+        chat_id: chatId,
+        message_id: messageId,
+        text: 'set group command list',
+        options: { parse_mode: 'HTML' }
+    })
+}
+
+// Function 1: buildCommandListMenu
+// This function will iterate over the user's command list and generate the menu UI
+function buildGCommandListMenu(message, page = 1, group, pageSize = 5) {
+    // Combine user command list with commands not used from the fullCommandList
+    const groupCommands = group.commandList;
+    const unusedCommands = fullCommandList.filter(cmd => !groupCommands.some(groupCmd => groupCmd.command === cmd.command));
+    const combinedCommandList = [...groupCommands, ...unusedCommands];
+
+    const totalPages = Math.ceil(combinedCommandList.length / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, combinedCommandList.length);
+    
+    // Create buttons for commands in the current page
+    let menuButtons = [];
+    for (let i = startIndex; i < endIndex; i++) {
+        const command = combinedCommandList[i];
+        const commandButtons = buildGCommandButtons(group, command, i);
+        menuButtons.push(...commandButtons);
+    }
+    
+    // Add navigation buttons for pagination if needed
+    if (page > 1 && page < totalPages) {
+        menuButtons.push([
+            { text: '←', callback_data: `gcommandlist_${page - 1}_${group.chat.id}` },
+            { text: '→', callback_data: `gcommandlist_${page + 1}_${group.chat.id}` }
+        ]);
+    } else if (page == 1) {
+        menuButtons.push([{ text: '→', callback_data: `gcommandlist_${page + 1}_${group.chat.id}` }]);
+    } else if (page == totalPages) {
+        menuButtons.push([{ text: '←', callback_data: `gcommandlist_${page - 1}_${group.chat.id}` }])
+    }
+
+    menuButtons.push([{text: 'nvm', callback_data: 'cancel'},{text: '💾', callback_data: `saveGCommandList_${group.chat.id}`}])
+    return menuButtons;
+}
+prefixHandlers['saveGCommandList_'] = (action, message, user) => {
+    const groupChatId = parseInt(action.split('_')[1]);
+    actionMap['saveGroupCommandList'](message,user,groupChatId)
+}
+
+actionMap['saveGroupCommandList'] = async (message, user, groupChatId) => {
+    const group = getGroupById(groupChatId)
+    if(!group){
+        return
+    }
+    //await writeUserDataPoint(user, 'commandList', lobby[user].commandList)
+    await saveGroupRQ(group)
+    await handleGroupMenu(message, message.from.id, group.chat.id,'command')
+}
+
+// Function 2: buildCommandButtons
+// This function generates buttons for each command, allowing users to enable/disable, move, or delete them
+function buildGCommandButtons(group, command, index) {
+    let buttons = [];
+    const groupChatId = group.chat.id
+    // Add the command label
+    buttons.push([{ text: command.command, callback_data: `noop` }]);
+    
+    // Add enable/disable and movement buttons in a separate row
+    const isEnabled = group.commandList.some(cmd => cmd.command.trim().toLowerCase() === command.command.trim().toLowerCase());
+    const isRestricted = group.restrictedCommandList.some(cmd => cmd.command.trim().toLowerCase() === command.command.trim().toLowerCase())
+    let actionButtons = [];
+    if (isEnabled) {
+        buttons[0].push({ text: '🗑️', callback_data: `gremove_command_${index}_${groupChatId}` });
+    } else {
+        buttons[0].push({ text: '➕', callback_data: `gadd_command_${index}_${groupChatId}` });
+    }
+    if (!isRestricted) {
+        buttons[0].push({ text: '🚷', callback_data: `grestrict_command_${index}_${groupChatId}` });
+    } else {
+        buttons[0].push({ text: '🆗', callback_data: `gauthorize_command_${index}_${groupChatId}` });
+    }
+    if (index > 0 && isEnabled) {
+        actionButtons.push({ text: '⬆️', callback_data: `gmove_up_${index}_${groupChatId}` });
+    }
+    if (index <= group.commandList.length - 1 && isEnabled) {
+        actionButtons.push({ text: '⬇️', callback_data: `gmove_down_${index}_${groupChatId}` });
+        actionButtons.push({ text: '⏫', callback_data: `gmove_top_${index}_${groupChatId}` });
+    }
+    buttons.push(actionButtons);
+    return buttons;
+}
+
+const handleGroupCommandPrefix = (action, message, user) => {
+    const index = parseInt(action.split('_')[2]);
+    const command = action.split('_').slice(0,2).join('_');
+    const groupChatId = parseInt(action.split('_')[3])
+    console.log('handle prefix command index',command,index)
+    actionMap['editGCommandList'](message, user, index, command, groupChatId);
+} 
+
+prefixHandlers['gmove_up_'] = (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['gadd_command_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['gremove_command_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['grestrict_command_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['gauthorize_command_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['gmove_top_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+prefixHandlers['gmode_down_']= (action,message,user) => handleGroupCommandPrefix(action,message,user)
+
+actionMap['editGCommandList'] = handleCommandListEdit
+// Function 3: handleCommandListEdit
+// This function handles editing the user's command list based on the given command
+function handleCommandListEdit(message, user, index, command, groupChatId) {
+    // Combine user command list with commands not used from the fullCommandList
+    const group = getGroupById(groupChatId)
+    if(!group){
+        return
+    }
+    const userCommands = group.commandList;
+    const unusedCommands = fullCommandList.filter(cmd => !userCommands.some(groupCmd => groupCmd.command === cmd.command));
+    const combinedCommandList = [...userCommands, ...unusedCommands];
+
+    switch (command) {
+        case 'gmove_down':
+            if (index < userCommands.length - 1) {
+                [userCommands[index], userCommands[index + 1]] = [userCommands[index + 1], userCommands[index]];
+            }
+            break;
+        case 'gmove_up':
+            if (index > 0) {
+                [userCommands[index], userCommands[index - 1]] = [userCommands[index - 1], userCommands[index]];
+            }
+            break;
+        case 'gmove_top':
+            if (index > 0) {
+                const [movedCommand] = userCommands.splice(index, 1);
+                userCommands.unshift(movedCommand);
+            }
+            break;
+        case 'gremove_command':
+            if (index < userCommands.length) {
+                const [removedCommand] = userCommands.splice(index, 1);
+                unusedCommands.push(removedCommand);
+            }
+            break;
+        case 'gadd_command':
+            if (index >= userCommands.length) {
+                const addedCommand = combinedCommandList[index];
+                userCommands.push(addedCommand);
+            }
+            break;
+        case 'grestrict_command':
+            console.log('we restrict here')
+            if (index < userCommands.length) {
+                const [removedCommand] = userCommands.splice(index, 1);
+                unusedCommands.push(removedCommand);
+            }
+            // Add to restrictedCommandList if it's not already present
+            const removedCommand = combinedCommandList[index];
+            if (!group.restrictedCommandList.some(cmd => cmd.command === removedCommand.command) && removedCommand.command != 'stationthis') {
+                group.restrictedCommandList.push(removedCommand);
+                console.log(`Command restricted: ${JSON.stringify(removedCommand)}. Restricted commands: ${JSON.stringify(group.restrictedCommandList)}`);
+            }
+            break;
+        case 'gauthorize_command':
+            if (index >= userCommands.length) {
+                const addedCommand = combinedCommandList[index];
+                userCommands.push(addedCommand);
+                // Remove from restrictedCommandList
+                group.restrictedCommandList = group.restrictedCommandList.filter(t => t.command !== addedCommand.command);
+                console.log(`Command authorized: ${JSON.stringify(addedCommand)}. Restricted commands after authorization: ${JSON.stringify(group.restrictedCommandList)}`);
+            }
+            break;
+        default:
+            console.error('Unknown command:', command);
+    }
+
+    // Update the lobby with the modified command list
+    group.commandList = userCommands;
+
+    // Refresh the command list menu
+    groupCommandListMenu(message, 1, user, groupChatId);
+}
+
+
+/*
 setting required words in prompts
 setting custom assist gpt instruction
 unlocking stuff by "burning" qoints
@@ -714,11 +962,20 @@ prefixHandlers['gatekeep_'] = (action, message, user) => handlePrefix(action, me
         const groupChatId = parseInt(action.split('_')[1]);
         actionMap['gateKeepTypeMenu'](message,user,groupChatId)
     }
-    prefixHandlers['sgks_']= (action, message, user) => {
-        const type = action.split('_')[1];
-        const groupChatId = parseInt(action.split('_')[2]);
-        actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
+        prefixHandlers['sgks_']= (action, message, user) => {
+            const type = action.split('_')[1];
+            const groupChatId = parseInt(action.split('_')[2]);
+            actionMap['gateKeepTypeSelect'](message,user,groupChatId,type)
+        }
+    prefixHandlers['gkpa_']= (action, message, user) => {
+        const groupChatId = parseInt(action.split('_')[1]);
+        actionMap['groupPointAccountingTypeMenu'](message,user,groupChatId)
     }
+        prefixHandlers['sgkpa_']= (action, message, user) => {
+            const type = action.split('_')[1];
+            const groupChatId = parseInt(action.split('_')[2]);
+            actionMap['gateKeepPointAccountingSelect'](message,user,groupChatId,type)
+        }
     prefixHandlers['refreshAdmin_'] = async (action, message, user) => {
         const groupChatId = parseInt(action.split('_')[1]);
         const group = getGroupById(groupChatId)
@@ -753,7 +1010,8 @@ actionMap['initializeGroup']= initializeGroup
     actionMap['gateKeepMenu']= groupGatekeepMenu 
         actionMap[ 'gateKeepTypeMenu'] = groupGatekeepTypeMenu 
             actionMap['gateKeepTypeSelect'] = groupGatekeepTypeSelect
-            
+        actionMap['groupPointAccountingTypeMenu'] = groupPointAccountingTypeMenu
+            actionMap['gateKeepPointAccountingSelect'] = groupGatekeepPointAccountingSelect
             
     actionMap['commandsMenu']= groupCommandMenu
     actionMap['promptsMenu']= groupPromptMenu
