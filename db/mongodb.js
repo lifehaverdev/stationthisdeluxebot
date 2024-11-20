@@ -3,17 +3,20 @@ const axios = require('axios');
 const path = require('path')
 const stream = require('stream');
 const fs = require('fs')
+
 const { lobby, workspace } = require('../utils/bot/bot')
-const defaultUserData = require("../utils/users/defaultUserData.js");
-const statsEmitter = require('./events.js').default;
 const { getBalance } = require('../utils/users/checkBalance.js')
+
+const defaultUserData = require("../utils/users/defaultUserData.js");
+const statsEmitter = require('./events.js');
+
 const { updateLoraStatus } = require('./training.js')
 require("dotenv").config()
 // Replace the uri string with your connection string.
 const uri = process.env.MONGO_PASS
 // Replace 'stationthisbot' with your database name
 const dbName = process.env.BOT_NAME;
-const DEV_DMS = 5472638766;
+// const DEV_DMS = 5472638766;
 let cachedClient = null;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
@@ -1472,6 +1475,7 @@ async function updateAllUserSettings() {
             const collection = client.db(dbName).collection('users');
 
             // Fetch all user settings
+            console.log('Fetching all users from the database...');
             const users = await collection.find().toArray();
 
             if (users.length === 0) {
@@ -1479,59 +1483,101 @@ async function updateAllUserSettings() {
                 return true;
             }
 
-            // Prepare bulk operations
-            const bulkOperations = [];
+            console.log(`Total users fetched: ${users.length}`);
 
+            // Prepare the three separate bulk operations
+            const deleteOperations = [];
+            const removeKeyOperations = [];
+            const addDefaultsOperations = [];
+
+            // Iterate over each user to determine which operations to perform
             for (let user of users) {
                 const { _id, exp, verified, wallet, ...userSettings } = user; // Remove _id immediately
 
-                // Check if the user should be removed
+                // 1. Users to be deleted
                 if (exp === 0 && verified === false && wallet === '') {
-                    bulkOperations.push({
+                    deleteOperations.push({
                         deleteOne: {
                             filter: { userId: user.userId }
                         }
                     });
-                    console.log(`User with userId ${user.userId} meets criteria for removal and will be deleted.`);
-                    continue; // Skip further processing for this user
+                    continue; // Skip further processing for this user since they will be deleted
                 }
 
-                // Add missing keys from defaultUserData
-                for (const key in defaultUserData) {
-                    if (!userSettings.hasOwnProperty(key)) {
-                        userSettings[key] = defaultUserData[key];
-                    }
-                }
-
-                // Remove keys not present in defaultUserData
+                // 2. Remove keys not present in defaultUserData
                 const unsetFields = {};
                 for (const key in userSettings) {
                     if (!defaultUserData.hasOwnProperty(key)) {
                         unsetFields[key] = "";
                     }
                 }
-
-                const filter = { userId: user.userId };
-                const updateDoc = { $set: userSettings };
-
                 if (Object.keys(unsetFields).length > 0) {
-                    updateDoc.$unset = unsetFields;
+                    removeKeyOperations.push({
+                        updateOne: {
+                            filter: { userId: user.userId },
+                            update: { $unset: unsetFields }
+                        }
+                    });
                 }
 
-                bulkOperations.push({
-                    updateOne: {
-                        filter,
-                        update: updateDoc
+                // 3. Add missing keys from defaultUserData
+                const setFields = {};
+                for (const key in defaultUserData) {
+                    if (!userSettings.hasOwnProperty(key)) {
+                        setFields[key] = defaultUserData[key];
                     }
-                });
+                }
+                if (Object.keys(setFields).length > 0) {
+                    addDefaultsOperations.push({
+                        updateOne: {
+                            filter: { userId: user.userId },
+                            update: { $set: setFields }
+                        }
+                    });
+                }
             }
 
-            if (bulkOperations.length > 0) {
-                const result = await collection.bulkWrite(bulkOperations);
-                console.log('All user settings updated successfully', result);
+            // Execute the delete operations
+            if (deleteOperations.length > 0) {
+                console.log('Executing delete operations...');
+                try {
+                    const deleteResult = await collection.bulkWrite(deleteOperations);
+                    console.log('Delete operations completed successfully', deleteResult);
+                } catch (error) {
+                    console.error('Error executing delete operations:', error);
+                }
+            } else {
+                console.log('No users to delete.');
+            }
+
+            // Execute the remove key operations
+            if (removeKeyOperations.length > 0) {
+                console.log('Executing remove key operations...');
+                try {
+                    const removeKeyResult = await collection.bulkWrite(removeKeyOperations);
+                    console.log('Remove key operations completed successfully', removeKeyResult);
+                } catch (error) {
+                    console.error('Error executing remove key operations:', error);
+                }
+            } else {
+                console.log('No keys to remove.');
+            }
+
+            // Execute the add default operations
+            if (addDefaultsOperations.length > 0) {
+                console.log('Executing add default key operations...');
+                try {
+                    const addDefaultsResult = await collection.bulkWrite(addDefaultsOperations);
+                    console.log('Add default key operations completed successfully', addDefaultsResult);
+                } catch (error) {
+                    console.error('Error executing add default key operations:', error);
+                }
+            } else {
+                console.log('No default keys to add.');
             }
 
             return true;
+
         } catch (error) {
             console.error("Error updating user settings:", error);
             return false;
