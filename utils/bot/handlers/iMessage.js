@@ -29,6 +29,7 @@ const iMedia = require('./iMedia')
 const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
+const statsEmitter = require('../../../db/events.js');
 const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
@@ -230,15 +231,31 @@ const commandRegistry = {
     },
     '/see': {
         handler: async (message) => {
-            if(message.from.id != DEV_DMS){
+            if (message.from.id != DEV_DMS) {
                 return;
             } else {
-                const msg = await readStats()
-                sendMessage(message,msg);
-                // sendMessage(message,'I reset burns and loralist');
+                // Start the stats calculation
+                readStats();
+
+                // Set up event listeners to receive progress updates and final messages
+                statsEmitter.on('stats-progress', async (progressMsg) => {
+                    await sendMessage(message.chat.id, progressMsg);
+                });
+
+                statsEmitter.once('stats-completed', async (finalMsg) => {
+                    await sendMessage(message.chat.id, 'Stats analysis completed successfully:\n' + finalMsg);
+                });
+
+                statsEmitter.once('stats-error', async (errorMsg) => {
+                    await sendMessage(message.chat.id, 'Error occurred during stats analysis:\n' + errorMsg);
+                });
+
+                // Send initial confirmation
+                await sendMessage(message.chat.id, 'Stats analysis has started, updates will follow.');
             }
         }
     },
+
     '/glorp': {
         handler: async (message) => {
             if(message.from.id != DEV_DMS){
