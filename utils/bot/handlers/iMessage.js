@@ -761,7 +761,6 @@ function parseCommand(message) {
     // If no command entity is found, return null values for command and arguments
     return { command: null, args: null };
 }
-
 module.exports = function(bot) {
     bot.on('message', async (message) => {
         //console.log('wow we have a message',message);
@@ -802,13 +801,31 @@ module.exports = function(bot) {
                 return; // Stop after the first match to avoid multiple command executions
             }
             // If no command has handled the message, use watch for further processing
-            if (!handled) {
+            if (!handled && command) { // Ensure command is not null before processing
                 // If group commands are available, handle potential group custom commands
-                if (group && groupCommandList) {
-                    const customCommand = groupCommandList.find(cmd => cmd.command === command);
+                if (group && group.customCommandMap) {
+                    console.log('here!');
+                    const customCommandKey = command.replace('/', '');
+                    const customCommand = group.customCommandMap[customCommandKey];
+                    console.log(command, group.customCommandMap);
+                    console.log('customCommand', customCommand);
+            
                     if (customCommand) {
                         console.log(`Handling custom group command ${command} for group ${group.chatId}`);
-                        await safeExecute(message, () => commandRegistry[customCommand.command].handler(message, args));
+            
+                        // Check gatekeeping for custom commands
+                        const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
+                        if (requiresGatekeeping) {
+                            const allowed = await checkLobby(message);
+                            if (!allowed) {
+                                return;
+                            }
+                        } else {
+                            await checkIn(message);
+                        }
+            
+                        // Execute the handler for the custom command
+                        await safeExecute(message, () => commandRegistry['/' + customCommand].handler(message, args));
                         handled = true;
                         return;
                     }
@@ -821,4 +838,5 @@ module.exports = function(bot) {
         }
     })
 }
+
 

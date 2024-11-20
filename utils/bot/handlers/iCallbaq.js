@@ -432,6 +432,7 @@ const handleSetWatermark = (message, selectedName, userId) => {
 // Main export function
 module.exports = function (bot) {
     bot.on('callback_query', (callbackQuery) => {
+        //console.log(callbackQuery)
         try {
             const { action, message, user } = parseCallbackData(callbackQuery);
 
