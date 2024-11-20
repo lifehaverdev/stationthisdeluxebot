@@ -1085,12 +1085,34 @@ async function updateGroupPoints(group, pointsToAdd) {
         throw error;
     }
 }
-
 async function readStats() {
-    
-    const client = await getCachedClient();
+    const job = async () => {
+        const client = await getCachedClient();
 
-    // Sets and variables to track stats
+        try {
+            const collection = client.db(dbName).collection('users');
+            
+            // Fetch all user settings from the database
+            const users = await collection.find().toArray();
+            console.log(`Fetched ${users.length} users from database`);
+
+            return users;  // Return the users array to be processed later
+        } catch (error) {
+            console.error("Error fetching user settings from the database:", error);
+            throw error;  // Ensure error is thrown so job properly fails
+        }
+    };
+
+    let users = [];
+    try {
+        // Enqueue the job and await its result
+        users = await dbQueue.enqueue(job);
+    } catch (error) {
+        console.error('[readStats] Failed to get user data from the queue:', error);
+        return false;
+    }
+
+    // Now process the fetched users array
     const walletSet = new Set();
     const doubleUseSet = new Set();
     const nonUserSet = new Set();
@@ -1100,87 +1122,74 @@ async function readStats() {
     let totalBurned = 0;
     let totalDex = 0;
 
-    try {
-        const collection = client.db(dbName).collection('users');
-        
-        // Fetch all user settings
-        const users = await collection.find().toArray();
-        let count = 0;
-        for (let user of users) {
-            count++;
-            console.log(`Processing user ${count}: userId = ${user.userId}`);
+    let count = 0;
 
-            // Track all keys in user object
-            Object.keys(user).forEach(key => {
-                if (!keySet.has(key)) {
-                    keySet.add(key);
-                }
-            });
+    for (let user of users) {
+        count++;
+        console.log(`Processing user ${count}: userId = ${user.userId}`);
 
-            // Add user wallet to wallet set
-            if (user.wallet) {
-                if (walletSet.has(user.wallet)) {
-                    // If the wallet is already in the set, add it to the doubleUseSet
-                    doubleUseSet.add(user.wallet);
-                    console.log(`Duplicate wallet found: ${user.wallet}`);
-                } else {
-                    walletSet.add(user.wallet);
-                    // Only check balance for non-duplicate wallets
-                    user.balance = await getBalance(user.wallet);
-                    //console.log(`Checking balance for wallet: ${user.wallet}`);
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Add 1-second delay to avoid API rate limits
-                }
+        // Track all keys in user object
+        Object.keys(user).forEach(key => {
+            if (!keySet.has(key)) {
+                keySet.add(key);
+            }
+        });
+
+        // Add user wallet to wallet set
+        if (user.wallet) {
+            if (walletSet.has(user.wallet)) {
+                // If the wallet is already in the set, add it to the doubleUseSet
+                doubleUseSet.add(user.wallet);
+                console.log(`Duplicate wallet found: ${user.wallet}`);
             } else {
-                console.log(`No wallet found for userId: ${user.userId}`);
+                walletSet.add(user.wallet);
+                // Only check balance for non-duplicate wallets
+                try {
+                    user.balance = await getBalance(user.wallet);
+                    totalHeld += user.balance; // Add user balance to totalHeld
+                } catch (error) {
+                    console.error(`Error getting balance for wallet ${user.wallet}:`, error);
+                }
+                // Adding delay to prevent rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1-second delay
             }
-
-            // Add user exp to totalExp
-            if (user.exp) {
-                totalExp += user.exp;
-            }
-
-            // Add user balance to totalHeld
-            if (user.balance) {
-                totalHeld += user.balance;
-            }
-
-            // Add user burns to totalBurned (commented out for now)
-            // if (user.burned) {
-            //     totalBurned += user.burned;
-            // }
-
-            // Add the number of promptDex prompts to totalDex
-            if (user.promptDex && Array.isArray(user.promptDex)) {
-                totalDex += user.promptDex.length;
-            }
-
-            // If exp == 0, add userId to nonUserSet
-            if (user.exp === 0) {
-                nonUserSet.add(user._id);
-            }
+        } else {
+            console.log(`No wallet found for userId: ${user.userId}`);
         }
 
-        let msg = '';
-        msg += 'total Users ' + count + '\n';
-        msg += 'tourists ' + nonUserSet.size + '\n';
-        msg += 'net users ' + (count - nonUserSet.size) + '\n';
-        msg += 'net wallets ' + walletSet.size + '\n\n';
-        // msg += 'double wallets ' + doubleUseSet.size + '\n';
-        msg += 'total Exp ' + totalExp + '\n';
-        msg += 'total Balance Held ' + totalHeld + ' MS2\n';
-        // msg += 'total Dex ' + totalDex + '\n';
-        // msg += 'totalBurned';
+        // Add user exp to totalExp
+        if (user.exp) {
+            totalExp += user.exp;
+        }
 
-        console.log('All unique keys found in user objects:', [...keySet]);
-        console.log('All user settings analyzed successfully');
-        return msg;
-    } catch (error) {
-        console.error("Error updating user settings:", error);
-        return false;
-    } 
+        // Add the number of promptDex prompts to totalDex
+        if (user.promptDex && Array.isArray(user.promptDex)) {
+            totalDex += user.promptDex.length;
+        }
+
+        // If exp == 0, add userId to nonUserSet
+        if (user.exp === 0) {
+            nonUserSet.add(user._id);
+        }
+    }
+
+    // Summarize the stats
+    let msg = '';
+    msg += 'total Users: ' + count + '\n';
+    msg += 'tourists (exp=0): ' + nonUserSet.size + '\n';
+    msg += 'net users: ' + (count - nonUserSet.size) + '\n';
+    msg += 'net wallets: ' + walletSet.size + '\n\n';
+    // msg += 'double wallets: ' + doubleUseSet.size + '\n';
+    msg += 'total Exp: ' + totalExp + '\n';
+    msg += 'total Balance Held: ' + totalHeld + ' MS2\n';
+    // msg += 'total Dex: ' + totalDex + '\n';
+    // msg += 'totalBurned: ' + totalBurned + '\n';
+
+    console.log('All unique keys found in user objects:', [...keySet]);
+    console.log('All user settings analyzed successfully');
+
+    return msg;
 }
-
-
 
 async function incrementLoraUseCounter(names) {
     const job = async () => {
@@ -1464,69 +1473,72 @@ async function updateAllUserSettings() {
 
         try {
             const collection = client.db(dbName).collection('users');
-            
+
             // Fetch all user settings
             const users = await collection.find().toArray();
-            //const users = await collection.find({ userId: DEV_DMS }).toArray();
-            
-    
-    for (let user of users) {
-        let updatedUserSettings = { ...user };
-    
-        // Remove the _id field to avoid attempting to update it
-        delete updatedUserSettings._id;
-    
-        // Add missing keys from defaultUserData
-        for (const key in defaultUserData) {
-            if (!updatedUserSettings.hasOwnProperty(key)) {
-                updatedUserSettings[key] = defaultUserData[key];
+
+            if (users.length === 0) {
+                console.log('No users found to update');
+                return true;
             }
-        }
-    
-        // Initialize unsetFields as an empty object
-        let unsetFields = {};
-    
-        // Remove keys not present in defaultUserData
-        for (const key in updatedUserSettings) {
-            if (!defaultUserData.hasOwnProperty(key)) {
-                unsetFields[key] = "";
+
+            // Prepare bulk operations
+            const bulkOperations = [];
+
+            for (let user of users) {
+                const { _id, exp, verified, wallet, ...userSettings } = user; // Remove _id immediately
+
+                // Check if the user should be removed
+                if (exp === 0 && verified === false && wallet === '') {
+                    bulkOperations.push({
+                        deleteOne: {
+                            filter: { userId: user.userId }
+                        }
+                    });
+                    console.log(`User with userId ${user.userId} meets criteria for removal and will be deleted.`);
+                    continue; // Skip further processing for this user
+                }
+
+                // Add missing keys from defaultUserData
+                for (const key in defaultUserData) {
+                    if (!userSettings.hasOwnProperty(key)) {
+                        userSettings[key] = defaultUserData[key];
+                    }
+                }
+
+                // Remove keys not present in defaultUserData
+                const unsetFields = {};
+                for (const key in userSettings) {
+                    if (!defaultUserData.hasOwnProperty(key)) {
+                        unsetFields[key] = "";
+                    }
+                }
+
+                const filter = { userId: user.userId };
+                const updateDoc = { $set: userSettings };
+
+                if (Object.keys(unsetFields).length > 0) {
+                    updateDoc.$unset = unsetFields;
+                }
+
+                bulkOperations.push({
+                    updateOne: {
+                        filter,
+                        update: updateDoc
+                    }
+                });
             }
-        }
-    
-        // Log the values before updating
-        console.log(`Updating user settings for userId: ${user.userId}`);
-        console.log('Updated User Settings:', updatedUserSettings);
-        console.log('Unset Fields:', unsetFields);
-    
-        const filter = { userId: user.userId };
-    
-        // Upsert the updated user settings first
-        try {
-            await collection.updateOne(filter, { $set: updatedUserSettings });
-            console.log(`User settings successfully updated for userId: ${user.userId}`);
-        } catch (error) {
-            console.error(`Error updating user settings for userId ${user.userId}:`, error);
-        }
-    
-        // Now unset deprecated fields
-        try {
-            if (Object.keys(unsetFields).length > 0) {
-                await collection.updateOne(filter, { $unset: unsetFields });
-                console.log(`Deprecated fields successfully removed for userId: ${user.userId}`);
+
+            if (bulkOperations.length > 0) {
+                const result = await collection.bulkWrite(bulkOperations);
+                console.log('All user settings updated successfully', result);
             }
-        } catch (error) {
-            console.error(`Error unsetting fields for userId ${user.userId}:`, error);
-        }
-    }
-    
-    console.log('All user settings updated successfully');
-    
-    
+
             return true;
         } catch (error) {
             console.error("Error updating user settings:", error);
             return false;
-        } 
+        }
     };
 
     // Enqueue the job and await its result
@@ -1534,10 +1546,11 @@ async function updateAllUserSettings() {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[updateallusersettings] Failed to get user data:', error);
+        console.error('[updateAllUserSettings] Failed to get user data:', error);
         throw error;
     }
 }
+
 
 async function removeDuplicateWallets() {
     const job = async () => {

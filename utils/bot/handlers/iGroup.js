@@ -352,6 +352,7 @@ async function groupPointAccountingTypeMenu(message,user,groupChatId) {
     const menu = buildEditGroupSubMenu(groupChatId,'gatekeep_')
     //for this menu, we check the group gatekeeping type
     const style = group.gateKeeping.pointAccounting
+    menu.reply_markup.inline_keyboard.push([{text: style == 'ghost' ? `none ✅`:`none`, callback_data: `sgkpa_ghost_${groupChatId}'}`}])
     menu.reply_markup.inline_keyboard.push([{text: style == 'house' ? `on the house ✅`:`on the house`, callback_data: `sgkpa_house_${groupChatId}'}`}])
     menu.reply_markup.inline_keyboard.push([{text: style == 'user' ? `user first ✅`:`user first`, callback_data: `sgkpa_user_${groupChatId}'}`}])
     //['none', 'token', 'nft', 'adminOnly', 'selectedOnly']
@@ -372,7 +373,6 @@ async function groupGatekeepPointAccountingSelect(message,user,groupChatId,type)
         return 
     }
     group.gateKeeping.pointAccounting = type;
-    //await groupGatekeepTypeMenu(message,user,groupChatId)
     await handleGroupMenu(message, message.from.id, group.chat.id, 'gatekeep')
 }
 /*
@@ -809,7 +809,6 @@ actionMap['saveGroupCommandList'] = async (message, user, groupChatId) => {
     if(!group){
         return
     }
-    //await writeUserDataPoint(user, 'commandList', lobby[user].commandList)
     await saveGroupRQ(group)
     await handleGroupMenu(message, message.from.id, group.chat.id,'command')
 }

@@ -814,6 +814,7 @@ module.exports = function(bot) {
             watch(message);
         } else {
             console.log('huh weird place to end up')
+            console.log('weird case message',message)
         }
     })
 }
