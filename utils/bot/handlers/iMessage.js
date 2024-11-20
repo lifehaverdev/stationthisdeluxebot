@@ -30,7 +30,6 @@ const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
 const statsEmitter = require('../../../db/events.js');
-console.log(statsEmitter)
 const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
@@ -240,19 +239,19 @@ const commandRegistry = {
 
                 // Set up event listeners to receive progress updates and final messages
                 statsEmitter.on('stats-progress', async (progressMsg) => {
-                    await sendMessage(message.chat.id, progressMsg);
+                    await sendMessage(message, progressMsg);
                 });
 
                 statsEmitter.once('stats-completed', async (finalMsg) => {
-                    await sendMessage(message.chat.id, 'Stats analysis completed successfully:\n' + finalMsg);
+                    await sendMessage(message, 'Stats analysis completed successfully:\n' + finalMsg);
                 });
 
                 statsEmitter.once('stats-error', async (errorMsg) => {
-                    await sendMessage(message.chat.id, 'Error occurred during stats analysis:\n' + errorMsg);
+                    await sendMessage(message, 'Error occurred during stats analysis:\n' + errorMsg);
                 });
 
                 // Send initial confirmation
-                await sendMessage(message.chat.id, 'Stats analysis has started, updates will follow.');
+                await sendMessage(message, 'Stats analysis has started, updates will follow.');
             }
         }
     },
