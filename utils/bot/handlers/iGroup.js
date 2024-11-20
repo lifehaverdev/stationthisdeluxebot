@@ -452,8 +452,8 @@ class GroupSettingHandler {
 
     // Process the user input for the given setting
     async processSettingInput(message) {
-        console.log(rooms)
-        const group = rooms.find(group => group.flag.user === message.from.id);
+        //console.log(rooms)
+        const group = rooms.find(group => group.flag && typeof group.flag.user !== 'undefined' && group.flag.user.toString() === message.from.id.toString());
         if (group && group.flag.what === this.flagWhat) {
             // Call the specific handler for processing input
             await this.processHandler(group, message);
