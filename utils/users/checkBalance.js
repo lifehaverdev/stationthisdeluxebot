@@ -60,7 +60,7 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
         //
         //console.log('data in checkbalance response',JSON.stringify(data))//.result.value[0].account.data.parsed.info.tokenAmount.uiAmount)
         if(data.error || (data.result.value && data.result.value.length == 0)){
-            sendMessage(DEV_DMS,`${address} just got balanced checked but ${data.error}`)
+            sendMessage({chat: {id: DEV_DMS}, from: {id: DEV_DMS}},`${address} just got balanced checked but ${data.error}`)
             balance = 0;
         } else if (data.result.value.length > 0){
             balance = data.result.value[0].account.data.parsed.info.tokenAmount.uiAmount
