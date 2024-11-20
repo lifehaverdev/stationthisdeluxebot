@@ -151,8 +151,8 @@ async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
 }
 // Function to handle command context and set bot commands dynamically
 async function setCommandContext(bot, msg) {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
+    const chatId = msg?.chat?.id;
+    const userId = msg?.from?.id;
     const group = getGroup(msg);
     console.log(`Setting command context for userId: ${userId}, chatId: ${chatId}`);
 

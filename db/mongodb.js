@@ -5,7 +5,7 @@ const stream = require('stream');
 const fs = require('fs')
 const { lobby, workspace } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
-const statsEmitter = require('./events.js');
+const statsEmitter = require('./events.js').default;
 const { getBalance } = require('../utils/users/checkBalance.js')
 const { updateLoraStatus } = require('./training.js')
 require("dotenv").config()

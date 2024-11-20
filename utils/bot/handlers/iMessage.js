@@ -30,6 +30,7 @@ const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
 const statsEmitter = require('../../../db/events.js');
+console.log(statsEmitter)
 const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
