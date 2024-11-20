@@ -32,35 +32,44 @@ async function addPoints(task) {
     const max = getMaxBalance(user);
     const credit = user.points + user.doints;
 
-    // Handling based on group point accounting strategy
-    if (group && group.gateKeeping.pointAccounting === 'house') {
-        // House pays for all point addition/subtraction
-        console.log(`Group ${group.id} point accounting is set to 'house'. Deducting from group.`);
-        group.qoints -= pointsToAdd;
-        updateGroupPoints(group, pointsToAdd);
-    } else {
-        // User pays first until reaching max, then group covers remaining
-        if (credit < max) {
-            // User has room to add points up to their max
-            const pointsToUser = Math.min(pointsToAdd, max - credit);
-            user.points += pointsToUser;
-
-            // If points exceed the user's max, the rest are charged to the group
-            if (pointsToAdd > pointsToUser) {
+    if (group) {
+        // Handling based on group point accounting strategy
+        if (group.gateKeeping.pointAccounting === 'house') {
+            // House pays for all point addition/subtraction
+            console.log(`Group ${group.id} point accounting is set to 'house'. Deducting from group.`);
+            group.qoints -= pointsToAdd;
+            updateGroupPoints(group, pointsToAdd);
+        } else if (group.gateKeeping.pointAccounting === 'ghost') {
+            // 'ghost' accounting - treat as if there is no group
+            console.log(`Group ${group.id} point accounting is set to 'ghost'. Treating as if there's no group.`);
+            
+            // Simply add all points to user, without considering any group logic
+            user.points += pointsToAdd;
+        } else {
+            // Default: User pays first, then group covers remaining
+            if (credit < max) {
+                // User has room to add points, but we no longer cap it to max
+                const pointsToUser = Math.min(pointsToAdd, max - credit);
+                user.points += pointsToUser;
+    
+                // The rest are charged to the group without limiting group qoints to zero
                 const pointsToGroup = pointsToAdd - pointsToUser;
-                if (group && group.qoints > 0) {
+                if (pointsToGroup > 0) {
                     group.qoints -= pointsToGroup;
                     updateGroupPoints(group, pointsToGroup);
                 }
-            }
-        } else {
-            // User is at max, so the group must cover the entire addition
-            if (group && group.qoints > 0) {
+            } else {
+                // User is already at or above max, so all points are covered by the group
                 group.qoints -= pointsToAdd;
                 updateGroupPoints(group, pointsToAdd);
             }
         }
+    } else {
+        // No group: Handle user-only point logic
+        user.points += pointsToAdd; // Add all points to the user without a max cap
+        console.log(`Points added to user ${user.id}. New total: ${user.points}`);
     }
+    
 
     // Always remove placeholder doints
     const beforeSub = user.doints;

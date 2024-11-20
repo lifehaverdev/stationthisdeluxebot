@@ -256,7 +256,6 @@ function chooseIdByMachine(ids,promptObj) {
 }
 function prepareRequest(promptObj) {
     const {ids, inputs} = getDeploymentIdByType(promptObj.type);
-    console.log(ids)
     const comfydeployid = chooseIdByMachine(ids, promptObj);
     // Prepare the request body dynamically based on workflow inputs
     

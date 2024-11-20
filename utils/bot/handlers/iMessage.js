@@ -769,13 +769,10 @@ module.exports = function(bot) {
         if (messageFilter(message)) {
             console.log('message filtered');
             return;
-        } else {
-            console.log('its not the fiilter')
         }
     
         if ('text' in message || 'caption' in message) {
             const { command, args } = parseCommand(message);
-            //console.log('command and args',command,args)
             // Get group context if available
             const group = getGroup(message);
             let groupCommandList = group ? group.commandList : null;
@@ -784,13 +781,10 @@ module.exports = function(bot) {
             // Handle command if it exists
             if (command && commandRegistry.hasOwnProperty(command)) {
                 // Check if the command is restricted in the group
-                //console.log('group chek',groupRestrictedCommands,groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')),command.replace('/',''),group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')))
                 if (group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/',''))) {
                     console.log(`Command ${command} is restricted in group ${group.title}`);
                     await react(message,"😴")
                     return; // Skip restricted commands
-                } else {
-                    console.log('its not the group restricted thing')
                 }
                 // Gatekeeping check if needed
                 const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => command.startsWith(cmd));
@@ -802,10 +796,10 @@ module.exports = function(bot) {
                 } else {
                     await checkIn(message);
                 }
-                    // Execute the handler with the message and parsed arguments
-                    await safeExecute(message, () => commandRegistry[command].handler(message, args));
-                    handled = true;
-                    return; // Stop after the first match to avoid multiple command executions
+                // Execute the handler with the message and parsed arguments
+                await safeExecute(message, () => commandRegistry[command].handler(message, args));
+                handled = true;
+                return; // Stop after the first match to avoid multiple command executions
             }
             // If no command has handled the message, use watch for further processing
             if (!handled) {
@@ -819,19 +813,11 @@ module.exports = function(bot) {
                         return;
                     }
                 }
-                //console.log('imessage text watch')
                 watch(message);
-            } else {
-                console.log('but its handled?')
             }
-            //console.log('message receipt complete')
         } else if ('photo' in message || 'document' in message) {
             // Log and delegate to watch for non-text messages
-            //console.log(`Received ${'photo' in message ? 'photo' : 'document'}`);
             watch(message);
-        } else {
-            console.log('huh weird place to end up')
-            console.log('weird case message',message)
         }
     })
 }
