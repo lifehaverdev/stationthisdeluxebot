@@ -194,7 +194,7 @@ async function setCommandContext(bot, msg) {
         }
     } else { // Private chat
         // Use user's customized command list or default introductory commands
-        commands = lobby[userId] && lobby[userId].commandList.length > 0 ? lobby[userId].commandList : introductoryCommandList;
+        commands = lobby[userId]?.commandList?.length > 0 ? lobby[userId].commandList : introductoryCommandList;
         scope = { type: 'chat', chat_id: chatId };
         console.log(`Private chat detected for userId: ${userId}, using commands: ${JSON.stringify(commands)}`);
     }
