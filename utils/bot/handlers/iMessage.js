@@ -756,7 +756,7 @@ module.exports = function(bot) {
     
         if ('text' in message || 'caption' in message) {
             const { command, args } = parseCommand(message);
-            console.log('command and args',command,args)
+            //console.log('command and args',command,args)
             // Get group context if available
             const group = getGroup(message);
             let groupCommandList = group ? group.commandList : null;
