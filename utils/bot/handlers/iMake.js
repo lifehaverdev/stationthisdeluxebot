@@ -1,8 +1,6 @@
 const { STATES, lobby, rooms, flows, makeSeed } = require('../bot')
 const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue')
-//const { writeUserData } = require('../../../db/mongodb')
-//const { checkLobby } = require('../gatekeep')
 const { getGroup } = require('./iGroup')
 
 // Function to get unified settings for a user in a group or individual context

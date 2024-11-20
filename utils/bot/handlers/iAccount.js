@@ -502,7 +502,7 @@ async function shakeSignIn (message) {
         return;
     }
     //console.log('chatdata wallet in shake',chatData.wallet);
-    await writeUserData(userId,chatData)
+    await writeUserDataPoint(userId,'wallet',chatData.wallet)
     lobbyManager.addUser(userId,chatData)
     console.log(message.from.first_name,'has entered the chat');
     // Confirm sign-in
@@ -559,7 +559,7 @@ async function shakeVerify(message) {
                     delete userData.newb
                     await writeNewUserData(userId,userData);
                 } else {
-                    await writeUserData(userId, userData)
+                    await writeUserDataPoint(userId, 'verified', userData.verified)
                 }
                 
                 return true
@@ -707,7 +707,7 @@ async function handleRefreshQoints(message,user) {
         userData.pendingQoints = 0;
         userData.checkedQointsAt = now
         //write new pendingQoints
-        await writeUserData(user,userData)
+        await writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
         //write new qoints
         await writeQoints('users',{'userId': user},userData.qoints)
         await returnToAccountMenu(message,user)
@@ -730,7 +730,7 @@ async function handleRefreshQoints(message,user) {
             userData.qoints = userData.qoints + pendingQoints
             userData.pendingQoints = 0;
             userData.checkedQointsAt = now
-            await writeUserData(user,userData)
+            await writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
             await writeQoints('users',{'userId': user},userData.qoints)
             await returnToAccountMenu(message,user)
             return
