@@ -5,7 +5,7 @@ const stream = require('stream');
 const fs = require('fs')
 const { lobby, workspace } = require('../utils/bot/bot')
 const defaultUserData = require("../utils/users/defaultUserData.js");
-//const { DEV_DMS } = require("../utils/utils.js");
+const statsEmitter = require('./events.js');
 const { getBalance } = require('../utils/users/checkBalance.js')
 const { updateLoraStatus } = require('./training.js')
 require("dotenv").config()
@@ -1109,7 +1109,8 @@ async function readStats() {
         users = await dbQueue.enqueue(job);
     } catch (error) {
         console.error('[readStats] Failed to get user data from the queue:', error);
-        return false;
+        statsEmitter.emit('stats-error', 'Failed to get user data from the queue.');
+        return;
     }
 
     // Now process the fetched users array
@@ -1128,12 +1129,11 @@ async function readStats() {
 
     for (let user of users) {
         count++;
-        console.log(`Processing user ${count}: userId = ${user.userId}`);
 
-        // Send progress updates to the developer at defined intervals
+        // Send progress updates at defined intervals
         if (count % progressInterval === 0 || count === totalUsers) {
             const progressPercentage = Math.round((count / totalUsers) * 100);
-            await sendMessage(DEV_DMS, `Progress stats: ${progressPercentage}% (${count}/${totalUsers} users processed)`);
+            statsEmitter.emit('stats-progress', `Progress stats: ${progressPercentage}% (${count}/${totalUsers} users processed)`);
         }
 
         // Track all keys in user object
@@ -1146,23 +1146,17 @@ async function readStats() {
         // Add user wallet to wallet set
         if (user.wallet) {
             if (walletSet.has(user.wallet)) {
-                // If the wallet is already in the set, add it to the doubleUseSet
                 doubleUseSet.add(user.wallet);
-                console.log(`Duplicate wallet found: ${user.wallet}`);
             } else {
                 walletSet.add(user.wallet);
-                // Only check balance for non-duplicate wallets
                 try {
                     user.balance = await getBalance(user.wallet);
                     totalHeld += user.balance; // Add user balance to totalHeld
                 } catch (error) {
                     console.error(`Error getting balance for wallet ${user.wallet}:`, error);
                 }
-                // Adding delay to prevent rate limiting
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1-second delay
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Adding delay
             }
-        } else {
-            console.log(`No wallet found for userId: ${user.userId}`);
         }
 
         // Add user exp to totalExp
@@ -1187,17 +1181,10 @@ async function readStats() {
     msg += 'tourists (exp=0): ' + nonUserSet.size + '\n';
     msg += 'net users: ' + (count - nonUserSet.size) + '\n';
     msg += 'net wallets: ' + walletSet.size + '\n\n';
-    // msg += 'double wallets: ' + doubleUseSet.size + '\n';
     msg += 'total Exp: ' + totalExp + '\n';
     msg += 'total Balance Held: ' + totalHeld + ' MS2\n';
-    // msg += 'total Dex: ' + totalDex + '\n';
-    // msg += 'totalBurned: ' + totalBurned + '\n';
 
-    console.log('All unique keys found in user objects:', [...keySet]);
-    console.log('All user settings analyzed successfully');
-
-    await sendMessage(DEV_DMS, 'Stats analysis completed successfully:\n' + msg);
-    return msg;
+    statsEmitter.emit('stats-completed', msg);
 }
 
 
