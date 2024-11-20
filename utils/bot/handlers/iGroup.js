@@ -937,9 +937,214 @@ function handleCommandListEdit(message, user, index, command, groupChatId) {
     groupCommandListMenu(message, 1, user, groupChatId);
 }
 
+/*
+setting custom commands
+*/
+
+
+prefixHandlers['egcc_'] = (action,message,user) => {
+    const groupChatId = parseInt(action.split('_')[1])
+    actionMap['gcustomComMenu'](message, user, groupChatId);
+}
+actionMap['gcustomComMenu'] = groupCustomCommandMenu
+
+async function groupCustomCommandMenu(message, user, groupChatId) {
+    const group = getGroupById(groupChatId);
+    if (!group) {
+        console.log('we didnt see a group in groupCommandListMenu', rooms);
+        return;
+    }
+    const customCommandMap = group.customCommandMap;
+
+    const commandKeyboard = await buildCustomComMenu(message, group);
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    await editMessage({
+        reply_markup: { 
+            inline_keyboard: commandKeyboard,
+        },
+        chat_id: chatId,
+        message_id: messageId,
+        text: 'set group custom command list',
+        options: { parse_mode: 'HTML' }
+    });
+}
+
+async function buildCustomComMenu(message, group) {
+    const customCommandMap = group.customCommandMap;
+    const commandKeyboard = [];
+
+    // Iterate over customCommandMap to create buttons for each entry
+    for (const [commandName, commandDetails] of Object.entries(customCommandMap)) {
+        commandKeyboard.push([{
+            text: commandName,
+            callback_data: `gcustomcom_${commandName}_${group.id}`
+        }]);
+    }
+
+    // Add + button and nvm button
+    commandKeyboard.push([
+        {
+            text: '+',
+            callback_data: `gcustomcom_add_${group.id}`
+        },
+        {
+            text: 'nvm',
+            callback_data: 'cancel'
+        }
+    ]);
+    console.log(JSON.stringify(commandKeyboard))
+    return commandKeyboard;
+}
+
+prefixHandlers['gcustomcom_'] = (action,message,user) => {
+    const task = action.split('_')[1]
+    const groupChatId = parseInt(action.split('_')[2])
+    actionMap['gcustomComTaskMenu'](message, user, task, groupChatId);
+}
+
+actionMap['gcustomComTaskMenu'] = groupCustomCommandTaskMenu
+
+
+async function groupCustomCommandTaskMenu(message, user, task, groupChatId) {
+    const group = getGroupById(groupChatId);
+    if (!group) {
+        console.log('Group not found in groupCustomCommandTaskMenu', rooms);
+        return;
+    }
+
+    if (task === 'add') {
+        await showAddCommandMenu(message, group);
+    } else if (task === 'remove') {
+        await removeCustomCommand(message, group, task);
+    } else {
+        const customCommandMap = group.customCommandMap;
+        if (customCommandMap[task]) {
+            await showCustomCommandInstanceMenu(message, group, task);
+        } else {
+            console.log('Custom command not found:', task);
+        }
+    }
+}
+
+async function showAddCommandMenu(message, group) {
+    const commandKeyboard = fullCommandList.map(command => [{
+        text: command.command,
+        callback_data: `gcctarget_${command.command}_${group.id}`
+    }]);
+
+    commandKeyboard.push([
+        {
+            text: 'nvm',
+            callback_data: 'cancel'
+        }
+    ]);
+
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    await editMessage({
+        reply_markup: {
+            inline_keyboard: commandKeyboard,
+        },
+        chat_id: chatId,
+        message_id: messageId,
+        text: 'Choose which command you want to rename for your group. For example, if you choose make and set it to bake. You will say /bake + prompt. And so on.',
+        options: { parse_mode: 'HTML' }
+    });
+}
+
+prefixHandlers['gcctarget_'] = (action,message,user) => {
+    const command = action.split('_')[1]
+    const groupChatId = parseInt(action.split('_')[2])
+    console.log(command, groupChatId)
+    actionMap['gcustomComSet'](message, user, command, groupChatId);
+}
+
+actionMap['gcustomComSet'] = groupCustomCommandSet
+
+async function groupCustomCommandSet(message,user,command,groupChatId){
+// Show the setting prompt to the user
+console.log('oh yea')
+    const group = getGroupById(groupChatId)
+    if(!group){
+        return 
+    }
+    const menu = buildEditGroupSubMenu(groupChatId, 'commands_');
+    message.from.id = user;
+
+    setUserState(message, STATES.SETGROUPCUSTCOM);
+    group.flag = {
+        what: 'setCustCom',
+        who: command,
+        user,
+        targetMessageId: message.message_id, // Store the original message ID to return to later
+    };
+    console.log('group after adding a flag',group)
+    const promptText = 'tell me what you want this new command to be instead of the old one you just chose'
+    const description = 'For example if you are overwriting /make with /bake you tell me bake, then from now on you can use /bake + prompt in this groupchat and make will not work'
+    // Determine whether to include the description based on user type
+    const userId = message.from.id;
+    const userIsAdvanced = lobby[userId]?.advancedUser;
+    const descriptionText = userIsAdvanced && description ? `\n\n${description}` : '';
+
+    // Update the message to prompt user for the setting
+    await editMessage({
+        reply_markup: menu.reply_markup,
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: `${lobby[userId] && lobby[userId].advancedUser ? `${group.title}\nstationthisbot X $${group.gateKeeping.ticker}` : `${group.title}\n$MS2 stationthisbot`}\n${descriptionText}\n\n${promptText}`
+    });
+}
+
+stateHandlers[STATES.SETGROUPCUSTCOM] = handleSetCustCom
+
+async function handleSetCustCom(message) {
+    //console.log(rooms)
+    const group = rooms.find(
+        group => group.flag && 
+        typeof group.flag.user !== 'undefined' && 
+        group.flag.user.toString() === message.from.id.toString()
+    );
+    if (group && group.flag.what === 'setCustCom') {
+        // Call the specific handler for processing input
+        console.log(group.flag)
+        const commandEntry = fullCommandList.find(cmd => cmd.command === group.flag.who);
+        if (commandEntry) {
+            group.commandList.push({ command: message.text, description: commandEntry.description });
+        } else {
+            return
+        }
+        group.customCommandMap[message.text] = group.flag.who
+        
+        saveGroupRQ(group)
+        setUserState(message, STATES.IDLE);
+        
+        console.log('processsettinginput innit','setCustCom', group)
+        // Activate the callback to return to the original menu
+        
+        message.message_id = group.flag.targetMessageId
+        await groupCustomCommandMenu(message,message.from.id,group.id)
+        
+        delete group.flag;
+    }
+}
+
+async function removeCustomCommand(message, group, commandName) {
+    // Placeholder for removing a custom command from the group
+    console.log(`Removing custom command: ${commandName} from group: ${group.groupChatId}`);
+    // Logic to remove the command goes here
+}
+
+async function showCustomCommandInstanceMenu(message, group, commandName) {
+    // Placeholder for showing custom command instance menu
+    console.log(`Showing custom command instance menu for: ${commandName} in group: ${group.groupChatId}`);
+    // Logic to display the command instance menu goes here
+}
 
 /*
 setting required words in prompts
+*/
+/*
 setting custom assist gpt instruction
 unlocking stuff by "burning" qoints
 */

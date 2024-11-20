@@ -151,65 +151,89 @@ async function sendWithRetry(sendFunction, msg, fileUrlOrText, options = {}) {
 }
 // Function to handle command context and set bot commands dynamically
 async function setCommandContext(bot, msg) {
-    if(!msg || !msg.chat || !msg.from){
-        return
-    }
-    const chatId = msg?.chat?.id;
-    const userId = msg?.from?.id;
+    if (!isValidMessage(msg)) return;
+
+    const { chatId, userId } = extractChatAndUserIds(msg);
     const group = getGroup(msg);
-    console.log(`Setting command context for userId: ${userId}, chatId: ${chatId}`);
+    initializeUserCommandListIfNeeded(userId);
 
-    if (!lobby.hasOwnProperty(userId)) {
-        console.log(`User ${userId} is not in the lobby.`,msg);
-        return;
-    }
-
-    if (lobby[userId].stationed && lobby[userId].stationed[chatId]) {
+    if (isUserAlreadyStationed(userId, chatId)) {
         console.log(`User ${userId} is already stationed for chatId: ${chatId}.`);
         return;
     }
 
+    const { commands, scope } = determineCommandsAndScope(chatId, userId, group);
+    await updateBotCommandsIfNeeded(bot, userId, commands, scope, msg);
+    markUserAsStationed(userId, chatId);
+}
+
+// Utility function to validate the message
+function isValidMessage(msg) {
+    return msg && msg.chat && msg.from;
+}
+
+// Utility function to extract chat and user IDs
+function extractChatAndUserIds(msg) {
+    return {
+        chatId: msg?.chat?.id,
+        userId: msg?.from?.id
+    };
+}
+
+// Initialize the user's command list if it does not exist
+function initializeUserCommandListIfNeeded(userId) {
+    if (!lobby.hasOwnProperty(userId)) {
+        console.log(`User ${userId} is not in the lobby.`);
+        return;
+    }
+    if (!lobby[userId].hasOwnProperty('commandList') || !Array.isArray(lobby[userId].commandList)) {
+        console.log(`Initializing commandList for userId: ${userId}`);
+        lobby[userId].commandList = introductoryCommandList;
+    }
+}
+
+// Check if the user is already stationed for the given chat ID
+function isUserAlreadyStationed(userId, chatId) {
+    return lobby[userId]?.stationed?.[chatId];
+}
+
+// Determine the commands and scope for setting the context
+function determineCommandsAndScope(chatId, userId, group) {
     let commands = [];
-    let userCommands = lobby[userId].commandList || introductoryCommandList
     let scope = { type: 'default' };
 
-    // Layered checks to determine context
-    if (chatId < 0) { // Group or group chat
-        
-        //console.log(`Group detected for chatId: ${chatId}, group: ${group ? JSON.stringify(group) : 'none'}`);
-        if (group && group.commandList) {
+    if (chatId < 0) { // Group chat
+        if (group?.commandList) {
             commands = group.commandList;
             scope = { type: 'chat', chat_id: chatId };
             console.log(`Using group-specific commands for chatId: ${chatId}`);
-        } else if (lobby.hasOwnProperty(userId) && lobby[userId].verified) {
-            // User is verified, use their preferred commands
-            commands = userCommands;
+        } else if (lobby[userId]?.verified) {
+            commands = lobby[userId].commandList;
             scope = { type: 'chat_member', chat_id: chatId, user_id: userId };
             console.log(`User ${userId} is verified, using personalized commands in group chatId: ${chatId}`);
         } else {
-            // Default to a polite command list for group chats
             commands = politeCommandList;
             scope = { type: 'all_group_chats' };
             console.log(`Using politeCommandList for group chatId: ${chatId}`);
         }
     } else { // Private chat
-        // Use user's customized command list or default introductory commands
         commands = lobby[userId]?.commandList?.length > 0 ? lobby[userId].commandList : introductoryCommandList;
         scope = { type: 'chat', chat_id: chatId };
         console.log(`Private chat detected for userId: ${userId}, using commands: ${JSON.stringify(commands)}`);
     }
 
-    // Get existing commands and only set if different
+    return { commands, scope };
+}
+
+// Update bot commands if the commands have changed
+async function updateBotCommandsIfNeeded(bot, userId, commands, scope, msg) {
     try {
         const existingCommands = await bot.getMyCommands({ scope });
-        console.log(`Existing commands for scope ${JSON.stringify(scope)}: ${JSON.stringify(existingCommands)}`);
         const newCommandsJson = JSON.stringify(commands);
-        console.log(`New commands to be set: ${newCommandsJson}`);
         const existingCommandsJson = JSON.stringify(existingCommands);
 
         if (newCommandsJson !== existingCommandsJson) {
             console.log(`Commands are different, updating commands for scope: ${JSON.stringify(scope)}`);
-            // Set commands dynamically
             await bot.setMyCommands(commands, { scope });
             console.log(`Commands set successfully for userId: ${userId}`);
         } else {
@@ -217,20 +241,9 @@ async function setCommandContext(bot, msg) {
         }
 
         // Set chat menu button for all cases except group-specific commands
-        if (chatId >= 0 || (group && group.commandButton)) {
+        if (scope.type === 'chat' || (group && group.commandButton)) {
             await bot.setChatMenuButton({ type: 'commands' });
             console.log(`Chat menu button set for userId: ${userId}`);
-        }
-
-        // Mark the user as stationed to avoid redundant updates
-        if (lobby[userId]) {
-            if (!lobby[userId].stationed) {
-                lobby[userId].stationed = {};
-            }
-            if (typeof chatId !== 'undefined') {
-                lobby[userId].stationed[chatId] = true;
-                console.log(`User ${userId} is now stationed for chatId: ${chatId}.`);
-            }
         }
     } catch (error) {
         console.error(`Error while setting commands or menu:`, {
@@ -241,6 +254,20 @@ async function setCommandContext(bot, msg) {
         });
     }
 }
+
+// Mark the user as stationed to avoid redundant updates
+function markUserAsStationed(userId, chatId) {
+    if (!lobby[userId]) return;
+
+    if (!lobby[userId].stationed) {
+        lobby[userId].stationed = {};
+    }
+    if (typeof chatId !== 'undefined') {
+        lobby[userId].stationed[chatId] = true;
+        console.log(`User ${userId} is now stationed for chatId: ${chatId}.`);
+    }
+}
+
 
 async function updateMessage(chatId, messageId, menu, text) {
     await editMessage({
