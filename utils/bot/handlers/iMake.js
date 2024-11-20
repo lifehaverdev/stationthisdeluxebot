@@ -181,7 +181,6 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     }
     // Clean the message text
     message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '');
-    console.log('message text', message.text)
     // Check if the message text is empty, trigger the start prompt
     if (message.text === ''  ) {
         await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount);  // Use the generalized start function
@@ -193,7 +192,6 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
     if (needsTypeCheck) {
-        console.log('we in here')
         finalType = checkAndSetType(taskType, settings, message, group, userId);
         //console.log('final type',finalType)
         if (!finalType) {
