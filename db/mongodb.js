@@ -1123,10 +1123,18 @@ async function readStats() {
     let totalDex = 0;
 
     let count = 0;
+    const totalUsers = users.length;
+    const progressInterval = Math.ceil(totalUsers / 10); // Set interval for 10% progress updates
 
     for (let user of users) {
         count++;
         console.log(`Processing user ${count}: userId = ${user.userId}`);
+
+        // Send progress updates to the developer at defined intervals
+        if (count % progressInterval === 0 || count === totalUsers) {
+            const progressPercentage = Math.round((count / totalUsers) * 100);
+            await sendMessage(DEV_DMS, `Progress stats: ${progressPercentage}% (${count}/${totalUsers} users processed)`);
+        }
 
         // Track all keys in user object
         Object.keys(user).forEach(key => {
@@ -1188,8 +1196,10 @@ async function readStats() {
     console.log('All unique keys found in user objects:', [...keySet]);
     console.log('All user settings analyzed successfully');
 
+    await sendMessage(DEV_DMS, 'Stats analysis completed successfully:\n' + msg);
     return msg;
 }
+
 
 async function incrementLoraUseCounter(names) {
     const job = async () => {
