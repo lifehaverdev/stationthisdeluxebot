@@ -364,7 +364,7 @@ async function handleHipFire(message, user) {
         })
         await react(message);  // Acknowledge the command
     } catch (error) {
-        console.error(`Error generating and sending task for ${taskType}:`, error);
+        console.error(`Error generating and sending task for ${settings.type}:`, error);
     }
 }
 

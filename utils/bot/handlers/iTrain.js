@@ -769,19 +769,14 @@ async function submitTraining(message, user, loraId) {
         chat_id: chatId,
         message_id: messageId
     })
+    await sendMessage(DEV_DMS,`user ${user} @${message.from.username} just submitted ${workspace[user][loraId].name} for training`)
 }
-
 /*
-
 BACKEND
-
 1. download dataset (safe? make sure only take pngs and txtfiles)
 2. change status, change status from pending review to pending training to training 
 3. change bot global training status to display to users that you are training a dataset for them rn
-
-
 */
-
 async function getOrLoadLora(userId, loraId) {
     if (workspace[userId]?.[loraId]) {
         console.log(`Using cached LoRA data for user ${userId}, LoRA ${loraId}`);

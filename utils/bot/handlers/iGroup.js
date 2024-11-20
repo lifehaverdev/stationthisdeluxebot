@@ -832,9 +832,9 @@ function buildGCommandButtons(group, command, index) {
         buttons[0].push({ text: '➕', callback_data: `gadd_command_${index}_${groupChatId}` });
     }
     if (!isRestricted) {
-        buttons[0].push({ text: '🚷', callback_data: `grestrict_command_${index}_${groupChatId}` });
+        buttons[0].push({ text: '🆗', callback_data: `grestrict_command_${index}_${groupChatId}` });
     } else {
-        buttons[0].push({ text: '🆗', callback_data: `gauthorize_command_${index}_${groupChatId}` });
+        buttons[0].push({ text: '🚷', callback_data: `gauthorize_command_${index}_${groupChatId}` });
     }
     if (index > 0 && isEnabled) {
         actionButtons.push({ text: '⬆️', callback_data: `gmove_up_${index}_${groupChatId}` });
