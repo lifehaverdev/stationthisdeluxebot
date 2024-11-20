@@ -768,6 +768,7 @@ module.exports = function(bot) {
                 //console.log('group chek',groupRestrictedCommands,groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')),command.replace('/',''),group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/','')))
                 if (group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/',''))) {
                     console.log(`Command ${command} is restricted in group ${group.title}`);
+                    await react(message,"😴")
                     return; // Skip restricted commands
                 }
                 // Gatekeeping check if needed

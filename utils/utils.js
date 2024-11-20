@@ -167,6 +167,7 @@ async function setCommandContext(bot, msg) {
     }
 
     let commands = [];
+    let userCommands = lobby[userId].commandList || introductoryCommandList
     let scope = { type: 'default' };
 
     // Layered checks to determine context
@@ -179,7 +180,7 @@ async function setCommandContext(bot, msg) {
             console.log(`Using group-specific commands for chatId: ${chatId}`);
         } else if (lobby.hasOwnProperty(userId) && lobby[userId].verified) {
             // User is verified, use their preferred commands
-            commands = lobby[userId].commandList;
+            commands = userCommands;
             scope = { type: 'chat_member', chat_id: chatId, user_id: userId };
             console.log(`User ${userId} is verified, using personalized commands in group chatId: ${chatId}`);
         } else {
@@ -319,7 +320,7 @@ async function react(message, emoji = null) {
 }
 
 function gated(message) {
-    const reacts = ["👎", "🤔", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🌚", "🌭","🤣", "🍌", "💔", "😐","💋", "🖕", "😈", "😴", "🤓", "👻", "🙈", "🤪", "🗿", "🙉", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
+    const reacts = ["👎", "🤔", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🌚", "🌭","🤣", "🍌", "💔", "😐","💋", "🖕", "😈", "🤓", "👻", "🙈", "🤪", "🗿", "🙉", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
         const which = Math.floor(Math.random() * reacts.length)
         react(message,reacts[which])
         //sendMessage(message,`You don't have enough tokens to use this feature lol \n\n Buy${lobby[message.from.id].balance > 0 ? ' more' : ''} MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})

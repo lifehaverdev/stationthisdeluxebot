@@ -20,7 +20,7 @@ async function addPoints(task) {
         }
     }
 
-    let rate = 3;
+    let rate = 2;
     const doublePointTypes = ['MS3.2']; // You can add more types here if needed
     if (doublePointTypes.includes(promptObj.type)) {
         rate = 6;
@@ -35,7 +35,7 @@ async function addPoints(task) {
     // Handling based on group point accounting strategy
     if (group && group.gateKeeping.pointAccounting === 'house') {
         // House pays for all point addition/subtraction
-        console.log(`Group ${group.chatId} point accounting is set to 'house'. Deducting from group.`);
+        console.log(`Group ${group.id} point accounting is set to 'house'. Deducting from group.`);
         group.qoints -= pointsToAdd;
         updateGroupPoints(group, pointsToAdd);
     } else {
