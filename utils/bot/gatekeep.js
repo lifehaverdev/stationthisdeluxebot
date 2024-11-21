@@ -225,6 +225,7 @@ async function checkIn(message) {
     const userId = message.from.id;
 
     if (!(await handleUserData(userId, message))) {
+        await react(message,"👻")
         return false;
     }
 
