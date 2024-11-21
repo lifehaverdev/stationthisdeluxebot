@@ -976,37 +976,56 @@ async function buildCustomComMenu(message, group) {
 
     // Iterate over customCommandMap to create buttons for each entry
     for (const [commandName, commandDetails] of Object.entries(customCommandMap)) {
-        commandKeyboard.push([{
-            text: commandName,
-            callback_data: `gcustomcom_${commandName}_${group.id}`
-        }]);
+        commandKeyboard.push([
+            {
+                text: commandName,
+                callback_data: `gcustomcom_${commandName}_${group.id}`
+            },
+            {
+                text: '🗑️',
+                callback_data: `gcustomcom_remove_${commandName}_${group.id}`
+            }
+    ]);
     }
 
     // Add + button and nvm button
     commandKeyboard.push([
         {
-            text: '+',
-            callback_data: `gcustomcom_add_${group.id}`
-        },
-        {
             text: 'nvm',
             callback_data: 'cancel'
+        },
+        {
+            text: '+',
+            callback_data: `gcustomcom_add_${group.id}`
         }
     ]);
-    console.log(JSON.stringify(commandKeyboard))
+    //console.log(JSON.stringify(commandKeyboard))
     return commandKeyboard;
 }
 
 prefixHandlers['gcustomcom_'] = (action,message,user) => {
-    const task = action.split('_')[1]
-    const groupChatId = parseInt(action.split('_')[2])
-    actionMap['gcustomComTaskMenu'](message, user, task, groupChatId);
+    console.log('here we are')
+    const task = action.split('_')[1];
+    let which = 2;
+    if(task == 'remove'){
+        which = 3
+    }
+    const groupChatId = parseInt(action.split('_')[which])
+    console.log('doing this',task, groupChatId, which)
+    if(which == 2){
+        actionMap['gcustomComTaskMenu'](message, user, task, groupChatId);
+    } else if (which == 3){
+        const command = action.split('_')[2]
+        console.log('command',command)
+        actionMap['gcustomComTaskMenu'](message, user, task, groupChatId, command);
+    }
+    
 }
 
 actionMap['gcustomComTaskMenu'] = groupCustomCommandTaskMenu
 
 
-async function groupCustomCommandTaskMenu(message, user, task, groupChatId) {
+async function groupCustomCommandTaskMenu(message, user, task, groupChatId, command = null) {
     const group = getGroupById(groupChatId);
     if (!group) {
         console.log('Group not found in groupCustomCommandTaskMenu', rooms);
@@ -1016,19 +1035,26 @@ async function groupCustomCommandTaskMenu(message, user, task, groupChatId) {
     if (task === 'add') {
         await showAddCommandMenu(message, group);
     } else if (task === 'remove') {
-        await removeCustomCommand(message, group, task);
-    } else {
-        const customCommandMap = group.customCommandMap;
-        if (customCommandMap[task]) {
-            await showCustomCommandInstanceMenu(message, group, task);
-        } else {
-            console.log('Custom command not found:', task);
-        }
+        await removeCustomCommand(message, group, command);
     }
+    //  else {
+    //     const customCommandMap = group.customCommandMap;
+    //     if (customCommandMap[task]) {
+    //         await showCustomCommandInstanceMenu(message, group, task);
+    //     } else {
+    //         console.log('Custom command not found:', task);
+    //     }
+    // }
 }
-
 async function showAddCommandMenu(message, group) {
-    const commandKeyboard = fullCommandList.map(command => [{
+    // Commands to exclude from the menu
+    const excludedCommands = ['signin', 'signout', 'resetaccount', 'seesettings'];
+
+    // Filter the fullCommandList to remove excluded commands
+    const filteredCommandList = fullCommandList.filter(command => !excludedCommands.includes(command.command));
+
+    // Map the filtered list to create the keyboard buttons
+    const commandKeyboard = filteredCommandList.map(command => [{
         text: command.command,
         callback_data: `gcctarget_${command.command}_${group.id}`
     }]);
@@ -1052,6 +1078,7 @@ async function showAddCommandMenu(message, group) {
         options: { parse_mode: 'HTML' }
     });
 }
+
 
 prefixHandlers['gcctarget_'] = (action,message,user) => {
     const command = action.split('_')[1]
@@ -1129,15 +1156,23 @@ async function handleSetCustCom(message) {
 }
 
 async function removeCustomCommand(message, group, commandName) {
-    // Placeholder for removing a custom command from the group
-    console.log(`Removing custom command: ${commandName} from group: ${group.groupChatId}`);
-    // Logic to remove the command goes here
-}
+    console.log(`Removing custom command: ${commandName} from group: ${group.id}`);
 
-async function showCustomCommandInstanceMenu(message, group, commandName) {
-    // Placeholder for showing custom command instance menu
-    console.log(`Showing custom command instance menu for: ${commandName} in group: ${group.groupChatId}`);
-    // Logic to display the command instance menu goes here
+    // Remove the custom command from commandList
+    group.commandList = group.commandList.filter(cmd => cmd.command !== commandName);
+
+    // Remove the custom command from customCommandMap
+    delete group.customCommandMap[commandName];
+
+    // Save the group state after removing the command
+    saveGroupRQ(group);
+
+    // Set user state to idle after removal
+    setUserState(message, STATES.IDLE);
+
+    // Optionally, navigate back to the command menu
+    message.message_id = group.flag?.targetMessageId || message.message_id; // Use the existing message ID if available
+    await groupCustomCommandMenu(message, message.from.id, group.id);
 }
 
 /*

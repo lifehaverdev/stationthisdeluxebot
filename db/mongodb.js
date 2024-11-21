@@ -31,14 +31,19 @@ class DatabaseQueue {
     enqueue(job) {
         return new Promise((resolve, reject) => {
             this.queue.push(async () => {
+                // Wrap the job with timeout handling to prevent hanging indefinitely
                 try {
-                    const result = await job(); // Execute the job
+                    const result = await Promise.race([
+                        job(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Job timeout')), 5000))
+                    ]);
                     resolve(result); // Resolve the promise with the job's result
                 } catch (error) {
                     reject(error); // Reject if the job fails
                 }
             });
 
+            // Attempt to process the next job after enqueueing
             this.processNext();
         });
     }
@@ -59,9 +64,10 @@ class DatabaseQueue {
         // Get the next job
         const job = this.queue.shift();
         try {
+            console.log('[DatabaseQueue] Processing job...');
             await job(); // Execute the job
         } catch (error) {
-            console.error('Error processing job:', error);
+            console.error('[DatabaseQueue] Error processing job:', error);
         } finally {
             // Mark the processing as done and process the next job
             this.processing = false;
@@ -69,6 +75,7 @@ class DatabaseQueue {
         }
     }
 }
+
 
 
 const dbQueue = new DatabaseQueue();
@@ -193,17 +200,18 @@ async function getUserDataByUserId(userId) {
     // Enqueue the job and await its result
     try {
         const userData = await dbQueue.enqueue(async () => {
-            const client = await getCachedClient();
-            console.log('[getUserDataByUserId] hitting get user data');
             try {
+                console.log('[getUserDataByUserId] Fetching cached client...');
+                const client = await getCachedClient();
+                console.log('[getUserDataByUserId] Got client, fetching db...');
                 const db = client.db(dbName);
+                console.log('[getUserDataByUserId] Got db, fetching collection...');
                 const userSettingsCollection = db.collection('users');
-                //console.log('[getUserDataByUserId] db:', db);
-                //console.log('[getUserDataByUserId] usersettingcollection:', userSettingsCollection);
+                console.log('[getUserDataByUserId] Got collection, fetching user data...');
 
                 // Query for user settings by userId
                 const userData = await userSettingsCollection.findOne({ userId: userId }, { projection: { _id: 0 } });
-                //console.log('[getUserDataByUserId] user data:', userData);
+
                 if (userData) {
                     console.log('[getUserDataByUserId] User settings found:', userData.userId);
                     return userData;

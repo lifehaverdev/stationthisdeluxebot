@@ -803,15 +803,10 @@ module.exports = function(bot) {
 
             // If group commands are available, handle potential group custom commands
             if (group && group.customCommandMap && command) {
-                console.log('here!');
                 const customCommandKey = command.replace('/', '');
                 const customCommand = group.customCommandMap[customCommandKey];
-                console.log(command, group.customCommandMap);
-                console.log('customCommand', customCommand);
-
                 if (customCommand) {
-                    console.log(`Handling custom group command ${command} for group ${group.chatId}`);
-
+                    console.log(`Handling custom group command ${command} for group ${group.title}`);
                     // Check gatekeeping for custom commands
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
                     if (requiresGatekeeping) {
