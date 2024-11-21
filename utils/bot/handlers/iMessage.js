@@ -764,7 +764,6 @@ function parseCommand(message) {
 module.exports = function(bot) {
     bot.on('message', async (message) => {
         //console.log('wow we have a message',message);
-        let handled = false;
         if (messageFilter(message)) {
             console.log('message filtered');
             return;
@@ -782,9 +781,10 @@ module.exports = function(bot) {
                 // Check if the command is restricted in the group
                 if (group && groupRestrictedCommands && groupRestrictedCommands.some(cmd => cmd.command === command.replace('/',''))) {
                     console.log(`Command ${command} is restricted in group ${group.title}`);
-                    await react(message,"😴")
+                    await react(message, "😴");
                     return; // Skip restricted commands
                 }
+
                 // Gatekeeping check if needed
                 const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => command.startsWith(cmd));
                 if (requiresGatekeeping) {
@@ -795,48 +795,48 @@ module.exports = function(bot) {
                 } else {
                     await checkIn(message);
                 }
+
                 // Execute the handler with the message and parsed arguments
                 await safeExecute(message, () => commandRegistry[command].handler(message, args));
-                handled = true;
                 return; // Stop after the first match to avoid multiple command executions
             }
-            // If no command has handled the message, use watch for further processing
-            if (!handled && command) { // Ensure command is not null before processing
-                // If group commands are available, handle potential group custom commands
-                if (group && group.customCommandMap) {
-                    console.log('here!');
-                    const customCommandKey = command.replace('/', '');
-                    const customCommand = group.customCommandMap[customCommandKey];
-                    console.log(command, group.customCommandMap);
-                    console.log('customCommand', customCommand);
-            
-                    if (customCommand) {
-                        console.log(`Handling custom group command ${command} for group ${group.chatId}`);
-            
-                        // Check gatekeeping for custom commands
-                        const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
-                        if (requiresGatekeeping) {
-                            const allowed = await checkLobby(message);
-                            if (!allowed) {
-                                return;
-                            }
-                        } else {
-                            await checkIn(message);
+
+            // If group commands are available, handle potential group custom commands
+            if (group && group.customCommandMap && command) {
+                console.log('here!');
+                const customCommandKey = command.replace('/', '');
+                const customCommand = group.customCommandMap[customCommandKey];
+                console.log(command, group.customCommandMap);
+                console.log('customCommand', customCommand);
+
+                if (customCommand) {
+                    console.log(`Handling custom group command ${command} for group ${group.chatId}`);
+
+                    // Check gatekeeping for custom commands
+                    const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
+                    if (requiresGatekeeping) {
+                        const allowed = await checkLobby(message);
+                        if (!allowed) {
+                            return;
                         }
-            
-                        // Execute the handler for the custom command
-                        await safeExecute(message, () => commandRegistry['/' + customCommand].handler(message, args));
-                        handled = true;
-                        return;
+                    } else {
+                        await checkIn(message);
                     }
+
+                    // Execute the handler for the custom command
+                    await safeExecute(message, () => commandRegistry['/' + customCommand].handler(message, args));
+                    return; // Stop after handling custom command
                 }
-                watch(message);
             }
+
+            // If no command was handled, call watch
+            watch(message);
         } else if ('photo' in message || 'document' in message) {
             // Log and delegate to watch for non-text messages
             watch(message);
         }
-    })
+    });
 }
+
 
 

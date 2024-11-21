@@ -1070,9 +1070,8 @@ console.log('oh yea')
         return 
     }
     const menu = buildEditGroupSubMenu(groupChatId, 'commands_');
-    message.from.id = user;
 
-    setUserState(message, STATES.SETGROUPCUSTCOM);
+    setUserState({...message,from: {id: user}}, STATES.SETGROUPCUSTCOM);
     group.flag = {
         what: 'setCustCom',
         who: command,
