@@ -243,8 +243,8 @@ async function handleGroupMenu(message, user, groupChatId, menuType) {
             if (group.settingsType === 'some') {
                 menu.reply_markup.inline_keyboard.push([{ text: ` set overwrites `, callback_data: `egso_${groupChatId}` }]);
             }
-            menu.reply_markup.inline_keyboard.push([{ text: `📧 required words 🔫`, callback_data: `egrw_${groupChatId}` }]);
-            menu.reply_markup.inline_keyboard.push([{ text: `🧠 assist instruction 👩🏼‍🏫`, callback_data: `egai_${groupChatId}` }]);
+            //menu.reply_markup.inline_keyboard.push([{ text: `📧 required words 🔫`, callback_data: `egrw_${groupChatId}` }]);
+            //menu.reply_markup.inline_keyboard.push([{ text: `🧠 assist instruction 👩🏼‍🏫`, callback_data: `egai_${groupChatId}` }]);
             break;
 
         default:

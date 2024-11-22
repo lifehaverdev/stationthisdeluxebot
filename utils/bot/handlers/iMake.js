@@ -1,4 +1,4 @@
-const { STATES, lobby, rooms, flows, makeSeed } = require('../bot')
+const { STATES, lobby, rooms, flows, workspace, makeSeed } = require('../bot')
 const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
@@ -161,9 +161,17 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING TASK: ${taskType}`);
 
+
     const chatId = message.chat.id;
     const userId = message.from.id;
     const group = getGroup(message);
+
+    //clean up create menu
+    if(workspace[userId]?.context == 'create'){
+        const sent = workspace[userId].message
+        await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟'})
+        delete workspace[userId]
+    }
 
     // Unified settings: get group settings or user settings from lobby
     const settings = getSettings(userId,group)
@@ -180,7 +188,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         return;
     }
     // Clean the message text
-    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '');
+    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '').replace('/create','');
     // Check if the message text is empty, trigger the start prompt
     if (message.text === ''  ) {
         await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount);  // Use the generalized start function

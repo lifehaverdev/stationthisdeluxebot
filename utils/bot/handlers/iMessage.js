@@ -530,7 +530,7 @@ const commandRegistry = {
         handler: async (message) => {
             const getAdmin = async (message) => {
                 const chatAdmins = await bot.getChatAdministrators(message.chat.id);
-                const isAdmin = chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id);
+                const isAdmin = chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id) || message.from.id == DEV_DMS;
                 return isAdmin
             }
             // Step 1: Check if the message is coming from a group chat
@@ -643,8 +643,7 @@ function messageFilter(message) {
     if (message.reply_to_message) {
         if(message.reply_to_message.message_id != message.message_thread_id){
            console.log("Handling a reply to a message.")
-            //console.log(message)
-            return false; // Early return to prevent further processing of this as a normal command
+            return false;
         }
     }
     
@@ -674,9 +673,10 @@ function messageFilter(message) {
         console.log('state state',lobby[message.from.id].state);
         console.log('state chatid',lobby[message.from.id].state.chatId)
         console.log('state message thread',lobby[message.from.id].state.messageThreadId )
-
+        //update 11/21 just set them to idle and let them do w/e
+        setUserState(message,STATES.IDLE)
         //lobby[message.from.id].state.state = STATES.IDLE
-        return true;
+        return false;
     }
 
     
@@ -689,7 +689,7 @@ function watch(message) {
         const currentState = lobby[userId].state;
         const handler = stateHandlers[currentState.state];
         if (handler) {
-            console.log('sending to',handler)
+            console.log('sending to',JSON.stringify(handler))
             //console.log('workspace in watch',workspace)
             handler(message);
         } else {
@@ -803,10 +803,15 @@ module.exports = function(bot) {
 
             // If group commands are available, handle potential group custom commands
             if (group && group.customCommandMap && command) {
+                console.log('here!');
                 const customCommandKey = command.replace('/', '');
                 const customCommand = group.customCommandMap[customCommandKey];
+                console.log(command, group.customCommandMap);
+                console.log('customCommand', customCommand);
+
                 if (customCommand) {
                     console.log(`Handling custom group command ${command} for group ${group.title}`);
+
                     // Check gatekeeping for custom commands
                     const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
                     if (requiresGatekeeping) {

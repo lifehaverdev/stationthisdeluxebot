@@ -187,7 +187,6 @@ function calcSize(message) {
     }
 }
 
-
 function calcBatch(message) {
     const userId = message.from.id;
     const group = getGroup(message)
@@ -230,8 +229,8 @@ async function handleSet(message) {
     const userId = message.from.id;
     const group = getGroup(message);
     const originalMsg = workspace[JSON.stringify(message.from.id)]
-
-    // console.log('found it!',originalMsg)
+    //console.log('workspace',workspace)
+    //console.log('found it!',originalMsg)
     //console.log('group in handleset',group.id);
     if(group){
         if((group.admins.length > 0 && group.admins.some((appointed) => {return message.from.id == appointed ? true : false}))){
@@ -246,25 +245,37 @@ async function handleSet(message) {
 
 
     const sendOrEdit = async (text) => {
-        // console.log('original message here',originalMsg)
-        const chatId = originalMsg.chat_id;
-        const messageId = originalMsg.message_id
-        const setMenu = iMenu.buildSetMenu(settings, group, settings.balance)
-        setMenu.reply_markup.inline_keyboard.push([{text: 'regen', callback_data: 'regen'}])
-        if(originalMsg) {
-            delete workspace[userId]
-            //console.log('editing this',originalMsg)
-            await editMessage({
-                chat_id: chatId,
-                message_id: messageId,
-                text,
-                ...setMenu
-            })
+        const chatId = originalMsg ? originalMsg.chat_id : message.chat.id;
+        const messageId = originalMsg ? originalMsg.message_id : message.message_id;
+    
+        const context = workspace[userId]?.context || 'set';
+    
+        if (context === 'create') {
+            console.log('create context',originalMsg)
+            // Call createMenu directly with originalMsg to handle editing
+            await iMenu.handleCreate({chat: {id: originalMsg.chat_id}, from: {id: userId}, message_id: originalMsg.message_id}, '', userId);
+            console.log('we just sent to create')
         } else {
-            if(workspace[userId]) delete workspace[userId]
-            await sendMessage(message,text,setMenu)
+            // Build and edit setMenu for 'set' context
+            const setMenu = iMenu.buildSetMenu(settings, group, settings.balance);
+            setMenu.reply_markup.inline_keyboard.push([{ text: 'regen', callback_data: 'regen' }]);
+    
+            if (originalMsg) {
+                delete workspace[userId];
+                await editMessage({
+                    chat_id: chatId,
+                    message_id: messageId,
+                    text,
+                    ...setMenu,
+                });
+            } else {
+                if (workspace[userId]) delete workspace[userId];
+                await sendMessage(message, text, setMenu);
+            }
         }
-    }
+    };
+    
+    
 
     //console.log('settings in handleset',settings);
     
@@ -303,7 +314,7 @@ async function handleSet(message) {
         case STATES.SETCONTROL:
         case STATES.SETPOSE:
             const fileUrl = await getPhotoUrl(message);
-
+            console.log('made it here')
             try {
                 const photo = await Jimp.read(fileUrl);
                 const { width, height } = photo.bitmap;
