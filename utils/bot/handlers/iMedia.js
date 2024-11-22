@@ -7,7 +7,7 @@ const Jimp = require('jimp');
 
 const iMake = require('./iMake')
 
-async function handleMs2ImgFile(message) {
+async function handleMs2ImgFile(message, imageUrl = null, prompt = null) {
     const chatId = message.chat.id;
     const userId = message.from.id;
 

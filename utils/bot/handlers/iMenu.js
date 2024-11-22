@@ -1,11 +1,17 @@
-const { lobby, rooms, STATES } = require('../bot')
+const { lobby, rooms, STATES,
+    workspace,
+    actionMap,
+    prefixHandlers,
+    getPhotoUrl,
+} = require('../bot')
 const { basepromptmenu } = require('../../models/basepromptmenu')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { voiceModels } = require('../../models/voiceModelMenu')
 const { watermarkmenu } = require('../../models/watermarks')
 const { compactSerialize, sendMessage, editMessage, makeBaseData, gated, setUserState } = require('../../utils')
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
-
+const iMake = require('./iMake')
+const iMedia = require('./iMedia')
 function getGroup(message) {
     const group = rooms.find(group => group.chat.id == message.chat.id)
     return group;
@@ -111,113 +117,325 @@ function createPromptOption(settings) {
 }
 
 // Look good?
-async function handleCreate(message) {
+async function handleCreate(message, prompt = '', user = null) {
+    let userId = message.from.id
+    let isCallback = false
+    if(user !== null){
+        userId = user;
+        isCallback = true
+    }
+    const targetUserId = isCallback ? user : message.from.id;
     const group = getGroup(message);
-    let settings;
-    let balance;
-    if(group){
-        settings = group.settings;
-        balance = group.applied;
-    }else{
-        settings = lobby[message.from.id]
-        balance = settings.balance
+    const settings = group ? group.settings : lobby[targetUserId];
+    const balance = group ? group.applied : settings.balance;
+    // If createSwitch is missing, set it to SDXL by default
+    if (!settings.createSwitch) {
+        settings.createSwitch = 'SDXL';
     }
-    //const settings = lobby[message.from.id]
-    const sent = await sendMessage(message, `what shall I create for you, @${message.from.username} ?`);
-    
-    const chat_id = sent.chat.id;
-    const message_id = sent.message_id;
-    
-    const reply_markup = 
-    {
-          inline_keyboard: [
-            [   
-                { text: settings.advancedUser ? '💬➡️🖼️' : 'txt2img', callback_data: 'make'},
-            ],
-        ]
-    }
-    let controlstyle = false;
-    let sd3 = false;
-    if(lobby[message.from.id] && balance >= 400000){
-        const newButtons = [
-            [
-                {
-                    text: 
-                        settings.controlNet && settings.input_control_image ? 
-                        'control ✅' : 
-                        settings.controlNet && !settings.input_control_image ? 
-                        'control 🆘' : 'control ❌',
-                    callback_data: 'toggleControlCreate',
-                },
-                {
-                    text:
-                        settings.styleTransfer && settings.input_style_image ?
-                        'style ✅' : 
-                        settings.styleTransfer && !settings.input_style_image ?
-                        'style 🆘' : 'style ❌',
-                    callback_data: 'toggleStyleCreate',
-                },
-                {
-                    text:
-                        settings.openPose && settings.input_pose_image ? 
-                        'pose ✅' : 
-                        settings.openPose && !settings.input_pose_image ?
-                        'pose 🆘' : 'pose ❌',
-                    callback_data: 'togglePoseCreate'
-                }
-                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
-                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
-                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
-            ],
-            // [   
-            //     { text: settings.advancedUser ? '💬💃🏼➡️🖼️' : 'txt2img style transfer', callback_data: 'make_style' },
-            // ],
-            // [   
-            //     { text: settings.advancedUser ? '💬🩻➡️🖼️' : 'txt2img controlnet', callback_data: 'make_control' },
-            // ],
-            // [   
-            //     { text: settings.advancedUser ? '💬💃🏼🩻➡️🖼️' : 'txt2img controlnet + style transfer', callback_data: 'make_control_style' },
-            // ],
-        ];
-    
-        // Define the index where you want to insert the new buttons
-        const insertIndex = 2;
-    
-        // Insert each new button array individually at the specified index
-        for (let i = 0; i < newButtons.length; i++) {
-            reply_markup.inline_keyboard.splice(insertIndex + i, 0, newButtons[i]);
+
+    // Router logic based on createSwitch
+    const routeToHandler = async () => {
+        switch (settings.createSwitch) {
+            case 'SD1.5':
+            case 'SDXL':
+                return await iMake.handleMake(message, prompt, targetUserId); // No state needed if prompt exists
+            case 'FLUX':
+                return await iMake.handleFlux(message, prompt, targetUserId); // No state needed if prompt exists
+            case 'SD3':
+                return await iMake.handleMake3(message, prompt, targetUserId); // No state needed if prompt exists
+            default:
+                console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
+                return await sendMessage(message, 'Sorry, something went wrong with your model type.');
         }
-        controlstyle = true;
+    };
+
+    // If a prompt is provided, route immediately without setting state
+    if (prompt && prompt.trim()) {
+        return await routeToHandler();
     }
-    if(lobby[message.from.id] && balance >= 500000){
-        reply_markup.inline_keyboard.splice(1,0,
-            [
-                { text: settings.advancedUser ? '💬3➡️🖼️' : 'sd3 txt2img', callback_data: 'make3' },
-            ],
-            [
-                { text: settings.advancedUser ? '💬➡️FLUX🖼️' : 'FLUX txt2img', callback_data: 'flux' },
-            ]
-        )
+
+    // Set user state based on createSwitch if no prompt is provided
+    switch (settings.createSwitch) {
+        case 'SD1.5':
+        case 'SDXL':
+            setUserState(message, STATES.MAKE); // SDXL and SD1.5 use MAKE state
+            break;
+        case 'FLUX':
+            setUserState(message, STATES.FLUX);
+            break;
+        case 'SD3':
+            setUserState(message, STATES.MAKE3);
+            break;
+        default:
+            console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
+            return await sendMessage(message, 'Sorry, something went wrong with your model type.');
     }
-    reply_markup.inline_keyboard.push(
-        [
-            { text: 'cancel', callback_data: 'cancel' }
-        ]
-    )
-    try { editMessage(
-        {
-            reply_markup,
-            chat_id,
-            message_id
+
+    // Generate reply_markup for the feature menu
+    const reply_markup = generateFeatureMenu(settings, balance, 'create');
+
+    // If in a callback context, use editMessage
+    if (isCallback) {
+        try {
+            await editMessage({
+                text: `What shall I create for you?`,
+                reply_markup,
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+            });
+        } catch (error) {
+            console.error(`Edit message error:`, {
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || '',
+            });
         }
-        ) } catch (error) {
-        console.error(`Sendmessage error:`, {
-            message: error.message ? error.message : '',
-            name: error.name ? error.name : '',
-            code: error.code ? error.code : '',
-        });
+    } else {
+        // Otherwise, send a new message
+        const sent = await sendMessage(message, `What shall I create for you, @${message.from.username}?`,{reply_markup});
+        workspace[userId] = {message: sent, 'context': 'create'}
     }
 }
+
+
+// Helper to extract prompt from message text
+function extractPromptFromMessage(message) {
+    const commandLength = '/create'.length;
+    const text = message.text || '';
+    return text.length > commandLength ? text.slice(commandLength).trim() : null;
+}
+
+// Generate feature menu
+function generateFeatureMenu(settings, balance, context) {
+    const buttons = [];
+
+    // Model switch buttons
+    buttons.push([
+        { text: settings.createSwitch === 'SD1.5' ? '🔘SD1.5' : '⚪️SD1.5', callback_data: `createswitch_SD1.5_${context}` },
+        { text: settings.createSwitch === 'SDXL' ? '🔘SDXL' : '⚪️SDXL', callback_data: `createswitch_SDXL_${context}` },
+        { text: settings.createSwitch === 'SD3' ? '🔘SD3' : '⚪️SD3', callback_data: `createswitch_SD3_${context}` },
+        { text: settings.createSwitch === 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: `createswitch_FLUX_${context}` },
+    ]);
+
+    // Extras for SDXL with sufficient balance
+    if (settings.createSwitch === 'SDXL' && balance >= 400000) {
+        buttons.push([
+            {
+                text: settings.styleTransfer && settings.input_style_image
+                    ? settings.advancedUser ? '✅💃🏼' : '✅style'
+                    : settings.styleTransfer
+                    ? settings.advancedUser ? '❗️💃🏼' : '❗️style'
+                    : settings.advancedUser ? '⚪️💃🏼' : '⚪️style',
+                callback_data: `togplus_${context}_styleTransfer`,
+            },
+            {
+                text: settings.controlNet && settings.input_control_image
+                    ? settings.advancedUser ? '✅🩻' : '✅control'
+                    : settings.controlNet
+                    ? settings.advancedUser ? '❗️🩻' : '❗️control'
+                    : settings.advancedUser ? '⚪️🩻' : '⚪️control',
+                callback_data: `togplus_${context}_controlNet`,
+            },
+            {
+                text: settings.openPose && settings.input_pose_image
+                    ? settings.advancedUser ? '✅🤾🏼‍♀️' : '✅pose'
+                    : settings.controlNet
+                    ? settings.advancedUser ? '❗️🤾🏼‍♀️' : '❗️pose'
+                    : settings.advancedUser ? '⚪️🤾🏼‍♀️' : '⚪️pose',
+                callback_data: `togplus_${context}_openPose`,
+            },
+        ]);
+    }
+
+    // Extras for FLUX (currently commented out)
+    if (settings.createSwitch === 'FLUX' && balance >= 400000) {
+        buttons.push([
+            {
+                text: settings.controlNet && settings.input_control_image
+                    ? settings.advancedUser ? '✅🩻' : '✅control'
+                    : settings.controlNet
+                    ? settings.advancedUser ? '❗️🩻' : '❗️control'
+                    : settings.advancedUser ? '⚪️🩻' : '⚪️control',
+                callback_data: `togplus_${context}_controlNet`,
+            },
+        ]);
+    }
+
+    // Insufficient balance (only Cancel button)
+    if (balance < 400000) {
+        buttons.length = 0; // Clear existing buttons
+    }
+
+    // Add Cancel button
+    buttons.push([{ text: 'nvm', callback_data: 'cancel' }]);
+
+    return { inline_keyboard: buttons };
+}
+
+actionMap['toggleFeature'] = async (message, user, context, target) => {
+    if (!lobby.hasOwnProperty(user)) {
+        console.log('toggle feature callback couldn’t find user in lobby');
+        return;
+    }
+
+    // Toggle the specified feature in the user's lobby
+    lobby[user][target] = !lobby[user][target];
+
+    // Check if the toggled feature requires a value
+    const featureToLobbyParam = {
+        styleTransfer: 'input_style_image',
+        controlNet: 'input_control_image',
+        openPose: 'input_pose_image',
+    };
+
+    if (lobby[user][target] && featureToLobbyParam.hasOwnProperty(target)) {
+        const lobbyParam = featureToLobbyParam[target]; // e.g., 'input_style_image'
+        // Check if the corresponding value is missing
+        if (!lobby[user][lobbyParam]) {
+            const feature = target === 'styleTransfer' ? 'style' :
+                            target === 'controlNet' ? 'control' : 'pose';
+            return promptForFeatureValue(feature, message, user); // Prompt for missing value
+        }
+    }
+
+    // Update the message.from.id to reflect the user
+    message.from.id = user;
+
+    // Call the appropriate handler based on the context
+    switch (context) {
+        case 'create':
+            handleCreate(message, '', user);
+            break;
+        case 'effect':
+            handleEffect(message, '', user);
+            break;
+        case 'set':
+            handleSet(message, '', user); // Placeholder for 'set' context
+            break;
+        default:
+            console.error(`Unknown context: ${context}`);
+    }
+};
+
+
+async function promptForFeatureValue(feature, message, user) {
+    // Mapping from feature to prompts and states
+    const featureConfig = {
+        style: {
+            promptText: 'Send in a photo to apply style transfer on',
+            state: STATES.SETSTYLE, // Corresponds to STATES.SETSTYLE
+        },
+        control: {
+            promptText: 'Send in a photo to apply controlnet from',
+            state: STATES.SETCONTROL, // Corresponds to STATES.SETCONTROL
+        },
+        pose: {
+            promptText: 'Send in a photo to apply openPose on',
+            state: STATES.SETPOSE, // Corresponds to STATES.SETPOSE
+        },
+    };
+
+    const config = featureConfig[feature];
+    if (!config) {
+        console.error(`Unknown feature: ${feature}`);
+        return;
+    }
+
+    const { promptText, state } = config;
+
+    // Build optional inline keyboard
+    const reply_markup = {
+        inline_keyboard: [[{ text: '↖︎', callback_data: 'backToSet' }]],
+    };
+
+    // Add the context flag to the workspace
+    workspace[user] = {
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        context: 'create', // Add context flag for navigation
+    };
+
+    console.log(`Workspace updated for user ${user}:`, workspace[user]);
+
+    // Set user state and prompt for input
+    setUserState({ ...message, from: { id: user } }, state); // Use the correct state from mapping
+    console.log(`User state set to: ${state}`);
+
+    // Edit the current message to display the prompt
+    await editMessage({
+        text: promptText,
+        reply_markup,
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        options: { parse_mode: 'Markdown' },
+    });
+}
+
+prefixHandlers['togplus_'] = (action, message, user) => {
+    // Extract context and target from the action
+    const parts = action.split('_');
+    const context = parts[1]; // e.g., "create", "effect", "set"
+    const target = parts[2];  // e.g., "style", "control", "pose"
+
+    // Ensure the action map uses the toggleFeature function
+    actionMap['toggleFeature'](message, user, context, target);
+};
+
+prefixHandlers['createswitch_'] = (action, message, user) => {
+    // Extract context and target from the action
+    const parts = action.split('_');
+    const target = parts[1];  // e.g., "FLUX", "SD1.5", "SDXL"
+    const context = parts[2]; // e.g., "create", "effect", "set"
+
+    // Ensure the action map uses the toggleFeature function
+    actionMap['switchModel'](message, user, context, target);
+};
+
+actionMap['switchModel'] = (message, user, context, target) => {
+    creationSwitch(message, user, context, target);
+};
+
+function creationSwitch(message, user, context, target) {
+    // Ensure the user exists in the lobby
+    if (!lobby.hasOwnProperty(user)) {
+        console.log('creationSwitch callback couldn’t find user in lobby');
+        return;
+    }
+
+    // Update the createSwitch value in the user's settings
+    const settings = lobby[user];
+    if (['FLUX', 'SD1.5', 'SDXL', 'SD3'].includes(target)) {
+        settings.createSwitch = target;
+        console.log(`createSwitch updated to: ${target}`);
+    } else {
+        console.error(`Invalid target for createSwitch: ${target}`);
+        return;
+    }
+
+    // Navigate back to the appropriate menu based on context
+    switch (context) {
+        case 'create':
+            handleCreate(message,'', user);
+            break;
+        case 'effect':
+            effectMenu(settings, user, { chat_id: message.chat.id, message_id: message.message_id });
+            break;
+        case 'set':
+            // Call setMenu or any other relevant menu for 'set' context
+            const setMenu = iMenu.buildSetMenu(settings, null, settings.balance);
+            editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: 'Set menu updated.',
+                ...setMenu,
+            });
+            break;
+        default:
+            console.error(`Unknown context: ${context}`);
+    }
+}
+
+
 function handleUtils(message) {
     const group = getGroup(message);
     let settings;
@@ -242,10 +460,10 @@ function handleUtils(message) {
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '🖼️➡️📈🖼️' : 'upscale', callback_data: 'upscale' },
-                { text: settings.advancedUser ? '🖼️➡️🌞' : 'remove background', callback_data: 'rmbg' },
+                { text: settings.advancedUser ? '🌠➡️⭐️' : 'remove background', callback_data: 'rmbg' },
             ],
             [
-                { text: settings.advancedUser ? '🖼️✍️' : 'watermark', callback_data: 'watermark'},
+                { text: settings.advancedUser ? '🖼️💦✍️' : 'watermark', callback_data: 'watermark'},
                 //{ text: settings.advancedUser ? '🖼️➡️💽' : 'disc', callback_data: 'disc'}
             ]
         )
@@ -256,9 +474,6 @@ function handleUtils(message) {
                 { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assistMenu'},
                 { text: settings.advancedUser ? '🖼️➡️💬' : 'interrogate', callback_data: 'interMenu'},
             ],
-            // [
-            //     { text: settings.advancedUser ? '🖼️➡️FLUX💬' : 'Flux inter', callback_data: 'finterrogate'},
-            // ]
         )
       }
       options.reply_markup.inline_keyboard.push(
@@ -274,106 +489,180 @@ function handleUtils(message) {
         sendMessage(message,'Utils', options);
     }
 }
-function handleEffect(message) {
+// function handleEffect(message) {
+//     const group = getGroup(message);
+//     let settings;
+//     let balance;
+//     if(group){
+//         settings = group.settings;
+//         balance = group.applied;
+//     }else{
+//         settings = lobby[message.from.id]
+//         balance = settings.balance
+//     }
+//     const options = {
+//         reply_markup: {
+//           inline_keyboard: [
+//             [   
+//                 { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
+//             ],
+
+//         ],
+//           resize_keyboard: true,
+//           one_time_keyboard: true
+//         }
+
+//     };
+//     if(lobby[message.from.id] && balance >= 300000){
+//         options.reply_markup.inline_keyboard[0] = 
+//         [   
+//             { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
+//             { text: settings.advancedUser ? '🖼️👾➡️🖼️' : 'autoi2i', callback_data: 'pfp' },
+//         ];
+//     }
+//     options.reply_markup.inline_keyboard.push(
+//         [
+//             { text: settings.advancedUser ? '🖼️➡️FLUX🖼️' : 'image2fluximage', callback_data: 'fluxi2i' },
+//         ]
+//     )
+//     if(lobby[message.from.id] && balance >= 400000){
+//         options.reply_markup.inline_keyboard.unshift(
+//             [
+//                 {
+//                     text: 
+//                         settings.controlNet && settings.input_control_image ? 
+//                         'control ✅' : 
+//                         settings.controlNet && !settings.input_control_image ? 
+//                         'control ♻️' : 'control ❌',
+//                     callback_data: 'toggleControlEffect',
+//                 },
+//                 {
+//                     text:
+//                         settings.styleTransfer && settings.input_style_image ?
+//                         'style ✅' : 
+//                         settings.styleTransfer && !settings.input_style_image ?
+//                         'style ♻️' : 'style ❌',
+//                     callback_data: 'toggleStyleEffect',
+//                 },
+//                 {
+//                     text:
+//                         settings.openPose && settings.input_pose_image ? 
+//                         'pose ✅' : 
+//                         settings.openPose && !settings.input_pose_image ?
+//                         'pose ♻️' : 'pose ❌',
+//                     callback_data: 'togglePoseEffect'
+//                 }
+//                 // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
+//                 // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
+//                 // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
+//             ],
+//         )
+//         // options.reply_markup.inline_keyboard.push(
+//         //     [
+//         //         { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
+//         //         { text: settings.advancedUser ? '🖼️💃🏼👾➡️🖼️' : 'autoi2i style transfer', callback_data: 'pfp_style' },
+//         //     ]
+//         // )
+//         // options.reply_markup.inline_keyboard.push(
+//         //     [
+//         //         { text: settings.advancedUser ? '🖼️🩻➡️🖼️' : 'image2image controlnet', callback_data: 'ms2_control'},
+//         //         { text: settings.advancedUser ? '🖼️🩻👾➡️🖼️' : 'autoi2i controlnet', callback_data: 'pfp_control'}
+//         //     ]
+//         // )
+//         // options.reply_markup.inline_keyboard.push(
+//         //     [
+//         //         { text: settings.advancedUser ? '🖼️💃🏼🩻➡️🖼️' : 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
+//         //         { text: settings.advancedUser ? '🖼️💃🏼🩻👾➡️🖼️' : 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
+//         //     ]
+//         // )
+//         options.reply_markup.inline_keyboard.push(
+//             [
+//                 { text: settings.advancedUser ? '🖼️🔍➡️🎨🖼️' : 'inpaint', callback_data: 'inpaint'},
+//             ]
+//         )
+//     }
+//     options.reply_markup.inline_keyboard.push(
+//         [
+//             { text: 'cancel', callback_data: 'cancel' }
+//         ]
+//     )
+//       // Sending an empty message to set the keyboard
+//     sendMessage(message,'Effect', options);
+// }
+
+
+async function handleEffect(message, prompt = '', user = null) {
+    const isCallback = user !== null; // Check if this is a callback context
+    const targetUserId = isCallback ? user : message.from.id;
     const group = getGroup(message);
-    let settings;
-    let balance;
-    if(group){
-        settings = group.settings;
-        balance = group.applied;
-    }else{
-        settings = lobby[message.from.id]
-        balance = settings.balance
-    }
-    const options = {
-        reply_markup: {
-          inline_keyboard: [
-            [   
-                { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
-            ],
+    const settings = group ? group.settings : lobby[targetUserId];
+    const balance = group ? group.applied : settings.balance;
 
-        ],
-          resize_keyboard: true,
-          one_time_keyboard: true
+    // If createSwitch is missing, set it to SDXL by default
+    if (!settings.createSwitch) {
+        settings.createSwitch = 'SDXL';
+        // if (!isCallback) {
+        //     await sendMessage(message, `Your model type has been set to SDXL by default. You can change it later if needed.`);
+        // }
+    }
+
+    // Check for attached image or reply to an image
+    const attachedImage = getPhotoUrl(message);
+    const isReply = message.reply_to_message && getPhotoUrl(message.reply_to_message);
+    const image = attachedImage || isReply;
+
+    // If a prompt and image are provided, route directly
+    if (prompt && image) {
+        return await routeEffectWorkflow(prompt, image, settings, message);
+    }
+
+    // If only a prompt is provided, prompt for the image
+    if (prompt && !image) {
+        setUserState(message, STATES.WAITING_FOR_IMAGE);
+        return await sendMessage(message, `Please send an image to apply the effect.`);
+    }
+
+    // If no prompt or image, show the effect menu
+    const reply_markup = generateFeatureMenu(settings, balance, 'effect');
+    if (isCallback) {
+        try {
+            await editMessage({
+                text: `What effect shall I apply for you?`,
+                reply_markup,
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+            });
+        } catch (error) {
+            console.error(`Edit message error:`, error);
         }
-
-    };
-    if(lobby[message.from.id] && balance >= 300000){
-        options.reply_markup.inline_keyboard[0] = 
-        [   
-            { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
-            { text: settings.advancedUser ? '🖼️👾➡️🖼️' : 'autoi2i', callback_data: 'pfp' },
-        ];
+    } else {
+        await sendMessage(message, `What effect shall I apply for you, @${message.from.username}?`, { reply_markup });
     }
-    options.reply_markup.inline_keyboard.push(
-        [
-            { text: settings.advancedUser ? '🖼️➡️FLUX🖼️' : 'image2fluximage', callback_data: 'fluxi2i' },
-        ]
-    )
-    if(lobby[message.from.id] && balance >= 400000){
-        options.reply_markup.inline_keyboard.unshift(
-            [
-                {
-                    text: 
-                        settings.controlNet && settings.input_control_image ? 
-                        'control ✅' : 
-                        settings.controlNet && !settings.input_control_image ? 
-                        'control ♻️' : 'control ❌',
-                    callback_data: 'toggleControlEffect',
-                },
-                {
-                    text:
-                        settings.styleTransfer && settings.input_style_image ?
-                        'style ✅' : 
-                        settings.styleTransfer && !settings.input_style_image ?
-                        'style ♻️' : 'style ❌',
-                    callback_data: 'toggleStyleEffect',
-                },
-                {
-                    text:
-                        settings.openPose && settings.input_pose_image ? 
-                        'pose ✅' : 
-                        settings.openPose && !settings.input_pose_image ?
-                        'pose ♻️' : 'pose ❌',
-                    callback_data: 'togglePoseEffect'
-                }
-                // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
-                // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
-                // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
-            ],
-        )
-        // options.reply_markup.inline_keyboard.push(
-        //     [
-        //         { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
-        //         { text: settings.advancedUser ? '🖼️💃🏼👾➡️🖼️' : 'autoi2i style transfer', callback_data: 'pfp_style' },
-        //     ]
-        // )
-        // options.reply_markup.inline_keyboard.push(
-        //     [
-        //         { text: settings.advancedUser ? '🖼️🩻➡️🖼️' : 'image2image controlnet', callback_data: 'ms2_control'},
-        //         { text: settings.advancedUser ? '🖼️🩻👾➡️🖼️' : 'autoi2i controlnet', callback_data: 'pfp_control'}
-        //     ]
-        // )
-        // options.reply_markup.inline_keyboard.push(
-        //     [
-        //         { text: settings.advancedUser ? '🖼️💃🏼🩻➡️🖼️' : 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
-        //         { text: settings.advancedUser ? '🖼️💃🏼🩻👾➡️🖼️' : 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
-        //     ]
-        // )
-        options.reply_markup.inline_keyboard.push(
-            [
-                { text: settings.advancedUser ? '🖼️🔍➡️🎨🖼️' : 'inpaint', callback_data: 'inpaint'},
-            ]
-        )
-    }
-    options.reply_markup.inline_keyboard.push(
-        [
-            { text: 'cancel', callback_data: 'cancel' }
-        ]
-    )
-      // Sending an empty message to set the keyboard
-    sendMessage(message,'Effect', options);
 }
+
+function getImageFromMessage(message) {
+    if (!message || !message.photo) return null;
+
+    const fileUrl = getPhotoUrl(message)
+    return fileUrl // Return the highest resolution image
+}
+
+async function routeEffectWorkflow(message,image,prompt) {
+    switch (settings.createSwitch) {
+        case 'SD1.5':
+        case 'SDXL':
+            return await iMedia.handleMs2ImgFile(message, image, prompt);
+        case 'FLUX':
+            return await handleImg2ImgFlux(message, image, prompt);
+        // case 'SD3':
+        //     return await handleImg2ImgSD3(message, prompt, image, settings);
+        default:
+            console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
+            return await sendMessage(message, 'Sorry, something went wrong with your model type.');
+    }
+}
+
+
 function handleAnimate(message) {
     const group = getGroup(message);
     let settings;
