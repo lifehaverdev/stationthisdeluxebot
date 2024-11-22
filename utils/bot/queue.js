@@ -1,5 +1,5 @@
 
-const { taskQueue, waiting, successors, lobby, failures } = require('../bot/bot');
+const { taskQueue, waiting, successors, lobby, workspace, failures } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
@@ -80,6 +80,10 @@ function enqueueTask(task) {
     // If queue was empty, start processing tasks
     if (taskQueue.length === 1) {
         processQueue();
+    }
+
+    if(workspace[userId]){
+        delete workspace[userId]
     }
 }
 

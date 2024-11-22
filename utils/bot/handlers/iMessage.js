@@ -582,21 +582,24 @@ const commandRegistry = {
 //const stateHandlers = {
     stateHandlers[STATES.SIGN_IN]= (message) => safeExecute(message, iAccount.shakeSignIn)
     stateHandlers[STATES.VERIFY]= (message) => safeExecute(message, iAccount.shakeVerify)
+
     stateHandlers[STATES.MAKE]= (message) => safeExecute(message, iMake.handleMake)
     stateHandlers[STATES.MAKE3]= (message) => safeExecute(message, iMake.handleMake3)
+
+    stateHandlers[STATES.EFFECTHANG] = (message) => safeExecute(message, iMenu.handleEffectHang);
+    stateHandlers[STATES.PFP]= (message) => safeExecute(message, iMedia.handlePfpImgFile)
     stateHandlers[STATES.MS2PROMPT]= (message) => safeExecute(message, iMake.handleMs2Prompt)
     stateHandlers[STATES.FLUXPROMPT] = (message) => safeExecute(message, iMake.handleFluxPrompt)
+    stateHandlers[STATES.IMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
+    stateHandlers[STATES.FLUX2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
+    
+    stateHandlers[STATES.MS3]= (message) => safeExecute(message,iMedia.handleMs3ImgFile)
+    stateHandlers[STATES.MS3V2] = (message) => safeExecute(message,iMedia.handleMs3V2ImgFile)
+    
+    stateHandlers[STATES.INTERROGATION]= (message) => safeExecute(message, iMedia.handleInterrogation)
     stateHandlers[STATES.ASSIST]= (message) => safeExecute(message, iWork.shakeAssist)
     stateHandlers[STATES.FLASSIST]= (message) => safeExecute(message, iWork.shakeFluxAssist)
     stateHandlers[STATES.SPEAK]= (message) => safeExecute(message, iWork.shakeSpeak)
-    stateHandlers[STATES.IMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
-    stateHandlers[STATES.FLUX2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
-    stateHandlers[STATES.MS3]= (message) => safeExecute(message,iMedia.handleMs3ImgFile)
-    stateHandlers[STATES.MS3V2] = (message) => safeExecute(message,iMedia.handleMs3V2ImgFile)
-    stateHandlers[STATES.PFP]= (message) => safeExecute(message, iMedia.handlePfpImgFile)
-
-    stateHandlers[STATES.INTERROGATION]= (message) => safeExecute(message, iMedia.handleInterrogation)
-
     stateHandlers[STATES.DISC]= (message) => safeExecute(message, iBrand.handleDiscWrite)
     stateHandlers[STATES.WATERMARK]= (message) => safeExecute(message, iBrand.handleWatermark)
 
@@ -689,7 +692,6 @@ function watch(message) {
         const currentState = lobby[userId].state;
         const handler = stateHandlers[currentState.state];
         if (handler) {
-            console.log('sending to',JSON.stringify(handler))
             //console.log('workspace in watch',workspace)
             handler(message);
         } else {

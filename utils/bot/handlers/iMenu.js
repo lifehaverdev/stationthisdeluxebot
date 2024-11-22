@@ -4,6 +4,9 @@ const { lobby, rooms, STATES,
     prefixHandlers,
     getPhotoUrl,
 } = require('../bot')
+const {
+    cleanPrompt
+} = require('../../utils')
 const { basepromptmenu } = require('../../models/basepromptmenu')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { voiceModels } = require('../../models/voiceModelMenu')
@@ -198,13 +201,14 @@ async function handleCreate(message, prompt = '', user = null) {
 }
 
 
+
+
 // Helper to extract prompt from message text
 function extractPromptFromMessage(message) {
     const commandLength = '/create'.length;
     const text = message.text || '';
     return text.length > commandLength ? text.slice(commandLength).trim() : null;
 }
-
 // Generate feature menu
 function generateFeatureMenu(settings, balance, context) {
     const buttons = [];
@@ -213,13 +217,12 @@ function generateFeatureMenu(settings, balance, context) {
     buttons.push([
         { text: settings.createSwitch === 'SD1.5' ? '🔘SD1.5' : '⚪️SD1.5', callback_data: `createswitch_SD1.5_${context}` },
         { text: settings.createSwitch === 'SDXL' ? '🔘SDXL' : '⚪️SDXL', callback_data: `createswitch_SDXL_${context}` },
-        { text: settings.createSwitch === 'SD3' ? '🔘SD3' : '⚪️SD3', callback_data: `createswitch_SD3_${context}` },
         { text: settings.createSwitch === 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: `createswitch_FLUX_${context}` },
     ]);
 
     // Extras for SDXL with sufficient balance
     if (settings.createSwitch === 'SDXL' && balance >= 400000) {
-        buttons.push([
+        const sdxlButtons = [
             {
                 text: settings.styleTransfer && settings.input_style_image
                     ? settings.advancedUser ? '✅💃🏼' : '✅style'
@@ -239,27 +242,40 @@ function generateFeatureMenu(settings, balance, context) {
             {
                 text: settings.openPose && settings.input_pose_image
                     ? settings.advancedUser ? '✅🤾🏼‍♀️' : '✅pose'
-                    : settings.controlNet
+                    : settings.openPose
                     ? settings.advancedUser ? '❗️🤾🏼‍♀️' : '❗️pose'
                     : settings.advancedUser ? '⚪️🤾🏼‍♀️' : '⚪️pose',
                 callback_data: `togplus_${context}_openPose`,
             },
-        ]);
+        ];
+
+        // Add the auto prompt option for the "effect" context
+        if (context === 'effect') {
+            sdxlButtons.push({
+                text: settings.autoPrompt
+                    ? settings.advancedUser ? '✅🤖🗯️' : '✅auto prompt'
+                    : settings.advancedUser ? '⚪️🤖🗯️' : '⚪️auto prompt',
+                callback_data: `togplus_${context}_autoPrompt`,
+            });
+        }
+
+        // Add the buttons to the main array
+        buttons.push(sdxlButtons);
     }
 
     // Extras for FLUX (currently commented out)
-    if (settings.createSwitch === 'FLUX' && balance >= 400000) {
-        buttons.push([
-            {
-                text: settings.controlNet && settings.input_control_image
-                    ? settings.advancedUser ? '✅🩻' : '✅control'
-                    : settings.controlNet
-                    ? settings.advancedUser ? '❗️🩻' : '❗️control'
-                    : settings.advancedUser ? '⚪️🩻' : '⚪️control',
-                callback_data: `togplus_${context}_controlNet`,
-            },
-        ]);
-    }
+    // if (settings.createSwitch === 'FLUX' && balance >= 400000) {
+    //     buttons.push([
+    //         {
+    //             text: settings.controlNet && settings.input_control_image
+    //                 ? settings.advancedUser ? '✅🩻' : '✅control'
+    //                 : settings.controlNet
+    //                 ? settings.advancedUser ? '❗️🩻' : '❗️control'
+    //                 : settings.advancedUser ? '⚪️🩻' : '⚪️control',
+    //             callback_data: `togplus_${context}_controlNet`,
+    //         },
+    //     ]);
+    // }
 
     // Insufficient balance (only Cancel button)
     if (balance < 400000) {
@@ -296,6 +312,11 @@ actionMap['toggleFeature'] = async (message, user, context, target) => {
                             target === 'controlNet' ? 'control' : 'pose';
             return promptForFeatureValue(feature, message, user); // Prompt for missing value
         }
+    }
+
+    // Special handling for `autoPrompt`
+    if (target === 'autoPrompt') {
+        console.log(`AutoPrompt toggled: ${lobby[user][target]}`);
     }
 
     // Update the message.from.id to reflect the user
@@ -404,9 +425,11 @@ function creationSwitch(message, user, context, target) {
 
     // Update the createSwitch value in the user's settings
     const settings = lobby[user];
-    if (['FLUX', 'SD1.5', 'SDXL', 'SD3'].includes(target)) {
+    if (['FLUX', 'SD1.5', 'SDXL', 'SD3'].includes(target) && settings.createSwitch != target) {
         settings.createSwitch = target;
         console.log(`createSwitch updated to: ${target}`);
+    } else if(settings.createSwitch == target) {
+        return
     } else {
         console.error(`Invalid target for createSwitch: ${target}`);
         return;
@@ -418,7 +441,7 @@ function creationSwitch(message, user, context, target) {
             handleCreate(message,'', user);
             break;
         case 'effect':
-            effectMenu(settings, user, { chat_id: message.chat.id, message_id: message.message_id });
+            handleEffect(message, '', user);
             break;
         case 'set':
             // Call setMenu or any other relevant menu for 'set' context
@@ -489,107 +512,6 @@ function handleUtils(message) {
         sendMessage(message,'Utils', options);
     }
 }
-// function handleEffect(message) {
-//     const group = getGroup(message);
-//     let settings;
-//     let balance;
-//     if(group){
-//         settings = group.settings;
-//         balance = group.applied;
-//     }else{
-//         settings = lobby[message.from.id]
-//         balance = settings.balance
-//     }
-//     const options = {
-//         reply_markup: {
-//           inline_keyboard: [
-//             [   
-//                 { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
-//             ],
-
-//         ],
-//           resize_keyboard: true,
-//           one_time_keyboard: true
-//         }
-
-//     };
-//     if(lobby[message.from.id] && balance >= 300000){
-//         options.reply_markup.inline_keyboard[0] = 
-//         [   
-//             { text: settings.advancedUser ? '🖼️➡️🖼️' : 'image2image', callback_data: 'ms2' },
-//             { text: settings.advancedUser ? '🖼️👾➡️🖼️' : 'autoi2i', callback_data: 'pfp' },
-//         ];
-//     }
-//     options.reply_markup.inline_keyboard.push(
-//         [
-//             { text: settings.advancedUser ? '🖼️➡️FLUX🖼️' : 'image2fluximage', callback_data: 'fluxi2i' },
-//         ]
-//     )
-//     if(lobby[message.from.id] && balance >= 400000){
-//         options.reply_markup.inline_keyboard.unshift(
-//             [
-//                 {
-//                     text: 
-//                         settings.controlNet && settings.input_control_image ? 
-//                         'control ✅' : 
-//                         settings.controlNet && !settings.input_control_image ? 
-//                         'control ♻️' : 'control ❌',
-//                     callback_data: 'toggleControlEffect',
-//                 },
-//                 {
-//                     text:
-//                         settings.styleTransfer && settings.input_style_image ?
-//                         'style ✅' : 
-//                         settings.styleTransfer && !settings.input_style_image ?
-//                         'style ♻️' : 'style ❌',
-//                     callback_data: 'toggleStyleEffect',
-//                 },
-//                 {
-//                     text:
-//                         settings.openPose && settings.input_pose_image ? 
-//                         'pose ✅' : 
-//                         settings.openPose && !settings.input_pose_image ?
-//                         'pose ♻️' : 'pose ❌',
-//                     callback_data: 'togglePoseEffect'
-//                 }
-//                 // { text: settings.poseFileUrl ? 'pose ✅' : 'pose ❌', callback_data: 'setpose'},
-//                 // { text: settings.styleFileUrl ? 'style ✅' : 'style ❌', callback_data: 'setstyle'},
-//                 // { text: settings.controlFileUrl ? 'control ✅' : 'control ❌', callback_data: 'setcontrol'}
-//             ],
-//         )
-//         // options.reply_markup.inline_keyboard.push(
-//         //     [
-//         //         { text: settings.advancedUser ? '🖼️💃🏼➡️🖼️' : 'image2image style transfer', callback_data: 'ms2_style' },
-//         //         { text: settings.advancedUser ? '🖼️💃🏼👾➡️🖼️' : 'autoi2i style transfer', callback_data: 'pfp_style' },
-//         //     ]
-//         // )
-//         // options.reply_markup.inline_keyboard.push(
-//         //     [
-//         //         { text: settings.advancedUser ? '🖼️🩻➡️🖼️' : 'image2image controlnet', callback_data: 'ms2_control'},
-//         //         { text: settings.advancedUser ? '🖼️🩻👾➡️🖼️' : 'autoi2i controlnet', callback_data: 'pfp_control'}
-//         //     ]
-//         // )
-//         // options.reply_markup.inline_keyboard.push(
-//         //     [
-//         //         { text: settings.advancedUser ? '🖼️💃🏼🩻➡️🖼️' : 'image2image controlnet + style transfer', callback_data: 'ms2_control_style'},
-//         //         { text: settings.advancedUser ? '🖼️💃🏼🩻👾➡️🖼️' : 'autoi2i controlnet + style transfer', callback_data: 'pfp_control_style'}
-//         //     ]
-//         // )
-//         options.reply_markup.inline_keyboard.push(
-//             [
-//                 { text: settings.advancedUser ? '🖼️🔍➡️🎨🖼️' : 'inpaint', callback_data: 'inpaint'},
-//             ]
-//         )
-//     }
-//     options.reply_markup.inline_keyboard.push(
-//         [
-//             { text: 'cancel', callback_data: 'cancel' }
-//         ]
-//     )
-//       // Sending an empty message to set the keyboard
-//     sendMessage(message,'Effect', options);
-// }
-
 
 async function handleEffect(message, prompt = '', user = null) {
     const isCallback = user !== null; // Check if this is a callback context
@@ -601,66 +523,220 @@ async function handleEffect(message, prompt = '', user = null) {
     // If createSwitch is missing, set it to SDXL by default
     if (!settings.createSwitch) {
         settings.createSwitch = 'SDXL';
-        // if (!isCallback) {
-        //     await sendMessage(message, `Your model type has been set to SDXL by default. You can change it later if needed.`);
-        // }
+    }
+
+    // Initialize workspace tracking
+    if (!workspace[targetUserId]) {
+        workspace[targetUserId] = {
+            message: null,
+            context: 'effect',
+            prompt: '',
+            imageUrl: '',
+            stamp: Date.now(),
+        };
     }
 
     // Check for attached image or reply to an image
-    const attachedImage = getPhotoUrl(message);
-    const isReply = message.reply_to_message && getPhotoUrl(message.reply_to_message);
+    const attachedImage = await getPhotoUrl(message);
+    const isReply = message.reply_to_message && await getPhotoUrl(message.reply_to_message);
     const image = attachedImage || isReply;
 
-    // If a prompt and image are provided, route directly
+    // Route based on provided prompt and image
     if (prompt && image) {
+        // If both prompt and image are provided, route directly to the workflow
         return await routeEffectWorkflow(prompt, image, settings, message);
-    }
+    } else if (image && settings.autoPrompt) {
+        // If image is provided and autoPrompt is enabled
+        console.log('Auto prompt enabled: proceeding to auto image task.');
+        workspace[targetUserId].imageUrl = image; // Update workspace with image
+        return await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+    } else if (prompt && !image) {
+        // Update workspace and settings with the prompt
+        settings.prompt = prompt;
+        workspace[targetUserId].prompt = prompt;
 
-    // If only a prompt is provided, prompt for the image
-    if (prompt && !image) {
-        setUserState(message, STATES.WAITING_FOR_IMAGE);
-        return await sendMessage(message, `Please send an image to apply the effect.`);
-    }
-
-    // If no prompt or image, show the effect menu
-    const reply_markup = generateFeatureMenu(settings, balance, 'effect');
-    if (isCallback) {
-        try {
-            await editMessage({
-                text: `What effect shall I apply for you?`,
-                reply_markup,
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-            });
-        } catch (error) {
-            console.error(`Edit message error:`, error);
+        // Set the state based on createSwitch
+        switch (settings.createSwitch) {
+            case 'FLUX':
+                setUserState(message, STATES.FLUX2IMG);
+                break;
+            case 'SD1.5':
+            case 'SDXL':
+            case 'SD3':
+                setUserState(message, STATES.IMG2IMG);
+                break;
+            default:
+                console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
+                await sendMessage(message, `Sorry, something went wrong. Please try again.`);
+                return;
         }
+
+        // Edit or prompt for the missing image
+        const sent = await sendMessage(message, `Please send an image to apply the effect.`);
+        workspace[targetUserId].message = sent;
+    } else if (!prompt && image) {
+        // Update workspace with the image
+        workspace[targetUserId].imageUrl = image;
+
+        // Send to handleMs2ImgFile to process the image
+        await iMedia.handleMs2ImgFile(message, image, null);
     } else {
-        await sendMessage(message, `What effect shall I apply for you, @${message.from.username}?`, { reply_markup });
+        // If neither prompt nor image is provided, show the effect menu
+        setUserState(message, STATES.EFFECTHANG); // Set the new state
+        const reply_markup = generateFeatureMenu(settings, balance, 'effect');
+
+        if (isCallback) {
+            try {
+                const sent = await editMessage({
+                    text: `What effect shall I apply for you?`,
+                    reply_markup,
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                });
+                workspace[targetUserId].message = sent;
+            } catch (error) {
+                console.error(`Edit message error:`, error);
+            }
+        } else {
+            const sent = await sendMessage(message, `What effect shall I apply for you, @${message.from.username}?`, { reply_markup });
+            workspace[targetUserId].message = sent;
+            console.log('workspace after empty effect', workspace);
+        }
     }
 }
-
-function getImageFromMessage(message) {
-    if (!message || !message.photo) return null;
-
-    const fileUrl = getPhotoUrl(message)
-    return fileUrl // Return the highest resolution image
-}
-
-async function routeEffectWorkflow(message,image,prompt) {
+async function routeEffectWorkflow(prompt, image, settings, message) {
+    // Determine the task based on createSwitch
     switch (settings.createSwitch) {
         case 'SD1.5':
         case 'SDXL':
+            // If autoPrompt is enabled, redirect to handleImageTask
+            if (settings.autoPrompt) {
+                return await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+            }
             return await iMedia.handleMs2ImgFile(message, image, prompt);
         case 'FLUX':
-            return await handleImg2ImgFlux(message, image, prompt);
-        // case 'SD3':
-        //     return await handleImg2ImgSD3(message, prompt, image, settings);
+            return await iMedia.handleFluxImgFile(message, image, prompt);
         default:
             console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
             return await sendMessage(message, 'Sorry, something went wrong with your model type.');
     }
 }
+
+async function handleFullCase(message, settings, image, prompt) {
+    console.log('Effect Hang: Handling full case');
+    // Route directly to the workflow based on createSwitch
+    await routeEffectWorkflow(prompt, image, settings, message);
+}
+
+async function handleMissingImageCase(message, settings, workspaceEntry, prompt) {
+    console.log('Effect Hang: Handling missing image case');
+    // Update workspace and settings with the prompt
+    workspaceEntry.prompt = prompt;
+    settings.prompt = prompt;
+
+    // Set the state based on createSwitch
+    const state = determineState(settings.createSwitch, STATES.IMG2IMG, STATES.FLUX2IMG);
+    if (!state) {
+        await sendMessage(message, `Sorry, something went wrong. Please try again.`);
+        return;
+    }
+    setUserState(message, state);
+
+    // Prompt for the missing image
+    const promptText = `Got your prompt! Now, send an image to proceed.`;
+    if (workspaceEntry.message) {
+        await editMessage({
+            text: promptText,
+            chat_id: workspaceEntry.message.chat.id,
+            message_id: workspaceEntry.message.message_id,
+        });
+    } else {
+        const sent = await sendMessage(message, promptText);
+        workspace[message.from.id].message = sent;
+    }
+}
+
+async function handleMissingPromptCase(message, settings, image) {
+    console.log('Effect Hang: Handling missing prompt case');
+    // Update workspace with the image
+    workspace[message.from.id].imageUrl = image;
+
+    // Route to the correct image handler
+    switch (settings.createSwitch) {
+        case 'SD1.5':
+        case 'SDXL':
+            await iMedia.handleMs2ImgFile(message, image, null);
+            break;
+        case 'FLUX':
+            await iMedia.handleFluxImgFile(message, image, null);
+            break;
+        default:
+            console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
+            await sendMessage(message, 'Sorry, something went wrong with your model type.');
+    }
+}
+async function handleEffectHang(message) {
+    const userId = message.from.id;
+    const settings = lobby[userId];
+    const workspaceEntry = workspace[userId] || {};
+    console.log('Workspace entry:', workspaceEntry);
+
+    // Check for image (from message, reply, or workspace)
+    const replyImage = message.reply_to_message && await getPhotoUrl(message.reply_to_message);
+    const image = await getPhotoUrl(message) || replyImage || workspaceEntry.imageUrl;
+
+    // Check for prompt (from message or workspace)
+    const prompt = cleanPrompt(message.text || message.caption || workspaceEntry.prompt || '');
+
+    // Determine next steps based on available inputs
+    if (prompt && image) {
+        console.log('Effect Hang: Full case (prompt and image)');
+        
+        // Set state based on createSwitch
+        const state = determineState(settings.createSwitch, STATES.IMG2IMG, STATES.FLUX2IMG);
+        if (!state) {
+            await sendMessage(message, `Sorry, something went wrong. Please try again.`);
+            return;
+        }
+        setUserState(message, state);
+
+        // Route to the appropriate handler
+        await routeEffectWorkflow(prompt, image, settings, message);
+    } else if (!prompt && image && settings.autoPrompt && settings.createSwitch === 'SDXL') {
+        console.log('Effect Hang: AutoPrompt with image');
+        setUserState(message, STATES.PFP);
+        workspaceEntry.imageUrl = image;
+        await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+    } else if (prompt && !image) {
+        console.log('Effect Hang: Missing image');
+        await handleMissingImageCase(message, settings, workspaceEntry, prompt);
+    } else if (!prompt && image) {
+        console.log('Effect Hang: Missing prompt');
+        await handleMissingPromptCase(message, settings, image);
+    } else {
+        console.log('Effect Hang: Missing both inputs');
+        await sendMessage(message, `Please provide a prompt or an image to continue.`);
+    }
+
+    console.log('User state after handleEffectHang:', settings.state);
+}
+
+
+function determineState(createSwitch, defaultState, fluxState) {
+    switch (createSwitch) {
+        case 'FLUX':
+            return fluxState;
+        case 'SD1.5':
+        case 'SDXL':
+        case 'SD3':
+            return defaultState;
+        default:
+            console.error(`Unknown createSwitch value: ${createSwitch}`);
+            return null;
+    }
+}
+
+
 
 
 function handleAnimate(message) {
@@ -1105,7 +1181,7 @@ module.exports = {
     getWatermarkMenu,
     handleCreate,
     setMenu, buildSetMenu, backToSet,
-    handleEffect,
+    handleEffect, handleEffectHang,
     handleAnimate,
     handleUtils,
     handleCheckpointMenu,

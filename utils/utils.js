@@ -167,6 +167,23 @@ async function setCommandContext(bot, msg) {
     markUserAsStationed(userId, chatId);
 }
 
+function cleanPrompt(rawText, taskType) {
+    const botName = process.env.BOT_NAME;
+
+    // Regular expressions to match command names and bot mentions
+    const commandRegex = new RegExp(`/(\\w+)`, 'gi');
+    const botNameRegex = new RegExp(`@${botName}`, 'gi');
+
+    // Remove the taskType command, bot mention, and other commands
+    let cleanedText = rawText.replace(commandRegex, '').replace(botNameRegex, '');
+
+    // Remove any lingering taskType mentions
+    cleanedText = cleanedText.replace(new RegExp(taskType, 'gi'), '');
+
+    // Trim the text to clean up any extra spaces
+    return cleanedText.trim();
+}
+
 // Utility function to validate the message
 function isValidMessage(msg) {
     return msg && msg.chat && msg.from;
@@ -435,6 +452,7 @@ module.exports = {
     makeBaseData,
     editMessage, updateMessage,
     gated,
+    cleanPrompt,
     DEV_DMS,
     fullCommandList,
 }
