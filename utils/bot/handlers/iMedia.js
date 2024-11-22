@@ -1,5 +1,5 @@
-const { sendMessage, editMessage, setUserState, react, gated } = require('../../utils')
-const { getPhotoUrl, lobby, STATES, flows, makeSeed } = require('../bot')
+const { sendMessage, editMessage, setUserState, react, gated, cleanPrompt } = require('../../utils')
+const { getPhotoUrl, lobby, workspace, STATES, flows, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
 const { buildPromptObjFromWorkflow } = require('./iMake')
@@ -11,123 +11,122 @@ async function handleMs2ImgFile(message, imageUrl = null, prompt = null) {
     const chatId = message.chat.id;
     const userId = message.from.id;
 
-    // Scenario 1: /ms2 command by itself, ask for an image
-    if (!message.photo && !message.document && !message.text && !message.reply_to_message) {
+    // Get workspace entry
+    const workspaceEntry = workspace[userId] || {};
+
+    // Determine the target message (current or reply)
+    const targetMessage = message.reply_to_message || message;
+
+    // Get image URL (if not provided)
+    imageUrl = imageUrl || await getPhotoUrl(targetMessage) || workspaceEntry.imageUrl;
+
+    // If no image is found, prompt the user
+    if (!imageUrl) {
+        console.log('handle ms2img no image')
         setUserState(message, STATES.IMG2IMG);
-        await sendMessage(message, 'Please provide a photo to proceed.');
+        const sent = await sendMessage(message, 'Please provide a photo to proceed.');
+        workspace[userId].message = sent;
         return;
     }
 
-    // Scenarios where an image or document is present
-    const targetMessage = message.reply_to_message || message;
-    if (targetMessage.photo || targetMessage.document) {
-        const sent = await sendMessage(message, 'okay lemme see...');
-        const fileUrl = await getPhotoUrl(targetMessage);
-        
-        try {
-            const photo = await Jimp.read(fileUrl);
-            const { width, height } = photo.bitmap;
+    // Extract prompt (from message text, workspace, or caption)
+    prompt = prompt || cleanPrompt(message.text || message.caption || workspaceEntry.prompt || '');
 
-            const photoStats = {
-                width: width,
-                height: height
-            };
+    // Process the image
+    try {
+        const photo = await Jimp.read(imageUrl);
+        const { width, height } = photo.bitmap;
 
-            const thisSeed = makeSeed(userId);
+        const photoStats = { width, height };
+        const thisSeed = makeSeed(userId);
 
-            lobby[userId] = {
-                ...lobby[userId],
-                lastSeed: thisSeed,
-                tempSize: photoStats,
-                input_image: fileUrl
-            };
+        // Update user settings and workspace
+        Object.assign(lobby[userId], {
+            lastSeed: thisSeed,
+            tempSize: photoStats,
+            input_image: imageUrl,
+        });
+        Object.assign(workspace[userId], {
+            imageUrl,
+            prompt,
+        });
 
-            if (targetMessage.caption) {
-                // Scenario 3: /ms2 command with an image and a caption (prompt), send for generation
-                message.text = targetMessage.caption;
-                await iMake.handleMs2Prompt(message);
-                return;
-            } else {
-                // Scenario 2 and 4: Ask for a prompt after processing the image
-                await editMessage({
-                    text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
-                    chat_id: sent.chat.id,
-                    message_id: sent.message_id
-                });
-                setUserState(message, STATES.MS2PROMPT);
-                return true;
-            }
-        } catch (error) {
-            console.error("Error processing photo:", error);
-            await editMessage({
-                text: "An error occurred while processing the photo. Please send it again, or another photo.",
-                chat_id: sent.chat.id,
-                message_id: sent.message_id
-            });
-            return false;
+        if (prompt.trim()) {
+            console.log('handle ms2img wit da prompt')
+            // If both prompt and image are available, proceed to handleTask
+            return await iMake.handleTask(message, 'I2I', STATES.IMG2IMG, true, null);
+        } else {
+            console.log('handle ms2img wit no prompt')
+            // If prompt is missing, set state and ask for it
+            const sent = await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);
+            setUserState(message, STATES.MS2PROMPT);
+            workspace[userId].message = sent;
         }
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        await sendMessage(message, "An error occurred while processing the photo. Please try again.");
     }
 }
 
-async function handleFluxImgFile(message) {
+
+async function handleFluxImgFile(message, imageUrl = null, prompt = null) {
     const chatId = message.chat.id;
     const userId = message.from.id;
 
-    // Scenario 1: /ms2 command by itself, ask for an image
-    if (!message.photo && !message.document && !message.text && !message.reply_to_message) {
+    // Get workspace entry
+    const workspaceEntry = workspace[userId] || {};
+
+    // Determine the target message (current or reply)
+    const targetMessage = message.reply_to_message || message;
+
+    // Get image URL (if not provided)
+    imageUrl = imageUrl || await getPhotoUrl(targetMessage) || workspaceEntry.imageUrl;
+
+    // If no image is found, prompt the user
+    if (!imageUrl) {
+        console.log('handle flux img no image');
         setUserState(message, STATES.FLUX2IMG);
-        await sendMessage(message, 'Please provide a photo to proceed.');
+        const sent = await sendMessage(message, 'Please provide a photo to proceed.');
+        workspace[userId].message = sent;
         return;
     }
 
-    // Scenarios where an image or document is present
-    const targetMessage = message.reply_to_message || message;
-    if (targetMessage.photo || targetMessage.document) {
-        const sent = await sendMessage(message, 'okay lemme see...');
-        const fileUrl = await getPhotoUrl(targetMessage);
-        
-        try {
-            const photo = await Jimp.read(fileUrl);
-            const { width, height } = photo.bitmap;
+    // Extract prompt (from message text, workspace, or caption)
+    prompt = prompt || cleanPrompt(message.text || message.caption || workspaceEntry.prompt || '');
 
-            const photoStats = {
-                width: width,
-                height: height
-            };
+    // Process the image
+    try {
+        const photo = await Jimp.read(imageUrl);
+        const { width, height } = photo.bitmap;
 
-            const thisSeed = makeSeed(userId);
+        const photoStats = { width, height };
+        const thisSeed = makeSeed(userId);
 
-            lobby[userId] = {
-                ...lobby[userId],
-                lastSeed: thisSeed,
-                tempSize: photoStats,
-                input_image: fileUrl
-            };
+        // Update user settings and workspace
+        Object.assign(lobby[userId], {
+            lastSeed: thisSeed,
+            tempSize: photoStats,
+            input_image: imageUrl,
+        });
+        Object.assign(workspace[userId], {
+            imageUrl,
+            prompt,
+        });
 
-            if (targetMessage.caption) {
-                // Scenario 3: /ms2 command with an image and a caption (prompt), send for generation
-                message.text = targetMessage.caption;
-                await iMake.handleFluxPrompt(message);
-                return;
-            } else {
-                // Scenario 2 and 4: Ask for a prompt after processing the image
-                await editMessage({
-                    text: `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`,
-                    chat_id: sent.chat.id,
-                    message_id: sent.message_id
-                });
-                setUserState(message, STATES.FLUXPROMPT);
-                return true;
-            }
-        } catch (error) {
-            console.error("Error processing photo:", error);
-            await editMessage({
-                text: "An error occurred while processing the photo. Please send it again, or another photo.",
-                chat_id: sent.chat.id,
-                message_id: sent.message_id
-            });
-            return false;
+        if (prompt.trim()) {
+            console.log('handle flux img wit da prompt');
+            // If both prompt and image are available, proceed to handleTask
+            return await iMake.handleTask(message, 'FLUXI2I', STATES.FLUX2IMG, true, null);
+        } else {
+            console.log('handle flux img wit no prompt');
+            // If prompt is missing, set state and ask for it
+            const sent = await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);
+            setUserState(message, STATES.FLUXPROMPT);
+            workspace[userId].message = sent;
         }
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        await sendMessage(message, "An error occurred while processing the photo. Please try again.");
     }
 }
 
@@ -347,7 +346,6 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     }
 }
 
-
 async function handleUpscale(message) {
     await handleImageTask(message, 'UPSCALE', STATES.UPSCALE, false, null);
 }
@@ -370,6 +368,7 @@ async function handleMs3V2ImgFile(message) {
 
 module.exports = 
 {
+    handleImageTask,
     handleMs2ImgFile,
     handleFluxImgFile,
     handlePfpImgFile,

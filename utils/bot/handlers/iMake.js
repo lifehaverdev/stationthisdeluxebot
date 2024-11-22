@@ -1,5 +1,5 @@
 const { STATES, lobby, rooms, flows, workspace, makeSeed } = require('../bot')
-const { sendMessage, react, setUserState, editMessage, gated } = require('../../utils')
+const { sendMessage, react, setUserState, editMessage, gated, cleanPrompt } = require('../../utils')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
 
@@ -161,60 +161,64 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING TASK: ${taskType}`);
 
-
     const chatId = message.chat.id;
     const userId = message.from.id;
     const group = getGroup(message);
 
-    //clean up create menu
-    if(workspace[userId]?.context == 'create'){
-        const sent = workspace[userId].message
-        await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟'})
-        delete workspace[userId]
+    // Clean up create menu
+    if (workspace[userId]?.context === 'create') {
+        const sent = workspace[userId].message;
+        await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
+        delete workspace[userId];
     }
 
     // Unified settings: get group settings or user settings from lobby
-    const settings = getSettings(userId,group)
+    const settings = getSettings(userId, group);
 
     // Token gate check if minTokenAmount is provided
     if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
         console.log(`Token gate failed for task ${taskType}, user lacks sufficient tokens.`);
-        react(message,'👎')
+        react(message, '👎');
         return;
     }
 
     // Optional: State check to ensure the user is in the correct state
     if (!group && settings.state.state !== STATES.IDLE && settings.state.state !== defaultState) {
+        console.log('kicked out cause of state',defaultState,settings.state)
         return;
     }
-    // Clean the message text
-    message.text = message.text.replace(`/${taskType.toLowerCase()}`, '').replace(`@${process.env.BOT_NAME}`, '').replace('/create','');
-    // Check if the message text is empty, trigger the start prompt
-    if (message.text === ''  ) {
-        await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount);  // Use the generalized start function
+
+    // Retrieve prompt from message or workspace
+    let rawText = message.text || message.caption || '';
+    if (!rawText.trim() && workspace[userId]?.prompt) {
+        rawText = workspace[userId].prompt;
+    }
+    const cleanedText = cleanPrompt(rawText, taskType);
+
+    // Check if the cleaned text is empty, trigger the start prompt
+    if (!cleanedText.trim()) {
+        console.log('kicked out for no cleanedtext',cleanedText)
+        await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount); // Use the generalized start function
         return;
     }
 
     const thisSeed = makeSeed(userId);
-
+    console.log('hey whats the task type',taskType)
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
     if (needsTypeCheck) {
         finalType = checkAndSetType(taskType, settings, message, group, userId);
-        //console.log('final type',finalType)
         if (!finalType) {
-            // If the type could not be set (e.g., missing required files), stop the task
-            console.log('Task type could not be set due to missing files or settings.',taskType,settings,message,group,userId);
-            //return 'MAKE';
-            finalType = 'MAKE'
+            console.log('Task type could not be set due to missing files or settings.', taskType, settings, message, group, userId);
+            finalType = 'MAKE'; // Default fallback
         }
     }
 
     // Update user settings in the lobby
     Object.assign(lobby[userId], {
-        prompt: message.text,
-        type: finalType,  // Use the modified type
-        lastSeed: thisSeed
+        prompt: cleanedText,
+        type: finalType, // Use the modified type
+        lastSeed: thisSeed,
     });
 
     // Prevent batch requests in group chats
@@ -222,23 +226,25 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
     const workflow = flows.find(flow => flow.name === finalType);
-    //console.log(workflow)
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
         type: finalType,
-        prompt: message.text,
+        prompt: cleanedText,
         input_seed: thisSeed,
-        input_batch: batch
+        input_batch: batch,
     }, message);
-    // console.log('promptObj',promptObj)
+
     try {
-        await react(message);  // Acknowledge the command
+        await react(message); // Acknowledge the command
         enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
     } catch (error) {
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }
 }
+
+
+
 
 async function handleMake(message) {
     await handleTask(message, 'MAKE', STATES.MAKE, true, null);
@@ -408,6 +414,7 @@ module.exports = {
     //handleDexMake, 
     //handlePromptCatch,
     //startMog, 
+    handleTask,
     buildPromptObjFromWorkflow,
     handleRegen, 
     handleHipFire,
