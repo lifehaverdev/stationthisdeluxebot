@@ -230,7 +230,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     try {
         await react(message); // Acknowledge the command
-        if (workspace[userId].message && ['create','effect','utils'].includes(workspace[userId]?.context)) {
+        if (workspace[userId]?.message && ['create','effect','utils'].includes(workspace[userId]?.context)) {
             console.log('but its true',workspace[userId])
             const sent = workspace[userId].message;
             console.log(sent)
