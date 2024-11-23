@@ -257,30 +257,24 @@ async function deliver() {
                 return
             }
             
-            // Remove the corresponding task from the waiting array only if successfully processed
-            if (result == 'success') {
+            if (result === 'success') {
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
-            } else if (result == 'not sent') {
+                // Remove task from waiting queue here if necessary
+            } else if (result === 'not sent') {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-                if(task.deliveryFail && task.deliveryFail > 0){
-                    console.log('we made it here',task.deliveryFail)
-                    if(task.deliveryFail > 2){
-                        console.log('task deliveryfail is adding')
-                        failures.push(task)
-                        sendMessage(task.message, 'i... i failed you.')
-                        return
-                    }
-                    //increment deliverfail and send to back of send line
-                    task.deliverFail += 1;
-                    console.log('guess we not adding?',task.deliveryFail)
-                } else {
-                    console.log('we are here',task.deliveryFail)
-                    task.deliveryFail = 1;
+                task.deliveryFail = (task.deliveryFail || 0) + 1; // Increment deliveryFail
+                if (task.deliveryFail > 2) {
+                    console.log(`Exceeded retry attempts for task: ${run_id}. Moving to failures.`);
+                    failures.push(task); // Mark as failed
+                    sendMessage(task.message, 'i... i failed you.');
+                    return;
                 }
-                task.backOff = Date.now() + task.deliveryFail * task.deliveryFail * 2000
-                console.log("backoff ready send in ",(task.backOff-Date.now())/1000,'seconds')
-                successors.push(task)
-            } 
+                const now = Date.now();
+                task.backOff = now + task.deliveryFail * task.deliveryFail * 2000; // Update backoff
+                console.log(`Retrying task ${run_id} after backoff: ${task.backOff - now}ms`);
+                successors.push(task); // Re-add to queue for retry
+            }
+            
         } catch (err) {
             console.error('Exception in deliver:', err);
         } 
