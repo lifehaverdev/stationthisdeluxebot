@@ -489,7 +489,7 @@ async function writeUserData(userId, data) {
             const { points, doints, qoints, boints, balance, exp, newb, _id, ...dataToSave } = data;
 
             // Log the data being written, omitting sensitive fields
-            console.log('General user data to be saved:', dataToSave);
+            //console.log('General user data to be saved:');
 
             // Perform an update to save non-protected user data
             const result = await collection.updateOne(

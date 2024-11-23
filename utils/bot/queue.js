@@ -35,6 +35,9 @@ function capUserRequests(userId, message) {
  
 function handleEnqueueRegen(task) {
     // Check if this is a regeneration task by looking for a `isRegen` flag in the promptObj
+    if(!lobby.hasOwnProperty(task.promptObj.userId)){
+        return
+    }
     const isRegenTask = task.promptObj.isRegen || false;
     const userId = task.promptObj.userId
     // Add the promptObj to the user's runs array, pushing down other runs and removing the 5th if necessary

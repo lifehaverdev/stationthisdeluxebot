@@ -165,13 +165,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     const userId = message.from.id;
     const group = getGroup(message);
 
-    // Clean up create menu
-    if (workspace[userId]?.context === 'create') {
-        const sent = workspace[userId].message;
-        await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
-        delete workspace[userId];
-    }
-
+    
     // Unified settings: get group settings or user settings from lobby
     const settings = getSettings(userId, group);
 
@@ -236,8 +230,15 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     try {
         await react(message); // Acknowledge the command
+        if (['create','effect','utils'].includes(workspace[userId]?.context)) {
+            const sent = workspace[userId].message;
+            await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
+        }
         enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
+            // Clean up create menu
+        
+
     } catch (error) {
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }

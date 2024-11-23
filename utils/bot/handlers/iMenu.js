@@ -5,7 +5,8 @@ const { lobby, rooms, STATES,
     getPhotoUrl,
 } = require('../bot')
 const {
-    cleanPrompt
+    cleanPrompt,
+    react,
 } = require('../../utils')
 const { basepromptmenu } = require('../../models/basepromptmenu')
 const { checkpointmenu } = require('../../models/checkpointmenu')
@@ -15,6 +16,7 @@ const { compactSerialize, sendMessage, editMessage, makeBaseData, gated, setUser
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
 const iMake = require('./iMake')
 const iMedia = require('./iMedia')
+const iWork = require('./iWork')
 function getGroup(message) {
     const group = rooms.find(group => group.chat.id == message.chat.id)
     return group;
@@ -406,7 +408,7 @@ prefixHandlers['createswitch_'] = (action, message, user) => {
     // Extract context and target from the action
     const parts = action.split('_');
     const target = parts[1];  // e.g., "FLUX", "SD1.5", "SDXL"
-    const context = parts[2]; // e.g., "create", "effect", "set"
+    const context = parts[2]; // e.g., "create", "effect", "set", "utils"
 
     // Ensure the action map uses the toggleFeature function
     actionMap['switchModel'](message, user, context, target);
@@ -443,6 +445,9 @@ function creationSwitch(message, user, context, target) {
         case 'effect':
             handleEffect(message, '', user);
             break;
+        case 'utils':
+            handleUtils(message,'',user);
+            break;
         case 'set':
             // Call setMenu or any other relevant menu for 'set' context
             const setMenu = iMenu.buildSetMenu(settings, null, settings.balance);
@@ -457,61 +462,199 @@ function creationSwitch(message, user, context, target) {
             console.error(`Unknown context: ${context}`);
     }
 }
-
-
-function handleUtils(message) {
+async function handleUtils(message, prompt = '', user = null) {
+    const userId = user || message.from.id;
     const group = getGroup(message);
-    let settings;
-    let balance;
-    if(group){
-        settings = group.settings;
-        balance = group.applied;
-    }else{
-        settings = lobby[message.from.id]
-        balance = settings.balance
-    }
-    const options = {
-        reply_markup: {
-          inline_keyboard: [
-        ],
-          resize_keyboard: true,
-          one_time_keyboard: true
-        }
+    const settings = group ? group.settings : lobby[userId];
+    const balance = group ? group.applied : settings.balance;
 
-      };
-      if(lobby[message.from.id] && balance >= 200000){
-        options.reply_markup.inline_keyboard.push(
-            [
-                { text: settings.advancedUser ? '🖼️➡️📈🖼️' : 'upscale', callback_data: 'upscale' },
-                { text: settings.advancedUser ? '🌠➡️⭐️' : 'remove background', callback_data: 'rmbg' },
-            ],
-            [
-                { text: settings.advancedUser ? '🖼️💦✍️' : 'watermark', callback_data: 'watermark'},
-                //{ text: settings.advancedUser ? '🖼️➡️💽' : 'disc', callback_data: 'disc'}
-            ]
-        )
-      }
-      if(lobby[message.from.id] && balance >= 300000){
-        options.reply_markup.inline_keyboard.push(
-            [
-                { text: settings.advancedUser ? '💬➡️📜' : 'assist', callback_data: 'assistMenu'},
-                { text: settings.advancedUser ? '🖼️➡️💬' : 'interrogate', callback_data: 'interMenu'},
-            ],
-        )
-      }
-      options.reply_markup.inline_keyboard.push(
-        [
-            { text: 'cancel', callback_data: 'cancel' }
-        ]
-      )
-    if(lobby[message.from.id] && balance < 200000){
-        gated(message);
-        return;
+    // Initialize workspace tracking
+    if (!workspace[userId]) {
+        workspace[userId] = {
+            message: null,
+            context: 'utils',
+            prompt: '',
+            imageUrl: '',
+            stamp: Date.now(),
+        };
+    }
+
+    // Save the prompt if provided
+    if (prompt) {
+        workspace[userId].prompt = prompt;
+    }
+
+    // Update the menu with available tasks
+    if (balance < 200000) {
+        return gated(message);
+    }
+
+    const reply_markup = generateUtilsMenu(settings, balance);
+    if (workspace[userId].message) {
+        await editMessage({
+            text: `What utility would you like to use?`,
+            chat_id: workspace[userId].message.chat.id,
+            message_id: workspace[userId].message.message_id,
+            reply_markup,
+        });
     } else {
-          // Sending an empty message to set the keyboard
-        sendMessage(message,'Utils', options);
+        const sent = await sendMessage(message, `What utility would you like to use?`, { reply_markup });
+        workspace[userId].message = sent;
     }
 }
+
+
+
+function generateUtilsMenu(settings, balance, image, prompt) {
+    const buttons = [];
+
+    // Add model switches (if applicable)
+    buttons.push([
+        { text: ['SDXL','SD1.5','SD3'].includes(settings.createSwitch) ? '🔘SD' : '⚪️SD', callback_data: 'createswitch_SDXL_utils' },
+        { text: settings.createSwitch == 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: 'createswitch_FLUX_utils' },
+    ]);
+
+    // Add utility tasks based on balance and context
+    if (balance >= 200000) {
+        buttons.push([
+            { text: settings.advancedUser ? '🖼️📈' : 'Upscale', callback_data: 'utils_upscale' },
+            { text: settings.advancedUser ? '🖼️💦✍️' : 'Watermark', callback_data: 'utils_watermark' },
+        ]);
+        buttons.push([
+            { text: settings.advancedUser ? '🌠➡️⭐️' : 'Remove Background', callback_data: 'utils_rmbg' },
+            
+        ]);
+    }
+
+    if (balance >= 300000) {
+        buttons.push([
+            { text: settings.advancedUser ? '🖼️🕵️‍♀️💬' : 'Interrogate', callback_data: 'utils_interrogate' },
+            { text: settings.advancedUser ? '💭➡️💬' : 'Assist', callback_data: 'utils_assist' },
+        ]);
+    }
+
+    buttons.push([{ text: 'nvm', callback_data: 'cancel' }]);
+
+    return { inline_keyboard: buttons };
+}
+
+actionMap['utils_upscale'] = async (message, user) => {
+    const image = workspace[user]?.imageUrl;
+    const ogmessage = workspace[user]?.message
+    setUserState({...message, from: {id: user}}, STATES.UPSCALE);
+    if (!image) {
+        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to upscale.`});
+        return;
+    }
+    await iMedia.handleImageTask(message, user, 'UPSCALE', STATES.UPSCALE, false, null);
+    delete workspace[user]
+};
+
+actionMap['utils_rmbg'] = async (message, user) => {
+    const image = workspace[user]?.imageUrl;
+    const ogmessage = workspace[user]?.message
+    if (!image) {
+        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to remove the background.`})
+        setUserState({...message, from: {id: user}}, STATES.RMBG);
+        return;
+    }
+    await iMedia.handleImageTask(message, user, 'RMBG', STATES.RMBG, false, null);
+    delete workspace[user]
+};
+
+actionMap['utils_watermark'] = async (message, user) => {
+    const image = workspace[user]?.imageUrl;
+    const ogmessage = workspace[user]?.message
+    if (!image) {
+        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to add a watermark.`})
+        setUserState({...message, from: {id: user}}, STATES.WATERMARK);
+        return;
+    }
+    await handleWatermarkMenu(message,user);
+};
+
+actionMap['utils_interrogate'] = async (message, user) => {
+    const image = workspace[user]?.imageUrl;
+    const ogmessage = workspace[user]?.message
+    const isFlux = lobby[user].createSwitch == 'FLUX'
+    if (!image) {
+        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to interrogate.`})
+        if(isFlux){
+            setUserState({...message, from: {id: user}}, STATES.FLUXINTERROGATE);
+        } else {
+            setUserState({...message, from: {id: user}}, STATES.INTERROGATION);
+        }
+        return;
+    }
+    await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `🌟`})
+    await react(ogmessage,'🤨')
+    isFlux ? await iWork.shakeFluxInterrogate(message, image) : 
+    await iMedia.handleInterrogation(message, image);
+    delete workspace[user]
+};
+
+actionMap['utils_assist'] = async (message, user) => {
+    const userId = user || message.from.id;
+    console.log(`[utils_assist] Invoked by user ${userId}.`);
+    console.log(`[utils_assist] Current workspace:`, workspace[userId]);
+
+    const workspaceEntry = workspace[userId];
+    const ogMessage = workspaceEntry?.message;
+
+    // Detect prompt from user response or workspace
+    let prompt = cleanPrompt(message.text || message.caption || workspaceEntry?.prompt || '');
+
+    // Ensure we're not processing the bot's own menu message
+    if (message.message_id === ogMessage?.message_id) {
+        console.log(`[utils_assist] Ignored bot's own menu message for user ${userId}.`);
+        prompt = ''
+    }
+
+    // If no prompt, request it from the user
+    if (!prompt) {
+        console.log(`[utils_assist] Prompt missing for user ${userId}. Requesting input.`);
+        const promptText = `Please send a prompt idea to expand upon.`;
+        if (ogMessage) {
+            await editMessage({
+                chat_id: ogMessage.chat.id,
+                message_id: ogMessage.message_id,
+                text: promptText,
+            });
+        } else {
+            const sent = await sendMessage(message, promptText);
+            workspace[userId].message = sent;
+        }
+
+        const targetState = lobby[userId]?.createSwitch === 'FLUX' ? STATES.FLASSIST : STATES.ASSIST;
+        setUserState({ ...message, from: { id: userId } }, targetState);
+        console.log(`[utils_assist] State set to ${targetState} for user ${userId}.`);
+        return;
+    }
+
+    // Process the prompt
+    console.log(`[utils_assist] Proceeding with assist task for user ${userId}.`);
+    if (ogMessage) {
+        await editMessage({
+            chat_id: ogMessage.chat.id,
+            message_id: ogMessage.message_id,
+            text: `🌟`,
+        });
+    }
+    await react(ogMessage, '🤓');
+    const isFlux = lobby[userId]?.createSwitch === 'FLUX';
+    if (isFlux) {
+        await iWork.shakeFluxAssist(message, prompt, userId);
+    } else {
+        await iWork.shakeAssist(message, prompt, userId);
+    }
+
+    console.log(`[utils_assist] Task completed for user ${userId}. Cleaning workspace.`);
+    delete workspace[userId];
+};
+
+
+
+
 
 async function handleEffect(message, prompt = '', user = null) {
     const isCallback = user !== null; // Check if this is a callback context
@@ -549,7 +692,7 @@ async function handleEffect(message, prompt = '', user = null) {
         // If image is provided and autoPrompt is enabled
         console.log('Auto prompt enabled: proceeding to auto image task.');
         workspace[targetUserId].imageUrl = image; // Update workspace with image
-        return await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+        return await iMedia.handleImageTask(message, user, 'I2I_AUTO', STATES.PFP, true, 400000);
     } else if (prompt && !image) {
         // Update workspace and settings with the prompt
         settings.prompt = prompt;
@@ -611,7 +754,7 @@ async function routeEffectWorkflow(prompt, image, settings, message) {
         case 'SDXL':
             // If autoPrompt is enabled, redirect to handleImageTask
             if (settings.autoPrompt) {
-                return await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+                return await iMedia.handleImageTask(message, null, 'I2I_AUTO', STATES.PFP, true, 400000);
             }
             return await iMedia.handleMs2ImgFile(message, image, prompt);
         case 'FLUX':
@@ -815,6 +958,7 @@ async function handleCheckpointMenu(message,user) {
     }
             
 }
+
 async function handleWatermarkMenu(message,user) {
     if(user){
         const reply_markup = getWatermarkMenu(user, message);

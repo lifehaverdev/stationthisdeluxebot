@@ -70,19 +70,21 @@ async function handleDiscWrite(message) {
         return false;
     }
 }
-async function handleWatermark(message) {
-    sendMessage(message,`yes. this one needs a logo`)
+async function handleWatermark(message, image = null, user = null) {
+    //sendMessage(message,`yes. this one needs a logo`)
+
     chatId = message.chat.id;
-    const userId = message.from.id;
-    const fileUrl = await getPhotoUrl(message);
+    const userId = user || message.from.id;
+    const fileUrl = image || await getPhotoUrl(message);
     //console.log('current lobby stats',lobby[userId].waterMark)
     if(lobby[userId].waterMark == false) sendMessage(message,'you need to choose a watermark in account settings tho')
     try {
+        await react(message,"💋")
         const filenames = await addWaterMark(fileUrl,lobby[userId].waterMark)
         console.log('back in handleWatermark',filenames)
         await sendPhoto(message, filenames);
         //closeTask(userId,1,filenames,'WATERMARK')
-        console.log(filenames)
+        delete workspace[userId]
         fs.unlinkSync(filenames);
         setUserState(message,STATES.IDLE);
         return true;
