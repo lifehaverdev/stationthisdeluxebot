@@ -140,25 +140,41 @@ const handleSetVoice = (message, selectedName, userId) => {
     }
 };
 
-const handleSetWatermark = (message, selectedName, userId) => {
+const handleSetWatermark = async (message, selectedName, userId) => {
     const messageId = message.message_id;
     const chatId = message.chat.id;
+    const image = workspace[userId]?.imageUrl; // Check workspace for an image
+    if(!lobby.hasOwnProperty(userId)){
+        console.log('no user in lobby in handlesetwatermark')
+        return
+    }
     if (selectedName !== undefined) {
-        if(selectedName == 'empty'){
+        if (selectedName === 'empty') {
             lobby[userId].waterMark = false;
         } else {
             lobby[userId].waterMark = selectedName;
         }
-        const messageTitle = `Watermark set to: ${selectedName} ✅\n\nSend in the photo you want to brand`;
-        editMessage({
+
+        // Update the workspace with the new watermark status
+        const messageTitle = `Watermark set to: ${selectedName} ✅\n\nSend in the photo you want to brand.`;
+        await editMessage({
             text: messageTitle,
             chat_id: chatId,
             message_id: messageId,
-        })
+        });
+
+        // If an image is already in the workspace, route directly to handleWatermark
+        if (image) {
+            console.log('Image already in workspace, routing to handleWatermark');
+            await iBrand.handleWatermark(message, image, userId);
+            delete workspace[userId]
+            
+        }
     } else {
-        console.log('no base prompt')
+        console.log('No base prompt provided for watermark');
     }
 };
+
 
 //const actionMap = {
     actionMap['regen']= async (message,user) => {
@@ -258,6 +274,7 @@ const handleSetWatermark = (message, selectedName, userId) => {
     actionMap['cancel'] = (message, user) => {
         bot.deleteMessage(message.chat.id, message.message_id);
         message.from.id = user;
+        workspace.hasOwnProperty(user) ? delete workspace[user] : null
         setUserState(message,STATES.IDLE)
     }
     actionMap['featuredLora']= async (message) => {

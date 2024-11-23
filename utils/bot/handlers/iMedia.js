@@ -234,7 +234,7 @@ async function handleInpaint(message) {
 
 
 async function handleInterrogation(message) {
-    sendMessage(message,'hmm what should i call this..');
+    await react(message,'🤨')
     const photoUrl = await getPhotoUrl(message);
     try {
         const promptObj = {
@@ -244,6 +244,7 @@ async function handleInterrogation(message) {
         }
         //enqueueTask({message,promptObj})
         //const{time,result} = await interrogateImage(message, photoUrl);
+        console.log('ehhhh')
         enqueueTask({message, promptObj})
         //sendMessage(message, result)
         setUserState(message,STATES.IDLE);
@@ -253,12 +254,11 @@ async function handleInterrogation(message) {
         return false
     }
 }
-
-async function handleImageTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
+async function handleImageTask(message, user = null, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
     console.log(`HANDLING IMAGE TASK: ${taskType}`);
 
     const chatId = message.chat.id;
-    const userId = message.from.id;
+    const userId = user || message.from.id;
     const group = getGroup(message);
 
     // Unified settings: get group settings or user settings from lobby
@@ -276,31 +276,31 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
         return;
     }
 
-    // Ensure there's a valid image in the message or in the replied message
-    let imageMessage = message;
-    if (!message.photo && !message.document) {
-        // Check if the message is a reply and contains an image or document
-        if (message.reply_to_message) {
-            if (message.reply_to_message.photo) {
-                imageMessage = message.reply_to_message;
-            } else if (message.reply_to_message.document) {
-                imageMessage = message.reply_to_message;
-            }
-        }
+    // Attempt to find the image URL
+    let fileUrl;
+    const workspaceImage = workspace[userId]?.imageUrl;
 
-        // If neither the original message nor the replied message contains an image
-        if (!imageMessage.photo && !imageMessage.document) {
-            console.log('No image or document provided for task.');
-            await sendMessage(message, "Please provide an image for processing.");
-            return;
+    if (message.photo || message.document) {
+        // If the message contains a photo or document
+        fileUrl = await getPhotoUrl(message);
+    } else if (message.reply_to_message) {
+        // If the message is a reply to another message, check for a photo or document
+        const replyMessage = message.reply_to_message;
+        if (replyMessage.photo || replyMessage.document) {
+            fileUrl = await getPhotoUrl(replyMessage);
         }
     }
 
-    // Fetch the file URL from the determined image message
-    const fileUrl = await getPhotoUrl(imageMessage);
+    // Fallback to workspace image if no image was found
+    if (!fileUrl && workspaceImage) {
+        console.log('Using image from workspace.');
+        fileUrl = workspaceImage;
+    }
+
     if (!fileUrl) {
-        console.log('Failed to retrieve the file URL.');
-        await sendMessage(message, "An error occurred while retrieving the image. Please try again.");
+        // If no image URL is available, prompt the user
+        console.log('No image or document provided for task.');
+        await sendMessage(message, "Please provide an image for processing.");
         return;
     }
 
@@ -308,7 +308,7 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
 
     // If this is a special case (e.g., MAKE) and needs a type check
     let finalType = taskType;
-    console.log('finalyType before checkset', finalType);
+    console.log('finalType before checkset', finalType);
     if (needsTypeCheck) {
         finalType = checkAndSetType(taskType, settings, message, group, userId);
         if (!finalType) {
@@ -320,50 +320,55 @@ async function handleImageTask(message, taskType, defaultState, needsTypeCheck =
     // Update user settings in the lobby
     Object.assign(lobby[userId], {
         input_image: fileUrl,  // Set the image file URL
-        type: finalType,   // Use the modified type
-        lastSeed: thisSeed
+        type: finalType,       // Use the modified type
+        lastSeed: thisSeed,
     });
 
     // Prevent batch requests in group chats
     const batch = chatId < 0 ? 1 : settings.batchMax;
 
     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
-    console.log('finaltype before finding workflow', finalType);
+    console.log('finalType before finding workflow', finalType);
     const workflow = flows.find(flow => flow.name === finalType);
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
         input_image: fileUrl,  // Set the image URL in the promptObj
         input_seed: thisSeed,
-        input_batch: batch
+        input_batch: batch,
     }, message);
 
     try {
         await react(message);  // Acknowledge the command
+        if (['create', 'effect', 'utils'].includes(workspace[userId]?.context)) {
+            const sent = workspace[userId].message;
+            await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
+        }
         enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
+        // Clean up workspace and message
     } catch (error) {
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }
 }
 
-async function handleUpscale(message) {
-    await handleImageTask(message, 'UPSCALE', STATES.UPSCALE, false, null);
+async function handleUpscale(message, user = null) {
+    await handleImageTask(message, user, 'UPSCALE', STATES.UPSCALE, false, null);
 }
 
-async function handleRmbg(message) {
-    await handleImageTask(message, 'RMBG', STATES.RMBG, false, null);
+async function handleRmbg(message, user = null) {
+    await handleImageTask(message, user, 'RMBG', STATES.RMBG, false, null);
 }
 
-async function handlePfpImgFile(message) {
-    await handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000)
+async function handlePfpImgFile(message, user = null) {
+    await handleImageTask(message, user, 'I2I_AUTO', STATES.PFP, true, 400000)
 }
 
-async function handleMs3ImgFile(message) {
-    await handleImageTask(message, 'MS3', STATES.MS3, false, 600000);
+async function handleMs3ImgFile(message, user = null) {
+    await handleImageTask(message, user, 'MS3', STATES.MS3, false, 600000);
 }
 
-async function handleMs3V2ImgFile(message) {
-    await handleImageTask(message, 'MS3.2', STATES.MS3V2, false, 600000);
+async function handleMs3V2ImgFile(message, user = null) {
+    await handleImageTask(message, user, 'MS3.2', STATES.MS3V2, false, 600000);
 }
 
 module.exports = 

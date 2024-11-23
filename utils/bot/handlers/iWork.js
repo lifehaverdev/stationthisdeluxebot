@@ -3,11 +3,12 @@ const path = require('path');
 const { sendMessage, setUserState, editMessage, react, DEV_DMS } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
-const { lobby, STATES, startup, waiting, taskQueue, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
+const { lobby, STATES, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
 const iMenu = require('./iMenu');
+
 const { getBalance } = require('../../users/checkBalance.js');
 const { getGroup } = require('./iGroup')
 
@@ -471,21 +472,25 @@ function saySeed(message){
     }
 }
 
-async function shakeAssist(message) {
-    const userId = message.from.id;
-    const{time,result} = await promptAssist(message,false);
+async function shakeAssist(message, prompt = null, user = null) {
+    if(!user) await react(message)
+    const userId = user || message.from.id;
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
+    delete workspace[userId]
     return true
 }
 
-async function shakeFluxAssist(message) {
-    const userId = message.from.id;
-    const{time,result} = await promptAssist(message,true);
+async function shakeFluxAssist(message, prompt = null, user = null) {
+    if(!user) await react(message)
+    const userId = user || message.from.id;
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
+    delete workspace[userId]
     return true
 }
 
@@ -513,9 +518,9 @@ async function startFluxInterrogate(message, user) {
     
 }
 
-async function shakeFluxInterrogate(message) {
+async function shakeFluxInterrogate(message, image = null) {
     react(message,'😇')
-    const url = await getPhotoUrl(message)
+    const url = image || await getPhotoUrl(message)
     
     // Step 1: Make the POST request using fetch
     const getEventId = async (url) => {
