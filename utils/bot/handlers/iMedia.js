@@ -339,7 +339,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
 
     try {
         await react(message);  // Acknowledge the command
-        if (workspace[userId].message && ['create', 'effect', 'utils'].includes(workspace[userId]?.context)) {
+        if (workspace[userId]?.message && ['create', 'effect', 'utils'].includes(workspace[userId]?.context)) {
             const sent = workspace[userId].message;
             await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
         }

@@ -16,7 +16,7 @@ const { compactSerialize, sendMessage, editMessage, makeBaseData, gated, setUser
 //const { getPromptMenu, getCheckpointMenu, getVoiceMenu, getWatermarkMenu } = require('../../../models/userKeyboards')
 const iMake = require('./iMake')
 const iMedia = require('./iMedia')
-const iWork = require('./iWork')
+//
 function getGroup(message) {
     const group = rooms.find(group => group.chat.id == message.chat.id)
     return group;
@@ -588,8 +588,9 @@ actionMap['utils_interrogate'] = async (message, user) => {
     }
     await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `🌟`})
     await react(ogmessage,'🤨')
-    isFlux ? await iWork.shakeFluxInterrogate(message, image) : 
-    await iMedia.handleInterrogation(message, image);
+    const {shakeFluxInterrogate, handleInterrogation } = require('./iWork')
+    isFlux ? await shakeFluxInterrogate(message, image) : 
+    await handleInterrogation(message, image);
     delete workspace[user]
 };
 
@@ -642,10 +643,11 @@ actionMap['utils_assist'] = async (message, user) => {
     }
     await react(ogMessage, '🤓');
     const isFlux = lobby[userId]?.createSwitch === 'FLUX';
+    const {shakeFluxAssist, shakeAssist} = require('./iWork')
     if (isFlux) {
-        await iWork.shakeFluxAssist(message, prompt, userId);
+        await shakeFluxAssist(message, prompt, userId);
     } else {
-        await iWork.shakeAssist(message, prompt, userId);
+        await shakeAssist(message, prompt, userId);
     }
 
     console.log(`[utils_assist] Task completed for user ${userId}. Cleaning workspace.`);
@@ -743,7 +745,6 @@ async function handleEffect(message, prompt = '', user = null) {
         } else {
             const sent = await sendMessage(message, `What effect shall I apply for you, @${message.from.username}?`, { reply_markup });
             workspace[targetUserId].message = sent;
-            console.log('workspace after empty effect', workspace);
         }
     }
 }
@@ -822,7 +823,6 @@ async function handleEffectHang(message) {
     const userId = message.from.id;
     const settings = lobby[userId];
     const workspaceEntry = workspace[userId] || {};
-    console.log('Workspace entry:', workspaceEntry);
 
     // Check for image (from message, reply, or workspace)
     const replyImage = message.reply_to_message && await getPhotoUrl(message.reply_to_message);
