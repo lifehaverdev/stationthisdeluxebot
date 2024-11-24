@@ -249,7 +249,7 @@ async function handleSet(message) {
         const messageId = originalMsg ? originalMsg.message_id : message.message_id;
     
         const context = workspace[userId]?.context || 'set';
-    
+        console.log('sendoredit in handleset workspace user id',workspace[userId])
         if (context === 'create') {
             console.log('create context',originalMsg)
             // Call createMenu directly with originalMsg to handle editing
@@ -259,7 +259,7 @@ async function handleSet(message) {
             // Build and edit setMenu for 'set' context
             const setMenu = iMenu.buildSetMenu(settings, group, settings.balance);
             setMenu.reply_markup.inline_keyboard.push([{ text: 'regen', callback_data: 'regen' }]);
-    
+            setUserState(message,STATES.IDLE);
             if (originalMsg) {
                 delete workspace[userId];
                 await editMessage({
@@ -340,8 +340,7 @@ async function handleSet(message) {
                     // console.log('lobby in setstyle',lobby[userId])
                     await sendOrEdit(`looks dope. if style transfer is enabled, this image will be applied`);
                 }
-        
-                setUserState(message,STATES.IDLE);
+                
             } catch(err) {
                 sendMessage(message,`${err}`);
             }

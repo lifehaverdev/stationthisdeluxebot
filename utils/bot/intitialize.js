@@ -211,7 +211,7 @@ async function readWorkflows() {
                 // Assuming flow includes a JSON workflow definition
                 
                 const parsedInputs = parseWorkflow(JSON.parse(flow.layout));
-                //console.log('%%%',flow.name,':\n',parsedInputs)
+                console.log('%%%',flow.name)//,':\n',parsedInputs)
                 flows.push({
                     name: flow.name,
                     ids: flow.ids,
