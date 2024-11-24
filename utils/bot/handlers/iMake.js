@@ -175,6 +175,13 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
+    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','CHUDJAK']
+    if (fluxTypes.includes(userContext.type)) {
+        promptObj.input_checkpoint = 'flux-schnell'
+        delete promptObj.basePrompt;
+        // delete promptObj. delete negative
+
+    }
     // Derive fields based on existing flags
     // ControlNet
     if (userContext.controlNet) {
