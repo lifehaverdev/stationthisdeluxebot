@@ -267,7 +267,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
 
     // Unified settings: get group settings or user settings from lobby
     const settings = group ? group.settings : lobby[userId];
-    console.log('settings', settings, userId, user);
+    //console.log('settings', settings, userId, user);
 
     // Token gate check if minTokenAmount is provided
     if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
@@ -318,7 +318,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
     if (settings.createSwitch === 'SDXL' && 
         (taskType == 'I2I' || taskType == 'I2I_AUTO') &&
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
-        finalType += '_CANNY_STYLE_POSE';
+        finalType += '_PLUS';
     }
 
     console.log('Derived finalType:', finalType);

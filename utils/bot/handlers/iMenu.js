@@ -958,7 +958,6 @@ async function handleCheckpointMenu(message,user) {
             }
         );
     }
-            
 }
 
 async function handleWatermarkMenu(message,user) {
