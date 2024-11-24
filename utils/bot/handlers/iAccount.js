@@ -721,7 +721,7 @@ async function handleRefreshQoints(message,user) {
             userData.checkedQointsAt = now
         }
         let pendingQoints;
-        if(newRead.hasOwnProperty('pendingQoints')){
+        if(newRead?.hasOwnProperty('pendingQoints')){
             pendingQoints = newRead.pendingQoints
         } else {
             pendingQoints = 0

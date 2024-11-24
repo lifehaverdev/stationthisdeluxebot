@@ -219,7 +219,7 @@ function generateFeatureMenu(settings, balance, context) {
 
     // Model switch buttons
     buttons.push([
-        { text: settings.createSwitch === 'SD1.5' ? '🔘SD1.5' : '⚪️SD1.5', callback_data: `createswitch_SD1.5_${context}` },
+        { text: settings.createSwitch === 'SD3' ? '🔘SD3' : '⚪️SD3', callback_data: `createswitch_SD3_${context}` },
         { text: settings.createSwitch === 'SDXL' ? '🔘SDXL' : '⚪️SDXL', callback_data: `createswitch_SDXL_${context}` },
         { text: settings.createSwitch === 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: `createswitch_FLUX_${context}` },
     ]);
@@ -409,7 +409,7 @@ prefixHandlers['togplus_'] = (action, message, user) => {
 prefixHandlers['createswitch_'] = (action, message, user) => {
     // Extract context and target from the action
     const parts = action.split('_');
-    const target = parts[1];  // e.g., "FLUX", "SD1.5", "SDXL"
+    const target = parts[1];  // e.g., "FLUX", "SD1.5", "SDXL", "SD3"
     const context = parts[2]; // e.g., "create", "effect", "set", "utils"
 
     // Ensure the action map uses the toggleFeature function
@@ -709,8 +709,10 @@ async function handleEffect(message, prompt = '', user = null) {
                 break;
             case 'SD1.5':
             case 'SDXL':
-            case 'SD3':
                 setUserState(message, STATES.IMG2IMG);
+                break;
+            case 'SD3':
+                setUserState(message, STATES.IMG32IMG);
                 break;
             default:
                 console.error(`Unknown createSwitch value: ${settings.createSwitch}`);

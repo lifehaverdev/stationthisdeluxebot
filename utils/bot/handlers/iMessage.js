@@ -530,7 +530,7 @@ const commandRegistry = {
         handler: async (message) => {
             const getAdmin = async (message) => {
                 const chatAdmins = await bot.getChatAdministrators(message.chat.id);
-                const isAdmin = chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id) || message.from.id == DEV_DMS;
+                const isAdmin = message.from.id == DEV_DMS || (chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id));
                 return isAdmin
             }
             // Step 1: Check if the message is coming from a group chat
