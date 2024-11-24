@@ -129,25 +129,29 @@ async function handleFluxImgFile(message, imageUrl = null, prompt = null) {
         await sendMessage(message, "An error occurred while processing the photo. Please try again.");
     }
 }
-
-
 function checkAndSetType(type, settings, message, group, userId) {
-    // Early return for token gate if needed
-    let typest = type;
-    console.log('type',typest)
-    // Dynamically build the type
-    if (settings.controlNet) typest += '_CANNY';
-    if (settings.styleTransfer) typest += '_STYLE';
-    if (settings.openPose) typest += '_POSE';
-    console.log('post triple condit typest',typest)
-    if ((settings.controlNet || settings.styleTransfer || settings.openPose) && 
-        tokenGate(group, userId, message)
-    ) {console.log('triplecondit')
-        return;}
-    //settings.type = type;
-    console.log(`Selected type: ${typest}`);
-    return typest
+    console.log('Initial type:', type);
+
+    // Early return if token gate fails
+    if ((settings.controlNet || settings.styleTransfer || settings.openPose) &&
+        tokenGate(group, userId, message)) {
+        console.log('Token gate triggered for additional settings.');
+        return null; // Return null to indicate the task cannot proceed
+    }
+
+    // Build suffix based on active flags
+    const suffixes = [];
+    if (settings.controlNet) suffixes.push('CANNY');
+    if (settings.styleTransfer) suffixes.push('STYLE');
+    if (settings.openPose) suffixes.push('POSE');
+
+    // Append suffixes to type
+    const finalType = suffixes.length > 0 ? `${type}_${suffixes.join('_')}` : type;
+
+    console.log('Final type:', finalType);
+    return finalType;
 }
+
 
 function tokenGate(group, userId, message) {
     if(!group && lobby[userId] && lobby[userId].balance < 400000) {
@@ -263,6 +267,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
 
     // Unified settings: get group settings or user settings from lobby
     const settings = group ? group.settings : lobby[userId];
+    console.log('settings', settings, userId, user);
 
     // Token gate check if minTokenAmount is provided
     if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
@@ -273,6 +278,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
 
     // Optional: State check to ensure the user is in the correct state
     if (!group && settings.state.state !== STATES.IDLE && settings.state.state !== defaultState) {
+        console.log('Invalid state for task.');
         return;
     }
 
@@ -281,24 +287,20 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
     const workspaceImage = workspace[userId]?.imageUrl;
 
     if (message.photo || message.document) {
-        // If the message contains a photo or document
         fileUrl = await getPhotoUrl(message);
     } else if (message.reply_to_message) {
-        // If the message is a reply to another message, check for a photo or document
         const replyMessage = message.reply_to_message;
         if (replyMessage.photo || replyMessage.document) {
             fileUrl = await getPhotoUrl(replyMessage);
         }
     }
 
-    // Fallback to workspace image if no image was found
     if (!fileUrl && workspaceImage) {
         console.log('Using image from workspace.');
         fileUrl = workspaceImage;
     }
 
     if (!fileUrl) {
-        // If no image URL is available, prompt the user
         console.log('No image or document provided for task.');
         await sendMessage(message, "Please provide an image for processing.");
         return;
@@ -306,16 +308,20 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
 
     const thisSeed = makeSeed(userId);
 
-    // If this is a special case (e.g., MAKE) and needs a type check
+    // Determine type based on SDXL and flags
     let finalType = taskType;
-    console.log('finalType before checkset', finalType);
-    if (needsTypeCheck) {
-        finalType = checkAndSetType(taskType, settings, message, group, userId);
-        if (!finalType) {
-            console.log('Task type could not be set due to missing files or settings.');
-            return;
-        }
+    // if () {
+    //     // finalType += '_PLUS';
+    // }
+
+    // Append control, style, and pose flags to the type
+    if (settings.createSwitch === 'SDXL' && 
+        (taskType == 'I2I' || taskType == 'I2I_AUTO') &&
+        (settings.controlNet || settings.styleTransfer || settings.openPose)) {
+        finalType += '_CANNY_STYLE_POSE';
     }
+
+    console.log('Derived finalType:', finalType);
 
     // Update user settings in the lobby
     Object.assign(lobby[userId], {
@@ -327,8 +333,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
     // Prevent batch requests in group chats
     const batch = chatId < 0 ? 1 : settings.batchMax;
 
-    // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
-    console.log('finalType before finding workflow', finalType);
+    // Use the workflow reader to dynamically build the promptObj
     const workflow = flows.find(flow => flow.name === finalType);
     const promptObj = buildPromptObjFromWorkflow(workflow, {
         ...settings,
@@ -345,11 +350,12 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
         }
         enqueueTask({ message, promptObj });
         setUserState(message, STATES.IDLE);
-        // Clean up workspace and message
     } catch (error) {
         console.error(`Error generating and sending task for ${taskType}:`, error);
     }
 }
+
+
 
 async function handleUpscale(message, user = null) {
     await handleImageTask(message, user, 'UPSCALE', STATES.UPSCALE, false, null);

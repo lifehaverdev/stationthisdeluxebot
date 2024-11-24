@@ -156,6 +156,7 @@ async function handleCreate(message, prompt = '', user = null) {
 
     // If a prompt is provided, route immediately without setting state
     if (prompt && prompt.trim()) {
+        console.log('see a create prompt along with the create command')
         return await routeToHandler();
     }
 
@@ -163,6 +164,7 @@ async function handleCreate(message, prompt = '', user = null) {
     switch (settings.createSwitch) {
         case 'SD1.5':
         case 'SDXL':
+            console.log('setting state to make')
             setUserState(message, STATES.MAKE); // SDXL and SD1.5 use MAKE state
             break;
         case 'FLUX':
@@ -849,7 +851,7 @@ async function handleEffectHang(message) {
         console.log('Effect Hang: AutoPrompt with image');
         setUserState(message, STATES.PFP);
         workspaceEntry.imageUrl = image;
-        await iMedia.handleImageTask(message, 'I2I_AUTO', STATES.PFP, true, 400000);
+        await iMedia.handleImageTask(message, userId, 'I2I_AUTO', STATES.PFP, true, 400000);
     } else if (prompt && !image) {
         console.log('Effect Hang: Missing image');
         await handleMissingImageCase(message, settings, workspaceEntry, prompt);

@@ -228,7 +228,7 @@ async function checkIn(message) {
         await react(message,"👻")
         return false;
     }
-
+    console.log('setting user to idle')
     setUserState(message, STATES.IDLE);
     console.log(`${message.from.first_name} is checked in.`);
     return true;
