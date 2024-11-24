@@ -175,7 +175,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','CHUDJAK']
+    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','CHUDJAK','INPAINTFLUX']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
@@ -544,6 +544,11 @@ async function handleFluxPrompt(message) {
 
 async function handleInpaintPrompt(message) {
     // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
+    // if(lobby.hasOwnProperty(message.from.id) && lobby[message.from.id].createSwitch == 'FLUX'){
+    //     await handleTask(message, 'INPAINTFLUX', STATES.INPAINTPROMPT, true, null);
+    // } else {
+    //     await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
+    // }
     await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
 }
 
@@ -555,7 +560,7 @@ async function handleInpaintTarget(message) {
 
     lobby[userId] = {
         ...lobby[userId],
-        inpaintTarget: userInput,
+        input_inpaint_target: userInput,
         type: 'INPAINT'
     }
     await sendMessage(message, 'What do you want instead of what you described.');
