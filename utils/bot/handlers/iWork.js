@@ -133,26 +133,26 @@ function convertTime(timeInSeconds) {
 async function handleStatus(message) {
     const runtime = (Date.now() - startup) / 1000; // Time in seconds
     const group = getGroup(message);
-    //const user = message.from.id
+    const user = message.from.id
     let msg = '';
     message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : msg += '⭐️\n\n'
     group && group.admins.includes(message.from.id) ? msg += `${group.title}\n ${group.qoints}\n\n` : null
     
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {
-        const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-        return `${username}: ${task.promptObj.type}`; // Include remaining time in the status
+        //const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
+        return `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type}`; // Include remaining time in the status
     }).join('\n')}\n` : null
     waiting.length > 0 ? msg += 
     `🪄 \n${waiting.map(task => {
-        const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
+        ///const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
         const remainingTime = task.status; // Calculate remaining time until checkback
-        return `${username}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
+        return `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
     }).join('\n')}\n` : null;
     successors.length > 0 ? msg += 
     `🕊️\n${successors.map(task => {
-        const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-        return `${username}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`; // Include the username in the status
+        //const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
+        return `$${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`; // Include the username in the status
     }).join('\n')}\n` : null
     
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: 'refresh'}]]}

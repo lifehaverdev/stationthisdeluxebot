@@ -358,7 +358,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     // Append control, style, and pose flags to the type
     if (settings.controlNet || settings.styleTransfer || settings.openPose) {
-        finalType += '_CANNY_STYLE_POSE';
+        finalType += '_PLUS';
     }
 
     // Update settings and prepare promptObj
