@@ -218,7 +218,10 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (!userContext.openPose) delete promptObj.input_pose_image;
     // if (!userContext.type != 'MAKE','FLUX') 
     const text2images = ['MAKE','FLUX','MILADY','CHUD','RADBRO','DEGOD','LOSER']
-    if (text2images.some(type => userContext.type.startsWith(type))) {
+    if (
+        text2images.some(type => userContext.type.startsWith(type)) &&
+        userContext.type !== 'FLUXI2I'
+    ) {
         delete promptObj.input_image;
         promptObj.input_strength = 1;
     }
@@ -357,7 +360,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     }
 
     // Append control, style, and pose flags to the type
-    if (settings.controlNet || settings.styleTransfer || settings.openPose) {
+    if ((settings.controlNet || settings.styleTransfer || settings.openPose) && settings.createSwitch === 'SDXL') {
         finalType += '_PLUS';
     }
 
