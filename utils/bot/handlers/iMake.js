@@ -169,18 +169,20 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         input_seed: userContext.input_seed,
         input_negative: userContext.input_negative || 'embedding:easynegative'
     };
-    workflow.inputs.forEach((input) => {
+    if(!workflow){
+        console.log('!!! build promptObj fail from ',userContext.type)
+    }
+    workflow?.inputs.forEach((input) => {
         if (userContext.hasOwnProperty(input)) {
             promptObj[input] = userContext[input];
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','CHUDJAK','INPAINTFLUX']
+    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','MOG','CHUDJAK','INPAINTFLUX']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
         // delete promptObj. delete negative
-
     }
     // Derive fields based on existing flags
     // ControlNet
