@@ -23,9 +23,13 @@ voiceModels = [
         name: 'Jordan',
         modelId: 'baXUaMbdXzShhJFwCRJZ'
     },
+    // {
+    //     name: 'Joe',
+    //     modelId: 'eJnCdPneH7e8OxO6azGV'
+    // },
     {
-        name: 'Joe',
-        modelId: 'eJnCdPneH7e8OxO6azGV'
+        name: 'Jim',
+        modelId: '0u16whFJ8YYBXQG5kKIT'
     },
     {
         name: 'Dom',
