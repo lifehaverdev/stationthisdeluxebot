@@ -419,7 +419,12 @@ function checkUserPoints(userId, group, message) {
     const totalPoints = user.points + (user.doints || 0);
     const outOfPoints = pointsCalc(totalPoints) > (user.balance + NOCOINERSTARTER);
 
-    if ((outOfPoints && user.qoints <= 0) || (outOfPoints && !user.qoints) || (group && group.qoints <= 0)) {
+    if (
+        (outOfPoints && user.qoints <= 0) || 
+        (outOfPoints && !user.qoints) || 
+        (group && group.gateKeeping.style == 'house' && group.qoints <= 0) ||
+        (group && group.gateKeeping.style == 'user' && user.qoints <0 && outOfPoints && group.qoints <=0) 
+    ) {
         const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
