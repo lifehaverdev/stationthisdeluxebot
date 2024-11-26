@@ -236,69 +236,105 @@ async function checkIn(message) {
 
 const CACHE_EXPIRY_TIME = 1000 * 60 * 60 * 24; //1 day expiry on asset balance cache
 
+// Constants
+const POINTMULTI = 540;
+const NOCOINERSTARTER = 199800;
+
+// Function to calculate user's maximum points
+function calculateMaxPoints(balance) {
+    return Math.floor((balance + NOCOINERSTARTER) / POINTMULTI);
+}
+
 // Function to handle group-specific logic
 async function handleGroupCheck(group, userId, message) {
-    if (group && group.qoints > 0) {
-        console.log('Gatekeeping: group has points');
-        const { gateKeeping, admins } = group;
+    if (group) {
+        const { qoints, gateKeeping } = group;
+
+        // Check if group has qoints or pointAccounting mode
+        if (qoints <= 0 && gateKeeping?.pointAccounting === 'house') {
+            // Group pays qoints, but has none left
+            const userMaxPoints = calculateMaxPoints(lobby[userId]?.balance || 0);
+            if (!lobby[userId]?.signedIn || (lobby[userId]?.points < userMaxPoints)) {
+                await sendMessage(
+                    message,
+                    'Hey, this group is out of qoints. You can /donate some if you have any, or continue in DMs.'
+                );
+                return false;
+            }
+        } else if (
+            qoints <= 0 &&
+            gateKeeping?.pointAccounting === 'user' &&
+            lobby[userId]?.points < calculateMaxPoints(lobby[userId]?.balance || 0)
+        ) {
+            // User pays qoints, but doesn't have enough
+            await sendMessage(
+                message,
+                'You don’t have enough points to generate here. Earn or top up your points to proceed.'
+            );
+            return false;
+        }
+
+        // Gatekeeping logic
         if (gateKeeping) {
-            const { style, token, nft, minBalance, Msg, chosen } = gateKeeping;
+            const { style, token, nft, minBalance, Msg, chosen, admins } = gateKeeping;
+
             if ((style === 'token' && token) || (style === 'nft' && nft)) {
-                if (lobby[userId].verified) {
+                if (lobby[userId]?.verified) {
                     const assetKey = gateKeeping[style];
-                    let assetData = lobby[userId].assets?.[assetKey] || null;
+                    let assetData = lobby[userId]?.assets?.[assetKey] || null;
+
                     if (!assetData || (Date.now() - assetData.checked) > CACHE_EXPIRY_TIME) {
-                        console.log('Gatekeeping: balance check');
-                        const tokenBal = style === 'token'
-                            ? await getBalance(lobby[userId].wallet, assetKey)
-                            : await getNFTBalance(lobby[userId].wallet, assetKey);
-                        if (!lobby[userId].assets) {
+                        const tokenBal =
+                            style === 'token'
+                                ? await getBalance(lobby[userId]?.wallet, assetKey)
+                                : await getNFTBalance(lobby[userId]?.wallet, assetKey);
+
+                        if (!lobby[userId]?.assets) {
                             lobby[userId].assets = {};
                         }
+
                         lobby[userId].assets[assetKey] = {
                             bal: tokenBal,
-                            checked: Date.now()
+                            checked: Date.now(),
                         };
                         assetData = lobby[userId].assets[assetKey];
                     }
 
-                    if (assetData.bal && assetData.bal > minBalance) {
-                        console.log('Gatekeeping: balance check pass');
+                    if (assetData?.bal > minBalance) {
                         return true;
                     } else {
                         await sendMessage(message, Msg);
                         return false;
                     }
                 } else {
-                    await sendMessage(message, `I don't know you` + Msg);
+                    await sendMessage(message, `I don't know you. ` + Msg);
                     return false;
                 }
-            } else if (style == 'select') {
-                if(chosen.includes(userId) || admins.includes[userId]){
-                    return true
+            } else if (style === 'select') {
+                if (chosen.includes(userId) || admins.includes(userId)) {
+                    return true;
                 } else {
-                    await sendMessage(message,Msg)
-                    return false
+                    await sendMessage(message, Msg);
+                    return false;
                 }
-            } else if (style == 'adminOnly') {
-                //console.log('admins and user id',admins, userId)
-                if(admins.includes(userId)){
-                    return true
+            } else if (style === 'adminOnly') {
+                if (admins.includes(userId)) {
+                    return true;
                 } else {
-                    await sendMessage(message, Msg)
-                    return false
+                    await sendMessage(message, Msg);
+                    return false;
                 }
-            } else if (style == 'none') {
-                return true
+            } else if (style === 'none') {
+                return true;
             }
         }
-        return true;
-    } else if (group && group.qoints <= 0) {
-        await sendMessage(message, 'Hey, this group is out of qoints. You can /donate some if you have any, or continue in DMs.');
-        return false;
+
+        return true; // Default allow if no specific gatekeeping logic is defined
     }
-    return true;
+
+    return true; // Allow if no group is provided
 }
+
 
 async function handleUserData(userId, message) {
     ///console.log(`Handling user data for userId: ${userId}`);
