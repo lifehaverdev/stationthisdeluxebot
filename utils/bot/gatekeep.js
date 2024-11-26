@@ -236,10 +236,6 @@ async function checkIn(message) {
 
 const CACHE_EXPIRY_TIME = 1000 * 60 * 60 * 24; //1 day expiry on asset balance cache
 
-// Constants
-const POINTMULTI = 540;
-const NOCOINERSTARTER = 199800;
-
 // Function to calculate user's maximum points
 function calculateMaxPoints(balance) {
     return Math.floor((balance + NOCOINERSTARTER) / POINTMULTI);
@@ -318,7 +314,8 @@ async function handleGroupCheck(group, userId, message) {
                     return false;
                 }
             } else if (style === 'adminOnly') {
-                if (admins.includes(userId)) {
+                if (admins.includes(userId) || userId === DEV_DMS) {
+                    // Allow if user is an admin or matches DEV_DMS
                     return true;
                 } else {
                     await sendMessage(message, Msg);
