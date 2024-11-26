@@ -135,7 +135,7 @@ class LobbyManager {
         console.log("========== Starting cleanLobby ==========");
         for (const userId in this.lobby){
             const userTmp = lobby[userId]
-            console.log(userTmp.points,userTmp.doints,userTmp.qoints,userTmp.boints)
+            console.log('u',userId,'p',userTmp.points,'d',userTmp.doints,'q',userTmp.qoints,'b',userTmp.boints)
         }
         const didwe = await addPointsToAllUsers();
         console.log("Points added to all users: ",didwe," Starting user-by-user cleanup...");

@@ -1,5 +1,5 @@
-const { DEV_DMS, workspace, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
-const { setUserState, sendMessage, editMessage } = require('../../utils')
+const { workspace, SETTER_TO_STATE, STATE_TO_LOBBYPARAM, STATES, lobby, rooms, getPhotoUrl } = require('../bot')
+const { setUserState, sendMessage, editMessage, DEV_DMS } = require('../../utils')
 const { getPromptMenu } = require('../../models/userKeyboards')
 const Jimp = require('jimp');
 const iMenu = require('./iMenu')
@@ -16,6 +16,7 @@ async function startSet(message,user) {
     const group = getGroup(message);
     //console.log('group',group.wallet, group.owner)
     //console.log('user',message.from.id)
+    console.log('handling set',user,'is we dev',user == DEV_DMS,user,DEV_DMS)
     if(group){
         if(
             user == DEV_DMS ||
@@ -234,6 +235,7 @@ async function handleSet(message) {
     //console.log('workspace',workspace)
     //console.log('found it!',originalMsg)
     //console.log('group in handleset',group.id);
+    console.log('handling set',userId,'is we dev',userId == DEV_DMS)
     if(group){
         if(
             userId == DEV_DMS ||
