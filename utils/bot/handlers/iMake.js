@@ -284,7 +284,12 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     }
 
     // Append control, style, and pose flags to the type
-    if ((settings.controlNet || settings.styleTransfer || settings.openPose) && settings.createSwitch === 'SDXL') {
+    if (
+        (settings.controlNet || settings.styleTransfer || settings.openPose) && 
+        settings.createSwitch === 'SDXL' &&
+        finalType !== 'FLUX' &&
+        finalType !== 'FLUXI2I'
+    ) {
         finalType += '_PLUS';
     }
 
