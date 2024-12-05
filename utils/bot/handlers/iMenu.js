@@ -712,7 +712,7 @@ async function handleEffect(message, prompt = '', user = null) {
                 setUserState(message, STATES.IMG2IMG);
                 break;
             case 'SD3':
-                setUserState(message, STATES.IMG32IMG);
+                setUserState(message, STATES.SD32IMG);
                 break;
             default:
                 console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
@@ -755,13 +755,14 @@ async function handleEffect(message, prompt = '', user = null) {
 async function routeEffectWorkflow(prompt, image, settings, message) {
     // Determine the task based on createSwitch
     switch (settings.createSwitch) {
-        case 'SD1.5':
         case 'SDXL':
             // If autoPrompt is enabled, redirect to handleImageTask
             if (settings.autoPrompt) {
                 return await iMedia.handleImageTask(message, null, 'I2I_AUTO', STATES.PFP, true, 400000);
             }
             return await iMedia.handleMs2ImgFile(message, image, prompt);
+        case 'SD3':
+            return await iMedia.handleSD3ImgFile(message, image, prompt);
         case 'FLUX':
             return await iMedia.handleFluxImgFile(message, image, prompt);
         default:
@@ -811,7 +812,9 @@ async function handleMissingPromptCase(message, settings, image) {
 
     // Route to the correct image handler
     switch (settings.createSwitch) {
-        case 'SD1.5':
+        case 'SD3':
+            await iMedia.handleSD3ImgFile(message, image, null);
+            break;
         case 'SDXL':
             await iMedia.handleMs2ImgFile(message, image, null);
             break;

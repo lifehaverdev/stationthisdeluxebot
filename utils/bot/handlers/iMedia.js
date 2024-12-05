@@ -129,6 +129,68 @@ async function handleFluxImgFile(message, imageUrl = null, prompt = null) {
         await sendMessage(message, "An error occurred while processing the photo. Please try again.");
     }
 }
+
+async function handleSD3ImgFile(message, imageUrl = null, prompt = null) {
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+
+    // Get workspace entry
+    const workspaceEntry = workspace[userId] || {};
+
+    // Determine the target message (current or reply)
+    const targetMessage = message.reply_to_message || message;
+
+    // Get image URL (if not provided)
+    imageUrl = imageUrl || await getPhotoUrl(targetMessage) || workspaceEntry.imageUrl;
+
+    // If no image is found, prompt the user
+    if (!imageUrl) {
+        console.log('handle sd3 img no image');
+        setUserState(message, STATES.SD32IMG);
+        const sent = await sendMessage(message, 'Please provide a photo to proceed.');
+        workspace[userId].message = sent;
+        return;
+    }
+
+    // Extract prompt (from message text, workspace, or caption)
+    prompt = prompt || cleanPrompt(message.text || message.caption || workspaceEntry.prompt || '');
+
+    // Process the image
+    try {
+        const photo = await Jimp.read(imageUrl);
+        const { width, height } = photo.bitmap;
+
+        const photoStats = { width, height };
+        const thisSeed = makeSeed(userId);
+
+        // Update user settings and workspace
+        Object.assign(lobby[userId], {
+            lastSeed: thisSeed,
+            tempSize: photoStats,
+            input_image: imageUrl,
+        });
+        Object.assign(workspace[userId], {
+            imageUrl,
+            prompt,
+        });
+
+        if (prompt.trim()) {
+            console.log('handle sd3 img wit da prompt');
+            // If both prompt and image are available, proceed to handleTask
+            setUserState(message, STATES.SD32IMG);
+            return await iMake.handleTask(message, 'I2I_3', STATES.SD32IMG, true, null);
+        } else {
+            console.log('handle sd3 img wit no prompt');
+            // If prompt is missing, set state and ask for it
+            const sent = await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);
+            setUserState(message, STATES.SD32IMGPROMPT);
+            workspace[userId].message = sent;
+        }
+    } catch (error) {
+        console.error("Error processing photo:", error);
+        await sendMessage(message, "An error occurred while processing the photo. Please try again.");
+    }
+}
 function checkAndSetType(type, settings, message, group, userId) {
     console.log('Initial type:', type);
 
@@ -381,6 +443,7 @@ module.exports =
 {
     handleImageTask,
     handleMs2ImgFile,
+    handleSD3ImgFile,
     handleFluxImgFile,
     handlePfpImgFile,
     handleRmbg,

@@ -161,6 +161,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const promptObj = {
         userId: userContext.userId,
         type: userContext.type,
+        balance: userContext.balance,
         userPrompt: userContext.userPrompt,
         basePrompt: userContext.basePrompt,
         timeRequested: Date.now(),
@@ -242,94 +243,8 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 }
 
 
-// async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
-//     console.log(`HANDLING TASK: ${taskType}`);
-
-//     const chatId = message.chat.id;
-//     const userId = message.from.id;
-//     const group = getGroup(message);
-
-    
-//     // Unified settings: get group settings or user settings from lobby
-//     const settings = getSettings(userId, group);
-
-//     // Token gate check if minTokenAmount is provided
-//     if (minTokenAmount && tokenGate(group, userId, message, minTokenAmount)) {
-//         console.log(`Token gate failed for task ${taskType}, user lacks sufficient tokens.`);
-//         react(message, '👎');
-//         return;
-//     }
-
-//     // Optional: State check to ensure the user is in the correct state
-//     if (!group && settings.state.state !== STATES.IDLE && settings.state.state !== defaultState) {
-//         console.log('kicked out cause of state',defaultState,settings.state)
-//         return;
-//     }
-
-//     // Retrieve prompt from message or workspace
-//     let rawText = message.text || message.caption || '';
-//     if (!rawText.trim() && workspace[userId]?.prompt) {
-//         rawText = workspace[userId].prompt;
-//     }
-//     const cleanedText = cleanPrompt(rawText, taskType);
-
-//     // Check if the cleaned text is empty, trigger the start prompt
-//     if (!cleanedText.trim()) {
-//         console.log('kicked out for no cleanedtext',cleanedText)
-//         await startTaskPrompt(message, taskType, defaultState, null, minTokenAmount); // Use the generalized start function
-//         return;
-//     }
-
-//     const thisSeed = makeSeed(userId);
-//     console.log('hey whats the task type',taskType)
-//     // If this is a special case (e.g., MAKE) and needs a type check
-//     let finalType = taskType;
-//     if (needsTypeCheck) {
-//         finalType = checkAndSetType(taskType, settings, message, group, userId);
-//         if (!finalType) {
-//             console.log('Task type could not be set due to missing files or settings.', taskType, settings, message, group, userId);
-//             finalType = 'MAKE'; // Default fallback
-//         }
-//     }
-
-//     // Update user settings in the lobby
-//     Object.assign(lobby[userId], {
-//         prompt: cleanedText,
-//         type: finalType, // Use the modified type
-//         lastSeed: thisSeed,
-//     });
-
-//     // Prevent batch requests in group chats
-//     const batch = chatId < 0 ? 1 : settings.input_batch;
-
-//     // Use the workflow reader to dynamically build the promptObj based on the workflow's required inputs
-//     const workflow = flows.find(flow => flow.name === finalType);
-//     const promptObj = buildPromptObjFromWorkflow(workflow, {
-//         ...settings,
-//         type: finalType,
-//         prompt: cleanedText,
-//         input_seed: thisSeed,
-//         input_batch: batch,
-//     }, message);
-
-//     try {
-//         await react(message); // Acknowledge the command
-//         if (workspace[userId]?.message && ['create','effect','utils'].includes(workspace[userId]?.context)) {
-//             const sent = workspace[userId].message;
-//             console.log(sent)
-//             await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
-//         }
-//         enqueueTask({ message, promptObj });
-//         setUserState(message, STATES.IDLE);
-//             // Clean up create menu
-        
-
-//     } catch (error) {
-//         console.error(`Error generating and sending task for ${taskType}:`, error);
-//     }
-// }
 async function handleTask(message, taskType, defaultState, needsTypeCheck = false, minTokenAmount = null) {
-    console.log(`HANDLING TASK: ${taskType}`);
+    console.log(`HANDLING TASK: ${taskType}, ${defaultState}`);
 
     const chatId = message.chat.id;
     const userId = message.from.id;
@@ -388,6 +303,11 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         input_seed: thisSeed,
         input_batch: chatId < 0 ? 1 : settings.input_batch,
     }, message);
+    if (workspace[userId]?.message && ['create','effect','utils'].includes(workspace[userId]?.context)) {
+        const sent = workspace[userId].message;
+        console.log(sent);
+        await editMessage({ reply_markup: null, chat_id: sent.chat.id, message_id: sent.message_id, text: '🌟' });
+    }
 
     try {
         await react(message);
@@ -539,6 +459,10 @@ async function handleMs2Prompt(message) {
     await handleTask(message, 'I2I', STATES.MS2PROMPT, true, null);
 }
 
+async function handleSD3ImgPrompt(message) {
+    await handleTask(message, 'SD32IMG', STATES.SD32IMGPROMPT, true, null);
+}   
+
 async function handleFluxPrompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
     await handleTask(message, 'FLUXI2I', STATES.FLUXPROMPT, null, null);
@@ -582,6 +506,7 @@ module.exports = {
     handleMake, 
     handleMake3, 
     handleMs2Prompt,
+    handleSD3ImgPrompt,
     handleFluxPrompt,
     handleInpaintPrompt,
     handleInpaintTarget,

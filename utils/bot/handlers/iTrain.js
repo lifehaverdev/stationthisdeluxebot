@@ -5,6 +5,7 @@ const {
     setUserState, 
     sendPhoto,
     react, 
+    calculateDiscount,
     DEV_DMS
 } = require('../../utils')
 const { 
@@ -741,7 +742,9 @@ async function submitTraining(message, user, loraId) {
         return
     }
     const userDat = lobby[user]
-    if(userDat.qoints < loraPrice){
+    const discountedPrice = loraPrice * (100-calculateDiscount(user))/100
+    console.log('discounted price',discountedPrice)
+    if(userDat.qoints < discountedPrice){
         const options = {
             reply_markup: {
                 inline_keyboard: [
@@ -751,10 +754,10 @@ async function submitTraining(message, user, loraId) {
                 ]
             }
         };
-        await sendMessage(message,`Submitting a training to make a lora costs 86,400 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
+        await sendMessage(message,`Submitting a training to make a lora costs you ${discountedPrice} 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
         return
     } else {
-        userDat.qoints -= loraPrice;
+        userDat.qoints -= discountedPrice;
         await writeQoints('users',{'userId': user},userDat.qoints)
     }
     workspace[user][loraId].status = 'SUBMITTED'
@@ -769,7 +772,7 @@ async function submitTraining(message, user, loraId) {
         chat_id: chatId,
         message_id: messageId
     })
-    await sendMessage(DEV_DMS,`user ${user} @${message.from.username} just submitted ${workspace[user][loraId].name} for training`)
+    await sendMessage({from: {id:DEV_DMS}, chat: {id:DEV_DMS}},`user ${user} @${message.from.username} just submitted ${workspace[user][loraId].name} for training`)
 }
 /*
 BACKEND
