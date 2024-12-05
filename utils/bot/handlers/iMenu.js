@@ -567,11 +567,11 @@ actionMap['utils_rmbg'] = async (message, user) => {
 actionMap['utils_watermark'] = async (message, user) => {
     const image = workspace[user]?.imageUrl;
     const ogmessage = workspace[user]?.message
-    if (!image) {
-        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to add a watermark.`})
-        setUserState({...message, from: {id: user}}, STATES.WATERMARK);
-        return;
-    }
+    // if (!image) {
+    //     await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to add a watermark.`})
+    //     setUserState({...message, from: {id: user}}, STATES.WATERMARK);
+    //     return;
+    // }
     await handleWatermarkMenu(message,user);
 };
 

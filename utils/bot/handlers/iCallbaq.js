@@ -162,6 +162,7 @@ const handleSetWatermark = async (message, selectedName, userId) => {
             chat_id: chatId,
             message_id: messageId,
         });
+        setUserState({...message,from: {id: userId},chat: {id: chatId}},STATES.WATERMARK)
 
         // If an image is already in the workspace, route directly to handleWatermark
         if (image) {

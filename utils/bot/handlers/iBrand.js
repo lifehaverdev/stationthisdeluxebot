@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { sendMessage, sendPhoto, react, setUserState, editMessage } = require('../../utils')
-const { getPhotoUrl, STATES, lobby } = require('../bot')
+const { getPhotoUrl, STATES, lobby, workspace } = require('../bot')
 const { addWaterMark, writeToDisc } = require('../../../commands/waterMark')
 
 const iMenu = require('./iMenu')
