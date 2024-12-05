@@ -157,23 +157,31 @@ async function fetchOutput(run_id) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    const basepromptlessTypes = ['FLUX','FLUXI2I','MILADY','CHUD','RADBRO','LOSER']
+    const basepromptlessTypes = ['FLUX','FLUXI2I','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3'];
+
+    // Log the initial state of promptObj
+    //console.log('Initial prompt first 10 chars:', promptObj.prompt?.substring(0, 10));
+
     const promptArrangement = basepromptlessTypes.includes(promptObj.type) ? 
-    `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '}` :
-    `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`
-    let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance)
-    promptObj.input_checkpoint && promptObj.input_checkpoint.includes('.safetensors') ? null : promptObj.input_checkpoint = promptObj.input_checkpoint + '.safetensors'
-    // Filter out censored words if applicable
-    if (promptObj.balance < 1000000) {
-        promptFinal = promptFinal.split(" ")
-                                    // .map(word => word.replace(/[^\w\s]|_/g, ''))
-                                    .filter(word => !censoredWords.includes(word))
-                                    .join(" ");
+        `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '}` :
+        `${promptObj.prompt} ${promptObj.userPrompt == '-1' ?  '' : ', ' + promptObj.userPrompt + ', '} ${getBasePromptByName(promptObj.basePrompt)}`;
+
+    // Log the prompt arrangement
+    //console.log('Prompt arrangement:', promptArrangement);
+
+    try {
+        // Ensure promptObj properties are defined
+        if (promptObj.input_checkpoint && promptObj.balance !== undefined) {
+            let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance);
+            // Log the final prompt
+            //console.log('Final prompt:', promptFinal);
+            promptObj.finalPrompt = promptFinal;
+        } else {
+            console.error('Missing properties in promptObj:', promptObj);
+        }
+    } catch (error) {
+        console.error('Error in handleLoraTrigger:', error);
     }
-    // Handle LoRa triggers or any other final modifications
-    //promptObj.prompt = handleLoraTrigger(cleanedPrompt+" ", promptObj.balance);
-    promptObj.finalPrompt = promptFinal;
-    //promptObj.justPrompt = justPromptFinal;
 }
 // Function to make the API request and handle the response
 async function generate(promptObj) {
@@ -182,8 +190,8 @@ async function generate(promptObj) {
         'UPSCALE', 'RMBG'
     ]
     if(promptObj.prompt == '' && (!promptless.includes(promptObj.type))){
-        console.log(promptObj.type )
-        console.log('generate return by type none or vid')
+        //console.log(promptObj.type )
+        //console.log('generate return by type none or vid')
         return;
     }
     try {

@@ -190,10 +190,10 @@ async function buildCollectionMenu(userId,collectionId) {
 
         const inlineKeyboard = [];
 
-        inlineKeyboard.push([{ text: '↖︎', callback_data: 'collectionModeMenu' }]);
-        inlineKeyboard.push([{ text: 'metadata', callback_data: 'collectionMetaData' }])
-        inlineKeyboard.push([{ text: 'config', callback_data: 'collectionConfigMenu' }])
-        inlineKeyboard.push([{ text: 'consult', callback_data: 'collectionConsult' }])
+        inlineKeyboard.push([{ text: '↖︎', callback_data: `collectionModeMenu` }]);
+        inlineKeyboard.push([{ text: 'metadata', callback_data: `collectionMetaData_${collectionId}` }])
+        inlineKeyboard.push([{ text: 'config', callback_data: `collectionConfigMenu_${collectionId}` }])
+        inlineKeyboard.push([{ text: 'consult', callback_data: `collectionConsult_${collectionId}` }])
 
         if (!submitted) {
             let completedCount = calculateCompletionPercentage(collectionData);
@@ -219,7 +219,7 @@ async function buildCollectionMenu(userId,collectionId) {
 
 //prefixHandlers['rmc_'] = 
 // prefixHandlers['rmc_'] = (action, message, user) => handlePrefix(action, message, user, 'removeCollection');
-actionMap['removeCollection'] = removeCollection
+actionMap[`removeCollection`] = removeCollection
 prefixHandlers['rmc_']= (action, message, user) => {
     const collectionId = parseInt(action.split('_')[1]);
     actionMap['removeCollection'](message,user,collectionId)
@@ -282,3 +282,97 @@ function handlePrefix(action, message, user, actionKey) {
     actionMap[actionKey](message, user, collectionId);
 }
 
+prefixHandlers[`collectionMetaData_`] = (action, message, user) => handlePrefix(action, message, user, 'collectionMetaData')
+actionMap['collectionMetaData'] = handleCollectionMetaData
+
+async function handleCollectionMetaData(message,user,collectionId) {
+    console.log('handle collection meta data',message,user,collectionId)
+    const { text, reply_markup } = await buildCollectionMetaDataMenu(user,collectionId)
+    updateMessage(message.chat.id,message.message_id, { reply_markup }, text)
+}
+
+async function buildCollectionMetaDataMenu(user, collectionId) {
+    const collection = await getOrLoadCollection(user, collectionId);
+    
+    const text = `Collection Metadata for ${collection.name}\n\n` +
+                 `Supply: ${collection.totalSupply || 'Not set'}\n` +
+                 `Chain: ${collection.chain || 'Not set'}\n` + 
+                 `Royalties: ${collection.royalties || '0'}%`;
+
+    return {
+        text,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '📊 Set Supply', callback_data: `supply_${collectionId}` },
+                    { text: '⛓️ Set Chain', callback_data: `chain_${collectionId}` }
+                ],
+                [
+                    { text: '💰 Set Royalties', callback_data: `royalty_${collectionId}` }
+                ],
+                [
+                    { text: '« Back', callback_data: `ec_${collectionId}` }
+                ]
+            ]
+        }
+    }
+}
+
+prefixHandlers['supply_'] = (action, message, user) => handlePrefix(action, message, user, 'setSupply')
+actionMap['setSupply'] = handleSetSupply
+
+// Modify handleSetSupply to use the new system
+async function handleSetSupply(message, user, collectionId) {
+    if (!studio[user]) {
+        studio[user] = {};
+    }
+    
+    // Set pending action
+    studio[user].pendingAction = {
+        action: 'supply',
+        collectionId: collectionId
+    };
+
+    // Update message and set state
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: 'Please enter the total supply for your collection:',
+    });
+    
+    setUserState(message, STATES.SETCOLLECTION);
+}
+
+
+// Add the state handler
+stateHandlers[STATES.SETCOLLECTION] = async (message) => {
+    const userId = message.from.id;
+    if (!studio[userId]?.pendingAction) {
+        console.log('No pending action found for user');
+        return;
+    }
+
+    const { action, collectionId } = studio[userId].pendingAction;
+    const userInput = message.text;
+
+    switch (action) {
+        case 'supply':
+            const supply = parseInt(userInput);
+            if (isNaN(supply) || supply <= 0) {
+                await sendMessage(message, 'Please enter a valid number greater than 0');
+                return;
+            }
+            studio[userId][collectionId].totalSupply = supply;
+            break;
+        // Add other cases here for different settings
+    }
+
+    // Save changes and reset state
+    await saveStudio(collectionId, studio[userId][collectionId]);
+    delete studio[userId].pendingAction;
+    setUserState(message, STATES.IDLE);
+    
+    // Return to metadata menu
+    const { text, reply_markup } = await buildCollectionMetaDataMenu(userId, collectionId);
+    await sendMessage(message, text, { reply_markup });
+}

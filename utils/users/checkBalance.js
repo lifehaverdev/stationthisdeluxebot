@@ -93,7 +93,6 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
         //console.log(burnRecord.burned)
         balance += parseInt(burnRecord.burned) * 2 / 1000000;
     }
-
     return balance
 }
 const getNFTBalance = async (ownerAddress, mintAddress) => {

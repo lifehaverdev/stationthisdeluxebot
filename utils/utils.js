@@ -1,4 +1,4 @@
-const { getBotInstance, lobby, rooms } = require('./bot/bot.js'); 
+const { getBotInstance, lobby, rooms, getBurned } = require('./bot/bot.js'); 
 const defaultUserData = require('./users/defaultUserData.js')
 
 function getGroup(message) {
@@ -163,7 +163,7 @@ async function setCommandContext(bot, msg) {
     }
 
     const { commands, scope } = determineCommandsAndScope(chatId, userId, group);
-    await updateBotCommandsIfNeeded(bot, userId, commands, scope, msg);
+    await updateBotCommandsIfNeeded(bot, userId, group, commands, scope, msg);
     markUserAsStationed(userId, chatId);
 }
 
@@ -243,7 +243,7 @@ function determineCommandsAndScope(chatId, userId, group) {
 }
 
 // Update bot commands if the commands have changed
-async function updateBotCommandsIfNeeded(bot, userId, commands, scope, msg) {
+async function updateBotCommandsIfNeeded(bot, userId, group, commands, scope, msg) {
     try {
         const existingCommands = await bot.getMyCommands({ scope });
         const newCommandsJson = JSON.stringify(commands);
@@ -435,7 +435,28 @@ async function editMessage({ reply_markup = null, chat_id, message_id, text = nu
     }
 }
 
+async function calculateDiscount(user) {
+    // Get user's MS2 balance, burns, and exp
+    
+    const balance = lobby[user].balance || 0;
+    const burns = getBurned(user);
+    const exp = lobby[user].exp || 0;
 
+    // Discount based on MS2 balance (25% discount if balance >= 600,000)
+    const ms2BalanceDiscount = balance >= 6000000 ? 25 : (balance / 600000) * 25;
+    console.log('ms2 balance discount',ms2BalanceDiscount)
+    // Discount based on MS2 burned (25% discount if burned >= 300,000) 
+    const ms2BurnDiscount = burns >= 300000 ? 25 : (burns / 300000) * 25;
+    console.log('ms2 burn discount',ms2BurnDiscount)
+    // Discount based on user level (25% discount if level >= 100)
+    const userLevel = Math.floor(Math.cbrt(exp));
+    const levelDiscount = userLevel >= 100 ? 25 : (userLevel / 100) * 25;
+    console.log('level discount',levelDiscount)
+    // Calculate total discount (capped at 75%)
+    const totalDiscount = Math.min(ms2BalanceDiscount + ms2BurnDiscount + levelDiscount, 75);
+    console.log('total discount',totalDiscount)
+    return totalDiscount;
+}
 
 
 
@@ -452,6 +473,7 @@ module.exports = {
     makeBaseData,
     editMessage, updateMessage,
     gated,
+    calculateDiscount,
     cleanPrompt,
     DEV_DMS,
     fullCommandList,

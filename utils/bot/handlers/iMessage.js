@@ -58,21 +58,21 @@ const commandRegistry = {
     '/joycat': {
         handler: iMake.handleMog,
     },
-    '/degod': {
-        handler: iMake.handleDegod,
-    },
-    '/milady': {
-        handler: iMake.handleMilady,
-    },
+    // '/degod': {
+    //     handler: iMake.handleDegod,
+    // },
+    // '/milady': {
+    //     handler: iMake.handleMilady,
+    // },
     '/loser': {
         handler: iMake.handleLoser,
     },
-    '/chud': {
-        handler: iMake.handleChud,
-    },
-    '/radbro': {
-        handler: iMake.handleRadbro,
-    },
+    // '/chud': {
+    //     handler: iMake.handleChud,
+    // },
+    // '/radbro': {
+    //     handler: iMake.handleRadbro,
+    // },
     '/regen': {
         handler: iMake.handleRegen,
     },
@@ -615,6 +615,8 @@ const commandRegistry = {
     stateHandlers[STATES.FLUXPROMPT] = (message) => safeExecute(message, iMake.handleFluxPrompt)
     stateHandlers[STATES.IMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
     stateHandlers[STATES.FLUX2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
+    stateHandlers[STATES.SD32IMG] = (message) => safeExecute(message, iMedia.handleSD3ImgFile)
+    stateHandlers[STATES.SD32IMGPROMPT] = (message) => safeExecute(message, iMake.handleSD3ImgPrompt)
     
     stateHandlers[STATES.MS3]= (message) => safeExecute(message,iMedia.handleMs3ImgFile)
     stateHandlers[STATES.MS3V2] = (message) => safeExecute(message,iMedia.handleMs3V2ImgFile)

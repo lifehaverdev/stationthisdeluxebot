@@ -312,6 +312,7 @@ function buildUserProfile(message, dms) {
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
     if (dms) {
+        accountInfo += `<b>${lobby[userId].wallet}</b>\n`
         accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n`;
         accountInfo += `<b>MS2 Burned:</b> ${burned / 2}🔥\n`;
     }
@@ -478,17 +479,90 @@ async function handleSignIn (message) {
         setUserState(message,STATES.SIGN_IN)
     }
 };
-async function shakeSignIn (message) {
-    console.log('shaking signin')
+function isBase58(str) {
+    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]+$/;
+    return base58Regex.test(str);
+}
+
+function decodeBase58(base58) {
+    const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const base = 58;
+
+    let decoded = BigInt(0);
+    for (const char of base58) {
+        const index = alphabet.indexOf(char);
+        if (index === -1) {
+            throw new Error("Invalid base58 character");
+        }
+        decoded = decoded * BigInt(base) + BigInt(index);
+    }
+
+    const bytes = [];
+    while (decoded > 0) {
+        bytes.push(Number(decoded % BigInt(256)));
+        decoded = decoded / BigInt(256);
+    }
+
+    // Account for leading zeroes
+    for (const char of base58) {
+        if (char === '1') {
+            bytes.push(0);
+        } else {
+            break;
+        }
+    }
+
+    return new Uint8Array(bytes.reverse());
+}
+
+function validateSolanaAddress(address) {
+    if (!isBase58(address) || address.length < 32 || address.length > 44) {
+        return false; // Does not match the base58 format or expected length
+    }
+
+    try {
+        const decoded = decodeBase58(address);
+        return decoded.length === 32; // Valid if decoded length is 32 bytes
+    } catch (error) {
+        return false; // Invalid base58 decoding
+    }
+}
+
+function extractSolanaAddresses(text) {
+    // Regular expression for base58-compatible strings (32 to 44 characters)
+    const pattern = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
+
+    // Find all potential matches
+    const candidates = text.match(pattern) || [];
+
+    // Filter only valid addresses
+    return candidates.filter(validateSolanaAddress);
+}
+
+async function shakeSignIn(message) {
+    console.log('shaking signin');
     const userId = message.from.id;
-    if(!lobby[userId]){
+
+    // Check if the user is in the lobby
+    if (!lobby[userId]) {
         return;
     }
+
+    const walletAddress = message.text;
+
+    // Validate the wallet address format
+    if (!validateSolanaAddress(walletAddress)) {
+        sendMessage(message, "Invalid Solana wallet address.");
+        setUserState(message,STATES.IDLE)
+        return;
+    }
+
     let chatData = lobby[userId];
-    chatData.wallet = message.text;
+    chatData.wallet = walletAddress;
+
     // Check if the wallet address is already associated with another verified user in the database
     let isDuplicate = false;
-    const usersWithSameWallet = await getUsersByWallet(message.text);
+    const usersWithSameWallet = await getUsersByWallet(walletAddress);
 
     for (const user of usersWithSameWallet) {
         if (user.verified && user.userId !== userId) {
@@ -499,16 +573,23 @@ async function shakeSignIn (message) {
 
     if (isDuplicate) {
         sendMessage(message, "This wallet address is already associated with another verified user.");
+        setUserState(message,STATES.IDLE)
         return;
     }
-    //console.log('chatdata wallet in shake',chatData.wallet);
-    await writeUserDataPoint(userId,'wallet',chatData.wallet)
-    lobbyManager.addUser(userId,chatData)
-    console.log(message.from.first_name,'has entered the chat');
-    // Confirm sign-in
-    //sendMessage(message, `You are now signed in to ${message.text}`);
-    safeExecute(message, handleVerify);
+
+    // Update the user's wallet address
+    try {
+        await writeUserDataPoint(userId, 'wallet', walletAddress);
+        lobbyManager.addUser(userId, chatData);
+        console.log(message.from.first_name, 'has entered the chat');
+        // Confirm sign-in and proceed to verification
+        safeExecute(message, handleVerify);
+    } catch (error) {
+        console.error('Error updating user wallet:', error);
+        sendMessage(message, "An error occurred while processing your wallet address. Please try again.");
+    }
 }
+
 async function handleVerify(message) {
     const userId = message.from.id;
     if(lobby[userId]){
@@ -520,105 +601,94 @@ async function handleVerify(message) {
     ///console.log('userStates after handlever',lobby[userId].state.state)
 }
 async function shakeVerify(message) {
-    // Example data received from user
     console.log('shaking verify');
     const userId = message.from.id;
-    setUserState(message,STATES.IDLE);
-    const validity = (userData) => {
-        let userWalletAddress;
-        if(lobby[userId]){
-            userWalletAddress = lobby[userId].wallet;
-        } else {
-            userWalletAddress = userData.wallet
-        }
-        
-        const userTimestamp = Date.now() / 60000;
-        const userProvidedHash = message.text;
-        const salt = process.env.VERISALT; // Keep this consistent and secure
-        let isValid = false;
-        for(let i = 0; i < 5; i++){
-            const match = verifyHash(userWalletAddress, userTimestamp-i, salt, userProvidedHash);
-            //console.log(match);
-            if(match){
-                isValid = true;
-            }
-        }
-        return isValid;
+    const user = lobby[userId] || await getUserDataByUserId(userId);
+
+    if (!user) {
+        sendMessage(message, 'User not found');
+        return;
     }
-    const handleValidity = async (userData,isValid) => {
-        if (isValid) {
-            console.log('Verification successful: the user controls the wallet.');
-            try {
-                if(lobby[userId]){
-                    lobby[userId].verified = true;
-                }
-                userData.verified = true;
-                
-                if(userData.newb){
-                    console.log('$$$supposedly this is a new user so they dont exist, we will write a new user data')
-                    delete userData.newb
-                    await writeNewUserData(userId,userData);
-                } else {
-                    await writeUserDataPoint(userId, 'verified', userData.verified)
-                }
-                
-                return true
-            } catch(err) {
-                console.log('verify shake error: ',err)
-                return true
-            }
-        } else {
-            console.log('Verification failed: the data does not match or has been tampered with.');
-            return true
-        }
-    }
-    if(lobby[userId]){
-        isValid = validity(lobby[userId]);
-        sendMessage(message,`${isValid ? 'you are verified now' : 'not verified'}`);
-        return await handleValidity(lobby[userId],isValid);
-    } else {
-        const userData = await getUserDataByUserId(userId);
-        isValid = validity(userData);
-        sendMessage(message,`${isValid ? 'you are verified now' : 'not verified'}`);
-        return await handleValidity(userData,isValid);
+
+    const { wallet } = user;
+    const salt = process.env.VERISALT;
+    const providedHash = message.text;
+
+    const isValid = isHashValid(wallet, salt, providedHash);
+    sendMessage(message, `${isValid ? 'You are verified now' : 'Not verified'}`);
+
+    if (isValid) {
+        user.verified = true;
+        await updateUserVerificationStatus(userId, user);
     }
 }
-async function handleSignOut(message) {
-    chatId = message.chat.id;
-    const userId = message.from.id;
-    let userData = lobby[userId] ? lobby[userId] : await getUserDataByUserId(userId);
-    
-    console.log(userData.userId,'signing out');
-    if (userData) {
-        // Ensure the most current points (from lobby) are saved to the database
-        if (lobby[userId]) {
-            // Update database with latest preferences and remove wallet and verification
-            await writeUserData(userId, {
-                ...userData,
-                wallet: '',  // Clearing wallet as part of sign out
-                verified: false  // Reset verification status
-            });
-        } else {
-            // If the user is not in the lobby, just clear their wallet and verified status
-            await writeUserData(userId, {
-                ...userData,
-                wallet: '',
-                verified: false
-            });
-        }
 
-        // Clean up the in-memory lobby object
-        if (lobby[userId]) {
-            delete lobby[userId];
-        }
-    } else {
-        // If no user data is found, just clean up the lobby
-        if (lobby[userId]) {
-            delete lobby[userId];
+function isHashValid(wallet, salt, providedHash) {
+    const timestamp = Date.now() / 60000;
+    for (let i = 0; i < 5; i++) {
+        if (verifyHash(wallet, timestamp - i, salt, providedHash)) {
+            return true;
         }
     }
-    sendMessage(message,'You are signed out',signedOut);
-    return true;
+    return false;
+}
+
+async function updateUserVerificationStatus(userId, user) {
+    try {
+        if (user.newb) {
+            delete user.newb;
+            await writeNewUserData(userId, user);
+        } else {
+            await writeUserDataPoint(userId, 'verified', true);
+        }
+        lobby[userId] = user; // Update the lobby state
+    } catch (error) {
+        console.error('Error updating user verification:', error);
+    }
+}
+
+async function handleSignOut(message) {
+    const userId = message.from.id;
+
+    // Fetch user data
+    let userData = lobby[userId] || await getUserDataByUserId(userId);
+
+    console.log(userData?.userId || userId, 'signing out');
+    if (userData) {
+        try {
+            // Update user data in the database
+            const updatedUserData = {
+                ...userData,
+                wallet: '',  // Clear wallet as part of sign-out
+                verified: false  // Reset verification status
+            };
+            await writeUserData(userId, updatedUserData);
+        } catch (error) {
+            console.error('Error writing user data:', error);
+            return false; // Exit early on error
+        }
+    } else {
+        try {
+            sendMessage({from: {id: DEV_DMS}, chat: {id: DEV_DMS}},`hey art, ${userId} guy, doesnt have ANY user data and they signing out`)
+        } catch (err) {
+            console.log('haha you tried to send a dev dm message because someone was signing out but we dont have ANYTHING on them.Shouldnt happen tbh',err)
+        }   
+    }
+
+    // Clean up in-memory lobby object
+    if (lobby[userId]) {
+        delete lobby[userId];
+    }
+
+    // Notify the user
+    try {
+        await sendMessage(message, 'You are signed out', signedOut);
+    } catch (error) {
+        console.error('Error sending sign-out message:', error);
+        return false; // Exit early on error
+    }
+
+    return true; // Indicate successful sign-out
 }
 
 async function handleAccountSettings(message) {
@@ -699,6 +769,8 @@ async function handleRefreshQoints(message,user) {
         sendMessage(message,`hey just wait a minute okay. i can check again in ${Math.floor(60 - ((now - lastCheck) / 1000))} seconds`)
         return
     }
+    //reset balance just for ease of use so dont have to rely on /ibought
+    userData.balance = '';
     if(!userData.hasOwnProperty('pendingQoints')){
         userData.pendingQoints = 0;
     }
