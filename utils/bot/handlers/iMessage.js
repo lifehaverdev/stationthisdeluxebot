@@ -370,7 +370,7 @@ const commandRegistry = {
             if(lobby[message.from.id].balance < 600000){
                 gated(message)
                 return
-            } 
+            }
             const target = message.reply_to_message;
             if(target.photo) {
                 target.from.id = message.from.id;
