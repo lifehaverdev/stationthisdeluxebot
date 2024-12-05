@@ -1,4 +1,3 @@
-
 const http = require("http");
 const OpenAI = require("openai");
 //console.log(process.env.OPENAI_API);
@@ -23,20 +22,36 @@ async function main(input) {
 
 async function mainFlux(input) {
     const completion = await openai.chat.completions.create({
-  
-      messages: [
-          {"role": "user", "content": `make a prosaic prompt for FLUX image generation of "beautiful girl, fish eye"`},
-          {"role": "system", "content": `A warm golden hour scene in the style of Wes Anderson, with a shallow depth of field, slight film grain, and a soft, pastel color palette. A young Asian woman with long, dark hair and porcelain skin is centered in the frame, wearing a white crop top, denim shorts, and a delicate silver bracelet. Her eyes are cast forward, with a gentle, introspective expression, as she tilts her head slightly to one side and touches her hair with her hand. The lush greenery of a nearby cafe garden is blurred in the background, with a few leaves and branches encroaching into the frame. The lighting is soft and natural, with a warm glow casting a gentle highlight on the subject's face. The overall mood is serene and contemplative, with a sense of quiet reflection.`},
-          {"role": "system", "content": "You are a helpful FLUX prompt engineer assistant."},
-          {"role": "user", "content": `make a prosaic prompt for FLUX image gernation of  ${input}`},
-          ],
-      model: "gpt-3.5-turbo",
+        messages: [
+            {"role": "system", "content": `You are a FLUX prompt engineer specializing in creating detailed, surreal image descriptions. 
+Your prompts should:
+- Begin with "This image is a..."
+- Include specific details about the main subject and surrounding elements
+- Describe the lighting, colors, and atmosphere
+- Incorporate surreal or unexpected elements
+- Mention digital art techniques or stylistic choices
+- Be highly detailed and descriptive, around 200-300 words
+- Focus on fantastical, surreal, or absurd scenarios
+- Include specific positioning (left, right, background, etc.)
+- Describe textures and materials where relevant`},
+            
+            {"role": "user", "content": "Create a FLUX prompt about a cat programmer"},
+            
+            {"role": "assistant", "content": `This image is a digital artwork depicting a surreal office scene where a tabby cat sits at a floating holographic desk. The cat wears thick-rimmed glasses and a miniature programmer's hoodie, its paws expertly typing on a keyboard made of crystalline light. Multiple monitors hover around the cat, displaying cascading lines of glowing code in neon green and electric blue.
+
+In the background, circuit board patterns stretch across the walls, occasionally sparking with small bursts of digital energy. Floating mechanical mice, constructed from transparent silicon and blinking LED lights, orbit around the cat's workspace like satellites. The left side of the image features a towering stack of energy drink cans that defy gravity, arranged in a double helix pattern.
+
+The lighting is predominantly cyberpunk-inspired, with strong purple and teal undertones that cast a technological glow across the scene. Small holographic error messages and compilation warnings materialize and dissolve in the air like digital fireflies. The cat's fur has a slight pixel distortion effect, suggesting a glitch in the digital reality. The overall atmosphere is both whimsical and technologically advanced, blending organic and digital elements in a seamless, surreal composition.`},
+            
+            {"role": "user", "content": `make a prosaic prompt for FLUX image generation of ${input}`}
+        ],
+        model: "gpt-4", // Upgraded to GPT-4 for better descriptive capabilities
+        temperature: 1.2, // Increased temperature for more creative outputs
     });
-    //console.log(completion.choices[0]);
-    console.log('assist',input);
-    //console.log('chat response: ',completion.choices[0].message.content);
-    return completion.choices[0].message.content
-  }
+    
+    console.log('assist', input);
+    return completion.choices[0].message.content;
+}
 
 // Function to make the API request and handle the response
 async function promptAssist(message, flux) {
