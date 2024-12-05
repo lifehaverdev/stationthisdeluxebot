@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { sendMessage, sendPhoto, setUserState, editMessage } = require('../../utils')
+const { sendMessage, sendPhoto, react, setUserState, editMessage } = require('../../utils')
 const { getPhotoUrl, STATES, lobby } = require('../bot')
 const { addWaterMark, writeToDisc } = require('../../../commands/waterMark')
 
