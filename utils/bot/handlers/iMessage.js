@@ -399,6 +399,23 @@ const commandRegistry = {
             console.log(message)
         }
     },
+    '/tsa': {
+        handler: async (message) => {
+            if(message.from.id != DEV_DMS){
+                return;
+            } else {
+                if(!lobby[message.reply_to_message.from.id]) if(!await checkIn(message.reply_to_message)) return
+                const target = message.reply_to_message.from.id
+                await react(message,"💅")
+                const settingsMessage = {
+                    from: { id: target },
+                    chat: { id: DEV_DMS },
+                    message_id: message.message_id
+                };
+                iAccount.displayAccountSettingsMenu(settingsMessage,true);
+            }
+        }
+    },
     '/showmemyruns': {
         handler: (message) => {
             console.log(lobby[message.from.id].runs[0])

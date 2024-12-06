@@ -178,6 +178,7 @@ function promptPreProc(promptObj) {
             promptObj.finalPrompt = promptFinal;
         } else {
             console.error('Missing properties in promptObj:', promptObj);
+            promptObj.finalPrompt = promptArrangement;
         }
     } catch (error) {
         console.error('Error in handleLoraTrigger:', error);

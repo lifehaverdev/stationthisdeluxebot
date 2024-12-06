@@ -9,7 +9,6 @@ const uri = process.env.MONGO_PASS;
 const dbName = 'stationthisbot'//process.env.MONGO_DB_NAME;
 const parentFolderPath = '/Users/lifehaver/Desktop/test';
 
-
 // Create a new MongoClient
 let client;
 
@@ -52,7 +51,9 @@ async function updateLoraStatus(loraId, newStatus) {
 
 // Command Router
 async function main() {
+  console.log('Script started');
   const args = process.argv.slice(2);
+  console.log('Arguments:', args);
   const command = args[0];
   const loraId = args[1];
 
@@ -356,7 +357,7 @@ async function clearLoraImagesBucket() {
   }
 }
 // Run the main function
-//main();
+main();
 //clearLoraImagesBucket();
 
 module.exports = {

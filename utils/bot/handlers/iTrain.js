@@ -164,6 +164,14 @@ async function removeTraining(user, loraId) {
     // Safely update the user's loras array
     if (lobby[user]?.loras) {
         lobby[user].loras = lobby[user].loras.filter(lora => lora !== loraId);
+        
+        // Save the updated loras array to user data
+        try {
+            await writeUserDataPoint(user, 'loras', lobby[user].loras);
+            console.log('updated loras array saved to user data')
+        } catch (error) {
+            console.error('Error saving updated loras array:', error);
+        }
     } else {
         console.log(`User ${user} has no loras to remove.`);
     }
@@ -240,7 +248,7 @@ async function buildTrainingMenu(userId,loraId) {
 
         const inlineKeyboard = [];
         inlineKeyboard.push([{ text: '↖︎', callback_data: 'trainingMenu' }]);
-
+        inlineKeyboard.push([{ text: '🗑️', callback_data: `rml_${loraId}` }]);
         if (!submitted) {
             let completedCount = 0;
 
@@ -259,7 +267,6 @@ async function buildTrainingMenu(userId,loraId) {
             }
 
             const completionPercentage = (completedCount / images.length) * 100;
-            inlineKeyboard.push([{ text: '🗑️', callback_data: `rml_${loraId}` }]);
 
             if (completionPercentage >= COMPLETION_THRESHOLD) {
                 inlineKeyboard.push([{ text: 'Submit', callback_data: `st_${loraId}` }]);
