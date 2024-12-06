@@ -475,14 +475,13 @@ async function handleFluxPrompt(message) {
 
 async function handleInpaintPrompt(message) {
     // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
-    // if(lobby.hasOwnProperty(message.from.id) && lobby[message.from.id].createSwitch == 'FLUX'){
-    //     await handleTask(message, 'INPAINTFLUX', STATES.INPAINTPROMPT, true, null);
-    // } else {
-    //     await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
-    // }
-    await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
+    if(lobby.hasOwnProperty(message.from.id) && lobby[message.from.id].createSwitch == 'FLUX'){
+        await handleTask(message, 'INPAINTFLUX', STATES.INPAINTPROMPT, true, null);
+    } else {
+        await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
+    }
+    //await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
 }
-
 
 async function handleInpaintTarget(message) {
     const userId = message.from.id;
