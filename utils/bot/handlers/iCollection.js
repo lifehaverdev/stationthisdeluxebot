@@ -57,6 +57,7 @@ prefixHandlers['ec_'] = (action, message, user) => handlePrefix(action, message,
 actionMap['editCollection'] = handleCollectionMenu
 
 async function handleCollectionModeMenu(message, user) {
+    console.log('Entering collection mode menu for user:', user);
     const chatId = message.chat.id;
     const messageId = message.message_id;
     try {
@@ -155,6 +156,7 @@ async function createConfig(message) {
 }
 
 async function handleCollectionMenu(message,user,collectionId) {
+    console.log('Entering collection menu for user:', user, 'collection:', collectionId);
     const { text, reply_markup } = await buildCollectionMenu(user,collectionId)
     updateMessage(message.chat.id,message.message_id,{reply_markup},text)
     setUserState(message,STATES.IDLE)
@@ -245,7 +247,7 @@ async function handleSaveCollection(message,user,collectionId) {
 }
 
 async function removeCollection(message,user, collectionId) {
-    console.log('remove collection',user,collectionId)
+    console.log('Handling remove collection for user:', user, 'collection:', collectionId);
     if (!lobby[user]) {
         console.log(`User ${user} not found in lobby, checking in.`);
         await checkIn({ from: { id: user }, chat: { id: user } });
@@ -306,7 +308,7 @@ prefixHandlers[`collectionMetaData_`] = (action, message, user) => handlePrefix(
 actionMap['collectionMetaData'] = handleCollectionMetaData
 
 async function handleCollectionMetaData(message,user,collectionId) {
-    console.log('handle collection meta data',message,user,collectionId)
+    console.log('Entering collection metadata menu for user:', user, 'collection:', collectionId);
     const { text, reply_markup } = await buildCollectionMetaDataMenu(user,collectionId)
     updateMessage(message.chat.id,message.message_id, { reply_markup }, text)
 }
@@ -438,11 +440,13 @@ async function handleSetChain(message,user,collectionId,chain) {
 stateHandlers[STATES.SETCOLLECTION] = async (message) => {
     const userId = message.from.id;
     if (!studio[userId]?.pendingAction) {
-        console.log('No pending action found for user');
+        console.log('No pending action found for user:', userId);
         return;
     }
 
     const { action, collectionId } = studio[userId].pendingAction;
+    console.log('Handling state SETCOLLECTION for user:', userId, 'action:', action, 'collection:', collectionId);
+    
     const userInput = message.text;
     let backTo = 'main'
     switch (action) {
@@ -486,21 +490,44 @@ stateHandlers[STATES.SETCOLLECTION] = async (message) => {
         case 'addTraitValue':
             console.log('trait types', JSON.stringify(studio[userId][collectionId].config));
             console.log('pending action:', JSON.stringify(studio[userId].pendingAction));
-            // Parse the trait value input in format "name|prompt|rarity"
-            const [name, prompt, rarity] = message.text.split('|').map(s => s.trim());
-            const newTrait = {
-                name: name,
-                prompt: prompt || name, // Use name as prompt if no prompt provided
-                rarity: parseFloat(rarity) || 0.5 // Default 50% rarity if not specified
-            };
-            const { traitTypeIndex } = studio[userId].pendingAction; // Get correct index from pendingAction
-            console.log('traitTypeIndex:', traitTypeIndex);
-            console.log('traits array before:', JSON.stringify(studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits));
+            
+            // Split input by newlines to handle multiple traits
+            const traitInputs = message.text.split('\n');
+            const { traitTypeIndex } = studio[userId].pendingAction;
+
+            // Initialize traits array if needed
             if (!studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits) {
                 console.log('traits array was empty, initializing')
                 studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits = [];
             }
-            studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits.push(newTrait);
+
+            // Process each trait input
+            for (const traitInput of traitInputs) {
+                try {
+                    // Parse the trait value input in format "name|prompt|rarity"
+                    const [name, prompt, rarity] = traitInput.split('|').map(s => s.trim());
+                    
+                    if (!name) continue; // Skip if name is empty
+
+                    const newTrait = {
+                        name: name,
+                        prompt: prompt || name, // Use name as prompt if no prompt provided
+                        rarity: parseFloat(rarity) || 0.5 // Default 50% rarity if not specified
+                    };
+
+                    console.log('Adding trait:', JSON.stringify(newTrait));
+                    studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits.push(newTrait);
+                } catch (err) {
+                    console.log('Error parsing trait input:', traitInput, err);
+                    // If this is the first/only trait and it failed, we might want to notify the user
+                    if (traitInputs.length === 1) {
+                        throw err; // This will be caught by the outer error handler
+                    }
+                    // Otherwise continue processing other traits
+                    continue;
+                }
+            }
+
             console.log('traits array after:', JSON.stringify(studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits));
             backTo = 'traitTypes'
             break;
@@ -532,6 +559,7 @@ stateHandlers[STATES.SETCOLLECTION] = async (message) => {
 prefixHandlers['collectionConfigMenu_'] = (action, message, user) => handlePrefix(action, message, user, 'collectionConfigMenu')
 actionMap['collectionConfigMenu'] = handleCollectionConfigMenu
 async function handleCollectionConfigMenu(message,user,collectionId) {
+    console.log('Entering collection config menu for user:', user, 'collection:', collectionId);
     console.log('handle collection config menu',message,user,collectionId)
     const { text, reply_markup } = await buildCollectionConfigMenu(user,collectionId)
     updateMessage(message.chat.id,message.message_id, { reply_markup }, text)
@@ -585,10 +613,10 @@ prefixHandlers['editMasterPrompt_'] = (action, message, user) => handlePrefix(ac
 actionMap['editMasterPrompt'] = handleEditMasterPrompt
 
 async function handleEditMasterPrompt(message,user,collectionId) {
-    console.log('handle edit master prompt',message,user,collectionId)
+    console.log('Handling edit master prompt for user:', user, 'collection:', collectionId);
     const collection = await getOrLoadCollection(user,collectionId)
     let text = 'Please enter the new master prompt for your collection:\n utilize the following format: "[[traittype]] image of a [[traittype]] [[traittype]]\n'
-    text += `current trait types: ${collection.config.traitTypes.join(', ')}`
+    text += `current trait types: ${collection.config.traitTypes.map(trait => trait.title).join(', ')}`
         
     // Set pending action
     studio[user].pendingAction = {
@@ -603,8 +631,6 @@ async function handleEditMasterPrompt(message,user,collectionId) {
     });
     setUserState({...message,from: {id: user},chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
 }
-
-
 
 prefixHandlers['editTraitTypes_'] = (action, message, user) => handlePrefix(action, message, user, 'editTraitTypes')
 actionMap['editTraitTypes'] = handleEditTraitTypes
@@ -681,6 +707,7 @@ prefixHandlers['traitPage_'] = (action, message, user) => {
 }
 
 async function handleTraitPage(message, user, collectionId, page) {
+    console.log('Handling trait page navigation for user:', user, 'collection:', collectionId, 'page:', page);
     const { text, reply_markup } = await buildTraitTypesMenu(user, collectionId, page);
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
 }
@@ -692,6 +719,7 @@ prefixHandlers['addTrait_'] = (action, message, user) => {
 }
 
 async function handleAddTrait(message, user, collectionId) {
+    console.log('Handling add trait type for user:', user, 'collection:', collectionId);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -716,6 +744,7 @@ prefixHandlers['editTraitType_'] = (action, message, user) => {
 }
 
 async function handleTraitTypeMenu(message, user, collectionId, traitTypeIndex) {
+    console.log('Entering trait type menu for user:', user, 'collection:', collectionId, 'traitType:', traitTypeIndex);
     const collection = await getOrLoadCollection(user, collectionId);
     const traitType = collection.config.traitTypes[traitTypeIndex];
     
@@ -747,9 +776,27 @@ prefixHandlers['editTraitInstance_'] = (action, message, user) => {
 }
 
 async function handleTraitInstanceMenu(message, user, collectionId, traitTypeIndex, instanceIndex) {
+    console.log('Entering trait instance menu for user:', user, 'collection:', collectionId, 
+                'traitType:', traitTypeIndex, 'instance:', instanceIndex);
     const collection = await getOrLoadCollection(user, collectionId);
     const traitType = collection.config.traitTypes[traitTypeIndex];
     const traitInstance = traitType.traits[instanceIndex];
+    
+    // Check if trait instance exists
+    if (!traitType?.traits || !traitType.traits[instanceIndex]) {
+        console.log('Trait instance not found',traitType,instanceIndex);
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: 'Error: Trait value not found',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '« Back', callback_data: `editTraitType_${collectionId}_${traitTypeIndex}` }]
+                ]
+            }
+        });
+        return;
+    }
     
     const text = `Edit trait instance: ${traitInstance.name}\n` +
                 `Prompt: ${traitInstance.prompt}\n` + 
@@ -765,7 +812,7 @@ async function handleTraitInstanceMenu(message, user, collectionId, traitTypeInd
                 { text: '✏️ Edit Rarity', callback_data: `editTraitValueRarity_${collectionId}_${traitTypeIndex}_${instanceIndex}` },
                 { text: '🗑️ Delete Value', callback_data: `deleteTraitValue_${collectionId}_${traitTypeIndex}_${instanceIndex}` }
             ],
-            [{ text: '« Back', callback_data: `editTraitInstance_${collectionId}_${traitTypeIndex}` }]
+            [{ text: '« Back', callback_data: `editTraitType_${collectionId}_${traitTypeIndex}` }]
         ]
     };
 
@@ -778,6 +825,8 @@ prefixHandlers['editTraitValueName_'] = (action, message, user) => {
 }
 
 async function handleEditTraitValueName(message, user, collectionId, traitTypeIndex, valueIndex) {
+    console.log('Handling edit trait value name for user:', user, 'collection:', collectionId, 
+                'traitType:', traitTypeIndex, 'value:', valueIndex);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -804,6 +853,8 @@ prefixHandlers['editTraitValuePrompt_'] = (action, message, user) => {
 }
 
 async function handleEditTraitValuePrompt(message, user, collectionId, traitTypeIndex, valueIndex) {
+    console.log('Handling edit trait value prompt for user:', user, 'collection:', collectionId, 
+                'traitType:', traitTypeIndex, 'value:', valueIndex);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -830,6 +881,8 @@ prefixHandlers['editTraitValueRarity_'] = (action, message, user) => {
 }
 
 async function handleEditTraitValueRarity(message, user, collectionId, traitTypeIndex, valueIndex) {
+    console.log('Handling edit trait value rarity for user:', user, 'collection:', collectionId, 
+                'traitType:', traitTypeIndex, 'value:', valueIndex);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -857,6 +910,7 @@ prefixHandlers['editTraitName_'] = (action, message, user) => {
 }
 
 async function handleEditTraitName(message, user, collectionId, traitTypeIndex) {
+    console.log('Handling edit trait type name for user:', user, 'collection:', collectionId, 'traitType:', traitTypeIndex);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -882,6 +936,7 @@ prefixHandlers['addTraitValue_'] = (action, message, user) => {
 }
 
 async function handleAddTraitValue(message, user, collectionId, traitTypeIndex) {
+    console.log('Handling add trait value for user:', user, 'collection:', collectionId, 'traitType:', traitTypeIndex);
     if (!studio[user]) {
         studio[user] = {};
     }
@@ -892,11 +947,15 @@ async function handleAddTraitValue(message, user, collectionId, traitTypeIndex) 
         traitTypeIndex: traitTypeIndex
     };
 
-    const instructionText = 'Please enter the trait value in the following format:\n' +
+    const instructionText = 'Please enter the trait value(s) in the following format:\n' +
                           'name|prompt|rarity\n\n' +
-                          'Example:\n' +
-                          'Red|vibrant red color|0.3\n\n' +
-                          'Note: prompt and rarity are optional. Default rarity is 0.5';
+                          'Examples:\n' +
+                          'Red|vibrant red color|0.3\n' +
+                          'Blue|deep blue color|0.3\n' +
+                          'Green|forest green|0.4\n\n' +
+                          'Note:\n' +
+                          '- You can add multiple traits by putting each on a new line\n' +
+                          '- Prompt and rarity are optional. Default rarity is 0.5';
 
     await editMessage({
         chat_id: message.chat.id,
@@ -913,6 +972,7 @@ prefixHandlers['deleteTrait_'] = (action, message, user) => {
 }
 
 async function handleDeleteTrait(message, user, collectionId, traitTypeIndex) {
+    console.log('Handling delete trait type for user:', user, 'collection:', collectionId, 'traitType:', traitTypeIndex);
     const collection = await getOrLoadCollection(user, collectionId);
     
     // Remove the trait type

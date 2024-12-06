@@ -744,17 +744,41 @@ async function addLoraSlotCaption(message) {
 6. SUBMIT 
 changes lora status from working to pending review
 */
-const loraPrice = 86400
+
 
 async function submitTraining(message, user, loraId) {
+    const loraPrice = 86400
     await getOrLoadLora(user, loraId)
     if(!lobby.hasOwnProperty(user)){
         return
     }
     const userDat = lobby[user]
-    const discountedPrice = loraPrice * (100-calculateDiscount(user))/100
-    console.log('discounted price',discountedPrice)
+    console.log('user data:', userDat)
+    console.log('base price:', loraPrice)
+    console.log('calculating discount for user:', user)
+    const discount = await calculateDiscount(user) // Wait for Promise to resolve
+    console.log('discount amount:', discount)
+    const multiplier = (100 - discount) / 100
+    console.log('multiplier:', multiplier)
+    const discountedPrice = Math.floor(loraPrice * multiplier) // Floor to get integer price
+    console.log('discounted price:', discountedPrice)
+    console.log('checking if user has enough qoints:', userDat, userDat.qoints, 'vs needed:', discountedPrice);
+    // Validate discountedPrice is a valid number
+    if (isNaN(discountedPrice) || discountedPrice <= 0) {
+        console.error('Invalid discounted price:', discountedPrice);
+        await sendMessage(message, 'Sorry, there was an error calculating the price. Please try again later.');
+        return;
+    }
+
+    // Validate user has qoints and it's a number
+    if (!userDat.qoints || isNaN(userDat.qoints)) {
+        console.error('Invalid qoints value:', userDat.qoints);
+        await sendMessage(message, 'There was an error with your qoints balance. Please contact support.');
+        return;
+    }
+
     if(userDat.qoints < discountedPrice){
+        console.log('user does not have enough qoints');
         const options = {
             reply_markup: {
                 inline_keyboard: [
@@ -767,8 +791,20 @@ async function submitTraining(message, user, loraId) {
         await sendMessage(message,`Submitting a training to make a lora costs you ${discountedPrice} 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
         return
     } else {
-        userDat.qoints -= discountedPrice;
-        await writeQoints('users',{'userId': user},userDat.qoints)
+        // Calculate new qoints value and verify it's valid
+        const newQoints = userDat.qoints - discountedPrice;
+        if (isNaN(newQoints)) {
+            console.error('Error calculating new qoints value:', {
+                current: userDat.qoints,
+                price: discountedPrice,
+                calculated: newQoints
+            });
+            await sendMessage(message, 'There was an error processing your qoints. Please contact support.');
+            return;
+        }
+        
+        userDat.qoints = newQoints;
+        await writeQoints('users',{'userId': user}, newQoints);
     }
     workspace[user][loraId].status = 'SUBMITTED'
     workspace[user][loraId].submitted = Date.now();
