@@ -41,6 +41,9 @@ async function getMyLoras(userId) {
                 loraKeyboardOptions.push([{ text: `${loraInfo.name}`, callback_data: `el_${loraIdHash}` }]);
             } catch (error) {
                 console.error(`Failed to load LoRa with ID ${loraIdHash}:`, error);
+                delete lobby[userId].loras[loraIdHash]
+                await writeUserDataPoint(userId,'loras',lobby[userId].loras)
+                await deleteWorkspace(loraIdHash)
             }
         }
     }
