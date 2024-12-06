@@ -855,35 +855,53 @@ async function saveStudio(collectionObject) {
     const job = async () => {
         const collectionName = 'gallery';
         try {
-        const client = await getCachedClient();
-        const collection = client.db(dbName).collection(collectionName);
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+            
+            // Extract the collectionId and log the data being saved
+            const { collectionId, ...dataToSave } = collectionObject;
+            console.log('[saveStudio] Saving collection:', collectionId);
+            console.log('[saveStudio] Data to save:', dataToSave);
+
+            // Ensure collectionId is the correct type (if it's stored as a number)
+            const parsedCollectionId = Number(collectionId);
+            
+            // Update the corresponding document and get the result
+            const result = await collection.updateOne(
+                { collectionId: parsedCollectionId },
+                { $set: dataToSave }
+            );
     
-        // Extract the loraId from the loraObject
-        const { collectionId, ...dataToSave } = collectionObject;
+            console.log('[saveStudio] Update result:', {
+                matchedCount: result.matchedCount,
+                modifiedCount: result.modifiedCount
+            });
+
+            // Check if the update actually modified a document
+            if (result.matchedCount === 0) {
+                console.error('[saveStudio] No matching document found for collectionId:', parsedCollectionId);
+                return false;
+            }
+            if (result.modifiedCount === 0) {
+                console.warn('[saveStudio] Document found but no changes were made');
+            }
     
-        // Update the corresponding document in the database
-        await collection.updateOne(
-            { collectionId: collectionId }, // Filter to find the specific document by loraId
-            { $set: { ...dataToSave } } // Update all key-value pairs in loraObject
-        );
-    
-        console.log('collection data saved successfully');
-        return true;
+            return true;
         } catch (error) {
-        console.error("Error saving collection data:", error);
-        return false;
+            console.error("[saveStudio] Error saving collection data:", error);
+            return false;
         }
     };
 
     // Enqueue the job and await its result
     try {
-        const userData = await dbQueue.enqueue(job);
-        return userData;  // Return the result to the caller
+        const success = await dbQueue.enqueue(job);
+        return success;
     } catch (error) {
-        console.error('[saveStudio] Failed to get user data:', error);
+        console.error('[saveStudio] Failed to process job:', error);
         throw error;
     }
-  }
+}
 
   async function deleteWorkspace(loraId) {
     const job = async () => {

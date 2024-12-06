@@ -307,14 +307,14 @@ async function handleGroupCheck(group, userId, message) {
                     return false;
                 }
             } else if (style === 'select') {
-                if (chosen.includes(userId) || admins.includes(userId)) {
+                if (chosen?.includes(userId) || admins?.includes(userId)) {
                     return true;
                 } else {
                     await sendMessage(message, Msg);
                     return false;
                 }
             } else if (style === 'adminOnly') {
-                if (admins.includes(userId) || userId === DEV_DMS) {
+                if (admins?.includes(userId) || userId === DEV_DMS) {
                     // Allow if user is an admin or matches DEV_DMS
                     return true;
                 } else {
