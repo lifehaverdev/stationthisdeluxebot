@@ -317,21 +317,17 @@ function shouldApplyWatermark(message, promptObj, type) {
     console.log('- Points accounting:', group?.gateKeeping?.pointAccounting);
     console.log('- Content type:', type);
 
-
-    // 1. Force logo check
+    // 1. Force logo check is always first
     if (promptObj.forceLogo) return true;
 
-    // 2. User balance check (true if no/low balance)
-    if (!promptObj.balance || promptObj.balance < 200000) return true;
+    // 2. Always false if not an image
+    if (type !== 'image') return false;
 
-    // 3. Group check (true if no group, no qoints, or accounting is 'ghost')
-    if (!group || !group.qoints || group.gateKeeping?.pointAccounting === 'ghost') return true;
+    // 3. Check both conditions - only apply watermark if BOTH fail
+    const userBalanceFails = !promptObj.balance || promptObj.balance < 200000;
+    const groupFails = !group || !group.qoints || group.gateKeeping?.pointAccounting === 'ghost';
 
-    // 4. Always true if not an image
-    if (type !== 'image') return true;
-    
-    // If none of the above conditions are met, don't apply watermark
-    return false;
+    return userBalanceFails && groupFails;
 }
 
 async function handleTaskCompletion(task) {
