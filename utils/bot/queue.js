@@ -308,6 +308,15 @@ async function processWaitlist(status, run_id, outputs) {
 function shouldApplyWatermark(message, promptObj, type) {
     // Safely get group
     const group = getGroup(message);
+    // Log each watermark condition check
+    console.log('Watermark conditions:');
+    console.log('- Force logo:', promptObj.forceLogo);
+    console.log('- User balance:', promptObj.balance, 'needs 200000');
+    console.log('- Group exists:', !!group);
+    console.log('- Group qoints:', group?.qoints);
+    console.log('- Points accounting:', group?.gateKeeping?.pointsAccounting);
+    console.log('- Content type:', type);
+
 
     // 1. Force logo check
     if (promptObj.forceLogo) return true;
@@ -320,7 +329,7 @@ function shouldApplyWatermark(message, promptObj, type) {
 
     // 4. Always true if not an image
     if (type !== 'image') return true;
-
+    
     // If none of the above conditions are met, don't apply watermark
     return false;
 }
