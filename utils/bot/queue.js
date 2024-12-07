@@ -314,7 +314,7 @@ function shouldApplyWatermark(message, promptObj, type) {
     console.log('- User balance:', promptObj.balance, 'needs 200000');
     console.log('- Group exists:', !!group);
     console.log('- Group qoints:', group?.qoints);
-    console.log('- Points accounting:', group?.gateKeeping?.pointsAccounting);
+    console.log('- Points accounting:', group?.gateKeeping?.pointAccounting);
     console.log('- Content type:', type);
 
 
@@ -325,7 +325,7 @@ function shouldApplyWatermark(message, promptObj, type) {
     if (!promptObj.balance || promptObj.balance < 200000) return true;
 
     // 3. Group check (true if no group, no qoints, or accounting is 'ghost')
-    if (!group || !group.qoints || group.gateKeeping?.pointsAccounting === 'ghost') return true;
+    if (!group || !group.qoints || group.gateKeeping?.pointAccounting === 'ghost') return true;
 
     // 4. Always true if not an image
     if (type !== 'image') return true;
