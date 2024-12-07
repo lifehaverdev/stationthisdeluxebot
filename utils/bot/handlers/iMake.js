@@ -103,60 +103,6 @@ async function startTaskPrompt(message, taskType, state, user = null, balanceChe
     setUserState(message, state);
 }
 
-// function buildPromptObjFromWorkflow(workflow, userContext, message) {
-//     // Start by creating a promptObj with direct mappings from userContext based on workflow input names
-//     const promptObj = {};
-//     promptObj.type = userContext.type;
-//     promptObj.userPrompt = userContext.userPrompt;
-//     promptObj.basePrompt = userContext.basePrompt;
-//     promptObj.timeRequested = Date.now();
-//     promptObj.prompt = userContext.prompt;
-//     promptObj.forcelogo = userContext.forcelogo || false;
-//     promptObj.advancedUser = userContext.advancedUser;
-//     promptObj.balance = userContext.balance;
-//     promptObj.userId = userContext.userId;
-
-//     // Loop through workflow inputs and populate promptObj from userContext
-//     workflow.inputs.forEach((input) => {
-//         if (userContext.hasOwnProperty(input)) {
-//             promptObj[input] = userContext[input];
-//         }
-//     });
-//     //if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-//     // Derived fields based on internal logic
-//     if (userContext.styleTransfer) {
-//         promptObj.input_style_image = userContext.input_style_image;
-//     } else {
-//         delete promptObj.input_style_image;
-//     }
-//     if (userContext.openPose) {
-//         promptObj.input_pose_image = userContext.input_pose_image;
-//     } else {
-//         delete promptObj.input_pose_image
-//     }
-//     if (userContext.controlNet) {
-//         promptObj.input_control_image = userContext.input_control_image;
-//     } else {
-//         delete promptObj.input_control_image
-//     }
-//     const fluxTypes = ['FLUX','FLUXI2I','LOSER']
-//     if (fluxTypes.includes(userContext.type)) {
-//         promptObj.input_checkpoint = 'flux-schnell'
-//         delete promptObj.basePrompt;
-//         // delete promptObj. delete negative
-
-//     }
-//     if (userContext.type.includes('MAKE')) {
-//         console.log('we are taking out strneght')
-//         delete promptObj.input_image
-//         promptObj.input_strength = 1;
-//     }
-
-//     // Include message details for tracking and additional context
-//     promptObj.username = message.from?.username;
-
-//     return promptObj;
-// }
 function buildPromptObjFromWorkflow(workflow, userContext, message) {
     const promptObj = {
         userId: userContext.userId,
@@ -179,7 +125,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-    const fluxTypes = ['FLUX','FLUXI2I','LOSER','MILADY','MOG','CHUDJAK','INPAINTFLUX']
+    const fluxTypes = ['FLUX','FLUX_PLUS','FLUXI2I','LOSER','MILADY','MOG','CHUDJAK','INPAINTFLUX']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
@@ -227,7 +173,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (!userContext.styleTransfer) delete promptObj.input_style_image;
     if (!userContext.openPose) delete promptObj.input_pose_image;
     // if (!userContext.type != 'MAKE','FLUX') 
-    const text2images = ['MAKE','FLUX','MILADY','CHUD','RADBRO','DEGOD','LOSER']
+    const text2images = ['MAKE','FLUX','FLUX_PLUS','MILADY','DEGOD','LOSER']
     if (
         text2images.some(type => userContext.type.startsWith(type)) &&
         userContext.type !== 'FLUXI2I'
@@ -284,12 +230,10 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     }
 
     // Append control, style, and pose flags to the type
-    if (
-        (settings.controlNet || settings.styleTransfer || settings.openPose) && 
-        settings.createSwitch === 'SDXL' &&
-        finalType !== 'FLUX' &&
-        finalType !== 'FLUXI2I'
-    ) {
+    if (settings.createSwitch === 'SDXL' && 
+        (settings.controlNet || settings.styleTransfer || settings.openPose)) {
+        finalType += '_PLUS';
+    } else if (finalType === 'FLUX' && settings.controlNet) {
         finalType += '_PLUS';
     }
 
