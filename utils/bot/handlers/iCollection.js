@@ -185,12 +185,37 @@ async function buildCollectionMenu(userId,collectionId) {
     try {
         const COMPLETION_THRESHOLD = 100
         let collectionData = await getOrLoadCollection(userId,collectionId)
-        const { name, status, submitted } = collectionData;
+        const { name, status, submitted, config, totalSupply } = collectionData;
+
+        // Calculate total possible combinations
+        let totalCombinations = 1;
+        if (config.traitTypes && config.traitTypes.length > 0) {
+            config.traitTypes.forEach(traitType => {
+                if (traitType.traits) {
+                    totalCombinations *= traitType.traits.length;
+                }
+            });
+        }
 
         let menuText = `${name}\nSTATUS: ${status}`;
+        
+        // Add metadata overview
+        menuText += `\n\nMETADATA OVERVIEW:`;
+        menuText += `\n• Total Supply: ${totalSupply || 'Not set'}`;
+        menuText += `\n• Possible Combinations: ${totalCombinations.toLocaleString()}`;
+        if (totalSupply && totalCombinations < totalSupply) {
+            menuText += `\n⚠️ Warning: Total supply exceeds possible combinations!`;
+        }
+        menuText += `\n• Trait Types: ${config.traitTypes?.length || 0}`;
+        menuText += `\n• Base URI: ${config.baseURI ? '✓' : '✗'}`;
+        menuText += `\n• Description: ${config.description ? '✓' : '✗'}`;
+        if (collectionData.chain === 'sol') {
+            menuText += `\n• Royalties: ${config.royalties || '0'}%`;
+        }
+
         if (submitted) {
             const timeSinceSubmitted = Math.floor((Date.now() - submitted) / 1000);
-            menuText += `\nSubmitted: ${timeSinceSubmitted} seconds ago`;
+            menuText += `\n\nSubmitted: ${timeSinceSubmitted} seconds ago`;
         }
 
         const inlineKeyboard = [];
@@ -319,7 +344,7 @@ async function buildCollectionMetaDataMenu(user, collectionId) {
     const text = `Collection Metadata for ${collection.name}\n\n` +
                  `Supply: ${collection.totalSupply || 'Not set'}\n` +
                  `Chain: ${collection.chain || 'Not set'}\n` + 
-                 `Royalties: ${collection.royalties || '0'}%`;
+                 `${collection.chain === 'sol' ? `Royalties: ${collection.royalties || '0'}%\n` : ''}`;
 
     return {
         text,
@@ -330,8 +355,12 @@ async function buildCollectionMetaDataMenu(user, collectionId) {
                     { text: '⛓️ Set Chain', callback_data: `chain_${collectionId}` }
                 ],
                 [
-                    { text: '💰 Set Royalties', callback_data: `royalty_${collectionId}` }
+                    { text: '📝 Set Description', callback_data: `description_${collectionId}` },
+                    { text: '✏️ Set Edition Title', callback_data: `editionTitle_${collectionId}` }
                 ],
+                ...(studio[user][collectionId].chain === 'sol' ? [
+                    [{ text: '💰 Set Royalties', callback_data: `royalty_${collectionId}` }]
+                ] : []),
                 [
                     { text: '« Back', callback_data: `ec_${collectionId}` }
                 ]
@@ -346,6 +375,10 @@ prefixHandlers['chain_'] = (action, message, user) => handlePrefix(action, messa
 actionMap['setChain'] = handleSetChainMessage
 prefixHandlers['royalty_'] = (action, message, user) => handlePrefix(action, message, user, 'setRoyalty')
 actionMap['setRoyalty'] = handleSetRoyalty
+prefixHandlers['editionTitle_'] = (action, message, user) => handlePrefix(action, message, user, 'setEditionTitle')
+actionMap['setEditionTitle'] = handleSetEditionTitle
+prefixHandlers['description_'] = (action, message, user) => handlePrefix(action, message, user, 'setDescription')
+actionMap['setDescription'] = handleSetDescription
 // Modify handleSetSupply to use the new system
 async function handleSetSupply(message, user, collectionId) {
     console.log('handle set supply',message,user,collectionId)
@@ -397,6 +430,56 @@ async function handleSetRoyalty(message,user,collectionId) {
     console.log('studio',studio[user])
 }
 
+async function handleSetEditionTitle(message,user,collectionId) {
+    console.log('handle set edition title',message,user,collectionId)
+    if (!studio[user]) {
+        studio[user] = {};
+    }
+    
+    // Set pending action
+    studio[user].pendingAction = {
+        action: 'editionTitle',
+        collectionId: collectionId
+    };
+
+    // Update message and set state
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: 'Please enter the edition title for your collection pieces:\n\n(e.g. "Milady "2344 or "#"2344 or "Milady #"2344)',
+    });
+    
+
+    setUserState({...message,from: {id: user},chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
+    console.log('user state',lobby[user].state)
+    console.log('studio',studio[user])
+}
+
+async function handleSetDescription(message,user,collectionId) {
+    console.log('handle set description',message,user,collectionId)
+    if (!studio[user]) {
+        studio[user] = {};
+    }
+    
+    // Set pending action
+    studio[user].pendingAction = {
+        action: 'description',
+        collectionId: collectionId
+    };
+
+    // Update message and set state
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: 'Please enter the description for your collection metadata:',
+    });
+    
+
+    setUserState({...message,from: {id: user},chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
+    console.log('user state',lobby[user].state)
+    console.log('studio',studio[user])
+}
+
 async function handleSetChainMessage(message,user,collectionId) {
     //console.log('handle set chain',message,user,collectionId)
     if (!studio[user]) {
@@ -436,106 +519,124 @@ async function handleSetChain(message,user,collectionId,chain) {
 }
 
 
-// Add the state handler
-stateHandlers[STATES.SETCOLLECTION] = async (message) => {
-    const userId = message.from.id;
-    if (!studio[userId]?.pendingAction) {
-        console.log('No pending action found for user:', userId);
-        return;
-    }
+                        // Add the state handler
+                        stateHandlers[STATES.SETCOLLECTION] = async (message) => {
+                            const userId = message.from.id;
+                            if (!studio[userId]?.pendingAction) {
+                                console.log('No pending action found for user:', userId);
+                                return;
+                            }
 
-    const { action, collectionId } = studio[userId].pendingAction;
-    console.log('Handling state SETCOLLECTION for user:', userId, 'action:', action, 'collection:', collectionId);
-    
-    const userInput = message.text;
-    let backTo = 'main'
-    switch (action) {
-        case 'supply':
-            const supply = parseInt(userInput);
-            if (isNaN(supply) || supply <= 0) {
-                await sendMessage(message, 'Please enter a valid number greater than 0');
-                return;
-            }
-            studio[userId][collectionId].totalSupply = supply;
-            backTo = 'metadata'
-            break;
-        case 'royalty':
-            const royalty = parseInt(userInput);
-            if (isNaN(royalty) || royalty < 0 || royalty > 100) {
-                await sendMessage(message, 'Please enter a valid number between 0 and 100');
-                return;
-            }
-            studio[userId][collectionId].royalties = royalty;
-            backTo = 'metadata'
-            break;
-        case 'editMasterPrompt':
-            console.log('edit master prompt',message,userId,collectionId)
-            const masterPrompt = message.text
-            studio[userId][collectionId].config.masterPrompt = masterPrompt
-            backTo = 'config'
-            break;
-        case 'addTrait':
-            const traitType = {
-                title: message.text,
-                traits: [] // Array to hold trait instances
-            };
-            studio[userId][collectionId].config.traitTypes.push(traitType);
-            backTo = 'traitTypes'
-            break;
-        case 'editTraitName':
-            const newTraitName = message.text;
-            studio[userId][collectionId].config.traitTypes[traitIndex].title = newTraitName;
-            backTo = 'traitTypes'
-            break;
-        case 'addTraitValue':
-            console.log('trait types', JSON.stringify(studio[userId][collectionId].config));
-            console.log('pending action:', JSON.stringify(studio[userId].pendingAction));
-            
-            // Split input by newlines to handle multiple traits
-            const traitInputs = message.text.split('\n');
-            const { traitTypeIndex } = studio[userId].pendingAction;
+                            const { action, collectionId } = studio[userId].pendingAction;
+                            console.log('Handling state SETCOLLECTION for user:', userId, 'action:', action, 'collection:', collectionId);
 
-            // Initialize traits array if needed
-            if (!studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits) {
-                console.log('traits array was empty, initializing')
-                studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits = [];
-            }
+                            const userInput = message.text;
+                            let backTo = 'main'
+                            switch (action) {
+                                case 'supply':
+                                    const supply = parseInt(userInput);
+                                    if (isNaN(supply) || supply <= 0) {
+                                        await sendMessage(message, 'Please enter a valid number greater than 0');
+                                        return;
+                                    }
+                                    studio[userId][collectionId].totalSupply = supply;
+                                    backTo = 'metadata'
+                                    break;
+                                case 'royalty':
+                                    const royalty = parseInt(userInput);
+                                    if (isNaN(royalty) || royalty < 0 || royalty > 100) {
+                                        await sendMessage(message, 'Please enter a valid number between 0 and 100');
+                                        return;
+                                    }
+                                    studio[userId][collectionId].royalties = royalty;
+                                    backTo = 'metadata'
+                                    break;
+                                case 'editionTitle':
+                                    studio[userId][collectionId].editionTitle = message.text
+                                    backTo = 'metadata'
+                                    break;
+                                case 'description':
+                                    studio[userId][collectionId].description = message.text
+                                    backTo = 'metadata'
+                                    break;
+                                case 'editMasterPrompt':
+                                    console.log('edit master prompt', message, userId, collectionId)
+                                    const masterPrompt = message.text
+                                    studio[userId][collectionId].config.masterPrompt = masterPrompt
+                                    backTo = 'config'
+                                    break;
+                                case 'addTrait':
+                                    const traitType = {
+                                        title: message.text,
+                                        traits: [] // Array to hold trait instances
+                                    };
+                                    studio[userId][collectionId].config.traitTypes.push(traitType);
+                                    backTo = 'traitTypes'
+                                    break;
+                                case 'editTraitName':
+                                    const newTraitName = message.text;
+                                    studio[userId][collectionId].config.traitTypes[traitIndex].title = newTraitName;
+                                    backTo = 'traitTypes'
+                                    break;
+                                case 'editWorkflow':
+                                    const workflow = message.text;
+                                    const validWorkflows = ['FLUX','MAKE', 'MAKE3']
+                                    if(!validWorkflows.includes(workflow)){
+                                        await sendMessage(message, 'Please enter a valid workflow type: FLUX MAKE or MAKE3');
+                                        return;
+                                    }
+                                    studio[userId][collectionId].config.workflow = workflow;
+                                    backTo = 'config'
+                                    break;
+                                case 'addTraitValue':
+                                    console.log('trait types', JSON.stringify(studio[userId][collectionId].config));
+                                    console.log('pending action:', JSON.stringify(studio[userId].pendingAction));
 
-            // Process each trait input
-            for (const traitInput of traitInputs) {
-                try {
-                    // Parse the trait value input in format "name|prompt|rarity"
-                    const [name, prompt, rarity] = traitInput.split('|').map(s => s.trim());
-                    
-                    if (!name) continue; // Skip if name is empty
+                                    // Split input by newlines to handle multiple traits
+                                    const traitInputs = message.text.split('\n');
+                                    const { traitTypeIndex } = studio[userId].pendingAction;
 
-                    const newTrait = {
-                        name: name,
-                        prompt: prompt || name, // Use name as prompt if no prompt provided
-                        rarity: parseFloat(rarity) || 0.5 // Default 50% rarity if not specified
-                    };
+                                    // Initialize traits array if needed
+                                    if (!studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits) {
+                                        console.log('traits array was empty, initializing')
+                                        studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits = [];
+                                    }
 
-                    console.log('Adding trait:', JSON.stringify(newTrait));
-                    studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits.push(newTrait);
-                } catch (err) {
-                    console.log('Error parsing trait input:', traitInput, err);
-                    // If this is the first/only trait and it failed, we might want to notify the user
-                    if (traitInputs.length === 1) {
-                        throw err; // This will be caught by the outer error handler
-                    }
-                    // Otherwise continue processing other traits
-                    continue;
-                }
-            }
+                                    // Process each trait input
+                                    for (const traitInput of traitInputs) {
+                                        try {
+                                            // Parse the trait value input in format "name|prompt|rarity"
+                                            const [name, prompt, rarity] = traitInput.split('|').map(s => s.trim());
 
-            console.log('traits array after:', JSON.stringify(studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits));
-            backTo = 'traitTypes'
-            break;
-        default:
-            console.log('no action found for set collection')
-            return
-        // Add other cases here for different settings
-    }
+                                            if (!name) continue; // Skip if name is empty
+
+                                            const newTrait = {
+                                                name: name,
+                                                prompt: prompt || name, // Use name as prompt if no prompt provided
+                                                rarity: parseFloat(rarity) || 0.5 // Default 50% rarity if not specified
+                                            };
+
+                                            console.log('Adding trait:', JSON.stringify(newTrait));
+                                            studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits.push(newTrait);
+                                        } catch (err) {
+                                            console.log('Error parsing trait input:', traitInput, err);
+                                            // If this is the first/only trait and it failed, we might want to notify the user
+                                            if (traitInputs.length === 1) {
+                                                throw err; // This will be caught by the outer error handler
+                                            }
+                                            // Otherwise continue processing other traits
+                                            continue;
+                                        }
+                                    }
+
+                                    console.log('traits array after:', JSON.stringify(studio[userId][collectionId].config.traitTypes[traitTypeIndex].traits));
+                                    backTo = 'traitTypes'
+                                    break;
+                                default:
+                                    console.log('no action found for set collection')
+                                    return
+                                // Add other cases here for different settings
+                            }
 
     // Save changes and reset state
     await saveStudio(studio[userId][collectionId]);
@@ -603,10 +704,102 @@ async function buildCollectionConfigMenu(user,collectionId) {
             inline_keyboard: [
                 [{ text: '« Back', callback_data: `ec_${collectionId}` }],
                 [{ text: 'Edit Master Prompt', callback_data: `editMasterPrompt_${collectionId}` }],
-                [{ text: 'Edit Trait Tree', callback_data: `editTraitTypes_${collectionId}` }]
+                [{ text: 'Edit Trait Tree', callback_data: `editTraitTypes_${collectionId}` }],
+                [{ text: 'Workflow', callback_data: `editWorkflow_${collectionId}` }],
+                [{ text: 'Test', callback_data: `testCollection_${collectionId}` }]
             ]
         }
     }
+}
+
+prefixHandlers['editWorkflow_'] = (action, message, user) => handlePrefix(action, message, user, 'editWorkflow')
+actionMap['editWorkflow'] = handleEditWorkflow
+async function handleEditWorkflow(message,user,collectionId) {
+    console.log('Handling edit workflow for user:', user, 'collection:', collectionId);
+    // Set pending action for workflow edit
+    studio[user].pendingAction = {
+        action: 'editWorkflow',
+        collectionId: collectionId
+    };
+
+    const text = 'Please enter the workflow type:\n\nFLUX MAKE - For standard image generation\nMAKE3 - For 3D model generation';
+
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text,
+    });
+
+    setUserState({...message, from: {id: user}, chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
+}
+
+prefixHandlers['testCollection_'] = (action, message, user) => handlePrefix(action, message, user, 'testCollection')
+actionMap['testCollection'] = handleTestCollection
+async function handleTestCollection(message,user,collectionId) {
+    console.log('Handling test collection for user:', user, 'collection:', collectionId);
+    console.log('Handling test collection for user:', user, 'collection:', collectionId);
+    const collection = await getOrLoadCollection(user, collectionId);
+    
+    // Get master prompt and trait types
+    const { masterPrompt, traitTypes } = collection.config;
+    
+    if (!masterPrompt || !traitTypes || traitTypes.length === 0) {
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: "Cannot test - collection needs a master prompt and trait types configured first"
+        });
+        return;
+    }
+
+    // Select random trait values based on rarity weights
+    let selectedTraits = {};
+    traitTypes.forEach(traitType => {
+        if (!traitType.traits || traitType.traits.length === 0) return;
+        
+        // Calculate total weight
+        const totalWeight = traitType.traits.reduce((sum, trait) => sum + (trait.rarity || 1), 0);
+        
+        // Generate random number between 0 and total weight
+        let random = Math.random() * totalWeight;
+        
+        // Find the trait that corresponds to this random value
+        let selectedTrait = traitType.traits[0];
+        for (const trait of traitType.traits) {
+            random -= (trait.rarity || 1);
+            if (random <= 0) {
+                selectedTrait = trait;
+                break;
+            }
+        }
+        
+        selectedTraits[traitType.title] = selectedTrait.prompt;
+    });
+
+    // Replace placeholders in master prompt with selected trait values
+    let testPrompt = masterPrompt;
+    Object.entries(selectedTraits).forEach(([title, prompt]) => {
+        const placeholder = `[[${title}]]`;
+        testPrompt = testPrompt.replace(placeholder, prompt);
+    });
+
+    const prefix = collection.config.workflow.toLowerCase()
+
+    // Display the test prompt
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: `Test Prompt Generated:\n\n\`\/${prefix} ${testPrompt}\`\n\nSelected Traits:\n${Object.entries(selectedTraits).map(([title, prompt]) => `${title}: ${prompt}`).join('\n')}`,
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '« Back', callback_data: `collectionConfigMenu_${collectionId}` }],
+                [{ text: 'Generate Another', callback_data: `testCollection_${collectionId}` }]
+            ]
+        },
+        options: {
+            parse_mode: 'MarkdownV2'
+        }
+    });
 }
 
 prefixHandlers['editMasterPrompt_'] = (action, message, user) => handlePrefix(action, message, user, 'editMasterPrompt')

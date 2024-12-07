@@ -267,19 +267,19 @@ function generateFeatureMenu(settings, balance, context) {
         buttons.push(sdxlButtons);
     }
 
-    // Extras for FLUX (currently commented out)
-    // if (settings.createSwitch === 'FLUX' && balance >= 400000) {
-    //     buttons.push([
-    //         {
-    //             text: settings.controlNet && settings.input_control_image
-    //                 ? settings.advancedUser ? '✅🩻' : '✅control'
-    //                 : settings.controlNet
-    //                 ? settings.advancedUser ? '❗️🩻' : '❗️control'
-    //                 : settings.advancedUser ? '⚪️🩻' : '⚪️control',
-    //             callback_data: `togplus_${context}_controlNet`,
-    //         },
-    //     ]);
-    // }
+    //Extras for FLUX
+    if (settings.createSwitch === 'FLUX' && balance >= 400000) {
+        buttons.push([
+            {
+                text: settings.controlNet && settings.input_control_image
+                    ? settings.advancedUser ? '✅🩻' : '✅control'
+                    : settings.controlNet
+                    ? settings.advancedUser ? '❗️🩻' : '❗️control'
+                    : settings.advancedUser ? '⚪️🩻' : '⚪️control',
+                callback_data: `togplus_${context}_controlNet`,
+            },
+        ]);
+    }
 
     // Insufficient balance (only Cancel button)
     if (balance < 400000) {
