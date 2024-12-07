@@ -21,8 +21,9 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
 
   filteredLoraTriggers.forEach(lora => {
     lora.triggerWords.forEach(triggerWord => {
-      const regex = new RegExp(`${triggerWord}(\\d*)`, 'gi');
-      modifiedPrompt = modifiedPrompt.replace(regex, (match, p1) => {
+      // Create case-insensitive regex that preserves original casing
+      const regex = new RegExp(`(${triggerWord})(\\d*)`, 'gi');
+      modifiedPrompt = modifiedPrompt.replace(regex, (match, word, p1) => {
         let weight;
         if (p1) {
           const p1Value = parseInt(p1, 10);
@@ -39,10 +40,10 @@ function handleLoraTrigger(prompt, checkpoint, balance) {
           !lora.disabled
         ) {
           usedLoras.add(lora.lora_name);
-          return `<lora:${lora.lora_name}:${weight}> ${triggerWord}`;
+          return `<lora:${lora.lora_name}:${weight}> ${word}`; // Use original casing from prompt
         } else {
-          // If LoRA is already used, just return the trigger word without the LoRA tag
-          return triggerWord;
+          // If LoRA is already used, just return the word with original casing
+          return word;
         }
       });
     });
