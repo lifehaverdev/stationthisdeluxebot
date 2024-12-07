@@ -1,5 +1,4 @@
-
-const { taskQueue, waiting, successors, lobby, workspace, failures } = require('../bot/bot');
+const { taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const {
     sendMessage,
@@ -306,6 +305,25 @@ async function processWaitlist(status, run_id, outputs) {
     } 
     processQueue();
 }
+function shouldApplyWatermark(message, promptObj, type) {
+    // Safely get group
+    const group = getGroup(message);
+
+    // 1. Force logo check
+    if (promptObj.forceLogo) return true;
+
+    // 2. User balance check (true if no/low balance)
+    if (!promptObj.balance || promptObj.balance < 200000) return true;
+
+    // 3. Group check (true if no group, no qoints, or accounting is 'ghost')
+    if (!group || !group.qoints || group.gateKeeping?.pointsAccounting === 'ghost') return true;
+
+    // 4. Always true if not an image
+    if (type !== 'image') return true;
+
+    // If none of the above conditions are met, don't apply watermark
+    return false;
+}
 
 async function handleTaskCompletion(task) {
     const { message, promptObj } = task;
@@ -345,7 +363,7 @@ async function handleTaskCompletion(task) {
                 try {
                     let fileToSend = url;
                     //console.log(promptObj.waterMark)
-                    if ((promptObj.balance == '' || promptObj.balance < 200000 || promptObj.forceLogo) && type === 'image') {
+                    if (shouldApplyWatermark(message, promptObj, type)) {
                         promptObj.waterMark = 'mslogo'
                         fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
                     }
@@ -430,7 +448,7 @@ async function sendMedia(message, fileToSend, type, promptObj) {
         
         if(promptObj.advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
         const response = await sendPhoto(message, fileToSend, options);
-        if (response && (promptObj.balance == '' || promptObj.balance < 200000 || promptObj.forceLogo)){
+        if (response && (shouldApplyWatermark(message, promptObj, type))){
             fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
         }
         return response;
