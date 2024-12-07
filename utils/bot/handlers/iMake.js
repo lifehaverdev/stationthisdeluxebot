@@ -40,7 +40,7 @@ function getSettings(userId, group) {
     settings.balance = lobby[userId].balance || 0;
     settings.advancedUser = lobby[userId].advancedUser || false;
     settings.forcelogo = lobby[userId].forcelogo || false;
-
+    console.log('settings', settings)
     return settings;
 }
 

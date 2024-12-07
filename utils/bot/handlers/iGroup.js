@@ -681,6 +681,11 @@ function buildMustHaveKeyboard(groupChatId) {
     const menu = buildEditGroupSubMenu(groupChatId, 'prompts_')
     menu.reply_markup.inline_keyboard.push(
         [
+            { text: `user prompt ${isMust('userPrompt')}`, callback_data: `egmh_userPrompt_${groupChatId}` }
+        ]
+    )
+    menu.reply_markup.inline_keyboard.push(
+        [
             { text: `batch ${isMust('input_batch')}`, callback_data: `egmh_input_batch_${groupChatId}` },
             { text: `size ${isMust('size')}`, callback_data: `egmh_size_${groupChatId}` },
             { text: `steps ${isMust('input_steps')}`, callback_data: `egmh_input_steps_${groupChatId}` }
