@@ -117,19 +117,10 @@ const handleSetVoice = (message, selectedName, userId) => {
     const voiceModel = getVoiceModelByName(selectedName);
     if (voiceModel !== undefined) {
         lobby[userId].voiceModel = voiceModel;
-        const messageTitle = `Voice set to: ${selectedName}\n\nWhat should I say?`;
-        // const opts = {
-        //     chat_id: chatId,
-        //     message_id: messageId,
-        // };
-        // bot.editMessageText(messageTitle, {
-        //     chat_id: chatId,
-        //     message_id: messageId,
-        // }).then(() => {
-        //     bot.editMessageReplyMarkup(iMenu.getVoiceMenu(userId,message),opts);
-        // }).catch((error) => {
-        //     console.error("Error editing message text or reply markup:", error);
-        // });
+        let messageTitle = `Voice set to: ${selectedName}\n\nWhat should I say?`;
+        const customFileNameText = lobby[userId].customFileNames ? 
+            "\n\nSeparate what I should say and the output filename with a | symbol\ne.g. Hello world!|greeting will make greeting.mp3\n if you don't include a | I will just use the name you gave me in preferences menu" : "";
+        messageTitle += customFileNameText;
         editMessage({
             text: messageTitle,
             chat_id: chatId,

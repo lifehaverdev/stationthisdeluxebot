@@ -670,6 +670,7 @@ const commandRegistry = {
     stateHandlers[STATES.ADDLORAIMAGE] = (message) => safeExecute(message,iTrain.addLoraSlotImage)
 
     stateHandlers[STATES.TRIPO] = (message) => safeExecute(message, iMedia.handleTRIPO)
+    stateHandlers[STATES.CUSTOMFILENAME] = (message) => safeExecute(message, iAccount.customFileName)
     
 //};
 

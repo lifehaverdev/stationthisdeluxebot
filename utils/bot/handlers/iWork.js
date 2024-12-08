@@ -618,7 +618,7 @@ async function shakeSpeak(message) {
         return;
     }
 
-    const result = await txt2Speech(message, lobby[userId].voiceModel, voiceModel.name);
+    const result = await txt2Speech(message, lobby[userId].voiceModel, voiceModel.name, lobby[userId].customFileNames);
     
     if(result == '-1'){
         sendMessage(message,'... i failed... :<')
