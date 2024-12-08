@@ -1085,11 +1085,12 @@ async function updateGroupPoints(group, pointsToAdd) {
     const job = async () => {
         const client = await getCachedClient();
         const newQoints = group.qoints + pointsToAdd;
+        const chatId = group.chat.id;
         try {
             const collection = client.db(dbName).collection('floorplan');
             // Only update the qoints field
             const result = await collection.updateOne(
-                { id: group.chat.id },
+                { id: chatId },
                 { $set: { qoints: newQoints } }
             );
             

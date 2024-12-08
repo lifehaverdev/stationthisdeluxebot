@@ -41,7 +41,12 @@ async function handleTRIPO(message) {
     try {
         // Download the image
         console.log('Starting image download process');
-        const localPath = path.join(__dirname, '../../../tmp', `${userId}_${Date.now()}.jpg`);
+        const tmpDir = path.join(__dirname, '../../../tmp');
+        
+        // Ensure tmp directory exists
+        await fs.promises.mkdir(tmpDir, { recursive: true });
+        
+        const localPath = path.join(tmpDir, `${userId}_${Date.now()}.jpg`);
         console.log('Local path for image:', localPath);
         
         console.log('Fetching image');
