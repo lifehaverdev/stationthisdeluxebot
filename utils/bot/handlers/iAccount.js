@@ -98,6 +98,9 @@ async function accountPreferencesMenu(message, user) {
 }
 
 function buildPreferencesKeyboard(userId) {
+    if(!lobby[userId].hasOwnProperty('customFileNames')){
+        lobby[userId].customFileNames = false;
+    }
     return [
         [
             {
@@ -109,6 +112,10 @@ function buildPreferencesKeyboard(userId) {
                 text: `Emoji buttons: ${lobby[userId].advancedUser ? '✅' : '❌'}`,
                 callback_data: 'toggleAdvancedUser',
             },
+            {
+                text: `Custom File names: ${lobby[userId].customFileNames ? '✅' : '❌'}`,
+                callback_data: 'toggleCustomFileNames',
+            }
         ],
     ]
 }
@@ -120,6 +127,35 @@ actionMap['toggleAdvancedUser']= async (message, user) => {
     }
     accountPreferencesMenu(message, user);
 }
+
+actionMap['toggleCustomFileNames'] = async (message, user) => {
+    lobby[user].customFileNames = !lobby[user].customFileNames;
+    // accountPreferencesMenu(message, user);
+    sendMessage(message, `what is a fallback file name you'd like to use if you don't include one inline?`)
+    setUserState({...message, chat: {id: message.chat.id}, from: {id: user}}, STATES.CUSTOMFILENAME)
+}
+
+async function customFileName(message) {
+    const user = message.from.id;
+    // Clean the filename - remove special chars except alphanumeric and dashes
+    const cleanFileName = message.text.trim().replace(/[^a-zA-Z0-9-]/g, '');
+    
+    if (!cleanFileName) {
+        // If filename is empty after cleaning, send error message
+        sendMessage(message, 'Please provide a valid filename using only letters, numbers and dashes.');
+        return;
+    }
+
+    if (!lobby[user].hasOwnProperty('customFileName')) {
+        lobby[user].customFileName = '';
+    }
+    lobby[user].customFileName = cleanFileName;
+    displayAccountSettingsMenu(message, false);
+}
+
+// actionMap['customFileName'] = async (message, user) => {
+//     customFileName(message, user);
+// }
 
 prefixHandlers['commandlist_'] = (action,message,user) => {
     const page = parseInt(action.split('_')[1]);
@@ -822,7 +858,8 @@ module.exports = {
     handleAccountSettings, displayAccountSettingsMenu,
     handleRefreshQoints,
     shakeVerify,
-    shakeSignIn
+    shakeSignIn,
+    customFileName
 }
 
  // Test cases:
