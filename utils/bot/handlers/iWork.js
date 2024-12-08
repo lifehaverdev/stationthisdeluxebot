@@ -3,6 +3,7 @@ const path = require('path');
 const { sendMessage, setUserState, editMessage, react, DEV_DMS } = require('../../utils')
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
+const { voiceModels } = require('../../models/voiceModelMenu')
 const { lobby, STATES, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
@@ -604,15 +605,21 @@ async function startSpeak(message, user) {
     }
     setUserState(message,STATES.SPEAK)
 }
-
 async function shakeSpeak(message) {
     const userId = message.from.id;
-    // if(!lobby[userId].voiceModel){
-    //     sendMessage(message,'please choose a voice from voice menu in account settings');
-    //     return;
-    // }
-    const result = await txt2Speech(message, lobby[userId].voiceModel);
-    //console.log(result);
+    
+    // Import voiceModels array
+    
+    // Find matching voice model
+    const voiceModel = voiceModels.find(model => model.modelId === lobby[userId].voiceModel);
+    
+    if (!voiceModel) {
+        sendMessage(message, 'Invalid voice model selected');
+        return;
+    }
+
+    const result = await txt2Speech(message, lobby[userId].voiceModel, voiceModel.name);
+    
     if(result == '-1'){
         sendMessage(message,'... i failed... :<')
         console.log(result);

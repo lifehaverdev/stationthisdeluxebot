@@ -2,7 +2,7 @@ const http = require("http");
 const fs = require('fs');
 
   
-const main = async (message, voiceModel) => {
+const main = async (message, voiceModel, voiceName) => {
 
     const options = {
         method: 'POST',
@@ -47,7 +47,7 @@ const main = async (message, voiceModel) => {
             fs.mkdirSync(dir, { recursive: true });
         }
 
-        const fileName = `./tmp/speak${message.from.first_name}${Math.floor(Date.now() % 1000)}.mp3`;
+        const fileName = `./tmp/speak${voiceName}${Math.floor(Date.now() % 1000)}.mp3`;
         fs.writeFileSync(fileName, buffer);
         
         if(fs.existsSync(fileName)){
@@ -65,13 +65,12 @@ const main = async (message, voiceModel) => {
 
 
 // Function to make the API request and handle the response
-async function txt2Speech(message, voiceModel) {
+async function txt2Speech(message, voiceModel, voiceName) {
     //const start = process.hrtime();
     try {
-        const result = await main(message, voiceModel);
+        const result = await main(message, voiceModel, voiceName);
         if (result) {
             return result;
-
         } else {
             console.error("No result from gpt.");
         }

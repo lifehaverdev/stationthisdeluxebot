@@ -468,7 +468,7 @@ async function handleUtils(message, prompt = '', user = null) {
     const userId = user || message.from.id;
     const group = getGroup(message);
     const settings = group ? group.settings : lobby[userId];
-    const balance = group ? group.applied : settings.balance;
+    const balance = group ? group.qoints : settings.balance;
 
     // Initialize workspace tracking
     if (!workspace[userId]) {
@@ -487,11 +487,11 @@ async function handleUtils(message, prompt = '', user = null) {
     }
 
     // Update the menu with available tasks
-    if (balance < 200000) {
+    if (!group && balance < 200000) {
         return gated(message);
     }
 
-    const reply_markup = generateUtilsMenu(settings, balance);
+    const reply_markup = generateUtilsMenu(settings, balance, group);
     if (workspace[userId].message) {
         await editMessage({
             text: `What utility would you like to use?`,
@@ -507,9 +507,9 @@ async function handleUtils(message, prompt = '', user = null) {
 
 
 
-function generateUtilsMenu(settings, balance, image, prompt) {
+function generateUtilsMenu(settings, balance, group) {
     const buttons = [];
-
+    
     // Add model switches (if applicable)
     buttons.push([
         { text: ['SDXL','SD1.5','SD3'].includes(settings.createSwitch) ? '🔘SD' : '⚪️SD', callback_data: 'createswitch_SDXL_utils' },
@@ -517,7 +517,7 @@ function generateUtilsMenu(settings, balance, image, prompt) {
     ]);
 
     // Add utility tasks based on balance and context
-    if (balance >= 200000) {
+    if (group || balance >= 200000) {
         buttons.push([
             { text: settings.advancedUser ? '🖼️📈' : 'Upscale', callback_data: 'utils_upscale' },
             { text: settings.advancedUser ? '🖼️💦✍️' : 'Watermark', callback_data: 'utils_watermark' },
@@ -528,7 +528,7 @@ function generateUtilsMenu(settings, balance, image, prompt) {
         ]);
     }
 
-    if (balance >= 300000) {
+    if (group || balance >= 300000) {
         buttons.push([
             { text: settings.advancedUser ? '🖼️🕵️‍♀️💬' : 'Interrogate', callback_data: 'utils_interrogate' },
             { text: settings.advancedUser ? '💭➡️💬' : 'Assist', callback_data: 'utils_assist' },
@@ -888,14 +888,13 @@ function determineState(createSwitch, defaultState, fluxState) {
 
 
 
-
 function handleAnimate(message) {
     const group = getGroup(message);
     let settings;
     let balance;
     if(group){
         settings = group.settings;
-        balance = group.applied;
+        balance = group.qoints;
     }else{
         settings = lobby[message.from.id]
         balance = settings.balance
@@ -906,16 +905,16 @@ function handleAnimate(message) {
           resize_keyboard: true,
           one_time_keyboard: true
         }
-
       };
-      if(lobby[message.from.id] && balance >= 500000){
+
+      if(group || (!group && lobby[message.from.id] && balance >= 500000)){
         options.reply_markup.inline_keyboard.push(
             [
                 { text: settings.advancedUser ? '💬➡️🗣️' : 'txt2speech', callback_data: 'speak' }  
             ]
         )
       }
-      if(lobby[message.from.id] && balance >= 600000){
+      if((group || lobby[message.from.id]) && balance >= 600000){
         options.reply_markup.inline_keyboard.push(
             [   
                 { text: settings.advancedUser ? '🖼️➡️🎞️' : 'img2video', callback_data: 'ms3' },
@@ -930,14 +929,13 @@ function handleAnimate(message) {
             { text: 'cancel', callback_data: 'cancel' }
         ]
       )
-    if(lobby[message.from.id] && balance < 600000){
+    if(!group && (!lobby[message.from.id] || lobby[message.from.id].balance < 600000)) {
         gated(message);
         return;
     } else {
-          // Sending an empty message to set the keyboard
+        // Sending an empty message to set the keyboard
         sendMessage(message,'Animate', options);
     }
-    
 }
 async function handleCheckpointMenu(message,user) {
     if(user){
