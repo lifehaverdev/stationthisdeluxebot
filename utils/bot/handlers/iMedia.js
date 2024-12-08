@@ -1,11 +1,93 @@
-const { sendMessage, editMessage, setUserState, react, gated, cleanPrompt } = require('../../utils')
+const { sendMessage, editMessage, setUserState, react, gated,chargeGated,cleanPrompt } = require('../../utils')
 const { getPhotoUrl, lobby, workspace, STATES, flows, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
 const { buildPromptObjFromWorkflow } = require('./iMake')
 const Jimp = require('jimp');
+const fs = require('fs')
+const path = require('path');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 const iMake = require('./iMake')
+
+async function handleTRIPO(message) {
+    console.log('Starting handleTRIPO function');
+    const userId = message.from.id;
+    console.log('User ID:', userId);
+    
+    // Check if user has enough qoints
+    console.log('Checking qoints balance:', lobby[userId]?.qoints);
+    if (!lobby[userId]?.qoints || lobby[userId].qoints < 50) {
+        console.log('Insufficient qoints, gating user');
+        await chargeGated(message);
+        return;
+    }
+
+    let imageFile = null;
+
+    // Get image URL from reply or direct message
+    console.log('Attempting to get photo URL');
+    imageFile = await getPhotoUrl(message.reply_to_message || message);
+    console.log('Image file URL:', imageFile);
+
+    // If no image is found, prompt user and set state
+    if (!imageFile) {
+        console.log('No image found, prompting user');
+        await sendMessage(message, "Please send me an image to convert to 3D model.");
+        setUserState(message, STATES.TRIPO);
+        return;
+    }
+
+    try {
+        // Download the image
+        console.log('Starting image download process');
+        const localPath = path.join(__dirname, '../../../tmp', `${userId}_${Date.now()}.jpg`);
+        console.log('Local path for image:', localPath);
+        
+        console.log('Fetching image');
+        const response = await fetch(imageFile);
+        console.log('Converting to buffer');
+        const buffer = await response.buffer();
+        console.log('Writing file to disk');
+        await fs.promises.writeFile(localPath, buffer);
+        
+        // Create task object
+        const promptObj = {
+            userId,
+            balance: lobby[userId].balance,
+            username: message.from.first_name,
+            type: 'TRIPO',
+            imageFile: localPath,
+            status: 'uploading',
+            timeRequested: Date.now()
+        };
+        
+
+        // Create task
+        console.log('Creating task object');
+        const task = {
+            message,
+            promptObj,
+            timestamp: Date.now(),
+            status: 'thinking'
+        };
+        console.log('Task created:', task);
+
+        // Enqueue the task
+        console.log('Enqueueing task');
+        await react(message, "🏆");
+        enqueueTask(task);
+
+        // Set user state back to IDLE
+        console.log('Setting user state back to IDLE');
+        setUserState(message, STATES.IDLE);
+
+    } catch (error) {
+        console.error('Error in handleTRIPO:', error);
+        await sendMessage(message, "Sorry, there was an error processing your image. Please try again.");
+        setUserState(message, STATES.IDLE);
+    }
+}
 
 async function handleMs2ImgFile(message, imageUrl = null, prompt = null) {
     const chatId = message.chat.id;
@@ -441,7 +523,7 @@ async function handleMs3V2ImgFile(message, user = null) {
 
 module.exports = 
 {
-    handleImageTask,
+    handleImageTask, handleTRIPO,
     handleMs2ImgFile,
     handleSD3ImgFile,
     handleFluxImgFile,

@@ -94,7 +94,9 @@ const STATES = {
 
     COLLECTIONNAME: 'COLLECTIONNAME',
 
-    SETCOLLECTION: 'SETCOLLECTION'
+    SETCOLLECTION: 'SETCOLLECTION',
+
+    TRIPO: 'TRIPO',
 
     // Add more states as needed
 };

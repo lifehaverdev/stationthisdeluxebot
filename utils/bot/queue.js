@@ -13,6 +13,9 @@ const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
 const { saveGen } = require('../../db/mongodb');
+const { generateTripo } = require('../../commands/tripo');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const path = require('path');
 
 //
 // LOBBY AND QUEUE
@@ -109,18 +112,6 @@ async function processQueue() {
         }
         processQueue(); // Continue processing next task
     } 
-    // else {
-    //     if(taskQueue.length == 0 && waiting.length == 0){
-    //         //console.log('NO TASKQUEUE NO WAITING. we take deep breath... sigh');
-    //     } else if (taskQueue.length == 0 && waiting.length > 0){
-    //         //console.log('NO TASKQUQUE but waiting ... ',waiting.length)
-    //     } else if (taskQueue.length > 0 && waiting.length > WAITLISTMAX) {
-    //         //console.log('WAITLIST FULL, TAKE A NUMBER AND HAVE A SEAT ... ',taskQueue.length,' in line, ',waiting.length,' being served.')
-    //     }
-    //     //console.log('All queue processed , or waitlist full')
-    //     //console.log('Waitlist',waiting.length);
-    //     //console.log('Tasks',taskQueue.length);
-    // }
 }
 
 //makes request for the task and updates waiting array
@@ -128,7 +119,11 @@ async function waitlist(task){
     const { message, promptObj } = task;
 
     let run_id;
-    run_id = await generate(promptObj);
+    if (promptObj.type === 'TRIPO') {
+        run_id = await generateTripo(promptObj,processWaitlist);
+    } else {
+        run_id = await generate(promptObj);
+    }
 
     if(run_id != -1 && run_id != undefined){
         task = {
@@ -142,7 +137,6 @@ async function waitlist(task){
         console.log('no run id',promptObj);
         react(message,"😨")
     }
-    
 }
 
 // Define a set to keep track of run_ids being processed
@@ -196,23 +190,26 @@ function removeStaleTasks() {
 function statusRouter(task, taskIndex, status) {
     switch(status) {
         case 'success':
-            //add success to success bucket take off waiting
             task.runningStop = Date.now()
             successors.push(task)
             waiting.splice(taskIndex, 1)
             break;
         case 'running':
-            task.status = status;
-            task.runningStart = Date.now()
+        case 'in_progress':  // Common websocket status
+        case 'processing':   // Common websocket status
+            task.status = 'running';  // Normalize status
+            if (!task.runningStart) {
+                task.runningStart = Date.now()
+            }
             break;
         case 'failed':
-            task.status = status;
+        case 'error':        // Common websocket error status
+            task.status = 'failed';
             waiting.splice(taskIndex, 1)
             removeDoints(task);
             break;
         case 'timeout':
         case 'cancelled':
-            //re-enqueue new task
             if(task.retrying && task.retrying > 2){
                 console.log('thats it for you dude. its over. dont try again');
                 return
@@ -229,13 +226,17 @@ function statusRouter(task, taskIndex, status) {
         case 'undefined':
             task.status = 'thinking..'
             break;
-        default: 
-            //update waiting array task status
-            task.status = status;
+        default:
+            // Handle intermediate websocket statuses (like "25% complete")
+            if (typeof status === 'string' && status.includes('%')) {
+                task.status = 'running';
+                task.progress = status;
+            } else {
+                task.status = status;
+            }
             break;
     }
 }
-
 async function deliver() {
     //console.log('❤️')
     if(successors.length > 0){
@@ -243,14 +244,10 @@ async function deliver() {
         const run_id = task.run_id;
         successors.shift()
         try {
-            // Handle sending the content to the user via handleTaskCompletion
-            
             let result;
-            //console.log('task backoff ',task.backOff)
+            
             if(!task.backOff ||(task.backOff && task.backOff > Date.now())){
-                //console.log('send to handleTaskCompletion')
                 result = await handleTaskCompletion(task);
-                //console.log('handletask result',result)
             } else {
                 successors.push(task)
                 return
@@ -258,20 +255,19 @@ async function deliver() {
             
             if (result === 'success') {
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
-                // Remove task from waiting queue here if necessary
             } else if (result === 'not sent') {
                 console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-                task.deliveryFail = (task.deliveryFail || 0) + 1; // Increment deliveryFail
+                task.deliveryFail = (task.deliveryFail || 0) + 1;
                 if (task.deliveryFail > 2) {
                     console.log(`Exceeded retry attempts for task: ${run_id}. Moving to failures.`);
-                    failures.push(task); // Mark as failed
+                    failures.push(task);
                     sendMessage(task.message, 'i... i failed you.');
                     return;
                 }
                 const now = Date.now();
-                task.backOff = now + task.deliveryFail * task.deliveryFail * 2000; // Update backoff
+                task.backOff = now + task.deliveryFail * task.deliveryFail * 2000;
                 console.log(`Retrying task ${run_id} after backoff: ${task.backOff - now}ms`);
-                successors.push(task); // Re-add to queue for retry
+                successors.push(task);
             }
             
         } catch (err) {
@@ -281,7 +277,6 @@ async function deliver() {
 }
 
 async function processWaitlist(status, run_id, outputs) {
-
     removeStaleTasks();
 
     try {
@@ -295,10 +290,27 @@ async function processWaitlist(status, run_id, outputs) {
 
         const task = waiting[taskIndex];
         task.status = status;
-        const run = { status, run_id, outputs };
-        task.final = run
 
-        statusRouter(task,taskIndex,status)
+        // Handle different update formats
+        let run;
+        if (typeof outputs === 'string') {
+            // Websocket format (typically from tripo)
+            run = {
+                status,
+                run_id,
+                outputs: [{
+                    data: {
+                        text: [outputs]
+                    }
+                }]
+            };
+        } else {
+            // Standard webhook format
+            run = { status, run_id, outputs };
+        }
+
+        task.final = run;
+        statusRouter(task, taskIndex, status);
 
     } catch (err) {
         console.error('Exception in processWaitlist:', err);
@@ -333,101 +345,144 @@ function shouldApplyWatermark(message, promptObj, type) {
 async function handleTaskCompletion(task) {
     const { message, promptObj } = task;
     const run = task.final;
-    const { status, outputs } = run;
-    const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
-    let urls = [];
-    let texts = [];
-    let tags = [];
     let sent = true;
 
     const operation = async () => {
-        
-        // If outputs are present, process them
-        if (outputs && outputs.length > 0) {
-            //console.log("Outputs found:", outputs.length);
-            outputs.forEach(outputItem => {
-                possibleTypes.forEach(type => {
-                    if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
-                        if (type === 'text') {
-                            texts = outputItem.data[type]; // Directly assign the text array
-                        } else if (type === 'tags') {
-                            tags = outputItem.data[type]; // Directly assign the text array
-                        } else {
-                            outputItem.data[type].forEach(dataItem => {
-                                const url = dataItem.url;
-                                const fileType = extractType(url);
-                                urls.push({ type: fileType, url });
-                                console.log(`${fileType.toUpperCase()} URL:`, url);
-                            });
+        // Special handling for Tripo tasks
+        if (promptObj.type === 'TRIPO' && run?.outputs) {
+            try {
+                const tmpDir = path.join(__dirname, '../../tmp');
+                
+                for (const output of run.outputs) {
+                    if (!output.url) continue;
+
+                    const fileExtension = output.type === 'model' ? '.glb' : '.webp';
+                    const localPath = path.join(tmpDir, `${task.promptObj.username}_${Date.now()}${fileExtension}`);
+                    
+                    console.log(`Downloading ${output.type} to ${localPath}`);
+                    
+                    try {
+                        const response = await fetch(output.url);
+                        if (!response.ok) throw new Error(`Failed to fetch ${output.type}`);
+                        
+                        const buffer = await response.buffer();
+                        await fs.promises.writeFile(localPath, buffer);
+                        
+                        // Send the file based on its type
+                        if (output.type === 'model') {
+                            console.log('Sending model file:', localPath);
+                            const modelResponse = await sendDocument(message, localPath);
+                            if (!modelResponse) sent = false;
+                        } else if (output.type === 'preview') {
+                            console.log('Sending preview image:', localPath);
+                            const previewResponse = await sendPhoto(message, localPath);
+                            if (!previewResponse) sent = false;
                         }
+                        
+                        // Clean up the temporary file
+                        await fs.promises.unlink(localPath);
+                    } catch (err) {
+                        console.error(`Error processing ${output.type}:`, err);
+                        sent = false;
                     }
-                });
-            });
-
-            for (const { url, type } of urls) {
-                try {
-                    let fileToSend = url;
-                    //console.log(promptObj.waterMark)
-                    if (shouldApplyWatermark(message, promptObj, type)) {
-                        promptObj.waterMark = 'mslogo'
-                        fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
-                    }
-                    console.log('alright we send now',fileToSend)
-                    const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
-                    //console.log('this is response from sendMedia',mediaResponse)
-                    if (!mediaResponse) sent = false;
-                } catch (err) {
-                    console.error('Error sending media:', err.message || err);
                 }
-                if(urls.length>1){
-                    await sleep(250);
-                }
-            }
-
-            for (const text of texts) {
-                try {
-                    const mediaResponse = await sendMessage(message, text);
-                    if (!mediaResponse) sent = false;
-                } catch (err) {
-                    console.error('Error sending text:', err.message || err);
-                }
-            }
-
-            for (const text of tags) {
-                try {
-                    const mediaResponse = await sendMessage(message, text);
-                    if (!mediaResponse) sent = false;
-                } catch (err) {
-                    console.error('Error sending text:', err.message || err);
-                }
+            } catch (err) {
+                console.error('Error sending Tripo media:', err.message || err);
+                console.error('Full error object:', err);
+                sent = false;
             }
         } else {
-            console.log(`No outputs to process for status: ${status}`);
+            // Existing handling for other types of tasks
+            const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
+            let urls = [];
+            let texts = [];
+            let tags = [];
+
+            // If outputs are present, process them
+            if (run?.outputs && run.outputs.length > 0) {
+                //console.log("Outputs found:", outputs.length);
+                run.outputs.forEach(outputItem => {
+                    possibleTypes.forEach(type => {
+                        if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
+                            if (type === 'text') {
+                                texts = outputItem.data[type]; // Directly assign the text array
+                            } else if (type === 'tags') {
+                                tags = outputItem.data[type]; // Directly assign the text array
+                            } else {
+                                outputItem.data[type].forEach(dataItem => {
+                                    const url = dataItem.url;
+                                    const fileType = extractType(url);
+                                    urls.push({ type: fileType, url });
+                                    console.log(`${fileType.toUpperCase()} URL:`, url);
+                                });
+                            }
+                        }
+                    });
+                });
+
+                for (const { url, type } of urls) {
+                    try {
+                        let fileToSend = url;
+                        //console.log(promptObj.waterMark)
+                        if (shouldApplyWatermark(message, promptObj, type)) {
+                            promptObj.waterMark = 'mslogo'
+                            fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
+                        }
+                        console.log('alright we send now',fileToSend)
+                        const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
+                        //console.log('this is response from sendMedia',mediaResponse)
+                        if (!mediaResponse) sent = false;
+                    } catch (err) {
+                        console.error('Error sending media:', err.message || err);
+                    }
+                    if(urls.length>1){
+                        await sleep(250);
+                    }
+                }
+
+                for (const text of texts) {
+                    try {
+                        const mediaResponse = await sendMessage(message, text);
+                        if (!mediaResponse) sent = false;
+                    } catch (err) {
+                        console.error('Error sending text:', err.message || err);
+                    }
+                }
+
+                for (const text of tags) {
+                    try {
+                        const mediaResponse = await sendMessage(message, text);
+                        if (!mediaResponse) sent = false;
+                    } catch (err) {
+                        console.error('Error sending text:', err.message || err);
+                    }
+                }
+            } else {
+                console.log(`No outputs to process for status: ${run.status}`);
+            }
         }
     };
 
-    if (status === 'success') {
+    if (run.status === 'success') {
         await operation();
-        if(sent){
-            await addPoints(task)
+        if (sent) {
+            await addPoints(task);
             const out = {
-                urls: urls,
-                tags: tags,
-                texts: texts
-            }
-            await saveGen({task,run,out})
-            return 'success'
+                urls: run.outputs || [],
+                tags: [],
+                texts: []
+            };
+            await saveGen({task, run, out});
+            return 'success';
         } else {
-            return 'not sent'
+            return 'not sent';
         }
-        //return operationSuccess && sent ? 'success' : 'not sent';
     } else {
-        if (status === undefined || status === 'undefined') {
+        if (run.status === undefined || run.status === 'undefined') {
             task.status = 'thinking';
         }
-        return 'incomplete'; 
+        return 'incomplete';
     }
-
 }
 
 function removeDoints(task) {
