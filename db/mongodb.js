@@ -20,6 +20,7 @@ const dbName = process.env.BOT_NAME;
 let cachedClient = null;
 let inactivityTimer = null;
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+const JOB_TIMEOUT = 15000; // Increase from default (likely 5000ms) to 30 seconds
 
 class DatabaseQueue {
     constructor() {
@@ -35,7 +36,7 @@ class DatabaseQueue {
                 try {
                     const result = await Promise.race([
                         job(),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Job timeout')), 5000))
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Job timeout')), JOB_TIMEOUT))
                     ]);
                     resolve(result); // Resolve the promise with the job's result
                 } catch (error) {
@@ -1083,37 +1084,36 @@ async function saveGen({task, run, out}) {
 async function updateGroupPoints(group, pointsToAdd) {
     const job = async () => {
         const client = await getCachedClient();
-
+        const newQoints = group.qoints + pointsToAdd;
         try {
             const collection = client.db(dbName).collection('floorplan');
-            const filter = { id: group.id };
-
-            // Retrieve the current points
-            const existingGroup = await collection.findOne(filter);
-
-            // Calculate the new points
-            const updatedPoints = Math.max(((existingGroup?.qoints || 0) - pointsToAdd),0);
-
-            // Use the existing writeData function to save the updated points
-            await writeData('floorplan', filter, { qoints: updatedPoints });
-
-            console.log('Group points updated successfully');
+            // Only update the qoints field
+            const result = await collection.updateOne(
+                { id: group.chat.id },
+                { $set: { qoints: newQoints } }
+            );
+            
+            if (result.matchedCount === 0) {
+                console.log(`No group found with chatId: ${chatId}`);
+                return false;
+            }
+            
+            console.log(`Group ${chatId} qoints updated to ${newQoints}`);
             return true;
         } catch (error) {
-            console.error("Error updating group points:", error);
+            console.error("Error updating group qoints:", error);
             return false;
         }
     };
 
-    // Enqueue the job and await its result
     try {
-        const userData = await dbQueue.enqueue(job);
-        return userData;  // Return the result to the caller
+        return await dbQueue.enqueue(job);
     } catch (error) {
-        console.error('[updategrouppoints] Failed to get user data:', error);
+        console.error('[updateGroupQoints] Failed to update qoints:', error);
         throw error;
     }
 }
+
 async function readStats() {
     const job = async () => {
         const client = await getCachedClient();

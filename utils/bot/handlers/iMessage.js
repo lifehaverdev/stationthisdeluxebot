@@ -564,6 +564,12 @@ const commandRegistry = {
         }
     },
 },
+'/tripo': {
+    handler: async (message) => {
+        console.log('made it into the function')
+        iMedia.handleTRIPO(message)
+    }
+},
 
     // Modified '/stationthis' command to include group check and onboarding
     '/stationthis': {
@@ -663,6 +669,7 @@ const commandRegistry = {
     stateHandlers[STATES.LORANAME] = (message) => safeExecute(message,iTrain.createLora)
     stateHandlers[STATES.ADDLORAIMAGE] = (message) => safeExecute(message,iTrain.addLoraSlotImage)
 
+    stateHandlers[STATES.TRIPO] = (message) => safeExecute(message, iMedia.handleTRIPO)
     
 //};
 

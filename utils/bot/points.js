@@ -36,9 +36,14 @@ async function addPoints(task) {
         // Handling based on group point accounting strategy
         if (group.gateKeeping.pointAccounting === 'house') {
             // House pays for all point addition/subtraction
-            console.log(`Group ${group.id} point accounting is set to 'house'. Deducting from group.`);
+            console.log(`Group ${group.id} point accounting is set to 'house'. Deducting ${pointsToAdd} points from group balance. Current group balance: ${group.qoints}`);
             group.qoints -= pointsToAdd;
-            updateGroupPoints(group, pointsToAdd);
+            try {
+                await updateGroupPoints(group, pointsToAdd);
+            } catch (error) {
+                console.error(`Failed to update group points for group ${group.id}:`, error);
+                // Continue execution even if group points update fails
+            }
         } else if (group.gateKeeping.pointAccounting === 'ghost') {
             // 'ghost' accounting - treat as if there is no group
             console.log(`Group ${group.id} point accounting is set to 'ghost'. Treating as if there's no group.`);
@@ -56,12 +61,22 @@ async function addPoints(task) {
                 const pointsToGroup = pointsToAdd - pointsToUser;
                 if (pointsToGroup > 0) {
                     group.qoints -= pointsToGroup;
-                    updateGroupPoints(group, pointsToGroup);
+                    try {
+                        await updateGroupPoints(group, pointsToGroup);
+                    } catch (error) {
+                        console.error(`Failed to update group points for group ${group.id}:`, error);
+                        // Continue execution even if group points update fails
+                    }
                 }
             } else {
                 // User is already at or above max, so all points are covered by the group
                 group.qoints -= pointsToAdd;
-                updateGroupPoints(group, pointsToAdd);
+                try {
+                    await updateGroupPoints(group, pointsToAdd);
+                } catch (error) {
+                    console.error(`Failed to update group points for group ${group.id}:`, error);
+                    // Continue execution even if group points update fails
+                }
             }
         }
     } else {

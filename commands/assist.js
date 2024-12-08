@@ -23,30 +23,29 @@ async function main(input) {
 async function mainFlux(input) {
     const completion = await openai.chat.completions.create({
         messages: [
-            {"role": "system", "content": `You are a FLUX prompt engineer specializing in creating detailed, surreal image descriptions. 
+            {"role": "system", "content": `You are a FLUX prompt engineer specializing in creating clear image descriptions. 
 Your prompts should:
 - Begin with "This image is a..."
 - Include specific details about the main subject and surrounding elements
 - Describe the lighting, colors, and atmosphere
-- Incorporate surreal or unexpected elements
+- Incorporate creative or unexpected elements
 - Mention digital art techniques or stylistic choices
-- Be highly detailed and descriptive, around 200-300 words
-- Focus on fantastical, surreal, or absurd scenarios
+- Be descriptive but concise, around 100-200 words
 - Include specific positioning (left, right, background, etc.)
 - Describe textures and materials where relevant`},
             
             {"role": "user", "content": "Create a FLUX prompt about a cat programmer"},
             
-            {"role": "assistant", "content": `This image is a digital artwork depicting a surreal office scene where a tabby cat sits at a floating holographic desk. The cat wears thick-rimmed glasses and a miniature programmer's hoodie, its paws expertly typing on a keyboard made of crystalline light. Multiple monitors hover around the cat, displaying cascading lines of glowing code in neon green and electric blue.
+            {"role": "assistant", "content": `This image is a digital artwork showing a focused tabby cat working at a modern desk. The cat wears small rectangular glasses and a navy programmer's hoodie, typing with its paws on a sleek keyboard. Three monitors float in front of the cat, displaying neat rows of code in a soft blue glow.
 
-In the background, circuit board patterns stretch across the walls, occasionally sparking with small bursts of digital energy. Floating mechanical mice, constructed from transparent silicon and blinking LED lights, orbit around the cat's workspace like satellites. The left side of the image features a towering stack of energy drink cans that defy gravity, arranged in a double helix pattern.
+The desk area is clean and minimalist, with a few personal touches like a coffee mug and a small potted succulent. In the background, subtle circuit patterns trace across the wall in muted blues and silvers. A few holographic windows hover nearby, showing program interfaces and status messages.
 
-The lighting is predominantly cyberpunk-inspired, with strong purple and teal undertones that cast a technological glow across the scene. Small holographic error messages and compilation warnings materialize and dissolve in the air like digital fireflies. The cat's fur has a slight pixel distortion effect, suggesting a glitch in the digital reality. The overall atmosphere is both whimsical and technologically advanced, blending organic and digital elements in a seamless, surreal composition.`},
+The lighting is warm but technical, with the main light source coming from the monitors, creating a cozy tech atmosphere. The cat's fur is rendered in sharp detail, with slight digital enhancement that makes it seem to shimmer. The overall mood is focused but relaxed, blending the natural and digital worlds.`},
             
             {"role": "user", "content": `make a prosaic prompt for FLUX image generation of ${input}`}
         ],
-        model: "gpt-4", // Upgraded to GPT-4 for better descriptive capabilities
-        temperature: 1.2, // Increased temperature for more creative outputs
+        model: "gpt-4",
+        temperature: 1.0, // Slightly reduced temperature for more grounded outputs
     });
     
     console.log('assist', input);

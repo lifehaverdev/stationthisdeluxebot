@@ -366,12 +366,25 @@ async function react(message, emoji = null) {
     
 }
 
+function chargeGated(message) {
+    const reacts = ["👎", "🤔", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🌚", "🌭","🤣", "🍌", "💔", "😐", "🖕", "😈", "🙈", "🤪", "🗿", "🙉", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
+    const which = Math.floor(Math.random() * reacts.length)
+    react(message,reacts[which])
+    const reply_markup = {
+        inline_keyboard: [
+            [{text: 'Add Charge ⚡️', url: `https://miladystation2.net/charge`}]
+        ]
+    }
+    sendMessage(message, "You need to have charge on your account to use this feature. Please add funds to continue.", {reply_markup})
+    lobby[message.from.id].balance = '';
+}
+
 function gated(message) {
     const reacts = ["👎", "🤔", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🌚", "🌭","🤣", "🍌", "💔", "😐", "🖕", "😈", "🙈", "🤪", "🗿", "🙉", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"]
-        const which = Math.floor(Math.random() * reacts.length)
-        react(message,reacts[which])
-        //sendMessage(message,`You don't have enough tokens to use this feature lol \n\n Buy${lobby[message.from.id].balance > 0 ? ' more' : ''} MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
-        lobby[message.from.id].balance = '';
+    const which = Math.floor(Math.random() * reacts.length)
+    react(message,reacts[which])
+    //sendMessage(message,`You don't have enough tokens to use this feature lol \n\n Buy${lobby[message.from.id].balance > 0 ? ' more' : ''} MS2 🥂\n\n\`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg\``,{parse_mode: 'MarkdownV2'})
+    lobby[message.from.id].balance = '';
 }
 
 function compactSerialize(data) {
@@ -472,7 +485,7 @@ module.exports = {
     compactSerialize,
     makeBaseData,
     editMessage, updateMessage,
-    gated,
+    gated, chargeGated,
     calculateDiscount,
     cleanPrompt,
     DEV_DMS,
