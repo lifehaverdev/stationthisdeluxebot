@@ -580,7 +580,8 @@ actionMap['utils_interrogate'] = async (message, user) => {
     const ogmessage = workspace[user]?.message
     const isFlux = lobby[user].createSwitch == 'FLUX'
     if (!image) {
-        await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to interrogate.`})
+        const chatId = ogmessage.chat.id;
+        await editMessage({chat_id: chatId, message_id: ogmessage.message_id,text: `Please send an image to interrogate.`})
         if(isFlux){
             setUserState({...message, from: {id: user}}, STATES.FLUXINTERROGATE);
         } else {

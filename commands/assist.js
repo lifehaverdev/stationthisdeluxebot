@@ -83,7 +83,94 @@ async function promptAssist(message, flux) {
     }
 }
 
+// Generic GPT interaction function
+async function gptAssist({ messages, model = "gpt-4", temperature = 0.7, formatResult = (content) => content }) {
+    const start = process.hrtime();
+    
+    // Add system message to handle refusals uniformly
+    const messagesWithRefusalHandling = [
+        {
+            role: "system", 
+            content: "You are a helpful AI assistant. If you cannot or should not fulfill a request for any reason (ethical concerns, unclear instructions, etc), respond only with 'NOICANT'. Otherwise, proceed with the request as normal."
+        },
+        ...messages
+    ];
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: model,
+            messages: messagesWithRefusalHandling,
+            temperature: temperature,
+        });
+
+        if (completion?.choices?.[0]?.message?.content) {
+            // Check if response is the refusal token
+            if (completion.choices[0].message.content.trim() === 'NOICANT') {
+                return null;
+            }
+            
+            const result = formatResult(completion.choices[0].message.content);
+            const end = process.hrtime();
+            
+            return {
+                time: end[0] - start[0],
+                result
+            };
+        } else {
+            console.error("No valid response from GPT");
+            return null;
+        }
+    } catch (error) {
+        console.error("Error in gptAssist:", error);
+        throw error;
+    }
+}
+
+// Format functions
+const formatters = {
+    // Returns raw text
+    raw: (content) => content,
+    
+    // Formats as JSON if possible
+    json: (content) => {
+        try {
+            return JSON.parse(content);
+        } catch (e) {
+            console.warn("Could not parse JSON response:", e);
+            return content;
+        }
+    },
+    
+    // Formats as comma-separated list
+    list: (content) => content.split(',').map(item => item.trim()),
+
+    // Formats trait values in name|prompt|rarity format
+    traits: (content) => {
+        // Split on newlines and filter empty lines
+        return content.split('\n')
+            .map(line => line.trim())
+            .filter(line => line)
+            .map(line => {
+                const [name, prompt, rarity] = line.split('|').map(s => s.trim());
+                // Validate format
+                if (!name || !prompt || !rarity) {
+                    throw new Error('Invalid trait format');
+                }
+                return `${name}|${prompt}|${rarity}`;
+            })
+            .join('\n');
+    },
+
+    // Formats master prompt with trait type placeholders
+    masterPrompt: (content) => {
+        // Ensure trait types are properly formatted with double brackets
+        return content.replace(/\[\[([^\]]+)\]\]/g, (_, type) => `[[${type.trim()}]]`);
+    }
+};
+
 
 module.exports = {
-    promptAssist
+    promptAssist,
+    gptAssist,
+    formatters
 }

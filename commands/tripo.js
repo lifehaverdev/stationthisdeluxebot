@@ -16,7 +16,6 @@ function debugLog(message) {
         console.log(message);
     }
 }
-
 async function uploadImage(imagePath) {
     const apiKey = process.env.TRIPO
     try {
@@ -56,6 +55,16 @@ async function uploadImage(imagePath) {
         debugLog('Upload successful, parsing response');
         const data = await response.json();
         debugLog(`Received image token: ${data.data.image_token}`);
+
+        // Remove the temporary image file after successful upload
+        try {
+            await fs.promises.unlink(imagePath);
+            debugLog(`Temporary file ${imagePath} removed successfully`);
+        } catch (unlinkError) {
+            debugLog(`Warning: Failed to remove temporary file: ${unlinkError.message}`);
+            // Continue execution even if file removal fails
+        }
+
         return {
             success: true,
             imageToken: data.data.image_token
