@@ -264,7 +264,6 @@ function chooseIdByMachine(ids,promptObj) {
 function prepareRequest(promptObj) {
     const {ids, inputs} = getDeploymentIdByType(promptObj.type);
     const comfydeployid = chooseIdByMachine(ids, promptObj);
-    // Prepare the request body dynamically based on workflow inputs
     
     const body = {
         deployment_id: comfydeployid,
@@ -272,9 +271,27 @@ function prepareRequest(promptObj) {
         inputs: {}
     };
 
+    // Define image-related input fields that need special handling
+    const imageInputFields = [
+        'input_control_image',
+        'input_style_image',
+        'input_pose_image',
+        'input_image'
+    ];
+
     inputs.forEach(inputKey => {
         if (promptObj.hasOwnProperty(inputKey)) {
-            body.inputs[inputKey] = promptObj[inputKey];
+            // For image fields, verify the URL is still valid or provide default
+            if (imageInputFields.includes(inputKey)) {
+                // If the URL is expired or missing, use empty string as fallback
+                const imageUrl = promptObj[inputKey];
+                body.inputs[inputKey] = imageUrl || '';
+            } else {
+                body.inputs[inputKey] = promptObj[inputKey];
+            }
+        } else if (imageInputFields.includes(inputKey)) {
+            // Provide default empty string for missing image fields
+            body.inputs[inputKey] = '';
         }
     });
 

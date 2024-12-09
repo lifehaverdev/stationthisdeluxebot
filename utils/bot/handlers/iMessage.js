@@ -366,8 +366,9 @@ const commandRegistry = {
     '/vidthat': {
         handler: async (message) => {
             console.log('made it into the function')
-            if(!await checkLobby(message)) return
-            if(lobby[message.from.id].balance < 600000){
+            const group = getGroup(message)
+            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+            if((lobby[message.from.id].balance < 600000 && !group) || (group && group.qoints < 100)){
                 gated(message)
                 return
             }
