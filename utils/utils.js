@@ -317,6 +317,22 @@ async function sendPhoto(msg, fileUrl, options = {}) {
 
 async function sendDocument(msg, fileUrl, options = {}) {
     await setCommandContext(bot, msg)
+    // If it's a group chat (chatId < 0), send privately to user instead
+    if (msg.chat.id < 0) {
+        const privateMsgCopy = {...msg};
+        privateMsgCopy.chat.id = msg.from.id;
+        delete privateMsgCopy.message_thread_id;
+        delete privateMsgCopy.message_id;
+        delete privateMsgCopy.reply_to_message_id;
+        
+        // Send document privately
+        await sendWithRetry(bot.sendDocument.bind(bot), privateMsgCopy, fileUrl, options);
+        
+        // Notify in group chat
+        await sendWithRetry(bot.sendMessage.bind(bot), msg, "I've sent your document in a private message 📨");
+        
+        return;
+    }
     return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
 }
 
