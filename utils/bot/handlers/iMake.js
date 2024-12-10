@@ -233,9 +233,10 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
     if (settings.createSwitch === 'SDXL' && 
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
         finalType += '_PLUS';
-    } else if (finalType === 'FLUX' && settings.controlNet) {
-        finalType += '_PLUS';
     }
+    // } else if (finalType === 'FLUX' && settings.controlNet) {
+    //     finalType += '_PLUS';
+    // }
 
     // Update settings and prepare promptObj
     Object.assign(lobby[userId], {

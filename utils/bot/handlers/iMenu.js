@@ -268,18 +268,18 @@ function generateFeatureMenu(settings, balance, context) {
     }
 
     //Extras for FLUX
-    if (settings.createSwitch === 'FLUX' && balance >= 400000) {
-        buttons.push([
-            {
-                text: settings.controlNet && settings.input_control_image
-                    ? settings.advancedUser ? '✅🩻' : '✅control'
-                    : settings.controlNet
-                    ? settings.advancedUser ? '❗️🩻' : '❗️control'
-                    : settings.advancedUser ? '⚪️🩻' : '⚪️control',
-                callback_data: `togplus_${context}_controlNet`,
-            },
-        ]);
-    }
+    // if (settings.createSwitch === 'FLUX' && balance >= 400000) {
+    //     buttons.push([
+    //         {
+    //             text: settings.controlNet && settings.input_control_image
+    //                 ? settings.advancedUser ? '✅🩻' : '✅control'
+    //                 : settings.controlNet
+    //                 ? settings.advancedUser ? '❗️🩻' : '❗️control'
+    //                 : settings.advancedUser ? '⚪️🩻' : '⚪️control',
+    //             callback_data: `togplus_${context}_controlNet`,
+    //         },
+    //     ]);
+    // }
 
     // Insufficient balance (only Cancel button)
     if (balance < 400000) {
@@ -419,19 +419,26 @@ prefixHandlers['createswitch_'] = (action, message, user) => {
 actionMap['switchModel'] = (message, user, context, target) => {
     creationSwitch(message, user, context, target);
 };
-
 function creationSwitch(message, user, context, target) {
-    // Ensure the user exists in the lobby
-    if (!lobby.hasOwnProperty(user)) {
-        console.log('creationSwitch callback couldn’t find user in lobby');
+    // Check for group first
+    const group = getGroup(message);
+    
+    // Ensure the user exists in the lobby if not a group
+    if (!group && !lobby.hasOwnProperty(user)) {
+        console.log(`creationSwitch callback couldn't find user in lobby`);
         return;
     }
 
-    // Update the createSwitch value in the user's settings
-    const settings = lobby[user];
+    // Get settings from either group or lobby
+    const settings = group ? group.settings : lobby[user];
+
     if (['FLUX', 'SD1.5', 'SDXL', 'SD3'].includes(target) && settings.createSwitch != target) {
+        // Update createSwitch and turn off feature flags
         settings.createSwitch = target;
-        console.log(`createSwitch updated to: ${target}`);
+        settings.controlNet = false;
+        settings.openPose = false; 
+        settings.styleTransfer = false;
+        console.log(`createSwitch updated to: ${target} and feature flags reset`);
     } else if(settings.createSwitch == target) {
         return
     } else {
@@ -452,11 +459,11 @@ function creationSwitch(message, user, context, target) {
             break;
         case 'set':
             // Call setMenu or any other relevant menu for 'set' context
-            const setMenu = iMenu.buildSetMenu(settings, null, settings.balance);
+            const setMenu = iMenu.buildSetMenu(settings, group, settings.balance);
             editMessage({
                 chat_id: message.chat.id,
                 message_id: message.message_id,
-                text: 'Set menu updated.',
+                text: group ? `${group.title} Settings` : 'Settings',
                 ...setMenu,
             });
             break;
