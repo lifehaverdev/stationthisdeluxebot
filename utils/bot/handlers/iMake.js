@@ -231,6 +231,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     // Append control, style, and pose flags to the type
     if (settings.createSwitch === 'SDXL' && 
+        (settings.type == 'MAKE' || settings.type == 'I2I' || settings.type == 'I2I_AUTO') &&
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
         finalType += '_PLUS';
     }
