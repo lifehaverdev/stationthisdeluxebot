@@ -21,6 +21,8 @@ const {
     deleteStudio,
     saveStudio,
  } = require('../../../db/mongodb')
+ const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
+ const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { gptAssist, formatters } = require('../../../commands/assist');
  const fs = require('fs')
  const { checkIn } = require('../gatekeep')
@@ -163,95 +165,77 @@ async function handleCollectionMenu(message,user,collectionId) {
     setUserState(message,STATES.IDLE)
 }
 
-function calculateCompletionPercentage(collectionData) {
-    const { config } = collectionData;
-    const traitTypes = config.traitTypes;
 
-    // Handle the case where there are no trait types yet
-    if (traitTypes.length === 0) {
-        return 0; // 0% completion if no trait types are defined
-    }
+// async function buildCollectionMenu(userId,collectionId) {
+//     try {
+//         const COMPLETION_THRESHOLD = 100
+//         let collectionData = await getOrLoadCollection(userId,collectionId)
+//         const { name, status, submitted, config, totalSupply } = collectionData;
 
-    // Calculate completion as a percentage based on the number of trait types
-    const maxTraitTypes = 10; // 10 trait types means 100% completion
-    const currentTraitTypes = traitTypes.length;
+//         // Calculate total possible combinations
+//         let totalCombinations = 1;
+//         if (config.traitTypes && config.traitTypes.length > 0) {
+//             config.traitTypes.forEach(traitType => {
+//                 if (traitType.traits) {
+//                     totalCombinations *= traitType.traits.length;
+//                 }
+//             });
+//         }
 
-    // Calculate the percentage
-    const completionPercentage = Math.min((currentTraitTypes / maxTraitTypes) * 100, 100);
-
-    return completionPercentage;
-}
-
-async function buildCollectionMenu(userId,collectionId) {
-    try {
-        const COMPLETION_THRESHOLD = 100
-        let collectionData = await getOrLoadCollection(userId,collectionId)
-        const { name, status, submitted, config, totalSupply } = collectionData;
-
-        // Calculate total possible combinations
-        let totalCombinations = 1;
-        if (config.traitTypes && config.traitTypes.length > 0) {
-            config.traitTypes.forEach(traitType => {
-                if (traitType.traits) {
-                    totalCombinations *= traitType.traits.length;
-                }
-            });
-        }
-
-        let menuText = `${name}\nSTATUS: ${status}`;
+//         let menuText = `${name}\nSTATUS: ${status}`;
         
-        // Add metadata overview
-        menuText += `\n\nMETADATA OVERVIEW:`;
-        menuText += `\n• Total Supply: ${totalSupply || 'Not set'}`;
-        menuText += `\n• Possible Combinations: ${totalCombinations.toLocaleString()}`;
-        if (totalSupply && totalCombinations < totalSupply) {
-            menuText += `\n⚠️ Warning: Total supply exceeds possible combinations!`;
-        }
-        menuText += `\n• Trait Types: ${config.traitTypes?.length || 0}`;
-        menuText += `\n• Base URI: ${config.baseURI ? '✓' : '✗'}`;
-        menuText += `\n• Description: ${config.description ? '✓' : '✗'}`;
-        if (collectionData.chain === 'sol') {
-            menuText += `\n• Royalties: ${config.royalties || '0'}%`;
-        }
+//         // Add metadata overview
+//         menuText += `\n\nMETADATA OVERVIEW:`;
+//         menuText += `\n• Total Supply: ${totalSupply || 'Not set'}`;
+//         menuText += `\n• Possible Combinations: ${totalCombinations.toLocaleString()}`;
+//         if (totalSupply && totalCombinations < totalSupply) {
+//             menuText += `\n⚠️ Warning: Total supply exceeds possible combinations!`;
+//         }
+//         menuText += `\n• Trait Types: ${config.traitTypes?.length || 0}`;
+//         menuText += `\n• Base URI: ${config.baseURI ? '✓' : '✗'}`;
+//         menuText += `\n• Description: ${config.description ? '✓' : '✗'}`;
+//         if (collectionData.chain === 'sol') {
+//             menuText += `\n• Royalties: ${config.royalties || '0'}%`;
+//         }
 
-        if (submitted) {
-            const timeSinceSubmitted = Math.floor((Date.now() - submitted) / 1000);
-            menuText += `\n\nSubmitted: ${timeSinceSubmitted} seconds ago`;
-        }
+//         if (submitted) {
+//             const timeSinceSubmitted = Math.floor((Date.now() - submitted) / 1000);
+//             menuText += `\n\nSubmitted: ${timeSinceSubmitted} seconds ago`;
+//         }
 
-        const inlineKeyboard = [];
+//         const inlineKeyboard = [];
 
-        inlineKeyboard.push([{ text: '↖︎', callback_data: `collectionModeMenu` }]);
-        inlineKeyboard.push([{ text: 'metadata', callback_data: `collectionMetaData_${collectionId}` }])
-        inlineKeyboard.push([{ text: 'config', callback_data: `collectionConfigMenu_${collectionId}` }])
-        inlineKeyboard.push([{ text: 'consult', callback_data: `collectionConsult_${collectionId}` }])
+//         inlineKeyboard.push([{ text: '↖︎', callback_data: `collectionModeMenu` }]);
+//         inlineKeyboard.push([{ text: 'metadata', callback_data: `collectionMetaData_${collectionId}` }])
+//         inlineKeyboard.push([{ text: 'config', callback_data: `collectionConfigMenu_${collectionId}` }])
+//         inlineKeyboard.push([{ text: 'consult', callback_data: `collectionConsult_${collectionId}` }])
 
-        if (!submitted) {
-            let completedCount = calculateCompletionPercentage(collectionData);
+//         if (!submitted) {
+//             let completedCount = calculateCompletionPercentage(collectionData);
             
-            inlineKeyboard.push(
-                [
-                    { text: '🗑️', callback_data: `rmc_${collectionId}` },
-                    {text: '💾', callback_data: `savec_${collectionId}`}
-            ]
-            );
+//             inlineKeyboard.push(
+//                 [
+//                     { text: '🗑️', callback_data: `rmc_${collectionId}` },
+//                     {text: '💾', callback_data: `savec_${collectionId}`}
+//             ]
+//             );
 
-            if (completedCount >= COMPLETION_THRESHOLD) {
-                inlineKeyboard.push([{ text: 'Submit', callback_data: `sc_${collectionId}` }]);
-            }
-        }
+//             if (completedCount >= COMPLETION_THRESHOLD) {
+//                 inlineKeyboard.push([{ text: 'Submit', callback_data: `sc_${collectionId}` }]);
+//             }
+//         }
         
-        return {
-            text: menuText,
-            reply_markup: {
-                inline_keyboard: inlineKeyboard
-            }
-        };
-    } catch (error) {
-        console.error("Error building collection menu:", error);
-        return null;
-    }
-}
+//         return {
+//             text: menuText,
+//             reply_markup: {
+//                 inline_keyboard: inlineKeyboard
+//             }
+//         };
+//     } catch (error) {
+//         console.error("Error building collection menu:", error);
+//         return null;
+//     }
+// }
 
 //prefixHandlers['rmc_'] = 
 // prefixHandlers['rmc_'] = (action, message, user) => handlePrefix(action, message, user, 'removeCollection');
@@ -299,30 +283,6 @@ async function removeCollection(message,user, collectionId) {
 }
 
 
-async function getOrLoadCollection(userId, collectionId) {
-    console.log('userId',userId,'collectionId',collectionId)
-    if (studio[userId]?.[collectionId]) {
-        console.log(`Using cached collection data for user ${userId}, collection ${collectionId}`);
-        return studio[userId][collectionId];
-    }
-
-    console.log(`Loading collection data for user ${userId}, collection ${collectionId} from database...`);
-    const collectionData = await loadCollection(collectionId);
-
-    if (!collectionData) {
-        throw new Error(`collection data not found for ID ${collectionId}`);
-    }
-
-    // Initialize studio for the user if necessary
-    if (!studio[userId]) {
-        studio[userId] = {};
-    }
-
-    // Cache the loaded data in the namespaced studio
-    studio[userId][collectionId] = collectionData;
-    console.log('collection data loaded and cached in studio',studio[userId][collectionId])
-    return collectionData;
-}
 
 
 function handlePrefix(action, message, user, actionKey) {
@@ -769,55 +729,68 @@ async function handleEditWorkflow(message,user,collectionId) {
 
 prefixHandlers['testCollection_'] = (action, message, user) => handlePrefix(action, message, user, 'testCollection')
 actionMap['testCollection'] = handleTestCollection
-async function handleTestCollection(message,user,collectionId) {
-    console.log('Handling test collection for user:', user, 'collection:', collectionId);
-    console.log('Handling test collection for user:', user, 'collection:', collectionId);
+async function handleTestCollection(message, user, collectionId) {
     const collection = await getOrLoadCollection(user, collectionId);
+    const { config } = collection;
+    const { masterPrompt, traitTypes } = config;
     
-    // Get master prompt and trait types
-    const { masterPrompt, traitTypes } = collection.config;
+    // Use the workflow value as the prefix
+    const prefix = config.workflow.toLowerCase();
     
-    if (!masterPrompt || !traitTypes || traitTypes.length === 0) {
-        await editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: "Cannot test - collection needs a master prompt and trait types configured first"
-        });
-        return;
-    }
-
-    // Select random trait values based on rarity weights
+    // First pass: identify excluded trait types based on master prompt
+    const excludedByPrompt = new Set();
+    const exclusionMatches = masterPrompt.match(/\[([^\[\]]*)\]/g) || [];
+    
+    // Build dependency graph from trait type exclusions
+    const exclusionGraph = new Map();
+    traitTypes.forEach(type => {
+        if (type.excludes) {
+            exclusionGraph.set(type.title, new Set(type.excludes));
+        }
+    });
+    
+    // Select traits while respecting exclusions
     let selectedTraits = {};
-    traitTypes.forEach(traitType => {
-        if (!traitType.traits || traitType.traits.length === 0) return;
+    let unavailableTraits = new Set();
+    
+    // Randomize trait type order to avoid bias
+    const shuffledTraitTypes = [...traitTypes].sort(() => Math.random() - 0.5);
+    
+    for (const traitType of shuffledTraitTypes) {
+        if (unavailableTraits.has(traitType.title)) continue;
         
-        // Calculate total weight
-        const totalWeight = traitType.traits.reduce((sum, trait) => sum + (trait.rarity || 1), 0);
-        
-        // Generate random number between 0 and total weight
-        let random = Math.random() * totalWeight;
-        
-        // Find the trait that corresponds to this random value
-        let selectedTrait = traitType.traits[0];
-        for (const trait of traitType.traits) {
-            random -= (trait.rarity || 1);
-            if (random <= 0) {
-                selectedTrait = trait;
-                break;
+        // Randomly decide whether to include this trait
+        if (Math.random() < 0.5 && traitType.traits?.length > 0) {
+            // Select trait value based on rarity
+            const totalWeight = traitType.traits.reduce((sum, trait) => sum + (trait.rarity || 1), 0);
+            let random = Math.random() * totalWeight;
+            let selectedTrait = null;
+            
+            for (const trait of traitType.traits) {
+                random -= (trait.rarity || 1);
+                if (random <= 0) {
+                    selectedTrait = trait;
+                    break;
+                }
+            }
+            
+            if (selectedTrait) {
+                selectedTraits[traitType.title] = selectedTrait.prompt;
+                
+                // Mark excluded traits as unavailable
+                if (traitType.excludes) {
+                    traitType.excludes.forEach(excluded => unavailableTraits.add(excluded));
+                }
+                if (exclusionGraph.has(traitType.title)) {
+                    exclusionGraph.get(traitType.title).forEach(excluded => 
+                        unavailableTraits.add(excluded));
+                }
             }
         }
-        
-        selectedTraits[traitType.title] = selectedTrait.prompt;
-    });
-
-    // Replace placeholders in master prompt with selected trait values
-    let testPrompt = masterPrompt;
-    Object.entries(selectedTraits).forEach(([title, prompt]) => {
-        const placeholder = `[[${title}]]`;
-        testPrompt = testPrompt.replace(placeholder, prompt);
-    });
-
-    const prefix = collection.config.workflow.toLowerCase()
+    }
+    
+    // Process the prompt with our selections
+    const testPrompt = processPromptWithOptionals(masterPrompt, selectedTraits);
 
     // Display the test prompt
     await editMessage({
@@ -839,11 +812,21 @@ async function handleTestCollection(message,user,collectionId) {
 prefixHandlers['editMasterPrompt_'] = (action, message, user) => handlePrefix(action, message, user, 'editMasterPrompt')
 actionMap['editMasterPrompt'] = handleEditMasterPrompt
 
-async function handleEditMasterPrompt(message,user,collectionId) {
+async function handleEditMasterPrompt(message, user, collectionId) {
     console.log('Handling edit master prompt for user:', user, 'collection:', collectionId);
-    const collection = await getOrLoadCollection(user,collectionId)
-    let text = 'Please enter the new master prompt for your collection:\n utilize the following format: "[[traittype]] image of a [[traittype]] [[traittype]]\n'
-    text += `current trait types: ${collection.config.traitTypes.map(trait => trait.title).join(', ')}`
+    const collection = await getOrLoadCollection(user, collectionId);
+    
+    // Escape special markdown characters in the example text
+    let text = 'Please enter the new master prompt for your collection:\n\n' +
+               'Current master prompt:\n' +
+               `\`${collection.config.masterPrompt || 'No master prompt set'}\`\n\n` +
+               'Use double brackets for trait insertions: [[traittype]]\n' +
+               'Use nested brackets for optional text that depends on traits:\n' +
+               'Example: "a character [wearing a [[hat]]]"\n' +
+               '\\- With hat\\="red cap" → "a character wearing a red cap"\n' + // Escape the dash
+               '\\- With hat\\=null → "a character"\n\n' + // Escape the dash
+               'Current trait types: ' + 
+               collection.config.traitTypes.map(trait => trait.title).join(', ');
         
     // Set pending action
     studio[user].pendingAction = {
@@ -855,8 +838,11 @@ async function handleEditMasterPrompt(message,user,collectionId) {
         chat_id: message.chat.id,
         message_id: message.message_id,
         text,
+        options: {
+            parse_mode: 'MarkdownV2'
+        }
     });
-    setUserState({...message,from: {id: user},chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
+    setUserState({...message, from: {id: user}, chat: {id: message.chat.id}}, STATES.SETCOLLECTION);
 }
 
 prefixHandlers['editTraitTypes_'] = (action, message, user) => handlePrefix(action, message, user, 'editTraitTypes')
@@ -868,58 +854,59 @@ async function handleEditTraitTypes(message,user,collectionId) {
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
     setUserState(message,STATES.IDLE)
 }
-async function buildTraitTypesMenu(user, collectionId, page = 0) {
-    const collection = await getOrLoadCollection(user, collectionId);
-    const traitTypes = collection.config.traitTypes || [];
-    
-    const TRAITS_PER_PAGE = 6;
-    const totalPages = Math.ceil(traitTypes.length / TRAITS_PER_PAGE);
-    
-    const startIdx = page * TRAITS_PER_PAGE;
-    const endIdx = Math.min(startIdx + TRAITS_PER_PAGE, traitTypes.length);
-    const currentTraits = traitTypes.slice(startIdx, endIdx);
 
-    let text = `Trait Types (${traitTypes.length} total)\nPage ${page + 1} of ${Math.max(1, totalPages)}\n\n`;
+// async function buildTraitTypesMenu(user, collectionId, page = 0) {
+//     const collection = await getOrLoadCollection(user, collectionId);
+//     const traitTypes = collection.config.traitTypes || [];
     
-    // Add trait details
-    currentTraits.forEach((trait, idx) => {
-        text += `${trait.title}: ${trait.traits?.length || 0} values\n`;
-    });
+//     const TRAITS_PER_PAGE = 6;
+//     const totalPages = Math.ceil(traitTypes.length / TRAITS_PER_PAGE);
+    
+//     const startIdx = page * TRAITS_PER_PAGE;
+//     const endIdx = Math.min(startIdx + TRAITS_PER_PAGE, traitTypes.length);
+//     const currentTraits = traitTypes.slice(startIdx, endIdx);
 
-    const inlineKeyboard = [];
+//     let text = `Trait Types (${traitTypes.length} total)\nPage ${page + 1} of ${Math.max(1, totalPages)}\n\n`;
+    
+//     // Add trait details
+//     currentTraits.forEach((trait, idx) => {
+//         text += `${trait.title}: ${trait.traits?.length || 0} values\n`;
+//     });
 
-    // Add trait type buttons - 2 per row
-    for (let i = 0; i < currentTraits.length; i += 2) {
-        const row = [];
-        row.push({ text: currentTraits[i].title, callback_data: `editTraitType_${collectionId}_${startIdx + i}` });
+//     const inlineKeyboard = [];
+
+//     // Add trait type buttons - 2 per row
+//     for (let i = 0; i < currentTraits.length; i += 2) {
+//         const row = [];
+//         row.push({ text: currentTraits[i].title, callback_data: `editTraitType_${collectionId}_${startIdx + i}` });
         
-        if (i + 1 < currentTraits.length) {
-            row.push({ text: currentTraits[i + 1].title, callback_data: `editTraitType_${collectionId}_${startIdx + i + 1}` });
-        }
-        inlineKeyboard.push(row);
-    }
+//         if (i + 1 < currentTraits.length) {
+//             row.push({ text: currentTraits[i + 1].title, callback_data: `editTraitType_${collectionId}_${startIdx + i + 1}` });
+//         }
+//         inlineKeyboard.push(row);
+//     }
 
-    // Navigation row
-    const navRow = [];
-    if (page > 0) {
-        navRow.push({ text: '«', callback_data: `traitPage_${collectionId}_${page - 1}` });
-    }
-    navRow.push({ text: '+ Add Trait', callback_data: `addTrait_${collectionId}` });
-    if (page < totalPages - 1) {
-        navRow.push({ text: '»', callback_data: `traitPage_${collectionId}_${page + 1}` });
-    }
-    inlineKeyboard.push(navRow);
+//     // Navigation row
+//     const navRow = [];
+//     if (page > 0) {
+//         navRow.push({ text: '«', callback_data: `traitPage_${collectionId}_${page - 1}` });
+//     }
+//     navRow.push({ text: '+ Add Trait', callback_data: `addTrait_${collectionId}` });
+//     if (page < totalPages - 1) {
+//         navRow.push({ text: '»', callback_data: `traitPage_${collectionId}_${page + 1}` });
+//     }
+//     inlineKeyboard.push(navRow);
 
-    // Back button
-    inlineKeyboard.push([{ text: '« Back', callback_data: `collectionConfigMenu_${collectionId}` }]);
+//     // Back button
+//     inlineKeyboard.push([{ text: '« Back', callback_data: `collectionConfigMenu_${collectionId}` }]);
 
-    return {
-        text,
-        reply_markup: {
-            inline_keyboard: inlineKeyboard
-        }
-    };
-}
+//     return {
+//         text,
+//         reply_markup: {
+//             inline_keyboard: inlineKeyboard
+//         }
+//     };
+// }
 
 async function handleEditTraitTypes(message, user, collectionId) {
     console.log('handle edit trait types', message, user, collectionId);
@@ -1180,9 +1167,13 @@ async function handleAddTraitValue(message, user, collectionId, traitTypeIndex) 
                           'Red|vibrant red color|0.3\n' +
                           'Blue|deep blue color|0.3\n' +
                           'Green|forest green|0.4\n\n' +
+                          'For empty/null traits, use:\n' +
+                          'None|empty|0.2\n' +
+                          'Empty|null|0.1\n\n' +
                           'Note:\n' +
                           '- You can add multiple traits by putting each on a new line\n' +
-                          '- Prompt and rarity are optional. Default rarity is 0.5';
+                          '- Prompt and rarity are optional. Default rarity is 0.5\n' +
+                          '- Special values for empty traits: "empty", "null", "0", or ""';
 
     await editMessage({
         chat_id: message.chat.id,
@@ -1508,6 +1499,11 @@ async function handleConsultAI(message, user, collectionId) {
                     Analyze the provided prompt template and example to suggest improvements that enhance style and mood according to the user's request.
                     
                     IMPORTANT FORMATTING RULES:
+                    - Use [[TRAITTYPE]] for trait insertions
+                    - Use [epilogue [[TRAITTYPE]]] for optional text that depends on traits
+                      Example: "a character [wearing a [[hat]]]" 
+                      - With hat="red cap" → "a character wearing a red cap"
+                      - With hat=null → "a character"
                     - Return ONLY the improved prompt template
                     - Maintain all [[TRAITTYPE]] placeholders exactly as they appear
                     - Do not include any prefix text like "Refined template:" or similar
@@ -1594,9 +1590,16 @@ async function handleConsultAI(message, user, collectionId) {
                         1. An expanded master prompt that incorporates new elements
                         2. New trait types that complement the expansion
                         
+                        IMPORTANT PROMPT FORMATTING:
+                        - Use [[TRAITTYPE]] for trait insertions
+                        - Use [epilogue [[TRAITTYPE]]] for optional text that depends on traits
+                          Example: "a character [wearing a [[hat]]] [with a [[pet]]]"
+                          - With empty traits → "a character"
+                          - With hat="red cap", pet=null → "a character wearing a red cap"
+                        
                         Return a JSON object with:
                         {
-                            "masterPrompt": "expanded prompt with [[TRAITTYPE]] placeholders",
+                            "masterPrompt": "expanded prompt with proper trait syntax",
                             "traitTypes": [
                                 {
                                     "title": "trait type name",
@@ -1767,6 +1770,71 @@ async function handleSkipAIChange(message, user, collectionId, changeType) {
     
     await sendMessage(message, `${changeType} changes have been skipped.`);
     await handleCollectionMenu(message, user, collectionId);
+}
+
+function processPromptWithOptionals(masterPrompt, traitValues) {
+    // First, validate trait combinations and mark excluded traits
+    let excludedTraits = new Set();
+    const exclusionMatches = masterPrompt.match(/\[([^\[\]]*)\]/g) || [];
+    
+    for (const match of exclusionMatches) {
+        // Find trait placeholder and its exclusions
+        const innerMatch = match.match(/\[\[([^\]]+)\]\]([^[\]]*)/);
+        if (innerMatch) {
+            const [_, traitType, exclusions] = innerMatch;
+            const traitValue = traitValues[traitType];
+            
+            // If this trait has a value, mark its exclusions
+            if (traitValue && !isBlankValue(traitValue)) {
+                const exclusionList = exclusions.split(',').map(e => e.trim());
+                exclusionList.forEach(excluded => excludedTraits.add(excluded));
+            }
+        }
+    }
+    
+    // Now process the prompt with exclusions in mind
+    let processedPrompt = masterPrompt;
+    const traitMatches = masterPrompt.match(/\[\[([^\]]+)\]\]/g);
+    
+    if (traitMatches) {
+        traitMatches.forEach(match => {
+            const traitType = match.slice(2, -2); // Remove [[ and ]]
+            const traitValue = traitValues[traitType];
+            
+            // Check if the trait value is considered "blank"
+            const isBlank = !traitValue || 
+                            traitValue.trim() === '' || 
+                            traitValue === 0 || 
+                            traitValue === '0' || 
+                            traitValue.toLowerCase() === 'null' || 
+                            traitValue.toLowerCase() === 'empty';
+            
+            if (isBlank) {
+                processedPrompt = processedPrompt.replace(match, '');
+            } else {
+                processedPrompt = processedPrompt.replace(match, traitValue);
+            }
+        });
+    }
+    
+    // Second pass: Remove optional sections with empty traits
+    while (true) {
+        const optionalMatch = processedPrompt.match(/\[([^\[\]]*)\]/);
+        if (!optionalMatch) break;
+        
+        const [fullMatch, innerContent] = optionalMatch;
+        
+        // If the inner content is empty or only contains spaces
+        if (innerContent.trim() === '') {
+            processedPrompt = processedPrompt.replace(fullMatch, '');
+        } else {
+            // Remove the brackets but keep the content
+            processedPrompt = processedPrompt.replace(fullMatch, innerContent);
+        }
+    }
+    
+    // Clean up any multiple spaces
+    return processedPrompt.replace(/\s+/g, ' ').trim();
 }
 
 
