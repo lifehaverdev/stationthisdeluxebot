@@ -373,7 +373,7 @@ const commandRegistry = {
                 return
             }
             const target = message.reply_to_message;
-            if(target.photo) {
+            if(target.photo || target.document) {
                 target.from.id = message.from.id;
                 target.message_id = message.message_id
                 iMedia.handleMs3V2ImgFile(target)

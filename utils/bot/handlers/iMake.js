@@ -113,6 +113,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         timeRequested: Date.now(),
         prompt: userContext.prompt,
         input_batch: userContext.input_batch,
+        input_text: message.from.username,
         input_seed: userContext.input_seed,
         input_negative: userContext.input_negative || 'embedding:easynegative'
     };
@@ -270,48 +271,42 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 }
 
 
-
-
-
 async function handleMake(message) {
+    lobby[message.from.id].createSwitch = 'SDXL'
     await handleTask(message, 'MAKE', STATES.MAKE, true, null);
 }
 
 async function handleMake3(message) {
+    lobby[message.from.id].createSwitch = 'SD3'
     await handleTask(message, 'MAKE3', STATES.MAKE3, false, 400000)
 }
 
 async function handleMog(message) {
+    lobby[message.from.id].createSwitch = 'FLUX'
     await handleTask(message, 'MOG', STATES.MOG, false, 0)
 }
 
 async function handleDegod(message) {
     console.log('DEGODDING SOMETHING')
+    lobby[message.from.id].createSwitch = 'FLUX'
     await handleTask(message, 'DEGOD', STATES.DEGOD, false, 0)
 }
 
 async function handleMilady(message) {
     console.log('milady')
+    lobby[message.from.id].createSwitch = 'FLUX'
     await handleTask(message, 'MILADY', STATES.MILADY, false, 0)
-}
-
-async function handleChud(message) {
-    console.log('chud')
-    await handleTask(message, 'CHUD', STATES.CHUD, false, 0)
 }
 
 async function handleLoser(message) {
     console.log('loser')
+    lobby[message.from.id].createSwitch = 'FLUX'
     await handleTask(message, 'LOSER', STATES.LOSER, false, 0)
-}
-
-async function handleRadbro(message) {
-    console.log('radbro')
-    await handleTask(message, 'RADBRO', STATES.RADBRO, false, 0)
 }
 
 async function handleFlux(message) {
     console.log('flux')
+    lobby[message.from.id].createSwitch = 'FLUX'
     handleTask(message,'FLUX',STATES.FLUX,false,0)
 }
 
@@ -461,6 +456,6 @@ module.exports = {
     handleInpaintPrompt,
     handleInpaintTarget,
     handleMog, 
-    handleDegod, handleMilady, handleChud, handleRadbro, handleLoser,
+    handleDegod, handleMilady, handleLoser,
     handleFlux
 }

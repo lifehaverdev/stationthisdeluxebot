@@ -27,14 +27,14 @@ function capUserRequests(userId, message) {
     const count = taskQueue.filter(t => t.promptObj.userId === userId).length;
     //console.log('task message in enqueue',task.message)
     // Check if the user has already 5 tasks in the queue
-    if (count >= 5) {
+    if (count >= 3) {
         console.log(`Task not enqueued. User ${task.message.from.first_name} has reached the maximum task limit.`);
         react(message, "😭");
         cap = true; // Exit the function without enqueuing the new task
     }
     return cap;
 }
- 
+
 function handleEnqueueRegen(task) {
     // Check if this is a regeneration task by looking for a `isRegen` flag in the promptObj
     if(!lobby.hasOwnProperty(task.promptObj.userId)){
