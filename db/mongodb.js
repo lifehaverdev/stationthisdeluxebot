@@ -260,12 +260,7 @@ async function getUsersByWallet(walletAddress) {
 
 // Function to create new user data with default settings
 async function createDefaultUserData(userId) {
-    //const job = async () => {
-        //const client = await getCachedClient();
         try {
-            //const db = client.db(dbName);
-            //const userSettingsCollection = db.collection('users');
-
             // Create default user settings
             const userSettings = { ...defaultUserData, userId: userId, 'newb': true };
             //await userSettingsCollection.insertOne(userSettings);
@@ -275,16 +270,7 @@ async function createDefaultUserData(userId) {
             console.error('Error creating user settings:', error);
             throw error; // Throw error so the caller knows the request failed
         }
-    //};
 
-    // Enqueue the job and await its result
-    // try {
-    //     const userData = await dbQueue.enqueue(job);
-    //     return userData;  // Return the result to the caller
-    // } catch (error) {
-    //     console.error('[getUserDataByUserId] Failed to get user data:', error);
-    //     throw error;
-    // }
 }
 
 
@@ -709,7 +695,7 @@ async function getGroupDataByChatId(chatId) {
         const userData = await dbQueue.enqueue(job);
         return userData;  // Return the result to the caller
     } catch (error) {
-        console.error('[getUserDataByUserId] Failed to get user data:', error);
+        console.error('[getGroupDataByChatId] Failed to get user data:', error);
         throw error;
     }
 }

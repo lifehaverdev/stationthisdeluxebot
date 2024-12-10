@@ -344,12 +344,38 @@ async function handleUserData(userId, message) {
             // Fetch or create user data
             try {
                 userData = await getUserDataByUserId(userId);
+                
                 if (!userData) {
+                    // Only create new user data if we're certain none exists
+                    console.log(`No existing user data found for userId ${userId}, creating default...`);
+                    react(message,"🤝")
                     userData = await createDefaultUserData(userId);
+                    if (!userData) {
+                        throw new Error("Failed to create default user data.");
+                    }
                 }
-                if (!userData) throw new Error("Failed to initialize user data.");
             } catch (error) {
-                console.error(`Error initializing user data for userId ${userId}:`, error);
+                // Log the specific error type and message
+                console.error(`Error handling user data for userId ${userId}:`, {
+                    errorType: error.name,
+                    errorMessage: error.message,
+                    stack: error.stack
+                });
+
+                // If it's a network or DB connection error, fail safely
+                if (error.name === 'MongoNetworkError' || error.name === 'MongoTimeoutError') {
+                    await sendMessage(message, 'Unable to access user data right now. Please try again in a few minutes.');
+                    return false;
+                }
+
+                // If it's any other error during fetch, don't risk overwriting existing data
+                if (error.message !== "Failed to create default user data.") {
+                    await sendMessage(message, 'There was an error accessing your profile. Please contact support if this persists.');
+                    return false;
+                }
+
+                // Only reach here if we failed to create new user data
+                await sendMessage(message, 'Unable to create user profile. Please try again later.');
                 return false;
             }
 
