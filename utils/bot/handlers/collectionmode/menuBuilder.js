@@ -45,7 +45,7 @@ class CollectionMenuBuilder {
 
     // Helper method to build menu text
     static buildMenuText(collectionData, totalCombinations) {
-        const { name, status, submitted, config, totalSupply, chain, description } = collectionData;
+        const { name, status, submitted, config, totalSupply, chain, description, baseURI } = collectionData;
         
         let text = `${name}\nSTATUS: ${status}`;
         

@@ -23,13 +23,12 @@ const {
  } = require('../../../db/mongodb')
  const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
- const { StudioManager } = require('./collectionmode/studioManager');
+ const { StudioManager } = require('./collectionmode/StudioManager');
  const { StudioAction } = require('./collectionmode/studioAction');
  const { gptAssist, formatters } = require('../../../commands/assist');
  const fs = require('fs')
  const { checkIn } = require('../gatekeep')
 
- const studioManager = new StudioManager(studio)
  const studioAction = new StudioAction(studio)
 /*
 
@@ -189,7 +188,7 @@ async function handleSaveCollection(message,user,collectionId) {
 }
 
 async function removeCollection(message,user, collectionId) {
-    studioManager.removeCollection(user, collectionId)
+    StudioManager.removeCollection(user, collectionId)
     // Delete the collection data from the database and associated files
     await deleteStudio(collectionId);
     await writeUserDataPoint(user,'collections',lobby[user].collections)
@@ -337,7 +336,7 @@ async function handleSetChain(message,user,collectionId,chain) {
                                         await sendMessage(message, 'Please enter a valid number greater than 0');
                                         return;
                                     }
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         totalSupply: supply
                                     });
                                     backTo = 'metadata'
@@ -348,32 +347,33 @@ async function handleSetChain(message,user,collectionId,chain) {
                                         await sendMessage(message, 'Please enter a valid number between 0 and 100');
                                         return;
                                     }
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         royalties: royalty
                                     });
                                     backTo = 'metadata'
                                     break;
                                 case 'editionTitle':
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         editionTitle: message.text
                                     });
                                     backTo = 'metadata'
                                     break;
                                 case 'description':
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         description: message.text
                                     });
                                     backTo = 'metadata'
                                     break;
                                 case 'editMasterPrompt':
                                     console.log('edit master prompt', message, userId, collectionId)
-                                    backTo = await studioManager.updateMasterPrompt(userId, collectionId, message);
+                                    console.log(StudioManager)
+                                    backTo = await StudioManager.updateMasterPrompt(userId, collectionId, message);
                                     break;
                                 case 'addTrait':
-                                    backTo = studioManager.addTraitType(message, userId, collectionId)
+                                    backTo = StudioManager.addTraitType(message, userId, collectionId)
                                     break;
                                 case 'editTraitName':
-                                    backTo = studioManager.editTraitTypeName(message, userId, collectionId, traitTypeIndex)
+                                    backTo = StudioManager.editTraitTypeName(message, userId, collectionId, traitTypeIndex)
                                     break;
                                 case 'editWorkflow':
                                     const workflow = message.text;
@@ -382,7 +382,7 @@ async function handleSetChain(message,user,collectionId,chain) {
                                         await sendMessage(message, 'Please enter a valid workflow type: FLUX MAKE or MAKE3');
                                         return;
                                     }
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         config: {
                                             ...studio[userId][collectionId].config,
                                             workflow: workflow
@@ -391,13 +391,13 @@ async function handleSetChain(message,user,collectionId,chain) {
                                     backTo = 'config'
                                     break;
                                 case 'addTraitValue':
-                                    backTo = studioManager.addTraitValue(message, userId, collectionId, traitTypeIndex)
+                                    backTo = StudioManager.addTraitValue(message, userId, collectionId, traitTypeIndex)
                                     break;
                                 case 'editTraitValueName':
                                     const { traitTypeIndex: nameTypeIndex, valueIndex: nameValueIndex } = studio[userId].pendingAction;
                                     const updatedTraitTypes = [...studio[userId][collectionId].config.traitTypes];
                                     updatedTraitTypes[nameTypeIndex].traits[nameValueIndex].name = message.text;
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         config: {
                                             ...studio[userId][collectionId].config,
                                             traitTypes: updatedTraitTypes
@@ -410,7 +410,7 @@ async function handleSetChain(message,user,collectionId,chain) {
                                     const { traitTypeIndex: promptTypeIndex, valueIndex: promptValueIndex } = studio[userId].pendingAction;
                                     const updatedPromptTraits = [...studio[userId][collectionId].config.traitTypes];
                                     updatedPromptTraits[promptTypeIndex].traits[promptValueIndex].prompt = message.text;
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         config: {
                                             ...studio[userId][collectionId].config,
                                             traitTypes: updatedPromptTraits
@@ -428,7 +428,7 @@ async function handleSetChain(message,user,collectionId,chain) {
                                     }
                                     const updatedRarityTraits = [...studio[userId][collectionId].config.traitTypes];
                                     updatedRarityTraits[rarityTypeIndex].traits[rarityValueIndex].rarity = newRarity;
-                                    await studioManager.updateCollection(userId, collectionId, {
+                                    await StudioManager.updateCollection(userId, collectionId, {
                                         config: {
                                             ...studio[userId][collectionId].config,
                                             traitTypes: updatedRarityTraits
@@ -505,28 +505,13 @@ async function handleTestCollection(message, user, collectionId) {
     // Use the workflow value as the prefix
     const prefix = config.workflow.toLowerCase();
     
-    // First pass: identify excluded trait types based on master prompt
-    const excludedByPrompt = new Set();
-    const exclusionMatches = masterPrompt.match(/\[([^\[\]]*)\]/g) || [];
-    
-    // Build dependency graph from trait type exclusions
-    const exclusionGraph = new Map();
-    traitTypes.forEach(type => {
-        if (type.excludes) {
-            exclusionGraph.set(type.title, new Set(type.excludes));
-        }
-    });
-    
-    // Select traits while respecting exclusions
+    // Select traits while respecting exclusions from master prompt
     let selectedTraits = {};
-    let unavailableTraits = new Set();
     
     // Randomize trait type order to avoid bias
     const shuffledTraitTypes = [...traitTypes].sort(() => Math.random() - 0.5);
     
     for (const traitType of shuffledTraitTypes) {
-        if (unavailableTraits.has(traitType.title)) continue;
-        
         // Randomly decide whether to include this trait
         if (Math.random() < 0.5 && traitType.traits?.length > 0) {
             // Select trait value based on rarity
@@ -544,20 +529,11 @@ async function handleTestCollection(message, user, collectionId) {
             
             if (selectedTrait) {
                 selectedTraits[traitType.title] = selectedTrait.prompt;
-                
-                // Mark excluded traits as unavailable
-                if (traitType.excludes) {
-                    traitType.excludes.forEach(excluded => unavailableTraits.add(excluded));
-                }
-                if (exclusionGraph.has(traitType.title)) {
-                    exclusionGraph.get(traitType.title).forEach(excluded => 
-                        unavailableTraits.add(excluded));
-                }
             }
         }
     }
     
-    // Process the prompt with our selections
+    // Process the prompt with our selections - exclusions handled in processPromptWithOptionals
     const testPrompt = processPromptWithOptionals(masterPrompt, selectedTraits);
 
     // Display the test prompt
@@ -612,7 +588,7 @@ actionMap['editTraitTypes'] = handleEditTraitTypes
 
 async function handleEditTraitTypes(message,user,collectionId) {
     console.log('handle edit trait types',message,user,collectionId)
-    const { text, reply_markup } = await buildTraitTypesMenu(user, collectionId);
+    const { text, reply_markup } = await CollectionMenuBuilder.buildTraitTypesMenu(user, collectionId);
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
     setUserState(message,STATES.IDLE)
 }
@@ -625,7 +601,7 @@ prefixHandlers['traitPage_'] = (action, message, user) => {
 
 async function handleTraitPage(message, user, collectionId, page) {
     console.log('Handling trait page navigation for user:', user, 'collection:', collectionId, 'page:', page);
-    const { text, reply_markup } = await buildTraitTypesMenu(user, collectionId, page);
+    const { text, reply_markup } = await CollectionMenuBuilder.buildTraitTypesMenu(user, collectionId, page);
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
 }
 
@@ -875,7 +851,7 @@ async function handleDeleteTrait(message, user, collectionId, traitTypeIndex) {
     await saveStudio(collection);
     
     // Return to trait types menu
-    const { text, reply_markup } = await buildTraitTypesMenu(user, collectionId);
+    const { text, reply_markup } = await CollectionMenuBuilder.buildTraitTypesMenu(user, collectionId);
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
 }
 
@@ -1476,7 +1452,8 @@ function processPromptWithOptionals(masterPrompt, traitValues) {
     
     // Second pass: Process conditional sections with exclusions
     while (true) {
-        const conditionalMatch = processedPrompt.match(/\[([^\[\]{}]*)\]{([^{}]*)}/);
+        // Updated regex to handle nested brackets
+        const conditionalMatch = processedPrompt.match(/\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]{([^{}]*)}/);
         if (!conditionalMatch) break;
         
         const [fullMatch, content, exclusions] = conditionalMatch;
@@ -1491,7 +1468,7 @@ function processPromptWithOptionals(masterPrompt, traitValues) {
             processedPrompt = processedPrompt.replace(fullMatch, '');
         } else {
             // Keep the content but remove the brackets and exclusion
-            processedPrompt = processedPrompt.replace(fullMatch, content);
+            processedPrompt = processedPrompt.replace(fullMatch, content.trim());
         }
     }
     
