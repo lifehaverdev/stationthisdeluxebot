@@ -387,7 +387,7 @@ async function handleInpaint(message) {
 
 
 async function handleInterrogation(message) {
-    await react(message,'🤨')
+    await react(message,"👀")
     const photoUrl = await getPhotoUrl(message);
     try {
         const promptObj = {
