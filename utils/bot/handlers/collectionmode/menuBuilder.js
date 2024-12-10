@@ -1,4 +1,5 @@
 // Import necessary modules and utilities
+const { studio } = require('../../bot.js');
 const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionUtils.js');
 
 class CollectionMenuBuilder {
@@ -44,7 +45,7 @@ class CollectionMenuBuilder {
 
     // Helper method to build menu text
     static buildMenuText(collectionData, totalCombinations) {
-        const { name, status, submitted, config, totalSupply, chain } = collectionData;
+        const { name, status, submitted, config, totalSupply, chain, description } = collectionData;
         
         let text = `${name}\nSTATUS: ${status}`;
         
@@ -58,8 +59,8 @@ class CollectionMenuBuilder {
         }
         
         text += `\n• Trait Types: ${config.traitTypes?.length || 0}`;
-        text += `\n• Base URI: ${config.baseURI ? '✓' : '✗'}`;
-        text += `\n• Description: ${config.description ? '✓' : '✗'}`;
+        text += `\n• Base URI: ${baseURI ? '✓' : '✗'}`;
+        text += `\n• Description: ${description ? '✓' : '✗'}`;
         
         if (chain === 'sol') {
             text += `\n• Royalties: ${config.royalties || '0'}%`;
@@ -189,6 +190,51 @@ class CollectionMenuBuilder {
         };
     }
 
+    static async buildCollectionConfigMenu(user,collectionId) {
+            
+        console.log('build collection config menu',user,collectionId)
+        const collection = await getOrLoadCollection(user,collectionId)
+        const { config } = collection
+        const { masterPrompt, traitTypes } = config
+
+        // Calculate total combinations and analyze traits
+        let totalCombinations = 1;
+        let traitAnalysis = [];
+        
+        traitTypes.forEach(trait => {
+            if (trait.traits && trait.traits.length > 0) {
+                totalCombinations *= trait.traits.length;
+                
+                // Calculate average rarity for this trait type
+                const avgRarity = trait.traits.reduce((sum, t) => sum + (t.rarity || 0.5), 0) / trait.traits.length;
+                
+                traitAnalysis.push(
+                    `- ${trait.title}: ${trait.traits.length} values (avg rarity: ${avgRarity.toFixed(2)})`
+                );
+            } else {
+                traitAnalysis.push(`- ${trait.title}: No values yet`);
+            }
+        });
+
+        const text = `Collection Config for ${collection.name}\n\n` +
+                    `Master Prompt: ${masterPrompt}\n\n` +
+                    `Trait Analysis:\n${traitAnalysis.join('\n')}\n\n` +
+                    `Total Possible Combinations: ${totalCombinations.toLocaleString()}\n` +
+                    `${totalCombinations > 10000 ? '⚠️ Warning: Large number of combinations may impact generation time' : ''}`;
+
+        return {
+            text,
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '« Back', callback_data: `ec_${collectionId}` }],
+                    [{ text: 'Edit Master Prompt', callback_data: `editMasterPrompt_${collectionId}` }],
+                    [{ text: 'Edit Trait Tree', callback_data: `editTraitTypes_${collectionId}` }],
+                    [{ text: 'Workflow', callback_data: `editWorkflow_${collectionId}` }],
+                    [{ text: 'Test', callback_data: `testCollection_${collectionId}` }]
+                ]
+            }
+        }
+    }
     // Additional helper methods as needed
     // e.g., calculateTotalCombinations, buildTraitTypesText, buildTraitTypesKeyboard
 }
