@@ -30,8 +30,21 @@ const {
  const { checkIn } = require('../gatekeep')
 
  const studioAction = new StudioAction(studio)
-/*
 
+// Logging toggles
+const test = false;
+const LOG_TEST = test;
+const LOG_TRAIT = test;
+const LOG_SELECT = test;
+const LOG_CONFLICT = test;
+const LOG_EXCLUSION = test;
+const LOG_VALIDATE = test;
+
+function logThis(active, message) {
+    if (active) console.log(message);
+}
+
+/*
 
 */
 async function getMyCollections(userId) {
@@ -497,46 +510,289 @@ async function handleEditWorkflow(message,user,collectionId) {
 
 prefixHandlers['testCollection_'] = (action, message, user) => handlePrefix(action, message, user, 'testCollection')
 actionMap['testCollection'] = handleTestCollection
-async function handleTestCollection(message, user, collectionId) {
-    const collection = await getOrLoadCollection(user, collectionId);
-    const { config } = collection;
-    const { masterPrompt, traitTypes } = config;
-    
-    // Use the workflow value as the prefix
-    const prefix = config.workflow.toLowerCase();
-    
-    // Select traits while respecting exclusions from master prompt
-    let selectedTraits = {};
-    
-    // Randomize trait type order to avoid bias
-    const shuffledTraitTypes = [...traitTypes].sort(() => Math.random() - 0.5);
-    
-    for (const traitType of shuffledTraitTypes) {
-        // Randomly decide whether to include this trait
-        if (Math.random() < 0.5 && traitType.traits?.length > 0) {
-            // Select trait value based on rarity
-            const totalWeight = traitType.traits.reduce((sum, trait) => sum + (trait.rarity || 1), 0);
-            let random = Math.random() * totalWeight;
-            let selectedTrait = null;
+
+class TraitSelector {
+    static selectTraitValue(traitType) {
+        logThis(LOG_SELECT, `[TRAIT_SELECT] Starting trait selection for type: ${traitType.title}`);
+        
+        if (!traitType.traits || !traitType.traits.length) {
+            logThis(LOG_SELECT, `[TRAIT_SELECT] No traits found for ${traitType.title}`);
+            return null;
+        }
+        
+        let totalWeight = 0;
+        traitType.traits.forEach(trait => {
+            const weight = trait.rarity || 0.5;
+            totalWeight += weight;
+            logThis(LOG_SELECT, `[TRAIT_SELECT] Adding weight for ${trait.name}: ${weight}`);
+        });
+        
+        logThis(LOG_SELECT, `[TRAIT_SELECT] Total weight calculated: ${totalWeight}`);
+        let random = Math.random() * totalWeight;
+        logThis(LOG_SELECT, `[TRAIT_SELECT] Random value generated: ${random}`);
+        
+        for (const trait of traitType.traits) {
+            random -= (trait.rarity || 0.5);
+            logThis(LOG_SELECT, `[TRAIT_SELECT] Remaining random after ${trait.name}: ${random}`);
+            if (random <= 0) {
+                logThis(LOG_SELECT, `[TRAIT_SELECT] Selected trait: ${trait.name} with prompt: ${trait.prompt}`);
+                return trait;
+            }
+        }
+        
+        return traitType.traits[0];
+    }
+
+    static isEmptyValue(value) {
+        logThis(LOG_SELECT, `[EMPTY_CHECK] Checking value: "${value}"`);
+        const isEmpty = !value || 
+                       value.trim() === '' || 
+                       value === '0' || 
+                       value.toLowerCase() === 'null' || 
+                       value.toLowerCase() === 'empty';
+        logThis(LOG_SELECT, `[EMPTY_CHECK] Is empty? ${isEmpty}`);
+        return isEmpty;
+    }
+
+    static buildConflictMap(exclusions) {
+        logThis(LOG_CONFLICT, `[CONFLICT_MAP] Building conflict map from ${exclusions.length} exclusions`);
+        const conflictMap = new Map();
+        
+        exclusions.forEach(({ targetTrait, exclusion }) => {
+            logThis(LOG_CONFLICT, `[CONFLICT_MAP] Processing conflict: ${targetTrait} <-> ${exclusion}`);
             
-            for (const trait of traitType.traits) {
-                random -= (trait.rarity || 1);
-                if (random <= 0) {
-                    selectedTrait = trait;
-                    break;
-                }
+            if (!conflictMap.has(targetTrait)) {
+                logThis(LOG_CONFLICT, `[CONFLICT_MAP] Creating new Set for ${targetTrait}`);
+                conflictMap.set(targetTrait, new Set());
+            }
+            if (!conflictMap.has(exclusion)) {
+                logThis(LOG_CONFLICT, `[CONFLICT_MAP] Creating new Set for ${exclusion}`);
+                conflictMap.set(exclusion, new Set());
             }
             
-            if (selectedTrait) {
-                selectedTraits[traitType.title] = selectedTrait.prompt;
+            logThis(LOG_CONFLICT, `[CONFLICT_MAP] Added bidirectional conflict: ${targetTrait} <-> ${exclusion}`);
+            conflictMap.get(targetTrait).add(exclusion);
+            conflictMap.get(exclusion).add(targetTrait);
+        });
+        
+        logThis(LOG_CONFLICT, `[CONFLICT_MAP] Final map size: ${conflictMap.size} traits`);
+        conflictMap.forEach((conflicts, trait) => {
+            logThis(LOG_CONFLICT, `[CONFLICT_MAP] ${trait} conflicts with: ${[...conflicts].join(', ')}`);
+        });
+        
+        return conflictMap;
+    }
+
+    static resolveConflicts(selectedTraits, conflictMap) {
+        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Starting conflict resolution`);
+        console.log(`[CONFLICT_RESOLVE] Starting conflict resolution`);
+        console.log(`[CONFLICT_RESOLVE] Initial traits:`, selectedTraits);
+        
+        const conflictingTraits = new Set(
+            [...conflictMap.keys()].filter(trait => selectedTraits[trait])
+        );
+        console.log(`[CONFLICT_RESOLVE] Found ${conflictingTraits.size} traits with potential conflicts`);
+        
+        for (const traitType of conflictingTraits) {
+            console.log(`[CONFLICT_RESOLVE] Processing conflicts for: ${traitType}`);
+            const conflicts = conflictMap.get(traitType);
+            const activeConflicts = [...conflicts].filter(conflict => selectedTraits[conflict]);
+            
+            console.log(`[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
+            
+            if (activeConflicts.length > 0) {
+                const allConflictingTraits = [traitType, ...activeConflicts];
+                console.log(`[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
+                
+                const nonEmptyTraits = allConflictingTraits.filter(t => 
+                    !this.isEmptyValue(selectedTraits[t])
+                );
+                console.log(`[CONFLICT_RESOLVE] Non-empty conflicting traits: ${nonEmptyTraits.join(', ')}`);
+                
+                if (nonEmptyTraits.length > 1) {
+                    const winner = nonEmptyTraits[Math.floor(Math.random() * nonEmptyTraits.length)];
+                    console.log(`[CONFLICT_RESOLVE] Randomly selected winner: ${winner}`);
+                    
+                    allConflictingTraits.forEach(t => {
+                        if (t !== winner) {
+                            console.log(`[CONFLICT_RESOLVE] Removing conflicting trait: ${t}`);
+                            delete selectedTraits[t];
+                        }
+                    });
+                }
+            }
+        }
+        
+        console.log(`[CONFLICT_RESOLVE] Final resolved traits:`, selectedTraits);
+        return selectedTraits;
+    }
+
+    static generateTraitSelection(traitTypes, conflictMap) {
+        console.log(`[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
+        
+        const selectedTraits = {};
+        const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
+        console.log(`[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
+        
+        // First pass: Select traits
+        shuffledTypes.forEach(traitType => {
+            console.log(`[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
+            const selected = this.selectTraitValue(traitType);
+            if (selected) {
+                console.log(`[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
+                selectedTraits[traitType.title] = selected.prompt;
+            } else {
+                console.log(`[TRAIT_GENERATE] No value selected for ${traitType.title}`);
+            }
+        });
+        
+        console.log(`[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
+        const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
+        console.log(`[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
+        
+        return resolvedTraits;
+    }
+}
+
+function validateMasterPrompt(masterPrompt) {
+    console.log(`[VALIDATE] Starting validation of master prompt: ${masterPrompt}`);
+    
+    const errors = [];
+    const stack = [];
+    let currentPos = 0;
+    
+    // Track different types of brackets
+    const BRACKET_PAIRS = {
+        '[': ']',
+        '{': '}'
+    };
+    
+    // Helper to add formatted error messages
+    const addError = (message, position) => {
+        const preview = masterPrompt.substring(Math.max(0, position - 20), position + 20);
+        errors.push(`${message} at position ${position}:\n...${preview}...`);
+    };
+
+    for (let i = 0; i < masterPrompt.length; i++) {
+        const char = masterPrompt[i];
+        
+        // Handle opening brackets
+        if (char === '[' || char === '{') {
+            console.log(`[VALIDATE] Found opening ${char} at position ${i}`);
+            stack.push({ char, position: i });
+            continue;
+        }
+        
+        // Handle closing brackets
+        if (char === ']' || char === '}') {
+            console.log(`[VALIDATE] Found closing ${char} at position ${i}`);
+            
+            if (stack.length === 0) {
+                addError(`Unexpected closing ${char}`, i);
+                continue;
+            }
+            
+            const lastOpening = stack.pop();
+            const expectedClosing = BRACKET_PAIRS[lastOpening.char];
+            
+            if (char !== expectedClosing) {
+                addError(`Mismatched brackets: expected ${expectedClosing} but found ${char}`, i);
             }
         }
     }
     
-    // Process the prompt with our selections - exclusions handled in processPromptWithOptionals
-    const testPrompt = processPromptWithOptionals(masterPrompt, selectedTraits);
+    // Check for unclosed brackets
+    while (stack.length > 0) {
+        const unclosed = stack.pop();
+        addError(`Unclosed ${unclosed.char}`, unclosed.position);
+    }
+    
+    // Validate trait placeholders [[trait]]
+    const traitPlaceholders = masterPrompt.match(/\[\[([^\]]*)\]\]/g) || [];
+    console.log(`[VALIDATE] Found ${traitPlaceholders.length} trait placeholders`);
+    
+    traitPlaceholders.forEach(placeholder => {
+        const trait = placeholder.slice(2, -2).trim();
+        if (!trait) {
+            addError(`Empty trait placeholder`, masterPrompt.indexOf(placeholder));
+        }
+    });
+    
+    // Validate exclusion syntax [content]{exclusion}
+    const exclusionRegex = /\[([^\]]*\[[^\]]*\][^\]]*)\]\{([^}]+)\}/g;
+    const exclusionGroups = [...masterPrompt.matchAll(exclusionRegex)];
+    console.log(`[VALIDATE] Searching for exclusion groups with regex: ${exclusionRegex}`);
+    console.log(`[VALIDATE] Found ${exclusionGroups.length} exclusion groups:`);
+    
+    exclusionGroups.forEach(match => {
+        const [fullMatch, content, exclusion] = match;
+        console.log(`[VALIDATE] Exclusion group found:`, {
+            fullMatch,
+            content,
+            exclusion,
+            position: match.index
+        });
+        
+        if (!exclusion.trim()) {
+            addError(`Empty exclusion`, match.index);
+        }
+    });
 
-    // Display the test prompt
+
+    // Check for nested trait placeholders in exclusion groups
+    const nestedTraits = masterPrompt.match(/\[\[([^\]]*)\]\]\{/g);
+    if (nestedTraits) {
+        nestedTraits.forEach(match => {
+            addError(`Trait placeholder directly followed by exclusion`, masterPrompt.indexOf(match));
+        });
+    }
+
+    const isValid = errors.length === 0;
+    console.log(`[VALIDATE] Validation complete. Valid: ${isValid}`);
+    if (!isValid) {
+        console.log(`[VALIDATE] Found ${errors.length} errors:`);
+        errors.forEach(error => console.log(`[VALIDATE] Error: ${error}`));
+    }
+
+    return {
+        isValid,
+        errors,
+        formattedErrors: errors.join('\n')
+    };
+}
+
+// Update handleTestCollection to use validation
+async function handleTestCollection(message, user, collectionId) {
+    console.log(`[TEST_COLLECTION] Starting test collection for user: ${user}, collection: ${collectionId}`);
+    
+    const collection = await getOrLoadCollection(user, collectionId);
+    console.log(`[TEST_COLLECTION] Loaded collection:`, collection.name);
+    
+    const { masterPrompt, traitTypes } = collection.config;
+    const { isValid, errors, formattedErrors } = validateMasterPrompt(masterPrompt);
+    if (!isValid) {
+        console.log(`[TEST_COLLECTION] Master prompt validation failed with errors:`);
+        console.log(formattedErrors);
+        await react(message, '🥴')
+        return;
+    }
+    const prefix = collection.config.workflow.toLowerCase();
+    console.log(`[TEST_COLLECTION] Using workflow prefix: ${prefix}`);
+    
+    console.log(`[TEST_COLLECTION] Processing master prompt for exclusions:`, masterPrompt);
+    const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
+    console.log(`[TEST_COLLECTION] Found ${exclusions.length} exclusions`);
+    console.log(`[TEST_COLLECTION] Cleaned prompt:`, cleanedPrompt);
+    
+    const conflictMap = TraitSelector.buildConflictMap(exclusions);
+    console.log(`[TEST_COLLECTION] Built conflict map with ${conflictMap.size} entries`);
+    
+    const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+    console.log(`[TEST_COLLECTION] Generated trait selection:`, selectedTraits);
+    
+    const testPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
+    console.log(`[TEST_COLLECTION] Final processed prompt:`, testPrompt);
+
     await editMessage({
         chat_id: message.chat.id,
         message_id: message.message_id,
@@ -551,6 +807,7 @@ async function handleTestCollection(message, user, collectionId) {
             parse_mode: 'MarkdownV2'
         }
     });
+    console.log(`[TEST_COLLECTION] Test collection complete`);
 }
 
 prefixHandlers['editMasterPrompt_'] = (action, message, user) => handlePrefix(action, message, user, 'editMasterPrompt')
@@ -1430,51 +1687,133 @@ function processPromptWithOptionals(masterPrompt, traitValues) {
     
     // First pass: Process trait values and track which ones are empty
     const emptyTraits = new Set();
-    const traitMatches = masterPrompt.match(/\[\[([^\]]+)\]\]/g) || [];
-    
-    traitMatches.forEach(match => {
-        const traitType = match.slice(2, -2);
-        const traitValue = traitValues[traitType];
-        
-        const isEmpty = !traitValue || 
-                       traitValue.trim() === '' || 
-                       traitValue === '0' || 
-                       traitValue.toLowerCase() === 'null' || 
-                       traitValue.toLowerCase() === 'empty';
-        
-        if (isEmpty) {
+    Object.entries(traitValues).forEach(([traitType, value]) => {
+        if (!value || value.trim() === '' || value === '0' || 
+            value.toLowerCase() === 'null' || value.toLowerCase() === 'empty') {
             emptyTraits.add(traitType);
-            processedPrompt = processedPrompt.replace(match, '');
-        } else {
-            processedPrompt = processedPrompt.replace(match, traitValue);
         }
     });
     
-    // Second pass: Process conditional sections with exclusions
-    while (true) {
-        // Updated regex to handle nested brackets
-        const conditionalMatch = processedPrompt.match(/\[((?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*)\]{([^{}]*)}/);
-        if (!conditionalMatch) break;
+    // Add any unselected traits to emptyTraits
+    const allTraitMatches = masterPrompt.match(/\[+([^\]\[]+)\]+/g) || [];
+    allTraitMatches.forEach(match => {
+        const traitName = match.replace(/[\[\]]/g, '').trim();
+        if (!traitValues.hasOwnProperty(traitName)) {
+            emptyTraits.add(traitName);
+        }
+    });
+
+    // Second pass: Process conditional sections
+    const conditionalRegex = /\[((?:[^\[\]]|\[[^\[\]]*\])*)\](?:\{([^}]*)\})?/g;
+    let match;
+    while ((match = conditionalRegex.exec(masterPrompt)) !== null) {
+        const [fullMatch, content, exclusions] = match;
         
-        const [fullMatch, content, exclusions] = conditionalMatch;
-        const excludedTraits = exclusions.split(',').map(t => t.trim());
+        // If there are exclusions, check them
+        if (exclusions) {
+            const excludedTraits = exclusions.split(',').map(t => t.trim());
+            if (excludedTraits.some(trait => !emptyTraits.has(trait))) {
+                processedPrompt = processedPrompt.replace(fullMatch, '');
+                continue;
+            }
+        }
         
-        // Check if any excluded trait has a value (is not empty)
-        const hasExcludedValue = excludedTraits.some(trait => !emptyTraits.has(trait));
+        // Process nested traits in the content
+        let processedContent = content;
+        const contentTraits = content.match(/\[+([^\]\[]+)\]+/g) || [];
+        const hasValidTrait = contentTraits.some(trait => {
+            const traitName = trait.replace(/[\[\]]/g, '').trim();
+            return !emptyTraits.has(traitName) && traitValues[traitName];
+        });
         
-        // If any excluded trait has a value, or if the content is empty after trait replacement,
-        // remove the entire conditional section
-        if (hasExcludedValue || content.trim() === '') {
+        if (!hasValidTrait) {
             processedPrompt = processedPrompt.replace(fullMatch, '');
         } else {
-            // Keep the content but remove the brackets and exclusion
-            processedPrompt = processedPrompt.replace(fullMatch, content.trim());
+            contentTraits.forEach(trait => {
+                const traitName = trait.replace(/[\[\]]/g, '').trim();
+                if (traitValues[traitName]) {
+                    processedContent = processedContent.replace(
+                        new RegExp(`\\[+${traitName}\\]+`, 'g'),
+                        traitValues[traitName]
+                    );
+                }
+            });
+            processedPrompt = processedPrompt.replace(fullMatch, processedContent.trim());
         }
     }
     
-    // Clean up any multiple spaces and trim
-    return processedPrompt.replace(/\s+/g, ' ').trim();
+    // Final pass: Replace remaining trait placeholders
+    Object.entries(traitValues).forEach(([trait, value]) => {
+        if (!emptyTraits.has(trait)) {
+            processedPrompt = processedPrompt.replace(
+                new RegExp(`\\[+${trait}\\]+ *(hair|eyes)?`, 'g'),
+                value
+            );
+        }
+    });
+    
+    // Clean up the prompt
+    processedPrompt = processedPrompt
+        .replace(/\[+[^\]\[]*\]+/g, '') // Remove any remaining bracketed terms
+        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .replace(/\s*,\s*,+/g, ',') // Clean up multiple commas
+        .replace(/,\s*([,\s]*,\s*)*/g, ', ') // Clean up comma spacing
+        .replace(/\s*,\s*$/g, '') // Remove trailing comma
+        .replace(/\s+\./g, '.') // Clean up space before period
+        .trim();
+    
+    return processedPrompt;
 }
+function findExclusions(masterPrompt) {
+    console.log(`[EXCLUSIONS] Processing master prompt: ${masterPrompt}`);
+    const exclusions = [];
+    
+    // Updated regex to better handle nested structures
+    const exclusionRegex = /\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\{([^}]+)\}/g;
+    let match;
 
+    // Find all exclusion groups in the master prompt
+    while ((match = exclusionRegex.exec(masterPrompt)) !== null) {
+        const content = match[1];
+        const exclusionGroup = match[2].split(',').map(trait => trait.trim());
+        
+        console.log(`[EXCLUSIONS] Found content: "${content}" with exclusions: ${exclusionGroup.join(', ')}`);
+        
+        // Find both single and double bracketed traits
+        const doubleTraitMatches = content.match(/\[\[([^\]]+)\]\]/g) || [];
+        const singleTraitMatches = content.match(/\[([^\[\]\{]+)\]/g) || [];
+        const allTraits = [
+            ...doubleTraitMatches.map(m => m.slice(2, -2)), // Remove [[ and ]]
+            ...singleTraitMatches.map(m => m.slice(1, -1))  // Remove [ and ]
+        ];
+
+        if (allTraits.length > 0) {
+            allTraits.forEach(targetTrait => {
+                console.log(`[EXCLUSIONS] Found target trait: ${targetTrait}`);
+                
+                // Create exclusion objects for each excluded trait
+                exclusionGroup.forEach(exclusion => {
+                    console.log(`[EXCLUSIONS] Adding exclusion: ${targetTrait} <-> ${exclusion}`);
+                    exclusions.push({
+                        targetTrait,
+                        exclusion
+                    });
+                });
+            });
+        } else {
+            console.log(`[EXCLUSIONS] Warning: No traits found in content: ${content}`);
+        }
+    }
+
+    // Clean the master prompt by removing only the exclusion markers while preserving brackets
+    const cleanedPrompt = masterPrompt.replace(/\{[^{}]*\}/g, '');
+    console.log(`[EXCLUSIONS] Cleaned prompt: ${cleanedPrompt}`);
+    console.log(`[EXCLUSIONS] Found ${exclusions.length} total exclusions`);
+
+    return {
+        exclusions,
+        cleanedPrompt
+    };
+}
 
 
