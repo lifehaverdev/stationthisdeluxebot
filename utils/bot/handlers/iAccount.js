@@ -817,6 +817,17 @@ async function handleRefreshQoints(message,user) {
     }
 }
 
+function validateSolanaAddress(address) {
+    // Check if address is a string and not empty
+    if (typeof address !== 'string' || !address) {
+        return false;
+    }
+
+    // Check if address matches base58 format and length
+    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    return base58Regex.test(address);
+}
+
 module.exports = {
     //displayAccountSettingsMenu,
     returnToAccountMenu,
