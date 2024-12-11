@@ -23,7 +23,7 @@ const {
  } = require('../../../db/mongodb')
  const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
- const { StudioManager } = require('./collectionmode/StudioManager');
+ const { StudioManager } = require('./collectionmode/studioManager')
  const { StudioAction } = require('./collectionmode/studioAction');
  const { gptAssist, formatters } = require('../../../commands/assist');
  const fs = require('fs')
