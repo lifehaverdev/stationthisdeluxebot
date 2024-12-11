@@ -483,146 +483,113 @@ async function handleSeeSettings(message) {
     }
 }
 
-async function handleSignIn (message) {
+async function handleSignIn(message) {
     const userId = message.from.id;
-    let userData;
-    if(lobby[userId]){
-        userData = lobby[userId]
-    } else {
-        console.log('THIS SHOUDLNT HAPPEN WE ARE GETTING USERDATA CASUE THE USER ISNT IN THE LOBBY IN HANDLESIGNIN')
-        //userData = await getUserDataByUserId(userId);
-        sendMessage(message,'try again sorry')
-        return
-    }
     
-    if(userData != false){
-        //lobby[userId] = userData;
-        if(userData.wallet != ''){
-            sendMessage(message, `You are signed in to ${userData.wallet}`);
-            if(userData.verified == true){
-                let options = home;
-                sendMessage(message,'and you are verified. Have fun',options);
-                setUserState(message,STATES.IDLE)
-            } else {
-                await handleVerify(message);
+    // First check - verify user is in lobby
+    if (!lobby[userId]) {
+        console.error('User not in lobby during signin attempt');
+        sendMessage(message, 'Please try again in a few moments');
+        return;
+    }
+
+    // Second check - if user has dbFetchFailed flag, try to restore their data
+    if (lobby[userId].dbFetchFailed) {
+        try {
+            const dbUserData = await getUserDataByUserId(userId);
+            if (dbUserData) {
+                sendMessage(message, 'Found your existing account! Restoring your data...');
+                lobby[userId] = { ...dbUserData, lastTouch: Date.now() };
+                return;
             }
+        } catch (error) {
+            console.error('Failed to restore user data during signin:', error);
+            sendMessage(message, 'Unable to verify account status. Please try again later.');
+            return;
+        }
+    }
+
+    // Third check - if user has any valuable data, require confirmation
+    if (hasValuableData(lobby[userId])) {
+        sendMessage(message, '⚠️ Warning: You have existing data that could be lost. Please contact support if you need to change your wallet.');
+        return;
+    }
+
+    // Rest of signin logic...
+    if (lobby[userId].wallet !== '') {
+        sendMessage(message, `You are signed in to ${lobby[userId].wallet}`);
+        if (lobby[userId].verified) {
+            sendMessage(message, 'and you are verified. Have fun', home);
+            setUserState(message, STATES.IDLE);
         } else {
-            sendMessage(message, "What's your Solana address?")
-            setUserState(message,STATES.SIGN_IN)
+            await handleVerify(message);
         }
     } else {
-        sendMessage(message, "What's your Solana address?")
-        setUserState(message,STATES.SIGN_IN)
-    }
-};
-function isBase58(str) {
-    const base58Regex = /^[1-9A-HJ-NP-Za-km-z]+$/;
-    return base58Regex.test(str);
-}
-
-function decodeBase58(base58) {
-    const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    const base = 58;
-
-    let decoded = BigInt(0);
-    for (const char of base58) {
-        const index = alphabet.indexOf(char);
-        if (index === -1) {
-            throw new Error("Invalid base58 character");
-        }
-        decoded = decoded * BigInt(base) + BigInt(index);
-    }
-
-    const bytes = [];
-    while (decoded > 0) {
-        bytes.push(Number(decoded % BigInt(256)));
-        decoded = decoded / BigInt(256);
-    }
-
-    // Account for leading zeroes
-    for (const char of base58) {
-        if (char === '1') {
-            bytes.push(0);
-        } else {
-            break;
-        }
-    }
-
-    return new Uint8Array(bytes.reverse());
-}
-
-function validateSolanaAddress(address) {
-    if (!isBase58(address) || address.length < 32 || address.length > 44) {
-        return false; // Does not match the base58 format or expected length
-    }
-
-    try {
-        const decoded = decodeBase58(address);
-        return decoded.length === 32; // Valid if decoded length is 32 bytes
-    } catch (error) {
-        return false; // Invalid base58 decoding
+        sendMessage(message, "What's your Solana address?");
+        setUserState(message, STATES.SIGN_IN);
     }
 }
 
-function extractSolanaAddresses(text) {
-    // Regular expression for base58-compatible strings (32 to 44 characters)
-    const pattern = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
-
-    // Find all potential matches
-    const candidates = text.match(pattern) || [];
-
-    // Filter only valid addresses
-    return candidates.filter(validateSolanaAddress);
+// Helper function to check if user has valuable data
+function hasValuableData(userData) {
+    return (
+        (userData.qoints && userData.qoints > 0) ||
+        (userData.collections && Object.keys(userData.collections).length > 0) ||
+        (userData.trainings && Object.keys(userData.trainings).length > 0) ||
+        (userData.verified === true)  // If they're already verified, that's valuable
+    );
 }
 
 async function shakeSignIn(message) {
     console.log('shaking signin');
     const userId = message.from.id;
 
-    // Check if the user is in the lobby
+    // Initial safety checks
     if (!lobby[userId]) {
+        console.error('User not in lobby during shakeSignIn');
         return;
     }
 
     const walletAddress = message.text;
 
-    // Validate the wallet address format
     if (!validateSolanaAddress(walletAddress)) {
         sendMessage(message, "Invalid Solana wallet address.");
-        setUserState(message,STATES.IDLE)
+        setUserState(message, STATES.IDLE);
         return;
     }
 
-    let chatData = lobby[userId];
-    chatData.wallet = walletAddress;
-
-    // Check if the wallet address is already associated with another verified user in the database
-    let isDuplicate = false;
+    // Check for existing wallet associations BEFORE modifying any data
     const usersWithSameWallet = await getUsersByWallet(walletAddress);
-
+    
+    // Additional safety check - look for any valuable data associated with this wallet
     for (const user of usersWithSameWallet) {
-        if (user.verified && user.userId !== userId) {
-            isDuplicate = true;
-            break;
+        if (hasValuableData(user) && user.userId !== userId) {
+            sendMessage(message, "This wallet has valuable data associated with another account. Please contact support if this is your wallet.");
+            setUserState(message, STATES.IDLE);
+            return;
         }
     }
 
-    if (isDuplicate) {
-        sendMessage(message, "This wallet address is already associated with another verified user.");
-        setUserState(message,STATES.IDLE)
-        return;
-    }
-
-    // Update the user's wallet address
+    // If we get here, it's safe to proceed with the wallet update
     try {
+        // One final DB check before proceeding
+        const existingData = await getUserDataByUserId(userId);
+        if (existingData && hasValuableData(existingData)) {
+            sendMessage(message, "Found existing valuable data for your account. Please contact support to modify wallet.");
+            setUserState(message, STATES.IDLE);
+            return;
+        }
+
+        // Now safe to proceed with wallet update
         await writeUserDataPoint(userId, 'wallet', walletAddress);
-        lobbyManager.addUser(userId, chatData);
+        lobby[userId].wallet = walletAddress;
+        
         console.log(message.from.first_name, 'has entered the chat');
-        // Confirm sign-in and proceed to verification
         safeExecute(message, handleVerify);
     } catch (error) {
-        console.error('Error updating user wallet:', error);
-        sendMessage(message, "An error occurred while processing your wallet address. Please try again.");
+        console.error('Error in shakeSignIn:', error);
+        sendMessage(message, "An error occurred. Your data has been preserved. Please try again later.");
+        setUserState(message, STATES.IDLE);
     }
 }
 

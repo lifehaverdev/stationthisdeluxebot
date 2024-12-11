@@ -355,27 +355,20 @@ async function handleUserData(userId, message) {
                     }
                 }
             } catch (error) {
-                // Log the specific error type and message
-                console.error(`Error handling user data for userId ${userId}:`, {
+                console.error(`DB fetch error for userId ${userId}:`, {
                     errorType: error.name,
-                    errorMessage: error.message,
-                    stack: error.stack
+                    errorMessage: error.message
                 });
-
-                // If it's a network or DB connection error, fail safely
-                if (error.name === 'MongoNetworkError' || error.name === 'MongoTimeoutError') {
-                    await sendMessage(message, 'Unable to access user data right now. Please try again in a few minutes.');
-                    return false;
-                }
-
-                // If it's any other error during fetch, don't risk overwriting existing data
-                if (error.message !== "Failed to create default user data.") {
-                    await sendMessage(message, 'There was an error accessing your profile. Please contact support if this persists.');
-                    return false;
-                }
-
-                // Only reach here if we failed to create new user data
-                await sendMessage(message, 'Unable to create user profile. Please try again later.');
+                
+                // Add user to lobby but mark them as having a failed DB fetch
+                lobby[userId] = {
+                    ...defaultUserData,
+                    userId,
+                    dbFetchFailed: true,
+                    lastDbFetchAttempt: Date.now()
+                };
+                
+                await sendMessage(message, 'Unable to verify account status. Your actions may be limited until connection is restored.');
                 return false;
             }
 
@@ -415,7 +408,29 @@ async function handleUserData(userId, message) {
             setUserState(message, STATES.IDLE);
             console.log(`${message.from.first_name} has entered the chat.`);
         } else {
-            // User is already in the lobby; update their lastTouch timestamp
+            // User is already in the lobby
+            if (lobby[userId].dbFetchFailed) {
+                // If it's been more than 5 minutes since last attempt, try fetching again
+                const timeSinceLastAttempt = Date.now() - (lobby[userId].lastDbFetchAttempt || 0);
+                if (timeSinceLastAttempt > 5 * 60 * 1000) {
+                    try {
+                        const userData = await getUserDataByUserId(userId);
+                        if (userData) {
+                            delete lobby[userId].dbFetchFailed;
+                            delete lobby[userId].lastDbFetchAttempt;
+                            lobby[userId] = { ...userData, lastTouch: Date.now() };
+                            await sendMessage(message, 'Your account status has been restored.');
+                        }
+                    } catch (error) {
+                        lobby[userId].lastDbFetchAttempt = Date.now();
+                        return false;
+                    }
+                } else {
+                    return false; // Still in failed state, not time to retry yet
+                }
+            }
+            
+            // Update lastTouch as normal
             lobby[userId].lastTouch = Date.now();
             if(lobby[userId].balance == '' && lobby[userId].verified) {
                 try {

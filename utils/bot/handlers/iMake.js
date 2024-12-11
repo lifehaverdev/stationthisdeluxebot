@@ -13,11 +13,11 @@ function getSettings(userId, group) {
         //1 pass through, hust use user settings
         if(group.settingsType == 'pass'){
             settings = { ...lobby[userId]}
-            console.log('Using user settings as base, cause of group setting');
+            //console.log('Using user settings as base, cause of group setting');
         // 2. Some settings from group: use user settings as base, then apply specific group settings
         } else if (group.settingsType == 'some') {
             settings = { ...lobby[userId] };
-            console.log('Using user settings as base, then some choice settings from group');
+            //console.log('Using user settings as base, then some choice settings from group');
             if (group.settingsMusts && Array.isArray(group.settingsMusts)) {
                 group.settingsMusts.forEach(key => {
                     if (group.settings.hasOwnProperty(key)) {
@@ -27,12 +27,12 @@ function getSettings(userId, group) {
             }
         }  else if (group.settingsType == 'total' || !group.settingsType) {
             settings = { ...group.settings };
-            console.log('Using group settings as base');
+            //console.log('Using group settings as base');
         }
     } else {
         // If no group, initialize with default settings from user context
         settings = { ...lobby[userId] };
-        console.log('Using user settings as base');
+        //console.log('Using user settings as base');
     }
 
     // Ensure user-specific features are correctly included
@@ -40,7 +40,7 @@ function getSettings(userId, group) {
     settings.balance = lobby[userId].balance || 0;
     settings.advancedUser = lobby[userId].advancedUser || false;
     settings.forcelogo = lobby[userId].forcelogo || false;
-    console.log('settings', settings)
+    //console.log('settings', settings)
     return settings;
 }
 
