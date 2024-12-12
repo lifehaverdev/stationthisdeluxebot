@@ -211,7 +211,7 @@ async function loraList(message) {
     // Send the message with the top 10 LoRAs and inline buttons
     try {
         await sendMessage(message, loraMessage, options);
-        console.log(`Sent top 10 LoRA list to chatId ${chatId}.`);
+        //console.log(`Sent top 10 LoRA list to chatId ${chatId}.`);
     } catch (error) {
         console.error(`Error sending LoRA list to chatId ${chatId}:`, error);
     }
@@ -331,136 +331,126 @@ async function fluxLoraList(message) {
 
 async function sendLoRaModelFilenames(message) {
   const chatId = message.chat.id;
-  message.from.id = message.reply_to_message.from.id;
-  let loraMessage = 'Loras:\n\n';
-    console.log(message)
-  const checkpointName = lobby[message.from.id]?.checkpoint;
-  //console.log(checkpointName);
-  let checkpointDescription = '';
-  if (checkpointName) {
-      const checkpoint = checkpointmenu.find(item => item.name === checkpointName);
-      if (checkpoint) {
-          checkpointDescription = checkpoint.description;
-      }
-  }
+  message.from.id = message.reply_to_message.from.id ? message.reply_to_message.from.id : message.from.id;
+  
+  console.log('Processing request for chatId:', chatId);
+  console.log('User ID:', message.from.id);
 
   const loraCategories = {
       style: [],
       character: [],
       context: [],
-      featured: []
+      recentlyAdded: []
   };
 
-  // Filter and categorize LoRAs
+  // Helper function to escape special characters for MarkdownV2
+  const escapeMarkdown = (text) => {
+    return text.replace(/[-[\](){}+?.*\\^$|#,.!]/g, '\\$&');
+  };
+
+  // Modified LoRA processing - no checkpoint filtering
   loraTriggers.forEach(lora => {
+    if(lora.hidden) {
+        return;
+    }
     
-        if(lora.hidden){
-            return
+    console.log('Processing LoRA:', lora.name || 'unnamed', 'Version:', lora.version);
+    
+    let currentString = '`';
+    let triggerWords = [];
+    lora.triggerWords.forEach(word => {
+        if (word != '#') {
+            triggerWords.push(word);
         }
-      if (checkpointName && checkpointDescription == lora.version && lobby[message.from.id].balance >= lora.gate) {
-         
-        let currentString = '`';
+    });
+    currentString += triggerWords.join(', ') + '`';
 
-        lora.triggerWords.forEach(word => {
-            if (word != '#') {
-                currentString += `${word},`
-            } else {
-                currentString += `\` \`` 
-            }
-        });
-        if (currentString.endsWith(',')) {
-            currentString = currentString.slice(0, -1);
+    // Add version information to the display with escaped special characters
+    const versionInfo = lora.version ? ` \\[${escapeMarkdown(lora.version)}\\]` : '';
+    const loraInfo = `${currentString}${versionInfo}`;
+    
+    console.log('Debug - Final loraInfo:', loraInfo); // Debug log
+
+    // Categorize with version info
+    if (lora.type) {
+        console.log(`Categorizing LoRA as ${lora.type}`);
+        if (lora.type === 'style') {
+            loraCategories.style.push(loraInfo);
+        } else if (lora.type === 'character') {
+            loraCategories.character.push(loraInfo);
+        } else if (lora.type === 'context') {
+            loraCategories.context.push(loraInfo);
         }
-        currentString += '`';
+    }
 
-        const loraInfo = currentString;
-        const featureInfo = `${lora.description}\nTrigger Words: ${currentString}\nToken Gate: ${lora.gate}\n`;
-
-          // Categorize by type
-          if (lora.type) {
-              if (lora.type === 'style') {
-                  loraCategories.style.push(loraInfo);
-              } else if (lora.type === 'character') {
-                  loraCategories.character.push(loraInfo);
-              } else if (lora.type === 'context') {
-                  loraCategories.context.push(loraInfo);
-              }
-          }
-
-          // Check if featured
-          if (lora.featured && lora.featured === true) {
-              loraCategories.featured.push(featureInfo);
-          }
-      }
+    // Add to recently added array (we'll sort and slice later)
+    loraCategories.recentlyAdded.push({
+        info: loraInfo,
+        addedDate: lora.addedDate || new Date(0) // fallback for items without date
+    });
   });
 
-  // Append categorized LoRAs to loraMessage
-  Object.keys(loraCategories).forEach(category => {
+  // Sort recently added by date and take last 5
+  loraCategories.recentlyAdded.sort((a, b) => a.addedDate - b.addedDate);
+  loraCategories.recentlyAdded = loraCategories.recentlyAdded.slice(-5).map(item => item.info);
+
+  // Debug log categories
+  console.log('Categorized LoRAs:', {
+    styleCount: loraCategories.style.length,
+    characterCount: loraCategories.character.length,
+    contextCount: loraCategories.context.length,
+    recentCount: loraCategories.recentlyAdded.length
+  });
+
+  // Send message for each category with debug logs
+  const mainCategories = ['style', 'character', 'context'];
+  
+  for (const category of mainCategories) {
       if (loraCategories[category].length > 0) {
-          loraMessage += `${category.charAt(0).toUpperCase() + category.slice(1)}:\n`;
-          loraMessage += loraCategories[category].join('\n') + '\n\n';
+          console.log(`Preparing to send ${category} category with ${loraCategories[category].length} items`);
+          
+          let categoryMessage = `${escapeMarkdown(category.charAt(0).toUpperCase() + category.slice(1))}:\n`;
+          categoryMessage += loraCategories[category].join('\n') + '\n\n';
+          
+          console.log(`Category message length: ${categoryMessage.length}`);
+          console.log(`First few lines of ${category} message:`, categoryMessage.slice(0, 100));
+          
+          try {
+              await sendMessage(message, categoryMessage, { 
+                  parse_mode: 'MarkdownV2'
+              });
+              console.log(`Successfully sent ${category} category`);
+          } catch (error) {
+              console.error(`Error sending ${category} category:`, error);
+          }
+      } else {
+          console.log(`Skipping ${category} category - no items`);
       }
-  });
+  }
 
-  loraMessage += 'Add one or all of the trigger words to a prompt to activate the respective lora on the generation';
-  console.log(loraMessage)
-  const maxMessageLength = 4096; // Telegram's max message length is 4096 characters
-  if (loraMessage.length > maxMessageLength) {
-      const midpoint = Math.floor(loraMessage.length / 2);
-      let splitIndex = midpoint;
+  // Send final message with recently added and menu
+  console.log('Preparing final message with recently added');
+  let finalMessage = 'Recently Added:\n';
+  finalMessage += loraCategories.recentlyAdded.join('\n') + '\n\n';
+  finalMessage += 'Add one or all of the trigger words to a prompt to activate the respective lora on the generation';
 
-      // Ensure we split at a sensible point (e.g., end of a line)
-      while (splitIndex > 0 && loraMessage[splitIndex] !== '\n') {
-          splitIndex--;
-      }
-
-      const messagePart1 = loraMessage.substring(0, splitIndex);
-      const messagePart2 = loraMessage.substring(splitIndex);
-
-      sendMessage(message, messagePart1, {parse_mode: 'MarkdownV2'})
-          .then(() => {
-              sendMessage(message, messagePart2,{
-                parse_mode: 'MarkdownV2',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: 'Top 10', callback_data: 'topTenLora' },
-                            { text: 'Featured', callback_data: 'featuredLora' },
-                        ],
-                    ]
-                },
-            })
-                  .then(() => {
-                      console.log(`Sent split LoRA list to chatId ${chatId}.`);
-                  })
-                  .catch(error => {
-                      console.error(`Error sending second part of LoRA list to chatId ${chatId}:`, error);
-                  });
-          })
-          .catch(error => {
-              console.error(`Error sending first part of LoRA list to chatId ${chatId}:`, error);
-          });
-  } else {
-      sendMessage(message, loraMessage,{
-        parse_mode: 'MarkdownV2',
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Top 10', callback_data: 'topTenLora' },
-                    { text: 'Featured', callback_data: 'featuredLora' },
-                ],
-                [
-                    { text: 'Flux', callback_data: 'fluxLora'}
-                ]
-            ]
-        },
-    })
-          .then(() => {
-              console.log(`Sent LoRA list to chatId ${chatId}.`);
-          })
-          .catch(error => {
-              console.error(`Error sending LoRA list to chatId ${chatId}:`, error);
-          });
+  try {
+      await sendMessage(message, finalMessage, {
+          parse_mode: 'MarkdownV2',
+          reply_markup: {
+              inline_keyboard: [
+                  [
+                      { text: 'Top 10', callback_data: 'topTenLora' },
+                  ],
+                  [
+                      { text: 'Flux', callback_data: 'fluxLora'}
+                  ]
+              ]
+          },
+      });
+      console.log('Successfully sent final message');
+  } catch (error) {
+      console.error('Error sending final message:', error);
   }
 }
 
