@@ -111,6 +111,10 @@ class CollectionMenuBuilder {
         const text = `Collection Metadata for ${collection.name}\n\n` +
                     `Supply: ${collection.totalSupply || 'Not set'}\n` +
                     `Chain: ${collection.chain || 'Not set'}\n` + 
+                    `Meta Standard: ${collection.metaStandard || 'Not set'}\n` +
+                    `Image Prefix: ${collection.imagePrefix || 'Not set'}\n` +
+                    `Description: ${collection.description || 'Not set'}\n` +
+                    `Base URI: ${collection.baseURI || 'Not set'}\n` +
                     `${collection.chain === 'sol' ? `Royalties: ${collection.royalties || '0'}%\n` : ''}`;
 
         return {
@@ -122,11 +126,18 @@ class CollectionMenuBuilder {
                         { text: '⛓️ Set Chain', callback_data: `chain_${collectionId}` }
                     ],
                     [
+                        { text: '🪪 Set Meta Standard', callback_data: `metaStandard_${collectionId}` }
+                    ],
+                    [
                         { text: '📝 Set Description', callback_data: `description_${collectionId}` },
-                        { text: '✏️ Set Edition Title', callback_data: `editionTitle_${collectionId}` }
+                        { text: '✏️ Set Image Prefix', callback_data: `editionTitle_${collectionId}` }
                     ],
                     ...(studio[user][collectionId].chain === 'sol' ? [
                         [{ text: '💰 Set Royalties', callback_data: `royalty_${collectionId}` }]
+                    ] : []),
+                    ...(collection.config.metadataConfig?.standard === 'metaplex' ? [
+                        { text: '🌐 Set External URL', callback_data: `setExternalUrl_${collectionId}` },
+                        //{ text: '📁 Set Properties', callback_data: `setProperties_${collectionId}` }
                     ] : []),
                     [
                         { text: '« Back', callback_data: `ec_${collectionId}` }

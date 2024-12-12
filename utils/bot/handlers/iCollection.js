@@ -329,6 +329,62 @@ async function handleSetChain(message,user,collectionId,chain) {
     await handleCollectionMenu(message,user,collectionId)
 }
 
+// Standard Selection Handler
+prefixHandlers['setMetadataStandard_'] = (action, message, user) => {
+    const collectionId = parseInt(action.split('_')[1]);
+    handleSetMetadataStandard(message, user, collectionId);
+}
+
+async function handleSetMetadataStandard(message, user, collectionId) {
+    const reply_markup = {
+        inline_keyboard: [
+            [
+                { text: 'Metaplex (Solana)', callback_data: `confirmStandard_${collectionId}_metaplex` },
+                { text: 'ERC721', callback_data: `confirmStandard_${collectionId}_erc721` }
+            ],
+            [
+                { text: 'ERC1155', callback_data: `confirmStandard_${collectionId}_erc1155` }
+            ],
+            [{ text: '« Back', callback_data: `collectionMetadataMenu_${collectionId}` }]
+        ]
+    };
+
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: 'Select the metadata standard for your collection:',
+        reply_markup
+    });
+}
+
+// Standard Confirmation Handler
+prefixHandlers['confirmStandard_'] = (action, message, user) => {
+    const [_, collectionId, standard] = action.split('_');
+    handleConfirmStandard(message, user, parseInt(collectionId), standard);
+}
+
+async function handleConfirmStandard(message, user, collectionId, standard) {
+    const collection = await getOrLoadCollection(user, collectionId);
+    
+    // Initialize or update metadata config
+    if (!collection.config.metadataConfig) {
+        collection.config.metadataConfig = {};
+    }
+    
+    collection.config.metadataConfig.standard = standard;
+    
+    // Initialize standard-specific defaults
+    if (standard === 'metaplex') {
+        collection.config.metadataConfig.propertyDefaults = {
+            category: 'image',
+            fileType: 'image/png'
+        };
+    }
+    
+    await saveStudio(collection);
+    handleCollectionMetaData()
+}
+
                         // Add the state handler
                         stateHandlers[STATES.SETCOLLECTION] = async (message) => {
                             const userId = message.from.id;
@@ -1814,6 +1870,232 @@ function findExclusions(masterPrompt) {
         exclusions,
         cleanedPrompt
     };
+}
+
+// === Cook Mode Components ===
+
+class CollectionDatabase {
+    // Store collection progress, images, and metadata
+    async saveGeneratedPiece(collectionId, pieceData) {
+        // Save generated image and metadata to database
+        // Track generation attempts and status
+    }
+
+    async getCollectionProgress(collectionId) {
+        // Return progress stats:
+        // - Total pieces generated
+        // - Pieces approved/rejected
+        // - Remaining to generate
+    }
+
+    async markPieceForRegeneration(pieceId) {
+        // Increment iteration number
+        // Set status to 'pending_regeneration'
+    }
+
+}
+
+class GenerationController {
+    constructor(database, promptGenerator, metadataGenerator) {
+        this.database = database;
+        this.promptGenerator = promptGenerator;
+        this.metadataGenerator = metadataGenerator;
+        this.isRunning = false;
+    }
+
+    async startCookMode(collectionId) {
+        // Initialize cook mode for collection
+        // Start generation loop
+    }
+
+    async generationLoop() {
+        while (this.isRunning) {
+            // Check conditions:
+            // - Collection not complete
+            // - Cook mode active
+            // - User has enough charge
+            
+            // If all pass:
+            // 1. Generate metadata and prompt
+            // 2. Request image generation
+            // 3. Save results to database
+            // 4. Update progress
+            // 5. Emit status update
+        }
+    }
+
+    pauseCookMode() {
+        // Pause generation loop
+    }
+}
+
+class MetadataGenerator {
+    generatePieceMetadata(collection, pieceNumber, traits) {
+        const metadata = {
+            name: this.formatName(collection.nameFormat, pieceNumber),
+            description: collection.descriptionTemplate,
+            image: this.formatImageUrl(collection.imagePrefix, pieceNumber)
+        };
+
+        // Add standard-specific fields
+        switch(collection.standard) {
+            case 'metaplex':
+                metadata.external_url = collection.externalUrl;
+                metadata.properties = this.generateMetaplexProperties(collection, pieceNumber);
+                break;
+            case 'erc721':
+            case 'erc1155':
+                metadata.number = pieceNumber;
+                break;
+        }
+
+        // Add attributes
+        metadata.attributes = this.generateAttributes(collection, traits);
+
+        return metadata;
+    }
+
+    generateAttributes(collection, traits) {
+        const attributes = [];
+        
+        // Convert traits to attributes
+        Object.entries(traits).forEach(([trait_type, value]) => {
+            const attribute = { trait_type, value };
+            
+            // Add rarity if configured
+            if (collection.attributeConfig.includeRarity) {
+                attribute.rarity = this.calculateRarity(collection, trait_type, value);
+            }
+            
+            attributes.push(attribute);
+        });
+
+        // Add any custom static attributes
+        if (collection.attributeConfig.customAttributes) {
+            attributes.push(...collection.attributeConfig.customAttributes);
+        }
+
+        return attributes;
+    }
+}
+
+class StatusManager {
+    constructor(database) {
+        this.database = database;
+    }
+
+    async updateStatus(collectionId) {
+        // Get latest progress from database
+        // Format status message
+        // Update user's status message
+    }
+}
+
+class CurationManager {
+    async showPieceCuration(collectionId, pieceId) {
+        // Display piece with approval interface
+        // Options:
+        // - Approve
+        // - Reject (mark for regeneration)
+        // - Skip to next
+    }
+
+    async handleBatchDownload(collectionId, startId, endId) {
+        // Package and deliver batch of approved pieces
+    }
+}
+
+class CookModeHandler {
+    constructor() {
+        this.database = new CollectionDatabase();
+        this.metadataGenerator = new MetadataGenerator();
+        this.generator = new GenerationController(
+            this.database,
+            this.promptGenerator,
+            this.metadataGenerator
+        );
+        this.statusManager = new StatusManager(this.database);
+        this.curator = new CurationManager();
+    }
+
+    async initializeCookMode(message, user, collectionId) {
+        // Verify collection is ready for cooking:
+        // - Has valid master prompt
+        // - Has trait types defined
+        // - Has metadata configured
+        
+        // If ready:
+        // 1. Initialize database entries
+        // 2. Start generation controller
+        // 3. Set up status message
+        // 4. Return cook mode control interface
+    }
+}
+
+
+const metadataSchema = {
+    // Base Fields (Common across all)
+    name: String,                 // Required for all
+    description: String,          // Required for all
+    image: String,                // Primary image URL
+    
+    // Solana-specific
+    external_url: String,         // Optional, Solana
+    properties: {                 // Optional, Solana
+        files: [{
+            uri: String,
+            type: String
+        }],
+        category: String
+    },
+    
+    // Ethereum-specific
+    number: Number,               // Optional, common in ETH
+    
+    // Common but flexible attributes
+    attributes: [{
+        trait_type: String,
+        value: String,
+        // Optional fields some platforms use
+        display_type: String,     // For numerical displays
+        max_value: Number,        // For numerical traits
+        rarity: Number           // For rarity scores
+    }],
+    
+    // Metadata format identifier
+    standard: String,            // 'metaplex', 'erc721', 'erc1155'
+}
+
+const collectionMetadataConfig = {
+    standard: String,            // Which standard to use
+    nameFormat: String,         // e.g., "Collection Name #{{number}}"
+    descriptionTemplate: String,
+    externalUrl: String,        // For Solana
+    imagePrefix: String,        // Base URL/IPFS prefix
+    includeProperties: Boolean, // Whether to include Solana properties
+    propertyDefaults: {
+        category: String,
+        fileType: String
+    },
+    attributeConfig: {
+        includeRarity: Boolean,
+        includeDisplayTypes: Boolean,
+        customAttributes: [{     // Additional static attributes
+            trait_type: String,
+            value: String
+        }]
+    }
+}
+
+// Add cook mode command handlers
+prefixHandlers['cook_'] = (action, message, user) => {
+    const collectionId = parseInt(action.split('_')[1]);
+    handleCookMode(message, user, collectionId);
+}
+
+async function handleCookMode(message, user, collectionId) {
+    const cookMode = new CookModeHandler();
+    await cookMode.initializeCookMode(message, user, collectionId);
 }
 
 

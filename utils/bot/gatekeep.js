@@ -249,14 +249,13 @@ async function handleGroupCheck(group, userId, message) {
         // Check if group has qoints or pointAccounting mode
         if (qoints <= 0 && gateKeeping?.pointAccounting === 'house') {
             // Group pays qoints, but has none left
-            const userMaxPoints = calculateMaxPoints(lobby[userId]?.balance || 0);
-            if (!lobby[userId]?.signedIn || (lobby[userId]?.points < userMaxPoints)) {
-                await sendMessage(
-                    message,
-                    'Hey, this group is out of qoints. You can /donate some if you have any, or continue in DMs.'
-                );
-                return false;
-            }
+        
+            await sendMessage(
+                message,
+                'Hey, this group is out of qoints. You can /donate some if you have any, or continue in DMs. If you dont have any, go to the stationthisbot site'
+            );
+            return false;
+        
         } else if (
             qoints <= 0 &&
             gateKeeping?.pointAccounting === 'user' &&
@@ -265,7 +264,7 @@ async function handleGroupCheck(group, userId, message) {
             // User pays qoints, but doesn't have enough
             await sendMessage(
                 message,
-                'You don’t have enough points to generate here. Earn or top up your points to proceed.'
+                'You don’t have enough points to generate here and the group is out of balance. Earn or top up your points to proceed.'
             );
             return false;
         }
@@ -340,11 +339,9 @@ async function handleUserData(userId, message) {
         // Check if the user is already in the lobby
         if (!lobby.hasOwnProperty(userId)) {
             let userData;
-
             // Fetch or create user data
             try {
                 userData = await getUserDataByUserId(userId);
-                
                 if (!userData) {
                     // Only create new user data if we're certain none exists
                     console.log(`No existing user data found for userId ${userId}, creating default...`);

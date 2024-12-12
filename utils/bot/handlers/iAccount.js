@@ -471,9 +471,18 @@ async function handleSeeSettings(message) {
     }
 
     if (settings) {
-        let messageText = "Here is what you are working with right now:\n";
-        for (const key in settings) {
-            if (settings.hasOwnProperty(key) && !keysToIgnore.includes(key)) {
+        if(userId == DEV_DMS){
+            let messageTextDev = "Here is what you are working with right now:\n";
+            for (const key in settings) {
+                if (key === 'runs') continue;
+                messageTextDev += `${key}: ${JSON.stringify(settings[key], null, 2)}\n`;
+            }
+            await sendMessage(message, messageTextDev);
+            return;
+        }
+            let messageText = "Here is what you are working with right now:\n";
+            for (const key in settings) {
+                if (settings.hasOwnProperty(key) && !keysToIgnore.includes(key)) {
                 messageText += `${key}: ${JSON.stringify(settings[key], null, 2)}\n`;
             }
         }
@@ -497,9 +506,10 @@ async function handleSignIn(message) {
     if (lobby[userId].dbFetchFailed) {
         try {
             const dbUserData = await getUserDataByUserId(userId);
-            if (dbUserData) {
+            if (dbUserData && dbUserData.verified) {
                 sendMessage(message, 'Found your existing account! Restoring your data...');
                 lobby[userId] = { ...dbUserData, lastTouch: Date.now() };
+                delete lobby[userId].dbFetchFailed;
                 return;
             }
         } catch (error) {
@@ -509,17 +519,18 @@ async function handleSignIn(message) {
         }
     }
 
-    // Third check - if user has any valuable data, require confirmation
-    if (hasValuableData(lobby[userId])) {
-        sendMessage(message, '⚠️ Warning: You have existing data that could be lost. Please contact support if you need to change your wallet.');
-        return;
-    }
+    // // Third check - if user has any valuable data, require confirmation
+    // if (hasValuableData(lobby[userId])) {
+    //     sendMessage(message, '⚠️ Warning: You have existing data that could be lost. Please contact support if you need to change your wallet.',home);
+    //     return;
+    // }
 
     // Rest of signin logic...
     if (lobby[userId].wallet !== '') {
-        sendMessage(message, `You are signed in to ${lobby[userId].wallet}`);
+        let msg = `You are signed in to ${lobby[userId].wallet}`
         if (lobby[userId].verified) {
-            sendMessage(message, 'and you are verified. Have fun', home);
+            msg += '\nand you are verified. Have fun'
+            sendMessage(message, msg, home);
             setUserState(message, STATES.IDLE);
         } else {
             await handleVerify(message);
@@ -563,7 +574,9 @@ async function shakeSignIn(message) {
     
     // Additional safety check - look for any valuable data associated with this wallet
     for (const user of usersWithSameWallet) {
-        if (hasValuableData(user) && user.userId !== userId) {
+        if (hasValuableData(user) && user.userId !== userId && user.verified == true) {
+            console.log('user with same wallet',user)
+            console.log('user with same wallet',user.userId)
             sendMessage(message, "This wallet has valuable data associated with another account. Please contact support if this is your wallet.");
             setUserState(message, STATES.IDLE);
             return;
@@ -574,10 +587,16 @@ async function shakeSignIn(message) {
     try {
         // One final DB check before proceeding
         const existingData = await getUserDataByUserId(userId);
-        if (existingData && hasValuableData(existingData)) {
-            sendMessage(message, "Found existing valuable data for your account. Please contact support to modify wallet.");
-            setUserState(message, STATES.IDLE);
-            return;
+        if (existingData) {
+            // If we failed to fetch DB data earlier but now found it, populate the lobby
+            if (lobby[userId].dbFetchFailed) {
+                Object.assign(lobby[userId], existingData);
+                delete lobby[userId].dbFetchFailed;
+            }
+            // Allow users to upgrade their account by adding a wallet even if they have valuable data
+            else {
+                // Continue with wallet update
+            }
         }
 
         // Now safe to proceed with wallet update
@@ -618,7 +637,7 @@ async function shakeVerify(message) {
     const providedHash = message.text;
 
     const isValid = isHashValid(wallet, salt, providedHash);
-    sendMessage(message, `${isValid ? 'You are verified now' : 'Not verified'}`);
+    sendMessage(message, `${isValid ? 'You are verified now' : 'Not verified'}`,home);
 
     if (isValid) {
         user.verified = true;
