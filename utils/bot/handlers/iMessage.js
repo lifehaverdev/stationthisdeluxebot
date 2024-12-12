@@ -865,8 +865,12 @@ module.exports = function(bot) {
                 if (customCommand) {
                     console.log(`Handling custom group command ${command} for group ${group.title}`);
 
-                    // Check gatekeeping for custom commands
-                    const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => customCommand.startsWith(cmd));
+                    // Fix the gatekeeping check to look at the mapped command instead
+                    const requiresGatekeeping = commandsRequiringGatekeeping.some(cmd => 
+                        cmd.replace('/', '') === customCommand  // Direct comparison with mapped command
+                    );
+                    
+                    console.log('requiresGatekeeping', requiresGatekeeping);
                     if (requiresGatekeeping) {
                         const allowed = await checkLobby(message);
                         if (!allowed) {
