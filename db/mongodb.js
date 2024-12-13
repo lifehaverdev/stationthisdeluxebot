@@ -2,6 +2,7 @@ const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const axios = require('axios');
 const path = require('path')
 const stream = require('stream');
+require('./mongoWatch.js')
 const fs = require('fs')
 
 const { lobby, workspace } = require('../utils/bot/bot')
