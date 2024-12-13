@@ -146,7 +146,7 @@ const commandRegistry = {
     //         }
     //     }
     // },
-    '/godzamn': {
+    '/imisstherage': {
         handler: (message) => {
             console.log('cheeseworld!!!')
             if(lobby[message.from.id].wallet){

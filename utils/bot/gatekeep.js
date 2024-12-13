@@ -109,12 +109,32 @@ function addExp(userId) {
 
 async function kick(userId) {
     const userData = lobby[userId];
-    const kickedAt = Date.now();
-    await writeUserData(parseInt(userId), {
-        ...userData,
-        points: 0,
-        kickedAt,
-    });
+    if (!userData) {
+        console.error(`Attempted to kick userId ${userId} but no userData found in lobby`);
+    }
+
+    try {
+        // First get existing data from database
+        const existingData = await getUserDataByUserId(parseInt(userId));
+        
+        if (existingData) {
+            // Use existing data as base, apply only the changes we want
+            const updatedData = {
+                ...existingData,  // Keep all existing data as base
+                ...lobby[userId],
+                kickedAt: Date.now(),
+                lastTouch: userData.lastTouch,
+                state: userData.state
+            };
+
+            await writeUserData(parseInt(userId), updatedData);
+            console.log(`Kicked user ${userId} with preserved data`);
+        } else {
+            console.error(`No existing data found for userId ${userId} during kick`);
+        }
+    } catch (error) {
+        console.error(`Error during kick operation for userId ${userId}:`, error);
+    }
 }
 
 
@@ -133,40 +153,34 @@ class LobbyManager {
 
     async cleanLobby() {
         console.log("========== Starting cleanLobby ==========");
-        for (const userId in this.lobby){
-            const userTmp = lobby[userId]
-            console.log('u',userId,'p',userTmp.points,'d',userTmp.doints,'q',userTmp.qoints,'b',userTmp.boints)
-        }
-        const didwe = await addPointsToAllUsers();
-        console.log("Points added to all users: ",didwe," Starting user-by-user cleanup...");
+        
+        try {
+            const didwe = await addPointsToAllUsers();
+            console.log("Points added to all users: ", didwe);
 
-        for (const userId in this.lobby) {
-            const userData = this.lobby[userId]; // Fetch user data directly from the lobby
-            console.log(`Processing userId: ${userId}`);
+            for (const userId in lobby) {
+                try {
+                    const userData = lobby[userId];
+                    if (!userData) continue;
 
-            if (userData) {
-                console.log(`User ${userId} is valid. Checking if they should be kicked...`);
-                const should = shouldKick(userId)
-                console.log('here is the should read',should)
-                if (should) {
-                    console.log(`User ${userId} has been idle for too long. Adding experience and kicking them out.`);
-                    addExp(userId); // Add experience to the user
-                    softResetPoints(userId)
-                    await this.kickUser(userId);
-                    console.log(`User ${userId} has been kicked out.`);
-                } else {
-                    console.log(`User ${userId} is active. Adding experience and regenerating points.`);
-                    addExp(userId); // Add experience to the user
-                    softResetPoints(userId); // Regenerate doints
-                    console.log(`User ${userId} experience added and points regenerated.`);
+                    const should = shouldKick(userId);
+                    if (should) {
+                        console.log(`Kicking user ${userId}`);
+                        addExp(userId);
+                        softResetPoints(userId);
+                        await kick(userId);
+                    } else {
+                        console.log(`Updating points for user ${userId}`);
+                        addExp(userId);
+                        softResetPoints(userId);
+                    }
+                } catch (error) {
+                    console.error(`Error processing user ${userId}:`, error);
                 }
-            } else {
-                console.error(`Invalid or undefined user detected: ${userId}. Removing from the lobby.`);
-                delete this.lobby[userId];
             }
+        } catch (error) {
+            console.error("Error in cleanLobby:", error);
         }
-
-        console.log("========== cleanLobby process complete ==========");
     }
 
     async kickUser(userId) {
@@ -186,7 +200,7 @@ setInterval(async () => {
     await lobbyManager.cleanLobby();
 }, LOBBY_CLEAN_INTERVAL); // This runs the lobby cleaning every N minutes
 
-setInterval(initialize, DB_REFRESH); // This handles your DB refresh interval
+setInterval(initialize, DB_REFRESH + (7.5 * 60 * 1000)); // This handles your DB refresh interval
 
 //setInterval(cleanLobby, LOBBY_CLEAN_INTERVAL); //every N minutes
 //setInterval(initialize, DB_REFRESH); //update burns, lora list etc from db
@@ -463,7 +477,7 @@ function checkUserPoints(userId, group, message) {
         (group && group.gateKeeping.style == 'house' && group.qoints <= 0) ||
         (group && group.gateKeeping.style == 'user' && user.qoints <0 && outOfPoints && group.qoints <=0) 
     ) {
-        const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "💔", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
+        const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "����", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
 
