@@ -137,7 +137,7 @@ async function handleStatus(message) {
     const user = message.from.id
     let msg = '';
     message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : msg += '⭐️\n\n'
-    group && group.admins.includes(message.from.id) ? msg += `${group.title}\n ${group.qoints}\n\n` : null
+    group ? msg += `${group.title}\n ⚡️${group.qoints}\n\n` : null
     
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {
@@ -184,8 +184,7 @@ async function loraList(message) {
         if (currentString.endsWith(',')) {
             currentString = currentString.slice(0, -1);
         }
-        //let triggerWords = '`' + lora.triggerWords.filter(word => word !== '#').join(',') + '`';
-        currentString += '`';
+        currentString += `\` \\(${lora.version}\\)`;
         loraMessage += currentString;
     });
     
@@ -196,7 +195,7 @@ async function loraList(message) {
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: 'Featured', callback_data: 'featuredLora' },
+                    //{ text: 'Featured', callback_data: 'featuredLora' },
                     //{ text: 'Favorites', callback_data: 'recent_uses' },
                     { text: 'Full List', callback_data: 'fullLora' }
                 ],
@@ -331,7 +330,7 @@ async function fluxLoraList(message) {
 
 async function sendLoRaModelFilenames(message) {
   const chatId = message.chat.id;
-  message.from.id = message.reply_to_message.from.id ? message.reply_to_message.from.id : message.from.id;
+  message.from.id = message.reply_to_message?.from?.id || message.from.id;
   
   console.log('Processing request for chatId:', chatId);
   console.log('User ID:', message.from.id);
@@ -369,11 +368,10 @@ async function sendLoRaModelFilenames(message) {
     const versionInfo = lora.version ? ` \\[${escapeMarkdown(lora.version)}\\]` : '';
     const loraInfo = `${currentString}${versionInfo}`;
     
-    console.log('Debug - Final loraInfo:', loraInfo); // Debug log
 
     // Categorize with version info
     if (lora.type) {
-        console.log(`Categorizing LoRA as ${lora.type}`);
+        
         if (lora.type === 'style') {
             loraCategories.style.push(loraInfo);
         } else if (lora.type === 'character') {
@@ -394,32 +392,21 @@ async function sendLoRaModelFilenames(message) {
   loraCategories.recentlyAdded.sort((a, b) => a.addedDate - b.addedDate);
   loraCategories.recentlyAdded = loraCategories.recentlyAdded.slice(-5).map(item => item.info);
 
-  // Debug log categories
-  console.log('Categorized LoRAs:', {
-    styleCount: loraCategories.style.length,
-    characterCount: loraCategories.character.length,
-    contextCount: loraCategories.context.length,
-    recentCount: loraCategories.recentlyAdded.length
-  });
-
   // Send message for each category with debug logs
   const mainCategories = ['style', 'character', 'context'];
   
   for (const category of mainCategories) {
       if (loraCategories[category].length > 0) {
-          console.log(`Preparing to send ${category} category with ${loraCategories[category].length} items`);
           
           let categoryMessage = `${escapeMarkdown(category.charAt(0).toUpperCase() + category.slice(1))}:\n`;
           categoryMessage += loraCategories[category].join('\n') + '\n\n';
           
-          console.log(`Category message length: ${categoryMessage.length}`);
-          console.log(`First few lines of ${category} message:`, categoryMessage.slice(0, 100));
-          
+         
           try {
               await sendMessage(message, categoryMessage, { 
                   parse_mode: 'MarkdownV2'
               });
-              console.log(`Successfully sent ${category} category`);
+              
           } catch (error) {
               console.error(`Error sending ${category} category:`, error);
           }
@@ -429,7 +416,7 @@ async function sendLoRaModelFilenames(message) {
   }
 
   // Send final message with recently added and menu
-  console.log('Preparing final message with recently added');
+  
   let finalMessage = 'Recently Added:\n';
   finalMessage += loraCategories.recentlyAdded.join('\n') + '\n\n';
   finalMessage += 'Add one or all of the trigger words to a prompt to activate the respective lora on the generation';
@@ -448,7 +435,7 @@ async function sendLoRaModelFilenames(message) {
               ]
           },
       });
-      console.log('Successfully sent final message');
+      
   } catch (error) {
       console.error('Error sending final message:', error);
   }

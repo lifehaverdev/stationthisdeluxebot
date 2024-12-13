@@ -22,13 +22,22 @@ let inactivityTimer = null;
 const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const JOB_TIMEOUT = 15000; // Increase from default (likely 5000ms) to 30 seconds
 
+// Logging toggles
+const LOG_DB_QUEUE = true;
+const LOG_CLIENT = true;
+const LOG_CONNECTION = true;
+
+function logThis(active, message) {
+    if (active) console.log(message);
+}
+
 class DatabaseQueue {
     constructor() {
         this.queue = [];
         this.processing = false;
     }
 
-    // Add a job to the queue and return a promise that resolves with the result
+    // Add a job to the queue and return a promise that resolves with the result 
     enqueue(job) {
         return new Promise((resolve, reject) => {
             this.queue.push(async () => {
@@ -65,7 +74,7 @@ class DatabaseQueue {
         // Get the next job
         const job = this.queue.shift();
         try {
-            console.log('[DatabaseQueue] Processing job...');
+            logThis(LOG_DB_QUEUE, '[DatabaseQueue] Processing job...');
             await job(); // Execute the job
         } catch (error) {
             console.error('[DatabaseQueue] Error processing job:', error);
@@ -77,79 +86,77 @@ class DatabaseQueue {
     }
 }
 
-
-
 const dbQueue = new DatabaseQueue();
 
 let connectionInProgress = null;
 
 async function getCachedClient() {
-    console.log('[getCachedClient] Called');
+    logThis(LOG_CLIENT, '[getCachedClient] Called');
 
     // If there's an existing connection attempt in progress, wait for it
     if (connectionInProgress) {
-        console.log('[getCachedClient] Connection in progress. Awaiting current connection...');
+        logThis(LOG_CONNECTION, '[getCachedClient] Connection in progress. Awaiting current connection...');
         await connectionInProgress;
-        console.log('[getCachedClient] Existing connection completed. Returning cached client.');
+        logThis(LOG_CONNECTION, '[getCachedClient] Existing connection completed. Returning cached client.');
         return cachedClient;
     }
 
     if (!cachedClient) {
-        console.log('[getCachedClient] No cached client found. Initiating new connection...');
+        logThis(LOG_CONNECTION, '[getCachedClient] No cached client found. Initiating new connection...');
 
         // Begin a new connection attempt
         connectionInProgress = (async () => {
             cachedClient = new MongoClient(uri);
-            console.log('[getCachedClient] New MongoClient instance created.');
+            logThis(LOG_CLIENT, '[getCachedClient] New MongoClient instance created.');
 
             try {
                 await cachedClient.connect();
-                console.log('[getCachedClient] MongoClient connected successfully.');
+                logThis(LOG_CONNECTION, '[getCachedClient] MongoClient connected successfully.');
             } catch (error) {
                 console.error('[getCachedClient] Error connecting MongoClient:', error);
                 cachedClient = null; // Reset cachedClient if connection fails
                 throw error; // Re-throw to ensure the caller knows it failed
             } finally {
-                console.log('[getCachedClient] Connection attempt finished. Clearing connectionInProgress flag.');
+                logThis(LOG_CONNECTION, '[getCachedClient] Connection attempt finished. Clearing connectionInProgress flag.');
                 connectionInProgress = null; // Reset in-progress flag
             }
         })();
 
         try {
             await connectionInProgress;  // Wait for connection to complete
-            console.log('[getCachedClient] New connection completed successfully.');
+            logThis(LOG_CONNECTION, '[getCachedClient] New connection completed successfully.');
         } catch (error) {
             console.error('[getCachedClient] Failed to complete new connection:', error);
             throw error;
         }
 
     } else if (!cachedClient.topology || !cachedClient.topology.isConnected()) {
-        console.log('[getCachedClient] Cached client found, but not connected. Attempting reconnection...');
+        logThis(LOG_CONNECTION, '[getCachedClient] Cached client found, but not connected. Attempting reconnection...');
 
         connectionInProgress = (async () => {
             try {
                 await cachedClient.connect();
-                console.log('[getCachedClient] Reconnected MongoClient successfully.');
+                logThis(LOG_CONNECTION, '[getCachedClient] Reconnected MongoClient successfully.');
             } catch (error) {
                 console.error('[getCachedClient] Error reconnecting MongoClient:', error);
                 cachedClient = null; // Reset cachedClient if reconnection fails
                 throw error;
             } finally {
-                console.log('[getCachedClient] Reconnection attempt finished. Clearing connectionInProgress flag.');
+                logThis(LOG_CONNECTION, '[getCachedClient] Reconnection attempt finished. Clearing connectionInProgress flag.');
                 connectionInProgress = null; // Reset in-progress flag
             }
         })();
 
         try {
             await connectionInProgress;  // Wait for reconnection to complete
-            console.log('[getCachedClient] Reconnection completed successfully.');
+            logThis(LOG_CONNECTION, '[getCachedClient] Reconnection completed successfully.');
         } catch (error) {
             console.error('[getCachedClient] Failed to complete reconnection:', error);
             throw error;
         }
     }
 
-    console.log('[getCachedClient] Returning cached client.');
+    logThis(LOG_CLIENT, '[getCachedClient] Returning cached client.');
     resetInactivityTimer();
     return cachedClient;
 }
@@ -305,7 +312,6 @@ async function loadLora(hashId) {
         throw error;
     }
 }
-
 async function loadCollection(hashId) {
     const job = async () => {
         const collectionName = 'gallery';
@@ -328,7 +334,7 @@ async function loadCollection(hashId) {
             );
 
             if (collectionData) {
-                console.log('Collection data loaded successfully:', collectionData);
+                console.log('Collection data loaded successfully');
                 return collectionData;
             } else {
                 console.log('Collection data not found');
@@ -346,6 +352,43 @@ async function loadCollection(hashId) {
         return userData;  // Return the result to the caller
     } catch (error) {
         console.error('[loadCollection] Failed to get user data:', error);
+        throw error;
+    }
+}
+
+async function getCollectionsByUserId(userId) {
+    const job = async () => {
+        const collectionName = 'gallery';
+        try {
+            console.log('Attempting to load collections for userId:', userId);
+            const client = await getCachedClient();
+            const collection = client.db(dbName).collection(collectionName);
+
+            // Find all documents matching the userId
+            const collections = await collection.find(
+                { userId: userId },
+                { projection: { _id: 0 } }
+            ).toArray();
+
+            if (collections && collections.length > 0) {
+                console.log(`Found ${collections.length} collections for user`);
+                return collections;
+            } else {
+                console.log('No collections found for user');
+                return [];
+            }
+        } catch (error) {
+            console.error("Error loading user collections:", error);
+            return [];
+        }
+    };
+
+    // Enqueue the job and await its result
+    try {
+        const collections = await dbQueue.enqueue(job);
+        return collections;
+    } catch (error) {
+        console.error('[getCollectionsByUserId] Failed to get collections:', error);
         throw error;
     }
 }
@@ -1871,7 +1914,7 @@ module.exports = {
     saveGen,
     createTraining, loadLora, updateLoraStatus,
     saveWorkspace, deleteWorkspace,
-    createCollection, loadCollection,
+    createCollection, loadCollection, getCollectionsByUserId,
     saveStudio, deleteStudio,
     saveImageToGridFS, bucketPull, deleteImageFromWorkspace,
 };

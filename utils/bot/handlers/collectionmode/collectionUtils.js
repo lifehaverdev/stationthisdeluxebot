@@ -22,7 +22,7 @@ async function getOrLoadCollection(userId, collectionId) {
 
     // Cache the loaded data in the namespaced studio
     studio[userId][collectionId] = collectionData;
-    console.log('collection data loaded and cached in studio',studio[userId][collectionId])
+    //console.log('collection data loaded and cached in studio',studio[userId][collectionId])
     return collectionData;
 }
 

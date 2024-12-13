@@ -185,7 +185,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
 
     // Include message details for tracking and additional context
     promptObj.username = message.from?.username;
-
+    console.log('promptObj after build', promptObj)
     return promptObj;
 }
 

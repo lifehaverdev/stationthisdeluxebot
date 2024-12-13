@@ -12,11 +12,13 @@ const {
     setUserState, 
     safeExecute,
     updateMessage,
-    react 
+    react ,
+    logThis
 } = require('../../utils')
 const { 
     createCollection,
     loadCollection,
+    getCollectionsByUserId,
     writeUserDataPoint,
     deleteStudio,
     saveStudio,
@@ -40,35 +42,32 @@ const LOG_CONFLICT = test;
 const LOG_EXCLUSION = test;
 const LOG_VALIDATE = test;
 
-function logThis(active, message) {
-    if (active) console.log(message);
-}
-
 /*
 
 */
 async function getMyCollections(userId) {
-    //console.log('getting collections')
     let collectionKeyboardOptions = [];
-    //console.log(lobby[userId])
-    if (lobby[userId]?.collections?.length > 0) {
+    
+    try {
+        const collections = await getCollectionsByUserId(userId);
         
-        for (const collectionIdHash of lobby[userId].collections) {
-            console.log('made it in',collectionIdHash)    
-            try {
-                const collectionInfo = await getOrLoadCollection(userId,collectionIdHash);
-                collectionKeyboardOptions.push([{ text: `${collectionInfo.name}`, callback_data: `ec_${collectionIdHash}` }]);
-            } catch (error) {
-                console.error(`Failed to load collection with ID ${collectionIdHash}:`, error);
-                delete lobby[userId].collections[collectionIdHash]
-                await writeUserDataPoint(userId,'collections',lobby[userId].collections)
-                await deleteStudio(collectionIdHash)
+        if (collections.length > 0) {
+            for (const collection of collections) {
+                collectionKeyboardOptions.push([{ 
+                    text: `${collection.name}`, 
+                    callback_data: `ec_${collection.collectionId}` 
+                }]);
             }
         }
+
+        if (collections.length < 3) {
+            collectionKeyboardOptions.push([{ text: '➕', callback_data: 'newcollection' }]);
+        }
+
+    } catch (error) {
+        console.error('Failed to load collections:', error);
     }
-    if (lobby[userId]?.collections?.length < 3) {
-        collectionKeyboardOptions.push([{ text: '➕', callback_data: 'newcollection' }]);
-    }
+
     return collectionKeyboardOptions;
 }
 
@@ -138,7 +137,8 @@ async function createConfig(message) {
         size: 10,
         config: {
             masterPrompt: '',
-            traitTypes: []
+            traitTypes: [],
+            workflow: 'FLUX'
         },
         initiated: Date.now(),
         status: 'incomplete'
@@ -439,10 +439,10 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
                                     backTo = await StudioManager.updateMasterPrompt(userId, collectionId, message);
                                     break;
                                 case 'addTrait':
-                                    backTo = StudioManager.addTraitType(message, userId, collectionId)
+                                    backTo = await StudioManager.addTraitType(message, userId, collectionId)
                                     break;
                                 case 'editTraitName':
-                                    backTo = StudioManager.editTraitTypeName(message, userId, collectionId, traitTypeIndex)
+                                    backTo = await StudioManager.editTraitTypeName(message, userId, collectionId, traitTypeIndex)
                                     break;
                                 case 'editWorkflow':
                                     const workflow = message.text;
@@ -460,7 +460,7 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
                                     backTo = 'config'
                                     break;
                                 case 'addTraitValue':
-                                    backTo = StudioManager.addTraitValue(message, userId, collectionId, traitTypeIndex)
+                                    backTo = await StudioManager.addTraitValue(message, userId, collectionId, traitTypeIndex)
                                     break;
                                 case 'editTraitValueName':
                                     const { traitTypeIndex: nameTypeIndex, valueIndex: nameValueIndex } = studio[userId].pendingAction;
@@ -516,6 +516,7 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
 
     // Save changes and reset state
     //await saveStudio(studio[userId][collectionId]);
+    console.log('backTo', backTo)
     studioAction.clearPendingAction(userId);
     setUserState(message, STATES.IDLE);
     
@@ -638,40 +639,39 @@ class TraitSelector {
         
         return conflictMap;
     }
-
     static resolveConflicts(selectedTraits, conflictMap) {
         logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Starting conflict resolution`);
-        console.log(`[CONFLICT_RESOLVE] Starting conflict resolution`);
-        console.log(`[CONFLICT_RESOLVE] Initial traits:`, selectedTraits);
+        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Starting conflict resolution`);
+        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Initial traits:`, selectedTraits);
         
         const conflictingTraits = new Set(
             [...conflictMap.keys()].filter(trait => selectedTraits[trait])
         );
-        console.log(`[CONFLICT_RESOLVE] Found ${conflictingTraits.size} traits with potential conflicts`);
+        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Found ${conflictingTraits.size} traits with potential conflicts`);
         
         for (const traitType of conflictingTraits) {
-            console.log(`[CONFLICT_RESOLVE] Processing conflicts for: ${traitType}`);
+            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Processing conflicts for: ${traitType}`);
             const conflicts = conflictMap.get(traitType);
             const activeConflicts = [...conflicts].filter(conflict => selectedTraits[conflict]);
             
-            console.log(`[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
+            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
             
             if (activeConflicts.length > 0) {
                 const allConflictingTraits = [traitType, ...activeConflicts];
-                console.log(`[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
+                logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
                 
                 const nonEmptyTraits = allConflictingTraits.filter(t => 
                     !this.isEmptyValue(selectedTraits[t])
                 );
-                console.log(`[CONFLICT_RESOLVE] Non-empty conflicting traits: ${nonEmptyTraits.join(', ')}`);
+                logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Non-empty conflicting traits: ${nonEmptyTraits.join(', ')}`);
                 
                 if (nonEmptyTraits.length > 1) {
                     const winner = nonEmptyTraits[Math.floor(Math.random() * nonEmptyTraits.length)];
-                    console.log(`[CONFLICT_RESOLVE] Randomly selected winner: ${winner}`);
+                    logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Randomly selected winner: ${winner}`);
                     
                     allConflictingTraits.forEach(t => {
                         if (t !== winner) {
-                            console.log(`[CONFLICT_RESOLVE] Removing conflicting trait: ${t}`);
+                            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Removing conflicting trait: ${t}`);
                             delete selectedTraits[t];
                         }
                     });
@@ -679,39 +679,37 @@ class TraitSelector {
             }
         }
         
-        console.log(`[CONFLICT_RESOLVE] Final resolved traits:`, selectedTraits);
+        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Final resolved traits:`, selectedTraits);
         return selectedTraits;
     }
-
     static generateTraitSelection(traitTypes, conflictMap) {
-        console.log(`[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
+        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
         
         const selectedTraits = {};
         const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
-        console.log(`[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
+        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
         
         // First pass: Select traits
         shuffledTypes.forEach(traitType => {
-            console.log(`[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
+            logThis(LOG_TRAIT, `[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
             const selected = this.selectTraitValue(traitType);
             if (selected) {
-                console.log(`[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
+                logThis(LOG_TRAIT, `[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
                 selectedTraits[traitType.title] = selected.prompt;
             } else {
-                console.log(`[TRAIT_GENERATE] No value selected for ${traitType.title}`);
+                logThis(LOG_TRAIT, `[TRAIT_GENERATE] No value selected for ${traitType.title}`);
             }
         });
         
-        console.log(`[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
+        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
         const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
-        console.log(`[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
+        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
         
         return resolvedTraits;
     }
 }
-
 function validateMasterPrompt(masterPrompt) {
-    console.log(`[VALIDATE] Starting validation of master prompt: ${masterPrompt}`);
+    logThis(LOG_VALIDATE, `[VALIDATE] Starting validation of master prompt: ${masterPrompt}`);
     
     const errors = [];
     const stack = [];
@@ -734,14 +732,14 @@ function validateMasterPrompt(masterPrompt) {
         
         // Handle opening brackets
         if (char === '[' || char === '{') {
-            console.log(`[VALIDATE] Found opening ${char} at position ${i}`);
+            logThis(LOG_VALIDATE, `[VALIDATE] Found opening ${char} at position ${i}`);
             stack.push({ char, position: i });
             continue;
         }
         
         // Handle closing brackets
         if (char === ']' || char === '}') {
-            console.log(`[VALIDATE] Found closing ${char} at position ${i}`);
+            logThis(LOG_VALIDATE, `[VALIDATE] Found closing ${char} at position ${i}`);
             
             if (stack.length === 0) {
                 addError(`Unexpected closing ${char}`, i);
@@ -765,7 +763,7 @@ function validateMasterPrompt(masterPrompt) {
     
     // Validate trait placeholders [[trait]]
     const traitPlaceholders = masterPrompt.match(/\[\[([^\]]*)\]\]/g) || [];
-    console.log(`[VALIDATE] Found ${traitPlaceholders.length} trait placeholders`);
+    logThis(LOG_VALIDATE, `[VALIDATE] Found ${traitPlaceholders.length} trait placeholders`);
     
     traitPlaceholders.forEach(placeholder => {
         const trait = placeholder.slice(2, -2).trim();
@@ -777,12 +775,12 @@ function validateMasterPrompt(masterPrompt) {
     // Validate exclusion syntax [content]{exclusion}
     const exclusionRegex = /\[([^\]]*\[[^\]]*\][^\]]*)\]\{([^}]+)\}/g;
     const exclusionGroups = [...masterPrompt.matchAll(exclusionRegex)];
-    console.log(`[VALIDATE] Searching for exclusion groups with regex: ${exclusionRegex}`);
-    console.log(`[VALIDATE] Found ${exclusionGroups.length} exclusion groups:`);
+    logThis(LOG_VALIDATE, `[VALIDATE] Searching for exclusion groups with regex: ${exclusionRegex}`);
+    logThis(LOG_VALIDATE, `[VALIDATE] Found ${exclusionGroups.length} exclusion groups:`);
     
     exclusionGroups.forEach(match => {
         const [fullMatch, content, exclusion] = match;
-        console.log(`[VALIDATE] Exclusion group found:`, {
+        logThis(LOG_VALIDATE, `[VALIDATE] Exclusion group found:`, {
             fullMatch,
             content,
             exclusion,
@@ -804,10 +802,10 @@ function validateMasterPrompt(masterPrompt) {
     }
 
     const isValid = errors.length === 0;
-    console.log(`[VALIDATE] Validation complete. Valid: ${isValid}`);
+    logThis(LOG_VALIDATE, `[VALIDATE] Validation complete. Valid: ${isValid}`);
     if (!isValid) {
-        console.log(`[VALIDATE] Found ${errors.length} errors:`);
-        errors.forEach(error => console.log(`[VALIDATE] Error: ${error}`));
+        logThis(LOG_VALIDATE, `[VALIDATE] Found ${errors.length} errors:`);
+        errors.forEach(error => logThis(LOG_VALIDATE, `[VALIDATE] Error: ${error}`));
     }
 
     return {
@@ -819,35 +817,35 @@ function validateMasterPrompt(masterPrompt) {
 
 // Update handleTestCollection to use validation
 async function handleTestCollection(message, user, collectionId) {
-    console.log(`[TEST_COLLECTION] Starting test collection for user: ${user}, collection: ${collectionId}`);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Starting test collection for user: ${user}, collection: ${collectionId}`);
     
     const collection = await getOrLoadCollection(user, collectionId);
-    console.log(`[TEST_COLLECTION] Loaded collection:`, collection.name);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Loaded collection: ${collection.name}`);
     
     const { masterPrompt, traitTypes } = collection.config;
     const { isValid, errors, formattedErrors } = validateMasterPrompt(masterPrompt);
     if (!isValid) {
-        console.log(`[TEST_COLLECTION] Master prompt validation failed with errors:`);
-        console.log(formattedErrors);
+        logThis(LOG_TEST, `[TEST_COLLECTION] Master prompt validation failed with errors:`);
+        logThis(LOG_TEST, formattedErrors);
         await react(message, '🥴')
         return;
     }
-    const prefix = collection.config.workflow.toLowerCase();
-    console.log(`[TEST_COLLECTION] Using workflow prefix: ${prefix}`);
+    const prefix = collection.config.workflow?.toLowerCase() || 'flux';
+    logThis(LOG_TEST, `[TEST_COLLECTION] Using workflow prefix: ${prefix}`);
     
-    console.log(`[TEST_COLLECTION] Processing master prompt for exclusions:`, masterPrompt);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Processing master prompt for exclusions: ${masterPrompt}`);
     const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
-    console.log(`[TEST_COLLECTION] Found ${exclusions.length} exclusions`);
-    console.log(`[TEST_COLLECTION] Cleaned prompt:`, cleanedPrompt);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Found ${exclusions.length} exclusions`);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Cleaned prompt: ${cleanedPrompt}`);
     
     const conflictMap = TraitSelector.buildConflictMap(exclusions);
-    console.log(`[TEST_COLLECTION] Built conflict map with ${conflictMap.size} entries`);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Built conflict map with ${conflictMap.size} entries`);
     
     const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
-    console.log(`[TEST_COLLECTION] Generated trait selection:`, selectedTraits);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Generated trait selection: ${selectedTraits}`);
     
     const testPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
-    console.log(`[TEST_COLLECTION] Final processed prompt:`, testPrompt);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Final processed prompt: ${testPrompt}`);
 
     await editMessage({
         chat_id: message.chat.id,
@@ -863,7 +861,7 @@ async function handleTestCollection(message, user, collectionId) {
             parse_mode: 'MarkdownV2'
         }
     });
-    console.log(`[TEST_COLLECTION] Test collection complete`);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Test collection complete`);
 }
 
 prefixHandlers['editMasterPrompt_'] = (action, message, user) => handlePrefix(action, message, user, 'editMasterPrompt')
@@ -1821,7 +1819,7 @@ function processPromptWithOptionals(masterPrompt, traitValues) {
     return processedPrompt;
 }
 function findExclusions(masterPrompt) {
-    console.log(`[EXCLUSIONS] Processing master prompt: ${masterPrompt}`);
+    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Processing master prompt: ${masterPrompt}`);
     const exclusions = [];
     
     // Updated regex to better handle nested structures
@@ -1833,7 +1831,7 @@ function findExclusions(masterPrompt) {
         const content = match[1];
         const exclusionGroup = match[2].split(',').map(trait => trait.trim());
         
-        console.log(`[EXCLUSIONS] Found content: "${content}" with exclusions: ${exclusionGroup.join(', ')}`);
+        logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found content: "${content}" with exclusions: ${exclusionGroup.join(', ')}`);
         
         // Find both single and double bracketed traits
         const doubleTraitMatches = content.match(/\[\[([^\]]+)\]\]/g) || [];
@@ -1845,11 +1843,11 @@ function findExclusions(masterPrompt) {
 
         if (allTraits.length > 0) {
             allTraits.forEach(targetTrait => {
-                console.log(`[EXCLUSIONS] Found target trait: ${targetTrait}`);
+                logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found target trait: ${targetTrait}`);
                 
                 // Create exclusion objects for each excluded trait
                 exclusionGroup.forEach(exclusion => {
-                    console.log(`[EXCLUSIONS] Adding exclusion: ${targetTrait} <-> ${exclusion}`);
+                    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Adding exclusion: ${targetTrait} <-> ${exclusion}`);
                     exclusions.push({
                         targetTrait,
                         exclusion
@@ -1857,14 +1855,14 @@ function findExclusions(masterPrompt) {
                 });
             });
         } else {
-            console.log(`[EXCLUSIONS] Warning: No traits found in content: ${content}`);
+            logThis(LOG_EXCLUSION, `[EXCLUSIONS] Warning: No traits found in content: ${content}`);
         }
     }
 
     // Clean the master prompt by removing only the exclusion markers while preserving brackets
     const cleanedPrompt = masterPrompt.replace(/\{[^{}]*\}/g, '');
-    console.log(`[EXCLUSIONS] Cleaned prompt: ${cleanedPrompt}`);
-    console.log(`[EXCLUSIONS] Found ${exclusions.length} total exclusions`);
+    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Cleaned prompt: ${cleanedPrompt}`);
+    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found ${exclusions.length} total exclusions`);
 
     return {
         exclusions,
