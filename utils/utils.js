@@ -487,6 +487,10 @@ async function calculateDiscount(user) {
     return totalDiscount;
 }
 
+function logThis(active, message) {
+    if (active) console.log(message);
+}
+
 
 
 module.exports = {
@@ -504,6 +508,7 @@ module.exports = {
     gated, chargeGated,
     calculateDiscount,
     cleanPrompt,
+    logThis,
     DEV_DMS,
     fullCommandList,
 }
