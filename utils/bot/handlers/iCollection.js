@@ -146,7 +146,6 @@ async function createConfig(message) {
         initiated: Date.now(),
         status: 'incomplete'
     }
-    userContext.collections.push(thisCollection.collectionId)
     // Ensure studio[userId] is an object
     if (!studio.hasOwnProperty(userId)) {
         studio[userId] = {};
@@ -1008,7 +1007,17 @@ async function handleTraitInstanceMenu(message, user, collectionId, traitTypeInd
 
     updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
 }
-
+prefixHandlers['deleteTraitValue_'] = (action, message, user) => {
+    const [_, collectionId, traitTypeIndex, valueIndex] = action.split('_');
+    handleDeleteTraitValue(message, user, parseInt(collectionId), parseInt(traitTypeIndex), parseInt(valueIndex));
+}
+async function handleDeleteTraitValue(message, user, collectionId, traitTypeIndex, valueIndex) {
+    console.log('Handling delete trait value for user:', user, 'collection:', collectionId, 
+                'traitType:', traitTypeIndex, 'value:', valueIndex);
+    const backTo = await StudioManager.removeTraitValue(user, collectionId, traitTypeIndex, valueIndex);
+    const { text, reply_markup } = await CollectionMenuBuilder.buildTraitTypesMenu(user, collectionId, backTo);
+    updateMessage(message.chat.id, message.message_id, { reply_markup }, text);
+}
 prefixHandlers['editTraitValueName_'] = (action, message, user) => {
     const [_, collectionId, traitTypeIndex, valueIndex] = action.split('_');
     handleEditTraitValueName(message, user, parseInt(collectionId), parseInt(traitTypeIndex), parseInt(valueIndex));
