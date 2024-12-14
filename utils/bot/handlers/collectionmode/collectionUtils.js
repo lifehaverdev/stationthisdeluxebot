@@ -1,6 +1,6 @@
 const { studio } = require('../../bot');
-const { loadCollection } = require('../../../../db/mongodb');
-
+const { CollectionDB } = require('../../../../db/index');
+const collectionDB = new CollectionDB();
 async function getOrLoadCollection(userId, collectionId) {
     console.log('userId',userId,'collectionId',collectionId)
     if (studio[userId]?.[collectionId]) {
@@ -9,7 +9,7 @@ async function getOrLoadCollection(userId, collectionId) {
     }
 
     console.log(`Loading collection data for user ${userId}, collection ${collectionId} from database...`);
-    const collectionData = await loadCollection(collectionId);
+    const collectionData = await collectionDB.loadCollection(collectionId);
 
     if (!collectionData) {
         throw new Error(`collection data not found for ID ${collectionId}`);

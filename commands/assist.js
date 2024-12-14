@@ -134,10 +134,31 @@ const formatters = {
     // Formats as JSON if possible
     json: (content) => {
         try {
+            // First try direct parse
             return JSON.parse(content);
         } catch (e) {
-            console.warn("Could not parse JSON response:", e);
-            return content;
+            console.log('Initial JSON parse failed, attempting to clean content...');
+            console.log('Raw content:', content);
+            
+            // Clean the string of control characters and normalize line endings
+            const cleaned = content
+                .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control chars
+                .replace(/\n\s*/g, ' ')                        // Normalize line endings and remove extra spaces
+                .replace(/\r/g, '')                           // Remove carriage returns
+                .replace(/\t/g, ' ')                          // Replace tabs with spaces
+                .replace(/\s+/g, ' ')                         // Collapse multiple spaces
+                .replace(/\\(?!["\\/bfnrtu])/g, '\\\\')      // Escape backslashes
+                .trim();                                      // Trim extra whitespace
+            
+            console.log('Cleaned content:', cleaned);
+            
+            try {
+                return JSON.parse(cleaned);
+            } catch (e2) {
+                console.warn("Could not parse JSON response even after cleaning:", e2);
+                // Instead of throwing, return null to indicate parsing failure
+                return null;
+            }
         }
     },
     

@@ -12,10 +12,13 @@ const {
     getGroup, getGroupById,
 } = require('../bot')
 //const { features } = require('../../models/tokengatefeatures.js')
-const { createRoom, writeData } = require('../../../db/mongodb.js')
+const { FloorplanDB } = require('../../../db/index');
+const floorplanDB = new FloorplanDB();
 //const { initialize } = require('../intitialize.js');
 //const iMenu = require('./iMenu');
 const defaultUserData = require('../../users/defaultUserData.js');
+
+
 
 // Function to build a header for group settings messages
 function buildGroupSettingsHeader(groupChatId, title) {
@@ -135,7 +138,7 @@ ${commonInstructions}`;
         defaultGroup.settings.userId = user
         
         // Save the default group to the databasex
-        await createRoom(groupChatId,defaultGroup);
+        await floorplanDB.createRoom(groupChatId, defaultGroup);
         rooms.push(defaultGroup);
         const menu = buildGroupSettingsMenu(groupChatId)
         //await sendPrivateMessage(user, message, instructions, buildGroupSettingsMenu(groupChatId));
@@ -475,7 +478,7 @@ async function saveGroupRQ(group) {
     console.log('...saving group')
     const { _id, flag, ...dataToSave } = group; // Isolate out _id
     try {
-        await writeData('floorplan', { id: group.chat.id }, dataToSave);
+        await floorplanDB.writeRoomData(group.chat.id, dataToSave);
         return true
     } catch(err) {
         return false

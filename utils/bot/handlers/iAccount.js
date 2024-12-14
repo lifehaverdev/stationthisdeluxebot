@@ -3,11 +3,15 @@ const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodT
     prefixHandlers
 } = require('../bot'); 
 const bot = getBotInstance()
-const { 
-    writeUserData, writeQoints, writeNewUserData,
-    getUserDataByUserId, writeData,  getUsersByWallet, 
-    writeUserDataPoint
-} = require('../../../db/mongodb')
+// const { 
+//     //writeUserData, 
+//     //writeQoints, 
+//     //writeNewUserData,
+//     //getUserDataByUserId, x
+//     //writeData,  
+//     //getUsersByWallet, 
+//     //writeUserDataPoint
+// } = require('../../../db/mongodb')
 const { 
     sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS ,
     fullCommandList
@@ -25,6 +29,13 @@ Cull mutliple userids on same wallet address
 Cull multiple addresses same userId?
 Website route?
 */
+const { UserEconomy, UserCore, UserPref, FloorplanDB } = require('../../../db/index');
+const userEconomy = new UserEconomy();
+const userCore = new UserCore();
+const userPref = new UserPref();
+const floorplanDB = new FloorplanDB();
+const { fetchUserCore, fetchFullUserData } = require('../../../db/operations/userFetch');
+const { writeNewUserDataMacro } = require('../../../db/operations/newUser');
 
 function displayAccountSettingsMenu(message, dms) {
     const userId = message.from.id;
@@ -66,7 +77,7 @@ function buildAccountSettingsKeyboard(userId) {
             {text: 'Settings ⚙️', callback_data: 'preferencesMenu'}
         ],
         [
-            { text: 'Create 👩‍🎨🖼️🏭', callback_data: 'collectionModeMenu' },
+            { text: 'Create 👩🎨🖼️🏭', callback_data: 'collectionModeMenu' },
         ],
         [
             { text: 'Train 🚂🦾🧠', callback_data: 'trainingMenu' },
@@ -227,7 +238,7 @@ actionMap['saveCommandList'] = async (message, user) => {
         console.log(`User ${user} is now stationed for chatId: ${chatId}.`);
     }
     lobby[user].stationed[message.chat.id] = false
-    await writeUserDataPoint(user, 'commandList', lobby[user].commandList)
+    await userPref.writeUserDataPoint(user, 'commandList', lobby[user].commandList)
     await returnToAccountMenu(message,user)
 }
 
@@ -445,15 +456,14 @@ function createBalancedBar(totalPossiblePoints, spentPoints, qoints, segments = 
 async function handleSaveSettings(message) {
     const group = getGroup(message);
     if(group){
-        writeData('floorplan',{id: group.id},{settings: group.settings})
+        await floorplanDB.saveGroupSettings( group.id,group.settings)
         await sendMessage(message,`I just saved your group settings. So when the bot resets, this is what you'll be on`, home);
     } else {
-        writeUserData(message.from.id,lobby[message.from.id]);
+        await userPref.writeUserData(message.from.id,lobby[message.from.id]);
         await sendMessage(message,`I just saved your settings. So when the bot resets, this is what you'll be on`, home);
     }
 }
 async function handleSeeSettings(message) {
-    const chatId = message.chat.id;
     const userId = message.from.id;
     const group = getGroup(message);
     let settings;
@@ -466,8 +476,6 @@ async function handleSeeSettings(message) {
     }
     else if (!group && lobby[userId]) {
         settings = lobby[userId];
-    } else {
-        settings = await getUserDataByUserId(chatId);  // Assuming this fetches user data
     }
 
     if (settings) {
@@ -502,15 +510,21 @@ async function handleSignIn(message) {
         return;
     }
 
-    // Second check - if user has dbFetchFailed flag, try to restore their data
+    // Check for dbFetchFailed flag
     if (lobby[userId].dbFetchFailed) {
         try {
-            const dbUserData = await getUserDataByUserId(userId);
-            if (dbUserData && dbUserData.verified) {
-                sendMessage(message, 'Found your existing account! Restoring your data...');
-                lobby[userId] = { ...dbUserData, lastTouch: Date.now() };
-                delete lobby[userId].dbFetchFailed;
-                return;
+            // First try to get core data
+            const coreData = await fetchUserCore(userId);
+            
+            if (coreData && coreData.verified) {
+                // If verified, fetch everything
+                const fullData = await fetchFullUserData(userId);
+                if (fullData) {
+                    sendMessage(message, 'Found your existing account! Restoring your data...');
+                    lobby[userId] = fullData;
+                    delete lobby[userId].dbFetchFailed;
+                    return;
+                }
             }
         } catch (error) {
             console.error('Failed to restore user data during signin:', error);
@@ -518,12 +532,6 @@ async function handleSignIn(message) {
             return;
         }
     }
-
-    // // Third check - if user has any valuable data, require confirmation
-    // if (hasValuableData(lobby[userId])) {
-    //     sendMessage(message, '⚠️ Warning: You have existing data that could be lost. Please contact support if you need to change your wallet.',home);
-    //     return;
-    // }
 
     // Rest of signin logic...
     if (lobby[userId].wallet !== '') {
@@ -570,7 +578,7 @@ async function shakeSignIn(message) {
     }
 
     // Check for existing wallet associations BEFORE modifying any data
-    const usersWithSameWallet = await getUsersByWallet(walletAddress);
+    const usersWithSameWallet = await userCore.getUsersByWallet(walletAddress);
     
     // Additional safety check - look for any valuable data associated with this wallet
     for (const user of usersWithSameWallet) {
@@ -583,24 +591,25 @@ async function shakeSignIn(message) {
         }
     }
 
-    // If we get here, it's safe to proceed with the wallet update
+    // One final DB check before proceeding
     try {
-        // One final DB check before proceeding
-        const existingData = await getUserDataByUserId(userId);
-        if (existingData) {
+        // First try to get core data
+        const coreData = await fetchUserCore(userId);
+        if (coreData) {
             // If we failed to fetch DB data earlier but now found it, populate the lobby
             if (lobby[userId].dbFetchFailed) {
-                Object.assign(lobby[userId], existingData);
-                delete lobby[userId].dbFetchFailed;
+                const fullData = await fetchFullUserData(userId);
+                if (fullData) {
+                    Object.assign(lobby[userId], fullData);
+                    delete lobby[userId].dbFetchFailed;
+                }
             }
             // Allow users to upgrade their account by adding a wallet even if they have valuable data
-            else {
-                // Continue with wallet update
-            }
+            // Continue with wallet update
         }
 
         // Now safe to proceed with wallet update
-        await writeUserDataPoint(userId, 'wallet', walletAddress);
+        await userCore.writeUserDataPoint(userId, 'wallet', walletAddress);
         lobby[userId].wallet = walletAddress;
         
         console.log(message.from.first_name, 'has entered the chat');
@@ -625,7 +634,9 @@ async function handleVerify(message) {
 async function shakeVerify(message) {
     console.log('shaking verify');
     const userId = message.from.id;
-    const user = lobby[userId] || await getUserDataByUserId(userId);
+    
+    // First try to get from lobby, if not there fetch core data
+    const user = lobby[userId] || await fetchUserCore(userId);
 
     if (!user) {
         sendMessage(message, 'User not found');
@@ -637,11 +648,22 @@ async function shakeVerify(message) {
     const providedHash = message.text;
 
     const isValid = isHashValid(wallet, salt, providedHash);
-    sendMessage(message, `${isValid ? 'You are verified now' : 'Not verified'}`,home);
+    sendMessage(message, `${isValid ? 'You are verified now' : 'Not verified'}`, home);
 
     if (isValid) {
-        user.verified = true;
-        await updateUserVerificationStatus(userId, user);
+        // Update both lobby and database
+        if (lobby[userId]) {
+            lobby[userId].verified = true;
+        }
+
+        // If this is their first verification, initialize all collections
+        if (user.newb) {
+            delete user.newb;
+            await writeNewUserDataMacro(userId, user);
+        } else {
+            // Just update verification status in userCore
+            await userCore.writeUserDataPoint(userId, 'verified', true);
+        }
     }
 }
 
@@ -659,9 +681,9 @@ async function updateUserVerificationStatus(userId, user) {
     try {
         if (user.newb) {
             delete user.newb;
-            await writeNewUserData(userId, user);
+            await writeNewUserDataMacro(userId, user);
         } else {
-            await writeUserDataPoint(userId, 'verified', true);
+            await userCore.writeUserDataPoint(userId, 'verified', true);
         }
         lobby[userId] = user; // Update the lobby state
     } catch (error) {
@@ -673,7 +695,21 @@ async function handleSignOut(message) {
     const userId = message.from.id;
 
     // Fetch user data
-    let userData = lobby[userId] || await getUserDataByUserId(userId);
+    let userData = lobby[userId];
+    
+    if (!userData) {
+        // First try to get core data
+        const coreData = await fetchUserCore(userId);
+        if (coreData) {
+            if (coreData.verified) {
+                // If verified, fetch all data
+                userData = await fetchFullUserData(userId);
+            } else {
+                // If not verified, core data is enough
+                userData = coreData;
+            }
+        }
+    }
 
     console.log(userData?.userId || userId, 'signing out');
     if (userData) {
@@ -684,7 +720,11 @@ async function handleSignOut(message) {
                 wallet: '',  // Clear wallet as part of sign-out
                 verified: false  // Reset verification status
             };
-            await writeUserData(userId, updatedUserData);
+            await userCore.startBatch()
+                .writeUserDataPoint(userId, 'wallet', '')
+                .writeUserDataPoint(userId, 'verified', false)
+                .endBatch()
+            await userPref.writeUserData(userId, updatedUserData);
         } catch (error) {
             console.error('Error writing user data:', error);
             return false; // Exit early on error
@@ -747,7 +787,17 @@ async function handleAccountReset(message) {
         console.log('getting from lobby account reset');
         chatData = lobby[userId];
     } else {
-        chatData = await getUserDataByUserId(userId);
+        // First try to get core data
+        const coreData = await fetchUserCore(userId);
+        if (coreData) {
+            if (coreData.verified) {
+                // If verified, fetch all data
+                chatData = await fetchFullUserData(userId);
+            } else {
+                // If not verified, core data is enough
+                chatData = coreData;
+            }
+        }
     }
 
     //console.log('chatdata in reset account', chatData);
@@ -801,31 +851,35 @@ async function handleRefreshQoints(message,user) {
         userData.pendingQoints = 0;
         userData.checkedQointsAt = now
         //write new pendingQoints
-        await writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
+        await userEconomy.startBatch()
+            .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
         //write new qoints
-        await writeQoints('users',{'userId': user},userData.qoints)
+            .writeQoints('users',userData.qoints)
+            .endBatch()
         await returnToAccountMenu(message,user)
         return
     } else {
         console.log('i dont see any pendingQoints...')
         console.log('lets check db')
-        const newRead = await getUserDataByUserId(user)
-        if(!newRead){
-            console.log('failed newread','iquit')
-            userData.checkedQointsAt = now
+        const economyData = await userEconomy.findOne({ userId: user });
+        
+        if (!economyData) {
+            console.log('failed to find economy data', 'iquit')
+            userData.checkedQointsAt = now;
+            return;
         }
-        let pendingQoints;
-        if(newRead?.hasOwnProperty('pendingQoints')){
-            pendingQoints = newRead.pendingQoints
-        } else {
-            pendingQoints = 0
-        }
-        if(pendingQoints && pendingQoints > 0){
-            userData.qoints = userData.qoints + pendingQoints
+
+        let pendingQoints = economyData.pendingQoints || 0;
+        
+        if (pendingQoints > 0) {
+            userData.qoints = userData.qoints + pendingQoints;
             userData.pendingQoints = 0;
-            userData.checkedQointsAt = now
-            await writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
-            await writeQoints('users',{'userId': user},userData.qoints)
+            userData.checkedQointsAt = now;
+            
+            await userEconomy.startBatch()
+                .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
+                .writeQoints('users',userData.qoints)
+                .endBatch()
             await returnToAccountMenu(message,user)
             return
         } else {

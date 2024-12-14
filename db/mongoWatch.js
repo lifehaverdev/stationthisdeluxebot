@@ -56,6 +56,6 @@ async function watchCollection() {
 }
 
 // Start monitoring
-watchCollection().catch(console.error);
+//watchCollection().catch(console.error);
 
 module.exports = { watchCollection };
