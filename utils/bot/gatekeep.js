@@ -123,38 +123,44 @@ async function kick(userId) {
     const userData = lobby[userId];
     if (!userData) {
         console.error(`Attempted to kick userId ${userId} but no userData found in lobby`);
+        return;
     }
 
     try {
         // First get existing data from database
         const coreData = await fetchUserCore(userId);
-        if (coreData?.verified) {
+        if (!coreData) {
+            console.error(`No core data found for userId ${userId} during kick`);
+            return;
+        }
+
+        const updatedData = {
+            ...coreData,  // Base from core data
+            ...lobby[userId],  // Overlay with lobby data
+            kickedAt: Date.now(),
+            lastTouch: userData.lastTouch,
+            state: userData.state
+        };
+
+        // If user is verified, get and include full data
+        if (coreData.verified) {
             const fullData = await fetchFullUserData(userId);
-            // Use fullData
-        } else {
-            // Use coreData
+            if (fullData) {
+                Object.assign(updatedData, fullData);
+            }
         }
-        
-        if (existingData) {
-            // Use existing data as base, apply only the changes we want
-            const updatedData = {
-                ...existingData,  // Keep all existing data as base
-                ...lobby[userId],
-                kickedAt: Date.now(),
-                lastTouch: userData.lastTouch,
-                state: userData.state
-            };
 
+        // Write to all relevant collections
+        try {
             await userCore.writeUserData(userId, updatedData);
-
             await userEconomy.writeUserData(userId, updatedData);
-
             await userPref.writeUserData(userId, updatedData);
-
+            
             console.log(`Kicked user ${userId} with preserved data`);
-        } else {
-            console.error(`No existing data found for userId ${userId} during kick`);
+        } catch (writeError) {
+            console.error(`Error writing data during kick for userId ${userId}:`, writeError);
         }
+
     } catch (error) {
         console.error(`Error during kick operation for userId ${userId}:`, error);
     }
