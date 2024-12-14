@@ -1,12 +1,27 @@
 const { lobby } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
-const { updateGroupPoints } = require('../../db/mongodb')
+const { FloorplanDB } = require('../../db/index');
 const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
+
+const floorplanDB = new FloorplanDB();
 
 // Helper function to get the user's max balance
 function getMaxBalance(userObject) {
     const max = Math.floor((userObject.balance + NOCOINERSTARTER) / POINTMULTI)
     return max; // Adjust this as needed if balance calculations are more complex
+}
+
+// Helper function to update group points in DB
+async function updateGroupPoints(group, pointsDeducted) {
+    try {
+        await floorplanDB.writeRoomData(group.chat.id, {
+            qoints: group.qoints,
+            burnedQoints: (group.burnedQoints || 0) + pointsDeducted
+        });
+    } catch (error) {
+        console.error(`Failed to update group points in DB for group ${group.chat.id}:`, error);
+        throw error; // Or handle as needed
+    }
 }
 
 async function addPoints(task) {
@@ -41,8 +56,8 @@ async function addPoints(task) {
             try {
                 await updateGroupPoints(group, pointsToAdd);
             } catch (error) {
-                console.error(`Failed to update group points for group ${group.id}:`, error);
-                // Continue execution even if group points update fails
+                console.error(`Failed to update house points for group ${group.id}:`, error);
+                // Consider adding fallback behavior
             }
         } else if (group.gateKeeping.pointAccounting === 'ghost') {
             // 'ghost' accounting - treat as if there is no group
@@ -65,7 +80,7 @@ async function addPoints(task) {
                         await updateGroupPoints(group, pointsToGroup);
                     } catch (error) {
                         console.error(`Failed to update group points for group ${group.id}:`, error);
-                        // Continue execution even if group points update fails
+                        // Consider adding fallback behavior
                     }
                 }
             } else {
@@ -75,7 +90,7 @@ async function addPoints(task) {
                     await updateGroupPoints(group, pointsToAdd);
                 } catch (error) {
                     console.error(`Failed to update group points for group ${group.id}:`, error);
-                    // Continue execution even if group points update fails
+                    // Consider adding fallback behavior
                 }
             }
         }

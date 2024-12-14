@@ -8,18 +8,10 @@ const {
     calculateDiscount,
     DEV_DMS
 } = require('../../utils')
-const { 
-    createTraining, 
-    loadLora, 
-    writeUserDataPoint,
-    deleteWorkspace,
-    saveWorkspace,
-    saveImageToGridFS, bucketPull,
-    deleteImageFromWorkspace,
-    writeQoints
- } = require('../../../db/mongodb')
- const fs = require('fs')
- const { checkIn } = require('../gatekeep')
+const { Workspace, UserEconomy } = require('../../../db/index');
+const userEconomy = new UserEconomy();
+const loraDB = new Workspace();
+
 /*
 LORA DATASET CREATION / CURATION
 
@@ -37,13 +29,13 @@ async function getMyLoras(userId) {
         //console.log('made it in')
         for (const loraIdHash of lobby[userId].loras) {
             try {
-                const loraInfo = await loadLora(loraIdHash);
+                const loraInfo = await loraDB.loadLora(loraIdHash);
                 loraKeyboardOptions.push([{ text: `${loraInfo.name}`, callback_data: `el_${loraIdHash}` }]);
             } catch (error) {
                 console.error(`Failed to load LoRa with ID ${loraIdHash}:`, error);
                 delete lobby[userId].loras[loraIdHash]
-                await writeUserDataPoint(userId,'loras',lobby[userId].loras)
-                await deleteWorkspace(loraIdHash)
+                
+                await loraDB.deleteWorkspace(loraIdHash)
             }
         }
     }
@@ -129,7 +121,7 @@ async function createLora(message) {
     }
     workspace[userId][thisLora.loraId] = thisLora
     try {
-        const success = await createTraining(thisLora)
+        const success = await loraDB.createTraining(thisLora)
         if(!success){
             await sendMessage(message, 'LoRa creation failed');
             return
@@ -140,7 +132,7 @@ async function createLora(message) {
         return;
     }
     try {
-        const userWriteSuccess = await writeUserDataPoint(parseInt(userId), 'loras',userContext.loras);
+        
         if (!userWriteSuccess) {
             await sendMessage(message, 'Save settings failed, use /savesettings');
         }
@@ -170,7 +162,7 @@ async function removeTraining(user, loraId) {
         
         // Save the updated loras array to user data
         try {
-            await writeUserDataPoint(user, 'loras', lobby[user].loras);
+            
             console.log('updated loras array saved to user data')
         } catch (error) {
             console.error('Error saving updated loras array:', error);
@@ -186,7 +178,7 @@ async function removeTraining(user, loraId) {
     }
 
     // Delete the LoRa data from the database and associated files
-    await deleteWorkspace(loraId);
+    await loraDB.deleteWorkspace(loraId);
 }
 
 
@@ -414,7 +406,7 @@ async function viewSlotImage(message, user, loraId, slotId) {
             return;
         }
 
-        const tempFilePath = await bucketPull(user, loraId, slotId);
+        const tempFilePath = await loraDB.bucketPull(user, loraId, slotId);
         if (!tempFilePath) {
             await sendMessage(message.reply_to_message, 'Failed to retrieve the image. Please try again later.');
             return;
@@ -459,7 +451,7 @@ async function viewSlotCaption(message, user, loraId, slotId) {
 async function deleteLoraSlot(message, user, loraId, slotId) {
     try {
         // Delete the image from the workspace
-        await deleteImageFromWorkspace(loraId, slotId);
+        await loraDB.deleteImageFromWorkspace(loraId, slotId);
 
         // Reload LoRA data to ensure synchronization
         await getOrLoadLora(user, loraId);
@@ -501,7 +493,7 @@ function releaseWorkspaceLock(userId, loraId, instanceId) {
 }
 async function saveAndReact(userId, loraId, messages, instanceId) {
     console.log('[saveAndReact] Messages:', JSON.stringify(messages, null, 2)); // Debugging messages structure
-    const isSaved = await saveWorkspace(workspace[userId][loraId]);
+    const isSaved = await loraDB.saveWorkspace(workspace[userId][loraId]);
     if (isSaved) {
         console.log(`LoRA ${loraId} successfully saved by instance ${instanceId}`);
         for (const message in messages) {
@@ -542,7 +534,7 @@ async function assignToSlot(userId, loraId, fileData,tool) {
         return false;
     }
 
-    const fileUrl = await saveImageToGridFS(telegramFileUrl, loraId, tool);
+    const fileUrl = await loraDB.saveImageToGridFS(telegramFileUrl, loraId, tool);
     workspace[userId][loraId].images[tool] = fileUrl;
 
     return true;
@@ -725,7 +717,7 @@ async function addLoraSlotCaption(message) {
         workspace[userId][loraId].captions[tool] = message.text;
 
         // Save workspace
-        const isSaved = await saveWorkspace(workspace[userId][loraId]);
+        const isSaved = await loraDB.saveWorkspace(workspace[userId][loraId]);
 
         if (isSaved) {
             setUserState(message, STATES.IDLE);
@@ -804,11 +796,11 @@ async function submitTraining(message, user, loraId) {
         }
         
         userDat.qoints = newQoints;
-        await writeQoints('users',{'userId': user}, newQoints);
+        await userEconomy.writeUserDataPoint(user,'qoints',newQoints)
     }
     workspace[user][loraId].status = 'SUBMITTED'
     workspace[user][loraId].submitted = Date.now();
-    await saveWorkspace(workspace[user][loraId])
+    await loraDB.saveWorkspace(workspace[user][loraId])
     const messageId = message.message_id;
     const chatId = message.chat.id;
     const { text, reply_markup } = await buildTrainingMenu(user,loraId)
@@ -833,7 +825,7 @@ async function getOrLoadLora(userId, loraId) {
     }
 
     console.log(`Loading LoRA data for user ${userId}, LoRA ${loraId} from database...`);
-    const loraData = await loadLora(loraId);
+    const loraData = await loraDB.loadLora(loraId);
 
     if (!loraData) {
         throw new Error(`LoRA data not found for ID ${loraId}`);

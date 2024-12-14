@@ -1,9 +1,8 @@
 const { 
     getBotInstance, lobby, startup, STATES, 
     stateHandlers,
-    commandStateMessages, workspace, 
-    SET_COMMANDS, getPhotoUrl ,
-    getGroup, getGroupById,
+    SET_COMMANDS,
+    getGroup, 
 } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
 const bot = getBotInstance();
@@ -16,10 +15,20 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
-const { readStats, rareCandy, writeUserData, writeQoints, writeUserDataPoint } = require('../../../db/mongodb.js')
+// const { 
+//     readStats, 
+//     //rareCandy, 
+//     writeUserData, 
+//     writeQoints, 
+    
+//     writeUserDataPoint } = require('../../../db/mongodb.js')
+
 const { cheese } = require('../../../commands/fry')
-// const handlers = require('./handle');
-//const defaultUserData = require('../../users/defaultUserData');
+const { UserEconomy, FloorplanDB } = require('../../../db/index');
+
+//const statsDB = new UserStats();
+const userDB = new UserEconomy();
+const floorplanDB = new FloorplanDB();
 
 const iMenu = require('./iMenu')
 const iAccount = require('./iAccount')
@@ -29,7 +38,7 @@ const iMedia = require('./iMedia')
 const iBrand = require('./iBrand')
 const iSettings = require('./iSettings')
 const iGroup = require('./iGroup')
-const statsEmitter = require('../../../db/events.js');
+//const statsEmitter = require('../../../db/events.js');
 const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
@@ -229,32 +238,32 @@ const commandRegistry = {
             }
         }
     },
-    '/see': {
-        handler: async (message) => {
-            if (message.from.id != DEV_DMS) {
-                return;
-            } else {
-                // Start the stats calculation
-                readStats();
+    // '/see': {
+    //     handler: async (message) => {
+    //         if (message.from.id != DEV_DMS) {
+    //             return;
+    //         } else {
+    //             // Start the stats calculation
+    //             readStats();
 
-                // Set up event listeners to receive progress updates and final messages
-                statsEmitter.on('stats-progress', async (progressMsg) => {
-                    await sendMessage(message, progressMsg);
-                });
+    //             // Set up event listeners to receive progress updates and final messages
+    //             statsEmitter.on('stats-progress', async (progressMsg) => {
+    //                 await sendMessage(message, progressMsg);
+    //             });
 
-                statsEmitter.once('stats-completed', async (finalMsg) => {
-                    await sendMessage(message, 'Stats analysis completed successfully:\n' + finalMsg);
-                });
+    //             statsEmitter.once('stats-completed', async (finalMsg) => {
+    //                 await sendMessage(message, 'Stats analysis completed successfully:\n' + finalMsg);
+    //             });
 
-                statsEmitter.once('stats-error', async (errorMsg) => {
-                    await sendMessage(message, 'Error occurred during stats analysis:\n' + errorMsg);
-                });
+    //             statsEmitter.once('stats-error', async (errorMsg) => {
+    //                 await sendMessage(message, 'Error occurred during stats analysis:\n' + errorMsg);
+    //             });
 
-                // Send initial confirmation
-                await sendMessage(message, 'Stats analysis has started, updates will follow.');
-            }
-        }
-    },
+    //             // Send initial confirmation
+    //             await sendMessage(message, 'Stats analysis has started, updates will follow.');
+    //         }
+    //     }
+    // },
 
     '/glorp': {
         handler: async (message) => {
@@ -354,7 +363,7 @@ const commandRegistry = {
                     const exp = level*level*level; 
                     
                     console.log(whom,exp)
-                    await rareCandy(whom,exp)
+                    await userDB.rareCandy(whom,exp)
                     lobby[whom].exp = exp;
                     sendMessage(message,'it is done');
                 } else {
@@ -485,15 +494,15 @@ const commandRegistry = {
         if (userId === DEV_DMS) {
             // Developer can freely donate qoints
             group.qoints += howMuch;
-            await writeQoints('floorplan', { id: message.chat.id }, group.qoints);
+            await floorplanDB.writeGroupQoints(message.chat.id, group.qoints);
             await react(message, '✍️');
             sendMessage(message, 'thank you for your contribution.');
         } else if (!isNaN(howMuch) && howMuch <= balance && howMuch > 0) {
             // Regular user donation logic
             group.qoints += howMuch;
             lobby[userId].qoints -= howMuch;
-            await writeUserDataPoint(userId, 'qoints', lobby[userId].qoints);
-            await writeQoints('floorplan', { id: message.chat.id }, group.qoints);
+            await userDB.writeQoints(userId, 'qoints', lobby[userId].qoints);
+            await floorplanDB.writeGroupQoints(message.chat.id, group.qoints);
             await react(message, '✍️');
             sendMessage(message, 'thank you for your contribution.');
         } else {
@@ -530,25 +539,28 @@ const commandRegistry = {
             lobby[target.from.id].pendingQoints = 0;
         }
 
-        const current = lobby[target.from.id].pendingQoints;
+        const current = lobby[target.from.id].pendingQoints + lobby[target.from.id].qoints;
         message.text = message.text.replace('/gift', '').replace(`@stationthisdeluxebot`, '');
         const howMuch = parseInt(message.text);
-        const balance = lobby[userId]?.qoints || 0;
+        const balance = lobby[userId]?.qoints + lobby[userId]?.pendingQoints || 0;
 
         console.log('gift before', current, howMuch, balance);
 
         if (userId === DEV_DMS) {
             // Developer can freely gift qoints
             lobby[target.from.id].pendingQoints += howMuch;
-            await writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints);
+            await userDB.writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints);
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
         } else if (!isNaN(howMuch) && howMuch <= balance && howMuch > 0) {
             // Regular user gift logic
             lobby[target.from.id].pendingQoints += howMuch;
             lobby[userId].qoints -= howMuch;
-            await writeUserDataPoint(userId, 'qoints', lobby[userId].qoints);
-            await writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints);
+            await userDB
+                .startBatch()
+                .writeQoints(userId, lobby[userId].qoints)
+                .writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints)
+                .endBatch()
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
         } else {

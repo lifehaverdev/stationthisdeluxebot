@@ -1,5 +1,17 @@
 const { lobby, STATES } = require('./bot'); 
-const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
+// Old MongoDB imports (commented out for reference)
+// const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
+
+// New database models
+const { UserCore, UserEconomy, UserPref } = require('../../db/index');
+const { fetchUserCore, fetchFullUserData } = require('../../db/operations/userFetch');
+const { initializeNewUser } = require('../../db/operations/newUser');
+const { addPointsToAllUsers } = require('../../db/operations/batchPoints');
+
+const userCore = new UserCore();
+const userEconomy = new UserEconomy();
+const userPref = new UserPref();
+
 const { getBalance, checkBlacklist, getNFTBalance } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
@@ -115,7 +127,13 @@ async function kick(userId) {
 
     try {
         // First get existing data from database
-        const existingData = await getUserDataByUserId(parseInt(userId));
+        const coreData = await fetchUserCore(userId);
+        if (coreData?.verified) {
+            const fullData = await fetchFullUserData(userId);
+            // Use fullData
+        } else {
+            // Use coreData
+        }
         
         if (existingData) {
             // Use existing data as base, apply only the changes we want
@@ -127,7 +145,12 @@ async function kick(userId) {
                 state: userData.state
             };
 
-            await writeUserData(parseInt(userId), updatedData);
+            await userCore.writeUserData(userId, updatedData);
+
+            await userEconomy.writeUserData(userId, updatedData);
+
+            await userPref.writeUserData(userId, updatedData);
+
             console.log(`Kicked user ${userId} with preserved data`);
         } else {
             console.error(`No existing data found for userId ${userId} during kick`);
@@ -155,7 +178,7 @@ class LobbyManager {
         console.log("========== Starting cleanLobby ==========");
         
         try {
-            const didwe = await addPointsToAllUsers();
+            const didwe = await addPointsToAllUsers(lobby);
             console.log("Points added to all users: ", didwe);
 
             for (const userId in lobby) {
@@ -353,16 +376,21 @@ async function handleUserData(userId, message) {
         // Check if the user is already in the lobby
         if (!lobby.hasOwnProperty(userId)) {
             let userData;
-            // Fetch or create user data
+            
+            // First try to fetch existing user data
             try {
-                userData = await getUserDataByUserId(userId);
-                if (!userData) {
-                    // Only create new user data if we're certain none exists
-                    console.log(`No existing user data found for userId ${userId}, creating default...`);
-                    react(message,"🤝")
-                    userData = await createDefaultUserData(userId);
+                const existingCore = await fetchUserCore(userId);
+                
+                if (existingCore) {
+                    // User exists, get full data
+                    userData = await fetchFullUserData(userId);
+                } else {
+                    // No existing user, create new
+                    console.log(`No existing user data found for userId ${userId}, creating new...`);
+                    react(message, "🤝");
+                    userData = await initializeNewUser(userId);
                     if (!userData) {
-                        throw new Error("Failed to create default user data.");
+                        throw new Error("Failed to create new user data.");
                     }
                 }
             } catch (error) {
@@ -425,7 +453,7 @@ async function handleUserData(userId, message) {
                 const timeSinceLastAttempt = Date.now() - (lobby[userId].lastDbFetchAttempt || 0);
                 if (timeSinceLastAttempt > 5 * 60 * 1000) {
                     try {
-                        const userData = await getUserDataByUserId(userId);
+                        const userData = await initializeNewUser(userId);
                         if (userData) {
                             delete lobby[userId].dbFetchFailed;
                             delete lobby[userId].lastDbFetchAttempt;
@@ -477,7 +505,7 @@ function checkUserPoints(userId, group, message) {
         (group && group.gateKeeping.style == 'house' && group.qoints <= 0) ||
         (group && group.gateKeeping.style == 'user' && user.qoints <0 && outOfPoints && group.qoints <=0) 
     ) {
-        const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "����", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
+        const reacts = ["👎", "🤔", "🤯", "😱", "🤬", "😢", "🤮", "💩", "🤡", "🥱", "🥴", "🐳", "🌚", "🌭", "🤣", "🍌", "🤨", "😐", "💋", "🖕", "😈", "😴", "😭", "🤓", "👻", "🙈", "😨", "🤗", "💅", "🤪", "🗿", "🆒", "🙉", "😘", "🙊", "👾", "🤷‍♂", "🤷", "🤷‍♀", "😡"];
         const randomReact = reacts[Math.floor(Math.random() * reacts.length)];
         react(message, randomReact);
 

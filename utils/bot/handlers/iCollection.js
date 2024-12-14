@@ -15,14 +15,14 @@ const {
     react ,
     logThis
 } = require('../../utils')
-const { 
-    createCollection,
-    loadCollection,
-    getCollectionsByUserId,
-    writeUserDataPoint,
-    deleteStudio,
-    saveStudio,
- } = require('../../../db/mongodb')
+// const { 
+//     createCollection,
+//     loadCollection,
+//     getCollectionsByUserId,
+//     writeUserDataPoint,
+//     deleteStudio,
+//     saveStudio,
+//  } = require('../../../db/mongodb')
  const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { StudioManager } = require('./collectionmode/studioManager')
@@ -30,6 +30,9 @@ const {
  const { gptAssist, formatters } = require('../../../commands/assist');
  const fs = require('fs')
  const { checkIn } = require('../gatekeep')
+ const { CollectionDB, UserCore } = require('../../../db/index');
+ const collectionDB = new CollectionDB();
+ const userCore = new UserCore();
 
  const studioAction = new StudioAction(studio)
 
@@ -49,7 +52,7 @@ async function getMyCollections(userId) {
     let collectionKeyboardOptions = [];
     
     try {
-        const collections = await getCollectionsByUserId(userId);
+        const collections = await collectionDB.getCollectionsByUserId(userId);
         
         if (collections.length > 0) {
             for (const collection of collections) {
@@ -150,7 +153,7 @@ async function createConfig(message) {
     }
     studio[userId][thisCollection.collectionId] = thisCollection;
     try {
-        const success = await createCollection(thisCollection)
+        const success = await collectionDB.createCollection(thisCollection)
         if(!success){
             await sendMessage(message, 'Collection creation failed');
             return
@@ -160,15 +163,7 @@ async function createConfig(message) {
         await sendMessage(message, 'Collection creation encountered an error.');
         return;
     }
-    try {
-        const userWriteSuccess = await writeUserDataPoint(parseInt(userId), 'collections',userContext.collections);
-        if (!userWriteSuccess) {
-            await sendMessage(message, 'Save settings failed, use /savesettings');
-        }
-    } catch (error) {
-        console.error('Error writing user data:', error);
-    }
-   
+    
     const { text, reply_markup } = await CollectionMenuBuilder.buildCollectionMenu(userId,hashId)
     sendMessage(message, text, { reply_markup })
     setUserState(message,STATES.IDLE)
@@ -196,15 +191,14 @@ prefixHandlers['savec_']= (action, message, user) => {
 actionMap['saveCollection'] = handleSaveCollection
 async function handleSaveCollection(message,user,collectionId) {
     console.log('handle save collection',message,user,collectionId)
-    await saveStudio(studio[user][collectionId]);
+    await collectionDB.saveStudio(studio[user][collectionId]);
     await handleCollectionMenu(message,user,collectionId)
 }
 
 async function removeCollection(message,user, collectionId) {
     StudioManager.removeCollection(user, collectionId)
     // Delete the collection data from the database and associated files
-    await deleteStudio(collectionId);
-    await writeUserDataPoint(user,'collections',lobby[user].collections)
+    await collectionDB.deleteCollection(collectionId);
     await handleCollectionModeMenu(message,user)
 }
 
@@ -323,7 +317,7 @@ prefixHandlers['ecchain_'] = (action, message, user) => {
 async function handleSetChain(message,user,collectionId,chain) {
     console.log('handle set chain',message,user,collectionId,chain)
     studio[user][collectionId].chain = chain
-    await saveStudio(studio[user][collectionId]);
+    await collectionDB.saveStudio(studio[user][collectionId]);
     //delete studio[user].pendingAction;
     setUserState(message, STATES.IDLE);
     await handleCollectionMenu(message,user,collectionId)
@@ -381,7 +375,7 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
         };
     }
     
-    await saveStudio(collection);
+    await collectionDB.saveStudio(collection);
     handleCollectionMetaData()
 }
 
@@ -515,7 +509,7 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
                             }
 
     // Save changes and reset state
-    //await saveStudio(studio[userId][collectionId]);
+    //await collectionDB.saveStudio(studio[userId][collectionId]);
     console.log('backTo', backTo)
     studioAction.clearPendingAction(userId);
     setUserState(message, STATES.IDLE);
@@ -657,7 +651,7 @@ class TraitSelector {
             logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
             
             if (activeConflicts.length > 0) {
-                const allConflictingTraits = [traitType, ...activeConflicts];
+                const allConflictingTraits = [traitType, ...activeConflictingTraits];
                 logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
                 
                 const nonEmptyTraits = allConflictingTraits.filter(t => 
@@ -1159,7 +1153,7 @@ async function handleDeleteTrait(message, user, collectionId, traitTypeIndex) {
     collection.config.traitTypes.splice(traitTypeIndex, 1);
     
     // Save the changes
-    await saveStudio(collection);
+    await collectionDB.saveStudio(collection);
     
     // Return to trait types menu
     const { text, reply_markup } = await CollectionMenuBuilder.buildTraitTypesMenu(user, collectionId);
@@ -1285,32 +1279,362 @@ async function handleConsultConfirm(message, user, collectionId, type) {
 }
 async function handleConsultAI(message, user, collectionId) {
     console.log('Handling consult AI for user:', user, 'collection:', collectionId);
-    const collection = await getOrLoadCollection(user, collectionId);
-
-    // Check if this is a values consultation
-    if (studio[user]?.pendingAction?.type === 'values') {
+    console.log('Current studio state:', studio[user]?.pendingAction);
+    await react(message, '🍓');
+    try {
         const collection = await getOrLoadCollection(user, collectionId);
         
-        // First, determine which trait types to expand
-        const traitTypeMessages = [
-            {
-                role: "system",
-                content: `Analyze the user's request and determine which trait types they want to expand.
-                Return ONLY a JSON array of trait type titles that match their request.
-                Available trait types: ${collection.config.traitTypes.map(t => t.title).join(', ')}`
-            },
-            {
-                role: "user",
-                content: message.text
-            }
-        ];
+        // Check if this is a values consultation
+        if (studio[user]?.pendingAction?.type === 'values') {
+            console.log('Entering values consultation path');
+            try {
+                // First, determine which trait types to expand
+                const traitTypeMessages = [
+                    {
+                        role: "system",
+                        content: `Analyze the user's request and determine which trait types they want to expand.
+                        Return ONLY a JSON array of trait type titles that match their request.
+                        Available trait types: ${collection.config.traitTypes.map(t => t.title).join(', ')}`
+                    },
+                    {
+                        role: "user",
+                        content: message.text
+                    }
+                ];
 
-        const traitTypeResult = await gptAssist({
-            messages: traitTypeMessages,
+                const traitTypeResult = await gptAssist({
+                    messages: traitTypeMessages,
+                    formatResult: formatters.json
+                });
+                console.log('Trait type result:', traitTypeResult);
+
+                // IMPORTANT: Only look at the result array, not the entire response
+                if (!traitTypeResult?.result?.length) {
+                    await sendMessage(message, "I couldn't determine which trait types you want to expand. Please specify which traits you'd like to add values to.");
+                    return;
+                }
+
+                // Find indexes for matched trait types
+                const traitIndexes = traitTypeResult.result
+                    .map(title => collection.config.traitTypes.findIndex(t => t.title.toLowerCase() === title.toLowerCase()))
+                    .filter(index => index !== -1);
+                console.log('Found trait indexes:', traitIndexes);
+
+                if (!traitIndexes.length) {
+                    await sendMessage(message, "None of the specified trait types were found in your collection.");
+                    return;
+                }
+
+                // Initialize proposed changes specifically for trait values
+                if (!studio[user].proposedChanges) {
+                    studio[user].proposedChanges = {};
+                }
+                studio[user].proposedChanges[collectionId] = { traitValues: {} };
+
+                // Generate new values for each matched trait type
+                for (const traitTypeIndex of traitIndexes) {
+                    const traitType = collection.config.traitTypes[traitTypeIndex];
+                    console.log('Generating values for trait type:', traitType.title);
+                    
+                    const valuesResult = await gptAssist({
+                        messages: [
+                            {
+                                role: "system",
+                                content: `Generate new trait values that complement the existing ones.
+                                Return ONLY a JSON array of new traits in format:
+                                [
+                                    {
+                                        "name": "trait name",
+                                        "prompt": "prompt text", 
+                                        "rarity": 0.5
+                                    }
+                                ]`
+                            },
+                            {
+                                role: "user",
+                                content: `Trait type: ${traitType.title}\nExisting traits: ${JSON.stringify(traitType.traits)}\nRequest: ${message.text}`
+                            }
+                        ],
+                        formatResult: formatters.json
+                    });
+                    console.log('Values generated:', valuesResult);
+
+                    if (valuesResult?.result) {
+                        studio[user].proposedChanges[collectionId].traitValues[traitTypeIndex] = {
+                            title: traitType.title,
+                            newValues: valuesResult.result
+                        };
+                    }
+                }
+
+                // Show ONLY the new trait values
+                let text = "Here are my suggested new trait values:\n\n";
+                Object.entries(studio[user].proposedChanges[collectionId].traitValues).forEach(([index, data]) => {
+                    text += `${data.title}:\n`;
+                    data.newValues.forEach(trait => {
+                        text += `- ${trait.name} (${trait.prompt})\n`;
+                    });
+                    text += '\n';
+                });
+                text += "Would you like to add these new trait values?";
+
+                const reply_markup = {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Add Values', callback_data: `confirmAIChange_${collectionId}_traitValues` },
+                            { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_traitValues` }
+                        ]
+                    ]
+                };
+
+                await sendMessage(message, text, { reply_markup });
+                return;
+            } catch (valuesError) {
+                console.error('Values consultation error:', valuesError);
+                await sendMessage(message, "An error occurred while generating trait values. Please try again.");
+                return;
+            }
+        }
+
+        // If we get here, it's not a values consultation
+        try {
+            // First, determine the user's intent
+            const intentMessages = [
+                {
+                    role: "system",
+                    content: `Analyze the user's request and categorize it as one of:
+                        MASTERPROMPTIMPROVE - When they want to enhance the style, mood, or overall description without adding new trait types
+                        MASTERPROMPTEXPAND - When they want to add entirely new trait type categories
+                        TRAITVALUEEXPAND - When they want to add new values to EXISTING trait types (if they mention a specific trait type by name)
+                        
+                        Available trait types in this collection:
+                        ${collection.config.traitTypes.map(t => `• ${t.title}`).join('\n')}
+                        
+                        Examples:
+                        "make it more cyberpunk" -> MASTERPROMPTIMPROVE
+                        "add a new category for hairstyles" -> MASTERPROMPTEXPAND
+                        "add more background item 1 values" -> TRAITVALUEEXPAND
+                        "let's add more items to the accessories trait" -> TRAITVALUEEXPAND
+                        
+                        If the user mentions an existing trait type by name and wants to add values to it, always use TRAITVALUEEXPAND.
+                        Respond ONLY with one of these categories or NOICANT.`
+                },
+                {
+                    role: "user",
+                    content: message.text
+                }
+            ];
+
+            console.log('Determining intent with message:', message.text);
+            console.log('Available trait types:', collection.config.traitTypes.map(t => t.title));
+            const intentResult = await gptAssist({
+                messages: intentMessages,
+                formatResult: formatters.raw
+            });
+            console.log('Intent result:', intentResult);
+
+            if (!intentResult?.result || intentResult.result === 'NOICANT') {
+                await sendMessage(message, "I'm sorry, I couldn't understand how to help improve your collection. Please try being more specific about what you'd like to enhance.");
+                return;
+            }
+
+            console.log('Detected intent:', intentResult.result.trim());
+            
+            // Continue with specific enhancement logic based on intent...
+            switch (intentResult.result.trim()) {
+                case 'MASTERPROMPTIMPROVE':
+                    console.log('Entering master prompt improvement path');
+                    await handleMasterPromptImprovement(message, user, collectionId, collection);
+                    break;
+                case 'MASTERPROMPTEXPAND':
+                    console.log('Entering master prompt expansion path');
+                    await handleMasterPromptExpansion(message, user, collectionId, collection);
+                    break;
+                case 'TRAITVALUEEXPAND':
+                    console.log('Entering trait value expansion path');
+                    await handleTraitValueExpansion(message, user, collectionId, collection);
+                    break;
+                default:
+                    console.log('No matching intent found');
+                    await sendMessage(message, "I couldn't determine how to help. Please try again with more specific instructions.");
+            }
+        } catch (intentError) {
+            console.error('Error in intent processing:', intentError);
+            await sendMessage(message, "An error occurred while processing your request. Please try again.");
+        }
+    } catch (error) {
+        console.error('Error in handleConsultAI:', error);
+        await sendMessage(message, "An unexpected error occurred. Please try again later.");
+    }
+}
+async function handleMasterPromptImprovement(message, user, collectionId, collection) {
+    try {
+        const improvementResult = await gptAssist({
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert at improving NFT collection prompts. 
+                    Analyze the master prompt and suggest improvements while keeping the core concept.
+                    Return a JSON object in format:
+                    {
+                        "improvedPrompt": "the improved master prompt",
+                        "changes": ["list of main changes made"]
+                    }`
+                },
+                {
+                    role: "user",
+                    content: `Current master prompt: ${collection.config.masterPrompt}\nImprovement request: ${message.text}`
+                }
+            ],
             formatResult: formatters.json
         });
 
-        if (!traitTypeResult || !traitTypeResult.result.length) {
+        if (!improvementResult?.result?.improvedPrompt) {
+            await sendMessage(message, "I wasn't able to generate improvements for the master prompt. Please try again with more specific instructions.");
+            return;
+        }
+
+        // Initialize proposed changes if needed
+        if (!studio[user].proposedChanges) {
+            studio[user].proposedChanges = {};
+        }
+        studio[user].proposedChanges[collectionId] = {
+            masterPrompt: {
+                before: collection.config.masterPrompt,
+                after: improvementResult.result.improvedPrompt
+            }
+        };
+
+        // Show the proposed changes
+        let text = "Here are my suggested improvements to the master prompt:\n\n";
+        text += "Changes made:\n";
+        improvementResult.result.changes.forEach(change => {
+            text += `• ${change}\n`;
+        });
+        text += "\nNew master prompt:\n";
+        text += `${improvementResult.result.improvedPrompt}\n\n`;
+        text += "Would you like to apply these changes?";
+
+        const reply_markup = {
+            inline_keyboard: [
+                [
+                    { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_masterPrompt` },
+                    { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_masterPrompt` }
+                ]
+            ]
+        };
+
+        await sendMessage(message, text, { reply_markup });
+
+    } catch (error) {
+        console.error('Error in master prompt improvement:', error);
+        await sendMessage(message, "An error occurred while improving the master prompt. Please try again.");
+    }
+}
+
+async function handleMasterPromptExpansion(message, user, collectionId, collection) {
+    try {
+        const expansionResult = await gptAssist({
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert at expanding NFT collection concepts.
+                    Analyze the current configuration and suggest new trait types and master prompt additions.
+                    Return a JSON object in format:
+                    {
+                        "masterPrompt": "expanded master prompt",
+                        "traitTypes": [
+                            {
+                                "title": "trait type name",
+                                "traits": [
+                                    {
+                                        "name": "trait name",
+                                        "prompt": "prompt text",
+                                        "rarity": 0.5
+                                    }
+                                ]
+                            }
+                        ]
+                    }`
+                },
+                {
+                    role: "user",
+                    content: `Current configuration:
+                    Master prompt: ${collection.config.masterPrompt}
+                    Current trait types: ${JSON.stringify(collection.config.traitTypes)}
+                    Expansion request: ${message.text}`
+                }
+            ],
+            formatResult: formatters.json
+        });
+
+        if (!expansionResult?.result?.masterPrompt || !expansionResult?.result?.traitTypes) {
+            await sendMessage(message, "I wasn't able to generate expansion suggestions. Please try again with more specific instructions.");
+            return;
+        }
+
+        // Initialize proposed changes
+        if (!studio[user].proposedChanges) {
+            studio[user].proposedChanges = {};
+        }
+        studio[user].proposedChanges[collectionId] = {
+            masterPrompt: {
+                before: collection.config.masterPrompt,
+                after: expansionResult.result.masterPrompt
+            },
+            traitTypes: {
+                before: collection.config.traitTypes,
+                after: [...collection.config.traitTypes, ...expansionResult.result.traitTypes]
+            }
+        };
+
+        // Show the proposed changes
+        let text = "Here are my suggested expansions:\n\n";
+        text += "New trait types:\n";
+        expansionResult.result.traitTypes.forEach(traitType => {
+            text += `• ${traitType.title} with ${traitType.traits.length} values\n`;
+        });
+        text += "\nUpdated master prompt:\n";
+        text += `${expansionResult.result.masterPrompt}\n\n`;
+        text += "Would you like to apply these changes?";
+
+        const reply_markup = {
+            inline_keyboard: [
+                [
+                    { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_expansion` },
+                    { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_expansion` }
+                ]
+            ]
+        };
+
+        await sendMessage(message, text, { reply_markup });
+
+    } catch (error) {
+        console.error('Error in master prompt expansion:', error);
+        await sendMessage(message, "An error occurred while expanding the collection. Please try again.");
+    }
+}
+
+async function handleTraitValueExpansion(message, user, collectionId, collection) {
+    try {
+        // First determine which trait types to expand
+        const traitTypeResult = await gptAssist({
+            messages: [
+                {
+                    role: "system",
+                    content: `Analyze the user's request and determine which trait types they want to expand.
+                    Return ONLY a JSON array of trait type titles that match their request.
+                    Available trait types: ${collection.config.traitTypes.map(t => t.title).join(', ')}`
+                },
+                {
+                    role: "user",
+                    content: message.text
+                }
+            ],
+            formatResult: formatters.json
+        });
+
+        if (!traitTypeResult?.result?.length) {
             await sendMessage(message, "I couldn't determine which trait types you want to expand. Please specify which traits you'd like to add values to.");
             return;
         }
@@ -1331,7 +1655,7 @@ async function handleConsultAI(message, user, collectionId) {
         }
         studio[user].proposedChanges[collectionId] = { traitValues: {} };
 
-        // Generate new values for each matched trait type
+        // Generate new values for each trait type
         for (const traitTypeIndex of traitIndexes) {
             const traitType = collection.config.traitTypes[traitTypeIndex];
             
@@ -1339,8 +1663,8 @@ async function handleConsultAI(message, user, collectionId) {
                 messages: [
                     {
                         role: "system",
-                        content: `You are an expert at creating trait values for NFT collections. Generate new trait values that complement the existing ones.
-                        Return a JSON array of new traits in format:
+                        content: `Generate new trait values that complement the existing ones.
+                        Return ONLY a JSON array of new traits in format:
                         [
                             {
                                 "name": "trait name",
@@ -1357,8 +1681,7 @@ async function handleConsultAI(message, user, collectionId) {
                 formatResult: formatters.json
             });
 
-            if (valuesResult) {
-                // Store proposed changes for this trait type
+            if (valuesResult?.result) {
                 studio[user].proposedChanges[collectionId].traitValues[traitTypeIndex] = {
                     title: traitType.title,
                     newValues: valuesResult.result
@@ -1366,8 +1689,8 @@ async function handleConsultAI(message, user, collectionId) {
             }
         }
 
-        // Show all proposed changes
-        let text = "Here are my suggested new values:\n\n";
+        // Show the proposed new values
+        let text = "Here are my suggested new trait values:\n\n";
         Object.entries(studio[user].proposedChanges[collectionId].traitValues).forEach(([index, data]) => {
             text += `${data.title}:\n`;
             data.newValues.forEach(trait => {
@@ -1380,270 +1703,17 @@ async function handleConsultAI(message, user, collectionId) {
         const reply_markup = {
             inline_keyboard: [
                 [
-                    { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_traitValues` },
+                    { text: '✅ Add Values', callback_data: `confirmAIChange_${collectionId}_traitValues` },
                     { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_traitValues` }
                 ]
             ]
         };
 
         await sendMessage(message, text, { reply_markup });
-        return;
-    }
 
-    // First, determine the user's intent with examples
-    const intentMessages = [
-        {
-            role: "system",
-            content: `Analyze the user's request and categorize it as one of:
-                MASTERPROMPTIMPROVE - When they want to enhance existing style/mood
-                MASTERPROMPTEXPAND - When they want to add new elements/concepts or trait categories
-                Respond ONLY with one of these categories or NOICANT.
-                
-                Examples:
-                "make it more cyberpunk" -> MASTERPROMPTIMPROVE
-                "add some magical elements" -> MASTERPROMPTEXPAND  
-                "need traits for accessories" -> MASTERPROMPTEXPAND`
-        },
-        {
-            role: "user",
-            content: message.text
-        }
-    ];
-
-    const intentResult = await gptAssist({
-        messages: intentMessages,
-        formatResult: formatters.raw
-    });
-
-    if (!intentResult || intentResult.result === 'NOICANT') {
-        await sendMessage(message, "I'm sorry, I couldn't understand how to help improve your collection. Please try being more specific about what you'd like to enhance.");
-        return;
-    }
-
-    console.log('Determined intent:', intentResult.result);
-
-    // Continue with specific enhancement logic based on intent...
-    // TODO: Add specific handling for each intent type
-    switch (intentResult.result.trim()) {
-        case 'MASTERPROMPTIMPROVE': {
-            // Get test prompts ready
-            let testPromptBefore = collection.config.masterPrompt;
-            let selectedTraits = {};
-
-            // First pass - select traits and store them
-            collection.config.traitTypes.forEach(traitType => {
-                if (!traitType.traits || !traitType.traits.length) return;
-                
-                // Calculate total weight for trait selection
-                const totalWeight = traitType.traits.reduce((sum, trait) => sum + (trait.rarity || 0.5), 0);
-                let random = Math.random() * totalWeight;
-                let selectedTrait = traitType.traits[0];
-                
-                for (const trait of traitType.traits) {
-                    random -= (trait.rarity || 0.5);
-                    if (random <= 0) {
-                        selectedTrait = trait;
-                        break;
-                    }
-                }
-                
-                console.log(`Selected trait for ${traitType.title}: ${selectedTrait.name} (${selectedTrait.prompt})`);
-                selectedTraits[traitType.title] = selectedTrait;
-                
-                // Replace placeholder in before template
-                testPromptBefore = testPromptBefore.replace(`[[${traitType.title}]]`, selectedTrait.prompt);
-            });
-
-            const improveMessages = [
-                {
-                    role: "system", 
-                    content: `You are an expert at refining image generation prompts. 
-                    Analyze the provided prompt template and example to suggest improvements that enhance style and mood according to the user's request.
-                    
-                    IMPORTANT FORMATTING RULES:
-                    - Use [[TRAITTYPE]] for trait insertions
-                    - Use [text with [[TRAITTYPE]]]{excludedTrait} for conditional text with exclusions
-                      Example: "a character [wearing a [[hat]] proudly]{hair} [sporting a [[hair]] style]{hat}" 
-                      - With hat="sombrero", hair=null → "a character wearing a sombrero proudly"
-                      - With hat=null, hair="long" → "a character sporting a long style"
-                      - With hat=null, hair=null → "a character"
-                    - Return ONLY the improved prompt template
-                    - Maintain all [[TRAITTYPE]] placeholders exactly as they appear
-                    - Do not include any prefix text like "Refined template:" or similar
-                    - Do not include any explanation or additional text
-                    - The response should be ready to use as-is for image generation`
-                },
-                {
-                    role: "user",
-                    content: `Current master prompt template: ${collection.config.masterPrompt}\n\n` +
-                            `Sample constructed prompt: ${testPromptBefore}\n\n` +
-                            `User request: ${message.text}`
-                }
-            ];
-
-            const improveResult = await gptAssist({
-                messages: improveMessages,
-                formatResult: (response) => {
-                    // Clean up any potential prefixes or suffixes
-                    let cleaned = response.trim()
-                        .replace(/^(improved|prompt|template|:|\s)+/gi, '')
-                        .replace(/(\s*template\s*$|\s*prompt\s*$)/gi, '')
-                        .trim();
-                    
-                    return { result: cleaned };
-                }
-            });
-
-            if (improveResult) {
-                // Ensure we're working with a string
-                let testPromptAfter = typeof improveResult.result === 'string' 
-                    ? improveResult.result 
-                    : JSON.stringify(improveResult.result);
-
-                // Clean up any JSON artifacts if present
-                testPromptAfter = testPromptAfter
-                    .replace(/^{.*"result"\s*:\s*"|"}$/g, '')  // Remove JSON wrapper
-                    .replace(/\\"/g, '"')                       // Fix escaped quotes
-                    .trim();
-
-                // Store proposed changes in new format
-                if (!studio[user].proposedChanges) {
-                    studio[user].proposedChanges = {};
-                }
-                studio[user].proposedChanges[collectionId] = {
-                    masterPrompt: {
-                        before: collection.config.masterPrompt,
-                        after: testPromptAfter
-                    }
-                };
-
-                // Create after example using same traits
-                let examplePromptAfter = testPromptAfter;
-                Object.entries(selectedTraits).forEach(([title, trait]) => {
-                    examplePromptAfter = examplePromptAfter.replace(`[[${title}]]`, trait.prompt);
-                });
-
-                const text = "Here's my suggested improvement:\n\n" +
-                            "Before Template:\n" + collection.config.masterPrompt + "\n" +
-                            "Before Example:\n" + testPromptBefore + "\n\n" +
-                            "After Template:\n" + testPromptAfter + "\n" +
-                            "After Example:\n" + examplePromptAfter;
-
-                const reply_markup = {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_masterPrompt` },
-                            { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_masterPrompt` }
-                        ]
-                    ]
-                };
-
-                await sendMessage(message, text, { reply_markup });
-            }
-            break;
-        }
-
-        case 'MASTERPROMPTEXPAND': {
-            // Get both master prompt and trait expansions
-            const expandResult = await gptAssist({
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are an expert at expanding NFT collections. Analyze the current configuration and user's request to suggest both:
-                        1. An expanded master prompt that incorporates new elements
-                        2. New trait types that complement the expansion
-                        
-                        IMPORTANT PROMPT FORMATTING:
-                        - Use [[TRAITTYPE]] for trait insertions
-                        - Use [text with [[TRAITTYPE]]]{excludedTrait} for conditional text with exclusions
-                          Example: "a character [wearing a [[hat]] proudly]{hair} [sporting a [[hair]] style]{hat}"
-                          - With hat="sombrero", hair=null → "a character wearing a sombrero proudly"
-                          - With hat=null, hair="long" → "a character sporting a long style"
-                          - With hat=null, hair=null → "a character"
-                        
-                        Return a JSON object with:
-                        {
-                            "masterPrompt": "expanded prompt with proper trait syntax",
-                            "traitTypes": [
-                                {
-                                    "title": "trait type name",
-                                    "traits": [
-                                        {
-                                            "name": "trait name",
-                                            "prompt": "prompt text",
-                                            "rarity": 0.5
-                                        }
-                                    ]
-                                }
-                            ]
-                        }`
-                    },
-                    {
-                        role: "user",
-                        content: `Current master prompt: ${collection.config.masterPrompt}\nCurrent trait types: ${JSON.stringify(collection.config.traitTypes)}\nRequest: ${message.text}`
-                    }
-                ],
-                formatResult: formatters.json
-            });
-
-            if (expandResult) {
-                if (!studio[user].proposedChanges) {
-                    studio[user].proposedChanges = {};
-                }
-                
-                // Store changes in new format
-                studio[user].proposedChanges[collectionId] = {
-                    masterPrompt: {
-                        before: collection.config.masterPrompt,
-                        after: expandResult.result.masterPrompt
-                    },
-                    traitTypes: {
-                        before: collection.config.traitTypes,
-                        after: [...collection.config.traitTypes, ...expandResult.result.traitTypes]
-                    }
-                };
-
-                // First show master prompt changes
-                let text = "Here are my suggested changes to the master prompt:\n\n";
-                text += `Before: ${collection.config.masterPrompt}\n`;
-                text += `After: ${expandResult.result.masterPrompt}\n\n`;
-                text += "Would you like to apply these changes to the master prompt?";
-
-                const reply_markup = {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_masterPrompt` },
-                            { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_masterPrompt` }
-                        ]
-                    ]
-                };
-
-                await sendMessage(message, text, { reply_markup });
-
-                // Then show new trait types in separate message
-                text = "Here are my suggested new trait types:\n\n";
-                expandResult.result.traitTypes.forEach(type => {
-                    text += `${type.title}:\n`;
-                    type.traits.forEach(trait => {
-                        text += `- ${trait.name} (${trait.prompt})\n`; 
-                    });
-                    text += '\n';
-                });
-                text += "Would you like to add these new trait types?";
-
-                const traitReplyMarkup = {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Apply Changes', callback_data: `confirmAIChange_${collectionId}_traitTypes` },
-                            { text: '❌ Skip', callback_data: `cancelAIChange_${collectionId}_traitTypes` }
-                        ]
-                    ]
-                };
-
-                await sendMessage(message, text, { reply_markup: traitReplyMarkup });
-            }
-            break;
-        }
+    } catch (error) {
+        console.error('Error in trait value expansion:', error);
+        await sendMessage(message, "An error occurred while expanding trait values. Please try again.");
     }
 }
 
@@ -1669,7 +1739,7 @@ async function handleConfirmAIChange(message, user, collectionId, changeType) {
     
     // Deduct qoints for the AI consultation
     lobby[user].qoints -= 50;
-    await writeUserDataPoint(user, 'qoints', lobby[user].qoints);
+    await userCore.writeUserDataPoint(user, 'qoints', lobby[user].qoints);
     
     switch (changeType) {
         case 'masterPrompt':
@@ -1701,7 +1771,7 @@ async function handleConfirmAIChange(message, user, collectionId, changeType) {
 
     if (changes) {
         // Save the changes
-        await saveStudio(studio[user][collectionId]);
+        await collectionDB.saveStudio(studio[user][collectionId]);
         await sendMessage(message, `${changeType} changes have been saved!`);
     }
 

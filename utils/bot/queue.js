@@ -12,10 +12,12 @@ const {
 const { addPoints } = require('./points')
 const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
-const { saveGen } = require('../../db/mongodb');
+//const { saveGen } = require('../../db/mongodb');
 const { generateTripo } = require('../../commands/tripo');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const path = require('path');
+const { UserStats } = require('../../db/index');
+const userStats = new UserStats();
 
 //
 // LOBBY AND QUEUE
@@ -472,7 +474,7 @@ async function handleTaskCompletion(task) {
                 tags: [],
                 texts: []
             };
-            await saveGen({task, run, out});
+            await userStats.saveGen({task, run, out});
             return 'success';
         } else {
             return 'not sent';

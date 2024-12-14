@@ -1,6 +1,8 @@
 const { getOrLoadCollection } = require('./collectionUtils.js');
 const { studio, lobby } = require('../../bot.js');
-const { saveStudio } = require('../../../../db/mongodb')
+const { CollectionDB } = require('../../../../db/index');
+const collectionDB = new CollectionDB();
+
 class StudioManager {
     // Studio state management
     static initializeUserStudio(userId) {
@@ -261,7 +263,7 @@ class StudioManager {
     static async saveCollection(userId, collectionId) {
         // Save collection to database
         console.log('saving collection', userId, collectionId);
-        await saveStudio(studio[userId][collectionId]);
+        await collectionDB.saveStudio(studio[userId][collectionId]);
         return true;
     }
 }
