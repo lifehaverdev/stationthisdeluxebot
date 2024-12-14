@@ -66,6 +66,26 @@ async function readRooms() {
     }
 }
 
+function parseWorkflow(workflow) {
+    let workflowInputs = [];
+
+    // Filter nodes that start with 'ComfyUIDeploy'
+    const deployNodes = workflow.nodes.filter(node => node.type.startsWith('ComfyUIDeploy'));
+
+    deployNodes.forEach(node => {
+        if (node.widgets_values && node.widgets_values.length > 0) {
+            // Collect relevant inputs from widgets_values
+            node.widgets_values.forEach(value => {
+                if (typeof value === 'string' && value.startsWith('input_')) {
+                    workflowInputs.push(value);
+                }
+            });
+        }
+    });
+
+    return workflowInputs;
+}
+
 async function readWorkflows() {
     const workflowDB = new WorkflowDB();
     try {

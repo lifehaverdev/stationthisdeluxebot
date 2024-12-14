@@ -2,7 +2,7 @@ const { BaseDB } = require('./BaseDB');
 
 class WorkflowDB extends BaseDB {
     constructor() {
-        super('workflow');
+        super('workflows');
     }
 
     async getActiveFlows() {
