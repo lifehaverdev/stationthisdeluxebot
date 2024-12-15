@@ -19,16 +19,13 @@ async function initializeNewUser(userId, initialData = {}) {
 
     try {
         console.log('writing userCore');
-        await userCore.writeUserData(userId, userData);
+        await userCore.writeNewUserData(userId, userData);
         
         console.log('writing userPref');
-        await userPref.writeUserData(userId, userData);
+        await userPref.writeNewUserData(userId, userData);
         
         console.log('writing userEconomy');
-        await userEconomy.writeUserData(userId, userData);
-        
-        console.log('writing UserStats');
-        await userStats.writeUserData(userId, userData);
+        await userEconomy.writeNewUserData(userId, userData);
         
         console.log('NEW USER INITIALIZATION COMPLETE');
         

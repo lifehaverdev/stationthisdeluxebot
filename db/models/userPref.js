@@ -6,7 +6,7 @@ class UserPrefDB extends BaseDB {
     }
 
     // Data massager - extracts only pref-relevant fields
-    massageData(data) {
+    massageData(user) {
         return {
             userId: user.userId,
             advancedUser: user.advancedUser || false,
