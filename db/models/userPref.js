@@ -1,4 +1,5 @@
 const {BaseDB} = require('./BaseDB');
+const defaultUserData = require('../../utils/users/defaultUserData')
 
 class UserPrefDB extends BaseDB {
     constructor() {
