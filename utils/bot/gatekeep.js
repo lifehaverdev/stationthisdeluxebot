@@ -15,6 +15,7 @@ const userPref = new UserPref();
 const { getBalance, checkBlacklist, getNFTBalance } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
+const defaultUserData = require('../users/defaultUserData')
 //const { home } = require('../models/userKeyboards');
 let lastCleanTime = Date.now();
 const logLobby = true;
