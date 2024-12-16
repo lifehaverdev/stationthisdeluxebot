@@ -19,7 +19,11 @@ class UserStats extends BaseDB {
             type: task.promptObj.type
         };
 
-        return this.db.collection(this.collection).insertOne(genData);
+        return dbQueue.enqueue(async () => {
+            const client = await getCachedClient();
+            const collection = client.db(this.dbName).collection(this.collectionName);
+            return collection.insertOne(genData);
+        });
     }
 
     // We can add methods for aggregating stats later:

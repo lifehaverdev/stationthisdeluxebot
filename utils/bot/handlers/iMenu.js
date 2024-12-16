@@ -282,7 +282,7 @@ function generateFeatureMenu(settings, balance, context) {
     // }
 
     // Insufficient balance (only Cancel button)
-    if ((isGroup && balance <= 0) || (!isGroup && balance < 400000)) {
+    if ((settings.isGroup && balance <= 0) || (!settings.isGroup && balance < 400000)) {
         buttons.length = 0; // Clear existing buttons
     }
 
