@@ -3,7 +3,7 @@ const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-
+const { Workspace } = require('./index');
 // Define constants
 const uri = process.env.MONGO_PASS;
 const dbName = 'stationthisbot'//process.env.MONGO_DB_NAME;
@@ -112,13 +112,9 @@ async function main() {
 // 1. Download Dataset
 async function downloadDataset(loraId) {
   try {
-    const client = await getCachedClient();
-    const db = client.db(dbName);
-    const collection = db.collection('trains');
-    const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
-
-    // Find the lora data
-    const loraData = await collection.findOne({ loraId: parseInt(loraId) });
+    const loraDB = new Workspace();
+    // Find the lora data using our LoraDB class
+    const loraData = await loraDB.findOne({ loraId: parseInt(loraId) });
     if (!loraData) {
       console.log(`No LoRA data found for loraId: ${loraId}`);
       return;
@@ -133,16 +129,21 @@ async function downloadDataset(loraId) {
     // Download images and captions
     for (let i = 0; i < loraData.images.length; i++) {
       if (loraData.images[i]) {
-        const fileId = loraData.images[i];
-        const downloadStream = bucket.openDownloadStream(fileId);
-        const imagePath = path.join(datasetFolderPath, `image_${i}.png`);
-        const writeStream = fs.createWriteStream(imagePath);
-
-        await new Promise((resolve, reject) => {
-          downloadStream.pipe(writeStream);
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
-        });
+        try {
+          // Use our bucketPull method to get the file
+          const tempFilePath = await loraDB.bucketPull(loraData.images[i], loraId, i);
+          if (tempFilePath) {
+            const imagePath = path.join(datasetFolderPath, `image_${i}.png`);
+            // Copy from temp to final location
+            fs.copyFileSync(tempFilePath, imagePath);
+            // Clean up temp file
+            fs.unlinkSync(tempFilePath);
+            console.log(`Image ${i} downloaded successfully`);
+          }
+        } catch (error) {
+          console.error(`Error downloading image ${i}:`, error);
+          continue; // Continue with next image if one fails
+        }
       }
 
       if (loraData.captions[i]) {
@@ -154,10 +155,12 @@ async function downloadDataset(loraId) {
     console.log(`Dataset for loraId ${loraId} downloaded successfully.`);
 
     // Update status to TOUCHED
-    const statusUpdated = await updateLoraStatus(loraId, 'TOUCHED');
+    // Update status to TOUCHED
+    const statusUpdated = await loraDB.updateLoraStatus(loraId, 'TOUCHED');
     if (!statusUpdated) {
         console.error(`Failed to update status for LoRA ${loraId}.`);
     }
+ 
   } catch (error) {
     console.error('Error downloading dataset:', error);
   }

@@ -225,7 +225,7 @@ function generateFeatureMenu(settings, balance, context) {
     ]);
 
     // Extras for SDXL with sufficient balance
-    if (settings.createSwitch === 'SDXL' && (balance >= 400000 || (isGroup && balance > 0))) {
+    if (settings.createSwitch === 'SDXL' && (balance >= 400000 || (settings.isGroup && balance > 0))) {
         const sdxlButtons = [
             {
                 text: settings.styleTransfer && settings.input_style_image
