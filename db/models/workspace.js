@@ -1,4 +1,5 @@
 const { BaseDB } = require('./BaseDB');
+const { dbQueue, getCachedClient } = require('../utils/queue');
 const fs = require('fs');
 const path = require('path');
 const { ObjectId,  GridFSBucket } = require('mongodb');
@@ -112,6 +113,22 @@ class LoraDB extends BaseDB {
         for (const file of files) {
             await bucket.delete(file._id);
         }
+    }
+    async updateLoraStatus(loraId, status) {
+        return dbQueue.enqueue(async () => {
+            try {
+                const client = await getCachedClient();
+                const collection = client.db(process.env.BOT_NAME).collection('trains');
+                const result = await collection.updateOne(
+                    { loraId: parseInt(loraId) },
+                    { $set: { status: status } }  // Add $set operator
+                );
+                return result.modifiedCount > 0;
+            } catch (error) {
+                console.error('Error updating LoRA status:', error);
+                return false;
+            }
+        });
     }
 }
 

@@ -242,8 +242,9 @@ async function* streamUnrestrictedCompletion(messages, temperature = 0.75, maxTo
 async function getUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 500) {
     try {
         const result = await unrestrictedAI.chat.completions.create({
-            //model: "mistralai/mixtral-8x7b-instruct",
-            model: "openhermes-mixtral-8x7b-gptq",
+            //model: "mistralai/mixtral-8x7b-instruct", //censored
+            //model: "openhermes-mixtral-8x7b-gptq", //not good
+            model: "dolphin-2.9-llama3-8b",
             messages: messages,
             stream: false,
             temperature: temperature,
