@@ -392,12 +392,7 @@ const handleSetWatermark = async (message, selectedName, userId) => {
         const slotId = parseInt(action.split('_')[2]);
         actionMap['trainSlot'](message, user, loraId, slotId);
     }
-    //remove lora training set
-    prefixHandlers['rml_']= (action, message, user) => {
-        const loraId = parseInt(action.split('_')[1]);
-        iTrain.removeTraining(user, loraId);
-        actionMap['trainingMenu'](message, user);
-    }
+
     //view slot image
     prefixHandlers['vsi_']= (action, message, user) => {
         const loraId = parseInt(action.split('_')[1]);

@@ -391,6 +391,49 @@ const commandRegistry = {
             }
         }
     },
+    // '/interrogate': {
+    //     handler: async (message) => {
+    //         console.log('made it into interrogate')
+    //         const group = getGroup(message)
+    //         if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+    //         if((lobby[message.from.id].balance < 400000 && !group) || (group && group.qoints < 100)){
+    //             gated(message)
+    //             return
+    //         }
+    //         const target = message.reply_to_message;
+    //         if(target.photo || target.document) {
+    //             target.from.id = message.from.id;
+    //             target.message_id = message.message_id
+    //             if(lobby[message.from.id].createSwitch == 'FLUX'){
+    //                 iWork.handleFluxInterrogate(target)
+    //             } else {
+    //                 iWork.handleInterrogate(target)
+    //             }
+    //         } else {
+    //             react(message,"🤔")
+    //         }
+    //     }
+    // },
+    // '/assist': {
+    //     handler: async (message) => {
+    //         console.log('made it into assist')
+    //         const group = getGroup(message)
+    //         if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+    //         if((lobby[message.from.id].balance < 200000 && !group) || (group && group.qoints < 100)){
+    //             gated(message)
+    //             return
+    //         }
+    //         const target = message.reply_to_message;
+    //         if(target.text) {
+    //             target.from.id = message.from.id;
+    //             target.message_id = message.message_id
+    //             iWork.shakeAssist(target)
+    //         } else {
+    //             react(message,"🤔")
+    //         }
+    //     }
+    // },
+    
     '/cheesethat': {
         handler: cheese,
     },
@@ -775,7 +818,7 @@ const commandsRequiringGatekeeping = [
     '/milady','/degod','/joycat',
     '/utils','/create','/effect','/animate',
     '/inpaint','/regen', 
-    //'/speak','/assist','/interrogate'
+    '/speak','/assist','/interrogate'
     ];
 
 // Helper function to parse the command and arguments from the message

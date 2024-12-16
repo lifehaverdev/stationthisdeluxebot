@@ -323,13 +323,13 @@ function shouldApplyWatermark(message, promptObj, type) {
     // Safely get group
     const group = getGroup(message);
     // Log each watermark condition check
-    console.log('Watermark conditions:');
-    console.log('- Force logo:', promptObj.forceLogo);
-    console.log('- User balance:', promptObj.balance, 'needs 200000');
-    console.log('- Group exists:', !!group);
-    console.log('- Group qoints:', group?.qoints);
-    console.log('- Points accounting:', group?.gateKeeping?.pointAccounting);
-    console.log('- Content type:', type);
+    // console.log('Watermark conditions:');
+    // console.log('- Force logo:', promptObj.forceLogo);
+    // console.log('- User balance:', promptObj.balance, 'needs 200000');
+    // console.log('- Group exists:', !!group);
+    // console.log('- Group qoints:', group?.qoints);
+    // console.log('- Points accounting:', group?.gateKeeping?.pointAccounting);
+    // console.log('- Content type:', type);
 
     // 1. Force logo check is always first
     if (promptObj.forceLogo) return true;

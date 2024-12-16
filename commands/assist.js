@@ -1,67 +1,94 @@
 const http = require("http");
 const OpenAI = require("openai");
+require('dotenv').config();
+
 //console.log(process.env.OPENAI_API);
 const openai = new OpenAI({apiKey: process.env.OPENAI_API});
-
-async function main(input) {
-  const completion = await openai.chat.completions.create({
-
-    messages: [
+// Initialize a separate OpenAI client for uncensored access
+const unrestrictedAI = new OpenAI({
+    baseURL: "https://llm-gateway.heurist.xyz",
+    apiKey: process.env.HEURIST // Make sure to add this to your environment variables
+});
+async function main(input, unrestricted = false) {
+    console.log('main called with unrestricted:', unrestricted);
+    
+    // Define the messages/instructions once
+    const messages = [
         {"role": "user", "content": `make a word list prompt for SDXL for "Chtullu deep under the sea"`},
         {"role": "system", "content": `Cthulhu, deep sea, underwater, ancient, mythical, Lovecraftian, tentacles, eldritch horror, submerged, dark waters, ocean depths, marine mystery, aquatic terror, forbidden, monstrous deity, shadowy, immense size, otherworldly, sunken ruins, eerie, bioluminescence, sinister presence`},
-        {"role": "system", "content": "You are a helpful SDXL prompt engineer assistant."},
-        {"role": "user", "content": `make a word list prompt for SDXL for  ${input}`},
-        ],
-    model: "gpt-3.5-turbo",
-  });
-  //console.log(completion.choices[0]);
-  console.log('assist',input);
-  //console.log('chat response: ',completion.choices[0].message.content);
-  return completion.choices[0].message.content
-}
+        {"role": "system", "content": "You are a helpful SDXL prompt engineer assistant. Create comma-separated word lists that work well with SDXL. Focus on descriptive terms, artistic styles, and atmospheric elements."},
+        {"role": "user", "content": `make a word list prompt for SDXL for ${input}`}
+    ];
 
-async function mainFlux(input) {
-    const completion = await openai.chat.completions.create({
-        messages: [
-            {"role": "system", "content": `You are a FLUX prompt engineer specializing in creating clear image descriptions. 
-Your prompts should:
-- Begin with "This image is a..."
+    try {
+        if (unrestricted) {
+            console.log('Using unrestricted API');
+            return await getUnrestrictedCompletion(messages);
+        } else {
+            console.log('Using restricted OpenAI API');
+            const completion = await openai.chat.completions.create({
+                messages: messages,
+                model: "gpt-3.5-turbo",
+                temperature: 0.7,
+            });
+            return completion.choices[0].message.content;
+        }
+    } catch (error) {
+        console.error('Error in main:', error);
+        throw error;
+    }
+}
+async function mainFlux(input, unrestricted = false) {
+    console.log('mainFlux called with unrestricted:', unrestricted);
+    
+    // Define the messages/instructions once
+    const messages = [
+        {"role": "system", "content": `You are a FLUX prompt engineer specializing in creating clear image descriptions. 
+Your prompts must:
+- Start EXACTLY with "This image is a" or "This image is an" (no other prefixes or preambles)
 - Include specific details about the main subject and surrounding elements
 - Describe the lighting, colors, and atmosphere
 - Incorporate creative or unexpected elements
 - Mention digital art techniques or stylistic choices
 - Be descriptive but concise, around 100-200 words
 - Include specific positioning (left, right, background, etc.)
-- Describe textures and materials where relevant`},
-            
-            {"role": "user", "content": "Create a FLUX prompt about a cat programmer"},
-            
-            {"role": "assistant", "content": `This image is a digital artwork showing a focused tabby cat working at a modern desk. The cat wears small rectangular glasses and a navy programmer's hoodie, typing with its paws on a sleek keyboard. Three monitors float in front of the cat, displaying neat rows of code in a soft blue glow.
+- Describe textures and materials where relevant
+- NEVER include phrases like "FLUX-generated" or "FLUX prompt" in the output
+- Focus purely on describing the image itself`},
+        {"role": "user", "content": "Create a FLUX prompt about a cat programmer"},
+        {"role": "assistant", "content": `This image is a digital artwork showing a focused tabby cat working at a modern desk...`},
+        {"role": "user", "content": `make a prosaic prompt for FLUX image generation of ${input}`}
+    ];
 
-The desk area is clean and minimalist, with a few personal touches like a coffee mug and a small potted succulent. In the background, subtle circuit patterns trace across the wall in muted blues and silvers. A few holographic windows hover nearby, showing program interfaces and status messages.
-
-The lighting is warm but technical, with the main light source coming from the monitors, creating a cozy tech atmosphere. The cat's fur is rendered in sharp detail, with slight digital enhancement that makes it seem to shimmer. The overall mood is focused but relaxed, blending the natural and digital worlds.`},
-            
-            {"role": "user", "content": `make a prosaic prompt for FLUX image generation of ${input}`}
-        ],
-        model: "gpt-4",
-        temperature: 1.0, // Slightly reduced temperature for more grounded outputs
-    });
-    
-    console.log('assist', input);
-    return completion.choices[0].message.content;
+    try {
+        if (unrestricted) {
+            console.log('Using unrestricted API');
+            return await getUnrestrictedCompletion(messages);
+        } else {
+            console.log('Using restricted OpenAI API');
+            const completion = await openai.chat.completions.create({
+                messages: messages,
+                model: "gpt-4",
+                temperature: 1.0,
+            });
+            return completion.choices[0].message.content;
+        }
+    } catch (error) {
+        console.error('Error in mainFlux:', error);
+        throw error;
+    }
 }
 
 // Function to make the API request and handle the response
-async function promptAssist(message, flux) {
+async function promptAssist(message, flux, unrestricted = false) {
     const start = process.hrtime();
     let result;
     try {
         
         if(flux){
-            result = await mainFlux(message.text);
+            result = await mainFlux(message.text,unrestricted);
         } else {
-            result = await main(message.text);
+            result = await main(message.text,unrestricted);
         }
         
         if (result) {
@@ -83,48 +110,46 @@ async function promptAssist(message, flux) {
     }
 }
 
-// Generic GPT interaction function
-async function gptAssist({ messages, model = "gpt-4", temperature = 0.7, formatResult = (content) => content }) {
+// Modify your existing gptAssist function to handle unrestricted access
+async function gptAssist({ messages, model = "gpt-4", temperature = 0.7, formatResult = (content) => content, unrestricted = false }) {
     const start = process.hrtime();
     
-    // Add system message to handle refusals uniformly
-    const messagesWithRefusalHandling = [
-        {
-            role: "system", 
-            content: "You are a helpful AI assistant. If you cannot or should not fulfill a request for any reason (ethical concerns, unclear instructions, etc), respond only with 'NOICANT'. Otherwise, proceed with the request as normal."
-        },
-        ...messages
-    ];
-
     try {
-        const completion = await openai.chat.completions.create({
-            model: model,
-            messages: messagesWithRefusalHandling,
-            temperature: temperature,
-        });
+        let result;
+        
+        if (unrestricted) {
+            // Use unrestricted API
+            console.log('we are using unrestricted api')
+            result = await getUnrestrictedCompletion(messages, temperature);
+        } else {
+            // Use regular OpenAI API
+            const completion = await openai.chat.completions.create({
+                model: model,
+                messages: messages,
+                temperature: temperature,
+            });
+            result = completion?.choices?.[0]?.message?.content;
+        }
 
-        if (completion?.choices?.[0]?.message?.content) {
-            // Check if response is the refusal token
-            if (completion.choices[0].message.content.trim() === 'NOICANT') {
-                return null;
-            }
-            
-            const result = formatResult(completion.choices[0].message.content);
+        if (result) {
+            console.log('result',result)
+            const formattedResult = formatResult(result);
             const end = process.hrtime();
             
             return {
                 time: end[0] - start[0],
-                result
+                result: formattedResult
             };
-        } else {
-            console.error("No valid response from GPT");
-            return null;
         }
+        
+        return null;
     } catch (error) {
         console.error("Error in gptAssist:", error);
         throw error;
     }
 }
+
+
 
 // Format functions
 const formatters = {
@@ -188,6 +213,48 @@ const formatters = {
         return content.replace(/\[\[([^\]]+)\]\]/g, (_, type) => `[[${type.trim()}]]`);
     }
 };
+
+// Add this before module.exports
+
+
+
+// Function for uncensored streaming completion
+async function* streamUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 500) {
+    try {
+        const stream = await unrestrictedAI.chat.completions.create({
+            model: "mistralai/mixtral-8x7b-instruct",
+            messages: messages,
+            stream: true,
+            temperature: temperature,
+            max_tokens: maxTokens,
+        });
+
+        for await (const chunk of stream) {
+            yield chunk.choices[0].delta.content;
+        }
+    } catch (error) {
+        console.error("Error in streaming unrestricted completion:", error);
+        throw error;
+    }
+}
+
+// Function for uncensored non-streaming completion
+async function getUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 500) {
+    try {
+        const result = await unrestrictedAI.chat.completions.create({
+            model: "mistralai/mixtral-8x7b-instruct",
+            messages: messages,
+            stream: false,
+            temperature: temperature,
+            max_tokens: maxTokens,
+        });
+
+        return result.choices[0].message.content;
+    } catch (error) {
+        console.error("Error in unrestricted completion:", error);
+        throw error;
+    }
+}
 
 
 module.exports = {

@@ -131,8 +131,8 @@ async function handleCreate(message, prompt = '', user = null) {
     }
     const targetUserId = isCallback ? user : message.from.id;
     const group = getGroup(message);
-    const settings = group ? group.settings : lobby[targetUserId];
-    const balance = group ? group.applied : settings.balance;
+    const settings = group ? { ...group.settings, isGroup: true } : lobby[targetUserId];
+    const balance = group ? group.qoints : settings.balance;
     // If createSwitch is missing, set it to SDXL by default
     if (!settings.createSwitch) {
         settings.createSwitch = 'SDXL';
@@ -225,7 +225,7 @@ function generateFeatureMenu(settings, balance, context) {
     ]);
 
     // Extras for SDXL with sufficient balance
-    if (settings.createSwitch === 'SDXL' && balance >= 400000) {
+    if (settings.createSwitch === 'SDXL' && (balance >= 400000 || (isGroup && balance > 0))) {
         const sdxlButtons = [
             {
                 text: settings.styleTransfer && settings.input_style_image
@@ -282,7 +282,7 @@ function generateFeatureMenu(settings, balance, context) {
     // }
 
     // Insufficient balance (only Cancel button)
-    if (balance < 400000) {
+    if ((isGroup && balance <= 0) || (!isGroup && balance < 400000)) {
         buttons.length = 0; // Clear existing buttons
     }
 
@@ -672,8 +672,8 @@ async function handleEffect(message, prompt = '', user = null) {
     const isCallback = user !== null; // Check if this is a callback context
     const targetUserId = isCallback ? user : message.from.id;
     const group = getGroup(message);
-    const settings = group ? group.settings : lobby[targetUserId];
-    const balance = group ? group.applied : settings.balance;
+    const settings = group ? { ...group.settings, isGroup: true } : lobby[targetUserId];
+    const balance = group ? group.qoints : settings.balance;
 
     // If createSwitch is missing, set it to SDXL by default
     if (!settings.createSwitch) {

@@ -1,4 +1,4 @@
-const { lobby, workspace, STATES, getPhotoUrl, getBotInstance } = require('../bot')
+const { lobby, workspace, STATES, getPhotoUrl, getBotInstance, prefixHandlers, actionMap } = require('../bot')
 const { 
     sendMessage, 
     editMessage, 
@@ -8,9 +8,11 @@ const {
     calculateDiscount,
     DEV_DMS
 } = require('../../utils')
+const { checkIn } = require('../gatekeep')
 const { Workspace, UserEconomy } = require('../../../db/index');
 const userEconomy = new UserEconomy();
 const loraDB = new Workspace();
+const fs = require('fs');
 
 /*
 LORA DATASET CREATION / CURATION
@@ -22,26 +24,26 @@ if they have any loras (found in their user object under the loras array, consis
 display each lora in paginated menu along with the newSet button that creates dataset entry in database
 */
 async function getMyLoras(userId) {
-    //console.log('getting loras')
     let loraKeyboardOptions = [];
-    //console.log(lobby[userId])
-    if (lobby[userId]?.loras?.length > 0) {
-        //console.log('made it in')
-        for (const loraIdHash of lobby[userId].loras) {
-            try {
-                const loraInfo = await loraDB.loadLora(loraIdHash);
-                loraKeyboardOptions.push([{ text: `${loraInfo.name}`, callback_data: `el_${loraIdHash}` }]);
-            } catch (error) {
-                console.error(`Failed to load LoRa with ID ${loraIdHash}:`, error);
-                delete lobby[userId].loras[loraIdHash]
-                
-                await loraDB.deleteWorkspace(loraIdHash)
+    
+    try {
+        const trainings = await loraDB.getTrainingsByUserId(userId);
+        if (trainings.length > 0) {
+            for (const training of trainings) {
+                loraKeyboardOptions.push([{ 
+                    text: `${training.name}`, 
+                    callback_data: `el_${training.loraId}` 
+                }]);
             }
         }
+
+        if (trainings.length < 3) {
+            loraKeyboardOptions.push([{ text: '➕', callback_data: 'newLora' }]);
+        }
+    } catch (error) {
+        console.error('Failed to get trainings:', error);
     }
-    if (lobby[userId]?.loras?.length < 3) {
-        loraKeyboardOptions.push([{ text: '➕', callback_data: 'newLora' }]);
-    }
+
     return loraKeyboardOptions;
 }
 
@@ -115,7 +117,7 @@ async function createLora(message) {
         initiated: Date.now(),
         status: 'incomplete'
     }
-    userContext.loras.push(thisLora.loraId)
+    
     if (!workspace.hasOwnProperty(userId)) {
         workspace[userId] = {};
     }
@@ -130,14 +132,6 @@ async function createLora(message) {
         console.error('Error during LoRa creation:', error);
         await sendMessage(message, 'LoRa creation encountered an error.');
         return;
-    }
-    try {
-        
-        if (!userWriteSuccess) {
-            await sendMessage(message, 'Save settings failed, use /savesettings');
-        }
-    } catch (error) {
-        console.error('Error writing user data:', error);
     }
    
     const { text, reply_markup } = await buildTrainingMenu(userId,hashId)
@@ -156,23 +150,8 @@ async function removeTraining(user, loraId) {
         await checkIn({ from: { id: user }, chat: { id: user } });
     }
 
-    // Safely update the user's loras array
-    if (lobby[user]?.loras) {
-        lobby[user].loras = lobby[user].loras.filter(lora => lora !== loraId);
-        
-        // Save the updated loras array to user data
-        try {
-            
-            console.log('updated loras array saved to user data')
-        } catch (error) {
-            console.error('Error saving updated loras array:', error);
-        }
-    } else {
-        console.log(`User ${user} has no loras to remove.`);
-    }
-
     // Remove the LoRa from the workspace
-    if (workspace[user][loraId]) {
+    if (workspace.hasOwnProperty(user) && workspace[user][loraId]) {
         delete workspace[user][loraId];
         console.log(`Workspace entry for LoRA ${loraId} removed.`);
     }
@@ -279,6 +258,19 @@ async function buildTrainingMenu(userId,loraId) {
         return null;
     }
 }
+
+    //remove lora training set
+    prefixHandlers['rml_']= async (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        await removeTraining(user, loraId);
+        actionMap['trainingMenu'](message, user);
+    }
+
+    prefixHandlers['est_']= async (action, message, user) => {
+        const loraId = parseInt(action.split('_')[1]);
+        const slotId = parseInt(action.split('_')[2]);
+        await editSlot(user, loraId, slotId);
+    }
 
 async function trainSlot(message, user, loraId, slotId) {
     const userId = user;
@@ -406,7 +398,7 @@ async function viewSlotImage(message, user, loraId, slotId) {
             return;
         }
 
-        const tempFilePath = await loraDB.bucketPull(user, loraId, slotId);
+        const tempFilePath = await loraDB.bucketPull(fileId, loraId, slotId);
         if (!tempFilePath) {
             await sendMessage(message.reply_to_message, 'Failed to retrieve the image. Please try again later.');
             return;
@@ -518,26 +510,33 @@ async function saveAndReact(userId, loraId, messages, instanceId) {
     // Keep user in ADDLORAIMAGE state
     setUserState(messages[messages.length-1], STATES.ADDLORAIMAGE);
 }
-async function assignToSlot(userId, loraId, fileData,tool) {
+async function assignToSlot(userId, loraId, fileData, tool) {
     if (tool === undefined || tool < 0 || tool >= 20) {
         tool = workspace[userId][loraId].images.findIndex(image => image === '');
         if (tool === -1) {
             console.error(`No available slot found for LoRA ${loraId}`);
-            //sendMessage(message, "No available slots to add more images.");
             return false;
         }
     }
 
-    const telegramFileUrl = await getPhotoUrl(fileData.file);
-    if (!telegramFileUrl) {
-        console.error(`Failed to get URL for file in slot ${tool}`);
+    try {
+        // Get telegram URL using the file object from processFiles
+        const telegramFileUrl = await getPhotoUrl(fileData.file);
+        if (!telegramFileUrl) {
+            console.error(`Failed to get URL for file in slot ${tool}`);
+            return false;
+        }
+
+        console.log('[assignToSlot] Got telegram URL:', telegramFileUrl);
+        const mongoObjectId = await loraDB.saveImageToGridFS(telegramFileUrl, loraId, tool);
+        console.log('[assignToSlot] Saved to GridFS, got ObjectId:', mongoObjectId);
+        
+        workspace[userId][loraId].images[tool] = mongoObjectId;
+        return tool;
+    } catch (error) {
+        console.error(`Failed to save file for slot ${tool}:`, error);
         return false;
     }
-
-    const fileUrl = await loraDB.saveImageToGridFS(telegramFileUrl, loraId, tool);
-    workspace[userId][loraId].images[tool] = fileUrl;
-
-    return true;
 }
 async function processFiles(messages) {
     const files = [];

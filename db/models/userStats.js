@@ -19,7 +19,7 @@ class UserStats extends BaseDB {
             type: task.promptObj.type
         };
 
-        return this.insertOne(genData);
+        return this.db.collection(this.collection).insertOne(genData);
     }
 
     // We can add methods for aggregating stats later:

@@ -12,7 +12,7 @@ const features = [
         gate: 300000
     },
     {
-        name: 'style transfer + controlnet',
+        name: 'SDXL (make) style transfer + controlnet',
         gate: 400000
     },
     {
@@ -22,6 +22,10 @@ const features = [
     {
         name: 'image to video',
         gate: 600000
+    },
+    {
+        name: 'Uncensored Assist',
+        gate: 1000000
     }
 
 ]

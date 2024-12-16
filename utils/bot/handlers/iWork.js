@@ -453,7 +453,7 @@ function saySeed(message){
 async function shakeAssist(message, prompt = null, user = null) {
     if(!user) await react(message)
     const userId = user || message.from.id;
-    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false);
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false,lobby[userId].balance > 1000000);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
@@ -464,7 +464,9 @@ async function shakeAssist(message, prompt = null, user = null) {
 async function shakeFluxAssist(message, prompt = null, user = null) {
     if(!user) await react(message)
     const userId = user || message.from.id;
-    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true);
+    const whale = lobby[userId].balance > 1000000;
+    console.log('is we wehale',whale)
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true,whale);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
@@ -495,71 +497,118 @@ async function startFluxInterrogate(message, user) {
     }
     
 }
-
 async function shakeFluxInterrogate(message, image = null) {
+    console.log('Starting flux interrogation...');
     react(message,'😇')
     const url = image || await getPhotoUrl(message)
+    console.log('Got photo URL:', url);
+
+    try {
+        const result = await makeInterrogationRequest(url);
+        if (result.error) {
+            console.error('Interrogation failed:', result.error);
+            sendMessage(message, 'Sorry, the interrogation failed. Please try again later.');
+        } else {
+            console.log('Interrogation successful:', result);
+            sendMessage(message, result);
+        }
+    } catch (err) {
+        console.error('Error during interrogation:', err);
+        sendMessage(message, 'An error occurred during interrogation.');
+    }
+
+    setUserState(message, STATES.IDLE);
+}
+
+// Separated request logic
+async function makeInterrogationRequest(url) {
+    console.log('Making interrogation request for URL:', url);
     
-    // Step 1: Make the POST request using fetch
-    const getEventId = async (url) => {
-        try {
+    try {
+        // Step 1: Get Event ID
+        console.log('Getting event ID...');
+        const eventId = await getEventId(url);
+        console.log('Received event ID:', eventId);
+
+        if (!eventId) {
+            return { error: 'Failed to get event ID' };
+        }
+
+        // Step 2: Stream Result
+        console.log('Streaming event result...');
+        const result = await streamEventResult(eventId);
+        console.log('Stream result received:', result);
+
+        return result;
+
+    } catch (error) {
+        console.error('Request failed:', error);
+        return { error: error.message };
+    }
+}
+
+async function getEventId(url) {
+    console.log('POST request to get event ID...');
+    try {
         const response = await fetch('https://fancyfeast-joy-caption-pre-alpha.hf.space/call/stream_chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-            data: [
-                { path: url }
-            ]
+                data: [{ path: url }]
             })
         });
-    
-        const jsonResponse = await response.json();
+
+        console.log('Event ID response status:', response.status);
+        console.log('Event ID response headers:', Object.fromEntries(response.headers));
         
-        // Assuming the EVENT_ID is the 4th item when split by quotes (based on the original awk command)
+        const jsonResponse = await response.json();
+        console.log('Event ID raw response:', jsonResponse);
+
         const eventId = JSON.stringify(jsonResponse).split('"')[3];
-        console.log('Event ID:', eventId);
+        console.log('Extracted event ID:', eventId);
         return eventId;
-        } catch (error) {
-        console.error('Error fetching Event ID:', error);
+
+    } catch (error) {
+        console.error('Error getting event ID:', error);
+        if (error.response) {
+            console.log('Error response:', await error.response.text());
         }
-    };
-  
-  // Step 2: Use fetch to make a GET request to stream the event data
-  const streamEventResult = async (eventId) => {
+        throw error;
+    }
+}
+
+async function streamEventResult(eventId) {
+    console.log('GET request to stream result for event:', eventId);
     const streamUrl = `https://fancyfeast-joy-caption-pre-alpha.hf.space/call/stream_chat/${eventId}`;
     
     try {
-      const response = await fetch(streamUrl, { method: 'GET' });
-        //console.log('response in result? ',response)
-      // Here we can just treat the response as text (since it's a string)
-      const result = await response.text();
-      // Split the result by new lines and find the line that starts with 'data:'
+        const response = await fetch(streamUrl, { method: 'GET' });
+        console.log('Stream response status:', response.status);
+        console.log('Stream response headers:', Object.fromEntries(response.headers));
+
+        const result = await response.text();
+        console.log('Raw stream response:', result);
+
         const lines = result.split('\n');
         const dataLine = lines.find(line => line.startsWith('data:'));
+        console.log('Found data line:', dataLine);
 
-        // Extract the part inside the brackets (JSON string) and parse it
-        const jsonData = JSON.parse(dataLine.replace('data: ', ''));
-        
-        console.log('Parsed Data:', jsonData[0]); // Access the first item in the array
-        return jsonData[0]; // Return the description as a clean string
-    } catch (error) {
-        console.error('Error streaming event result:', error);
-    }
-    };
-    //sendMessage(message,jso);
-    //console.log(result.data);
-    // Execute both steps
-    (async () => {
-        const eventId = await getEventId(url);
-        
-        if (eventId) {
-            const res = await streamEventResult(eventId);
-            console.log('res ? ',res)
-            sendMessage(message,res)
+        if (!dataLine) {
+            throw new Error('No data line found in response');
         }
-    })();
-    setUserState(message,STATES.IDLE)
-    
+
+        const jsonData = JSON.parse(dataLine.replace('data: ', ''));
+        console.log('Parsed JSON data:', jsonData);
+
+        return jsonData[0];
+
+    } catch (error) {
+        console.error('Error streaming result:', error);
+        if (error.response) {
+            console.log('Error response:', await error.response.text());
+        }
+        throw error;
+    }
 }
 
 async function startSpeak(message, user) {
