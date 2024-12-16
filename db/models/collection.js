@@ -6,7 +6,11 @@ class CollectionDB extends BaseDB {
     }
 
     async createCollection(collectionData) {
-        return this.insertOne(collectionData);
+        return this.updateOne(
+            { collectionId: collectionData.collectionId },
+            collectionData,
+            { upsert: true }
+        );
     }
 
     async loadCollection(collectionId) {

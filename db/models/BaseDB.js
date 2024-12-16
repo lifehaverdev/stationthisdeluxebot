@@ -1,4 +1,4 @@
-const { MongoClient, GridFSBucket } = require('../mongodb');
+const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const { dbQueue, getCachedClient } = require('../utils/queue');
 class BaseDB {
     constructor(collectionName) {
@@ -168,27 +168,44 @@ class BaseDB {
     }
 
     // GridFS Operations
-    async getBucket() {
+    async getBucket(bucketName = 'fs') {  // Default to 'fs' if no bucket name provided
         const client = await getCachedClient();
-        return new GridFSBucket(client.db(this.dbName));
+        return new GridFSBucket(client.db(this.dbName), {
+            bucketName: bucketName
+        });
     }
 
     async saveFile(filename, stream) {
         return dbQueue.enqueue(async () => {
             const bucket = await this.getBucket();
+            const uploadStream = bucket.openUploadStream(filename);
+            
+            // Pipe the stream and return a promise that resolves with the ObjectId
             return new Promise((resolve, reject) => {
-                const uploadStream = bucket.openUploadStream(filename);
                 stream.pipe(uploadStream)
-                    .on('error', reject)
-                    .on('finish', resolve);
+                    .on('finish', () => {
+                        console.log(`File ${filename} saved to GridFS with id:`, uploadStream.id.toString());
+                        resolve(new ObjectId(uploadStream.id));  // Return actual ObjectId instance
+                    })
+                    .on('error', (error) => {
+                        console.error('Error saving to GridFS:', error);
+                        reject(error);
+                    });
             });
         });
     }
 
-    async getFile(filename) {
+    async getFile(fileId) {
         return dbQueue.enqueue(async () => {
             const bucket = await this.getBucket();
-            return bucket.openDownloadStreamByName(filename);
+            try {
+                // Convert string to ObjectId if needed
+                const objectId = typeof fileId === 'string' ? new ObjectId(fileId) : fileId;
+                return bucket.openDownloadStream(objectId);
+            } catch (error) {
+                console.error('Error opening download stream:', error);
+                return null;
+            }
         });
     }
 

@@ -1,22 +1,27 @@
 const { BaseDB } = require('./BaseDB');
 const fs = require('fs');
 const path = require('path');
-const { GridFSBucket, ObjectId } = require('mongodb');
+const { ObjectId,  GridFSBucket } = require('mongodb');
+const axios = require('axios');
+const { getBotInstance } = require('../../utils/bot/bot');
 
 class LoraDB extends BaseDB {
     constructor() {
-        super('loras');
-        this.bucket = null;
-    }
-
-    async initBucket(db) {
-        this.bucket = new GridFSBucket(db, {
-            bucketName: 'loraImages'
-        });
+        super('trains');
     }
 
     async createTraining(loraData) {
-        return this.insertOne(loraData);
+        return this.updateOne(
+            { loraId: loraData.loraId },
+            loraData,
+            { upsert: true }
+        );
+    }
+
+    async getTrainingsByUserId(userId) {
+        return this.findMany({ userId }, {
+            sort: { initiated: -1 }
+        });
     }
 
     async loadLora(loraId) {
@@ -43,50 +48,69 @@ class LoraDB extends BaseDB {
         );
     }
 
-    async saveImageToGridFS(userId, loraId, slotId, imagePath) {
-        if (!this.bucket) throw new Error('Bucket not initialized');
-
-        const filename = `${userId}_${loraId}_${slotId}${path.extname(imagePath)}`;
-        const uploadStream = this.bucket.openUploadStream(filename);
-
-        return new Promise((resolve, reject) => {
-            fs.createReadStream(imagePath)
-                .pipe(uploadStream)
-                .on('error', reject)
-                .on('finish', () => resolve(uploadStream.id));
-        });
+    async saveImageToGridFS(fileUrl, loraId, slotId) {
+        try {
+            console.log('[saveImageToGridFS] Downloading file from URL:', fileUrl);
+            
+            // Get the image file from the URL using axios
+            const response = await axios({
+                method: 'GET',
+                url: fileUrl,
+                responseType: 'stream'
+            });
+    
+            // Create filename for GridFS
+            const filename = `lora_${loraId}_slot_${slotId}.jpg`;
+            console.log('[saveImageToGridFS] Saving as:', filename);
+    
+            // Use the base class method to save the stream
+            return await this.saveFile(filename, response.data);
+        } catch (error) {
+            console.error('[saveImageToGridFS] Error:', error);
+            throw error;
+        }
     }
 
-    async bucketPull(userId, loraId, slotId) {
-        if (!this.bucket) throw new Error('Bucket not initialized');
+    async bucketPull(fileId, loraId, slotId) {
+        try {
+            if (!fileId) {
+                console.error('No fileId provided');
+                return null;
+            }
 
-        const files = await this.bucket.find({ 
-            filename: new RegExp(`^${userId}_${loraId}_${slotId}`) 
-        }).toArray();
+            const downloadStream = await this.getFile(fileId);
+            if (!downloadStream) return null;
 
-        if (!files.length) return null;
+            // Define the local file path in the /tmp directory
+            const tempFilePath = path.join('/tmp', `slot_image_${loraId}_${slotId}.jpg`);
+            const writeStream = fs.createWriteStream(tempFilePath);
 
-        const tempPath = path.join('/tmp', `temp_${Date.now()}${path.extname(files[0].filename)}`);
-        const downloadStream = this.bucket.openDownloadStream(files[0]._id);
-
-        return new Promise((resolve, reject) => {
-            const writeStream = fs.createWriteStream(tempPath);
-            downloadStream
-                .pipe(writeStream)
-                .on('error', reject)
-                .on('finish', () => resolve(tempPath));
-        });
+            // Return a promise that resolves with the file path
+            return new Promise((resolve, reject) => {
+                downloadStream.pipe(writeStream)
+                    .on('error', (error) => {
+                        console.error('Error downloading file:', error);
+                        reject(error);
+                    })
+                    .on('finish', () => {
+                        console.log(`Image for lora ${loraId}, slot ${slotId} saved to ${tempFilePath}`);
+                        resolve(tempFilePath);
+                    });
+            });
+        } catch (error) {
+            console.error('Error in bucketPull:', error);
+            return null;
+        }
     }
 
     async deleteImageFromWorkspace(loraId, slotId) {
-        if (!this.bucket) throw new Error('Bucket not initialized');
-
-        const files = await this.bucket.find({ 
+        const bucket = await this.getBucket('loraImages');  // Specify the bucket name
+        const files = await bucket.find({ 
             filename: new RegExp(`_${loraId}_${slotId}`) 
         }).toArray();
-
+    
         for (const file of files) {
-            await this.bucket.delete(file._id);
+            await bucket.delete(file._id);
         }
     }
 }
