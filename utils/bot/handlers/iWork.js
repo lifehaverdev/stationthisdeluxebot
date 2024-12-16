@@ -451,9 +451,16 @@ function saySeed(message){
 }
 
 async function shakeAssist(message, prompt = null, user = null) {
-    if(!user) await react(message)
     const userId = user || message.from.id;
-    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false,lobby[userId].balance > 1000000);
+    const whale = lobby[userId].balance > 1000000;
+    if(!user) {
+        if(whale) {
+            await react(message,'🍓')
+        } else {
+            await react(message)
+        }
+    }
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false,whale);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
@@ -462,9 +469,15 @@ async function shakeAssist(message, prompt = null, user = null) {
 }
 
 async function shakeFluxAssist(message, prompt = null, user = null) {
-    if(!user) await react(message)
     const userId = user || message.from.id;
     const whale = lobby[userId].balance > 1000000;
+    if(!user) {
+        if(whale) {
+            await react(message,'🍓')
+        } else {
+            await react(message)
+        }
+    }
     console.log('is we wehale',whale)
     const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true,whale);
     lobby[userId].points += time+5;
