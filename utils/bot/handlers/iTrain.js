@@ -272,6 +272,20 @@ async function buildTrainingMenu(userId,loraId) {
         await editSlot(user, loraId, slotId);
     }
 
+async function editSlot(user, loraId, slotId) {
+    const userId = user;
+    const messageId = message.message_id;
+    const chatId = message.chat.id;
+    setUserState({...message, 'from': {'id': userId}}, STATES.SETLORACAPTION)
+}
+
+actionMap['setLoraCaption'] = async (action, message, user) => {
+    const loraId = parseInt(action.split('_')[1]);
+    const slotId = parseInt(action.split('_')[2]);
+    workspace[user][loraId].tool = slotId
+    await addLoraSlotCaption(message);
+}
+
 async function trainSlot(message, user, loraId, slotId) {
     const userId = user;
     const messageId = message.message_id;

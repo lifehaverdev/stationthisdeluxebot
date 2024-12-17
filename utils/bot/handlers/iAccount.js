@@ -20,7 +20,7 @@ const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUT
 const { verifyHash } = require('../../users/verify.js')
 const { signedOut } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
-const defaultUserData = require('../../users/defaultUserData.js')
+const {defaultUserData,validateUserData} = require('../../users/defaultUserData.js')
 const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
 /*
@@ -720,10 +720,12 @@ async function handleSignOut(message) {
                 wallet: '',  // Clear wallet as part of sign-out
                 verified: false  // Reset verification status
             };
-            await userCore.startBatch()
-                .writeUserDataPoint(userId, 'wallet', '')
-                .writeUserDataPoint(userId, 'verified', false)
-                .endBatch()
+
+            await userCore
+                .startBatch()
+                .writeUserDataPoint(userId, 'wallet', '', true)
+                .writeUserDataPoint(userId, 'verified', false, true)
+                .executeBatch();
             await userPref.writeUserData(userId, updatedUserData);
         } catch (error) {
             console.error('Error writing user data:', error);
@@ -852,9 +854,9 @@ async function handleRefreshQoints(message,user) {
         userData.checkedQointsAt = now
         //write new pendingQoints
         await userEconomy.startBatch()
-            .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
+            .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
         //write new qoints
-            .writeQoints('users',userData.qoints)
+            .writeUserDataPoint(user,'qoints',userData.qoints,true)
             .endBatch()
         await returnToAccountMenu(message,user)
         return
@@ -877,8 +879,8 @@ async function handleRefreshQoints(message,user) {
             userData.checkedQointsAt = now;
             
             await userEconomy.startBatch()
-                .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints)
-                .writeQoints('users',userData.qoints)
+                .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
+                .writeUserDataPoint(user,'qoints',userData.qoints,true)
                 .endBatch()
             await returnToAccountMenu(message,user)
             return

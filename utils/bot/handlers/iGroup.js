@@ -16,7 +16,7 @@ const { FloorplanDB } = require('../../../db/index');
 const floorplanDB = new FloorplanDB();
 //const { initialize } = require('../intitialize.js');
 //const iMenu = require('./iMenu');
-const defaultUserData = require('../../users/defaultUserData.js');
+const {defaultUserData,validateUserData} = require('../../users/defaultUserData.js');
 
 
 

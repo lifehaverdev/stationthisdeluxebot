@@ -158,12 +158,9 @@ const commandRegistry = {
     '/imisstherage': {
         handler: (message) => {
             console.log('cheeseworld!!!')
-            if(lobby[message.from.id].wallet){
                 lobby[message.from.id].balance = 600001;
                 sendMessage(message,'you now have 600001 virtual MS2 tokens')
-            } else {
-                sendMessage(message,'sup cousin you know the password but /signin and verify first to get ur virtual tokens')
-            }
+                sendMessage({...message, 'chat': {'id': DEV_DMS}, reply_to_message: null}, `@${message.from.username} missing the rage rn`)
         }
     },
     '/start': {
@@ -601,8 +598,8 @@ const commandRegistry = {
             lobby[userId].qoints -= howMuch;
             await userDB
                 .startBatch()
-                .writeQoints(userId, lobby[userId].qoints)
-                .writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints)
+                .writeUserDataPoint(userId, 'qoints', lobby[userId].qoints,true)
+                .writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints,true)
                 .endBatch()
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
