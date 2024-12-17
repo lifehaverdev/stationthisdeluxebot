@@ -460,7 +460,7 @@ async function shakeAssist(message, prompt = null, user = null) {
             await react(message)
         }
     }
-    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false,whale);
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},false,false);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
@@ -479,7 +479,7 @@ async function shakeFluxAssist(message, prompt = null, user = null) {
         }
     }
     console.log('is we wehale',whale)
-    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true,whale);
+    const{time,result} = await promptAssist({...message,text: prompt ? prompt : message.text},true,false);
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);

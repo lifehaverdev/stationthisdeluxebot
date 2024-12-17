@@ -219,7 +219,7 @@ const formatters = {
 
 
 // Function for uncensored streaming completion
-async function* streamUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 500) {
+async function* streamUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 1024) {
     try {
         const stream = await unrestrictedAI.chat.completions.create({
             model: "mistralai/mixtral-8x7b-instruct",
@@ -239,7 +239,7 @@ async function* streamUnrestrictedCompletion(messages, temperature = 0.75, maxTo
 }
 
 // Function for uncensored non-streaming completion
-async function getUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 500) {
+async function getUnrestrictedCompletion(messages, temperature = 0.75, maxTokens = 1024) {
     try {
         const result = await unrestrictedAI.chat.completions.create({
             //model: "mistralai/mixtral-8x7b-instruct", //censored
