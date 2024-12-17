@@ -50,10 +50,25 @@ class UserPrefDB extends BaseDB {
         );
     }
 
-    async writeUserDataPoint(userId, field, value) {
+    writeUserDataPoint(userId, field, value, batch = false) {  // Remove async
+        if (batch) {
+            this.updateOne(
+                { userId },
+                { [field]: value },
+                {},
+                true  // batch mode
+            );
+            console.log('writeUserDataPoint batch mode:', batch);
+            console.log('writeUserDataPoint returning: this');
+            return this;
+        }
+    
+        // Non-batch mode
         return this.updateOne(
             { userId },
-            { [field]: value }
+            { [field]: value },
+            {},
+            false
         );
     }
 

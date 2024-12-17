@@ -15,7 +15,7 @@ const userPref = new UserPref();
 const { getBalance, checkBlacklist, getNFTBalance } = require('../users/checkBalance')
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
-const defaultUserData = require('../users/defaultUserData')
+const {defaultUserData,validateUserData} = require('../users/defaultUserData')
 //const { home } = require('../models/userKeyboards');
 let lastCleanTime = Date.now();
 const logLobby = true;
@@ -391,6 +391,7 @@ async function handleUserData(userId, message) {
                 if (existingCore) {
                     // User exists, get full data
                     userData = await fetchFullUserData(userId);
+                    userData = validateUserData(userData); 
                 } else {
                     // No existing user, create new
                     console.log(`No existing user data found for userId ${userId}, creating new...`);
@@ -399,6 +400,7 @@ async function handleUserData(userId, message) {
                     if (!userData) {
                         throw new Error("Failed to create new user data.");
                     }
+                    userData = validateUserData(userData); 
                 }
             } catch (error) {
                 console.error(`DB fetch error for userId ${userId}:`, {
