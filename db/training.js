@@ -1,53 +1,17 @@
 // Import necessary dependencies
-const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-const { Workspace } = require('./index');
+const LoraDB = require('./models/workspace');
+const GlobalStatusDB = require('./models/globalStatus');
 // Define constants
 const uri = process.env.MONGO_PASS;
 const dbName = 'stationthisbot'//process.env.MONGO_DB_NAME;
 const parentFolderPath = '/Users/lifehaver/Desktop/test';
 
-// Create a new MongoClient
-let client;
-
-// Initialize MongoDB Client
-async function getCachedClient() {
-  if (!client) {
-    client = new MongoClient(uri);
-    await client.connect();
-  }
-  return client;
-}
-
-async function updateLoraStatus(loraId, newStatus) {
-  try {
-      const client = await getCachedClient();
-      const db = client.db(dbName);
-      const collection = db.collection('trains');
-
-      // Update the status of the LoRA training data
-      const result = await collection.updateOne(
-          { loraId: parseInt(loraId) }, // Filter by loraId
-          { $set: { status: newStatus } } // Update the status field
-      );
-
-      if (result.modifiedCount === 1) {
-          console.log(`LoRA ${loraId} status updated to ${newStatus}`);
-          return true;
-      } else if (result.matchedCount === 0) {
-          console.log(`LoRA ${loraId} not found.`);
-          return false;
-      } else {
-          console.warn(`No changes made to the status of LoRA ${loraId}.`);
-          return false;
-      }
-  } catch (error) {
-      console.error(`Error updating status for LoRA ${loraId}:`, error);
-      return false;
-  }
-}
+// Initialize DB classes
+const loraDB = new LoraDB();
+const globalStatusDB = new GlobalStatusDB();
 
 // Command Router
 async function main() {
@@ -83,10 +47,10 @@ async function main() {
     case 'info':
       await displayInfo();
       break;
-    case 'set-global-status':
+    case 'set-training-status':
       const globalStatus = args[1];
       if (globalStatus) {
-        await setGlobalStatus(globalStatus);
+        await setTrainingGlobalStatus(globalStatus);
       } else {
         console.log('Please provide a global status to set.');
       }
@@ -99,20 +63,25 @@ async function main() {
           await cleanOldTrainings(days);
       }
       break;
+    case 'set-global-status':
+      const trainingId = args[1];
+      const trainingStatus = args[2];
+      if (trainingId && trainingStatus) {
+        console.log('setting global status for trainingId', trainingId, 'to', trainingStatus);
+        await setGlobalTrainingStatus(trainingId, trainingStatus);
+      } else {
+        console.log('Please provide a trainingId and status.');
+      }
+      break;
     default:
       console.log('Invalid command. Available commands: download, set-status, reject, info, set-global-status');
-  }
-
-  // Close the client when done
-  if (client) {
-    await client.close();
   }
 }
 
 // 1. Download Dataset
 async function downloadDataset(loraId) {
   try {
-    const loraDB = new Workspace();
+    const loraDB = new LoraDB();
     // Find the lora data using our LoraDB class
     const loraData = await loraDB.findOne({ loraId: parseInt(loraId) });
     if (!loraData) {
@@ -155,7 +124,6 @@ async function downloadDataset(loraId) {
     console.log(`Dataset for loraId ${loraId} downloaded successfully.`);
 
     // Update status to TOUCHED
-    // Update status to TOUCHED
     const statusUpdated = await loraDB.updateLoraStatus(loraId, 'TOUCHED');
     if (!statusUpdated) {
         console.error(`Failed to update status for LoRA ${loraId}.`);
@@ -169,18 +137,13 @@ async function downloadDataset(loraId) {
 // 2. Set Status
 async function setStatus(loraId, status) {
   try {
-    const client = await getCachedClient();
-    const collection = client.db(dbName).collection('trains');
-
-    const result = await collection.updateOne(
-      { loraId: parseInt(loraId) },
-      { $set: { status: status, updatedAt: new Date() } }
-    );
-
-    if (result.modifiedCount > 0) {
+    const loraDB = new LoraDB();
+    const result = await loraDB.updateLoraStatus(loraId, status);
+    
+    if (result) {
       console.log(`Status of LoRA ${loraId} updated to '${status}'.`);
       if (status === 'training') {
-        await setGlobalStatus(`Currently training LoRA ID: ${loraId}`);
+        await setTrainingGlobalStatus(`Currently training LoRA ID: ${loraId}`);
       }
     } else {
       console.log(`No LoRA found with loraId ${loraId}.`);
@@ -199,170 +162,147 @@ async function rejectDataset(loraId) {
 // 4. Display Info
 async function displayInfo() {
     try {
-      const client = await getCachedClient();
-      const collection = client.db(dbName).collection('trains');
+        const trainings = await loraDB.getIncompleteTrainings();
+        console.log('Training Information:');
   
-      const trainings = await collection.find({ status: { $ne: 'completed' } }).sort({ submitted: 1 }).toArray();
-      console.log('Training Information:');
+        // Organize trainings by status
+        const organizedTrainings = trainings.reduce((acc, training) => {
+          if (!acc[training.status]) {
+            acc[training.status] = [];
+          }
+          acc[training.status].push(training);
+          return acc;
+        }, {});
   
-      // Organize trainings by status
-      const organizedTrainings = trainings.reduce((acc, training) => {
-        if (!acc[training.status]) {
-          acc[training.status] = [];
+        // Display organized trainings with highest priority status first
+        const statusOrder = ['SUBMITTED', 'incomplete', 'pending review', 'rejected', 'training'];
+        for (const status of statusOrder) {
+          if (organizedTrainings[status]) {
+            console.log(`
+Status: ${status.toUpperCase()}`);
+            console.log('----------------------------------------');
+            organizedTrainings[status].forEach((training) => {
+              const submittedDate = training.submitted ? new Date(training.submitted).toLocaleString() : 'Not Submitted';
+              console.log(`LoRA ID: ${training.loraId}, Name: ${training.name}, Submitted: ${submittedDate}`);
+            });
+          }
         }
-        acc[training.status].push(training);
-        return acc;
-      }, {});
   
-      // Display organized trainings with highest priority status first
-      const statusOrder = ['SUBMITTED', 'incomplete', 'pending review', 'rejected', 'training'];
-      for (const status of statusOrder) {
-        if (organizedTrainings[status]) {
+        // Display global status
+        const globalStatus = await getTrainingGlobalStatus();
+        if (globalStatus) {
           console.log(`
-  Status: ${status.toUpperCase()}`);
-          console.log('----------------------------------------');
-          organizedTrainings[status].forEach((training) => {
-            const submittedDate = training.submitted ? new Date(training.submitted).toLocaleString() : 'Not Submitted';
-            console.log(`LoRA ID: ${training.loraId}, Name: ${training.name}, Submitted: ${submittedDate}`);
-          });
+Global Training Status: ${globalStatus.status}`);
         }
-      }
-  
-      // Display global status
-      const globalStatus = await getGlobalStatus();
-      if (globalStatus) {
-        console.log(`
-  Global Training Status: ${globalStatus.status}`);
-      }
     } catch (error) {
-      console.error('Error displaying training info:', error);
+        console.error('Error displaying training info:', error);
     }
-  }
-  
+}
+
 //5. clean old trainings
 async function cleanOldTrainings(days) {
   try {
-      const client = await getCachedClient();
-      const db = client.db(dbName);
-      const trainsCollection = db.collection('trains');
-      const usersCollection = db.collection('users');
-      const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
-
-      const threshold = Date.now() - days * 24 * 60 * 60 * 1000; // Convert days to milliseconds
-
-      // Find all outdated training entries
-      const oldTrainings = await trainsCollection.find({
-          $or: [
-              { submitted: { $exists: false } },
-              { initiated: { $exists: false } },
-              { initiated: { $lt: new Date(threshold) } },
-              { submitted: { $lt: new Date(threshold) } }
-          ]
-      }).toArray();
-
-      console.log(`[cleanOldTrainings] Found ${oldTrainings.length} outdated trainings.`);
-
-      for (const training of oldTrainings) {
-          const { loraId, userId, images } = training;
-
-          console.log(`[cleanOldTrainings] Cleaning LoRA ${loraId} for user ${userId}.`);
-
-          // Delete associated images from GridFS
-          for (const fileId of images) {
-              if (fileId) {
-                  try {
-                      await bucket.delete(new ObjectId(fileId));
-                      console.log(`[cleanOldTrainings] Deleted image with ID ${fileId}.`);
-                  } catch (error) {
-                      console.error(`[cleanOldTrainings] Error deleting image with ID ${fileId}:`, error);
-                  }
-              }
-          }
-
-          // Remove the LoRA ID from the user's loras array
-          const userUpdateResult = await usersCollection.updateOne(
-              { userId: userId },
-              { $pull: { loras: loraId } }
-          );
-          console.log(`[cleanOldTrainings] Updated user ${userId} loras array:`, userUpdateResult);
-
-          // Delete the training entry from the trains collection
-          const deleteResult = await trainsCollection.deleteOne({ loraId: loraId });
-          console.log(`[cleanOldTrainings] Deleted training ${loraId}:`, deleteResult);
-      }
-
-      console.log('[cleanOldTrainings] Cleanup complete.');
+      const cleanedCount = await loraDB.cleanOldTrainings(days);
+      console.log(`Cleaned ${cleanedCount} old trainings`);
+      return cleanedCount;
   } catch (error) {
-      console.error('[cleanOldTrainings] Error during cleanup:', error);
+      console.error('Error cleaning old trainings:', error);
+      throw error;
   }
 }
 
-
 // Set Global Status
-async function setGlobalStatus(status) {
+async function setTrainingGlobalStatus(status) {
   try {
-    const client = await getCachedClient();
-    const collection = client.db(dbName).collection('trains');
-    const filter = { type: 'globalStatus' };
-    const update = { $set: { status: status, updatedAt: new Date() } };
-    const options = { upsert: true };
-
-    await collection.updateOne(filter, update, options);
-    console.log(`Global status updated to: '${status}'`);
+    const result = await loraDB.updateLoraStatus(loraId, status);
+    if (result) {
+      console.log(`Training global status updated to: '${status}'`);
+    } else {
+      console.log(`Failed to update training status`);
+    }
   } catch (error) {
-    console.error('Error setting global status:', error);
+    console.error('Error setting training global status:', error);
   }
 }
 
 // Get Global Status
-async function getGlobalStatus() {
+async function getTrainingGlobalStatus() {
   try {
-    const client = await getCachedClient();
-    const collection = client.db(dbName).collection('trains');
-    const globalStatus = await collection.findOne({ type: 'globalStatus' });
-    return globalStatus;
+    const status = await globalStatusDB.getGlobalStatus();
+    return status?.training || null;
   } catch (error) {
-    console.error('Error getting global status:', error);
+    console.error('Error getting training global status:', error);
     return null;
   }
 }
 
-async function clearLoraImagesBucket() {
+
+// New method to handle global status updates
+async function setGlobalTrainingStatus(trainingId, status) {
   try {
-      const client = await getCachedClient(); // Assuming getCachedClient is defined elsewhere
-      const db = client.db(dbName); // Replace `dbName` with your database name
-      const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+      const globalStatusDB = new GlobalStatusDB();
+      const currentStatus = await globalStatusDB.getGlobalStatus();
+      const training = await loraDB.getTrainingInfo(trainingId);
+      // Remove any existing entry for this training
+      const updatedTraining = (currentStatus.training || [])
+          .filter(t => t.loraId !== parseInt(trainingId));
+      
+      // Add new training status
+      updatedTraining.push({
+          loraId: parseInt(trainingId),
+          name: training.name,
+          status: status,
+          updatedAt: new Date()
+      });
 
-      console.log('[clearLoraImagesBucket] Fetching all files from the loraImages bucket...');
-      const filesCursor = bucket.find();
+      await globalStatusDB.updateStatus({
+          training: updatedTraining
+      });
 
-      const fileIds = [];
-      await filesCursor.forEach(file => fileIds.push(file._id));
-
-      if (fileIds.length === 0) {
-          console.log('[clearLoraImagesBucket] No files found in the loraImages bucket.');
-          return;
-      }
-
-      console.log(`[clearLoraImagesBucket] Found ${fileIds.length} files. Deleting...`);
-      for (const fileId of fileIds) {
-          try {
-              await bucket.delete(fileId);
-              console.log(`[clearLoraImagesBucket] File with ID ${fileId} deleted successfully.`);
-          } catch (error) {
-              console.error(`[clearLoraImagesBucket] Error deleting file with ID ${fileId}:`, error);
-          }
-      }
-
-      console.log('[clearLoraImagesBucket] All files deleted successfully.');
+      console.log(`Global training status updated for LoRA ${trainingId}: ${status}`);
   } catch (error) {
-      console.error('[clearLoraImagesBucket] Error clearing loraImages bucket:', error);
+      console.error('Error updating global training status:', error);
   }
 }
+
+// async function clearLoraImagesBucket() {
+//   try {
+//       const client = await getCachedClient(); // Assuming getCachedClient is defined elsewhere
+//       const db = client.db(dbName); // Replace `dbName` with your database name
+//       const bucket = new GridFSBucket(db, { bucketName: 'loraImages' });
+
+//       console.log('[clearLoraImagesBucket] Fetching all files from the loraImages bucket...');
+//       const filesCursor = bucket.find();
+
+//       const fileIds = [];
+//       await filesCursor.forEach(file => fileIds.push(file._id));
+
+//       if (fileIds.length === 0) {
+//           console.log('[clearLoraImagesBucket] No files found in the loraImages bucket.');
+//           return;
+//       }
+
+//       console.log(`[clearLoraImagesBucket] Found ${fileIds.length} files. Deleting...`);
+//       for (const fileId of fileIds) {
+//           try {
+//               await bucket.delete(fileId);
+//               console.log(`[clearLoraImagesBucket] File with ID ${fileId} deleted successfully.`);
+//           } catch (error) {
+//               console.error(`[clearLoraImagesBucket] Error deleting file with ID ${fileId}:`, error);
+//           }
+//       }
+
+//       console.log('[clearLoraImagesBucket] All files deleted successfully.');
+//   } catch (error) {
+//       console.error('[clearLoraImagesBucket] Error clearing loraImages bucket:', error);
+//   }
+// }
 // Run the main function
-//main();
+main();
 //clearLoraImagesBucket();
 
 module.exports = {
-  updateLoraStatus
+  downloadDataset,
+  setStatus,
+  // ... other exports as needed ...
 }

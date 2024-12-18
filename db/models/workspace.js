@@ -25,6 +25,17 @@ class LoraDB extends BaseDB {
         });
     }
 
+    async getIncompleteTrainings() {
+        return this.findMany(
+            { status: { $ne: 'completed' } },
+            { sort: { submitted: 1 } }
+        );
+    }
+
+    async getTrainingInfo(loraId) {
+        return this.findOne({ loraId: parseInt(loraId) });
+    }
+
     async loadLora(loraId) {
         return this.findOne({ loraId });
     }
@@ -47,6 +58,47 @@ class LoraDB extends BaseDB {
             { loraId: loraData.loraId },
             loraData
         );
+    }
+    // Clean old trainings
+    async cleanOldTrainings(days) {
+        const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        
+        const oldTrainings = await this.findMany({
+            $or: [
+                { submitted: { $exists: false } },
+                { initiated: { $exists: false } },
+                { initiated: { $lt: threshold } },
+                { submitted: { $lt: threshold } }
+            ]
+        });
+
+        console.log(`[cleanOldTrainings] Found ${oldTrainings.length} trainings to clean`);
+
+        for (const training of oldTrainings) {
+            const { loraId, userId, images } = training;
+            
+            console.log(`[cleanOldTrainings] Processing LoRA ${loraId} for user ${userId}`);
+
+            // Delete associated images using existing method
+            if (images) {
+                for (let slotId = 0; slotId < images.length; slotId++) {
+                    if (images[slotId]) {
+                        try {
+                            await this.deleteImageFromWorkspace(loraId, slotId);
+                            console.log(`[cleanOldTrainings] Deleted image for LoRA ${loraId}, slot ${slotId}`);
+                        } catch (error) {
+                            console.error(`[cleanOldTrainings] Error deleting image for LoRA ${loraId}, slot ${slotId}:`, error);
+                        }
+                    }
+                }
+            }
+
+            // Delete the training entry
+            await this.deleteOne({ loraId });
+            console.log(`[cleanOldTrainings] Deleted training entry for LoRA ${loraId}`);
+        }
+
+        return oldTrainings.length;
     }
 
     async saveImageToGridFS(fileUrl, loraId, slotId) {
@@ -115,20 +167,16 @@ class LoraDB extends BaseDB {
         }
     }
     async updateLoraStatus(loraId, status) {
-        return dbQueue.enqueue(async () => {
-            try {
-                const client = await getCachedClient();
-                const collection = client.db(process.env.BOT_NAME).collection('trains');
-                const result = await collection.updateOne(
-                    { loraId: parseInt(loraId) },
-                    { $set: { status: status } }  // Add $set operator
-                );
-                return result.modifiedCount > 0;
-            } catch (error) {
-                console.error('Error updating LoRA status:', error);
-                return false;
-            }
-        });
+        try {
+            const result = await this.updateOne(
+                { loraId: parseInt(loraId) },
+                { status: status }
+            );
+            return result.modifiedCount > 0 || result.upsertedCount > 0;
+        } catch (error) {
+            console.error('Error updating LoRA status:', error);
+            return false;
+        }
     }
 }
 

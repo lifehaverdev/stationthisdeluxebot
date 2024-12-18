@@ -4,7 +4,7 @@ const { sendMessage, setUserState, editMessage, react, DEV_DMS } = require('../.
 const { loraTriggers } = require('../../models/loraTriggerTranslate')
 const { checkpointmenu } = require('../../models/checkpointmenu')
 const { voiceModels } = require('../../models/voiceModelMenu')
-const { lobby, STATES, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
+const { lobby, STATES, globalStatus, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 
@@ -132,12 +132,26 @@ function convertTime(timeInSeconds) {
 }
 
 async function handleStatus(message) {
-    const runtime = (Date.now() - startup) / 1000; // Time in seconds
+    const runtime = (Date.now() - startup) / 1000;
     const group = getGroup(message);
-    const user = message.from.id
+    const user = message.from.id;
     let msg = '';
-    message.from.id == DEV_DMS ? msg += `💫⏳ ${convertTime(runtime)}\n\n` : msg += '⭐️\n\n'
-    group ? msg += `${group.title}\n ⚡️${group.qoints}\n\n` : null
+
+    if (message.from.id == DEV_DMS) {
+        msg += `💫⏳ ${convertTime(runtime)}\n`;
+        
+        // Check existing globalStatus variable for training
+        const activeTraining = globalStatus.training?.find(t => t.status === 'TRAINING');
+        if (activeTraining) {
+            msg += `🔄 Training: ${activeTraining.name}\n`;
+        }
+        
+        msg += '\n';
+    } else {
+        msg += '⭐️\n\n';
+    }
+
+    group ? msg += `${group.title}\n ⚡️${group.qoints}\n\n` : null;
     
     taskQueue.length > 0 ? msg +=    
     `🪑 \n${taskQueue.map(task => {

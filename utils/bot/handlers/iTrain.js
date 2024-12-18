@@ -781,36 +781,36 @@ async function submitTraining(message, user, loraId) {
         await sendMessage(message, 'There was an error with your qoints balance. Please contact support.');
         return;
     }
-
-    if(userDat.qoints < discountedPrice){
-        console.log('user does not have enough qoints');
-        const options = {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
-                    ]
-                ]
-            }
-        };
-        await sendMessage(message,`Submitting a training to make a lora costs you ${discountedPrice} 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
-        return
-    } else {
-        // Calculate new qoints value and verify it's valid
-        const newQoints = userDat.qoints - discountedPrice;
-        if (isNaN(newQoints)) {
-            console.error('Error calculating new qoints value:', {
-                current: userDat.qoints,
-                price: discountedPrice,
-                calculated: newQoints
-            });
-            await sendMessage(message, 'There was an error processing your qoints. Please contact support.');
-            return;
-        }
+    //growth hack
+    // if(false && userDat.qoints < discountedPrice){
+    //     console.log('user does not have enough qoints');
+    //     const options = {
+    //         reply_markup: {
+    //             inline_keyboard: [
+    //                 [
+    //                     { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
+    //                 ]
+    //             ]
+    //         }
+    //     };
+    //     await sendMessage(message,`Submitting a training to make a lora costs you ${discountedPrice} 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
+    //     return
+    // } else {
+    //     // Calculate new qoints value and verify it's valid
+    //     const newQoints = userDat.qoints - discountedPrice;
+    //     if (isNaN(newQoints)) {
+    //         console.error('Error calculating new qoints value:', {
+    //             current: userDat.qoints,
+    //             price: discountedPrice,
+    //             calculated: newQoints
+    //         });
+    //         await sendMessage(message, 'There was an error processing your qoints. Please contact support.');
+    //         return;
+    //     }
         
-        userDat.qoints = newQoints;
-        await userEconomy.writeUserDataPoint(user,'qoints',newQoints)
-    }
+    //     userDat.qoints = newQoints;
+    //     await userEconomy.writeUserDataPoint(user,'qoints',newQoints)
+    // }
     workspace[user][loraId].status = 'SUBMITTED'
     workspace[user][loraId].submitted = Date.now();
     await loraDB.saveWorkspace(workspace[user][loraId])
