@@ -4,7 +4,6 @@ const defaultUserData = require('../../utils/users/defaultUserData');
 const userCore = new UserCore();
 const userEconomy = new UserEconomy();
 const userPref = new UserPref();
-const userStats = new UserStats();
 
 async function initializeNewUser(userId, initialData = {}) {
     console.log('Initializing new user data');

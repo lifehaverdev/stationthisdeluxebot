@@ -2,10 +2,8 @@ const defaultUserCore = {
     userId: '',
     wallet: '',
     ethWallet: '',
-    balance: 0,
     verified: false,
     ethVerified: false,
-    exp: 0,
     kickedAt: null,
     lastRunTime: null,
     lastTouch: null,
@@ -163,6 +161,8 @@ function validateUserData(userData) {
             delete cleanedData[key];
         }
     });
+
+    cleanedData.balance = '';
     
     return cleanedData;
 }
