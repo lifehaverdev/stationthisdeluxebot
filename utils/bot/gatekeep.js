@@ -7,6 +7,7 @@ const { UserCore, UserEconomy, UserPref } = require('../../db/index');
 const { fetchUserCore, fetchFullUserData } = require('../../db/operations/userFetch');
 const { initializeNewUser } = require('../../db/operations/newUser');
 const { addPointsToAllUsers } = require('../../db/operations/batchPoints');
+const { repairSingleUser } = require('../../db/operations/repairUsers');
 
 const userCore = new UserCore();
 const userEconomy = new UserEconomy();
