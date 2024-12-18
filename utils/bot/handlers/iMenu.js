@@ -1346,6 +1346,7 @@ module.exports = {
     handleCreate,
     setMenu, buildSetMenu, backToSet,
     handleEffect, handleEffectHang,
+    handleEffectF, handleEffectXL,
     handleAnimate,
     handleUtils,
     handleCheckpointMenu,
