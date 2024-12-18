@@ -665,7 +665,15 @@ actionMap['utils_assist'] = async (message, user) => {
 };
 
 
+async function handleEffectF(message, prompt = '', user = null) {
+    lobby[message.from.id].createSwitch = 'FLUX';
+    handleEffect(message, prompt, user);
+}
 
+async function handleEffectXL(message, prompt = '', user = null) {
+    lobby[message.from.id].createSwitch = 'SDXL';
+    handleEffect(message, prompt, user);
+}
 
 
 async function handleEffect(message, prompt = '', user = null) {

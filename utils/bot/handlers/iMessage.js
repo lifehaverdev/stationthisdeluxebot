@@ -123,6 +123,12 @@ const commandRegistry = {
     '/effect': {
         handler: iMenu.handleEffect,
     },
+    '/effectf': {
+        handler: iMenu.handleEffectF,
+    },
+    '/effectxl': {
+        handler: iMenu.handleEffectXL,
+    },
     '/animate': {
         handler: iMenu.handleAnimate,
     },
@@ -813,7 +819,7 @@ SET_COMMANDS.forEach(command => {
 const commandsRequiringGatekeeping = [
     '/flux','/make', '/make3',
     '/milady','/degod','/joycat',
-    '/utils','/create','/effect','/animate',
+    '/utils','/create','/effect','/effectf','effectxl','/animate',
     '/inpaint','/regen', 
     '/speak','/assist','/interrogate'
     ];
