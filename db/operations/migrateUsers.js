@@ -33,7 +33,7 @@ async function migrateUsers() {
         const userCore = db.collection('users_core');
         const userEconomy = db.collection('users_economy');
         const userPrefs = db.collection('users_preferences');
-        const userStats = db.collection('users_stats');
+        //const userStats = db.collection('users_stats');
 
         const users = await usersCollection.find({}).toArray();
         console.log(`Found ${users.length} users to migrate`);
@@ -125,11 +125,11 @@ async function migrateUsers() {
 
                 // Perform insertions
                 await Promise.all([
-                    userCore.updateOne(
-                        { userId: user.userId },
-                        { $set: coreData },
-                        { upsert: true }
-                    ),
+                    // userCore.updateOne(
+                    //     { userId: user.userId },
+                    //     { $set: coreData },
+                    //     { upsert: true }
+                    // ),
                     userEconomy.updateOne(
                         { userId: user.userId },
                         { $set: economyData },
@@ -159,12 +159,12 @@ async function migrateUsers() {
             }
         }
 
-        // Before backup
-        await db.collection('users_backup').drop().catch(() => {
-            // Ignore error if collection doesn't exist
-        });
-        // Create backup
-        await db.collection('users_backup').insertMany(users);
+        // // Before backup
+        // await db.collection('users_backup').drop().catch(() => {
+        //     // Ignore error if collection doesn't exist
+        // });
+        // // Create backup
+        // await db.collection('users_backup').insertMany(users);
 
         console.log('\nMigration Complete!');
         console.log('Stats:', JSON.stringify(migrationStats, null, 2));
