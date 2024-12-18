@@ -38,7 +38,7 @@ const defaultUserPref = {
     input_checkpoint: "zavychromaxl_v60",
     input_seed: -1,
     lastSeed: -1,
-    forgeLogo: false,
+    forceLogo: false,
     
     // User preferences
     prompt: '',

@@ -19,14 +19,12 @@ class UserStats extends BaseDB {
             type: task.promptObj.type
         };
 
-        return dbQueue.enqueue(async () => {
-            const client = await getCachedClient();
-            const collection = client.db(this.dbName).collection(this.collectionName);
-            return collection.insertOne(genData);
-        });
+        return this.insertOne(genData);
     }
+    
 
     // We can add methods for aggregating stats later:
+
     // async getUserGenerations(userId, limit = 100) { ... }
     // async getGroupGenerations(groupId, limit = 100) { ... }
     // async getGenerationStats(userId) { ... }

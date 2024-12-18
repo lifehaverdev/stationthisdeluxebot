@@ -1,5 +1,9 @@
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const { dbQueue, getCachedClient } = require('../utils/queue');
+
+// Global batch lock tracking
+const batchLocks = new Map();
+
 class BaseDB {
     constructor(collectionName) {
         this.collectionName = collectionName;
@@ -62,30 +66,48 @@ class BaseDB {
 
     // Batch Operations
     startBatch() {
+        const lockKey = `${this.dbName}.${this.collectionName}`;
+        
+        if (batchLocks.has(lockKey)) {
+            throw new Error(`Batch operation already in progress for ${lockKey}`);
+        }
+        
+        batchLocks.set(lockKey, Date.now());
         this.batchOperations = [];
         return this;
     }
 
     async executeBatch() {
-        if (this.batchOperations.length === 0) return [];
+        const lockKey = `${this.dbName}.${this.collectionName}`;
+        
+        if (!batchLocks.has(lockKey)) {
+            throw new Error('No batch operation was started');
+        }
 
-        return dbQueue.enqueue(() => 
-            this.monitorOperation(async () => {
-                const client = await getCachedClient();
-                const collection = client.db(this.dbName).collection(this.collectionName);
-                const results = [];
+        if (this.batchOperations.length === 0) {
+            batchLocks.delete(lockKey);
+            return [];
+        }
 
-                try {
+        try {
+            return await dbQueue.enqueue(() => 
+                this.monitorOperation(async () => {
+                    const client = await getCachedClient();
+                    const collection = client.db(this.dbName).collection(this.collectionName);
+                    const results = [];
+
                     for (const op of this.batchOperations) {
                         const result = await op(collection);
                         results.push(result);
                     }
                     return results;
-                } finally {
-                    this.batchOperations = [];
-                }
-            }, 'batchExecution')
-        );
+                }, 'batchExecution')
+            );
+        } finally {
+            // Clean up the lock and batch operations
+            batchLocks.delete(lockKey);
+            this.batchOperations = [];
+        }
     }
 
     // Basic Operations

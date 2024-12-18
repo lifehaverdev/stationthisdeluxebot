@@ -112,6 +112,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         basePrompt: userContext.basePrompt,
         timeRequested: Date.now(),
         prompt: userContext.prompt,
+        forceLogo: userContext.forceLogo,
         input_batch: userContext.input_batch,
         input_text: message.from.username,
         input_seed: userContext.input_seed,
