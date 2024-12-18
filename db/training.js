@@ -297,12 +297,14 @@ async function setGlobalTrainingStatus(trainingId, status) {
 //       console.error('[clearLoraImagesBucket] Error clearing loraImages bucket:', error);
 //   }
 // }
-// Run the main function
-main();
-//clearLoraImagesBucket();
+// Only run main() if this file is being run directly
+if (require.main === module) {
+    main();
+}
 
 module.exports = {
   downloadDataset,
   setStatus,
+  setGlobalTrainingStatus,
   // ... other exports as needed ...
 }
