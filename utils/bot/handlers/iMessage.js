@@ -846,15 +846,15 @@ function parseCommand(message) {
 
         // If the message contains text, extract the command and arguments from the text
         if (message.text) {
-            // Extract the command from the message text based on the entity length
-            command = message.text.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
+            // Extract the command from the message text based on the entity length and convert to lowercase
+            command = message.text.slice(commandEntity.offset, commandEntity.offset + commandEntity.length).toLowerCase();
             // Extract the arguments, which come after the command
             args = message.text.slice(commandEntity.offset + commandEntity.length).trim();
         } 
         // If the message contains a caption, extract the command and arguments from the caption
         else if (message.caption) {
-            // Extract the command from the message caption based on the entity length
-            command = message.caption.slice(commandEntity.offset, commandEntity.offset + commandEntity.length);
+            // Extract the command from the message caption based on the entity length and convert to lowercase
+            command = message.caption.slice(commandEntity.offset, commandEntity.offset + commandEntity.length).toLowerCase();
             // Extract the arguments, which come after the command
             args = message.caption.slice(commandEntity.offset + commandEntity.length).trim();
         }

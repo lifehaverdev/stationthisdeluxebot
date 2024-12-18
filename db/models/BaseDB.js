@@ -105,6 +105,26 @@ class BaseDB {
         });
     }
 
+    async insertOne(document, batch = false) {
+        const validatedDoc = this.validateData(document);
+        
+        const operation = async (collection) => 
+            collection.insertOne(validatedDoc);
+
+        if (batch) {
+            this.batchOperations.push(operation);
+            return this;
+        }
+
+        return dbQueue.enqueue(() => 
+            this.monitorOperation(async () => {
+                const client = await getCachedClient();
+                const collection = client.db(this.dbName).collection(this.collectionName);
+                return operation(collection);
+            }, 'insertOne')
+        );
+    }
+
     async updateOne(filter, update, options = {}, batch = false) {
         const validatedUpdate = this.validateData(update);
         

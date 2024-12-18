@@ -106,6 +106,8 @@ class GlobalStatusDB extends BaseDB {
         
         return status;
     }
+
+    
 }
 
 module.exports = GlobalStatusDB;
