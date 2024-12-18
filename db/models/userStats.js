@@ -2,7 +2,7 @@ const { BaseDB } = require('./BaseDB');
 
 class UserStats extends BaseDB {
     constructor() {
-        super('users_stats');
+        super('gens');
     }
 
     async saveGen({ task, run, out }) {

@@ -600,7 +600,7 @@ const commandRegistry = {
                 .startBatch()
                 .writeUserDataPoint(userId, 'qoints', lobby[userId].qoints,true)
                 .writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints,true)
-                .endBatch()
+                .executeBatch()
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
         } else {

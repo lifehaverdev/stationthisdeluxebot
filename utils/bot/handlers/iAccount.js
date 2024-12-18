@@ -857,7 +857,7 @@ async function handleRefreshQoints(message,user) {
             .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
         //write new qoints
             .writeUserDataPoint(user,'qoints',userData.qoints,true)
-            .endBatch()
+            .executeBatch()
         await returnToAccountMenu(message,user)
         return
     } else {
@@ -881,7 +881,7 @@ async function handleRefreshQoints(message,user) {
             await userEconomy.startBatch()
                 .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
                 .writeUserDataPoint(user,'qoints',userData.qoints,true)
-                .endBatch()
+                .executeBatch()
             await returnToAccountMenu(message,user)
             return
         } else {

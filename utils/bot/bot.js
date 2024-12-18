@@ -1,4 +1,8 @@
 const TelegramBot = require("node-telegram-bot-api");
+// Add near the top of bot.js where other requires are
+//const GlobalStatusDB = require('../../db/models/globalStatus');
+//const globalStatusDB = new GlobalStatusDB();
+
 const botToken = process.env.TELEGRAM_TOKEN;
 const bot = new TelegramBot(botToken,
     {
@@ -10,6 +14,13 @@ const stateHandlers = {};//from imessage
 const actionMap = {}; const prefixHandlers = {};
 const workspace = {};
 const studio = {};
+// Add the new globalStatus object
+const globalStatus = {
+    training: [],    // Array to track LoRA training status
+    cooking: [],     // Array to track collection cooking status
+    chargePurchases: [] // Array to track recent charge purchases
+};
+
 let taskQueue = []
 let waiting = []
 let successors = []
@@ -19,6 +30,7 @@ let burns = [];
 let rooms = [];
 let flows = [];
 let processes = [];
+
 const STATES = {
     IDLE: 'IDLE',
     SIGN_IN: 'SIGN_IN',
@@ -230,6 +242,7 @@ module.exports = {
     getGroup, getGroupById,
     lobby, 
     workspace, studio,
+    globalStatus,
     stateHandlers,
     actionMap, prefixHandlers,
     rooms, flows, burns, loraTriggers,
@@ -240,3 +253,13 @@ module.exports = {
     SETTER_TO_STATE,
     STATES
 };
+
+
+// // Set up periodic refresh (e.g., every 5 minutes)
+// setInterval(async () => {
+//     try {
+//         await globalStatusDB.refreshGlobalStatus(globalStatus);
+//     } catch (error) {
+//         console.error('Error refreshing global status:', error);
+//     }
+// }, 5 * 60 * 1000);
