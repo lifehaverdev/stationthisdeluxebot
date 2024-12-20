@@ -26,7 +26,7 @@ const logLobby = true;
 const POINTMULTI = 540;
 const NOCOINERSTARTER = 199800;
 const LOBBY_CLEAN_MINUTE = 15 ///minutes new rules //60 * 8;//8 hours
-const LOBBY_CLEAN_INTERVAL = 1000*10//LOBBY_CLEAN_MINUTE * 60 * 1000; 
+const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
 const DB_REFRESH = 1000*60*15
 
 //User class standalone methods that are now functions becasue user class was useless
