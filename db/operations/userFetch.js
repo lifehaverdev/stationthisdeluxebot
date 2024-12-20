@@ -21,7 +21,23 @@ async function fetchFullUserData(userId) {
             userEconomy.findOne({ userId }),
             userPref.findOne({ userId })
         ]);
-
+        // Log the data retrieved from each collection
+        console.log('=== Fetched User Data ===');
+        console.log(`User ID: ${userId}`);
+        console.log('Core Data:', coreData ? {
+            username: coreData.username,
+            verified: coreData.verified,
+            //joined: new Date(coreData.joined).toISOString(),
+            state: coreData.state
+        } : 'Not found');
+        console.log('Economy Data:', economyData ? {
+            balance: economyData.balance,
+            points: economyData.points,
+            exp: economyData.exp,
+            doints: economyData.doints
+        } : 'Not found');
+        console.log('Preferences:', prefData );
+        console.log('=====================');
         // Combine the data
         return {
             ...coreData,

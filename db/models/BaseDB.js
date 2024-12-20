@@ -1,5 +1,6 @@
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const { dbQueue, getCachedClient } = require('../utils/queue');
+//const { PRIORITY } = require('../utils/priorityQueue');
 
 // Global batch lock tracking
 const batchLocks = new Map();
@@ -31,7 +32,6 @@ class BaseDB {
 
         return data;
     }
-
     // Monitor wrapper
     async monitorOperation(operation, type) {
         const startTime = Date.now();

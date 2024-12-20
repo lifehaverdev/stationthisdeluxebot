@@ -175,7 +175,7 @@ async function displayInfo() {
         }, {});
   
         // Display organized trainings with highest priority status first
-        const statusOrder = ['SUBMITTED', 'incomplete', 'pending review', 'rejected', 'training'];
+        const statusOrder = ['SUBMITTED', 'TOUCHED','incomplete', 'pending review', 'rejected', 'training'];
         for (const status of statusOrder) {
           if (organizedTrainings[status]) {
             console.log(`
