@@ -18,6 +18,8 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const path = require('path');
 const { UserStats } = require('../../db/index');
 const userStats = new UserStats();
+const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
 
 //
 // LOBBY AND QUEUE
@@ -60,7 +62,7 @@ function handleEnqueueRegen(task) {
     }
 }
 
-function enqueueTask(task) {
+async function enqueueTask(task) {
     //console.log('task in enqueueTask',task)
     // Retrieve user ID from the task message
     const userId = task.promptObj.userId;
@@ -70,6 +72,9 @@ function enqueueTask(task) {
     //make sure we are handling user runs key value
     //console.log(task)
     handleEnqueueRegen(task)
+    
+    // Track queue entry
+    await analytics.trackQueueEvent(task, 'enqueued');
     
     // Update doints for the user
     // Giving these placeholder doints makes it so that you can't spam requests without instant cost
@@ -286,12 +291,18 @@ async function processWaitlist(status, run_id, outputs) {
         const taskIndex = waiting.findIndex(task => task.run_id === run_id);
 
         if (taskIndex === -1) {
-            console.error('Task with run_id not found in the waiting array.');
+            await analytics.trackError(
+                new Error('Task not found in waiting array'),
+                { run_id, status }
+            );
             return;
         }
 
         const task = waiting[taskIndex];
         task.status = status;
+
+        // Track generation completion
+        await analytics.trackGeneration(task, { run_id }, status);
 
         // Handle different update formats
         let run;
@@ -315,6 +326,11 @@ async function processWaitlist(status, run_id, outputs) {
         statusRouter(task, taskIndex, status);
 
     } catch (err) {
+        await analytics.trackError(err, { 
+            function: 'processWaitlist',
+            run_id,
+            status 
+        });
         console.error('Exception in processWaitlist:', err);
     } 
     processQueue();

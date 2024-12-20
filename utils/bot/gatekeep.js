@@ -17,59 +17,52 @@ const { getBalance, checkBlacklist, getNFTBalance } = require('../users/checkBal
 const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
 const {defaultUserData,validateUserData} = require('../users/defaultUserData')
+const { AnalyticsEvents } = require('../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
+
 //const { home } = require('../models/userKeyboards');
 let lastCleanTime = Date.now();
 const logLobby = true;
 const POINTMULTI = 540;
 const NOCOINERSTARTER = 199800;
 const LOBBY_CLEAN_MINUTE = 15 ///minutes new rules //60 * 8;//8 hours
-const LOBBY_CLEAN_INTERVAL = LOBBY_CLEAN_MINUTE * 60 * 1000; 
+const LOBBY_CLEAN_INTERVAL = 1000*10//LOBBY_CLEAN_MINUTE * 60 * 1000; 
 const DB_REFRESH = 1000*60*15
 
 //User class standalone methods that are now functions becasue user class was useless
 function regenerateDoints(userId) {
-    //console.log("========== Starting regenerateDoints ==========");
     const userData = lobby[userId];
-    //console.log(userData.userId, 'p',userData.points,'d', userData.doints, userData.balance);
     
     if (!userData.kickedAt) {
-        console.log("No kickedAt set. Exiting regenerateDoints early.");
+        console.log("$$$ [${userId}] | Status: Skipped - No kickedAt timestamp | userdata balance points doints",userData.balance, userData.points, userData.doints);
         return;
     }
 
-    //console.log(`Last lobbied time: ${new Date(userData.kickedAt).toISOString()}`);
     const timeSinceLastRun = Date.now() - userData.kickedAt;
-    
-    console.log(`Time since kicked: ${Math.floor(timeSinceLastRun / 1000)} seconds`);
-    //console.log('user balance', userData.balance);
-
     const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
-    //console.log(`Max points based on balance: ${maxPoints}`);
-
-    const regenerationCycles = Math.floor(timeSinceLastRun / (LOBBY_CLEAN_INTERVAL)); // 15-minute cycles
-    console.log(`Regeneration cycles since last run: ${regenerationCycles}`);
-
-    const regeneratedPoints = (maxPoints / 36) * regenerationCycles;
-    //console.log(`Regenerated points: ${regeneratedPoints}`);
-
-    // Subtract the regenerated points from the doints and ensure it doesn't drop below 0
+    const regenerationCycles = Math.floor(timeSinceLastRun / (LOBBY_CLEAN_INTERVAL));
+    const regeneratedPoints = (maxPoints / 18) * regenerationCycles;
     const oldDoints = userData.doints;
+    
     userData.doints = Math.max(oldDoints - regeneratedPoints, 0);
-    console.log(`Old doints: ${oldDoints}, New doints after regeneration: ${userData.doints}`);
+    
+    console.log(`$$$ [${userId}] Rejoins the fray | Time: ${Math.floor(timeSinceLastRun / 1000)}s | Cycles: ${regenerationCycles} | Balance: ${userData.balance} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints}`);
+    
     lobby[userId] = {
         ...userData
     }
-    console.log("========== regenerateDoints process complete ==========");
 }
 
 function softResetPoints(userId) {
     const userData = lobby[userId];
-    console.log("soft reset userData points doints balance",userData.userId, userData.points, userData.doints)
-    const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
+    const maxPoints = calculateMaxPoints(userData.balance);
     const regeneratedPoints = (maxPoints / 18);
-    console.log('soft reset regenerated calcualtion to subtract from doints', regeneratedPoints)
-    userData.doints = Math.max(userData.points + userData.doints - regeneratedPoints, 0);
-    console.log(`Points and doints reset: Points = ${userData.points}, Doints = ${userData.doints}`);
+    const oldDoints = userData.doints;
+
+    userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
+    
+    console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
+    
     lobby[userId] = {
         ...userData
     }
@@ -148,7 +141,13 @@ async function kick(userId) {
         if (coreData.verified) {
             const fullData = await fetchFullUserData(userId);
             if (fullData) {
-                Object.assign(updatedData, fullData);
+                // Preserve the current session's preferences by only filling in missing fields
+                // rather than overwriting everything
+                Object.assign({}, fullData, updatedData); // Prioritize updatedData over fullData
+                
+                // Alternative approach: Save current state to database before kicking
+                // await saveUserPreferences(userId, updatedData);
+                // Object.assign(updatedData, fullData);
             }
         }
 
@@ -157,7 +156,7 @@ async function kick(userId) {
             await userCore.writeUserData(userId, updatedData);
             await userEconomy.writeUserData(userId, updatedData);
             await userPref.writeUserData(userId, updatedData);
-            
+            await analytics.trackUserKick(userId, updatedData.username);
             console.log(`Kicked user ${userId} with preserved data`);
         } catch (writeError) {
             console.error(`Error writing data during kick for userId ${userId}:`, writeError);
@@ -344,6 +343,10 @@ async function handleGroupCheck(group, userId, message) {
                         return true;
                     } else {
                         await sendMessage(message, Msg);
+                        await analytics.trackAssetCheck(userId, userData.username, 'token_balance', true, {
+                            balance: tokenBal,
+                            wallet: userData.wallet
+                        });
                         return false;
                     }
                 } else {
@@ -363,6 +366,9 @@ async function handleGroupCheck(group, userId, message) {
                     return true;
                 } else {
                     await sendMessage(message, Msg);
+                    await analytics.trackGatekeeping(message, 'admin_only_access', {
+                        groupTitle: group.title
+                    });
                     return false;
                 }
             } else if (style === 'none') {
@@ -384,10 +390,10 @@ async function handleUserData(userId, message) {
         // Check if the user is already in the lobby
         if (!lobby.hasOwnProperty(userId)) {
             let userData;
-            
+            let existingCore;
             // First try to fetch existing user data
             try {
-                const existingCore = await fetchUserCore(userId);
+                existingCore = await fetchUserCore(userId);
                 
                 if (existingCore) {
                     // User exists, get full data
@@ -456,6 +462,7 @@ async function handleUserData(userId, message) {
             // Set user state to IDLE
             setUserState(message, STATES.IDLE);
             console.log(`${message.from.first_name} has entered the chat.`);
+            await analytics.trackUserJoin(userId, message.from.username, !existingCore);
         } else {
             // User is already in the lobby
             if (lobby[userId].dbFetchFailed) {
@@ -503,7 +510,7 @@ async function handleUserData(userId, message) {
 
 
 // Function to handle balance and points check
-function checkUserPoints(userId, group, message) {
+async function checkUserPoints(userId, group, message) {
     console.log('checking user points')
     const user = lobby[userId];
     const totalPoints = user.points + (user.doints || 0);
@@ -538,6 +545,11 @@ function checkUserPoints(userId, group, message) {
         sendMessage(message, messageText, options);
         user.balance = '';
         ++locks;
+        await analytics.trackGatekeeping(message, 'points_limit', {
+            totalPoints,
+            balance: user.balance,
+            qoints: user.qoints
+        });
         return false;
     }
     return true;
@@ -556,7 +568,7 @@ async function checkLobby(message) {
         return false;
     }
 
-    if (!checkUserPoints(userId, group, message)) {
+    if (!await checkUserPoints(userId, group, message)) {
         return false;
     }
 

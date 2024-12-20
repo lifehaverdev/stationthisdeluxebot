@@ -490,7 +490,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
         input_seed: thisSeed,
         input_batch: batch,
     }, message);
-    console.log('promptObj', promptObj)
+    
     try {
         await react(message);  // Acknowledge the command
         if (workspace[userId]?.message && ['create', 'effect', 'utils'].includes(workspace[userId]?.context)) {

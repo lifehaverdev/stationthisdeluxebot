@@ -24,6 +24,8 @@ const iWork = require('./iWork')
 const bot = getBotInstance();
 const { getGroup } = require('./iGroup')
 const { enqueueTask } = require('../queue')
+const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
 /*
 Uniformity and confluence with iResponse
 private menus, must only be selectable by intended user
@@ -435,11 +437,17 @@ const handleSetWatermark = async (message, selectedName, userId) => {
 
 // Main export function
 module.exports = function (bot) {
-    bot.on('callback_query', (callbackQuery) => {
+    bot.on('callback_query', async(callbackQuery) => {
         //console.log(callbackQuery)
         try {
             const { action, message, user } = parseCallbackData(callbackQuery);
 
+            // Track the menu interaction
+            await analytics.trackMenuInteraction(
+                callbackQuery, 
+                action, 
+                !actionMap[action] && !setActions.includes(action)
+            );
             // Check if the callback query is from the correct user
             if (
                 (
