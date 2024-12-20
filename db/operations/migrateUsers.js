@@ -179,7 +179,7 @@ async function fixSpecificField() {
     
     try {
         await client.connect();
-        const db = client.db('stationthisdeluxebot');
+        const db = client.db('stationthisbot');
         
         // Example: Fix user preferences
         const userPrefs = db.collection('users_preferences');
@@ -190,7 +190,7 @@ async function fixSpecificField() {
             { 
                 $set: {
                     // Add your fixes here, for example:
-                    'testingNewField': 'testingNewValue'
+                    'runs': []
                     // "newField": defaultValue,
                     // "fixedField": correctValue
                 } 

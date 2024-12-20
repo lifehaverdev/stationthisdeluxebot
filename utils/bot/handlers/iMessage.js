@@ -15,6 +15,9 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
+const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
+
 // const { 
 //     readStats, 
 //     //rareCandy, 
@@ -907,6 +910,9 @@ module.exports = function(bot) {
                     await checkIn(message);
                 }
 
+                // Track the command
+                await analytics.trackCommand(message, command);
+
                 // Execute the handler with the message and parsed arguments
                 await safeExecute(message, () => commandRegistry[command].handler(message, args));
                 return; // Stop after the first match to avoid multiple command executions
@@ -937,6 +943,9 @@ module.exports = function(bot) {
                     } else {
                         await checkIn(message);
                     }
+
+                    // Track the custom command
+                    await analytics.trackCommand(message, command, true);
 
                     // Execute the handler for the custom command
                     await safeExecute(message, () => commandRegistry['/' + customCommand].handler(message, args));
