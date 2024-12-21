@@ -127,7 +127,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-    const fluxTypes = ['FLUX','FLUX_PLUS','FLUXI2I','LOSER','MILADY','MOG','CHUDJAK','INPAINTFLUX']
+    const fluxTypes = ['MAKE','MAKE_PLUS','I2I','LOSER','MILADY','MOG','CHUDJAK','INPAINT']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
@@ -175,10 +175,10 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (!userContext.styleTransfer) delete promptObj.input_style_image;
     if (!userContext.openPose) delete promptObj.input_pose_image;
     // if (!userContext.type != 'MAKE','FLUX') 
-    const text2images = ['MAKE','FLUX','FLUX_PLUS','MILADY','DEGOD','LOSER']
+    const text2images = ['QUICKMAKE','MAKE','MAKE_PLUS','MILADY','DEGOD','LOSER']
     if (
         text2images.some(type => userContext.type.startsWith(type)) &&
-        userContext.type !== 'FLUXI2I'
+        userContext.type !== 'I2I'
     ) {
         delete promptObj.input_image;
         promptObj.input_strength = 1;
@@ -226,13 +226,13 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     // Determine type based on SDXL and flags
     let finalType = taskType;
-    if (settings.createSwitch === 'SDXL') {
+    if (settings.createSwitch === 'QUICKMAKE') {
         // finalType += '_PLUS';
     }
 
     // Append control, style, and pose flags to the type
-    if (settings.createSwitch === 'SDXL' && 
-        (settings.type == 'MAKE' || settings.type == 'I2I' || settings.type == 'I2I_AUTO') &&
+    if (settings.createSwitch === 'QUICKMAKE' && 
+        (settings.type == 'QUICKMAKE' || settings.type == 'QUICKI2I' || settings.type == 'QUICKI2I_AUTO') &&
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
         finalType += '_PLUS';
     }
@@ -272,7 +272,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
 
 async function handleMake(message) {
-    lobby[message.from.id].createSwitch = 'SDXL'
+    lobby[message.from.id].createSwitch = 'QUICKMAKE'
     await handleTask(message, 'MAKE', STATES.MAKE, true, null);
 }
 
@@ -282,32 +282,32 @@ async function handleMake3(message) {
 }
 
 async function handleMog(message) {
-    lobby[message.from.id].createSwitch = 'FLUX'
+    lobby[message.from.id].createSwitch = 'MAKE'
     await handleTask(message, 'MOG', STATES.MOG, false, 0)
 }
 
 async function handleDegod(message) {
     console.log('DEGODDING SOMETHING')
-    lobby[message.from.id].createSwitch = 'FLUX'
+    lobby[message.from.id].createSwitch = 'MAKE'
     await handleTask(message, 'DEGOD', STATES.DEGOD, false, 0)
 }
 
 async function handleMilady(message) {
     console.log('milady')
-    lobby[message.from.id].createSwitch = 'FLUX'
+    lobby[message.from.id].createSwitch = 'MAKE'
     await handleTask(message, 'MILADY', STATES.MILADY, false, 0)
 }
 
 async function handleLoser(message) {
     console.log('loser')
-    lobby[message.from.id].createSwitch = 'FLUX'
+    lobby[message.from.id].createSwitch = 'MAKE'
     await handleTask(message, 'LOSER', STATES.LOSER, false, 0)
 }
 
 async function handleFlux(message) {
     console.log('flux')
-    lobby[message.from.id].createSwitch = 'FLUX'
-    handleTask(message,'FLUX',STATES.FLUX,false,0)
+    lobby[message.from.id].createSwitch = 'MAKE'
+    handleTask(message,'MAKE',STATES.MAKE,false,0)
 }
 
 async function handleRegen(message, user = null) {
@@ -411,15 +411,15 @@ async function handleSD3ImgPrompt(message) {
 
 async function handleFluxPrompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
-    await handleTask(message, 'FLUXI2I', STATES.FLUXPROMPT, null, null);
+    await handleTask(message, 'I2I', STATES.I2IPROMPT, null, null);
 }
 
 async function handleInpaintPrompt(message) {
     // Use handleTask with 'INPAINT' as the taskType and STATES.INPAINT as the state
-    if(lobby.hasOwnProperty(message.from.id) && lobby[message.from.id].createSwitch == 'FLUX'){
-        await handleTask(message, 'INPAINTFLUX', STATES.INPAINTPROMPT, true, null);
-    } else {
+    if(lobby.hasOwnProperty(message.from.id) && lobby[message.from.id].createSwitch == 'MAKE'){
         await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
+    } else {
+        await handleTask(message, 'QUICKINPAINT', STATES.QUICKINPAINTPROMPT, true, null);
     }
     //await handleTask(message, 'INPAINT', STATES.INPAINTPROMPT, true, null);
 }

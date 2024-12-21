@@ -133,18 +133,18 @@ async function handleCreate(message, prompt = '', user = null) {
     const group = getGroup(message);
     const settings = group ? { ...group.settings, isGroup: true } : lobby[targetUserId];
     const balance = group ? group.qoints : settings.balance;
-    // If createSwitch is missing, set it to SDXL by default
+    // If createSwitch is missing, set it to make by default
     if (!settings.createSwitch) {
-        settings.createSwitch = 'SDXL';
+        settings.createSwitch = 'MAKE';
     }
 
     // Router logic based on createSwitch
     const routeToHandler = async () => {
         switch (settings.createSwitch) {
             case 'SD1.5':
-            case 'SDXL':
+            case 'QUICKMAKE':
                 return await iMake.handleMake(message, prompt, targetUserId); // No state needed if prompt exists
-            case 'FLUX':
+            case 'MAKE':
                 return await iMake.handleFlux(message, prompt, targetUserId); // No state needed if prompt exists
             case 'SD3':
                 return await iMake.handleMake3(message, prompt, targetUserId); // No state needed if prompt exists
@@ -163,12 +163,12 @@ async function handleCreate(message, prompt = '', user = null) {
     // Set user state based on createSwitch if no prompt is provided
     switch (settings.createSwitch) {
         case 'SD1.5':
-        case 'SDXL':
+        case 'QUICKMAKE':
             console.log('setting state to make')
-            setUserState(message, STATES.MAKE); // SDXL and SD1.5 use MAKE state
+            setUserState(message, STATES.QUICKMAKE); // SDXL and SD1.5 use MAKE state
             break;
-        case 'FLUX':
-            setUserState(message, STATES.FLUX);
+        case 'MAKE':
+            setUserState(message, STATES.MAKE);
             break;
         case 'SD3':
             setUserState(message, STATES.MAKE3);
@@ -220,12 +220,12 @@ function generateFeatureMenu(settings, balance, context) {
     // Model switch buttons
     buttons.push([
         { text: settings.createSwitch === 'SD3' ? '🔘SD3' : '⚪️SD3', callback_data: `createswitch_SD3_${context}` },
-        { text: settings.createSwitch === 'SDXL' ? '🔘SDXL' : '⚪️SDXL', callback_data: `createswitch_SDXL_${context}` },
-        { text: settings.createSwitch === 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: `createswitch_FLUX_${context}` },
+        { text: settings.createSwitch === 'QUICKMAKE' ? '🔘QUICKMAKE' : '⚪️QUICKMAKE', callback_data: `createswitch_QUICKMAKE_${context}` },
+        { text: settings.createSwitch === 'MAKE' ? '🔘MAKE' : '⚪️MAKE', callback_data: `createswitch_MAKE_${context}` },
     ]);
 
     // Extras for SDXL with sufficient balance
-    if (settings.createSwitch === 'SDXL' && (balance >= 400000 || (settings.isGroup && balance > 0))) {
+    if (settings.createSwitch === 'QUICKMAKE' && (balance >= 400000 || (settings.isGroup && balance > 0))) {
         const sdxlButtons = [
             {
                 text: settings.styleTransfer && settings.input_style_image
@@ -432,7 +432,7 @@ function creationSwitch(message, user, context, target) {
     // Get settings from either group or lobby
     const settings = group ? group.settings : lobby[user];
 
-    if (['FLUX', 'SD1.5', 'SDXL', 'SD3'].includes(target) && settings.createSwitch != target) {
+    if (['MAKE', 'SD1.5', 'QUICKMAKE', 'SD3'].includes(target) && settings.createSwitch != target) {
         // Update createSwitch and turn off feature flags
         settings.createSwitch = target;
         settings.controlNet = false;
@@ -519,8 +519,8 @@ function generateUtilsMenu(settings, balance, group) {
     
     // Add model switches (if applicable)
     buttons.push([
-        { text: ['SDXL','SD1.5','SD3'].includes(settings.createSwitch) ? '🔘SD' : '⚪️SD', callback_data: 'createswitch_SDXL_utils' },
-        { text: settings.createSwitch == 'FLUX' ? '🔘FLUX' : '⚪️FLUX', callback_data: 'createswitch_FLUX_utils' },
+        { text: ['QUICKMAKE','SD1.5','SD3'].includes(settings.createSwitch) ? '🔘SD' : '⚪️SD', callback_data: 'createswitch_QUICKMAKE_utils' },
+        { text: settings.createSwitch == 'MAKE' ? '🔘MAKE' : '⚪️MAKE', callback_data: 'createswitch_MAKE_utils' },
     ]);
 
     // Add utility tasks based on balance and context
@@ -585,14 +585,14 @@ actionMap['utils_watermark'] = async (message, user) => {
 actionMap['utils_interrogate'] = async (message, user) => {
     const image = workspace[user]?.imageUrl;
     const ogmessage = workspace[user]?.message
-    const isFlux = lobby[user].createSwitch == 'FLUX'
+    const isFlux = lobby[user].createSwitch == 'MAKE'
     if (!image) {
         const chatId = ogmessage.chat.id;
         await editMessage({chat_id: chatId, message_id: ogmessage.message_id,text: `Please send an image to interrogate.`})
         if(isFlux){
-            setUserState({...message, from: {id: user}}, STATES.FLUXINTERROGATE);
+            setUserState({...message, from: {id: user}}, STATES.INTERROGATE);
         } else {
-            setUserState({...message, from: {id: user}}, STATES.INTERROGATION);
+            setUserState({...message, from: {id: user}}, STATES.QUICKINTERROGATION);
         }
         return;
     }
@@ -636,7 +636,7 @@ actionMap['utils_assist'] = async (message, user) => {
             workspace[userId].message = sent;
         }
 
-        const targetState = lobby[userId]?.createSwitch === 'FLUX' ? STATES.FLASSIST : STATES.ASSIST;
+        const targetState = lobby[userId]?.createSwitch === 'MAKE' ? STATES.FLASSIST : STATES.ASSIST;
         setUserState({ ...message, from: { id: userId } }, targetState);
         console.log(`[utils_assist] State set to ${targetState} for user ${userId}.`);
         return;
@@ -652,7 +652,7 @@ actionMap['utils_assist'] = async (message, user) => {
         });
     }
     await react(ogMessage, '🤓');
-    const isFlux = lobby[userId]?.createSwitch === 'FLUX';
+    const isFlux = lobby[userId]?.createSwitch === 'MAKE';
     const {shakeFluxAssist, shakeAssist} = require('./iWork')
     if (isFlux) {
         await shakeFluxAssist(message, prompt, userId);
@@ -666,12 +666,12 @@ actionMap['utils_assist'] = async (message, user) => {
 
 
 async function handleEffectF(message, prompt = '', user = null) {
-    lobby[message.from.id].createSwitch = 'FLUX';
+    lobby[message.from.id].createSwitch = 'MAKE';
     handleEffect(message, prompt, user);
 }
 
 async function handleEffectXL(message, prompt = '', user = null) {
-    lobby[message.from.id].createSwitch = 'SDXL';
+    lobby[message.from.id].createSwitch = 'QUICKMAKE';
     handleEffect(message, prompt, user);
 }
 
@@ -685,7 +685,7 @@ async function handleEffect(message, prompt = '', user = null) {
 
     // If createSwitch is missing, set it to SDXL by default
     if (!settings.createSwitch) {
-        settings.createSwitch = 'SDXL';
+        settings.createSwitch = 'MAKE';
     }
 
     // Initialize workspace tracking
@@ -720,12 +720,12 @@ async function handleEffect(message, prompt = '', user = null) {
 
         // Set the state based on createSwitch
         switch (settings.createSwitch) {
-            case 'FLUX':
-                setUserState(message, STATES.FLUX2IMG);
+            case 'MAKE':
+                setUserState(message, STATES.IMG2IMG);
                 break;
             case 'SD1.5':
-            case 'SDXL':
-                setUserState(message, STATES.IMG2IMG);
+            case 'QUICKMAKE':
+                setUserState(message, STATES.QUICKIMG2IMG);
                 break;
             case 'SD3':
                 setUserState(message, STATES.SD32IMG);
@@ -770,8 +770,11 @@ async function handleEffect(message, prompt = '', user = null) {
 }
 async function routeEffectWorkflow(prompt, image, settings, message) {
     // Determine the task based on createSwitch
+    if(settings.createSwitch == 'SDXL'){
+        settings.createSwitch = 'MAKE'
+    }
     switch (settings.createSwitch) {
-        case 'SDXL':
+        case 'QUICKMAKE':
             // If autoPrompt is enabled, redirect to handleImageTask
             if (settings.autoPrompt) {
                 return await iMedia.handleImageTask(message, null, 'I2I_AUTO', STATES.PFP, true, 400000);
@@ -779,7 +782,7 @@ async function routeEffectWorkflow(prompt, image, settings, message) {
             return await iMedia.handleMs2ImgFile(message, image, prompt);
         case 'SD3':
             return await iMedia.handleSD3ImgFile(message, image, prompt);
-        case 'FLUX':
+        case 'MAKE':
             return await iMedia.handleFluxImgFile(message, image, prompt);
         default:
             console.error(`Unknown createSwitch value: ${settings.createSwitch}`);
@@ -800,7 +803,7 @@ async function handleMissingImageCase(message, settings, workspaceEntry, prompt)
     settings.prompt = prompt;
 
     // Set the state based on createSwitch
-    const state = determineState(settings.createSwitch, STATES.IMG2IMG, STATES.FLUX2IMG);
+    const state = determineState(settings.createSwitch, STATES.QUICKIMG2IMG, STATES.IMG2IMG);
     if (!state) {
         await sendMessage(message, `Sorry, something went wrong. Please try again.`);
         return;
@@ -831,10 +834,10 @@ async function handleMissingPromptCase(message, settings, image) {
         case 'SD3':
             await iMedia.handleSD3ImgFile(message, image, null);
             break;
-        case 'SDXL':
+        case 'QUICKMAKE':
             await iMedia.handleMs2ImgFile(message, image, null);
             break;
-        case 'FLUX':
+        case 'MAKE':
             await iMedia.handleFluxImgFile(message, image, null);
             break;
         default:
@@ -859,7 +862,7 @@ async function handleEffectHang(message) {
         console.log('Effect Hang: Full case (prompt and image)');
         
         // Set state based on createSwitch
-        const state = determineState(settings.createSwitch, STATES.IMG2IMG, STATES.FLUX2IMG);
+        const state = determineState(settings.createSwitch, STATES.QUICKIMG2IMG, STATES.IMG2IMG);
         if (!state) {
             await sendMessage(message, `Sorry, something went wrong. Please try again.`);
             return;
@@ -868,7 +871,7 @@ async function handleEffectHang(message) {
 
         // Route to the appropriate handler
         await routeEffectWorkflow(prompt, image, settings, message);
-    } else if (!prompt && image && settings.autoPrompt && settings.createSwitch === 'SDXL') {
+    } else if (!prompt && image && settings.autoPrompt && settings.createSwitch === 'QUICKMAKE') {
         console.log('Effect Hang: AutoPrompt with image');
         setUserState(message, STATES.PFP);
         workspaceEntry.imageUrl = image;
@@ -890,10 +893,10 @@ async function handleEffectHang(message) {
 
 function determineState(createSwitch, defaultState, fluxState) {
     switch (createSwitch) {
-        case 'FLUX':
+        case 'MAKE':
             return fluxState;
         case 'SD1.5':
-        case 'SDXL':
+        case 'QUICKMAKE':
         case 'SD3':
             return defaultState;
         default:
@@ -1258,8 +1261,8 @@ function getWatermarkMenu(userId, message) {
 function getInterrogateMenu() {
 
     const interrogateKeyboard = [
-        [{text: 'SDXL', callback_data: 'interrogate'}],
-        [{text: 'FLUX', callback_data: 'finterrogate'}]
+        [{text: 'QUICKMAKE', callback_data: 'interrogate'}],
+        [{text: 'MAKE', callback_data: 'finterrogate'}]
     ]
 
     return {
@@ -1270,8 +1273,8 @@ function getInterrogateMenu() {
 function getAssistMenu() {
 
     const interrogateKeyboard = [
-        [{text: 'SDXL', callback_data: 'assist'}],
-        [{text: 'FLUX', callback_data: 'flassist'}]
+        [{text: 'QUICKMAKE', callback_data: 'assist'}],
+        [{text: 'MAKE', callback_data: 'flassist'}]
     ]
 
     return {

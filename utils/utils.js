@@ -332,8 +332,9 @@ async function sendDocument(msg, fileUrl, options = {}) {
         await sendWithRetry(bot.sendMessage.bind(bot), msg, "I've sent your document in a private message 📨");
         
         return;
+    } else {
+        return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
     }
-    return await sendWithRetry(bot.sendDocument.bind(bot), msg, fileUrl, options);
 }
 
 async function sendAnimation(msg, fileUrl, options = {}) {

@@ -46,7 +46,7 @@ const defaultUserPref = {
     basePrompt: "MS2",
     advancedUser: false,
     lastImage: '',
-    createSwitch: 'SDXL',
+    createSwitch: 'MAKE',
     autoPrompt: false,
     voiceModel: "165UvtZp7kKnmrVrVQwx",
     waterMark: 'mslogo',
@@ -74,8 +74,8 @@ const defaultUserPref = {
     runs: [],
     commandList: [
         { command: 'help', description: 'See help description' },
-        { command: 'make', description: 'SDXL txt2img'},
-        { command: 'flux', description: 'FLUX txt2img'},
+        { command: 'make', description: 'txt2img'},
+        { command: 'quickmake', description: 'SDXL txt2img'},
         { command: 'effect', description: 'img2img'},
         { command: 'signin', description: 'Connect account' },
         { command: 'ca', description: 'Check chart buy' },
@@ -122,8 +122,8 @@ const numericFields = {
 // Create a separate constant for base commands
 const baseCommandList = [
     { command: 'help', description: 'See help description' },
-    { command: 'make', description: 'SDXL txt2img'},
-    { command: 'flux', description: 'FLUX txt2img'},
+    { command: 'make', description: 'txt2img'},
+    { command: 'quickmake', description: 'SDXL txt2img'},
     { command: 'effect', description: 'img2img'},
     { command: 'signin', description: 'Connect account' },
     { command: 'ca', description: 'Check chart buy' },
@@ -163,6 +163,7 @@ function validateUserData(userData) {
     });
 
     cleanedData.balance = '';
+    cleanedData.createSwitch = 'MAKE';
     
     return cleanedData;
 }

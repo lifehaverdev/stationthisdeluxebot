@@ -351,6 +351,9 @@ async function handleGroupCheck(group, userId, message) {
                     }
                 } else {
                     await sendMessage(message, `I don't know you. ` + Msg);
+                    await analytics.trackGatekeeping(message, 'unverified_group_tokengate_reject', {
+                        wallet: userData.wallet
+                    });
                     return false;
                 }
             } else if (style === 'select') {
@@ -358,6 +361,9 @@ async function handleGroupCheck(group, userId, message) {
                     return true;
                 } else {
                     await sendMessage(message, Msg);
+                    await analytics.trackGatekeeping(message, 'group_select_gate_reject', {
+                        wallet: userData.wallet
+                    });
                     return false;
                 }
             } else if (style === 'adminOnly') {
@@ -399,6 +405,9 @@ async function handleUserData(userId, message) {
                     // User exists, get full data
                     userData = await fetchFullUserData(userId);
                     userData = validateUserData(userData); 
+                    userData.createSwitch = 'MAKE';
+                    console.log('userData', userData)
+                    await analytics.trackUserJoin(userId, message.from.username); // Track first time user
                 } else {
                     // No existing user, create new
                     console.log(`No existing user data found for userId ${userId}, creating new...`);
@@ -407,7 +416,8 @@ async function handleUserData(userId, message) {
                     if (!userData) {
                         throw new Error("Failed to create new user data.");
                     }
-                    userData = validateUserData(userData); 
+                    userData = validateUserData(userData);
+                    await analytics.trackUserJoin(userId, message.from.username, true); // Track first time user
                 }
             } catch (error) {
                 console.error(`DB fetch error for userId ${userId}:`, {
@@ -453,6 +463,9 @@ async function handleUserData(userId, message) {
             // Check blacklist
             if (checkBlacklist(userData.wallet)) {
                 await sendMessage(message, 'You are on the blacklist.');
+                await analytics.trackGatekeeping(message, 'blacklisted', {
+                    wallet: userData.wallet
+                });
                 return false;
             }
 

@@ -14,7 +14,7 @@ const {
 const { handleStatus } = require('./iWork');
 const { startSet } = require('./iSettings');
 const { handleRegen, handleHipFire } = require('./iMake')
-const { returnToAccountMenu, displayAccountSettingsMenu, handleRefreshQoints } = require('./iAccount')
+const { returnToAccountMenu, displayAccountSettingsMenu, buildUserProfile, buildPreferencesKeyboard, handleRefreshQoints } = require('./iAccount')
 const iMenu = require('./iMenu');
 const iGroup = require('./iGroup')
 const iResponse = require('./iResponse');
@@ -132,11 +132,9 @@ const handleSetVoice = (message, selectedName, userId) => {
         console.log('no Voice')
     }
 };
-
 const handleSetWatermark = async (message, selectedName, userId) => {
     const messageId = message.message_id;
     const chatId = message.chat.id;
-    const image = workspace[userId]?.imageUrl; // Check workspace for an image
     if(!lobby.hasOwnProperty(userId)){
         console.log('no user in lobby in handlesetwatermark')
         return
@@ -147,23 +145,17 @@ const handleSetWatermark = async (message, selectedName, userId) => {
         } else {
             lobby[userId].waterMark = selectedName;
         }
-
+        let dms = message.chat.id > 0;
         // Update the workspace with the new watermark status
-        const messageTitle = `Watermark set to: ${selectedName} ✅\n\nSend in the photo you want to brand.`;
-        await editMessage({
-            text: messageTitle,
-            chat_id: chatId,
-            message_id: messageId,
-        });
-        setUserState({...message,from: {id: userId},chat: {id: chatId}},STATES.WATERMARK)
+        await returnToAccountMenu(message,userId)
+        //setUserState({...message,from: {id: userId},chat: {id: chatId}},STATES.WATERMARK)
 
         // If an image is already in the workspace, route directly to handleWatermark
-        if (image) {
-            console.log('Image already in workspace, routing to handleWatermark');
-            await iBrand.handleWatermark(message, image, userId);
-            delete workspace[userId]
-            
-        }
+        // if (image) {
+        //     console.log('Image already in workspace, routing to handleWatermark');
+        //     await iBrand.handleWatermark(message, image, userId);
+        //     delete workspace[userId]
+        // }
     } else {
         console.log('No base prompt provided for watermark');
     }
