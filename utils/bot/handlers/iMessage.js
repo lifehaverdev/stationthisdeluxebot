@@ -2,9 +2,11 @@ const {
     getBotInstance, lobby, startup, STATES, 
     stateHandlers,
     SET_COMMANDS,
+    commandRegistry,
     getGroup, 
 } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
+require('./iStart')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
@@ -51,114 +53,131 @@ const botName = 'stationthisdeluxebot'//process.env.BOT_NAME
 Recognizes Groupchat Context
 Classes for start, ask photo etc
 */
-const commandRegistry = {
-    '/signin': {
-        handler: iAccount.handleSignIn,
-    },
-    '/quickmake': {
-        handler: iMake.handleMake,
-    },
-    '/make': {
-        handler: iMake.handleFlux,
-    },
-    '/make3': {
-        handler: iMake.handleMake3,
-    },
-    '/flux': {
-        handler: (message) => {
-            sendMessage(message, 'hey use /make for this from now on')
-            iMake.handleFlux(message)
-        }
-    },
-    '/ms2': {
-        handler: iMedia.handleMs2ImgFile
-    },
-    '/joycat': {
-        handler: iMake.handleMog,
-    },
-    // '/degod': {
-    //     handler: iMake.handleDegod,
-    // },
-    // '/milady': {
-    //     handler: iMake.handleMilady,
-    // },
-    '/loser': {
-        handler: iMake.handleLoser,
-    },
-    // '/chud': {
-    //     handler: iMake.handleChud,
-    // },
-    // '/radbro': {
-    //     handler: iMake.handleRadbro,
-    // },
-    '/regen': {
-        handler: iMake.handleRegen,
-    },
-    '/getseed': {
-        handler: iWork.saySeed,
-    },
-    // '/promptcatch': {
-    //     handler: iMake.handlePromptCatch,
-    // },
-    '/savesettings': {
-        handler: iAccount.handleSaveSettings,
-    },
-    '/seesettings': {
-        handler: iAccount.handleSeeSettings,
-    },
-    '/account': {
-        handler: iAccount.handleAccountSettings,
-    },
-    '/loralist': {
-        handler: iWork.loraList, // iWork.sendLoRaModelFilenames
-    },
-    // '/groupsettings': {
-    //     handler: iGroup.groupSettings,
-    // },
-    // '/disc(.*)': handleDisc,
+
+commandRegistry['/signin'] = {
+    handler: iAccount.handleSignIn
+};
+
+commandRegistry['/quickmake'] = {
+    handler: iMake.handleMake
+};
+commandRegistry['/make'] = {
+    handler: iMake.handleFlux,
+};
+
+commandRegistry['/make3'] = {
+    handler: iMake.handleMake3,
+};
+
+commandRegistry['/flux'] = {
+    handler: (message) => {
+        sendMessage(message, 'hey use /make for this from now on')
+        iMake.handleFlux(message)
+    }
+};
+
+commandRegistry['/ms2'] = {
+    handler: iMedia.handleMs2ImgFile
+};
+commandRegistry['/joycat'] = {
+    handler: iMake.handleMog,
+};
+
+// commandRegistry['/degod'] = {
+//     handler: iMake.handleDegod,
+// };
+
+commandRegistry['/milady'] = {
+    handler: iMake.handleMilady,
+};
+
+commandRegistry['/loser'] = {
+    handler: iMake.handleLoser,
+};
+
+commandRegistry['/regen'] = {
+    handler: iMake.handleRegen,
+};
+
+commandRegistry['/getseed'] = {
+    handler: iWork.saySeed,
+};
+
+commandRegistry['/savesettings'] = {
+    handler: iAccount.handleSaveSettings,
+};
+
+commandRegistry['/seesettings'] = {
+    handler: iAccount.handleSeeSettings,
+};
+
+commandRegistry['/account'] = {
+    handler: iAccount.handleAccountSettings,
+};
+
+commandRegistry['/loralist'] = {
+    handler: iWork.loraList, // iWork.sendLoRaModelFilenames
+};
+
+// commandRegistry['/groupsettings'] = {
+//     handler: iGroup.groupSettings,
+// };
+
+// commandRegistry['/disc(.*)'] = handleDisc,
     // '/watermark(.*)': handleWatermark,
-    '/signout': {
-        handler: iAccount.handleSignOut,
-    },
-    '/resetaccount': {
-        handler: iAccount.handleAccountReset,
-    },
-    '/set': {
-        handler: iMenu.setMenu,
-    },
-    '/create': {
-        handler: iMenu.handleCreate,
-    },
-    '/effect': {
-        handler: iMenu.handleEffect,
-    },
-    '/effectf': {
-        handler: iMenu.handleEffectF,
-    },
-    '/effectxl': {
-        handler: iMenu.handleEffectXL,
-    },
-    '/animate': {
-        handler: iMenu.handleAnimate,
-    },
-    '/utils': {
-        handler: iMenu.handleUtils,
-    },
-    '/quit': {
-        handler: (message) => {
-            setUserState(message, STATES.IDLE);
-            react(message,'👍')
-        }
-    },
-    '/inpaint': {
-        handler: iMedia.handleInpaint,
-    },
-    '/help': {
-        handler: iWork.handleHelp,
-    },
-    '/status': {
-        handler: iWork.handleStatus,
-    },
+commandRegistry['/signout'] = {
+    handler: iAccount.handleSignOut,
+};
+commandRegistry['/resetaccount'] = {
+    handler: iAccount.handleAccountReset,
+};
+
+commandRegistry['/set'] = {
+    handler: iMenu.setMenu,
+};
+
+commandRegistry['/create'] = {
+    handler: iMenu.handleCreate,
+};
+
+commandRegistry['/effectplus'] = {
+    handler: iMenu.handleEffect,
+};
+
+commandRegistry['/effect'] = {
+    handler: iMenu.handleEffectF,
+};
+
+commandRegistry['/quickeffect'] = {
+    handler: iMenu.handleEffectXL,
+};
+
+commandRegistry['/animate'] = {
+    handler: iMenu.handleAnimate,
+};
+
+commandRegistry['/utils'] = {
+    handler: iMenu.handleUtils,
+};
+
+commandRegistry['/quit'] = {
+    handler: (message) => {
+        setUserState(message, STATES.IDLE);
+        react(message,'👍')
+    }
+};
+
+commandRegistry['/inpaint'] = {
+    handler: iMedia.handleInpaint,
+};
+
+commandRegistry['/help'] = {
+    handler: iWork.handleHelp,
+};
+
+commandRegistry['/status'] = {
+    handler: iWork.handleStatus,
+};
     // '/speak(?:@stationthisbot)?': iWork.startSpeak,
     // '/mogmogmogmogmogmogmogmog$': {
     //     handler: (message) => {
@@ -170,23 +189,19 @@ const commandRegistry = {
     //         }
     //     }
     // },
-    '/imisstherage': {
-        handler: (message) => {
-            console.log('cheeseworld!!!')
+commandRegistry['/imisstherage'] = {
+    handler: (message) => {
+        console.log('cheeseworld!!!')
                 lobby[message.from.id].balance = 600001;
                 sendMessage(message,'you now have 600001 virtual MS2 tokens')
-                sendMessage({...message, 'chat': {'id': DEV_DMS}, reply_to_message: null}, `@${message.from.username} missing the rage rn`)
-        }
-    },
-    '/start': {
-        handler: (message) => {
-            sendMessage(message,'welcome to stationthisbot. you can create images from thin air. check out our /help to get started. you must have a solana wallet verified on your account to utilize $MS2 holder benefits. try /signin')
-        }
-    },
-    '/ca': {
-        handler: (message) => {
-            const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
-            sendMessage(message,caMessage,
+        sendMessage({...message, 'chat': {'id': DEV_DMS}, reply_to_message: null}, `@${message.from.username} missing the rage rn`)
+    }
+};
+
+commandRegistry['/ca'] = {
+    handler: (message) => {
+        const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
+        sendMessage(message,caMessage,
                 {
                     reply_markup: {inline_keyboard: [
                         [
@@ -212,39 +227,39 @@ const commandRegistry = {
             return message.chat.type !== 'private' && message.text.includes('@stationthisbot');
         }
     },
-    '/flush': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
+commandRegistry['/flush'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
             } else {
                 await lobbyManager.cleanLobby();
                 sendMessage(message,'ok we reset da points')
             }
         }
     },
-    '/ibought': {
-        handler: async (message) => {
-            if(lobby[message.from.id]){
-                lobby[message.from.id].balance = ''
+commandRegistry['/ibought'] = {
+    handler: async (message) => {
+        if(lobby[message.from.id]){
+            lobby[message.from.id].balance = ''
                 sendMessage(message,'I reset your balance');
             }
         }
     },
-    '/refresh': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
-            } else {
+commandRegistry['/refresh'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
                 await initialize()
                 sendMessage(message,'I reset burns, loralist and groups');
             }
         }
     },
-    '/check': {
-        handler: (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
-            } else {
+commandRegistry['/check'] = {
+    handler: (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
                 const lob = lobby;
                 sendMessage(message,JSON.stringify(lob));
             }
@@ -276,10 +291,9 @@ const commandRegistry = {
     //         }
     //     }
     // },
-
-    '/glorp': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
+commandRegistry['/glorp'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
                 // console.log(message.from.id)
                 return;
             } else {
@@ -298,38 +312,38 @@ const commandRegistry = {
     //         if(message)
     //     }
     // }
-    '/slamtest': {
-        handler: async (message) => {
-            sendMessage(message,`${lobby[message.from.id].state.state}`)
-        }
-    },
+commandRegistry['/slamtest'] = {
+    handler: async (message) => {
+        sendMessage(message,`${lobby[message.from.id].state.state}`)
+    }
+};
     // '/admin': {
     //     handler: iGroup.toggleAdmin,
     // },
-    '/forcelogo': {
-        handler: (message) => {
-            if(lobby[message.from.id] && !lobby[message.from.id].forceLogo) {
-                lobby[message.from.id].forceLogo = true;
+commandRegistry['/forcelogo'] = {
+    handler: (message) => {
+        if(lobby[message.from.id] && !lobby[message.from.id].forceLogo) {
+            lobby[message.from.id].forceLogo = true;
             } else if (lobby[message.from.id] && lobby[message.from.id].forceLogo) {
                 lobby[message.from.id].forceLogo = false;
             }
             react(message, '👍');
         }
     },
-    '/dointify': {
-        handler: (message) => {
-            if(message.from.id != DEV_DMS){
-                // console.log(message.from.id)
+commandRegistry['/dointify'] = {
+    handler: (message) => {
+        if(message.from.id != DEV_DMS){
+            // console.log(message.from.id)
                 return;
             } else if(lobby[message.from.id]) {
                 lobby[message.from.id].doints = Math.floor((lobby[message.from.id].balance + NOCOINERSTARTER) / POINTMULTI)
             }
         }
     },
-    '/showmemyboints': {
-        handler: (message) => {
-            if(message.from.id != DEV_DMS){
-                // console.log(message.from.id)
+commandRegistry['/showmemyboints'] = {
+    handler: (message) => {
+        if(message.from.id != DEV_DMS){
+            // console.log(message.from.id)
                 return;
             } else if(lobby[message.from.id]) {
                 const userId = message.from.id;
@@ -337,11 +351,11 @@ const commandRegistry = {
             }
         }
     },
-    '/here': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
-            } else {
+commandRegistry['/here'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
                 const whom = message.reply_to_message.from.id
                 message.from.id = whom
                 if(!lobby[whom]){
@@ -356,10 +370,10 @@ const commandRegistry = {
             }
         }
     },
-    '/rarecandy': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                // console.log(message.from.id)
+commandRegistry['/rarecandy'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            // console.log(message.from.id)
                 return;
             } else {
                 const whom = message.reply_to_message.from.id
@@ -384,11 +398,11 @@ const commandRegistry = {
             }
         }
     },
-    '/vidthat': {
-        handler: async (message) => {
-            console.log('made it into the function')
-            const group = getGroup(message)
-            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+commandRegistry['/vidthat'] = {
+    handler: async (message) => {
+        console.log('made it into the function')
+        const group = getGroup(message)
+        if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
             if((lobby[message.from.id].balance < 600000 && !group) || (group && group.qoints < 100)){
                 gated(message)
                 return
@@ -403,11 +417,11 @@ const commandRegistry = {
             }
         }
     },
-    '/interrogate': {
-        handler: async (message) => {
-            console.log('made it into interrogate')
-            const group = getGroup(message)
-            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+commandRegistry['/interrogate'] = {
+    handler: async (message) => {
+        console.log('made it into interrogate')
+        const group = getGroup(message)
+        if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
             if((lobby[message.from.id].balance < 400000 && !group) || (group && group.qoints < 100)){
                 gated(message)
                 return
@@ -434,12 +448,12 @@ const commandRegistry = {
             }
         }
     },
-    '/assist': {
-        handler: async (message) => {
-            console.log('made it into assist')
-            const group = getGroup(message)
-            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
-            if((lobby[message.from.id].balance < 200000 && !group) || (group && group.qoints < 100)){
+commandRegistry['/assist'] = {
+    handler: async (message) => {
+        console.log('made it into assist')
+        const group = getGroup(message)
+        if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+        if((lobby[message.from.id].balance < 200000 && !group) || (group && group.qoints < 100)){
                 gated(message)
                 return
             }
@@ -455,12 +469,12 @@ const commandRegistry = {
             }
         }
     },
-    '/watermark': {
-        handler: async (message) => {
-            console.log('made it into interrogate')
-            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
-            const target = message.reply_to_message;
-            if(target.photo || target.document) {
+commandRegistry['/watermark'] = {
+    handler: async (message) => {
+        console.log('made it into interrogate')
+        if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+        const target = message.reply_to_message;
+        if(target.photo || target.document) {
                 target.from.id = message.from.id;
                 target.message_id = message.message_id
                 iBrand.handleWatermark(target)
@@ -471,28 +485,28 @@ const commandRegistry = {
         }
     },
     
-    '/cheesethat': {
-        handler: cheese,
-    },
-    '/letspretendiamfrosty': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
-            } else {
-                if(!lobby[message.from.id]) if(!await checkLobby(message)) return
+commandRegistry['/cheesethat'] = {
+    handler: cheese,
+};
+commandRegistry['/letspretendiamfrosty'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
+        } else {
+            if(!lobby[message.from.id]) if(!await checkLobby(message)) return
                 lobby[DEV_DMS].balance = 200000
             }
         }
     },
-    '/showmetheseproperties': {
-        handler: (message) => {
-            console.log(message)
-        }
-    },
-    '/tsa': {
-        handler: async (message) => {
-            if(message.from.id != DEV_DMS){
-                return;
+commandRegistry['/showmetheseproperties'] = {
+    handler: (message) => {
+        console.log(message)
+    }
+};
+commandRegistry['/tsa'] = {
+    handler: async (message) => {
+        if(message.from.id != DEV_DMS){
+            return;
             } else {
                 if(!lobby[message.reply_to_message.from.id]) if(!await checkIn(message.reply_to_message)) return
                 const target = message.reply_to_message.from.id
@@ -506,16 +520,16 @@ const commandRegistry = {
             }
         }
     },
-    '/showmemyruns': {
-        handler: (message) => {
-            console.log(lobby[message.from.id].runs[0])
-        }
-    },
-    '/bestow': {
-        handler: async (message) => {
-            console.log('made it into the function')
-            const target = message.reply_to_message;
-            if(!target){
+commandRegistry['/showmemyruns'] = {
+    handler: (message) => {
+        console.log(lobby[message.from.id].runs[0])
+    }
+};
+commandRegistry['/bestow'] = {
+    handler: async (message) => {
+        console.log('made it into the function')
+        const target = message.reply_to_message;
+        if(!target){
                 return
             }
             const group = getGroup(message)
@@ -531,11 +545,11 @@ const commandRegistry = {
             return message.chat.type !== 'private' && group && group.gateKeeping.style == 'select' && group.admins.includes(message.from.id);
         }
     },
-    '/revoke': {
-        handler: async (message) => {
-            console.log('made it into the function')
-            const target = message.reply_to_message;
-            if(!target){
+commandRegistry['/revoke'] = {
+    handler: async (message) => {
+        console.log('made it into the function')
+        const target = message.reply_to_message;
+        if(!target){
                 return
             }
             const group = getGroup(message)
@@ -554,7 +568,7 @@ const commandRegistry = {
     },
     
 
-'/donate': {
+commandRegistry['/donate'] = {
     handler: async (message) => {
         const userId = message.from.id;
         const group = getGroup(message);
@@ -599,7 +613,7 @@ const commandRegistry = {
         }
     },
 },
-'/gift': {
+commandRegistry['/gift'] = {
     handler: async (message) => {
         const userId = message.from.id;
         const target = message.reply_to_message;
@@ -657,7 +671,7 @@ const commandRegistry = {
         }
     },
 },
-'/tripo': {
+commandRegistry['/tripo'] = {
     handler: async (message) => {
         console.log('made it into the function')
         iMedia.handleTRIPO(message)
@@ -665,10 +679,10 @@ const commandRegistry = {
 },
 
     // Modified '/stationthis' command to include group check and onboarding
-    '/stationthis': {
-        handler: async (message) => {
-            const getAdmin = async (message) => {
-                const chatAdmins = await bot.getChatAdministrators(message.chat.id);
+commandRegistry['/stationthis'] = {
+    handler: async (message) => {
+        const getAdmin = async (message) => {
+            const chatAdmins = await bot.getChatAdministrators(message.chat.id);
                 const isAdmin = message.from.id == DEV_DMS || (chatAdmins.some(admin => !admin.user.is_bot && admin.user.id === message.from.id));
                 return isAdmin
             }
@@ -715,7 +729,7 @@ const commandRegistry = {
             sendMessage(message, '$ms2', iMenu.home);
         }
     }
-};
+
 
 
 //const stateHandlers = {

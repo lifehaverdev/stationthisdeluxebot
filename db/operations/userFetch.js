@@ -6,7 +6,16 @@ const userPref = new UserPref();
 
 async function fetchUserCore(userId) {
     try {
-        return await userCore.findOne({ userId });
+        // Convert userId to integer
+        const numericUserId = parseInt(userId, 10);
+        
+        // Check if conversion was successful (not NaN)
+        if (isNaN(numericUserId)) {
+            console.error('Invalid userId format:', userId);
+            return null;
+        }
+        
+        return await userCore.findOne({ userId: numericUserId });
     } catch (error) {
         console.error('Error fetching user core:', error);
         return null;
