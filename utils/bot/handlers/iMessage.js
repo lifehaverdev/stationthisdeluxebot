@@ -6,7 +6,7 @@ const {
     getGroup, 
 } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
-require('./iStart')
+const { tutorialSteps, TutorialManager } = require('./iStart')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
@@ -912,6 +912,19 @@ function parseCommand(message) {
         if (botMentionIndex !== -1) {
             command = command.slice(0, botMentionIndex);
         }
+
+                // Tutorial progression check - only for private chats
+                if (message.chat.id > 0 && lobby[message.from.id]?.progress) {
+                    const currentStep = TutorialManager.getCurrentStep(message.from.id);
+                    
+                    // If this command completes current tutorial step
+                    if (tutorialSteps[currentStep]?.command === command) {
+                        // Schedule tutorial progression after command execution
+                        setTimeout(() => {
+                            TutorialManager.progressToNextStep(message);
+                        }, 500);
+                    }
+                }
 
         // Return the parsed command and arguments
         return { command, args };
