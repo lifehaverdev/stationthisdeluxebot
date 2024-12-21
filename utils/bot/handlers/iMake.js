@@ -273,7 +273,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
 async function handleMake(message) {
     lobby[message.from.id].createSwitch = 'QUICKMAKE'
-    await handleTask(message, 'MAKE', STATES.MAKE, true, null);
+    await handleTask(message, 'QUICKMAKE', STATES.QUICKMAKE, true, null);
 }
 
 async function handleMake3(message) {
