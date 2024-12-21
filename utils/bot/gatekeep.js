@@ -167,6 +167,79 @@ async function kick(userId) {
     }
 }
 
+async function batchKick(userIds) {
+    console.log(`Starting batch kick for ${userIds.length} users`);
+    
+    try {
+        // 1. Gather all user data from lobby
+        const usersData = userIds.map(userId => ({
+            userId,
+            lobbyData: lobby[userId]
+        })).filter(data => data.lobbyData); // Filter out any missing lobby data
+
+        // 2. Fetch all core data in parallel
+        const coreDataPromises = usersData.map(({ userId }) => fetchUserCore(userId));
+        const coreDataResults = await Promise.all(coreDataPromises);
+        
+        // 3. Prepare verified users' full data fetches
+        const verifiedUsers = coreDataResults
+            .map((core, index) => ({ core, userData: usersData[index] }))
+            .filter(data => data.core?.verified);
+        
+        const fullDataPromises = verifiedUsers.map(({ userData }) => 
+            fetchFullUserData(userData.userId)
+        );
+        const fullDataResults = await Promise.all(fullDataPromises);
+
+        // 4. Prepare final data for all users
+        const kickData = usersData.map(({ userId, lobbyData }, index) => {
+            const coreData = coreDataResults[index];
+            if (!coreData) return null;
+
+            const baseData = {
+                ...coreData,
+                ...lobbyData,
+                kickedAt: Date.now(),
+                lastTouch: lobbyData.lastTouch,
+                state: lobbyData.state
+            };
+
+            // If user was verified, merge with full data
+            if (coreData.verified) {
+                const fullData = fullDataResults[verifiedUsers.findIndex(v => v.userData.userId === userId)];
+                if (fullData) {
+                    Object.assign({}, fullData, baseData);
+                }
+            }
+
+            return {
+                userId,
+                data: baseData
+            };
+        }).filter(Boolean); // Remove any null entries
+
+        // 5. Batch write to all collections
+        const writePromises = kickData.flatMap(({ userId, data }) => [
+            userCore.writeUserData(userId, data),
+            userEconomy.writeUserData(userId, data),
+            userPref.writeUserData(userId, data),
+            analytics.trackUserKick(userId, data.username)
+        ]);
+
+        await Promise.all(writePromises);
+        
+        // 6. Clean up lobby
+        userIds.forEach(userId => delete lobby[userId]);
+
+        console.log(`Successfully batch kicked ${kickData.length} users`);
+        return true;
+
+    } catch (error) {
+        console.error('Error during batch kick operation:', error);
+        return false;
+    }
+}
+
 
 class LobbyManager {
     constructor(lobby) {
@@ -188,6 +261,10 @@ class LobbyManager {
             const didwe = await addPointsToAllUsers(lobby);
             console.log("Points added to all users: ", didwe);
 
+            const usersToKick = [];
+            const usersToUpdate = [];
+
+            // First, process all users and sort them into kick/update arrays
             for (const userId in lobby) {
                 try {
                     const userData = lobby[userId];
@@ -195,19 +272,28 @@ class LobbyManager {
 
                     const should = shouldKick(userId);
                     if (should) {
-                        console.log(`Kicking user ${userId}`);
+                        console.log(`Queuing user ${userId} for kick`);
                         addExp(userId);
                         softResetPoints(userId);
-                        await kick(userId);
+                        usersToKick.push(userId);
                     } else {
-                        console.log(`Updating points for user ${userId}`);
+                        console.log(`Queuing points update for user ${userId}`);
                         addExp(userId);
                         softResetPoints(userId);
+                        usersToUpdate.push(userId);
                     }
                 } catch (error) {
                     console.error(`Error processing user ${userId}:`, error);
                 }
             }
+
+            // Update the cleanLobby section to use batchKick
+            if (usersToKick.length > 0) {
+                console.log(`Batch kicking ${usersToKick.length} users`);
+                await batchKick(usersToKick);
+            }
+
+            console.log(`Processed ${usersToKick.length} kicks and ${usersToUpdate.length} updates`);
         } catch (error) {
             console.error("Error in cleanLobby:", error);
         }
