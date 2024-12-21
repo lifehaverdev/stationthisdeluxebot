@@ -697,6 +697,7 @@ async function shakeVerify(message) {
             });
         }
     }
+    setUserState(message, STATES.IDLE)
 }
 
 function isHashValid(wallet, salt, providedHash) {
