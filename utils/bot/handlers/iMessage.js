@@ -413,10 +413,18 @@ const commandRegistry = {
                 return
             }
             const target = message.reply_to_message;
-            if(target.photo || target.document) {
+            if(message.photo || message.document) {
+                // Use the original message if it has a photo
+                if(lobby[message.from.id].createSwitch == 'MAKE'){
+                    iWork.shakeFluxInterrogate(message)
+                } else {
+                    iMedia.handleInterrogation(message)
+                }
+            } else if(target && (target.photo || target.document)) {
+                // Otherwise use the replied-to message if it has a photo
                 target.from.id = message.from.id;
                 target.message_id = message.message_id
-                if(lobby[message.from.id].createSwitch == 'FLUX'){
+                if(lobby[message.from.id].createSwitch == 'MAKE'){
                     iWork.shakeFluxInterrogate(target)
                 } else {
                     iMedia.handleInterrogation(target)
