@@ -183,17 +183,15 @@ async function fixSpecificField() {
         
         // Example: Fix user preferences
         const userPrefs = db.collection('users_preferences');
+        //const userPrefs = db.collection('floorplan')
         
         console.log('Starting fix operation...');
         const result = await userPrefs.updateMany(
             {}, // all documents
             { 
-                $set: {
-                    // Add your fixes here, for example:
-                    'runs': []
-                    // "newField": defaultValue,
-                    // "fixedField": correctValue
-                } 
+                // $set: {
+                //     'settings.createSwitch': 'MAKE'
+                // }
             }
         );
 

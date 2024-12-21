@@ -55,14 +55,20 @@ const commandRegistry = {
     '/signin': {
         handler: iAccount.handleSignIn,
     },
-    '/make': {
+    '/quickmake': {
         handler: iMake.handleMake,
+    },
+    '/make': {
+        handler: iMake.handleFlux,
     },
     '/make3': {
         handler: iMake.handleMake3,
     },
     '/flux': {
-        handler: iMake.handleFlux,
+        handler: (message) => {
+            sendMessage(message, 'hey use /make for this from now on')
+            iMake.handleFlux(message)
+        }
     },
     '/ms2': {
         handler: iMedia.handleMs2ImgFile
@@ -388,7 +394,7 @@ const commandRegistry = {
                 return
             }
             const target = message.reply_to_message;
-            if(target.photo || target.document) {
+            if(target && (target.photo || target.document)) {
                 target.from.id = message.from.id;
                 target.message_id = message.message_id
                 iMedia.handleMs3V2ImgFile(target)
@@ -397,48 +403,65 @@ const commandRegistry = {
             }
         }
     },
-    // '/interrogate': {
-    //     handler: async (message) => {
-    //         console.log('made it into interrogate')
-    //         const group = getGroup(message)
-    //         if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
-    //         if((lobby[message.from.id].balance < 400000 && !group) || (group && group.qoints < 100)){
-    //             gated(message)
-    //             return
-    //         }
-    //         const target = message.reply_to_message;
-    //         if(target.photo || target.document) {
-    //             target.from.id = message.from.id;
-    //             target.message_id = message.message_id
-    //             if(lobby[message.from.id].createSwitch == 'FLUX'){
-    //                 iWork.handleFluxInterrogate(target)
-    //             } else {
-    //                 iWork.handleInterrogate(target)
-    //             }
-    //         } else {
-    //             react(message,"🤔")
-    //         }
-    //     }
-    // },
-    // '/assist': {
-    //     handler: async (message) => {
-    //         console.log('made it into assist')
-    //         const group = getGroup(message)
-    //         if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
-    //         if((lobby[message.from.id].balance < 200000 && !group) || (group && group.qoints < 100)){
-    //             gated(message)
-    //             return
-    //         }
-    //         const target = message.reply_to_message;
-    //         if(target.text) {
-    //             target.from.id = message.from.id;
-    //             target.message_id = message.message_id
-    //             iWork.shakeAssist(target)
-    //         } else {
-    //             react(message,"🤔")
-    //         }
-    //     }
-    // },
+    '/interrogate': {
+        handler: async (message) => {
+            console.log('made it into interrogate')
+            const group = getGroup(message)
+            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+            if((lobby[message.from.id].balance < 400000 && !group) || (group && group.qoints < 100)){
+                gated(message)
+                return
+            }
+            const target = message.reply_to_message;
+            if(target.photo || target.document) {
+                target.from.id = message.from.id;
+                target.message_id = message.message_id
+                if(lobby[message.from.id].createSwitch == 'FLUX'){
+                    iWork.shakeFluxInterrogate(target)
+                } else {
+                    iMedia.handleInterrogation(target)
+                }
+            } else {
+                react(message,"🤔")
+            }
+        }
+    },
+    '/assist': {
+        handler: async (message) => {
+            console.log('made it into assist')
+            const group = getGroup(message)
+            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+            if((lobby[message.from.id].balance < 200000 && !group) || (group && group.qoints < 100)){
+                gated(message)
+                return
+            }
+            const cleanedText = message.text.replace('/assist', '').trim();
+            if (cleanedText) {
+                if(lobby[message.from.id].createSwitch == 'MAKE'){
+                    iWork.shakeFluxAssist({...message, text: cleanedText});
+                } else {
+                    iWork.shakeAssist({...message, text: cleanedText});
+                }
+            } else {
+                react(message, '🤔');
+            }
+        }
+    },
+    '/watermark': {
+        handler: async (message) => {
+            console.log('made it into interrogate')
+            if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+            const target = message.reply_to_message;
+            if(target.photo || target.document) {
+                target.from.id = message.from.id;
+                target.message_id = message.message_id
+                iBrand.handleWatermark(target)
+            } else {
+                react(message,"🤔")
+            }
+            
+        }
+    },
     
     '/cheesethat': {
         handler: cheese,
@@ -691,22 +714,22 @@ const commandRegistry = {
     stateHandlers[STATES.SIGN_IN]= (message) => safeExecute(message, iAccount.shakeSignIn)
     stateHandlers[STATES.VERIFY]= (message) => safeExecute(message, iAccount.shakeVerify)
 
-    stateHandlers[STATES.MAKE]= (message) => safeExecute(message, iMake.handleMake)
+    stateHandlers[STATES.QUICKMAKE]= (message) => safeExecute(message, iMake.handleMake)
     stateHandlers[STATES.MAKE3]= (message) => safeExecute(message, iMake.handleMake3)
 
     stateHandlers[STATES.EFFECTHANG] = (message) => safeExecute(message, iMenu.handleEffectHang);
     stateHandlers[STATES.PFP]= (message) => safeExecute(message, iMedia.handlePfpImgFile)
     stateHandlers[STATES.MS2PROMPT]= (message) => safeExecute(message, iMake.handleMs2Prompt)
-    stateHandlers[STATES.FLUXPROMPT] = (message) => safeExecute(message, iMake.handleFluxPrompt)
-    stateHandlers[STATES.IMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
-    stateHandlers[STATES.FLUX2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
+    stateHandlers[STATES.MAKEPROMPT] = (message) => safeExecute(message, iMake.handleFluxPrompt)
+    stateHandlers[STATES.QUICKIMG2IMG]= (message) => safeExecute(message, iMedia.handleMs2ImgFile)
+    stateHandlers[STATES.IMG2IMG]=(message) => safeExecute(message, iMedia.handleFluxImgFile)
     stateHandlers[STATES.SD32IMG] = (message) => safeExecute(message, iMedia.handleSD3ImgFile)
     stateHandlers[STATES.SD32IMGPROMPT] = (message) => safeExecute(message, iMake.handleSD3ImgPrompt)
     
     stateHandlers[STATES.MS3]= (message) => safeExecute(message,iMedia.handleMs3ImgFile)
     stateHandlers[STATES.MS3V2] = (message) => safeExecute(message,iMedia.handleMs3V2ImgFile)
     
-    stateHandlers[STATES.INTERROGATION]= (message) => safeExecute(message, iMedia.handleInterrogation)
+    stateHandlers[STATES.QUICKINTERROGATION]= (message) => safeExecute(message, iMedia.handleInterrogation)
     stateHandlers[STATES.ASSIST]= (message) => safeExecute(message, iWork.shakeAssist)
     stateHandlers[STATES.FLASSIST]= (message) => safeExecute(message, iWork.shakeFluxAssist)
     stateHandlers[STATES.SPEAK]= (message) => safeExecute(message, iWork.shakeSpeak)
@@ -725,8 +748,8 @@ const commandRegistry = {
     stateHandlers[STATES.UPSCALE] = (message) => safeExecute(message, iMedia.handleUpscale)
     stateHandlers[STATES.RMBG] = (message) => safeExecute(message, iMedia.handleRmbg)
     //[STATES.GROUPAPPLY] = (message) => safeExecute(message, iGroup.handleApplyBalance)
-    stateHandlers[STATES.FLUXINTERROGATE] = (message) => safeExecute(message, iWork.shakeFluxInterrogate)
-    stateHandlers[STATES.FLUX] = (message) => safeExecute(message,iMake.handleFlux)
+    stateHandlers[STATES.INTERROGATE] = (message) => safeExecute(message, iWork.shakeFluxInterrogate)
+    stateHandlers[STATES.MAKE] = (message) => safeExecute(message,iMake.handleFlux)
 
     stateHandlers[STATES.LORANAME] = (message) => safeExecute(message,iTrain.createLora)
     stateHandlers[STATES.ADDLORAIMAGE] = (message) => safeExecute(message,iTrain.addLoraSlotImage)
@@ -820,7 +843,7 @@ SET_COMMANDS.forEach(command => {
 });
 
 const commandsRequiringGatekeeping = [
-    '/flux','/make', '/make3',
+    '/flux','/quickmake','/make', '/make3',
     '/milady','/degod','/joycat',
     '/utils','/create','/effect','/effectf','effectxl','/animate',
     '/inpaint','/regen', 

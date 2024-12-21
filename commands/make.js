@@ -155,7 +155,7 @@ async function fetchOutput(run_id) {
 
 function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    const basepromptlessTypes = ['FLUX','FLUXI2I','FLUX_PLUS','FLUXINPAINT','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3'];
+    const basepromptlessTypes = ['MAKE','I2I','MAKE_PLUS','INPAINT','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3'];
 
     // Log the initial state of promptObj
     //console.log('Initial prompt first 10 chars:', promptObj.prompt?.substring(0, 10));
@@ -229,7 +229,7 @@ async function generate(promptObj) {
 
 function imgPreProc(promptObj) {
     //console.log('processing image');
-    if(promptObj.type.slice(0,3) != 'I2I' ||
+    if(promptObj.type.slice(0,3) != 'QUICKI2I' ||
         promptObj.type.slice(0,3) != 'PFP' ||
         promptObj.type.slice(0,3) != 'MS3'
     ){

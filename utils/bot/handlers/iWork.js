@@ -214,7 +214,7 @@ async function loraList(message) {
                     { text: 'Full List', callback_data: 'fullLora' }
                 ],
                 [
-                    { text: 'Flux', callback_data: 'fluxLora'}
+                    { text: 'MAKE', callback_data: 'fluxLora'}
                 ]
             ]
         },
@@ -271,7 +271,7 @@ async function featuredLoRaList(message) {
                     { text: 'Full List', callback_data: 'fullLora' }
                 ],
                 [
-                    { text: 'Flux', callback_data: 'fluxLora'}
+                    { text: 'MAKE', callback_data: 'fluxLora'}
                 ]
             ]
         },
@@ -289,7 +289,7 @@ async function featuredLoRaList(message) {
 
 async function fluxLoraList(message) {
     const chatId = message.chat.id;
-    let loraMessage = 'Flux LoRa Triggers ✨\n';
+    let loraMessage = 'MAKE LoRa Triggers ✨\n';
     loraMessage += 'click to copy\n';
 
     // Filter LoRAs that are featured
@@ -444,7 +444,7 @@ async function sendLoRaModelFilenames(message) {
                       { text: 'Top 10', callback_data: 'topTenLora' },
                   ],
                   [
-                      { text: 'Flux', callback_data: 'fluxLora'}
+                      { text: 'MAKE', callback_data: 'fluxLora'}
                   ]
               ]
           },
@@ -512,7 +512,7 @@ async function startFluxInterrogate(message, user) {
         })
         //iMenu.handleVoiceMenu(message,user)
         //sendMessage(message, 'Send in the photo for interrogation')
-        setUserState(message,STATES.FLUXINTERROGATE)
+        setUserState(message,STATES.INTERROGATE)
     } else {
         // if(lobby[message.from.id] && lobby[message.from.id].balance < 500000){
         //     gated(message)
@@ -520,7 +520,7 @@ async function startFluxInterrogate(message, user) {
         // }
         //sendMessage(message, 'Send in the photo you want to watermark.',{reply_to_message_id: message.message_id})
         sendMessage(message, 'Send in the photo for interrogation')
-        setUserState(message,STATES.FLUXINTERROGATE)
+        setUserState(message,STATES.INTERROGATE)
     }
     
 }

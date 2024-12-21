@@ -3,15 +3,6 @@ const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodT
     prefixHandlers
 } = require('../bot'); 
 const bot = getBotInstance()
-// const { 
-//     //writeUserData, 
-//     //writeQoints, 
-//     //writeNewUserData,
-//     //getUserDataByUserId, x
-//     //writeData,  
-//     //getUsersByWallet, 
-//     //writeUserDataPoint
-// } = require('../../../db/mongodb')
 const { 
     sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS ,
     fullCommandList
@@ -21,8 +12,12 @@ const { verifyHash } = require('../../users/verify.js')
 const { signedOut } = require('../../models/userKeyboards.js')
 const { features } = require('../../models/tokengatefeatures.js')
 const {defaultUserData,validateUserData} = require('../../users/defaultUserData.js')
+const { getBalance } = require('../../users/checkBalance')
 const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
+const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
+
 /*
 Let's upgrade protection
 Cull mutliple userids on same wallet address
@@ -128,6 +123,11 @@ function buildPreferencesKeyboard(userId) {
                 callback_data: 'toggleCustomFileNames',
             }
         ],
+        [
+            {
+                text: 'Watermark', callback_data: 'toggleWaterMark'
+            }
+        ]
     ]
 }
 actionMap['toggleAdvancedUser']= async (message, user) => {
@@ -523,6 +523,10 @@ async function handleSignIn(message) {
                     sendMessage(message, 'Found your existing account! Restoring your data...');
                     lobby[userId] = fullData;
                     delete lobby[userId].dbFetchFailed;
+                    await analytics.trackAccountAction(message, 'restored_account', true, {
+                        wallet: lobby[userId].wallet,
+                        verified: lobby[userId].verified
+                    });
                     return;
                 }
             }
@@ -540,6 +544,10 @@ async function handleSignIn(message) {
             msg += '\nand you are verified. Have fun'
             sendMessage(message, msg, home);
             setUserState(message, STATES.IDLE);
+            await analytics.trackAccountAction(message, 'verifiedsign_in_return', true, {
+                wallet: lobby[userId].wallet,
+                verified: lobby[userId].verified
+            });
         } else {
             await handleVerify(message);
         }
@@ -587,6 +595,10 @@ async function shakeSignIn(message) {
             console.log('user with same wallet',user.userId)
             sendMessage(message, "This wallet has valuable data associated with another account. Please contact support if this is your wallet.");
             setUserState(message, STATES.IDLE);
+            await analytics.trackAccountAction(message, 'wallet_conflict', true, {
+                wallet: lobby[userId].wallet,
+                verified: lobby[userId].verified
+            });
             return;
         }
     }
@@ -603,6 +615,10 @@ async function shakeSignIn(message) {
                     Object.assign(lobby[userId], fullData);
                     delete lobby[userId].dbFetchFailed;
                 }
+                await analytics.trackAccountAction(message, 'restored_account_on_shake', true, {
+                    wallet: lobby[userId].wallet,
+                    verified: lobby[userId].verified
+                });
             }
             // Allow users to upgrade their account by adding a wallet even if they have valuable data
             // Continue with wallet update
@@ -611,6 +627,10 @@ async function shakeSignIn(message) {
         // Now safe to proceed with wallet update
         await userCore.writeUserDataPoint(userId, 'wallet', walletAddress);
         lobby[userId].wallet = walletAddress;
+        await analytics.trackAccountAction(message, 'wallet_update', true, {
+            wallet: lobby[userId].wallet,
+            verified: lobby[userId].verified
+        });
         
         console.log(message.from.first_name, 'has entered the chat');
         safeExecute(message, handleVerify);
@@ -618,6 +638,10 @@ async function shakeSignIn(message) {
         console.error('Error in shakeSignIn:', error);
         sendMessage(message, "An error occurred. Your data has been preserved. Please try again later.");
         setUserState(message, STATES.IDLE);
+        await analytics.trackAccountAction(message, 'wallet_update_error', true, {
+            wallet: lobby[userId].wallet,
+            verified: lobby[userId].verified
+        });
     }
 }
 
@@ -660,9 +684,17 @@ async function shakeVerify(message) {
         if (user.newb) {
             delete user.newb;
             await writeNewUserDataMacro(userId, user);
+            await analytics.trackAccountAction(message, 'first_verification', true, {   
+                wallet: lobby[userId].wallet,
+                verified: lobby[userId].verified
+            });
         } else {
             // Just update verification status in userCore
             await userCore.writeUserDataPoint(userId, 'verified', true);
+            await analytics.trackAccountAction(message, 'verified_return', true, {
+                wallet: lobby[userId].wallet,
+                verified: lobby[userId].verified
+            });
         }
     }
 }
@@ -747,6 +779,10 @@ async function handleSignOut(message) {
     // Notify the user
     try {
         await sendMessage(message, 'You are signed out', signedOut);
+        await analytics.trackAccountAction(message, 'sign_out', true, {
+            wallet: lobby[userId].wallet,
+            verified: lobby[userId].verified
+        });
     } catch (error) {
         console.error('Error sending sign-out message:', error);
         return false; // Exit early on error
@@ -830,65 +866,74 @@ async function handleAccountReset(message) {
     // Confirm sign-in
     sendMessage(message, `You reset to default settings`);
     setUserState(message, STATES.IDLE);
+    await analytics.trackAccountAction(message, 'account_reset', true, {
+        wallet: lobby[userId].wallet,
+        verified: lobby[userId].verified
+    });
 }
 
-async function handleRefreshQoints(message,user) {
-    const now = Date.now()
-    if(!lobby.hasOwnProperty([user])){
-        return
+async function handleRefreshQoints(message, user) {
+    // Early return if user not in lobby
+    if (!lobby.hasOwnProperty(user)) {
+        return;
     }
+
     const userData = lobby[user];
+    const now = Date.now();
+
+    // Rate limiting check
     const lastCheck = userData.checkedQointsAt;
-    if(lobby.hasOwnProperty([user]) && lastCheck && now - lastCheck < 1000 * 60) {
-        sendMessage(message,`hey just wait a minute okay. i can check again in ${Math.floor(60 - ((now - lastCheck) / 1000))} seconds`)
-        return
+    if (lastCheck && now - lastCheck < 1000 * 60) {
+        const remainingSeconds = Math.floor(60 - ((now - lastCheck) / 1000));
+        sendMessage(message, `Please wait ${remainingSeconds} seconds before checking again.`);
+        return;
     }
-    //reset balance just for ease of use so dont have to rely on /ibought
-    userData.balance = '';
-    if(!userData.hasOwnProperty('pendingQoints')){
-        userData.pendingQoints = 0;
-    }
-    if(lobby.hasOwnProperty([user]) && userData.hasOwnProperty("pendingQoints") && userData.pendingQoints > 0){
-        userData.qoints = userData.qoints + userData.pendingQoints
-        userData.pendingQoints = 0;
-        userData.checkedQointsAt = now
-        //write new pendingQoints
-        await userEconomy.startBatch()
-            .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
-        //write new qoints
-            .writeUserDataPoint(user,'qoints',userData.qoints,true)
-            .executeBatch()
-        await returnToAccountMenu(message,user)
-        return
-    } else {
-        console.log('i dont see any pendingQoints...')
-        console.log('lets check db')
+
+    try {
+        // Fetch latest economy data
         const economyData = await userEconomy.findOne({ userId: user });
         
-        if (!economyData) {
-            console.log('failed to find economy data', 'iquit')
-            userData.checkedQointsAt = now;
-            return;
-        }
-
-        let pendingQoints = economyData.pendingQoints || 0;
+        // Initialize pending qoints if needed
+        userData.pendingQoints = userData.pendingQoints || 0;
         
-        if (pendingQoints > 0) {
-            userData.qoints = userData.qoints + pendingQoints;
+        // Get pending qoints from both memory and DB
+        const dbPendingQoints = economyData?.pendingQoints || 0;
+        const totalPendingQoints = Math.max(userData.pendingQoints, dbPendingQoints);
+
+        // Update qoints if there are pending ones
+        if (totalPendingQoints > 0) {
+            userData.qoints = (userData.qoints || 0) + totalPendingQoints;
             userData.pendingQoints = 0;
-            userData.checkedQointsAt = now;
             
             await userEconomy.startBatch()
-                .writeUserDataPoint(user,'pendingQoints',userData.pendingQoints,true)
-                .writeUserDataPoint(user,'qoints',userData.qoints,true)
-                .executeBatch()
-            await returnToAccountMenu(message,user)
-            return
-        } else {
-            console.log('none there either. oh well')
-            userData.checkedQointsAt = now
+                .writeUserDataPoint(user, 'pendingQoints', 0, true)
+                .writeUserDataPoint(user, 'qoints', userData.qoints, true)
+                .executeBatch();
         }
-        await returnToAccountMenu(message,user)
+
+        // Update last check time
+        userData.checkedQointsAt = now;
+
+        // Refresh balance from blockchain if user is verified
+        if (userData.verified && userData.wallet) {
+            try {
+                const balance = await getBalance(userData.wallet);
+                userData.balance = balance;
+                console.log(`Updated balance for ${user}: ${balance}`);
+            } catch (balanceError) {
+                console.warn(`Failed to fetch balance for user ${user}:`, balanceError);
+                // Don't update balance if fetch fails
+            }
+        }
+
+        await returnToAccountMenu(message, user);
+        await analytics.trackAccountAction(message, 'qoints_refresh', true, {
+            wallet: lobby[user].wallet,
+            verified: lobby[user].verified
+        });
+    } catch (error) {
+        console.error('Error in handleRefreshQoints:', error);
+        sendMessage(message, 'An error occurred while refreshing qoints. Please try again later.');
     }
 }
 
@@ -909,7 +954,8 @@ module.exports = {
     handleSaveSettings, handleSeeSettings,
     handleSignIn, handleSignOut, handleAccountReset,
     handleAccountSettings, displayAccountSettingsMenu,
-    handleRefreshQoints,
+    handleRefreshQoints, returnToAccountMenu,
+    buildPreferencesKeyboard, buildUserProfile,
     shakeVerify,
     shakeSignIn,
     customFileName

@@ -172,7 +172,7 @@ async function handleFluxImgFile(message, imageUrl = null, prompt = null) {
     // If no image is found, prompt the user
     if (!imageUrl) {
         console.log('handle flux img no image');
-        setUserState(message, STATES.FLUX2IMG);
+        setUserState(message, STATES.IMG2IMG);
         const sent = await sendMessage(message, 'Please provide a photo to proceed.');
         workspace[userId].message = sent;
         return;
@@ -203,12 +203,12 @@ async function handleFluxImgFile(message, imageUrl = null, prompt = null) {
         if (prompt.trim()) {
             console.log('handle flux img wit da prompt');
             // If both prompt and image are available, proceed to handleTask
-            return await iMake.handleTask(message, 'FLUXI2I', STATES.FLUX2IMG, true, null);
+            return await iMake.handleTask(message, 'I2I', STATES.IMG2IMG, true, null);
         } else {
             console.log('handle flux img wit no prompt');
             // If prompt is missing, set state and ask for it
             const sent = await sendMessage(message, `The dimensions of the photo are ${width}x${height}. What would you like the prompt to be?`);
-            setUserState(message, STATES.FLUXPROMPT);
+            setUserState(message, STATES.MAKEPROMPT);
             workspace[userId].message = sent;
         }
     } catch (error) {
@@ -464,7 +464,7 @@ async function handleImageTask(message, user = null, taskType, defaultState, nee
     // }
 
     // Append control, style, and pose flags to the type
-    if (settings.createSwitch === 'SDXL' && 
+    if (settings.createSwitch === 'QUICKMAKE' && 
         (taskType == 'I2I' || taskType == 'I2I_AUTO') &&
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
         finalType += '_PLUS';

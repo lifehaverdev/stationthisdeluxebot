@@ -141,7 +141,7 @@ async function createConfig(message) {
         config: {
             masterPrompt: '',
             traitTypes: [],
-            workflow: 'FLUX'
+            workflow: 'MAKE'
         },
         initiated: Date.now(),
         status: 'incomplete'
@@ -439,9 +439,9 @@ async function handleConfirmStandard(message, user, collectionId, standard) {
                                     break;
                                 case 'editWorkflow':
                                     const workflow = message.text;
-                                    const validWorkflows = ['FLUX','MAKE', 'MAKE3']
+                                    const validWorkflows = ['MAKE','QUICKMAKE', 'MAKE3']
                                     if(!validWorkflows.includes(workflow)){
-                                        await sendMessage(message, 'Please enter a valid workflow type: FLUX MAKE or MAKE3');
+                                        await sendMessage(message, 'Please enter a valid workflow type: MAKE QUICKMAKE or MAKE3');
                                         return;
                                     }
                                     await StudioManager.updateCollection(userId, collectionId, {
@@ -547,7 +547,7 @@ async function handleEditWorkflow(message,user,collectionId) {
         collectionId: collectionId
     };
 
-    const text = 'Please enter the workflow type:\n\nFLUX MAKE - For standard image generation\nMAKE3 - For 3D model generation';
+    const text = 'Please enter the workflow type:\n\nMAKE QUICKMAKE MAKE3- For standard image generation';
 
     await editMessage({
         chat_id: message.chat.id,
@@ -823,7 +823,7 @@ async function handleTestCollection(message, user, collectionId) {
         await react(message, '🥴')
         return;
     }
-    const prefix = collection.config.workflow?.toLowerCase() || 'flux';
+    const prefix = collection.config.workflow?.toLowerCase() || 'make';
     logThis(LOG_TEST, `[TEST_COLLECTION] Using workflow prefix: ${prefix}`);
     
     logThis(LOG_TEST, `[TEST_COLLECTION] Processing master prompt for exclusions: ${masterPrompt}`);

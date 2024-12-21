@@ -11,7 +11,9 @@ const EVENT_TYPES = {
     ERROR: 'error_event',
     USER_STATE: 'user_state',
     GATEKEEPING: 'gatekeeping',
-    ASSET_CHECK: 'asset_check'
+    ASSET_CHECK: 'asset_check',
+    ACCOUNT: 'account_action',
+    VERIFICATION: 'verification'
 };
 
 class AnalyticsEvents extends BaseDB {
@@ -259,6 +261,48 @@ class AnalyticsEvents extends BaseDB {
 
         return this.updateOne(
             { userId, type: EVENT_TYPES.ASSET_CHECK, timestamp: event.timestamp },
+            event,
+            { upsert: true }
+        );
+    }
+
+    async trackAccountAction(message, action, success, details = {}) {
+        const event = {
+            type: EVENT_TYPES.ACCOUNT,
+            userId: message.from.id,
+            username: message.from.username,
+            timestamp: new Date(),
+            data: {
+                action,
+                success,
+                ...details
+            },
+            groupId: null
+        };
+
+        return this.updateOne(
+            { userId: message.from.id, type: EVENT_TYPES.ACCOUNT, timestamp: event.timestamp },
+            event,
+            { upsert: true }
+        );
+    }
+
+    async trackVerification(message, success, details = {}) {
+        const event = {
+            type: EVENT_TYPES.VERIFICATION,
+            userId: message.from.id,
+            username: message.from.username,
+            timestamp: new Date(),
+            data: {
+                success,
+                wallet: lobby[message.from.id]?.wallet,
+                ...details
+            },
+            groupId: null
+        };
+
+        return this.updateOne(
+            { userId: message.from.id, type: EVENT_TYPES.VERIFICATION, timestamp: event.timestamp },
             event,
             { upsert: true }
         );
