@@ -16,6 +16,8 @@ const { getBalance } = require('../../users/checkBalance')
 const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
+const { TutorialManager } = require('./iStart');
+
 const analytics = new AnalyticsEvents();
 
 /*
@@ -648,12 +650,25 @@ async function shakeSignIn(message) {
 async function handleVerify(message) {
     const userId = message.from.id;
     if(lobby[userId]){
-        lobby[userId].verified ? sendMessage(message,`You (${message.text}) are verified, dw`) : sendMessage(message,`Okay, ${message.text} go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`)
-        lobby[userId].verified ? setUserState(message,STATES.IDLE) : setUserState(message,STATES.VERIFY)
+        if (lobby[userId].verified) {
+            // If this is part of the tutorial, give points and progress
+            if (lobby[userId].progress?.currentStep === 'signin') {
+                lobby[userId].points += 1000;
+                await userCore.writeUserDataPoint(userId, 'points', lobby[userId].points);
+                await TutorialManager.progressToNextStep(message);
+            } else {
+                sendMessage(message, `You are verified, dw`);
+            }
+            setUserState(message, STATES.IDLE);
+        } else {
+            sendMessage(message, 
+                `Okay, go to https://miladystation2.net/verify , connect your wallet, sign the nonce, return with the hash you get there. Just send it in this chat`
+            );
+            setUserState(message, STATES.VERIFY);
+        }
     } else {
-        sendMessage(message,'some ting wong :(',signedOut)
+        sendMessage(message, 'some ting wong :(', signedOut);
     }
-    ///console.log('userStates after handlever',lobby[userId].state.state)
 }
 async function shakeVerify(message) {
     console.log('shaking verify');
@@ -678,6 +693,17 @@ async function shakeVerify(message) {
         // Update both lobby and database
         if (lobby[userId]) {
             lobby[userId].verified = true;
+
+            // Add bonus points if this is part of the tutorial
+            if (lobby[userId].progress?.currentStep === 'signin') {
+                lobby[userId].pendingQoints += 1000;
+                await userEconomy.writeUserDataPoint(userId, 'pendingQoints', lobby[userId].pendingQoints);
+                // Progress to next tutorial step
+                await TutorialManager.progressToNextStep(message);
+            } else {
+                // Regular verification message for non-tutorial users
+                await sendMessage(message, 'You are verified now', home);
+            }
         }
 
         // If this is their first verification, initialize all collections

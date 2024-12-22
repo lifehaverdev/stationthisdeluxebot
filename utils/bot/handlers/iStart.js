@@ -1,4 +1,4 @@
-const { commandRegistry, lobby } = require('../bot')
+const { commandRegistry, lobby, loraTriggers } = require('../bot')
 const { sendMessage } = require('../../utils')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 
@@ -32,15 +32,62 @@ const tutorialSteps = {
             "Let me show you a more advanced command \\- `/make`\n" +
             "This one lets you customize your generations with more options\\!\n\n" +
             "Try: `/make a cyberpunk cat`",
-        nextStep: null,
+        nextStep: 'quickeffect',
         unlockedCommands: ['/make']
+    },
+    'quickeffect': {
+        command: '/quickeffect',
+        introduction: (triggers) => 
+            "Now here's something cool \\- did you know your first image was actually using a special PS2 style\\? 🎮\n\n" +
+            "We use what's called a LoRA \\(don't worry about the technical stuff\\) to create specific styles\\. " +
+            "Let's try some different styles on your first image\\!\n\n" +
+            "Reply to your first image with one of these commands:\n\n" +
+            triggers.map(t => `\\• \`/quickeffect ${t}\``).join('\n') + "\n\n" +
+            "Just reply to the image with any of those commands\\! 👆",
+        nextStep: 'effect',
+        unlockedCommands: ['/quickeffect']
+    },
+    'effect': {
+        command: '/effect',
+        introduction:
+            "Great\\! Now you know how to use special effects with quickeffect\\.\n\n" +
+            "Try using `/effect` on the same image instead\\! This command gives you more control over how the effect is applied\\.\n\n" +
+            "Just reply to the same image with `/effect` and see the difference\\! 🎨",
+        nextStep: 'points_info',
+        unlockedCommands: ['/effect']
+    },
+    'points_info': {
+        command: null, // This is an informational step, no command needed
+        introduction: 
+            "By the way, let's talk about points\\! 🎯\n\n" +
+            "You currently start with 370 points, and each image costs about 20 points to generate\\.\n\n" +
+            "That's not much to play with, right\\? But here's the good news\\! 🎁\n\n" +
+            "If you connect your wallet, I'll give you 1000 bonus points\\! Then we can continue on to cool things like LoRa trigger words and IMG2IMG generation:\n" +
+            "\\• Custom LoRAs\n" +
+            "\\• Image\\-to\\-Image generation\n" +
+            "\\• Special effects and more\\!\n\n" +
+            "Ready to get those bonus points\\? Try: `/signin`",
+        nextStep: 'signin',
+        unlockedCommands: ['/signin']
+    },
+    'signin': {
+        command: '/signin',
+        introduction:
+            "Perfect\\! Follow the signin process and once you're connected, you'll get your bonus points\\!\n\n" +
+            "After that, I'll show you some really cool stuff you can do with LoRAs and special effects\\! 🎨",
+        nextStep: null,
+        unlockedCommands: ['/signin']
     }
 };
 
 class TutorialManager {
     static initializeProgress(userId) {
+        console.log('Initializing progress for user:', userId);
         if (!lobby[userId].progress) {
             const firstStep = 'quickmake';
+            const randomTriggers = getRandomSDXLTriggers(3);
+            console.log('Random triggers for user:', randomTriggers);
+            
             lobby[userId].progress = {
                 currentStep: firstStep,
                 steps: {
@@ -50,8 +97,10 @@ class TutorialManager {
                         attempts: 0
                     }
                 },
-                unlockedCommands: tutorialSteps[firstStep].unlockedCommands
+                unlockedCommands: tutorialSteps[firstStep].unlockedCommands,
+                randomTriggers
             };
+            console.log('Progress initialized:', lobby[userId].progress);
         }
     }
 
@@ -80,8 +129,20 @@ class TutorialManager {
         const newCommands = tutorialSteps[nextStepId].unlockedCommands || [];
         lobby[userId].progress.unlockedCommands.push(...newCommands);
 
+        // Handle dynamic introduction messages
+        console.log(lobby[userId].progress.randomTriggers)
+        const introduction = typeof tutorialSteps[nextStepId].introduction === 'function' 
+        ? tutorialSteps[nextStepId].introduction(lobby[userId].progress.randomTriggers)
+        : tutorialSteps[nextStepId].introduction;
+        
+        console.log('im about to say this',introduction)
         // Send the introduction for the next step
-        await sendMessage(message, tutorialSteps[nextStepId].introduction, {parse_mode: 'MarkdownV2'});
+        await sendMessage(message, introduction, {parse_mode: 'MarkdownV2'});
+
+        // If this step has no command, automatically progress to next step
+        if (!tutorialSteps[nextStepId].command) {
+            await this.progressToNextStep(message);
+        }
     }
 
     static isCommandAllowed(userId, command) {
@@ -104,6 +165,58 @@ commandRegistry['/start'] = {
         await sendMessage(message, tutorialSteps['quickmake'].introduction, {parse_mode: 'MarkdownV2'});
     }
 };
+
+function getMatchingTriggerPairs() {
+    console.log('Getting matching trigger pairs...');
+    console.log('First 3 lora triggers:', Object.entries(loraTriggers).slice(0, 3));
+    
+    const sdxlTriggers = new Set(
+        Object.entries(loraTriggers)
+            .filter(([_, data]) => data.version === 'SDXL')
+            .map(([_, data]) => data.triggerWords[0].toLowerCase())
+    );
+    console.log('SDXL triggers found:', sdxlTriggers.size);
+
+    const fluxTriggers = new Set(
+        Object.entries(loraTriggers)
+            .filter(([_, data]) => data.version === 'FLUX')
+            .map(([_, data]) => data.triggerWords[0].toLowerCase())
+    );
+    console.log('FLUX triggers found:', fluxTriggers.size);
+
+    const matchingTriggers = [...sdxlTriggers].filter(trigger => fluxTriggers.has(trigger));
+    console.log('Matching triggers found:', matchingTriggers.length);
+
+    const pairs = matchingTriggers.map(trigger => ({
+        sdxl: Object.entries(loraTriggers).find(([key, data]) => 
+            data.triggerWords[0].toLowerCase() === trigger && data.version === 'SDXL'
+        ),
+        flux: Object.entries(loraTriggers).find(([key, data]) => 
+            data.triggerWords[0].toLowerCase() === trigger && data.version === 'FLUX'
+        )
+    }));
+    console.log('Final pairs:', pairs.length);
+    return pairs;
+}
+
+function getRandomSDXLTriggers(count = 3) {
+    console.log('Getting random SDXL triggers...');
+    const pairs = getMatchingTriggerPairs();
+    console.log('Got pairs:', pairs.length);
+    const shuffled = shuffle([...pairs]);
+    const selected = shuffled.slice(0, count);
+    const triggers = selected.map(pair => pair.sdxl[1].triggerWords[0]);
+    console.log('Selected triggers:', triggers);
+    return triggers;
+}
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
 
 module.exports = { 
     tutorialSteps, 
