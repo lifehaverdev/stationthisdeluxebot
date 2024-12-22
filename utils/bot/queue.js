@@ -105,7 +105,7 @@ async function processQueue() {
     if (taskQueue.length > 0 && waiting.length < WAITLISTMAX) {
         //console.log('we got a live one')
         const task = taskQueue[0];
-        //waitlist(task);
+        waitlist(task);
         
         const taskIndexToRemove = taskQueue.findIndex(t => t.timestamp === task.timestamp);
 
