@@ -33,7 +33,7 @@ async function addPointsToAllUsers(lobby) {
                 console.log(`User ${user.userId} before: points=${oldPoints}, doints=${oldDoints}, boints=${oldBoints}, exp=${oldExp}`);
 
                 // Only process if there are actually points to update
-                if (oldPoints > 0 || oldBoints > 0) {
+                if (oldPoints > 0 || oldDoints > 0 || oldBoints > 0) {
                     const totalPoints = oldPoints + oldBoints;
                     const newDoints = oldDoints + oldPoints;
                     const newExp = oldExp + totalPoints;
