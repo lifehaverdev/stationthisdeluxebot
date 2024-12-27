@@ -17,6 +17,7 @@ const {
     gated,
     DEV_DMS
 } = require('../../utils')
+require('./iLora.js')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 
@@ -357,13 +358,12 @@ commandRegistry['/here'] = {
             return;
         } else {
                 const whom = message.reply_to_message.from.id
-                message.from.id = whom
                 if(!lobby[whom]){
-                    await checkLobby(message)
+                    await checkIn({...message, from: {id: whom}})
                 }
                 if(lobby[whom]){
                     lobby[whom].doints = 0;
-                    sendMessage(message,'it is done');
+                    await react(message,'👍')
                 } else {
                     sendMessage(message,'sorry...')
                 }

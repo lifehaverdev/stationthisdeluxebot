@@ -1,5 +1,7 @@
 # tmp/*
 
+db/data/*
+
 # Logs
 logs
 *.log
