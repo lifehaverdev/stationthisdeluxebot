@@ -2,7 +2,7 @@ const { MongoClient } = require('mongodb');
 const { logThis } = require('../../utils/utils');
 
 const LOG_DB_QUEUE = 'db_queue';
-const LOG_CLIENT = 'client';
+const LOG_CLIENT = false;
 const LOG_CONNECTION = 'connection';
 const JOB_TIMEOUT = 300000; // 30 seconds
 

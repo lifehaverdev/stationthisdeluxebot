@@ -348,31 +348,23 @@ async function handleInpaint(message) {
                 input_image: fileUrl
             };
 
-            if (targetMessage.caption) {
-                // Scenario 3: /inpaint command with an image and a caption containing delimiter
-                const [prompt, target] = targetMessage.caption.split('|');
-                if (prompt && target) {
-                    message.text = prompt.trim();
-                    await iMake.handleInpaintPrompt(message);
-                    message.text = target.trim();
-                    await iMake.handleInpaintTarget(message);
-                    return;
-                } else {
-                    // If only one part is provided, treat it as the first prompt
-                    message.text = targetMessage.caption;
-                    await iMake.handleInpaintPrompt(message);
-                    return;
-                }
-            } else {
-                // Scenario 2 and 4: Ask for a prompt after processing the image
-                await editMessage({
-                    text: `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`,
-                    chat_id: sent.chat.id,
-                    message_id: sent.message_id
-                });
-                setUserState(message, STATES.INPAINTTARGET);
-                return true;
-            }
+            // Always ask for prompt after processing image
+            await editMessage({
+                text: `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`,
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            });
+            setUserState(message, STATES.INPAINTTARGET);
+            
+            // Scenario 2 and 4: Ask for a prompt after processing the image
+            await editMessage({
+                text: `The dimensions of the photo are ${width}x${height}. Describe what part of the photo you want to replace.`,
+                chat_id: sent.chat.id,
+                message_id: sent.message_id
+            });
+            setUserState(message, STATES.INPAINTTARGET);
+            return true;
+            
         } catch (error) {
             console.error("Error processing photo:", error);
             await editMessage({

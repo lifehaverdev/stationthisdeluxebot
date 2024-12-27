@@ -50,34 +50,31 @@ const tutorialSteps = {
     'effect': {
         command: '/effect',
         introduction:
-            "Great\\! Now you know how to use special effects with quickeffect\\.\n\n" +
-            "Try using `/effect` on the same image instead\\! This command gives you more control over how the effect is applied\\.\n\n" +
+            "Great\\! Now you know how to use img2img generation with quickeffect\\.\n\n" +
+            "Try using `/effect` on the same image instead\\! This command gives you a higher quality generation\\.\n\n" +
             "Just reply to the same image with `/effect` and see the difference\\! 🎨",
         nextStep: 'points_info',
         unlockedCommands: ['/effect']
     },
-    'points_info': {
-        command: null, // This is an informational step, no command needed
+    'signin': {
+        command: '/signin', // This is an informational step, no command needed
         introduction: 
             "By the way, let's talk about points\\! 🎯\n\n" +
-            "You currently start with 370 points, and each image costs about 20 points to generate\\.\n\n" +
-            "That's not much to play with, right\\? But here's the good news\\! 🎁\n\n" +
-            "If you connect your wallet, I'll give you 1000 bonus points\\! Then we can continue on to cool things like LoRa trigger words and IMG2IMG generation:\n" +
-            "\\• Custom LoRAs\n" +
-            "\\• Image\\-to\\-Image generation\n" +
-            "\\• Special effects and more\\!\n\n" +
-            "Ready to get those bonus points\\? Try: `/signin`",
+            "You currently start with 370 points, however if you own MS2 you may connect a wallet and be credited with more points to work with, as well as unlocking more features of the bot \\(me\\)\\.\n\n" +
+            "It's okay if you don't have any MS2 yet, let's do this\\! 🎁\n\n" +
+            "If you connect your wallet, I'll give you 1000 bonus points\\! Then we can continue on to cool things\n" +
+            "Ready to get those bonus points\\? Try: /signin",
         nextStep: 'signin',
         unlockedCommands: ['/signin']
     },
-    'signin': {
-        command: '/signin',
-        introduction:
-            "Perfect\\! Follow the signin process and once you're connected, you'll get your bonus points\\!\n\n" +
-            "After that, I'll show you some really cool stuff you can do with LoRAs and special effects\\! 🎨",
-        nextStep: null,
-        unlockedCommands: ['/signin']
-    }
+    // 'signin': {
+    //     command: '/signin',
+    //     introduction:
+    //         "Perfect\\! Follow the signin process and once you're connected, you'll get your bonus points\\!\n\n" +
+    //         "After that, I'll show you some really cool stuff you can do with LoRAs and special effects\\! 🎨",
+    //     nextStep: null,
+    //     unlockedCommands: ['/signin']
+    // }
 };
 
 class TutorialManager {
@@ -130,17 +127,17 @@ class TutorialManager {
         lobby[userId].progress.unlockedCommands.push(...newCommands);
 
         // Handle dynamic introduction messages
-        console.log(lobby[userId].progress.randomTriggers)
         const introduction = typeof tutorialSteps[nextStepId].introduction === 'function' 
         ? tutorialSteps[nextStepId].introduction(lobby[userId].progress.randomTriggers)
         : tutorialSteps[nextStepId].introduction;
         
-        console.log('im about to say this',introduction)
         // Send the introduction for the next step
         await sendMessage(message, introduction, {parse_mode: 'MarkdownV2'});
 
-        // If this step has no command, automatically progress to next step
+        // If this step has no command, wait a moment before progressing
         if (!tutorialSteps[nextStepId].command) {
+            // Wait 2 seconds to let user read the message
+            await new Promise(resolve => setTimeout(resolve, 2000));
             await this.progressToNextStep(message);
         }
     }
