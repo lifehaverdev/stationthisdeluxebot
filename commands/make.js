@@ -172,7 +172,7 @@ async function promptPreProc(promptObj) {
         if (promptObj.input_checkpoint && promptObj.balance !== undefined) {
             let promptFinal = await handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance);
             // Log the final prompt
-            //console.log('Final prompt:', promptFinal);
+            console.log('Final prompt:', promptFinal);
             promptObj.finalPrompt = promptFinal;
         } else {
             console.error('Missing properties in promptObj:', promptObj);
@@ -196,9 +196,9 @@ async function generate(promptObj) {
     try {
         //console.log('well what is the prompt object here',promptObj)
         imgPreProc(promptObj);
-        promptPreProc(promptObj);
+        await promptPreProc(promptObj);
         const body = prepareRequest(promptObj);
-        //console.log(body);
+        
         let run_id;
         const response = await fetch("https://www.comfydeploy.com/api/run", {
             method: "POST",
@@ -208,7 +208,7 @@ async function generate(promptObj) {
             },
             body: JSON.stringify(body),
         });
-        //console.log(response)
+        
 
         if (response.ok) {
             const data = await response.json();
