@@ -3,6 +3,7 @@ const { checkpointmenu } = require('./checkpointmenu');
 const { refreshLoraCache } = require('../../db/models/cache');
 
 async function handleLoraTrigger(prompt, checkpoint, balance) {
+  //onsole.log('handle lora trigger prompt checkpoint balance',prompt,checkpoint,balance)
   const loraDB = new Loras();
   let usedLoras = new Set();
   let modifiedPrompt = prompt;
@@ -19,15 +20,14 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   // Get cached LoRA data
   const { triggers, cognates } = await refreshLoraCache(loraDB);
 
-  // Debug: Check what's in triggers
-  console.log('\nAvailable triggers:');
-  for (const [word, loraInfos] of triggers) {
-    console.log(`Word "${word}" triggers:`, loraInfos.map(info => info.lora_name));
-  }
+  // // Debug: Check what's in triggers
+  // console.log('\nAvailable triggers:');
+  // for (const [word, loraInfos] of triggers) {
+  //   console.log(`Word "${word}" triggers:`, loraInfos.map(info => info.lora_name));
+  // }
 
   // Split prompt into words and process each one
   const words = prompt.split(/\s+/);
-  console.log('\nProcessing words:', words);
 
   for (const word of words) {
     const wordLower = word.toLowerCase();
@@ -35,7 +35,6 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
     if (cognateMatch) {
-      console.log(`Found cognate match for "${word}":`, cognateMatch);
       usedLoras.add(cognateMatch.lora_name);
 
       modifiedPrompt = modifiedPrompt.replace(

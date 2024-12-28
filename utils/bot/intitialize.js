@@ -1,24 +1,26 @@
-const { loraTriggers, burns, rooms, flows } = require('../bot/bot');
+const { 
+    //loraTriggers, 
+    burns, rooms, flows } = require('../bot/bot');
 const FloorplanDB = require('../../db/models/floorplan');
 const BurnsDB = require('../../db/models/burns');
 const WorkflowDB = require('../../db/models/workflows');
-const LoraDB = require('../../db/models/loralist');
+//const LoraDB = require('../../db/models/loralist');
 
 let busy = false;
 
-async function readLoraList() {
-    const loraDB = new LoraDB();
-    try {
-        const document = await loraDB.findOne();
-        if (document && document.loraTriggers) {
-            loraTriggers.length = 0; // Clear existing array
-            document.loraTriggers.map(triggerStr => loraTriggers.push(triggerStr));
-        }
-        console.log('loraTriggers loaded');
-    } catch (error) {
-        console.error('Error loading loras:', error);
-    }
-}
+// async function readLoraList() {
+//     const loraDB = new LoraDB();
+//     try {
+//         const document = await loraDB.findOne();
+//         if (document && document.loraTriggers) {
+//             loraTriggers.length = 0; // Clear existing array
+//             document.loraTriggers.map(triggerStr => loraTriggers.push(triggerStr));
+//         }
+//         console.log('loraTriggers loaded');
+//     } catch (error) {
+//         console.error('Error loading loras:', error);
+//     }
+// }
 
 async function readBurns() {
     const burnsDB = new BurnsDB();
@@ -110,8 +112,8 @@ async function readWorkflows() {
 async function initialize() {
     busy = true;
     console.log('XXXXXXX ...initializing... XXXXXXX');
-    console.log('getting lora list...');
-    await readLoraList();
+    //console.log('getting lora list...');
+    //await readLoraList();
     console.log('reading burns...');
     await readBurns();
     console.log('reading rooms...');
