@@ -1,67 +1,75 @@
-const { loraTriggers } = require('../bot/bot')
-const { incrementLoraUseCounter } = require('../../db/mongodb')
-const { checkpointmenu } = require('./checkpointmenu')
+const { Loras } = require('../../db/models/Loras');
+const { checkpointmenu } = require('./checkpointmenu');
+const { refreshLoraCache } = require('../../db/models/cache');
 
-function handleLoraTrigger(prompt, checkpoint, balance) {
+async function handleLoraTrigger(prompt, checkpoint, balance) {
+  const loraDB = new Loras();
   let usedLoras = new Set();
   let modifiedPrompt = prompt;
 
-  // First, check for existing LoRA tags and extract them
-  const existingLoraRegex = /<lora:([^:>]+)(?::[^>]+)?>/g;
-  const existingLoras = [...prompt.matchAll(existingLoraRegex)].map(match => match[1]);
-  existingLoras.forEach(lora => usedLoras.add(lora));
+  console.log('\n=== LoRA Translation Process ===');
+  console.log('Input prompt:', prompt);
+  console.log('Checkpoint:', checkpoint);
 
-  // Filter the loraTriggers array to only include LoRAs matching the checkpoint version
+  // Get checkpoint version for filtering
   const cleanCheckpoint = checkpoint.replace('.safetensors', '');
   const checkpointDesc = checkpointmenu.find(item => item.name === cleanCheckpoint)?.description;
+  console.log('Checkpoint description:', checkpointDesc);
 
-  const filteredLoraTriggers = loraTriggers.filter(lora =>
-    checkpoint && lora.version === checkpointDesc
-  );
+  // Get cached LoRA data
+  const { triggers, cognates } = await refreshLoraCache(loraDB);
 
-  filteredLoraTriggers.forEach(lora => {
-    lora.triggerWords.forEach(triggerWord => {
-      // Create case-insensitive regex that preserves original casing
-      const regex = new RegExp(`(${triggerWord})(\\d*)`, 'gi');
-      modifiedPrompt = modifiedPrompt.replace(regex, (match, word, p1) => {
-        let weight;
-        if (p1) {
-          const p1Value = parseInt(p1, 10);
-          weight = p1Value > 10 ? (p1Value / 10).toFixed(1) : (p1Value / 10).toFixed(1);
-        } else {
-          weight = lora.default_weight;
-        }
-        
-        // Check if this LoRA has already been used or is already in the prompt
-        if (
-          !usedLoras.has(lora.lora_name) && 
-          checkpoint && 
-          lora.version == checkpointDesc &&
-          !lora.disabled
-        ) {
-          usedLoras.add(lora.lora_name);
-          return `<lora:${lora.lora_name}:${weight}> ${word}`; // Use original casing from prompt
-        } else {
-          // If LoRA is already used, just return the word with original casing
-          return word;
-        }
-      });
-    });
-  });
-
-  // Convert the Set to an Array and increment the use counter for the used LoRAs
-  const usedLoraNamesArray = Array.from(usedLoras);
-  if (usedLoraNamesArray.length > 0) {
-    console.log('Used LoRAs:', usedLoraNamesArray);
-    incrementLoraUseCounter(usedLoraNamesArray);
-  } else {
-    console.log('No LoRAs were applied to the prompt');
+  // Debug: Check what's in triggers
+  console.log('\nAvailable triggers:');
+  for (const [word, loraInfos] of triggers) {
+    console.log(`Word "${word}" triggers:`, loraInfos.map(info => info.lora_name));
   }
+
+  // Split prompt into words and process each one
+  const words = prompt.split(/\s+/);
+  console.log('\nProcessing words:', words);
+
+  for (const word of words) {
+    const wordLower = word.toLowerCase();
+    
+    // Check cognates first
+    const cognateMatch = cognates.get(wordLower);
+    if (cognateMatch) {
+      console.log(`Found cognate match for "${word}":`, cognateMatch);
+      usedLoras.add(cognateMatch.lora_name);
+
+      modifiedPrompt = modifiedPrompt.replace(
+        new RegExp(`(${word})`, 'gi'), 
+        `<lora:${cognateMatch.lora_name}:${cognateMatch.weight}> ${cognateMatch.replaceWith}`
+      );
+
+      await loraDB.incrementUses(cognateMatch.lora_name);
+      continue;
+    }
+
+    // Check trigger words
+    const triggerMatches = triggers.get(wordLower) || [];
+    if (triggerMatches.length > 0) {
+        console.log(`Found trigger word matches for "${word}":`, triggerMatches);
+        const loraInfo = triggerMatches[0]; // Use first matching LoRA
+        usedLoras.add(loraInfo.lora_name);
+
+        modifiedPrompt = modifiedPrompt.replace(
+            new RegExp(`(${word})`, 'gi'),
+            `<lora:${loraInfo.lora_name}:${loraInfo.weight}> $1`
+        );
+
+        await loraDB.incrementUses(loraInfo.lora_name);
+        continue;
+    }
+  }
+
+  console.log('\nFinal prompt:', modifiedPrompt);
+  console.log('=== End LoRA Translation ===\n');
 
   return modifiedPrompt;
 }
 
 module.exports = {
-  handleLoraTrigger, 
-  loraTriggers
+  handleLoraTrigger
 };

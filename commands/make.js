@@ -153,7 +153,7 @@ async function fetchOutput(run_id) {
     }
 }
 
-function promptPreProc(promptObj) {
+async function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
     const basepromptlessTypes = ['MAKE','I2I','MAKE_PLUS','INPAINT','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3'];
 
@@ -170,7 +170,7 @@ function promptPreProc(promptObj) {
     try {
         // Ensure promptObj properties are defined
         if (promptObj.input_checkpoint && promptObj.balance !== undefined) {
-            let promptFinal = handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance);
+            let promptFinal = await handleLoraTrigger(promptArrangement, promptObj.input_checkpoint, promptObj.balance);
             // Log the final prompt
             //console.log('Final prompt:', promptFinal);
             promptObj.finalPrompt = promptFinal;
@@ -200,14 +200,14 @@ async function generate(promptObj) {
         const body = prepareRequest(promptObj);
         //console.log(body);
         let run_id;
-        const response = await fetch("https://www.comfydeploy.com/api/run", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + process.env.COMFY_DEPLOY_API_KEY,
-            },
-            body: JSON.stringify(body),
-        });
+        // const response = await fetch("https://www.comfydeploy.com/api/run", {
+        //     method: "POST",
+        //     headers: {
+        //         "Content-Type": "application/json",
+        //         "Authorization": "Bearer " + process.env.COMFY_DEPLOY_API_KEY,
+        //     },
+        //     body: JSON.stringify(body),
+        // });
         //console.log(response)
 
         if (response.ok) {
