@@ -20,27 +20,39 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   // Get cached LoRA data
   const { triggers, cognates } = await refreshLoraCache(loraDB);
 
-  // // Debug: Check what's in triggers
-  // console.log('\nAvailable triggers:');
-  // for (const [word, loraInfos] of triggers) {
-  //   console.log(`Word "${word}" triggers:`, loraInfos.map(info => info.lora_name));
-  // }
-
-  // Split prompt into words and process each one
+  // Process words one at a time
   const words = prompt.split(/\s+/);
+  let processedWords = new Set();
+  let addedLoraTags = new Set(); // Track which LoRA tags we've already added
 
   for (const word of words) {
     const wordLower = word.toLowerCase();
     
+    if (processedWords.has(wordLower)) continue;
+    processedWords.add(wordLower);
+    
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
     if (cognateMatch) {
-      usedLoras.add(cognateMatch.lora_name);
-
-      modifiedPrompt = modifiedPrompt.replace(
-        new RegExp(`(${word})`, 'gi'), 
-        `<lora:${cognateMatch.lora_name}:${cognateMatch.weight}> ${cognateMatch.replaceWith}`
-      );
+      const loraTag = `<lora:${cognateMatch.lora_name}:${cognateMatch.weight}>`;
+      
+      // Only add the LoRA tag if we haven't used it yet
+      if (!addedLoraTags.has(cognateMatch.lora_name)) {
+        usedLoras.add(cognateMatch.lora_name);
+        addedLoraTags.add(cognateMatch.lora_name);
+        
+        // Add the LoRA tag before the first occurrence of the word
+        modifiedPrompt = modifiedPrompt.replace(
+          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'i'),
+          `${loraTag} ${cognateMatch.replaceWith}`
+        );
+      } else {
+        // Just replace the word without adding another LoRA tag
+        modifiedPrompt = modifiedPrompt.replace(
+          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'gi'),
+          cognateMatch.replaceWith
+        );
+      }
 
       await loraDB.incrementUses(cognateMatch.lora_name);
       continue;
@@ -49,17 +61,23 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     // Check trigger words
     const triggerMatches = triggers.get(wordLower) || [];
     if (triggerMatches.length > 0) {
-        console.log(`Found trigger word matches for "${word}":`, triggerMatches);
-        const loraInfo = triggerMatches[0]; // Use first matching LoRA
+      console.log(`Found trigger word matches for "${word}":`, triggerMatches);
+      const loraInfo = triggerMatches[0];
+      const loraTag = `<lora:${loraInfo.lora_name}:${loraInfo.weight}>`;
+
+      // Only add the LoRA tag if we haven't used it yet
+      if (!addedLoraTags.has(loraInfo.lora_name)) {
         usedLoras.add(loraInfo.lora_name);
-
+        addedLoraTags.add(loraInfo.lora_name);
+        
+        // Add the LoRA tag before the first occurrence of the word
         modifiedPrompt = modifiedPrompt.replace(
-            new RegExp(`(${word})`, 'gi'),
-            `<lora:${loraInfo.lora_name}:${loraInfo.weight}> $1`
+          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'i'),
+          `${loraTag} $1`
         );
+      }
 
-        await loraDB.incrementUses(loraInfo.lora_name);
-        continue;
+      await loraDB.incrementUses(loraInfo.lora_name);
     }
   }
 
