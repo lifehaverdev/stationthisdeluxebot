@@ -116,10 +116,6 @@ commandRegistry['/account'] = {
     handler: iAccount.handleAccountSettings,
 };
 
-commandRegistry['/loralist'] = {
-    handler: iWork.loraList, // iWork.sendLoRaModelFilenames
-};
-
 // commandRegistry['/groupsettings'] = {
 //     handler: iGroup.groupSettings,
 // };

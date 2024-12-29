@@ -10,6 +10,13 @@ commandRegistry['/loras'] = {
     handler: displayLoraMenu,
 };
 
+commandRegistry['/loralist'] = {
+    handler: async (message) => {
+        await sendMessage(message, 'use /loras from now on pls')
+        await displayLoraMenu(message)
+    }, // iWork.sendLoRaModelFilenames
+};
+
 // Helper function to escape special characters for MarkdownV2
 const escapeMarkdown = (text) => {
     if (!text) return '';
