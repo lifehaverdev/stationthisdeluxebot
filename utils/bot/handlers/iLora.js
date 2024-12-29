@@ -1,6 +1,6 @@
 const { sendMessage, editMessage } = require('../../utils');
 const { loraTriggers, lobby, commandRegistry, prefixHandlers, actionMap } = require('../bot');
-const { Loras } = require('../../../db/models/Loras');
+const { Loras } = require('../../../db/models/Loras.js');
 const loras = new Loras();
 const fs = require('fs').promises;
 const path = require('path');

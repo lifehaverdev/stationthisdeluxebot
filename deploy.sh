@@ -24,58 +24,61 @@ if [ -f ${LOG_FILE} ]; then
 fi
 
 # Pull the latest changes from the repository
+echo "Pulling latest changes from git..."
 git reset --hard >> ${LOG_FILE} 2>&1
 git pull >> ${LOG_FILE} 2>&1
 
 # Build the new Docker image
+echo "Building new Docker image..."
 docker build -t ${IMAGE_NAME} . >> ${LOG_FILE} 2>&1
 
 # Create a Docker network if it doesn't exist
+echo "Ensuring network ${NETWORK_NAME} exists..."
 docker network inspect ${NETWORK_NAME} >/dev/null 2>&1 || docker network create ${NETWORK_NAME}
 
 # Ensure any existing new container is removed
+echo "Cleaning up any existing temporary containers..."
 docker rm -f ${NEW_CONTAINER} >> ${LOG_FILE} 2>&1 || true
 
 # Ensure the old container is stopped and removed
 if is_container_running ${OLD_CONTAINER}; then
+    echo "Stopping and removing old container..."
     docker stop ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1
     docker rm ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1
 else
-    # Remove the old container if it exists but isn't running
+    echo "No old container running, cleaning up if it exists..."
     docker rm ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1 || true
 fi
 
-# Run the new container on the same network with a temporary name
+# Run the new container
+echo "Starting new container..."
 docker run -d -p 80:3000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
-    echo "New container is running successfully." >> ${LOG_FILE} 2>&1
-
+    echo "✅ New container started successfully!"
+    echo "Updating network configuration..."
+    
     # Update network alias to point to the new container
     docker network disconnect ${NETWORK_NAME} ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1 || true
     docker network connect --alias ${CONTAINER_ALIAS} ${NETWORK_NAME} ${NEW_CONTAINER} >> ${LOG_FILE} 2>&1
 
-    # Rename the new container to the original name
+    echo "🔄 Renaming containers and updating images..."
     docker rename ${NEW_CONTAINER} ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1
-
-    # Remove the old image
+    
+    echo "🧹 Cleaning up old images..."
     docker rmi ${OLD_IMAGE_NAME} >> ${LOG_FILE} 2>&1
-
-    # Tag the current image as the old image for potential rollback
     docker tag ${IMAGE_NAME} ${OLD_IMAGE_NAME} >> ${LOG_FILE} 2>&1
-
-    echo "Update completed successfully." >> ${LOG_FILE} 2>&1
-
-    # Clean up unused builds
+    
+    echo "🧹 Pruning unused builds..."
     docker builder prune -a -f >> ${LOG_FILE} 2>&1
-
-    # Output the logs of the running container
-    echo "Attaching logs from the new container:" >> ${LOG_FILE} 2>&1
-    docker logs -f ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1 &
-
+    
+    echo "✨ Deployment completed successfully!"
+    echo "📝 Tailing logs from the new container:"
+    docker logs -f ${OLD_CONTAINER} 2>&1 &
 else
-    echo "Failed to start the new container. Keeping the old container running if it exists." >> ${LOG_FILE} 2>&1
+    echo "❌ Failed to start new container!"
+    echo "Keeping old container running if it exists."
     docker rm -f ${NEW_CONTAINER} >> ${LOG_FILE} 2>&1
 fi
 
