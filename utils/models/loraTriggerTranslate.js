@@ -1,4 +1,4 @@
-const { Loras } = require('../../db/models/Loras');
+const { Loras } = require('../../db/models/loras');
 const { checkpointmenu } = require('./checkpointmenu');
 const { refreshLoraCache } = require('../../db/models/cache');
 
