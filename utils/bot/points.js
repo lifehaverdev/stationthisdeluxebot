@@ -96,8 +96,16 @@ async function addPoints(task) {
         }
     } else {
         // No group: Handle user-only point logic
-        user.points += pointsToAdd; // Add all points to the user without a max cap
-        console.log(`Points added to user ${user.id}. New total: ${user.points}`);
+        if (user.qoints && credit > max) {
+            // If user has qoints and is over max, subtract from qoints and add to boints
+            user.qoints = Math.max(0, user.qoints - pointsToAdd);
+            user.boints = (user.boints || 0) + pointsToAdd;
+            console.log(`Points moved from qoints to boints for user ${user.id}. New qoints: ${user.qoints}, new boints: ${user.boints}`);
+        } else {
+            // Otherwise add points normally
+            user.points += pointsToAdd;
+            console.log(`Points added to user ${user.id}. New total: ${user.points}`);
+        }
     }
     
 
