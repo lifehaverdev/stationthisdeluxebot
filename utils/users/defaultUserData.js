@@ -12,6 +12,7 @@ const defaultUserCore = {
 
 
 const defaultUserEconomy = {
+    userId: '',
     balance: '',
     exp: 0,
     points: 0,
