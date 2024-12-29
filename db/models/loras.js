@@ -51,8 +51,8 @@ class Loras extends BaseDB {
 
     async addLora(loraData) {
         // Check if LoRA already exists
-        const existing = await this.findOne({ lora_name: loraData.lora_name });
-        if (existing) {
+        const existingLora = await this.findOne({ lora_name: loraData.lora_name });
+        if (existingLora) {
             return {
                 success: false,
                 error: 'LoRA with this name already exists'
@@ -68,6 +68,11 @@ class Loras extends BaseDB {
                     error: `Missing required field: ${field}`
                 };
             }
+        }
+
+        // Add addedDate field if not present
+        if (!loraData.addedDate) {
+            loraData.addedDate = Date.now();
         }
 
         // Insert the new LoRA using BaseDB's insertOne method

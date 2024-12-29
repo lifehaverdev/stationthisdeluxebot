@@ -776,11 +776,11 @@ async function submitTraining(message, user, loraId) {
     }
 
     // Validate user has qoints and it's a number
-    if (!userDat.qoints || isNaN(userDat.qoints)) {
-        console.error('Invalid qoints value:', userDat.qoints);
-        await sendMessage(message, 'There was an error with your qoints balance. Please contact support.');
-        return;
-    }
+    // if (!userDat.qoints || isNaN(userDat.qoints)) {
+    //     console.error('Invalid qoints value:', userDat.qoints);
+    //     await sendMessage(message, 'There was an error with your qoints balance. Please contact support.');
+    //     return;
+    // }
     //growth hack
     // if(false && userDat.qoints < discountedPrice){
     //     console.log('user does not have enough qoints');

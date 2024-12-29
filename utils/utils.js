@@ -237,7 +237,7 @@ function determineCommandsAndScope(chatId, userId, group) {
     } else { // Private chat
         commands = lobby[userId]?.commandList?.length > 0 ? lobby[userId].commandList : introductoryCommandList;
         scope = { type: 'chat', chat_id: chatId };
-        console.log(`Private chat detected for userId: ${userId}, using commands: ${JSON.stringify(commands)}`);
+        //console.log(`Private chat detected for userId: ${userId}, using commands: ${JSON.stringify(commands)}`);
     }
 
     return { commands, scope };

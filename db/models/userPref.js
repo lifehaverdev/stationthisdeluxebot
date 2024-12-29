@@ -11,6 +11,10 @@ class UserPrefDB extends BaseDB {
         return {
             userId: user.userId,
             advancedUser: user.advancedUser || false,
+            input_seed: user.input_seed || '',
+            lastSeed: user.lastSeed || '',
+            prompt: user.prompt || '',
+            userPrompt: user.userPrompt || '',
             input_batch: user.input_batch || 1,
             input_steps: user.input_steps || 30,
             input_cfg: user.input_cfg || 7,
@@ -20,11 +24,17 @@ class UserPrefDB extends BaseDB {
             basePrompt: user.basePrompt || "MS2",
             input_negative: user.input_negative || '-1',
             input_checkpoint: user.input_checkpoint || "zavychromaxl_v60",
+            input_image: user.input_image || '',
+            lastImage: user.lastImage || '',
+            tempSize: user.tempSize || 1024,
+            inpaintTarget: user.inpaintTarget || '',
+            lastPointsUpdate: user.lastPointsUpdate || '',
             advancedUser: user.advancedUser || false,
             waterMark: user.waterMark || 'mslogo',
             createSwitch: user.createSwitch || 'SDXL',
             voiceModel: user.voiceModel || "165UvtZp7kKnmrVrVQwx",
-            favorites: defaultUserData.favorites,
+            favorites: user.favorites || defaultUserData.favorites,
+            runs: user.runs || [],
             commandList: user.commandList || defaultUserData.commandList,
             
             // Additional flags from iMenu
@@ -43,11 +53,16 @@ class UserPrefDB extends BaseDB {
     }
 
     async writeUserData(userId, data) {
+        console.log('writeUserData called with userId:', userId);
+        console.log('writeUserData input data:', JSON.stringify(data, null, 2));
         const prefData = this.massageData(data);
-        return this.updateOne(
+        console.log('writeUserData massaged data:', JSON.stringify(prefData, null, 2));
+        const result = await this.updateOne(
             { userId },
             prefData,
         );
+        console.log('writeUserData result:', result);
+        return result;
     }
 
     writeUserDataPoint(userId, field, value, batch = false) {  // Remove async

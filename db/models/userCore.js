@@ -13,9 +13,10 @@ class UserCoreDB extends BaseDB {
             ethWallet: data.ethWallet || '',
             verified: data.verified || false,
             ethVerified: data.ethVerified || false,
-            createdAt: data.createdAt || new Date(),
+            kickedAt: data.kickedAt || '',
+            lastRunTime: data.lastRunTime || new Date(),
             lastTouch: data.lastTouch || new Date(),
-            kickedAt: data.kickedAt || ''
+            createdAt: data.createdAt || new Date(),
         };
     }
 

@@ -490,9 +490,17 @@ async function handleUserData(userId, message) {
                 if (existingCore) {
                     // User exists, get full data
                     userData = await fetchFullUserData(userId);
-                    userData = validateUserData(userData); 
+                    const validatedData = validateUserData(userData);
+                    // Check if validation made any changes
+                    if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
+                        console.log('Validation changes detected, saving validated data');
+                        await userCore.writeUserData(userId, validatedData),
+                        await userEconomy.writeUserData(userId, validatedData);
+                        await userPref.writeUserData(userId, validatedData);
+                    }
+                    userData = validatedData;
                     userData.createSwitch = 'MAKE';
-                    console.log('userData', userData)
+                    console.log('userData', JSON.stringify(userData))
                     await analytics.trackUserJoin(userId, message.from.username); // Track first time user
                 } else {
                     // No existing user, create new
@@ -502,7 +510,14 @@ async function handleUserData(userId, message) {
                     if (!userData) {
                         throw new Error("Failed to create new user data.");
                     }
-                    userData = validateUserData(userData);
+                    const validatedData = validateUserData(userData);
+                    if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
+                        console.log('Validation changes detected on new user, saving validated data');
+                        await userCore.writeUserData(userId, validatedData),
+                        await userEconomy.writeUserData(userId, validatedData);
+                        await userPref.writeUserData(userId, validatedData);
+                    }
+                    userData = validatedData;
                     await analytics.trackUserJoin(userId, message.from.username, true); // Track first time user
                 }
             } catch (error) {
