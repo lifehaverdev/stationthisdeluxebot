@@ -74,8 +74,8 @@ if is_container_running ${NEW_CONTAINER}; then
     docker builder prune -a -f >> ${LOG_FILE} 2>&1
     
     echo "✨ Deployment completed successfully!"
-    echo "📝 Tailing logs from the new container:"
-    docker logs -f ${OLD_CONTAINER} 2>&1 &
+    echo "📝 Tailing logs from the new container (first 30 seconds):"
+    timeout 10 docker logs -f ${OLD_CONTAINER} 2>&1 &
 else
     echo "❌ Failed to start new container!"
     echo "Keeping old container running if it exists."
