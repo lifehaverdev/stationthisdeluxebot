@@ -18,6 +18,7 @@ const {
     DEV_DMS
 } = require('../../utils')
 require('./iLora.js')
+require('./iStats.js')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 

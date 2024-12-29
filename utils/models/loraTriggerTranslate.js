@@ -6,11 +6,22 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   //onsole.log('handle lora trigger prompt checkpoint balance',prompt,checkpoint,balance)
   const loraDB = new Loras();
   let usedLoras = new Set();
+  let addedLoraTags = new Set();
   let modifiedPrompt = prompt;
 
   console.log('\n=== LoRA Translation Process ===');
   console.log('Input prompt:', prompt);
   console.log('Checkpoint:', checkpoint);
+
+  // Pre-scan for existing LoRA tags
+  const existingLoraTags = prompt.match(/<lora:([^:]+):[^>]+>/g) || [];
+  for (const tag of existingLoraTags) {
+    const loraName = tag.match(/<lora:([^:]+):/)?.[1];
+    if (loraName) {
+      usedLoras.add(loraName);
+      addedLoraTags.add(loraName);
+    }
+  }
 
   // Get checkpoint version for filtering
   const cleanCheckpoint = checkpoint.replace('.safetensors', '');
@@ -21,12 +32,23 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   const { triggers, cognates } = await refreshLoraCache(loraDB);
 
   // Process words one at a time
-  const words = prompt.split(/\s+/);
+  // Split by whitespace but preserve punctuation for replacement
+  const words = prompt.split(/\s+/).map(word => word.trim());
   let processedWords = new Set();
-  let addedLoraTags = new Set(); // Track which LoRA tags we've already added
 
   for (const word of words) {
-    const wordLower = word.toLowerCase();
+    // Skip if word is part of an existing LoRA tag
+    if (/<lora:[^>]+>/.test(word)) continue;
+
+    // Check for weight syntax: either number suffix or :number
+    const weightMatch = word.match(/^(.*?)(?:(\d(?:\.\d+)?)|:(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
+    if (!weightMatch) continue;
+
+    const [, baseWord, numericWeight, colonWeight] = weightMatch;
+    const customWeight = colonWeight || numericWeight;
+    
+    // Strip punctuation for matching
+    const wordLower = baseWord.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
     
     if (processedWords.has(wordLower)) continue;
     processedWords.add(wordLower);
@@ -34,22 +56,21 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
     if (cognateMatch) {
-      const loraTag = `<lora:${cognateMatch.lora_name}:${cognateMatch.weight}>`;
+      const weight = customWeight ? parseFloat(customWeight) / 10 : cognateMatch.weight;
+      const loraTag = `<lora:${cognateMatch.lora_name}:${weight}>`;
       
-      // Only add the LoRA tag if we haven't used it yet
       if (!addedLoraTags.has(cognateMatch.lora_name)) {
         usedLoras.add(cognateMatch.lora_name);
         addedLoraTags.add(cognateMatch.lora_name);
         
-        // Add the LoRA tag before the first occurrence of the word
+        // Use word boundary and optional punctuation in regex
         modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'i'),
+          new RegExp(`(?<!<lora:[^>]*)\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
           `${loraTag} ${cognateMatch.replaceWith}`
         );
       } else {
-        // Just replace the word without adding another LoRA tag
         modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'gi'),
+          new RegExp(`(?<!<lora:[^>]*)\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
           cognateMatch.replaceWith
         );
       }
@@ -63,17 +84,20 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     if (triggerMatches.length > 0) {
       console.log(`Found trigger word matches for "${word}":`, triggerMatches);
       const loraInfo = triggerMatches[0];
-      const loraTag = `<lora:${loraInfo.lora_name}:${loraInfo.weight}>`;
+      const weight = customWeight ? parseFloat(customWeight) / 10 : loraInfo.weight;
+      const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
 
-      // Only add the LoRA tag if we haven't used it yet
       if (!addedLoraTags.has(loraInfo.lora_name)) {
         usedLoras.add(loraInfo.lora_name);
         addedLoraTags.add(loraInfo.lora_name);
         
-        // Add the LoRA tag before the first occurrence of the word
+        // Clean up the trigger word by removing weight syntax
+        const cleanWord = baseWord.replace(/(?:\d+(?:\.\d+)?|:\d*\.?\d+)$/, '');
+        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
         modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)(${word})`, 'i'),
-          `${loraTag} $1`
+          new RegExp(`(?<!<lora:[^>]*)${escapedWord}`, 'i'),
+          `${loraTag} ${cleanWord}`
         );
       }
 
