@@ -16,7 +16,7 @@ const { getBalance } = require('../../users/checkBalance')
 const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
-const { TutorialManager } = require('./iStart');
+const { TutorialManager, CHECKPOINTS } = require('./iStart');
 
 const analytics = new AnalyticsEvents();
 
@@ -543,6 +543,19 @@ async function handleSignIn(message) {
     if (lobby[userId].wallet !== '') {
         let msg = `You are signed in to ${lobby[userId].wallet}`
         if (lobby[userId].verified) {
+            if (lobby[userId].progress?.currentStep === 'signin' && lobby[userId].verified) {
+                // Add bonus points
+                lobby[userId].qoints += 1000;
+                
+                // Trigger the wallet connected checkpoint since they're already verified
+                if (message.chat.id > 0) {
+                    await TutorialManager.checkpointReached(
+                        userId,
+                        CHECKPOINTS.WALLET_CONNECTED,
+                        { message }
+                    );
+                }
+            }
             msg += '\nand you are verified. Have fun'
             sendMessage(message, msg, home);
             setUserState(message, STATES.IDLE);
@@ -651,14 +664,7 @@ async function handleVerify(message) {
     const userId = message.from.id;
     if(lobby[userId]){
         if (lobby[userId].verified) {
-            // If this is part of the tutorial, give points and progress
-            if (lobby[userId].progress?.currentStep === 'signin') {
-                lobby[userId].points += 1000;
-                await userCore.writeUserDataPoint(userId, 'points', lobby[userId].points);
-                await TutorialManager.progressToNextStep(message);
-            } else {
-                sendMessage(message, `You are verified, dw`);
-            }
+            await sendMessage(message, 'You are verified now', home);
             setUserState(message, STATES.IDLE);
         } else {
             sendMessage(message, 
@@ -694,12 +700,19 @@ async function shakeVerify(message) {
         if (lobby[userId]) {
             lobby[userId].verified = true;
 
-            // Add bonus points if this is part of the tutorial
-            if (lobby[userId].progress?.currentStep === 'signin') {
+            if (lobby[userId].progress?.currentStep === 'signin' && lobby[userId].verified) {
+                // Add bonus points
                 lobby[userId].pendingQoints += 1000;
                 await userEconomy.writeUserDataPoint(userId, 'pendingQoints', lobby[userId].pendingQoints);
-                // Progress to next tutorial step
-                await TutorialManager.progressToNextStep(message);
+
+                // Trigger the wallet connected checkpoint since they're already verified
+                if (message.chat.id > 0) {
+                    await TutorialManager.checkpointReached(
+                        userId,
+                        CHECKPOINTS.WALLET_CONNECTED,
+                        { message }
+                    );
+                }
             } else {
                 // Regular verification message for non-tutorial users
                 await sendMessage(message, 'You are verified now', home);
