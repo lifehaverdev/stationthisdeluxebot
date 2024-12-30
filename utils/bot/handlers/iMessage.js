@@ -6,7 +6,7 @@ const {
     getGroup, 
 } = require('../bot.js'); 
 const { initialize } = require('../intitialize')
-const { tutorialSteps, TutorialManager } = require('./iStart')
+const { tutorialSteps, TutorialManager, CHECKPOINTS } = require('./iStart')
 const bot = getBotInstance();
 const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
 const {
@@ -205,7 +205,7 @@ commandRegistry['/ca'] = {
                         [
                             {
                                 text: 'Chart', 
-                                url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558'
+                                url: 'https://www.coingecko.com/en/coins/station-this'
                             },
                             {
                                 text: 'Buy',
@@ -874,7 +874,7 @@ const commandsRequiringGatekeeping = [
 // Helper function to parse the command and arguments from the message
 // Helper function to parse the command and arguments from the message
 // Helper function to parse the command and arguments from the message
-function parseCommand(message) {
+async function parseCommand(message) {
     let commandEntity;
 
     // Determine whether to use entities from text or caption
@@ -910,18 +910,23 @@ function parseCommand(message) {
             command = command.slice(0, botMentionIndex);
         }
 
-                // Tutorial progression check - only for private chats
-                if (message.chat.id > 0 && lobby[message.from.id]?.progress) {
-                    const currentStep = TutorialManager.getCurrentStep(message.from.id);
-                    
-                    // If this command completes current tutorial step
-                    if (tutorialSteps[currentStep]?.command === command) {
-                        // Schedule tutorial progression after command execution
-                        setTimeout(() => {
-                            TutorialManager.progressToNextStep(message);
-                        }, 500);
-                    }
-                }
+        // Tutorial progression check - only for private chats
+        if (message.chat.id > 0 && lobby[message.from.id]?.progress) {
+            const currentStep = TutorialManager.getCurrentStep(message.from.id);
+            
+            // If this command matches the current tutorial step's command
+            if (tutorialSteps[currentStep]?.command === command) {
+                console.log('[Tutorial] Command matches current step, triggering checkpoint');
+                await TutorialManager.checkpointReached(
+                    message.from.id, 
+                    CHECKPOINTS.COMMAND_USED,
+                    { message }
+                );
+            } else {
+                console.log('[Tutorial] Command used:', command);
+                console.log('[Tutorial] Expected command:', tutorialSteps[currentStep]?.command);
+            }
+        }
 
         // Return the parsed command and arguments
         return { command, args };
@@ -939,7 +944,7 @@ module.exports = function(bot) {
         }
     
         if ('text' in message || 'caption' in message) {
-            const { command, args } = parseCommand(message);
+            const { command, args } = await parseCommand(message);
             // Get group context if available
             const group = getGroup(message);
             let groupCommandList = group ? group.commandList : null;

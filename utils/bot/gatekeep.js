@@ -492,15 +492,21 @@ async function handleUserData(userId, message) {
                     userData = await fetchFullUserData(userId);
                     const validatedData = validateUserData(userData);
                     // Check if validation made any changes
-                    if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
-                        console.log('Validation changes detected, saving validated data');
-                        await userCore.writeUserData(userId, validatedData),
+                    const userDataKeys = Object.keys(userData).length;
+                    const validatedDataKeys = Object.keys(validatedData).length;
+
+                    // Only save if we're adding new fields (validatedData has more keys)
+                    if (validatedDataKeys > userDataKeys) {
+                        console.log('New fields detected, saving validated data');
+                        await userCore.writeUserData(userId, validatedData);
                         await userEconomy.writeUserData(userId, validatedData);
                         await userPref.writeUserData(userId, validatedData);
+                    } else if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
+                        console.log('Data cleanup only, skipping save');
                     }
                     userData = validatedData;
                     userData.createSwitch = 'MAKE';
-                    console.log('userData', JSON.stringify(userData))
+                    // console.log('userData', JSON.stringify(userData))
                     await analytics.trackUserJoin(userId, message.from.username); // Track first time user
                 } else {
                     // No existing user, create new
@@ -510,12 +516,17 @@ async function handleUserData(userId, message) {
                     if (!userData) {
                         throw new Error("Failed to create new user data.");
                     }
-                    const validatedData = validateUserData(userData);
-                    if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
-                        console.log('Validation changes detected on new user, saving validated data');
-                        await userCore.writeUserData(userId, validatedData),
+                    const validatedData = validateUserData(userData);const userDataKeys = Object.keys(userData).length;
+                    const validatedDataKeys = Object.keys(validatedData).length;
+
+                    // Only save if we're adding new fields (validatedData has more keys)
+                    if (validatedDataKeys > userDataKeys) {
+                        console.log('New fields detected, saving validated data');
+                        await userCore.writeUserData(userId, validatedData);
                         await userEconomy.writeUserData(userId, validatedData);
                         await userPref.writeUserData(userId, validatedData);
+                    } else if (JSON.stringify(userData) !== JSON.stringify(validatedData)) {
+                        console.log('Data cleanup only, skipping save');
                     }
                     userData = validatedData;
                     await analytics.trackUserJoin(userId, message.from.username, true); // Track first time user

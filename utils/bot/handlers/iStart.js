@@ -14,7 +14,11 @@ const tutorialSteps = {
             "`/quickmake Muscular Elon Musk with a sword`\n\n" +
             "Go ahead, try it now\\! 👆",
         nextStep: 'status',
-        unlockedCommands: ['/start', '/quickmake']
+        unlockedCommands: ['/start', '/quickmake'],
+        checkpoints: {
+            COMMAND_USED: true,
+            // GENERATION_COMPLETE: true
+        }
     },
     'status': {
         command: '/status',
@@ -22,8 +26,11 @@ const tutorialSteps = {
             "Yep that's pretty much what we do here\\! I am making your image quickly\\.\n\n" +
             "Why don't we check on it with /status command\\?\n" +
             "Go ahead and try it before I beat you to it\\! 👀",
-        nextStep: 'make',
-        unlockedCommands: ['/status']
+        nextStep: 'signin',
+        unlockedCommands: ['/status'],
+        checkpoints: {
+            COMMAND_USED: true
+        }
     },
     'make': {
         command: '/make',
@@ -57,15 +64,28 @@ const tutorialSteps = {
         unlockedCommands: ['/effect']
     },
     'signin': {
-        command: '/signin', // This is an informational step, no command needed
+        command: '/signin',
         introduction: 
             "By the way, let's talk about points\\! 🎯\n\n" +
             "You currently start with 370 points, however if you own MS2 you may connect a wallet and be credited with more points to work with, as well as unlocking more features of the bot \\(me\\)\\.\n\n" +
             "It's okay if you don't have any MS2 yet, let's do this\\! 🎁\n\n" +
             "If you connect your wallet, I'll give you 1000 bonus points\\! Then we can continue on to cool things\n" +
             "Ready to get those bonus points\\? Try: /signin",
-        nextStep: 'signin',
-        unlockedCommands: ['/signin']
+        nextStep: 'points_info',
+        unlockedCommands: ['/signin'],
+        checkpoints: {
+            COMMAND_USED: true,
+            WALLET_CONNECTED: true
+        }
+    },
+    'points_info': {
+        command: null,
+        introduction: 
+            "Great\\! You've got your bonus points\\. 🎉\n\n" +
+            "That concludes our tutorial\\! You now know the basics of creating and modifying images\\.\n\n" +
+            "Feel free to explore more commands and have fun creating\\! 🎨",
+        nextStep: null,
+        unlockedCommands: []
     },
     // 'signin': {
     //     command: '/signin',
@@ -75,6 +95,14 @@ const tutorialSteps = {
     //     nextStep: null,
     //     unlockedCommands: ['/signin']
     // }
+};
+
+const CHECKPOINTS = {
+    COMMAND_USED: 'COMMAND_USED',
+    GENERATION_COMPLETE: 'GENERATION_COMPLETE',
+    WALLET_CONNECTED: 'WALLET_CONNECTED',
+    IMAGE_RECEIVED: 'IMAGE_RECEIVED',
+    EFFECT_APPLIED: 'EFFECT_APPLIED'
 };
 
 class TutorialManager {
@@ -109,7 +137,14 @@ class TutorialManager {
         if (!stepData) return;
 
         const nextStepId = stepData.nextStep;
-        if (!nextStepId) return; // Tutorial completed
+        if (!nextStepId) {
+            // Tutorial completed - clean up
+            console.log('[Tutorial] Completed for user:', userId);
+            lobby[userId].progress.completed = Date.now();
+            // Optionally send a completion message
+            await sendMessage(message, "🎉 Tutorial completed! You now have access to all commands. Enjoy creating!");
+            return;
+        }
 
         // Mark current step as completed
         lobby[userId].progress.steps[currentStep].completed = Date.now();
@@ -148,6 +183,52 @@ class TutorialManager {
 
     static getCurrentStep(userId) {
         return lobby[userId]?.progress?.currentStep;
+    }
+
+    static async checkpointReached(userId, checkpointType, context = {}) {
+        console.log(`\n[Checkpoint] Reached for user ${userId}:`, checkpointType);
+        
+        if (!lobby[userId]?.progress) {
+            console.log('[Checkpoint] No progress found for user');
+            return;
+        }
+
+        const currentStep = lobby[userId].progress.currentStep;
+        const stepData = tutorialSteps[currentStep];
+        
+        console.log('[Checkpoint] Current step:', currentStep);
+        console.log('[Checkpoint] Step data:', stepData);
+
+        // If this step doesn't require this checkpoint, ignore it
+        if (!stepData?.checkpoints?.[checkpointType]) {
+            console.log('[Checkpoint] This checkpoint not required for current step');
+            return;
+        }
+
+        // Initialize checkpoints tracking if not exists
+        if (!lobby[userId].progress.steps[currentStep].checkpoints) {
+            console.log('[Checkpoint] Initializing checkpoints tracking');
+            lobby[userId].progress.steps[currentStep].checkpoints = {};
+        }
+
+        // Mark this checkpoint as completed
+        lobby[userId].progress.steps[currentStep].checkpoints[checkpointType] = true;
+        console.log('[Checkpoint] Updated checkpoints:', lobby[userId].progress.steps[currentStep].checkpoints);
+
+        // Check if all required checkpoints for this step are completed
+        const allCheckpointsComplete = Object.entries(stepData.checkpoints)
+            .every(([type, required]) => 
+                required === lobby[userId].progress.steps[currentStep].checkpoints[type]
+            );
+        
+        console.log('[Checkpoint] All checkpoints complete?', allCheckpointsComplete);
+
+        // If all checkpoints are complete, progress to next step
+        if (allCheckpointsComplete) {
+            console.log('[Checkpoint] Progressing to next step...');
+            const message = context.message || { from: { id: userId }, chat: { id: userId } };
+            await this.progressToNextStep(message);
+        }
     }
 }
 
@@ -217,5 +298,6 @@ function shuffle(array) {
 
 module.exports = { 
     tutorialSteps, 
-    TutorialManager 
+    TutorialManager,
+    CHECKPOINTS 
 };

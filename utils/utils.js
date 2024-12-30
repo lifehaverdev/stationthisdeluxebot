@@ -302,6 +302,15 @@ async function sendMessage(msg, text, options = {}) {
     return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
 }
 
+async function sendMessageDev(text, options = {}) {
+    const msg = {
+        chat: {id: DEV_DMS},
+        from: {id: DEV_DMS},
+        message_id: null
+    }
+    return await sendWithRetry(bot.sendMessage.bind(bot), msg, text, options);
+}
+
 async function sendPrivateMessage(user, msg, text, options = {}) {
     msg.chat.id = user
     delete msg.message_thread_id
@@ -511,6 +520,6 @@ module.exports = {
     calculateDiscount,
     cleanPrompt,
     logThis,
-    DEV_DMS,
+    DEV_DMS, sendMessageDev,
     fullCommandList,
 }

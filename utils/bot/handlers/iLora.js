@@ -1,5 +1,5 @@
-const { sendMessage, editMessage } = require('../../utils');
-const { lobby, commandRegistry, prefixHandlers } = require('../bot');
+const { sendMessage, sendMessageDev, editMessage, setUserState , safeExecute} = require('../../utils');
+const { lobby, commandRegistry, prefixHandlers , stateHandlers, DEV_DMS } = require('../bot');
 const { Loras } = require('../../../db/models/loras.js');
 const loras = new Loras();
 const fs = require('fs').promises;
@@ -46,6 +46,9 @@ async function displayLoraMenu(message, user = null,category = 'main') {
         ],
         [
             { text: '💖 Favorites', callback_data: 'lora_favorites' }
+        ],
+        [
+            { text: '📝 Request Model', callback_data: 'lora_request' }
         ],
         [
             { text: 'nvm', callback_data: 'cancel' }
@@ -236,6 +239,7 @@ async function handleLoraCallback(message, category, user = null) {
 
     switch (category) {
         case 'main':
+            setUserState({...message, from: {id: user}}, STATES.IDLE)
             await displayLoraMenu(message, user);
             break;
             
@@ -259,6 +263,10 @@ async function handleLoraCallback(message, category, user = null) {
         case 'character':
         case 'style':
             await displaySubcategories(message, category, user);
+            break;
+            
+        case 'request':
+            await handleLoraRequest(message, user);
             break;
             
         default:
@@ -756,6 +764,66 @@ prefixHandlers['lorafav_'] = async (action, message, user) => {
     // Redisplay the lora detail page with updated favorite status
     await displayLoraDetail(message, loraName, user);
 };
+
+// Add new function to handle requests
+async function handleLoraRequest(message, user) {
+    const requestMessage = '*Request a LoRA Model* 📝\n\n' +
+        'To request a model, please provide:\n' +
+        '\\- A Civitai or Huggingface link to the model\n' +
+        '\\- A brief description of why you want it added\n\n' +
+        '_Note: arthurt curates the model list and your request may be denied\\. ' +
+        'Requesting NSFW content will result in account penalties\\._';
+
+    const keyboard = [
+        [{ text: '🔙 Back', callback_data: 'lora_main' }]
+    ];
+
+    const options = {
+        reply_markup: { inline_keyboard: keyboard },
+        parse_mode: 'MarkdownV2'
+    };
+    setUserState({...message, from: {id: user}}, 'lora_request')
+    try {
+        await editMessage({
+            text: requestMessage,
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            options
+        });
+    } catch (error) {
+        console.error('Error in handleLoraRequest:', error);
+    }
+}
+
+stateHandlers['lora_request'] = (message) => safeExecute(message, shakeLoraRequest)
+
+async function shakeLoraRequest(message) {
+    // Check if message has text
+    if (!message.text) {
+        await sendMessage(message, 'Please provide a valid link to the model.');
+        return;
+    }
+
+    const link = message.text.trim();
+    
+    // Check if link is from valid sources
+    const isCivitai = link.includes('civitai.com');
+    const isHuggingface = link.includes('huggingface.co');
+    
+    if (!isCivitai && !isHuggingface) {
+        await sendMessage(message, 'Please provide a valid Civitai or Huggingface link.');
+        return;
+    }
+
+    // Send to DEV_DMS
+    await sendMessageDev( 
+        `New LoRA Request from ${message.from.username || message.from.id}:\n${link}`
+    );
+
+    // Reset user state and show main menu
+    setUserState(message, 'idle');
+}
+
 
 module.exports = {
     displayLoraMenu,
