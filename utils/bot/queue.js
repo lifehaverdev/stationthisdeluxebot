@@ -19,8 +19,8 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const path = require('path');
 const { UserStats } = require('../../db/index');
 const userStats = new UserStats();
-const { globalStatusDB } = require('../../db/models/globalStatus');
-const globalStatusData = new globalStatusDB();
+const { GlobalStatusDB } = require('../../db/models/globalStatus');
+const globalStatusData = new GlobalStatusDB();
 const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 
