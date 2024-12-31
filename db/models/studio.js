@@ -63,15 +63,14 @@ class StudioDB extends BaseDB {
     }
 
     async saveGenerationResult(urls, task) {
-        const { promptObj } = task;
         try {
-            // 1. Save files using BaseDB's GridFS methods
-            const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+            // 1. Save files using the new URL-specific method
+            const savedFiles = await Promise.all(urls.map(async (urlData) => {
+                // Extract url and type from the urlData object
+                const { url, type } = urlData;
                 
-                const filename = `collection_${promptObj.collectionId}_${Date.now()}.${type}`;
-                const fileId = await this.saveFileFromUrl(filename, response.body);
+                const filename = `collection_${task.promptObj.collectionId}_${Date.now()}.${type === 'image' ? 'png' : type}`;
+                const fileId = await this.saveFileFromUrl(filename, url);  // Pass the URL string, not the whole object
 
                 return {
                     fileId,
@@ -82,14 +81,13 @@ class StudioDB extends BaseDB {
 
             // 2. Create studio document
             const studioDoc = {
-                collectionId: promptObj.collectionId,
+                collectionId: task.promptObj.collectionId,
                 files: savedFiles,
                 task: task,
                 createdAt: new Date(),
-                traits: promptObj.traits
+                traits: task.promptObj.traits
             };
 
-            // Use BaseDB's insertOne
             await this.insertOne(studioDoc);
             return { success: true, studioDoc };
 
