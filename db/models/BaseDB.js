@@ -1,6 +1,7 @@
 const { MongoClient, GridFSBucket, ObjectId } = require('mongodb');
 const { dbQueue, getCachedClient } = require('../utils/queue');
 //const { PRIORITY } = require('../utils/priorityQueue');
+const { Readable } = require('stream');
 
 // Global batch lock tracking
 const batchLocks = new Map();
@@ -223,12 +224,17 @@ class BaseDB {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`Failed to fetch ${url}`);
 
+            // Convert the response arrayBuffer to a Buffer and then to a Readable stream
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const readableStream = Readable.from(buffer);
+
             const bucket = await this.getBucket();
             const uploadStream = bucket.openUploadStream(filename);
             
-            // Pipe the response stream and return a promise
+            // Pipe the readable stream and return a promise
             return new Promise((resolve, reject) => {
-                response.body.pipe(uploadStream)
+                readableStream.pipe(uploadStream)
                     .on('finish', () => {
                         console.log(`File ${filename} saved to GridFS from URL with id:`, uploadStream.id.toString());
                         resolve(new ObjectId(uploadStream.id));
