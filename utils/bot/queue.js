@@ -378,7 +378,7 @@ async function handleTaskCompletion(task) {
         });
         stu = new studioDB();
         try {
-            // Ensure urls is in the correct format
+                    // Ensure urls is in the correct format
         const formattedUrls = Array.isArray(urls) ? urls : [{ url: urls, type: 'png' }];
         
         console.log('Formatted URLs:', formattedUrls);
@@ -386,7 +386,6 @@ async function handleTaskCompletion(task) {
             // 1. Save to studio
             const { success, studioDoc, error } = await stu.saveGenerationResult(urls, task);
             
-
             if (!success) {
                 throw error || new Error('Failed to save generation result');
             }
@@ -627,6 +626,20 @@ function extractType(url) {
             return 'unknown';
     }
 }
+
+setInterval(deliver, 2000)
+
+// Export variables and functions
+module.exports = {
+    processingRunIds,
+    waiting,
+    taskQueue,
+    enqueueTask,
+    processWaitlist,
+    //deliver
+    // Add other exports here if needed
+};
+
 
 setInterval(deliver, 2000)
 
