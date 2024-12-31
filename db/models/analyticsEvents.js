@@ -77,31 +77,50 @@ class AnalyticsEvents extends BaseDB {
     }
 
     async trackGeneration(task, run, status) {
-        const event = {
-            type: EVENT_TYPES.GENERATION,
-            userId: task.promptObj.userId,
-            username: task.promptObj.username,
-            timestamp: new Date(),
-            data: {
-                genType: task.promptObj.type,
-                runId: run?.run_id,
-                status,
-                queueTime: task.runningStart ? task.runningStart - task.timestamp : null,
-                processingTime: task.runningStop ? task.runningStop - task.runningStart : null,
-                settings: {
-                    strength: task.promptObj.strength,
-                    cfg: task.promptObj.cfg,
-                    steps: task.promptObj.steps
-                }
-            },
-            groupId: task.message.chat.id < 0 ? task.message.chat.id : null
-        };
-
-        return this.updateOne(
-            { runId: run?.run_id, type: EVENT_TYPES.GENERATION },
-            event,
-            { upsert: true }
-        );
+        try {
+            // Handle cook mode tasks differently
+            if (task.promptObj.isCookMode) {
+                const event = {
+                    type: EVENT_TYPES.GENERATION,
+                    userId: task.promptObj.userId,
+                    username: task.promptObj.username || 'unknown_user',
+                    timestamp: new Date(),
+                    data: {
+                        status,
+                        runId: task.run_id,
+                        isCookMode: true,
+                        collectionId: task.promptObj.collectionId
+                    }
+                };
+    
+                return this.updateOne(
+                    { runId: task.run_id, type: EVENT_TYPES.GENERATION },
+                    event,
+                    { upsert: true }
+                );
+            }
+    
+            // Original handling for regular tasks
+            const event = {
+                type: EVENT_TYPES.GENERATION,
+                userId: task.message.from.id,
+                username: task.message.from.username,
+                timestamp: new Date(),
+                data: {
+                    status,
+                    runId: task.run_id
+                },
+                groupId: task.message.chat.id < 0 ? task.message.chat.id : null
+            };
+    
+            return this.updateOne(
+                { runId: task.run_id, type: EVENT_TYPES.GENERATION },
+                event,
+                { upsert: true }
+            );
+        } catch (error) {
+            console.error('Error tracking generation:', error);
+        }
     }
 
     async trackCommand(message, command, isCustom = false) {
