@@ -2493,11 +2493,26 @@ async function checkCookProgress(user, collectionId) {
     try {
         console.log(`[checkCookProgress] Starting check for user ${user}, collection ${collectionId}`);
         const currentStatus = globalStatus;
+        console.log('[checkCookProgress] Current global status:', {
+            cookingTasks: currentStatus.cooking?.length,
+            allStatuses: currentStatus.cooking?.map(t => ({
+                userId: t.userId,
+                collectionId: t.collectionId,
+                status: t.status,
+                lastGenerated: t.lastGenerated
+            }))
+        });
+
         const cookingTask = currentStatus.cooking.find(c => 
             c.userId === user && 
             c.collectionId === collectionId
         );
-        console.log('[checkCookProgress] Found cooking task:', { found: !!cookingTask, status: cookingTask?.status });
+        console.log('[checkCookProgress] Found specific cooking task:', {
+            found: !!cookingTask,
+            status: cookingTask?.status,
+            lastGenerated: cookingTask?.lastGenerated,
+            timeSinceLastGen: cookingTask?.lastGenerated ? Date.now() - cookingTask.lastGenerated : null
+        });
 
         if (!cookingTask || cookingTask.status !== 'active') {
             console.log('[checkCookProgress] Task not active or not found, returning');
