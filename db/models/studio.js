@@ -2,6 +2,7 @@ const { BaseDB } = require('./BaseDB');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const { GridFSBucket } = require('mongodb');
 
 class StudioDB extends BaseDB {
     constructor() {
