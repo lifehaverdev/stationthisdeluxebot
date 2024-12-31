@@ -95,7 +95,7 @@ class StudioDB extends BaseDB {
                 traits: promptObj.traits
             };
 
-            await db.collection('studio').insertOne(studioDoc);
+            await this.insertOne(studioDoc);
             return { success: true, studioDoc };
 
         } catch (error) {
