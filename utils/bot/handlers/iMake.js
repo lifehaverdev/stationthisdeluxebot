@@ -114,7 +114,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         prompt: userContext.prompt,
         forceLogo: userContext.forceLogo,
         input_batch: userContext.input_batch,
-        input_text: message.from.username,
+        input_text: message.from.username || 'idk',
         input_seed: userContext.input_seed,
         input_negative: userContext.input_negative || 'embedding:easynegative'
     };

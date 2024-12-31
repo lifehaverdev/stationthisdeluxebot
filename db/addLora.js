@@ -85,7 +85,8 @@ async function addLoraInteractive() {
             tags: {},
             cognates: cognates,
             disabled: false,
-            rating: 0
+            rating: 0,
+            addedDate: Date.now()
         };
 
         // Populate tags

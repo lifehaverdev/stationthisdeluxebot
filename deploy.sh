@@ -75,7 +75,7 @@ if is_container_running ${NEW_CONTAINER}; then
     
     echo "✨ Deployment completed successfully!"
     echo "📝 Tailing logs from the new container (first 30 seconds):"
-    timeout 10 docker logs -f ${OLD_CONTAINER} 2>&1 &
+    timeout 400 docker logs -f ${OLD_CONTAINER} 2>&1 &
 else
     echo "❌ Failed to start new container!"
     echo "Keeping old container running if it exists."

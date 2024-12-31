@@ -22,6 +22,34 @@ class AnalyticsEvents extends BaseDB {
     }
 
     async trackQueueEvent(task, eventType) {
+        // Special handling for cook mode tasks
+        if (task.promptObj.isCookMode) {
+            const event = {
+                type: EVENT_TYPES.QUEUE,
+                userId: task.promptObj.userId,
+                username: task.promptObj.username || 'unknown_user',
+                timestamp: new Date(),
+                data: {
+                    eventType,
+                    runId: task.run_id,
+                    queuePosition: waiting.length,
+                    waitingCount: waiting.length,
+                    queueCount: taskQueue.length,
+                    isCookMode: true,
+                    collectionId: task.promptObj.collectionId
+                },
+                // Skip group tracking for cook mode
+                groupId: null
+            };
+
+            return this.updateOne(
+                { runId: task.run_id, type: EVENT_TYPES.QUEUE },
+                event,
+                { upsert: true }
+            );
+        }
+
+        // Original handling for regular tasks
         const queuePosition = eventType === 'enqueued' 
             ? waiting.length 
             : waiting.findIndex(t => t.run_id === task.run_id);
