@@ -367,11 +367,11 @@ async function handleTaskCompletion(task) {
     let sent = true;
 
     // New helper function to handle cook mode completions
-    async function handleCookModeCompletion(urls, promptObj, task) {
+    async function handleCookModeCompletion(urls, task) {
         stu = new studioDB();
         try {
             // 1. Save to studio
-            const { success, studioDoc, error } = await stu.saveGenerationResult(urls, promptObj, task);
+            const { success, studioDoc, error } = await stu.saveGenerationResult(urls, task);
             
             if (!success) {
                 throw error || new Error('Failed to save generation result');
