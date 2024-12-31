@@ -1,5 +1,6 @@
 const { taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
 const { generate } = require('../../commands/make')
+const studioDB = require('../../db/models/studio');
 const {
     sendMessage,
     sendPhoto,
@@ -366,43 +367,17 @@ async function handleTaskCompletion(task) {
     let sent = true;
 
     // New helper function to handle cook mode completions
-    async function handleCookModeCompletion(urls) {
+    async function handleCookModeCompletion(urls, promptObj, task) {
+        stu = new studioDB();
         try {
-            // 1. Save files to MongoDB bucket by streaming directly from URLs
-            const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Failed to fetch ${url}`);
-                
-                const bucket = new GridFSBucket(db);
-                const filename = `collection_${promptObj.collectionId}_${Date.now()}.${type}`;
-                
-                // Stream directly from URL to GridFS
-                const uploadStream = bucket.openUploadStream(filename);
-                await new Promise((resolve, reject) => {
-                    response.body.pipe(uploadStream)
-                        .on('finish', resolve)
-                        .on('error', reject);
-                });
+            // 1. Save to studio
+            const { success, studioDoc, error } = await stu.saveGenerationResult(urls, promptObj, task);
+            
+            if (!success) {
+                throw error || new Error('Failed to save generation result');
+            }
 
-                return {
-                    fileId: uploadStream.id,
-                    type,
-                    originalUrl: url
-                };
-            }));
-
-            // 2. Create studio document
-            const studioDoc = {
-                collectionId: promptObj.collectionId,
-                files: savedFiles,
-                task: task,  // Contains all generation context
-                createdAt: new Date(),
-                traits: promptObj.traits
-            };
-
-            await db.collection('studio').insertOne(studioDoc);
-
-            // 3. Update collection status
+            // 2. Update collection status
             await globalStatus.updateStatus({
                 cooking: globalStatus.cooking.map(cook => 
                     cook.collectionId === promptObj.collectionId
@@ -411,10 +386,10 @@ async function handleTaskCompletion(task) {
                 )
             });
 
-            return true;  // Success
+            return true;
         } catch (error) {
             console.error('Error handling cook mode completion:', error);
-            return false;  // Failure
+            return false;
         }
     }
 

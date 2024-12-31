@@ -61,6 +61,48 @@ class StudioDB extends BaseDB {
         }
     }
 
+    async saveGenerationResult(urls, promptObj, task) {
+        try {
+            // 1. Save files to MongoDB bucket
+            const bucket = new GridFSBucket(db);
+            const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+                
+                const filename = `collection_${promptObj.collectionId}_${Date.now()}.${type}`;
+                const uploadStream = bucket.openUploadStream(filename);
+                
+                await new Promise((resolve, reject) => {
+                    response.body.pipe(uploadStream)
+                        .on('finish', resolve)
+                        .on('error', reject);
+                });
+
+                return {
+                    fileId: uploadStream.id,
+                    type,
+                    originalUrl: url
+                };
+            }));
+
+            // 2. Create studio document
+            const studioDoc = {
+                collectionId: promptObj.collectionId,
+                files: savedFiles,
+                task: task,
+                createdAt: new Date(),
+                traits: promptObj.traits
+            };
+
+            await db.collection('studio').insertOne(studioDoc);
+            return { success: true, studioDoc };
+
+        } catch (error) {
+            console.error('Error saving generation result:', error);
+            return { success: false, error };
+        }
+    }
+
     // Mark piece for regeneration
     async markForRegeneration(collectionId, pieceId) {
         const piece = await this.findOne({ _id: pieceId, collectionId });
