@@ -2491,19 +2491,25 @@ async function handleCookPause(action, message, user) {
 // Improved check function with better state handling
 async function checkCookProgress(user, collectionId) {
     try {
+        console.log(`[checkCookProgress] Starting check for user ${user}, collection ${collectionId}`);
         const currentStatus = globalStatus;
         const cookingTask = currentStatus.cooking.find(c => 
             c.userId === user && 
             c.collectionId === collectionId
         );
+        console.log('[checkCookProgress] Found cooking task:', { found: !!cookingTask, status: cookingTask?.status });
 
-        if (!cookingTask) {
-            console.log(`No cooking task found for user ${user}, collection ${collectionId}`);
+        if (!cookingTask || cookingTask.status !== 'active') {
+            console.log('[checkCookProgress] Task not active or not found, returning');
             return;
         }
 
-        // Log the current state
-        console.log(`Checking cook progress: User ${user}, Collection ${collectionId}, Status: ${cookingTask.status}`);
+        // Check collection supply at DB level
+        const collection = await getOrLoadCollection(user, collectionId);
+        console.log('[checkCookProgress] Collection supply check:', { 
+            collectionId, 
+            currentSupply: collection.totalSupply || 0 
+        });
 
         // Handle different states
         switch (cookingTask.status) {
@@ -2523,7 +2529,6 @@ async function checkCookProgress(user, collectionId) {
 
             case 'active':
                 // Check collection supply at DB level
-                const collection = await getOrLoadCollection(user, collectionId);
                 const currentSupply = collection.totalSupply || 0;
 
                 if (currentSupply >= 5) {
@@ -2548,6 +2553,10 @@ async function checkCookProgress(user, collectionId) {
                 // Check if ready for next generation
                 if (cookingTask.lastGenerated) {
                     const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
+                    console.log('[checkCookProgress] Generation timing:', { 
+                        timeSinceLastGen, 
+                        readyForNext: timeSinceLastGen > 5000 
+                    });
                     if (timeSinceLastGen > 5000) { // 5 second buffer
                         console.log(`Queueing next generation: User ${user}, Collection ${collectionId}`);
                         await handleCookStart(`cookStart_${collectionId}`, message, user);
@@ -2561,7 +2570,7 @@ async function checkCookProgress(user, collectionId) {
         }
 
     } catch (error) {
-        console.error('Error in checkCookProgress:', error);
+        console.error('[checkCookProgress] Error:', error);
     }
 }
 
