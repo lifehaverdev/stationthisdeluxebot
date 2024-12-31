@@ -1,4 +1,4 @@
-const { taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
+const { globalStatus,taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const studioDB = require('../../db/models/studio');
 const {
@@ -19,6 +19,8 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const path = require('path');
 const { UserStats } = require('../../db/index');
 const userStats = new UserStats();
+const { globalStatusDB } = require('../../db/models/globalStatus');
+const globalStatusData = new globalStatusDB();
 const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 
@@ -391,7 +393,7 @@ async function handleTaskCompletion(task) {
             }
 
             // 2. Update collection status
-            await globalStatus.updateStatus({
+            await globalStatusData.updateStatus({
                 cooking: globalStatus.cooking.map(cook => 
                     cook.collectionId === promptObj.collectionId
                         ? { ...cook, lastGenerated: Date.now() }
