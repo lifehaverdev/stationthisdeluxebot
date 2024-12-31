@@ -2358,9 +2358,24 @@ async function handleCookStart(action, message, user) {
                 }
             }
         ];
+// Before update
+console.log('[globalStatus] Before update:', {
+    currentCooking: globalStatus.cooking,
+    updatingWith: updatedCooking
+});
 
-        await globalStatusDB.updateStatus({ cooking: updatedCooking });
+await globalStatusDB.updateStatus({ cooking: updatedCooking });
 
+// After update
+const afterUpdate = await globalStatusDB.getGlobalStatus();
+console.log('[globalStatus] After update:', {
+    cookingTasks: afterUpdate.cooking
+});
+
+// Also verify our in-memory globalStatus
+console.log('[globalStatus] In-memory status:', {
+    cookingTasks: globalStatus.cooking
+});
         // 4. Build and queue the task
         const workflow = flows.find(flow => flow.name === workflowType);
         if (!workflow) {
