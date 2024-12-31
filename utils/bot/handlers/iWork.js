@@ -153,22 +153,59 @@ async function handleStatus(message) {
 
     group ? msg += `${group.title}\n ⚡️${group.qoints}\n\n` : null;
     
-    taskQueue.length > 0 ? msg +=    
-    `🪑 \n${taskQueue.map(task => {
-        //const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-        return `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type}`; // Include remaining time in the status
-    }).join('\n')}\n` : null
-    waiting.length > 0 ? msg += 
-    `🪄 \n${waiting.map(task => {
-        ///const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-        const remainingTime = task.status; // Calculate remaining time until checkback
-        return `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} ${remainingTime}`; // Include the username in the status
-    }).join('\n')}\n` : null;
-    successors.length > 0 ? msg += 
-    `🕊️\n${successors.map(task => {
-        //const username = task.promptObj.username || 'Unknown'; // Get the username or use 'Unknown' if not available
-        return `$${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`; // Include the username in the status
-    }).join('\n')}\n` : null
+    // Separate regular and cook mode tasks
+    if (taskQueue.length > 0) {
+        const regularTasks = taskQueue.filter(task => !task.promptObj.isCookMode);
+        const cookTasks = taskQueue.filter(task => task.promptObj.isCookMode);
+        
+        if (regularTasks.length > 0) {
+            msg += `🪑 \n${regularTasks.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type}`
+            ).join('\n')}\n`;
+        }
+        
+        if (cookTasks.length > 0) {
+            msg += `👨‍🍳 \n${cookTasks.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '👤'}: COOK #${task.promptObj.collectionId}`
+            ).join('\n')}\n`;
+        }
+    }
+
+    // Similar separation for waiting tasks
+    if (waiting.length > 0) {
+        const regularWaiting = waiting.filter(task => !task.promptObj.isCookMode);
+        const cookWaiting = waiting.filter(task => task.promptObj.isCookMode);
+        
+        if (regularWaiting.length > 0) {
+            msg += `🪄 \n${regularWaiting.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} ${task.status}`
+            ).join('\n')}\n`;
+        }
+        
+        if (cookWaiting.length > 0) {
+            msg += `🧑‍🍳 \n${cookWaiting.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '🧑🏼‍🍳'}: COOK ${task.status}`
+            ).join('\n')}\n`;
+        }
+    }
+
+    // And for successors
+    if (successors.length > 0) {
+        const regularSuccessors = successors.filter(task => !task.promptObj.isCookMode);
+        const cookSuccessors = successors.filter(task => task.promptObj.isCookMode);
+        
+        if (regularSuccessors.length > 0) {
+            msg += `🕊️\n${regularSuccessors.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '👤'}: ${task.promptObj.type} attempt ${task.deliveryFail ? task.deliveryFail : 1}`
+            ).join('\n')}\n`;
+        }
+        
+        if (cookSuccessors.length > 0) {
+            msg += `🍳\n${cookSuccessors.map(task => 
+                `${task.promptObj.userId == user ? 'YOU' : '👤'}: COOK #${task.promptObj.collectionId} attempt ${task.deliveryFail ? task.deliveryFail : 1}`
+            ).join('\n')}\n`;
+        }
+    }
     
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: 'refresh'}]]}
     sendMessage(message, msg, {reply_markup: reply_markup});

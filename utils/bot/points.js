@@ -44,67 +44,90 @@ async function addPoints(task) {
     const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     const user = lobby[userId];
     const group = getGroup(message);
-    const max = getMaxBalance(user);
-    const credit = user.points + user.doints;
 
-    if (group) {
-        // Handling based on group point accounting strategy
-        if (group.gateKeeping.pointAccounting === 'house') {
-            // House pays for all point addition/subtraction
-            console.log(`Group ${group.id} point accounting is set to 'house'. Deducting ${pointsToAdd} points from group balance. Current group balance: ${group.qoints}`);
-            group.qoints -= pointsToAdd;
-            try {
-                await updateGroupPoints(group, pointsToAdd);
-            } catch (error) {
-                console.error(`Failed to update house points for group ${group.id}:`, error);
-                // Consider adding fallback behavior
-            }
-        } else if (group.gateKeeping.pointAccounting === 'ghost') {
-            // 'ghost' accounting - treat as if there is no group
-            console.log(`Group ${group.id} point accounting is set to 'ghost'. Treating as if there's no group.`);
-            
-            // Simply add all points to user, without considering any group logic
-            user.points += pointsToAdd;
-        } else {
-            // Default: User pays first, then group covers remaining
-            if (credit < max) {
-                // User has room to add points, but we no longer cap it to max
-                const pointsToUser = Math.min(pointsToAdd, max - credit);
-                user.points += pointsToUser;
-    
-                // The rest are charged to the group without limiting group qoints to zero
-                const pointsToGroup = pointsToAdd - pointsToUser;
-                if (pointsToGroup > 0) {
-                    group.qoints -= pointsToGroup;
+    // Special handling for cook mode - always use qoints
+    if (promptObj.isCookMode) {
+        user.qoints = (user.qoints || 0) - pointsToAdd;
+        console.log(`Cook mode: Subtracted ${pointsToAdd} qoints from user ${userId}. New qoints: ${user.qoints}`);
+        try {
+            await globalStatusDB.updateStatus({
+                cooking: globalStatusDB.cooking.map(cook => 
+                    cook.collectionId === promptObj.collectionId
+                        ? { 
+                            ...cook,
+                            lastGenerated: Date.now(),
+                            currentBatch: cook.currentBatch + 1,
+                            generationStatus: cook.currentBatch >= cook.totalBatches ? 'complete' : 'pending'
+                        }
+                        : cook
+                )
+            });
+        } catch (error) {
+            console.error(`Failed to update global status for cooking task ${promptObj.collectionId}:`, error);
+        }
+    } else {
+        const max = getMaxBalance(user);
+        const credit = user.points + user.doints;
+
+        if (group) {
+            // Handling based on group point accounting strategy
+            if (group.gateKeeping.pointAccounting === 'house') {
+                // House pays for all point addition/subtraction
+                console.log(`Group ${group.id} point accounting is set to 'house'. Deducting ${pointsToAdd} points from group balance. Current group balance: ${group.qoints}`);
+                group.qoints -= pointsToAdd;
+                try {
+                    await updateGroupPoints(group, pointsToAdd);
+                } catch (error) {
+                    console.error(`Failed to update house points for group ${group.id}:`, error);
+                    // Consider adding fallback behavior
+                }
+            } else if (group.gateKeeping.pointAccounting === 'ghost') {
+                // 'ghost' accounting - treat as if there is no group
+                console.log(`Group ${group.id} point accounting is set to 'ghost'. Treating as if there's no group.`);
+                
+                // Simply add all points to user, without considering any group logic
+                user.points += pointsToAdd;
+            } else {
+                // Default: User pays first, then group covers remaining
+                if (credit < max) {
+                    // User has room to add points, but we no longer cap it to max
+                    const pointsToUser = Math.min(pointsToAdd, max - credit);
+                    user.points += pointsToUser;
+        
+                    // The rest are charged to the group without limiting group qoints to zero
+                    const pointsToGroup = pointsToAdd - pointsToUser;
+                    if (pointsToGroup > 0) {
+                        group.qoints -= pointsToGroup;
+                        try {
+                            await updateGroupPoints(group, pointsToGroup);
+                        } catch (error) {
+                            console.error(`Failed to update group points for group ${group.id}:`, error);
+                            // Consider adding fallback behavior
+                        }
+                    }
+                } else {
+                    // User is already at or above max, so all points are covered by the group
+                    group.qoints -= pointsToAdd;
                     try {
-                        await updateGroupPoints(group, pointsToGroup);
+                        await updateGroupPoints(group, pointsToAdd);
                     } catch (error) {
                         console.error(`Failed to update group points for group ${group.id}:`, error);
                         // Consider adding fallback behavior
                     }
                 }
-            } else {
-                // User is already at or above max, so all points are covered by the group
-                group.qoints -= pointsToAdd;
-                try {
-                    await updateGroupPoints(group, pointsToAdd);
-                } catch (error) {
-                    console.error(`Failed to update group points for group ${group.id}:`, error);
-                    // Consider adding fallback behavior
-                }
             }
-        }
-    } else {
-        // No group: Handle user-only point logic
-        if (user.qoints && credit > max) {
-            // If user has qoints and is over max, subtract from qoints and add to boints
-            user.qoints = Math.max(0, user.qoints - pointsToAdd);
-            user.boints = (user.boints || 0) + pointsToAdd;
-            console.log(`Points moved from qoints to boints for user ${user.id}. New qoints: ${user.qoints}, new boints: ${user.boints}`);
         } else {
-            // Otherwise add points normally
-            user.points += pointsToAdd;
-            console.log(`Points added to user ${user.id}. New total: ${user.points}`);
+            // No group: Handle user-only point logic
+            if (user.qoints && credit > max) {
+                // If user has qoints and is over max, subtract from qoints and add to boints
+                user.qoints = Math.max(0, user.qoints - pointsToAdd);
+                user.boints = (user.boints || 0) + pointsToAdd;
+                console.log(`Points moved from qoints to boints for user ${user.id}. New qoints: ${user.qoints}, new boints: ${user.boints}`);
+            } else {
+                // Otherwise add points normally
+                user.points += pointsToAdd;
+                console.log(`Points added to user ${user.id}. New total: ${user.points}`);
+            }
         }
     }
     

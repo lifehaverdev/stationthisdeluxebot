@@ -365,7 +365,82 @@ async function handleTaskCompletion(task) {
     const run = task.final;
     let sent = true;
 
+    // New helper function to handle cook mode completions
+    async function handleCookModeCompletion(urls) {
+        try {
+            // 1. Save files to MongoDB bucket by streaming directly from URLs
+            const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+                
+                const bucket = new GridFSBucket(db);
+                const filename = `collection_${promptObj.collectionId}_${Date.now()}.${type}`;
+                
+                // Stream directly from URL to GridFS
+                const uploadStream = bucket.openUploadStream(filename);
+                await new Promise((resolve, reject) => {
+                    response.body.pipe(uploadStream)
+                        .on('finish', resolve)
+                        .on('error', reject);
+                });
+
+                return {
+                    fileId: uploadStream.id,
+                    type,
+                    originalUrl: url
+                };
+            }));
+
+            // 2. Create studio document
+            const studioDoc = {
+                collectionId: promptObj.collectionId,
+                files: savedFiles,
+                task: task,  // Contains all generation context
+                createdAt: new Date(),
+                traits: promptObj.traits
+            };
+
+            await db.collection('studio').insertOne(studioDoc);
+
+            // 3. Update collection status
+            await globalStatus.updateStatus({
+                cooking: globalStatus.cooking.map(cook => 
+                    cook.collectionId === promptObj.collectionId
+                        ? { ...cook, lastGenerated: Date.now() }
+                        : cook
+                )
+            });
+
+            return true;  // Success
+        } catch (error) {
+            console.error('Error handling cook mode completion:', error);
+            return false;  // Failure
+        }
+    }
+
     const operation = async () => {
+        // If this is a cook mode task, handle differently
+        if (promptObj.isCookMode) {
+            let urls = [];
+            
+            // Extract URLs from run outputs (similar to existing logic)
+            if (run?.outputs && run.outputs.length > 0) {
+                run.outputs.forEach(outputItem => {
+                    ["images", "gifs", "videos"].forEach(type => {
+                        if (outputItem.data?.[type]?.length > 0) {
+                            outputItem.data[type].forEach(dataItem => {
+                                const url = dataItem.url;
+                                const fileType = extractType(url);
+                                urls.push({ type: fileType, url });
+                            });
+                        }
+                    });
+                });
+            }
+
+            sent = await handleCookModeCompletion(urls);
+            return;
+        }
         // Special handling for Tripo tasks
         if (promptObj.type === 'TRIPO' && run?.outputs) {
             try {

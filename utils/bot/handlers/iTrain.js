@@ -823,6 +823,7 @@ async function submitTraining(message, user, loraId) {
         chat_id: chatId,
         message_id: messageId
     })
+    setUserState({...message, from: {id: user}}, STATES.IDLE)
     await sendMessage({from: {id:DEV_DMS}, chat: {id:DEV_DMS}},`user ${user} @${message.from.username} just submitted ${workspace[user][loraId].name} for training`)
 }
 /*

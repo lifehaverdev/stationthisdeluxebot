@@ -4,7 +4,9 @@ const {
     STATES, getBotInstance,
     stateHandlers,
     actionMap,
+    globalStatus,
     prefixHandlers,
+    flows,
  } = require('../bot')
 const { 
     sendMessage, 
@@ -15,14 +17,6 @@ const {
     react ,
     logThis
 } = require('../../utils')
-// const { 
-//     createCollection,
-//     loadCollection,
-//     getCollectionsByUserId,
-//     writeUserDataPoint,
-//     deleteStudio,
-//     saveStudio,
-//  } = require('../../../db/mongodb')
  const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { StudioManager } = require('./collectionmode/studioManager')
@@ -30,9 +24,14 @@ const {
  const { gptAssist, formatters } = require('../../../commands/assist');
  const fs = require('fs')
  const { checkIn } = require('../gatekeep')
- const { CollectionDB, UserCore } = require('../../../db/index');
+ const { enqueueTask } = require('../queue')
+ const { CollectionDB, UserCore, UserEconomy } = require('../../../db/index');
+ const GlobalStatusDB = require('../../../db/models/globalStatus');
+ const { buildPromptObjFromWorkflow } = require('./iMake')
+ const globalStatusDB = new GlobalStatusDB();
  const collectionDB = new CollectionDB();
  const userCore = new UserCore();
+ const userEconomy = new UserEconomy();
 
  const studioAction = new StudioAction(studio)
 
@@ -2096,16 +2095,133 @@ class CookModeHandler {
     }
 
     async initializeCookMode(message, user, collectionId) {
-        // Verify collection is ready for cooking:
-        // - Has valid master prompt
-        // - Has trait types defined
-        // - Has metadata configured
-        
-        // If ready:
-        // 1. Initialize database entries
-        // 2. Start generation controller
-        // 3. Set up status message
-        // 4. Return cook mode control interface
+        try {
+            // Check if user already has an active cooking task
+            const existingTask = globalStatus.cooking?.find(task => 
+                task.userId === user && task.status === 'active'
+            );
+
+            if (existingTask) {
+                const controlPanel = {
+                    inline_keyboard: [
+                        [
+                            { text: "⏸ Pause", callback_data: `cookPause_${existingTask.collectionId}` },
+                            { text: "👁 Review", callback_data: `cookReview_${existingTask.collectionId}` }
+                        ],
+                        [
+                            { text: "📊 Stats", callback_data: `cookStats_${existingTask.collectionId}` },
+                            { text: "❌ Exit", callback_data: `cookExit_${existingTask.collectionId}` }
+                        ]
+                    ]
+                };
+
+                if (existingTask.collectionId === collectionId) {
+                    await sendMessage(message, 
+                        "⚠️ You're already cooking this collection!\n\n" +
+                        "Current status:\n" +
+                        `• Batch: ${existingTask.currentBatch}/${existingTask.totalBatches}\n` +
+                        `• Last generated: ${existingTask.lastGenerated ? new Date(existingTask.lastGenerated).toLocaleString() : 'Never'}\n\n` +
+                        "Use the controls below to manage generation:",
+                        { reply_markup: controlPanel }
+                    );
+                    return;
+                } else {
+                    await sendMessage(message, 
+                        "⚠️ You're already cooking another collection!\n\n" +
+                        "Current cook status:\n" +
+                        `• Collection ID: ${existingTask.collectionId}\n` +
+                        `• Batch: ${existingTask.currentBatch}/${existingTask.totalBatches}\n\n` +
+                        "Please use the controls below to manage the current cook:",
+                        { reply_markup: controlPanel }
+                    );
+                    return;
+                }
+            }
+
+            // Load collection data
+            const collection = await getOrLoadCollection(user, collectionId);
+            if (!collection) {
+                await sendMessage(message, "❌ Collection not found");
+                return;
+            }
+
+            // Essential validation checks
+            const validationErrors = [];
+
+            // Check master prompt
+            if (!collection.config.masterPrompt) {
+                validationErrors.push("• Missing master prompt");
+            } else {
+                // Validate master prompt structure
+                const { isValid, errors } = validateMasterPrompt(collection.config.masterPrompt);
+                if (!isValid) {
+                    validationErrors.push("• Invalid master prompt structure:\n  " + errors.join("\n  "));
+                }
+            }
+
+            // Check trait types
+            if (!collection.config.traitTypes || collection.config.traitTypes.length === 0) {
+                validationErrors.push("• No trait types defined");
+            } else {
+                // Validate each trait type has at least one trait
+                const emptyTraits = collection.config.traitTypes
+                    .filter(type => !type.traits || type.traits.length === 0)
+                    .map(type => type.title);
+                if (emptyTraits.length > 0) {
+                    validationErrors.push(`• Empty trait types found: ${emptyTraits.join(", ")}`);
+                }
+            }
+
+            if (validationErrors.length > 0) {
+                const errorMessage = "⚠️ Collection not ready for cooking:\n" + 
+                                   validationErrors.join("\n") + 
+                                   "\n\nPlease complete the trait setup before starting cook mode.";
+                await sendMessage(message, errorMessage);
+                return;
+            }
+
+            // Set up status message
+            const statusMessage = await sendMessage(message, 
+                "🧑‍🍳 Initializing cook mode...", 
+                { reply_markup: { inline_keyboard: [[{ text: "⏳ Please wait...", callback_data: "wait" }]] }}
+            );
+
+            // // Store status message info for updates
+            // await this.statusManager.initializeStatus(collectionId, {
+            //     chatId: message.chat.id,
+            //     messageId: statusMessage.message_id
+            // });
+
+            // Return cook mode control interface
+            const controlPanel = {
+                inline_keyboard: [
+                    [
+                        { text: "▶️ Start", callback_data: `cookStart_${collectionId}` },
+                        { text: "⏸ Pause", callback_data: `cookPause_${collectionId}` }
+                    ],
+                    [
+                        { text: "👁 Review", callback_data: `cookReview_${collectionId}` },
+                        { text: "📊 Stats", callback_data: `cookStats_${collectionId}` }
+                    ],
+                    [{ text: "❌ Exit", callback_data: `cookExit_${collectionId}` }]
+                ]
+            };
+
+            // Update the status message with the control panel
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: statusMessage.message_id,
+                text: "🧑‍🍳 Cook Mode Ready!\n\n" +
+                      `Collection: ${collection.name}\n` +
+                      `Supply: ${collection.totalSupply}\n` +
+                      "Use the controls below to manage generation:",
+                reply_markup: controlPanel
+            });
+
+        } catch (error) {
+            console.error('Error initializing cook mode:', error);
+            await sendMessage(message, "❌ An error occurred while initializing cook mode. Please try again.");
+        }
     }
 }
 
@@ -2175,4 +2291,385 @@ async function handleCookMode(message, user, collectionId) {
     await cookMode.initializeCookMode(message, user, collectionId);
 }
 
+// Add to your prefix handlers
+prefixHandlers['cookStart_'] = handleCookStart;
 
+async function handleCookStart(action, message, user) {
+    const collectionId = parseInt(action.split('_')[1]);
+    
+    try {
+        // 1. Load collection and generate prompt
+        const collection = await getOrLoadCollection(user, collectionId);
+        const { masterPrompt, traitTypes } = collection.config;
+        
+        // Process master prompt and generate traits
+        const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
+        const conflictMap = TraitSelector.buildConflictMap(exclusions);
+        const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+        const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
+
+        // 2. Build comprehensive userContext
+        const workflowType = collection.config.workflow || 'MAKE';
+        const userContext = {
+            userId: user,
+            type: workflowType,
+            prompt: generatedPrompt,
+            basePrompt: -1,
+            userPrompt: -1,
+            input_cfg: 6,
+            input_width: 1024,
+            input_height: 1024,
+            input_checkpoint: 'flux-schnell',
+            input_negative: 'embedding:easynegative',
+            balance: lobby[user].balance || '0',
+            forceLogo: false,
+            input_batch: 1,
+            input_seed: -1,
+            controlNet: false,
+            styleTransfer: false,
+            openPose: false,
+            username: message.from.username || 'unknown_user',
+            first_name: message.from.first_name || 'Unknown',
+        };
+
+        // 3. Update global status with enhanced cooking entry
+        const currentStatus = globalStatus;
+        const updatedCooking = [
+            ...currentStatus.cooking,
+            {
+                userId: user,
+                collectionId,
+                startedAt: Date.now(),
+                status: 'active',
+                currentBatch: 1,
+                totalBatches: collection.config.batchCount || 10,
+                lastGenerated: null,
+                generationStatus: 'pending',
+                qointsRequired: collection.config.batchCount * 100,
+                // Add user context for resuming
+                userContextCache: {
+                    ...userContext,
+                    collection: {
+                        name: collection.name,
+                        workflow: workflowType,
+                        masterPrompt,
+                        traitTypes
+                    }
+                }
+            }
+        ];
+
+        await globalStatusDB.updateStatus({ cooking: updatedCooking });
+
+        // 4. Build and queue the task
+        const workflow = flows.find(flow => flow.name === workflowType);
+        if (!workflow) {
+            throw new Error(`Invalid workflow type: ${workflowType}`);
+        }
+
+        let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
+        promptObj = {
+            ...promptObj,
+            isCookMode: true,
+            collectionId: collection.collectionId,
+            traits: selectedTraits
+        };
+
+        await enqueueTask({message: {...message, from: {id: user}}, promptObj});
+
+        // 5. Update status message
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: "🧑‍🍳 Cook Mode Started!\n\n" +
+                  `Collection: ${collection.name}\n` +
+                  "First prompt queued for generation...",
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "⏸ Pause", callback_data: `cookPause_${collectionId}` },
+                        { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
+                    ],
+                    [
+                        { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
+                        { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error starting cook mode:', error);
+        await sendMessage(message, "❌ An error occurred while starting cook mode.");
+    }
+}
+
+prefixHandlers['cookPause_'] = handleCookPause;
+
+// Add the new handler function
+async function handleCookPause(action, message, user) {
+    const collectionId = parseInt(action.split('_')[1]);
+    
+    try {
+        // Find the cooking task in global status
+        const currentStatus = globalStatus;
+        const taskIndex = currentStatus.cooking.findIndex(
+            task => task.userId === user && task.collectionId === collectionId
+        );
+
+        if (taskIndex === -1) {
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: "❌ No active cooking task found to pause.",
+            });
+            return;
+        }
+
+        // Update the task status
+        const updatedCooking = [...currentStatus.cooking];
+        updatedCooking[taskIndex] = {
+            ...updatedCooking[taskIndex],
+            status: 'paused',
+            pausedAt: Date.now()
+        };
+
+        // Save to DB
+        await globalStatusDB.updateStatus({ cooking: updatedCooking });
+
+        // Update the message to show paused state
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: "⏸ Cook Mode Paused\n\n" +
+                  `Collection: ${collectionId}\n` +
+                  `Batch Progress: ${updatedCooking[taskIndex].currentBatch}/${updatedCooking[taskIndex].totalBatches}\n` +
+                  "Generation will resume when you press play.",
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "▶️ Resume", callback_data: `cookStart_${collectionId}` },
+                        { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
+                    ],
+                    [
+                        { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
+                        { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        console.error('Error pausing cook mode:', error);
+        await sendMessage(message, "❌ An error occurred while pausing cook mode.");
+    }
+}
+
+// Modify buildPromptObjFromWorkflow to handle cook mode
+function buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
+    let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message)
+    promptObj = {
+        ...promptObj,
+        isCookMode: true,
+        collectionId: userContext.collectionId,
+        traits: userContext.traits
+    };
+
+    return promptObj;
+}
+
+// Add a periodic check function
+async function checkCookProgress(user, collectionId) {
+    try {
+        const currentStatus = globalStatus;
+        const cookingTask = currentStatus.cooking.find(c => 
+            c.userId === user && 
+            c.collectionId === collectionId
+        );
+
+        if (!cookingTask || cookingTask.status !== 'active') {
+            return;
+        }
+
+        // Check collection supply at DB level
+        const collection = await getOrLoadCollection(user, collectionId);
+        const currentSupply = collection.totalSupply || 0;
+
+        if (currentSupply >= 5) {
+            // Update cooking task status to completed
+            const updatedCooking = currentStatus.cooking.map(task => {
+                if (task.userId === user && task.collectionId === collectionId) {
+                    return {
+                        ...task,
+                        status: 'completed',
+                        completedAt: Date.now(),
+                        completionReason: 'supply_limit_reached'
+                    };
+                }
+                return task;
+            });
+
+            // Update global status
+            await globalStatusDB.updateStatus({ cooking: updatedCooking });
+            return;
+        }
+
+        if (cookingTask && cookingTask.lastGenerated) {
+            // Start next generation
+            const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
+            if (timeSinceLastGen > 5000) { // 5 second buffer
+                // Queue next generation
+                await handleCookStart(`cookStart_${collectionId}`, message, user);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error in checkCookProgress:', error);
+    }
+}
+
+// Set up the interval when cooking starts
+function startCookingInterval(user, collectionId, message) {
+    const intervalId = setInterval(async () => {
+        await checkCookProgress(user, collectionId, message);
+    }, 10000); // Check every 10 seconds
+
+    // Store the interval ID so we can clear it later
+    cookIntervals[`${user}_${collectionId}`] = intervalId;
+}
+
+// At the top of the file after imports
+const cookIntervals = {};
+
+async function resumeCookingTask(cookTask) {
+    try {
+        const user = cookTask.userId;
+        const collectionId = cookTask.collectionId;
+
+        // 1. Check qoints in both lobby and DB
+        let userQoints = 0;
+        
+        if (lobby[user]?.qoints) {
+            userQoints = lobby[user].qoints;
+        } else {
+            // If not in lobby, check DB
+            const userEco = await userEconomy.findOne({ userId: user });
+            if (userEco) {
+                userQoints = userEco.qoints || 0;
+            }
+        }
+
+        if (userQoints < 100) {
+            console.log(`Cannot resume cooking for user ${user}: insufficient qoints (${userQoints})`);
+            return false;
+        }
+
+        // 2. Use cached context if available, otherwise rebuild
+        let userContext;
+        if (cookTask.userContextCache) {
+            console.log('Using cached user context for cooking task');
+            userContext = cookTask.userContextCache;
+        } else {
+            console.log('No cached context found, rebuilding...');
+            // ... existing context building code ...
+            const collection = await getOrLoadCollection(user, collectionId);
+            // ... rest of the context building ...
+        }
+
+        // 3. Create complete dummy message FIRST
+        const dummyMessage = {
+            chat_id: user,
+            from: {
+                id: user,
+                username: userContext.username || 'unknown_user',
+                first_name: userContext.first_name || 'Unknown'
+            },
+            message_id: Date.now()
+        };
+
+        const workflow = flows.find(flow => flow.name === userContext.type);
+        if (!workflow) {
+            throw new Error(`Invalid workflow type: ${userContext.type}`);
+        }
+
+        // 4. Pass both userContext AND message to build prompt
+        let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, dummyMessage);
+        promptObj = {
+            ...promptObj,
+            isCookMode: true,
+            collectionId: collectionId,
+            traits: userContext.traits || []
+        };
+
+        // 5. Queue the task with the same message object
+        await enqueueTask({
+            message: dummyMessage,
+            promptObj
+        });
+
+        // Start monitoring interval
+        startCookingInterval(user, collectionId);
+
+        console.log(`Successfully resumed cooking for user ${user}, collection ${collectionId}`);
+        return true;
+
+    } catch (error) {
+        console.error('Error resuming cook mode:', error);
+        return false;
+    }
+}
+
+// Then in our initialization function:
+async function initializeCookingTasks() {
+    try {
+        const currentStatus = await globalStatusDB.getGlobalStatus();
+        if (currentStatus.cooking && currentStatus.cooking.length > 0) {
+            console.log('Found active cooking tasks, resuming...');
+            
+            for (const cookTask of currentStatus.cooking) {
+                if (cookTask.status === 'active' && cookTask.generationStatus !== 'complete') {
+                    await resumeCookingTask(cookTask);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error initializing cooking tasks:', error);
+    }
+}
+
+// Wrap initialization in an async function that waits for DB connection
+async function initializeBot() {
+    try {
+        // Wait for other necessary initializations
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Give DB time to connect
+        
+        // Check for required globals
+        const maxAttempts = 10;
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            if (flows && flows.length > 0 && globalStatus) {
+                console.log('Global dependencies loaded, initializing cooking tasks...');
+                await initializeCookingTasks();
+                return;
+            }
+            
+            console.log('Waiting for global dependencies to load...');
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            attempts++;
+        }
+        
+        if (attempts >= maxAttempts) {
+            console.error('Timeout waiting for global dependencies. Current state:', {
+                flowsLoaded: !!flows,
+                flowsCount: flows?.length || 0,
+                globalStatusLoaded: !!globalStatus
+            });
+        }
+    } catch (error) {
+        console.error('Error during bot initialization:', error);
+    }
+}
+
+// Call this instead of directly calling initializeCookingTasks
+initializeBot();

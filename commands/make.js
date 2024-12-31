@@ -252,10 +252,13 @@ function imgPreProc(promptObj) {
 
 
 
-function chooseIdByMachine(ids,promptObj) {
-    if(ids.length > 1){
-        if(!promptObj.machine){
-            return ids[1]
+function chooseIdByMachine(ids, promptObj) {
+    if(ids.length > 1) {
+        if(promptObj.isCookMode) {
+            return ids[0]  // Use first machine for cook mode
+        }
+        if(!promptObj.machine) {
+            return ids[1]  // Default to second machine for regular generations
         }
         return ids[promptObj.machine]
     } else {
