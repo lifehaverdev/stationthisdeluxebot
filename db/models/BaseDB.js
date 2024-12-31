@@ -217,6 +217,30 @@ class BaseDB {
         });
     }
 
+    // Add new method for saving files from URLs
+    async saveFileFromUrl(filename, url) {
+        return dbQueue.enqueue(async () => {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to fetch ${url}`);
+
+            const bucket = await this.getBucket();
+            const uploadStream = bucket.openUploadStream(filename);
+            
+            // Pipe the response stream and return a promise
+            return new Promise((resolve, reject) => {
+                response.body.pipe(uploadStream)
+                    .on('finish', () => {
+                        console.log(`File ${filename} saved to GridFS from URL with id:`, uploadStream.id.toString());
+                        resolve(new ObjectId(uploadStream.id));
+                    })
+                    .on('error', (error) => {
+                        console.error('Error saving from URL to GridFS:', error);
+                        reject(error);
+                    });
+            });
+        });
+    }
+
     async saveFile(filename, stream) {
         return dbQueue.enqueue(async () => {
             const bucket = await this.getBucket();

@@ -64,23 +64,16 @@ class StudioDB extends BaseDB {
 
     async saveGenerationResult(urls, promptObj, task) {
         try {
-            // 1. Save files to MongoDB bucket
-            const bucket = new GridFSBucket(db);
+            // 1. Save files using BaseDB's GridFS methods
             const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
                 const response = await fetch(url);
                 if (!response.ok) throw new Error(`Failed to fetch ${url}`);
                 
                 const filename = `collection_${promptObj.collectionId}_${Date.now()}.${type}`;
-                const uploadStream = bucket.openUploadStream(filename);
-                
-                await new Promise((resolve, reject) => {
-                    response.body.pipe(uploadStream)
-                        .on('finish', resolve)
-                        .on('error', reject);
-                });
+                const fileId = await this.saveFileFromUrl(filename, response.body);
 
                 return {
-                    fileId: uploadStream.id,
+                    fileId,
                     type,
                     originalUrl: url
                 };
@@ -95,6 +88,7 @@ class StudioDB extends BaseDB {
                 traits: promptObj.traits
             };
 
+            // Use BaseDB's insertOne
             await this.insertOne(studioDoc);
             return { success: true, studioDoc };
 
