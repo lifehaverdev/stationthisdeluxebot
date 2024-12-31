@@ -368,11 +368,25 @@ async function handleTaskCompletion(task) {
 
     // New helper function to handle cook mode completions
     async function handleCookModeCompletion(urls, task) {
+        console.log('handleCookModeCompletion received:', {
+            urlsType: typeof urls,
+            urlsIsArray: Array.isArray(urls),
+            urlsLength: urls?.length,
+            urlsSample: urls?.[0],
+            taskPromptObj: task?.promptObj,
+            taskCollectionId: task?.promptObj?.collectionId
+        });
         stu = new studioDB();
         try {
+            // Ensure urls is in the correct format
+        const formattedUrls = Array.isArray(urls) ? urls : [{ url: urls, type: 'png' }];
+        
+        console.log('Formatted URLs:', formattedUrls);
+
             // 1. Save to studio
             const { success, studioDoc, error } = await stu.saveGenerationResult(urls, task);
             
+
             if (!success) {
                 throw error || new Error('Failed to save generation result');
             }
