@@ -413,7 +413,7 @@ async function handleTaskCompletion(task) {
                 });
             }
 
-            sent = await handleCookModeCompletion(urls);
+            sent = await handleCookModeCompletion(urls, task);
             return;
         }
         // Special handling for Tripo tasks
