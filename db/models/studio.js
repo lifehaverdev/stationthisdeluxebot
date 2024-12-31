@@ -62,7 +62,8 @@ class StudioDB extends BaseDB {
         }
     }
 
-    async saveGenerationResult(urls, promptObj, task) {
+    async saveGenerationResult(urls, task) {
+        const { promptObj } = task;
         try {
             // 1. Save files using BaseDB's GridFS methods
             const savedFiles = await Promise.all(urls.map(async ({ url, type }) => {
