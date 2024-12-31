@@ -2375,7 +2375,20 @@ async function handleCookStart(action, message, user) {
             traits: selectedTraits
         };
 
-        await enqueueTask({message: {...message, from: {id: user}}, promptObj});
+        await enqueueTask({
+            message: {
+                ...message,
+                from: {
+                    id: user,
+                    username: userContext.username || 'unknown_user',
+                    first_name: userContext.first_name || 'Unknown'
+                },
+                chat: {
+                    id: user
+                }
+            }, 
+            promptObj
+        });
 
         // 5. Update status message
         await editMessage({
