@@ -1,6 +1,8 @@
-const { lobby } = require('../bot/bot')
+const { lobby, globalStatus } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { FloorplanDB } = require('../../db/index');
+const GlobalStatusDB = require('../../db/models/globalStatus');
+const globalStatusData = new GlobalStatusDB();
 const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
 
 const floorplanDB = new FloorplanDB();
@@ -50,8 +52,8 @@ async function addPoints(task) {
         user.qoints = (user.qoints || 0) - pointsToAdd;
         console.log(`Cook mode: Subtracted ${pointsToAdd} qoints from user ${userId}. New qoints: ${user.qoints}`);
         try {
-            await globalStatusDB.updateStatus({
-                cooking: globalStatusDB.cooking.map(cook => 
+            await globalStatusData.updateStatus({
+                cooking: globalStatus.cooking.map(cook => 
                     cook.collectionId === promptObj.collectionId
                         ? { 
                             ...cook,
