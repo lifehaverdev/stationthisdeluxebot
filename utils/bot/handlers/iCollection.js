@@ -2439,16 +2439,26 @@ async function handleCookPause(action, message, user) {
             return;
         }
 
-        // Update the task status
+        const existingTask = currentStatus.cooking[taskIndex];
+
+        // Update the task status with all necessary context
         const updatedCooking = [...currentStatus.cooking];
         updatedCooking[taskIndex] = {
-            ...updatedCooking[taskIndex],
+            ...existingTask,
             status: 'paused',
-            pausedAt: Date.now()
+            pausedAt: Date.now(),
+            resumeData: {
+                currentBatch: existingTask.currentBatch,
+                totalBatches: existingTask.totalBatches,
+                lastGenerated: existingTask.lastGenerated,
+                traits: existingTask.traits,
+                userContextCache: existingTask.userContextCache
+            }
         };
 
         // Save to DB
         await globalStatusDB.updateStatus({ cooking: updatedCooking });
+        console.log(`Paused cooking task for user ${user}, collection ${collectionId}`);
 
         // Update the message to show paused state
         await editMessage({
@@ -2456,7 +2466,7 @@ async function handleCookPause(action, message, user) {
             message_id: message.message_id,
             text: "⏸ Cook Mode Paused\n\n" +
                   `Collection: ${collectionId}\n` +
-                  `Batch Progress: ${updatedCooking[taskIndex].currentBatch}/${updatedCooking[taskIndex].totalBatches}\n` +
+                  `Batch Progress: ${existingTask.currentBatch}/${existingTask.totalBatches}\n` +
                   "Generation will resume when you press play.",
             reply_markup: {
                 inline_keyboard: [
@@ -2475,6 +2485,83 @@ async function handleCookPause(action, message, user) {
     } catch (error) {
         console.error('Error pausing cook mode:', error);
         await sendMessage(message, "❌ An error occurred while pausing cook mode.");
+    }
+}
+
+// Improved check function with better state handling
+async function checkCookProgress(user, collectionId) {
+    try {
+        const currentStatus = globalStatus;
+        const cookingTask = currentStatus.cooking.find(c => 
+            c.userId === user && 
+            c.collectionId === collectionId
+        );
+
+        if (!cookingTask) {
+            console.log(`No cooking task found for user ${user}, collection ${collectionId}`);
+            return;
+        }
+
+        // Log the current state
+        console.log(`Checking cook progress: User ${user}, Collection ${collectionId}, Status: ${cookingTask.status}`);
+
+        // Handle different states
+        switch (cookingTask.status) {
+            case 'paused':
+                // Skip generation but keep in list
+                console.log(`Skipping paused cook task: User ${user}, Collection ${collectionId}`);
+                return;
+                
+            case 'completed':
+                // Remove from cooking list
+                const updatedCooking = currentStatus.cooking.filter(task => 
+                    !(task.userId === user && task.collectionId === collectionId)
+                );
+                await globalStatusDB.updateStatus({ cooking: updatedCooking });
+                console.log(`Removed completed cook task: User ${user}, Collection ${collectionId}`);
+                return;
+
+            case 'active':
+                // Check collection supply at DB level
+                const collection = await getOrLoadCollection(user, collectionId);
+                const currentSupply = collection.totalSupply || 0;
+
+                if (currentSupply >= 5) {
+                    // Update cooking task status to completed
+                    const updatedCooking = currentStatus.cooking.map(task => {
+                        if (task.userId === user && task.collectionId === collectionId) {
+                            return {
+                                ...task,
+                                status: 'completed',
+                                completedAt: Date.now(),
+                                completionReason: 'supply_limit_reached'
+                            };
+                        }
+                        return task;
+                    });
+
+                    await globalStatusDB.updateStatus({ cooking: updatedCooking });
+                    console.log(`Supply limit reached: User ${user}, Collection ${collectionId}`);
+                    return;
+                }
+
+                // Check if ready for next generation
+                if (cookingTask.lastGenerated) {
+                    const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
+                    if (timeSinceLastGen > 5000) { // 5 second buffer
+                        console.log(`Queueing next generation: User ${user}, Collection ${collectionId}`);
+                        await handleCookStart(`cookStart_${collectionId}`, message, user);
+                    }
+                }
+                break;
+
+            default:
+                console.log(`Unknown cooking status: ${cookingTask.status}`);
+                return;
+        }
+
+    } catch (error) {
+        console.error('Error in checkCookProgress:', error);
     }
 }
 
