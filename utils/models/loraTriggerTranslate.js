@@ -28,6 +28,12 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   const checkpointDesc = checkpointmenu.find(item => item.name === cleanCheckpoint)?.description;
   console.log('Checkpoint description:', checkpointDesc);
 
+   // Skip LoRA processing if no checkpoint description is found
+   if (!checkpointDesc) {
+    console.log('Warning: No checkpoint description found, skipping LoRA processing');
+    return prompt;
+  }
+
   // Get cached LoRA data
   const { triggers, cognates } = await refreshLoraCache(loraDB);
 
@@ -55,7 +61,7 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
-    if (cognateMatch) {
+    if (cognateMatch && cognateMatch.version === checkpointDesc) {
       const weight = customWeight ? parseFloat(customWeight) / 10 : cognateMatch.weight;
       const loraTag = `<lora:${cognateMatch.lora_name}:${weight}>`;
       
@@ -82,26 +88,32 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     // Check trigger words
     const triggerMatches = triggers.get(wordLower) || [];
     if (triggerMatches.length > 0) {
-      console.log(`Found trigger word matches for "${word}":`, triggerMatches);
-      const loraInfo = triggerMatches[0];
-      const weight = customWeight ? parseFloat(customWeight) / 10 : loraInfo.weight;
-      const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
+      // Filter matches by version and take the first match
+      const versionMatchedTriggers = triggerMatches.filter(trigger => trigger.version === checkpointDesc);
+      if (versionMatchedTriggers.length > 0) {
+        console.log(`Found trigger word matches for "${word}":`, triggerMatches);
+        const loraInfo = triggerMatches[0];
+        const weight = customWeight ? parseFloat(customWeight) / 10 : loraInfo.weight;
+        const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
 
-      if (!addedLoraTags.has(loraInfo.lora_name)) {
-        usedLoras.add(loraInfo.lora_name);
-        addedLoraTags.add(loraInfo.lora_name);
-        
-        // Clean up the trigger word by removing weight syntax
-        const cleanWord = baseWord.replace(/(?:\d+(?:\.\d+)?|:\d*\.?\d+)$/, '');
-        const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (!addedLoraTags.has(loraInfo.lora_name)) {
+          usedLoras.add(loraInfo.lora_name);
+          addedLoraTags.add(loraInfo.lora_name);
+          
+          // Clean up the trigger word by removing weight syntax
+          const cleanWord = baseWord.replace(/(?:\d+(?:\.\d+)?|:\d*\.?\d+)$/, '');
+          const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)${escapedWord}`, 'i'),
-          `${loraTag} ${cleanWord}`
-        );
+          modifiedPrompt = modifiedPrompt.replace(
+            new RegExp(`(?<!<lora:[^>]*)${escapedWord}`, 'i'),
+            `${loraTag} ${cleanWord}`
+          );
+        }
+
+        await loraDB.incrementUses(loraInfo.lora_name);
+      } else {
+        console.log(`No trigger word matches found for "${word}" with checkpoint version ${checkpointDesc}`);
       }
-
-      await loraDB.incrementUses(loraInfo.lora_name);
     }
   }
 
