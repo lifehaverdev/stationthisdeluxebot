@@ -1,3 +1,4 @@
+const { globalStatus } = require('../../utils/bot/bot');
 const { BaseDB } = require('./BaseDB');
 const { UserEconomy } = require('../../db');
 
