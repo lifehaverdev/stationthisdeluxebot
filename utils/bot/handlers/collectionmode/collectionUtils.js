@@ -1,7 +1,15 @@
 const { studio } = require('../../bot');
+const { logThis } = require('../../../utils');
 const { buildPromptObjFromWorkflow } = require('../iMake');
 const { CollectionDB } = require('../../../../db/index');
 const collectionDB = new CollectionDB();
+
+const test = false
+const LOG_TRAIT = test;
+const LOG_SELECT = test;
+const LOG_CONFLICT = test;
+const LOG_EXCLUSION = test;
+const LOG_VALIDATE = test;
 
 // === Collection Loading ===
 async function getOrLoadCollection(userId, collectionId) {
