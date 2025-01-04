@@ -84,7 +84,7 @@ class CollectionMenuBuilder {
             [{ text: 'metadata', callback_data: `collectionMetaData_${collectionId}` }],
             [{ text: 'config', callback_data: `collectionConfigMenu_${collectionId}` }],
             [{ text: 'consult', callback_data: `collectionConsult_${collectionId}` }],
-            [{ text: 'cook 🧑🏼‍🍳', callback_data: `cook_${collectionId}` }]
+            //[{ text: 'cook 🧑🏼‍🍳', callback_data: `cook_${collectionId}` }]
         ];
 
         if (!submitted) {
