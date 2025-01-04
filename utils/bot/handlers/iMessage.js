@@ -425,15 +425,12 @@ commandRegistry['/vidthat2'] = {
             }
             const target = message.reply_to_message;
             if(target && (target.photo || target.document)) {
-                target.from.id = message.from.id;
-                target.message_id = message.message_id
-
+                lobby[message.from.id].prompt = message.text.replace('/vidthat2', '').trim()
                 iMedia.handleMs3V3ImgFile(
                     {
                         ...target, 
                         from: {id: message.from.id},
                         message_id: message.message_id,
-                        text: message.text.replace('/vidthat2', '').trim()
                     }
                 )
             } else {
