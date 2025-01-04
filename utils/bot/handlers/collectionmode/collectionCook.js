@@ -9,7 +9,7 @@ const {
     validateMasterPrompt,
     buildPromptObjFromWorkflow
 } = require('./collectionUtils');
-const { sendMessage, editMessage } = require('../../../utils');
+const { sendMessage, editMessage, logThis } = require('../../../utils');
 const { enqueueTask } = require('../../queue');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
 
@@ -45,17 +45,20 @@ class CollectionCook {
     // Private initialization method
     async initialize() {
         try {
+            console.log('CollectionCook initialize starting...');
             const maxAttempts = 10;
             let attempts = 0;
 
             while (attempts < maxAttempts) {
+                console.log(`Checking globalStatus (attempt ${attempts + 1}/${maxAttempts})...`);
+                
                 if (globalStatus.cooking) {
-                    console.log('GlobalStatus ready, checking for active cooking tasks...');
+                    console.log('Global dependencies loaded, initializing cooking tasks...');
                     await this.initializeCookingTasks();
                     return;
                 }
                 
-                console.log(`Waiting for globalStatus to be ready... (attempt ${attempts + 1}/${maxAttempts})`);
+                console.log('Waiting for global dependencies to load...');
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 attempts++;
             }
@@ -72,7 +75,6 @@ class CollectionCook {
         }
     }
 
-    // Your existing methods remain the same
     async initializeCookingTasks() {
         try {
             if (globalStatus.cooking && globalStatus.cooking.length > 0) {
@@ -727,7 +729,7 @@ class CollectionCook {
             message_id: statusMessage.message_id,
             text: "🧑‍🍳 Cook Mode Ready!\n\n" +
                 `Collection: ${collection.name}\n` +
-                `Generated: ${cookingTask.generationCount}/5\n` +
+                `Generated: ${0}/${collection.config.supply || 5}\n` +
                 "Use the controls below to manage generation:",
             reply_markup: controlPanel
         });
@@ -846,24 +848,6 @@ class CollectionCook {
             console.error('Error during bot initialization:', error);
         }
     }
-    
-    async initializeCookingTasks() {
-        try {
-            const currentStatus = global
-            if (currentStatus.cooking && currentStatus.cooking.length > 0) {
-                console.log('Found active cooking tasks, resuming...');
-                
-                for (const cookTask of currentStatus.cooking) {
-                    if (cookTask.status === 'active') {
-                        // Resume each active cook
-                        await this.resumeCooking(cookTask);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error initializing cooking tasks:', error);
-        }
-    }
 
     async completeCookingTask(cookTask, reason) {
         try {
@@ -938,6 +922,4 @@ class CollectionCook {
     }
 }
 
-// Export a singleton instance
-const cookModeHandler = new CookModeHandler();
-module.exports = cookModeHandler;
+module.exports = CollectionCook;
