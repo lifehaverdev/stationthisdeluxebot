@@ -518,6 +518,10 @@ async function handleMs3V2ImgFile(message, user = null) {
     await handleImageTask(message, user, 'MS3.2', STATES.MS3V2, false, 600000);
 }
 
+async function handleMs3V3ImgFile(message, user = null) {
+    await handleImageTask(message, user, 'MS3.3', STATES.MS3V3,  false, 600000)
+}
+
 module.exports = 
 {
     handleImageTask, handleTRIPO,
@@ -528,7 +532,7 @@ module.exports =
     handleRmbg,
     handleUpscale,
     handleMs3ImgFile,
-    handleMs3V2ImgFile,
+    handleMs3V2ImgFile, handleMs3V3ImgFile,
     handleInpaint,
     handleInterrogation
 }

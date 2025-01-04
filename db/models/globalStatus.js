@@ -113,9 +113,21 @@ class GlobalStatusDB extends BaseDB {
     // Refresh global status from database and process charges
     async refreshGlobalStatus(globalStatusObj) {
         const status = await this.getGlobalStatus();
+        // Only update cooking array if it's empty in memory
+        // This prevents overwriting active cooking tasks
+        if (!globalStatusObj.cooking || globalStatusObj.cooking.length === 0) {
+            globalStatusObj.cooking = status.cooking || [];
+        }
         globalStatusObj.training = status.training || [];
-        globalStatusObj.cooking = status.cooking || [];
-        globalStatusObj.chargePurchases = status.chargePurchases || [];
+        
+        // Charge purchases should be merged not overwritten
+        // to prevent losing recent transactions
+        globalStatusObj.chargePurchases = [
+            ...(globalStatusObj.chargePurchases || []),
+            ...(status.chargePurchases || [])
+        ].filter((purchase, index, self) => 
+            index === self.findIndex(p => p.id === purchase.id)
+        );
         
         // Process any pending charges
         await this.processChargePurchases();

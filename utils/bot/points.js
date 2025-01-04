@@ -62,7 +62,7 @@ async function addPoints(task) {
                         }
                         : cook
                 )
-            });
+            }, false);
         } catch (error) {
             console.error(`Failed to update global status for cooking task ${promptObj.collectionId}:`, error);
         }
