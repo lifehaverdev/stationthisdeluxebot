@@ -414,6 +414,33 @@ commandRegistry['/vidthat'] = {
             }
         }
     },
+commandRegistry['/vidthat2'] = {
+    handler: async (message) => {
+        console.log('made it into the function')
+        const group = getGroup(message)
+        if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
+            if((lobby[message.from.id].balance < 600000 && !group) || (group && group.qoints < 100)){
+                gated(message)
+                return
+            }
+            const target = message.reply_to_message;
+            if(target && (target.photo || target.document)) {
+                target.from.id = message.from.id;
+                target.message_id = message.message_id
+
+                iMedia.handleMs3V3ImgFile(
+                    {
+                        ...target, 
+                        from: {id: message.from.id},
+                        message_id: message.message_id,
+                        text: message.text.replace('/vidthat2', '').trim()
+                    }
+                )
+            } else {
+                react(message,"🤔")
+            }
+        }
+    },
 commandRegistry['/interrogate'] = {
     handler: async (message) => {
         console.log('made it into interrogate')
