@@ -393,17 +393,27 @@ async function handleTaskCompletion(task) {
             }
 
             // 2. Update collection status
-            await globalStatusData.updateStatus({
-                cooking: globalStatus.cooking.map(cook => {
-                    if (cook.collectionId === task.promptObj.collectionId) {
-                        return {
-                            ...cook,
-                            lastGenerated: Date.now(),
-                            generationCount: (cook.generationCount || 0) + 1
-                        };
-                    }
-                    return cook;
-                })
+            // await globalStatusData.updateStatus({
+            //     cooking: globalStatus.cooking.map(cook => {
+            //         if (cook.collectionId === task.promptObj.collectionId) {
+            //             return {
+            //                 ...cook,
+            //                 lastGenerated: Date.now(),
+            //                 generationCount: (cook.generationCount || 0) + 1
+            //             };
+            //         }
+            //         return cook;
+            //     })
+            // });
+            globalStatus.cooking = globalStatus.cooking.map(cook => {
+                if (cook.collectionId === task.promptObj.collectionId) {
+                    return {
+                        ...cook,
+                        lastGenerated: Date.now(),
+                        generationCount: (cook.generationCount || 0) + 1
+                    };
+                }
+                return cook;
             });
 
             return true;
