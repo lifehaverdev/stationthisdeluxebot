@@ -58,7 +58,6 @@ async function addPoints(task) {
                         ? { 
                             ...cook,
                             lastGenerated: Date.now(),
-                            currentBatch: cook.currentBatch + 1,
                             generationStatus: cook.currentBatch >= cook.totalBatches ? 'complete' : 'pending'
                         }
                         : cook
