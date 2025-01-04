@@ -92,7 +92,7 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
       const versionMatchedTriggers = triggerMatches.filter(trigger => trigger.version === checkpointDesc);
       if (versionMatchedTriggers.length > 0) {
         console.log(`Found trigger word matches for "${word}":`, triggerMatches);
-        const loraInfo = triggerMatches[0];
+        const loraInfo = versionMatchedTriggers[0];
         const weight = customWeight ? parseFloat(customWeight) / 10 : loraInfo.weight;
         const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
 
