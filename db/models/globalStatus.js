@@ -22,7 +22,7 @@ class GlobalStatusDB extends BaseDB {
     }
 
     // Update specific status arrays - modified to work with existing updateOne
-    async updateStatus(updates) {
+    async updateStatus(updates, shouldRefresh = false) {
         return this.monitorOperation(async () => {
             console.log('[GlobalStatusDB] Starting updateStatus with:', updates);
             
@@ -45,7 +45,10 @@ class GlobalStatusDB extends BaseDB {
             console.log('[GlobalStatusDB] Update result:', result);
 
             // Immediately refresh the in-memory globalStatus
-            await this.refreshGlobalStatus(globalStatus);
+            // If necessary 
+            if (shouldRefresh) {
+                await this.refreshGlobalStatus(globalStatus);
+            }
             
             return result;
         }, 'updateStatus');

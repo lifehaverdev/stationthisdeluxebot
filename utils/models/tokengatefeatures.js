@@ -23,10 +23,10 @@ const features = [
         name: 'image to video',
         gate: 600000
     },
-    {
-        name: 'Uncensored Assist',
-        gate: 1000000
-    }
+    // {
+    //     name: 'Uncensored Assist',
+    //     gate: 1000000
+    // }
 
 ]
 

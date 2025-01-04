@@ -17,7 +17,18 @@ const {
     react ,
     logThis
 } = require('../../utils')
- const { getOrLoadCollection, calculateCompletionPercentage } = require('./collectionmode/collectionUtils');
+const { 
+    getOrLoadCollection,
+    findExclusions,
+    processPromptWithOptionals,
+    TraitSelector,
+    validateMasterPrompt,
+    buildPromptObjFromWorkflow 
+} = require('./collectionmode/collectionUtils');
+// Add new imports:
+const CollectionCook = require('./collectionmode/collectionCook');
+const cookModeHandler = CollectionCook.getInstance();
+
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { StudioManager } = require('./collectionmode/studioManager')
  const { StudioAction } = require('./collectionmode/studioAction');
@@ -27,7 +38,8 @@ const {
  const { enqueueTask } = require('../queue')
  const { CollectionDB, UserCore, UserEconomy } = require('../../../db/index');
  const GlobalStatusDB = require('../../../db/models/globalStatus');
- const { buildPromptObjFromWorkflow } = require('./iMake')
+const { Collection } = require('mongodb');
+ //const { buildPromptObjFromWorkflow } = require('./iMake')
  const globalStatusDB = new GlobalStatusDB();
  const collectionDB = new CollectionDB();
  const userCore = new UserCore();
@@ -560,252 +572,8 @@ async function handleEditWorkflow(message,user,collectionId) {
 prefixHandlers['testCollection_'] = (action, message, user) => handlePrefix(action, message, user, 'testCollection')
 actionMap['testCollection'] = handleTestCollection
 
-class TraitSelector {
-    static selectTraitValue(traitType) {
-        logThis(LOG_SELECT, `[TRAIT_SELECT] Starting trait selection for type: ${traitType.title}`);
-        
-        if (!traitType.traits || !traitType.traits.length) {
-            logThis(LOG_SELECT, `[TRAIT_SELECT] No traits found for ${traitType.title}`);
-            return null;
-        }
-        
-        let totalWeight = 0;
-        traitType.traits.forEach(trait => {
-            const weight = trait.rarity || 0.5;
-            totalWeight += weight;
-            logThis(LOG_SELECT, `[TRAIT_SELECT] Adding weight for ${trait.name}: ${weight}`);
-        });
-        
-        logThis(LOG_SELECT, `[TRAIT_SELECT] Total weight calculated: ${totalWeight}`);
-        let random = Math.random() * totalWeight;
-        logThis(LOG_SELECT, `[TRAIT_SELECT] Random value generated: ${random}`);
-        
-        for (const trait of traitType.traits) {
-            random -= (trait.rarity || 0.5);
-            logThis(LOG_SELECT, `[TRAIT_SELECT] Remaining random after ${trait.name}: ${random}`);
-            if (random <= 0) {
-                logThis(LOG_SELECT, `[TRAIT_SELECT] Selected trait: ${trait.name} with prompt: ${trait.prompt}`);
-                return trait;
-            }
-        }
-        
-        return traitType.traits[0];
-    }
-
-    static isEmptyValue(value) {
-        logThis(LOG_SELECT, `[EMPTY_CHECK] Checking value: "${value}"`);
-        const isEmpty = !value || 
-                       value.trim() === '' || 
-                       value === '0' || 
-                       value.toLowerCase() === 'null' || 
-                       value.toLowerCase() === 'empty';
-        logThis(LOG_SELECT, `[EMPTY_CHECK] Is empty? ${isEmpty}`);
-        return isEmpty;
-    }
-
-    static buildConflictMap(exclusions) {
-        logThis(LOG_CONFLICT, `[CONFLICT_MAP] Building conflict map from ${exclusions.length} exclusions`);
-        const conflictMap = new Map();
-        
-        exclusions.forEach(({ targetTrait, exclusion }) => {
-            logThis(LOG_CONFLICT, `[CONFLICT_MAP] Processing conflict: ${targetTrait} <-> ${exclusion}`);
-            
-            if (!conflictMap.has(targetTrait)) {
-                logThis(LOG_CONFLICT, `[CONFLICT_MAP] Creating new Set for ${targetTrait}`);
-                conflictMap.set(targetTrait, new Set());
-            }
-            if (!conflictMap.has(exclusion)) {
-                logThis(LOG_CONFLICT, `[CONFLICT_MAP] Creating new Set for ${exclusion}`);
-                conflictMap.set(exclusion, new Set());
-            }
-            
-            logThis(LOG_CONFLICT, `[CONFLICT_MAP] Added bidirectional conflict: ${targetTrait} <-> ${exclusion}`);
-            conflictMap.get(targetTrait).add(exclusion);
-            conflictMap.get(exclusion).add(targetTrait);
-        });
-        
-        logThis(LOG_CONFLICT, `[CONFLICT_MAP] Final map size: ${conflictMap.size} traits`);
-        conflictMap.forEach((conflicts, trait) => {
-            logThis(LOG_CONFLICT, `[CONFLICT_MAP] ${trait} conflicts with: ${[...conflicts].join(', ')}`);
-        });
-        
-        return conflictMap;
-    }
-    static resolveConflicts(selectedTraits, conflictMap) {
-        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Starting conflict resolution`);
-        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Starting conflict resolution`);
-        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Initial traits:`, selectedTraits);
-        
-        const conflictingTraits = new Set(
-            [...conflictMap.keys()].filter(trait => selectedTraits[trait])
-        );
-        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Found ${conflictingTraits.size} traits with potential conflicts`);
-        
-        for (const traitType of conflictingTraits) {
-            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Processing conflicts for: ${traitType}`);
-            const conflicts = conflictMap.get(traitType);
-            const activeConflicts = [...conflicts].filter(conflict => selectedTraits[conflict]);
-            
-            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
-            
-            if (activeConflicts.length > 0) {
-                const allConflictingTraits = [traitType, ...activeConflictingTraits];
-                logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
-                
-                const nonEmptyTraits = allConflictingTraits.filter(t => 
-                    !this.isEmptyValue(selectedTraits[t])
-                );
-                logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Non-empty conflicting traits: ${nonEmptyTraits.join(', ')}`);
-                
-                if (nonEmptyTraits.length > 1) {
-                    const winner = nonEmptyTraits[Math.floor(Math.random() * nonEmptyTraits.length)];
-                    logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Randomly selected winner: ${winner}`);
-                    
-                    allConflictingTraits.forEach(t => {
-                        if (t !== winner) {
-                            logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Removing conflicting trait: ${t}`);
-                            delete selectedTraits[t];
-                        }
-                    });
-                }
-            }
-        }
-        
-        logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Final resolved traits:`, selectedTraits);
-        return selectedTraits;
-    }
-    static generateTraitSelection(traitTypes, conflictMap) {
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
-        
-        const selectedTraits = {};
-        const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
-        
-        // First pass: Select traits
-        shuffledTypes.forEach(traitType => {
-            logThis(LOG_TRAIT, `[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
-            const selected = this.selectTraitValue(traitType);
-            if (selected) {
-                logThis(LOG_TRAIT, `[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
-                selectedTraits[traitType.title] = selected.prompt;
-            } else {
-                logThis(LOG_TRAIT, `[TRAIT_GENERATE] No value selected for ${traitType.title}`);
-            }
-        });
-        
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
-        const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
-        
-        return resolvedTraits;
-    }
-}
-function validateMasterPrompt(masterPrompt) {
-    logThis(LOG_VALIDATE, `[VALIDATE] Starting validation of master prompt: ${masterPrompt}`);
-    
-    const errors = [];
-    const stack = [];
-    let currentPos = 0;
-    
-    // Track different types of brackets
-    const BRACKET_PAIRS = {
-        '[': ']',
-        '{': '}'
-    };
-    
-    // Helper to add formatted error messages
-    const addError = (message, position) => {
-        const preview = masterPrompt.substring(Math.max(0, position - 20), position + 20);
-        errors.push(`${message} at position ${position}:\n...${preview}...`);
-    };
-
-    for (let i = 0; i < masterPrompt.length; i++) {
-        const char = masterPrompt[i];
-        
-        // Handle opening brackets
-        if (char === '[' || char === '{') {
-            logThis(LOG_VALIDATE, `[VALIDATE] Found opening ${char} at position ${i}`);
-            stack.push({ char, position: i });
-            continue;
-        }
-        
-        // Handle closing brackets
-        if (char === ']' || char === '}') {
-            logThis(LOG_VALIDATE, `[VALIDATE] Found closing ${char} at position ${i}`);
-            
-            if (stack.length === 0) {
-                addError(`Unexpected closing ${char}`, i);
-                continue;
-            }
-            
-            const lastOpening = stack.pop();
-            const expectedClosing = BRACKET_PAIRS[lastOpening.char];
-            
-            if (char !== expectedClosing) {
-                addError(`Mismatched brackets: expected ${expectedClosing} but found ${char}`, i);
-            }
-        }
-    }
-    
-    // Check for unclosed brackets
-    while (stack.length > 0) {
-        const unclosed = stack.pop();
-        addError(`Unclosed ${unclosed.char}`, unclosed.position);
-    }
-    
-    // Validate trait placeholders [[trait]]
-    const traitPlaceholders = masterPrompt.match(/\[\[([^\]]*)\]\]/g) || [];
-    logThis(LOG_VALIDATE, `[VALIDATE] Found ${traitPlaceholders.length} trait placeholders`);
-    
-    traitPlaceholders.forEach(placeholder => {
-        const trait = placeholder.slice(2, -2).trim();
-        if (!trait) {
-            addError(`Empty trait placeholder`, masterPrompt.indexOf(placeholder));
-        }
-    });
-    
-    // Validate exclusion syntax [content]{exclusion}
-    const exclusionRegex = /\[([^\]]*\[[^\]]*\][^\]]*)\]\{([^}]+)\}/g;
-    const exclusionGroups = [...masterPrompt.matchAll(exclusionRegex)];
-    logThis(LOG_VALIDATE, `[VALIDATE] Searching for exclusion groups with regex: ${exclusionRegex}`);
-    logThis(LOG_VALIDATE, `[VALIDATE] Found ${exclusionGroups.length} exclusion groups:`);
-    
-    exclusionGroups.forEach(match => {
-        const [fullMatch, content, exclusion] = match;
-        logThis(LOG_VALIDATE, `[VALIDATE] Exclusion group found:`, {
-            fullMatch,
-            content,
-            exclusion,
-            position: match.index
-        });
-        
-        if (!exclusion.trim()) {
-            addError(`Empty exclusion`, match.index);
-        }
-    });
 
 
-    // Check for nested trait placeholders in exclusion groups
-    const nestedTraits = masterPrompt.match(/\[\[([^\]]*)\]\]\{/g);
-    if (nestedTraits) {
-        nestedTraits.forEach(match => {
-            addError(`Trait placeholder directly followed by exclusion`, masterPrompt.indexOf(match));
-        });
-    }
-
-    const isValid = errors.length === 0;
-    logThis(LOG_VALIDATE, `[VALIDATE] Validation complete. Valid: ${isValid}`);
-    if (!isValid) {
-        logThis(LOG_VALIDATE, `[VALIDATE] Found ${errors.length} errors:`);
-        errors.forEach(error => logThis(LOG_VALIDATE, `[VALIDATE] Error: ${error}`));
-    }
-
-    return {
-        isValid,
-        errors,
-        formattedErrors: errors.join('\n')
-    };
-}
 
 // Update handleTestCollection to use validation
 async function handleTestCollection(message, user, collectionId) {
@@ -1814,140 +1582,6 @@ async function handleSkipAIChange(message, user, collectionId, changeType) {
     await handleCollectionMenu(message, user, collectionId);
 }
 
-function processPromptWithOptionals(masterPrompt, traitValues) {
-    let processedPrompt = masterPrompt;
-    
-    // First pass: Process trait values and track which ones are empty
-    const emptyTraits = new Set();
-    Object.entries(traitValues).forEach(([traitType, value]) => {
-        if (!value || value.trim() === '' || value === '0' || 
-            value.toLowerCase() === 'null' || value.toLowerCase() === 'empty') {
-            emptyTraits.add(traitType);
-        }
-    });
-    
-    // Add any unselected traits to emptyTraits
-    const allTraitMatches = masterPrompt.match(/\[+([^\]\[]+)\]+/g) || [];
-    allTraitMatches.forEach(match => {
-        const traitName = match.replace(/[\[\]]/g, '').trim();
-        if (!traitValues.hasOwnProperty(traitName)) {
-            emptyTraits.add(traitName);
-        }
-    });
-
-    // Second pass: Process conditional sections
-    const conditionalRegex = /\[((?:[^\[\]]|\[[^\[\]]*\])*)\](?:\{([^}]*)\})?/g;
-    let match;
-    while ((match = conditionalRegex.exec(masterPrompt)) !== null) {
-        const [fullMatch, content, exclusions] = match;
-        
-        // If there are exclusions, check them
-        if (exclusions) {
-            const excludedTraits = exclusions.split(',').map(t => t.trim());
-            if (excludedTraits.some(trait => !emptyTraits.has(trait))) {
-                processedPrompt = processedPrompt.replace(fullMatch, '');
-                continue;
-            }
-        }
-        
-        // Process nested traits in the content
-        let processedContent = content;
-        const contentTraits = content.match(/\[+([^\]\[]+)\]+/g) || [];
-        const hasValidTrait = contentTraits.some(trait => {
-            const traitName = trait.replace(/[\[\]]/g, '').trim();
-            return !emptyTraits.has(traitName) && traitValues[traitName];
-        });
-        
-        if (!hasValidTrait) {
-            processedPrompt = processedPrompt.replace(fullMatch, '');
-        } else {
-            contentTraits.forEach(trait => {
-                const traitName = trait.replace(/[\[\]]/g, '').trim();
-                if (traitValues[traitName]) {
-                    processedContent = processedContent.replace(
-                        new RegExp(`\\[+${traitName}\\]+`, 'g'),
-                        traitValues[traitName]
-                    );
-                }
-            });
-            processedPrompt = processedPrompt.replace(fullMatch, processedContent.trim());
-        }
-    }
-    
-    // Final pass: Replace remaining trait placeholders
-    Object.entries(traitValues).forEach(([trait, value]) => {
-        if (!emptyTraits.has(trait)) {
-            processedPrompt = processedPrompt.replace(
-                new RegExp(`\\[+${trait}\\]+ *(hair|eyes)?`, 'g'),
-                value
-            );
-        }
-    });
-    
-    // Clean up the prompt
-    processedPrompt = processedPrompt
-        .replace(/\[+[^\]\[]*\]+/g, '') // Remove any remaining bracketed terms
-        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-        .replace(/\s*,\s*,+/g, ',') // Clean up multiple commas
-        .replace(/,\s*([,\s]*,\s*)*/g, ', ') // Clean up comma spacing
-        .replace(/\s*,\s*$/g, '') // Remove trailing comma
-        .replace(/\s+\./g, '.') // Clean up space before period
-        .trim();
-    
-    return processedPrompt;
-}
-function findExclusions(masterPrompt) {
-    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Processing master prompt: ${masterPrompt}`);
-    const exclusions = [];
-    
-    // Updated regex to better handle nested structures
-    const exclusionRegex = /\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\{([^}]+)\}/g;
-    let match;
-
-    // Find all exclusion groups in the master prompt
-    while ((match = exclusionRegex.exec(masterPrompt)) !== null) {
-        const content = match[1];
-        const exclusionGroup = match[2].split(',').map(trait => trait.trim());
-        
-        logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found content: "${content}" with exclusions: ${exclusionGroup.join(', ')}`);
-        
-        // Find both single and double bracketed traits
-        const doubleTraitMatches = content.match(/\[\[([^\]]+)\]\]/g) || [];
-        const singleTraitMatches = content.match(/\[([^\[\]\{]+)\]/g) || [];
-        const allTraits = [
-            ...doubleTraitMatches.map(m => m.slice(2, -2)), // Remove [[ and ]]
-            ...singleTraitMatches.map(m => m.slice(1, -1))  // Remove [ and ]
-        ];
-
-        if (allTraits.length > 0) {
-            allTraits.forEach(targetTrait => {
-                logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found target trait: ${targetTrait}`);
-                
-                // Create exclusion objects for each excluded trait
-                exclusionGroup.forEach(exclusion => {
-                    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Adding exclusion: ${targetTrait} <-> ${exclusion}`);
-                    exclusions.push({
-                        targetTrait,
-                        exclusion
-                    });
-                });
-            });
-        } else {
-            logThis(LOG_EXCLUSION, `[EXCLUSIONS] Warning: No traits found in content: ${content}`);
-        }
-    }
-
-    // Clean the master prompt by removing only the exclusion markers while preserving brackets
-    const cleanedPrompt = masterPrompt.replace(/\{[^{}]*\}/g, '');
-    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Cleaned prompt: ${cleanedPrompt}`);
-    logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found ${exclusions.length} total exclusions`);
-
-    return {
-        exclusions,
-        cleanedPrompt
-    };
-}
-
 // === Cook Mode Components ===
 
 class CollectionDatabase {
@@ -2283,532 +1917,525 @@ const collectionMetadataConfig = {
 // Add cook mode command handlers
 prefixHandlers['cook_'] = (action, message, user) => {
     const collectionId = parseInt(action.split('_')[1]);
-    handleCookMode(message, user, collectionId);
-}
-
-async function handleCookMode(message, user, collectionId) {
-    const cookMode = new CookModeHandler();
-    await cookMode.initializeCookMode(message, user, collectionId);
+    cookModeHandler.initializeCookMode(message, user, collectionId);
 }
 
 // Add to your prefix handlers
-prefixHandlers['cookStart_'] = handleCookStart;
+prefixHandlers['cookStart_'] = (action, message, user) =>{
+    cookModeHandler.startCookMode(action, message, user);
+};
 
-async function handleCookStart(action, message, user) {
-    const collectionId = parseInt(action.split('_')[1]);
+// async function handleCookStart(action, message, user) {
+//     const collectionId = parseInt(action.split('_')[1]);
     
-    try {
-        // 1. Load collection and generate prompt
-        const collection = await getOrLoadCollection(user, collectionId);
-        const { masterPrompt, traitTypes } = collection.config;
+//     try {
+//         // 1. Load collection and generate prompt
+//         const collection = await getOrLoadCollection(user, collectionId);
+//         const { masterPrompt, traitTypes } = collection.config;
         
-        // Process master prompt and generate traits
-        const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
-        const conflictMap = TraitSelector.buildConflictMap(exclusions);
-        const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
-        const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
+//         // Process master prompt and generate traits
+//         const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
+//         const conflictMap = TraitSelector.buildConflictMap(exclusions);
+//         const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+//         const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
 
-        // 2. Build comprehensive userContext
-        const workflowType = collection.config.workflow || 'MAKE';
-        const userContext = {
-            userId: user,
-            type: workflowType,
-            prompt: generatedPrompt,
-            basePrompt: -1,
-            userPrompt: -1,
-            input_cfg: 6,
-            input_width: 1024,
-            input_height: 1024,
-            input_checkpoint: 'flux-schnell',
-            input_negative: 'embedding:easynegative',
-            balance: lobby[user].balance || '0',
-            forceLogo: false,
-            input_batch: 1,
-            input_seed: -1,
-            controlNet: false,
-            styleTransfer: false,
-            openPose: false,
-            username: message.from.username || 'unknown_user',
-            first_name: message.from.first_name || 'Unknown',
-        };
+//         // 2. Build comprehensive userContext
+//         const workflowType = collection.config.workflow || 'MAKE';
+//         const userContext = {
+//             userId: user,
+//             type: workflowType,
+//             prompt: generatedPrompt,
+//             basePrompt: -1,
+//             userPrompt: -1,
+//             input_cfg: 6,
+//             input_width: 1024,
+//             input_height: 1024,
+//             input_checkpoint: 'flux-schnell',
+//             input_negative: 'embedding:easynegative',
+//             balance: lobby[user].balance || '0',
+//             forceLogo: false,
+//             input_batch: 1,
+//             input_seed: -1,
+//             controlNet: false,
+//             styleTransfer: false,
+//             openPose: false,
+//             username: message.from.username || 'unknown_user',
+//             first_name: message.from.first_name || 'Unknown',
+//         };
 
-        // 3. Update global status with enhanced cooking entry
-        const currentStatus = globalStatus;
-        const updatedCooking = [
-            ...currentStatus.cooking,
-            {
-                userId: user,
-                collectionId,
-                startedAt: Date.now(),
-                status: 'active',
-                currentBatch: 1,
-                totalBatches: collection.config.batchCount || 10,
-                lastGenerated: null,
-                generationStatus: 'pending',
-                qointsRequired: collection.config.batchCount * 100,
-                // Add user context for resuming
-                userContextCache: {
-                    ...userContext,
-                    collection: {
-                        name: collection.name,
-                        workflow: workflowType,
-                        masterPrompt,
-                        traitTypes
-                    }
-                }
-            }
-        ];
-// Before update
-console.log('[globalStatus] Before update:', {
-    currentCooking: globalStatus.cooking,
-    updatingWith: updatedCooking
-});
+//         // 3. Update global status with enhanced cooking entry
+//         const currentStatus = globalStatus;
+//         const updatedCooking = [
+//             ...currentStatus.cooking,
+//             {
+//                 userId: user,
+//                 collectionId,
+//                 startedAt: Date.now(),
+//                 status: 'active',
+//                 currentBatch: 1,
+//                 totalBatches: collection.config.batchCount || 10,
+//                 lastGenerated: null,
+//                 generationStatus: 'pending',
+//                 qointsRequired: collection.config.batchCount * 100,
+//                 // Add user context for resuming
+//                 userContextCache: {
+//                     ...userContext,
+//                     collection: {
+//                         name: collection.name,
+//                         workflow: workflowType,
+//                         masterPrompt,
+//                         traitTypes
+//                     }
+//                 }
+//             }
+//         ];
+// // Before update
+// console.log('[globalStatus] Before update:', {
+//     currentCooking: globalStatus.cooking,
+//     updatingWith: updatedCooking
+// });
 
-await globalStatusDB.updateStatus({ cooking: updatedCooking });
+// await globalStatusDB.updateStatus({ cooking: updatedCooking });
 
-// After update
-const afterUpdate = await globalStatusDB.getGlobalStatus();
-console.log('[globalStatus] After update:', {
-    cookingTasks: afterUpdate.cooking
-});
+// // After update
+// const afterUpdate = await globalStatusDB.getGlobalStatus();
+// console.log('[globalStatus] After update:', {
+//     cookingTasks: afterUpdate.cooking
+// });
 
-// Also verify our in-memory globalStatus
-console.log('[globalStatus] In-memory status:', {
-    cookingTasks: globalStatus.cooking
-});
-        // 4. Build and queue the task
-        const workflow = flows.find(flow => flow.name === workflowType);
-        if (!workflow) {
-            throw new Error(`Invalid workflow type: ${workflowType}`);
-        }
+// // Also verify our in-memory globalStatus
+// console.log('[globalStatus] In-memory status:', {
+//     cookingTasks: globalStatus.cooking
+// });
+//         // 4. Build and queue the task
+//         const workflow = flows.find(flow => flow.name === workflowType);
+//         if (!workflow) {
+//             throw new Error(`Invalid workflow type: ${workflowType}`);
+//         }
 
-        let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
-        promptObj = {
-            ...promptObj,
-            isCookMode: true,
-            collectionId: collection.collectionId,
-            traits: selectedTraits
-        };
+//         let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
+//         promptObj = {
+//             ...promptObj,
+//             isCookMode: true,
+//             collectionId: collection.collectionId,
+//             traits: selectedTraits
+//         };
 
-        await enqueueTask({
-            message: {
-                ...message,
-                from: {
-                    id: user,
-                    username: userContext.username || 'unknown_user',
-                    first_name: userContext.first_name || 'Unknown'
-                },
-                chat: {
-                    id: user
-                }
-            }, 
-            promptObj
-        });
+//         await enqueueTask({
+//             message: {
+//                 ...message,
+//                 from: {
+//                     id: user,
+//                     username: userContext.username || 'unknown_user',
+//                     first_name: userContext.first_name || 'Unknown'
+//                 },
+//                 chat: {
+//                     id: user
+//                 }
+//             }, 
+//             promptObj
+//         });
 
-        // 5. Update status message
-        await editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: "🧑‍🍳 Cook Mode Started!\n\n" +
-                  `Collection: ${collection.name}\n` +
-                  "First prompt queued for generation...",
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "⏸ Pause", callback_data: `cookPause_${collectionId}` },
-                        { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
-                    ],
-                    [
-                        { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
-                        { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
-                    ]
-                ]
-            }
-        });
+//         // 5. Update status message
+//         await editMessage({
+//             chat_id: message.chat.id,
+//             message_id: message.message_id,
+//             text: "🧑‍🍳 Cook Mode Started!\n\n" +
+//                   `Collection: ${collection.name}\n` +
+//                   "First prompt queued for generation...",
+//             reply_markup: {
+//                 inline_keyboard: [
+//                     [
+//                         { text: "⏸ Pause", callback_data: `cookPause_${collectionId}` },
+//                         { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
+//                     ],
+//                     [
+//                         { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
+//                         { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
+//                     ]
+//                 ]
+//             }
+//         });
 
-    } catch (error) {
-        console.error('Error starting cook mode:', error);
-        await sendMessage(message, "❌ An error occurred while starting cook mode.");
-    }
-}
+//     } catch (error) {
+//         console.error('Error starting cook mode:', error);
+//         await sendMessage(message, "❌ An error occurred while starting cook mode.");
+//     }
+// }
 
-prefixHandlers['cookPause_'] = handleCookPause;
+prefixHandlers['cookPause_'] = (action, message, user) =>{
+    cookModeHandler.pauseCooking(action, message, user);
+};
+
+prefixHandlers['cookResume_'] = (action, message, user) =>{
+    cookModeHandler.resumeCooking(action, message, user);
+};
 
 // Add the new handler function
-async function handleCookPause(action, message, user) {
-    const collectionId = parseInt(action.split('_')[1]);
+// async function handleCookPause(action, message, user) {
+//     const collectionId = parseInt(action.split('_')[1]);
     
-    try {
-        // Find the cooking task in global status
-        const currentStatus = globalStatus;
-        const taskIndex = currentStatus.cooking.findIndex(
-            task => task.userId === user && task.collectionId === collectionId
-        );
+//     try {
+//         // Find the cooking task in global status
+//         const currentStatus = globalStatus;
+//         const taskIndex = currentStatus.cooking.findIndex(
+//             task => task.userId === user && task.collectionId === collectionId
+//         );
 
-        if (taskIndex === -1) {
-            await editMessage({
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-                text: "❌ No active cooking task found to pause.",
-            });
-            return;
-        }
+//         if (taskIndex === -1) {
+//             await editMessage({
+//                 chat_id: message.chat.id,
+//                 message_id: message.message_id,
+//                 text: "❌ No active cooking task found to pause.",
+//             });
+//             return;
+//         }
 
-        const existingTask = currentStatus.cooking[taskIndex];
+//         const existingTask = currentStatus.cooking[taskIndex];
 
-        // Update the task status with all necessary context
-        const updatedCooking = [...currentStatus.cooking];
-        updatedCooking[taskIndex] = {
-            ...existingTask,
-            status: 'paused',
-            pausedAt: Date.now(),
-            resumeData: {
-                currentBatch: existingTask.currentBatch,
-                totalBatches: existingTask.totalBatches,
-                lastGenerated: existingTask.lastGenerated,
-                traits: existingTask.traits,
-                userContextCache: existingTask.userContextCache
-            }
-        };
+//         // Update the task status with all necessary context
+//         const updatedCooking = [...currentStatus.cooking];
+//         updatedCooking[taskIndex] = {
+//             ...existingTask,
+//             status: 'paused',
+//             pausedAt: Date.now(),
+//             resumeData: {
+//                 currentBatch: existingTask.currentBatch,
+//                 totalBatches: existingTask.totalBatches,
+//                 lastGenerated: existingTask.lastGenerated,
+//                 traits: existingTask.traits,
+//                 userContextCache: existingTask.userContextCache
+//             }
+//         };
 
-        // Save to DB
-        await globalStatusDB.updateStatus({ cooking: updatedCooking });
-        console.log(`Paused cooking task for user ${user}, collection ${collectionId}`);
+//         // Save to DB
+//         await globalStatusDB.updateStatus({ cooking: updatedCooking });
+//         console.log(`Paused cooking task for user ${user}, collection ${collectionId}`);
 
-        // Update the message to show paused state
-        await editMessage({
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            text: "⏸ Cook Mode Paused\n\n" +
-                  `Collection: ${collectionId}\n` +
-                  `Batch Progress: ${existingTask.currentBatch}/${existingTask.totalBatches}\n` +
-                  "Generation will resume when you press play.",
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "▶️ Resume", callback_data: `cookStart_${collectionId}` },
-                        { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
-                    ],
-                    [
-                        { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
-                        { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
-                    ]
-                ]
-            }
-        });
+//         // Update the message to show paused state
+//         await editMessage({
+//             chat_id: message.chat.id,
+//             message_id: message.message_id,
+//             text: "⏸ Cook Mode Paused\n\n" +
+//                   `Collection: ${collectionId}\n` +
+//                   `Batch Progress: ${existingTask.currentBatch}/${existingTask.totalBatches}\n` +
+//                   "Generation will resume when you press play.",
+//             reply_markup: {
+//                 inline_keyboard: [
+//                     [
+//                         { text: "▶️ Resume", callback_data: `cookStart_${collectionId}` },
+//                         { text: "👁 Review", callback_data: `cookReview_${collectionId}` }
+//                     ],
+//                     [
+//                         { text: "📊 Stats", callback_data: `cookStats_${collectionId}` },
+//                         { text: "❌ Exit", callback_data: `cookExit_${collectionId}` }
+//                     ]
+//                 ]
+//             }
+//         });
 
-    } catch (error) {
-        console.error('Error pausing cook mode:', error);
-        await sendMessage(message, "❌ An error occurred while pausing cook mode.");
-    }
-}
+//     } catch (error) {
+//         console.error('Error pausing cook mode:', error);
+//         await sendMessage(message, "❌ An error occurred while pausing cook mode.");
+//     }
+// }
 
 // Improved check function with better state handling
-async function checkCookProgress(user, collectionId) {
-    try {
-        console.log(`[checkCookProgress] Starting check for user ${user}, collection ${collectionId}`);
-        const currentStatus = globalStatus;
-        console.log('[checkCookProgress] Current global status:', {
-            cookingTasks: currentStatus.cooking?.length,
-            allStatuses: currentStatus.cooking?.map(t => ({
-                userId: t.userId,
-                collectionId: t.collectionId,
-                status: t.status,
-                lastGenerated: t.lastGenerated
-            }))
-        });
+// async function checkCookProgress(user, collectionId) {
+//     try {
+//         console.log(`[checkCookProgress] Starting check for user ${user}, collection ${collectionId}`);
+//         const currentStatus = globalStatus;
+//         console.log('[checkCookProgress] Current global status:', {
+//             cookingTasks: currentStatus.cooking?.length,
+//             allStatuses: currentStatus.cooking?.map(t => ({
+//                 userId: t.userId,
+//                 collectionId: t.collectionId,
+//                 status: t.status,
+//                 lastGenerated: t.lastGenerated
+//             }))
+//         });
 
-        const cookingTask = currentStatus.cooking.find(c => 
-            c.userId === user && 
-            c.collectionId === collectionId
-        );
-        console.log('[checkCookProgress] Found specific cooking task:', {
-            found: !!cookingTask,
-            status: cookingTask?.status,
-            lastGenerated: cookingTask?.lastGenerated,
-            timeSinceLastGen: cookingTask?.lastGenerated ? Date.now() - cookingTask.lastGenerated : null
-        });
+//         const cookingTask = currentStatus.cooking.find(c => 
+//             c.userId === user && 
+//             c.collectionId === collectionId
+//         );
+//         console.log('[checkCookProgress] Found specific cooking task:', {
+//             found: !!cookingTask,
+//             status: cookingTask?.status,
+//             lastGenerated: cookingTask?.lastGenerated,
+//             timeSinceLastGen: cookingTask?.lastGenerated ? Date.now() - cookingTask.lastGenerated : null
+//         });
 
-        if (!cookingTask || cookingTask.status !== 'active') {
-            console.log('[checkCookProgress] Task not active or not found, returning');
-            return;
-        }
+//         if (!cookingTask || cookingTask.status !== 'active') {
+//             console.log('[checkCookProgress] Task not active or not found, returning');
+//             return;
+//         }
 
-        // Check collection supply at DB level
-        const collection = await getOrLoadCollection(user, collectionId);
-        console.log('[checkCookProgress] Collection supply check:', { 
-            collectionId, 
-            currentSupply: collection.totalSupply || 0 
-        });
+//         // Check collection supply at DB level
+//         const collection = await getOrLoadCollection(user, collectionId);
+//         console.log('[checkCookProgress] Collection supply check:', { 
+//             collectionId, 
+//             currentSupply: collection.totalSupply || 0 
+//         });
 
-        // Handle different states
-        switch (cookingTask.status) {
-            case 'paused':
-                // Skip generation but keep in list
-                console.log(`Skipping paused cook task: User ${user}, Collection ${collectionId}`);
-                return;
+//         // Handle different states
+//         switch (cookingTask.status) {
+//             case 'paused':
+//                 // Skip generation but keep in list
+//                 console.log(`Skipping paused cook task: User ${user}, Collection ${collectionId}`);
+//                 return;
                 
-            case 'completed':
-                // Remove from cooking list
-                const updatedCooking = currentStatus.cooking.filter(task => 
-                    !(task.userId === user && task.collectionId === collectionId)
-                );
-                await globalStatusDB.updateStatus({ cooking: updatedCooking });
-                console.log(`Removed completed cook task: User ${user}, Collection ${collectionId}`);
-                return;
+//             case 'completed':
+//                 // Remove from cooking list
+//                 const updatedCooking = currentStatus.cooking.filter(task => 
+//                     !(task.userId === user && task.collectionId === collectionId)
+//                 );
+//                 await globalStatusDB.updateStatus({ cooking: updatedCooking });
+//                 console.log(`Removed completed cook task: User ${user}, Collection ${collectionId}`);
+//                 return;
 
-            case 'active':
-                // Check collection supply at DB level
-                const currentSupply = collection.totalSupply || 0;
+//             case 'active':
+//                 // Check collection supply at DB level
+//                 const currentSupply = collection.totalSupply || 0;
 
-                if (currentSupply >= 5) {
-                    // Update cooking task status to completed
-                    const updatedCooking = currentStatus.cooking.map(task => {
-                        if (task.userId === user && task.collectionId === collectionId) {
-                            return {
-                                ...task,
-                                status: 'completed',
-                                completedAt: Date.now(),
-                                completionReason: 'supply_limit_reached'
-                            };
-                        }
-                        return task;
-                    });
+//                 if (currentSupply >= 5) {
+//                     // Update cooking task status to completed
+//                     const updatedCooking = currentStatus.cooking.map(task => {
+//                         if (task.userId === user && task.collectionId === collectionId) {
+//                             return {
+//                                 ...task,
+//                                 status: 'completed',
+//                                 completedAt: Date.now(),
+//                                 completionReason: 'supply_limit_reached'
+//                             };
+//                         }
+//                         return task;
+//                     });
 
-                    await globalStatusDB.updateStatus({ cooking: updatedCooking });
-                    console.log(`Supply limit reached: User ${user}, Collection ${collectionId}`);
-                    return;
-                }
+//                     await globalStatusDB.updateStatus({ cooking: updatedCooking });
+//                     console.log(`Supply limit reached: User ${user}, Collection ${collectionId}`);
+//                     return;
+//                 }
 
-                // Check if ready for next generation
-                if (cookingTask.lastGenerated) {
-                    const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
-                    console.log('[checkCookProgress] Generation timing:', { 
-                        timeSinceLastGen, 
-                        readyForNext: timeSinceLastGen > 5000 
-                    });
-                    if (timeSinceLastGen > 5000) { // 5 second buffer
-                        console.log(`Queueing next generation: User ${user}, Collection ${collectionId}`);
-                        await handleCookStart(`cookStart_${collectionId}`, message, user);
-                    }
-                }
-                break;
+//                 // Check if ready for next generation
+//                 if (cookingTask.lastGenerated) {
+//                     const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
+//                     console.log('[checkCookProgress] Generation timing:', { 
+//                         timeSinceLastGen, 
+//                         readyForNext: timeSinceLastGen > 5000 
+//                     });
+//                     if (timeSinceLastGen > 5000) { // 5 second buffer
+//                         console.log(`Queueing next generation: User ${user}, Collection ${collectionId}`);
+//                         await handleCookStart(`cookStart_${collectionId}`, message, user);
+//                     }
+//                 }
+//                 break;
 
-            default:
-                console.log(`Unknown cooking status: ${cookingTask.status}`);
-                return;
-        }
+//             default:
+//                 console.log(`Unknown cooking status: ${cookingTask.status}`);
+//                 return;
+//         }
 
-    } catch (error) {
-        console.error('[checkCookProgress] Error:', error);
-    }
-}
+//     } catch (error) {
+//         console.error('[checkCookProgress] Error:', error);
+//     }
+// }
 
 // Modify buildPromptObjFromWorkflow to handle cook mode
-function buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
-    let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message)
-    promptObj = {
-        ...promptObj,
-        isCookMode: true,
-        collectionId: userContext.collectionId,
-        traits: userContext.traits
-    };
 
-    return promptObj;
-}
 
 // Add a periodic check function
-async function checkCookProgress(user, collectionId) {
-    try {
-        const currentStatus = globalStatus;
-        const cookingTask = currentStatus.cooking.find(c => 
-            c.userId === user && 
-            c.collectionId === collectionId
-        );
+// async function checkCookProgress(user, collectionId) {
+//     try {
+//         const currentStatus = globalStatus;
+//         const cookingTask = currentStatus.cooking.find(c => 
+//             c.userId === user && 
+//             c.collectionId === collectionId
+//         );
 
-        if (!cookingTask || cookingTask.status !== 'active') {
-            return;
-        }
+//         if (!cookingTask || cookingTask.status !== 'active') {
+//             return;
+//         }
 
-        // Check collection supply at DB level
-        const collection = await getOrLoadCollection(user, collectionId);
-        const currentSupply = collection.totalSupply || 0;
+//         // Check collection supply at DB level
+//         const collection = await getOrLoadCollection(user, collectionId);
+//         const currentSupply = collection.totalSupply || 0;
 
-        if (currentSupply >= 5) {
-            // Update cooking task status to completed
-            const updatedCooking = currentStatus.cooking.map(task => {
-                if (task.userId === user && task.collectionId === collectionId) {
-                    return {
-                        ...task,
-                        status: 'completed',
-                        completedAt: Date.now(),
-                        completionReason: 'supply_limit_reached'
-                    };
-                }
-                return task;
-            });
+//         if (currentSupply >= 5) {
+//             // Update cooking task status to completed
+//             const updatedCooking = currentStatus.cooking.map(task => {
+//                 if (task.userId === user && task.collectionId === collectionId) {
+//                     return {
+//                         ...task,
+//                         status: 'completed',
+//                         completedAt: Date.now(),
+//                         completionReason: 'supply_limit_reached'
+//                     };
+//                 }
+//                 return task;
+//             });
 
-            // Update global status
-            await globalStatusDB.updateStatus({ cooking: updatedCooking });
-            return;
-        }
+//             // Update global status
+//             await globalStatusDB.updateStatus({ cooking: updatedCooking });
+//             return;
+//         }
 
-        if (cookingTask && cookingTask.lastGenerated) {
-            // Start next generation
-            const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
-            if (timeSinceLastGen > 5000) { // 5 second buffer
-                // Queue next generation
-                await handleCookStart(`cookStart_${collectionId}`, message, user);
-            }
-        }
+//         if (cookingTask && cookingTask.lastGenerated) {
+//             // Start next generation
+//             const timeSinceLastGen = Date.now() - cookingTask.lastGenerated;
+//             if (timeSinceLastGen > 5000) { // 5 second buffer
+//                 // Queue next generation
+//                 await handleCookStart(`cookStart_${collectionId}`, message, user);
+//             }
+//         }
 
-    } catch (error) {
-        console.error('Error in checkCookProgress:', error);
-    }
-}
+//     } catch (error) {
+//         console.error('Error in checkCookProgress:', error);
+//     }
+// }
 
 // Set up the interval when cooking starts
-function startCookingInterval(user, collectionId, message) {
-    const intervalId = setInterval(async () => {
-        await checkCookProgress(user, collectionId, message);
-    }, 10000); // Check every 10 seconds
+// function startCookingInterval(user, collectionId, message) {
+//     const intervalId = setInterval(async () => {
+//         await checkCookProgress(user, collectionId, message);
+//     }, 10000); // Check every 10 seconds
 
-    // Store the interval ID so we can clear it later
-    cookIntervals[`${user}_${collectionId}`] = intervalId;
-}
+//     // Store the interval ID so we can clear it later
+//     cookIntervals[`${user}_${collectionId}`] = intervalId;
+// }
 
 // At the top of the file after imports
-const cookIntervals = {};
+//const cookIntervals = {};
 
-async function resumeCookingTask(cookTask) {
-    try {
-        const user = cookTask.userId;
-        const collectionId = cookTask.collectionId;
+// async function resumeCookingTask(cookTask) {
+//     try {
+//         const user = cookTask.userId;
+//         const collectionId = cookTask.collectionId;
 
-        // 1. Check qoints in both lobby and DB
-        let userQoints = 0;
+//         // 1. Check qoints in both lobby and DB
+//         let userQoints = 0;
         
-        if (lobby[user]?.qoints) {
-            userQoints = lobby[user].qoints;
-        } else {
-            // If not in lobby, check DB
-            const userEco = await userEconomy.findOne({ userId: user });
-            if (userEco) {
-                userQoints = userEco.qoints || 0;
-            }
-        }
+//         if (lobby[user]?.qoints) {
+//             userQoints = lobby[user].qoints;
+//         } else {
+//             // If not in lobby, check DB
+//             const userEco = await userEconomy.findOne({ userId: user });
+//             if (userEco) {
+//                 userQoints = userEco.qoints || 0;
+//             }
+//         }
 
-        if (userQoints < 100) {
-            console.log(`Cannot resume cooking for user ${user}: insufficient qoints (${userQoints})`);
-            return false;
-        }
+//         if (userQoints < 100) {
+//             console.log(`Cannot resume cooking for user ${user}: insufficient qoints (${userQoints})`);
+//             return false;
+//         }
 
-        // 2. Use cached context if available, otherwise rebuild
-        let userContext;
-        if (cookTask.userContextCache) {
-            console.log('Using cached user context for cooking task');
-            userContext = cookTask.userContextCache;
-        } else {
-            console.log('No cached context found, rebuilding...');
-            // ... existing context building code ...
-            const collection = await getOrLoadCollection(user, collectionId);
-            // ... rest of the context building ...
-        }
+//         // 2. Use cached context if available, otherwise rebuild
+//         let userContext;
+//         if (cookTask.userContextCache) {
+//             console.log('Using cached user context for cooking task');
+//             userContext = cookTask.userContextCache;
+//         } else {
+//             console.log('No cached context found, rebuilding...');
+//             // ... existing context building code ...
+//             const collection = await getOrLoadCollection(user, collectionId);
+//             // ... rest of the context building ...
+//         }
 
-        // 3. Create complete dummy message FIRST
-        const dummyMessage = {
-            chat_id: user,
-            from: {
-                id: user,
-                username: userContext.username || 'unknown_user',
-                first_name: userContext.first_name || 'Unknown'
-            },
-            message_id: Date.now()
-        };
+//         // 3. Create complete dummy message FIRST
+//         const dummyMessage = {
+//             chat_id: user,
+//             from: {
+//                 id: user,
+//                 username: userContext.username || 'unknown_user',
+//                 first_name: userContext.first_name || 'Unknown'
+//             },
+//             message_id: Date.now()
+//         };
 
-        const workflow = flows.find(flow => flow.name === userContext.type);
-        if (!workflow) {
-            throw new Error(`Invalid workflow type: ${userContext.type}`);
-        }
+//         const workflow = flows.find(flow => flow.name === userContext.type);
+//         if (!workflow) {
+//             throw new Error(`Invalid workflow type: ${userContext.type}`);
+//         }
 
-        // 4. Pass both userContext AND message to build prompt
-        let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, dummyMessage);
-        promptObj = {
-            ...promptObj,
-            isCookMode: true,
-            collectionId: collectionId,
-            traits: userContext.traits || []
-        };
+//         // 4. Pass both userContext AND message to build prompt
+//         let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, dummyMessage);
+//         promptObj = {
+//             ...promptObj,
+//             isCookMode: true,
+//             collectionId: collectionId,
+//             traits: userContext.traits || []
+//         };
 
-        // 5. Queue the task with the same message object
-        await enqueueTask({
-            message: dummyMessage,
-            promptObj
-        });
+//         // 5. Queue the task with the same message object
+//         await enqueueTask({
+//             message: dummyMessage,
+//             promptObj
+//         });
 
-        // Start monitoring interval
-        startCookingInterval(user, collectionId);
+//         // Start monitoring interval
+//         startCookingInterval(user, collectionId);
 
-        console.log(`Successfully resumed cooking for user ${user}, collection ${collectionId}`);
-        return true;
+//         console.log(`Successfully resumed cooking for user ${user}, collection ${collectionId}`);
+//         return true;
 
-    } catch (error) {
-        console.error('Error resuming cook mode:', error);
-        return false;
-    }
-}
+//     } catch (error) {
+//         console.error('Error resuming cook mode:', error);
+//         return false;
+//     }
+// }
 
 // Then in our initialization function:
-async function initializeCookingTasks() {
-    try {
-        const currentStatus = await globalStatusDB.getGlobalStatus();
-        if (currentStatus.cooking && currentStatus.cooking.length > 0) {
-            console.log('Found active cooking tasks, resuming...');
+// async function initializeCookingTasks() {
+//     try {
+//         const currentStatus = await globalStatusDB.getGlobalStatus();
+//         if (currentStatus.cooking && currentStatus.cooking.length > 0) {
+//             console.log('Found active cooking tasks, resuming...');
             
-            for (const cookTask of currentStatus.cooking) {
-                if (cookTask.status === 'active' && cookTask.generationStatus !== 'complete') {
-                    await resumeCookingTask(cookTask);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error initializing cooking tasks:', error);
-    }
-}
+//             for (const cookTask of currentStatus.cooking) {
+//                 if (cookTask.status === 'active' && cookTask.generationStatus !== 'complete') {
+//                     await resumeCookingTask(cookTask);
+//                 }
+//             }
+//         }
+//     } catch (error) {
+//         console.error('Error initializing cooking tasks:', error);
+//     }
+// }
 
 // Wrap initialization in an async function that waits for DB connection
-async function initializeBot() {
-    try {
-        // Wait for other necessary initializations
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Give DB time to connect
+// async function initializeBot() {
+//     try {
+//         // Wait for other necessary initializations
+//         await new Promise(resolve => setTimeout(resolve, 1000)); // Give DB time to connect
         
-        // Check for required globals
-        const maxAttempts = 10;
-        let attempts = 0;
+//         // Check for required globals
+//         const maxAttempts = 10;
+//         let attempts = 0;
         
-        while (attempts < maxAttempts) {
-            if (flows && flows.length > 0 && globalStatus) {
-                console.log('Global dependencies loaded, initializing cooking tasks...');
-                await initializeCookingTasks();
-                return;
-            }
+//         while (attempts < maxAttempts) {
+//             if (flows && flows.length > 0 && globalStatus) {
+//                 console.log('Global dependencies loaded, initializing cooking tasks...');
+//                 await initializeCookingTasks();
+//                 return;
+//             }
             
-            console.log('Waiting for global dependencies to load...');
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            attempts++;
-        }
+//             console.log('Waiting for global dependencies to load...');
+//             await new Promise(resolve => setTimeout(resolve, 10000));
+//             attempts++;
+//         }
         
-        if (attempts >= maxAttempts) {
-            console.error('Timeout waiting for global dependencies. Current state:', {
-                flowsLoaded: !!flows,
-                flowsCount: flows?.length || 0,
-                globalStatusLoaded: !!globalStatus
-            });
-        }
-    } catch (error) {
-        console.error('Error during bot initialization:', error);
-    }
-}
+//         if (attempts >= maxAttempts) {
+//             console.error('Timeout waiting for global dependencies. Current state:', {
+//                 flowsLoaded: !!flows,
+//                 flowsCount: flows?.length || 0,
+//                 globalStatusLoaded: !!globalStatus
+//             });
+//         }
+//     } catch (error) {
+//         console.error('Error during bot initialization:', error);
+//     }
+// }
 
-// Call this instead of directly calling initializeCookingTasks
-initializeBot();
+// // Call this instead of directly calling initializeCookingTasks
+// initializeBot();
