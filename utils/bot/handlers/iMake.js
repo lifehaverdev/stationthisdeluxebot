@@ -183,9 +183,6 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         delete promptObj.input_image;
         promptObj.input_strength = 1;
     }
-    if(userContext.type == 'MS3.3'){
-        promptObj.input_prompt = message.text;
-    }
 
     // Include message details for tracking and additional context
     promptObj.username = message.from?.username;

@@ -52,17 +52,37 @@ async function addPoints(task) {
         user.qoints = (user.qoints || 0) - pointsToAdd;
         console.log(`Cook mode: Subtracted ${pointsToAdd} qoints from user ${userId}. New qoints: ${user.qoints}`);
         try {
+            console.log('Points.js - Before mapping:', {
+                globalStatusCooking: globalStatus.cooking,
+                promptCollectionId: promptObj.collectionId
+            });
+            const updatedCooking = globalStatus.cooking.map(cook => {
+                console.log('Points.js - Mapping cook:', {
+                    cookCollectionId: cook.collectionId,
+                    promptCollectionId: promptObj.collectionId,
+                    isMatch: cook.collectionId === promptObj.collectionId
+                });
+                
+                return cook.collectionId === promptObj.collectionId
+                    ? { 
+                        ...cook,
+                        lastGenerated: Date.now(),
+                        generationStatus: cook.currentBatch >= cook.totalBatches ? 'complete' : 'pending'
+                    }
+                    : cook;
+            });
+    
+            console.log('Points.js - After mapping:', {
+                updatedCooking,
+                length: updatedCooking.length
+            });
+    
             await globalStatusData.updateStatus({
-                cooking: globalStatus.cooking.map(cook => 
-                    cook.collectionId === promptObj.collectionId
-                        ? { 
-                            ...cook,
-                            lastGenerated: Date.now(),
-                            generationStatus: cook.currentBatch >= cook.totalBatches ? 'complete' : 'pending'
-                        }
-                        : cook
-                )
+                cooking: updatedCooking
             }, false);
+    
+            console.log('Points.js - After updateStatus');
+    
         } catch (error) {
             console.error(`Failed to update global status for cooking task ${promptObj.collectionId}:`, error);
         }
