@@ -10,7 +10,6 @@ const {
     buildCookModePromptObjFromWorkflow
 } = require('./collectionUtils');
 const { sendMessage, editMessage, logThis } = require('../../../utils');
-const { enqueueTask } = require('../../queue');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
 
 class CollectionCook {
@@ -20,7 +19,7 @@ class CollectionCook {
     #cachedStatus = null;
     #lastFetch = 0;
     #cacheTimeout = 5000; // 5 seconds cache timeout
-    
+    #enqueueTask = null;
     // Private constructor
     constructor() {
         if (CollectionCook.#instance) {
@@ -44,6 +43,10 @@ class CollectionCook {
             new CollectionCook();
         }
         return CollectionCook.#instance;
+    }
+
+    setEnqueueTask(fn) {
+        this.#enqueueTask = fn;
     }
 
     // Private status management methods
@@ -106,11 +109,13 @@ class CollectionCook {
             console.log('CollectionCook initialize starting...');
             const maxAttempts = 10;
             let attempts = 0;
-            const status = await this.#getCookingStatus();
+            
+            
             while (attempts < maxAttempts) {
                 console.log(`Checking status (attempt ${attempts + 1}/${maxAttempts})...`);
-                
-                if (status.cooking) {
+                const status = await this.#getCookingStatus();
+                const workflowsLoaded = Array.isArray(flows) && flows.length > 0;
+                if (status.cooking && workflowsLoaded) {
                     console.log('Global dependencies loaded, initializing cooking tasks...');
                     await this.initializeCookingTasks();
                     return;
@@ -254,7 +259,7 @@ class CollectionCook {
     
             let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
     
-            await enqueueTask({
+            await this.#enqueueTask({
                 message: {
                     ...message,
                     from: {
@@ -427,7 +432,7 @@ class CollectionCook {
             let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, dummyMessage);
             
     
-            await enqueueTask({
+            await this.#enqueueTask({
                 message: dummyMessage,
                 promptObj
             });
@@ -762,7 +767,7 @@ class CollectionCook {
             let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
             
 
-            await enqueueTask({
+            await this.#enqueueTask({
                 message: {
                     ...message,
                     from: {

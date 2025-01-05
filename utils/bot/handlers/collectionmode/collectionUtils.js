@@ -1,9 +1,9 @@
 const { studio } = require('../../bot');
 const { logThis } = require('../../../utils');
-const { buildPromptObjFromWorkflow } = require('../iMake');
+const { buildPromptObjFromWorkflow } = require('../../prompt');
 const { CollectionDB } = require('../../../../db/index');
 const collectionDB = new CollectionDB();
-
+console.log('buildPromptObjFromWorkflow imported as:', typeof buildPromptObjFromWorkflow);
 const test = false
 const LOG_TRAIT = test;
 const LOG_SELECT = test;

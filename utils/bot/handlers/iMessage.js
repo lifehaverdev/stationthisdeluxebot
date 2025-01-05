@@ -8,7 +8,7 @@ const {
 const { initialize } = require('../intitialize')
 const { tutorialSteps, TutorialManager, CHECKPOINTS } = require('./iStart')
 const bot = getBotInstance();
-const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER } = require('../gatekeep')
+const { lobbyManager, checkLobby, checkIn, POINTMULTI, NOCOINERSTARTER, calculateMaxPoints } = require('../gatekeep')
 const {
     safeExecute,
     sendMessage,
@@ -419,7 +419,7 @@ commandRegistry['/vidthat2'] = {
         console.log('made it into the function')
         const group = getGroup(message)
         if(!lobby.hasOwnProperty(message.from.id)) await checkIn(message)
-            if((lobby[message.from.id].balance < 600000 && !group) || (group && group.qoints < 100)){
+            if((lobby[message.from.id].balance < 600000 && !group) || (group && group.qoints < 100) || (!group && calculateMaxPoints(lobby[message.from.id]) - (lobby[message.from.id].doints + lobby[message.from.id].points) < 1000)){
                 gated(message)
                 return
             }
