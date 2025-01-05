@@ -393,28 +393,32 @@ async function handleTaskCompletion(task) {
                 throw error || new Error('Failed to save generation result');
             }
 
-            // 2. Update collection status
-            // await globalStatusData.updateStatus({
-            //     cooking: globalStatus.cooking.map(cook => {
-            //         if (cook.collectionId === task.promptObj.collectionId) {
-            //             return {
-            //                 ...cook,
-            //                 lastGenerated: Date.now(),
-            //                 generationCount: (cook.generationCount || 0) + 1
-            //             };
-            //         }
-            //         return cook;
-            //     })
-            // });
+            console.log('Queue - Before cooking map:', {
+                currentCooking: globalStatus.cooking,
+                taskCollectionId: task.promptObj.collectionId
+            });
+
             globalStatus.cooking = globalStatus.cooking.map(cook => {
+                console.log('Queue - Mapping cook item:', {
+                    cookCollectionId: cook.collectionId,
+                    matchesTask: cook.collectionId === task.promptObj.collectionId,
+                    currentGenerationCount: cook.generationCount || 0
+                });
+
                 if (cook.collectionId === task.promptObj.collectionId) {
-                    return {
+                    const updatedCook = {
                         ...cook,
                         lastGenerated: Date.now(),
                         generationCount: (cook.generationCount || 0) + 1
                     };
+                    console.log('Queue - Updated cook item:', updatedCook);
+                    return updatedCook;
                 }
                 return cook;
+            });
+
+            console.log('Queue - After cooking map:', {
+                updatedCooking: globalStatus.cooking
             });
 
             return true;
