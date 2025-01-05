@@ -9,34 +9,51 @@ class StudioDB extends BaseDB {
         super('studio');
     }
 
-    // Save a generated piece and its image
-    async savePiece(collectionId, pieceData) {
+    async saveGenerationResult(urls, task) {
         try {
-            // First save the image to GridFS
-            const imageId = await this.saveImageToGridFS(
-                pieceData.providerImageUrl,
-                collectionId,
-                pieceData.timestamp || Date.now()
-            );
-
-            // Prepare the piece document
-            const pieceDocument = {
-                collectionId,
-                imageId,                    // GridFS object id
-                providerImageUrl,           // Original URL from provider
-                traits: pieceData.traits,   // Trait information
-                prompt: pieceData.prompt,   // Text prompt used
-                promptObj: pieceData.promptObj, // Full prompt object from request
-                status: 'pending_review',   // pending_review, approved, rejected
-                version: 1,                 // Initial version
-                timestamp: Date.now(),
-                history: []                 // Track regeneration history
+            // 1. Create studio document with all necessary information
+            const studioDoc = {
+                collectionId: task.promptObj.collectionId,
+                userId: task.message.from.id,
+                status: 'pending_review',
+                files: urls.map(urlData => ({
+                    url: urlData.url,
+                    type: urlData.type
+                })),
+                prompt: task.promptObj.prompt,
+                traits: task.promptObj.traits || [],
+                workflow: task.promptObj.type,
+                generation: {
+                    timestamp: Date.now(),
+                    seed: task.promptObj.input_seed,
+                    cfg: task.promptObj.input_cfg,
+                    checkpoint: task.promptObj.input_checkpoint,
+                },
+                version: 1,
+                history: [],
+                createdAt: new Date()
             };
 
-            return this.insertOne(pieceDocument);
+            // 2. Save to database
+            await this.insertOne(studioDoc);
+            
+            console.log('Saved generation result:', {
+                collectionId: studioDoc.collectionId,
+                userId: studioDoc.userId,
+                timestamp: studioDoc.generation.timestamp
+            });
+
+            return { 
+                success: true, 
+                studioDoc 
+            };
+
         } catch (error) {
-            console.error('Error saving piece:', error);
-            throw error;
+            console.error('Error saving generation result:', error);
+            return { 
+                success: false, 
+                error: error.message 
+            };
         }
     }
 
@@ -59,41 +76,6 @@ class StudioDB extends BaseDB {
         } catch (error) {
             console.error('[saveImageToGridFS] Error:', error);
             throw error;
-        }
-    }
-
-    async saveGenerationResult(urls, task) {
-        try {
-            // 1. Save files using the new URL-specific method
-            const savedFiles = await Promise.all(urls.map(async (urlData) => {
-                // Extract url and type from the urlData object
-                const { url, type } = urlData;
-                console.log('task object in saveGenerationResult', task)
-                const filename = `collection_${task.promptObj.collectionId}_${Date.now()}.${type === 'image' ? 'png' : type}`;
-                const fileId = await this.saveFileFromUrl(filename, url);  // Pass the URL string, not the whole object
-
-                return {
-                    fileId,
-                    type,
-                    originalUrl: url
-                };
-            }));
-
-            // 2. Create studio document
-            const studioDoc = {
-                collectionId: task.promptObj.collectionId,
-                files: savedFiles,
-                task: task,
-                createdAt: new Date(),
-                traits: task.promptObj.traits
-            };
-
-            await this.insertOne(studioDoc);
-            return { success: true, studioDoc };
-
-        } catch (error) {
-            console.error('Error saving generation result:', error);
-            return { success: false, error };
         }
     }
 
