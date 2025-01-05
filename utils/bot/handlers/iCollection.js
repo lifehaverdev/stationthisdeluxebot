@@ -4,7 +4,6 @@ const {
     STATES, getBotInstance,
     stateHandlers,
     actionMap,
-    globalStatus,
     prefixHandlers,
     flows,
  } = require('../bot')
@@ -37,10 +36,10 @@ const cookModeHandler = CollectionCook.getInstance();
  const { checkIn } = require('../gatekeep')
  const { enqueueTask } = require('../queue')
  const { CollectionDB, UserCore, UserEconomy } = require('../../../db/index');
- const GlobalStatusDB = require('../../../db/models/globalStatus');
+//  const GlobalStatusDB = require('../../../db/models/globalStatus');
 const { Collection } = require('mongodb');
  //const { buildPromptObjFromWorkflow } = require('./iMake')
- const globalStatusDB = new GlobalStatusDB();
+//  const globalStatusDB = new GlobalStatusDB();
  const collectionDB = new CollectionDB();
  const userCore = new UserCore();
  const userEconomy = new UserEconomy();
