@@ -2,7 +2,7 @@ const { sendMessage, editMessage, setUserState, react, gated,chargeGated,cleanPr
 const { getPhotoUrl, lobby, workspace, STATES, flows, makeSeed } = require('../bot')
 const { enqueueTask } = require('../queue')
 const { getGroup } = require('./iGroup')
-const { buildPromptObjFromWorkflow } = require('./iMake')
+const { buildPromptObjFromWorkflow } = require('../prompt')
 const Jimp = require('jimp');
 const fs = require('fs')
 const path = require('path');

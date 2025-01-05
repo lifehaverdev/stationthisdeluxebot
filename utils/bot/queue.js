@@ -24,7 +24,7 @@ const globalStatusData = new GlobalStatusDB();
 const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 const collectionCook = require('./handlers/collectionmode/collectionCook');
-
+collectionCook.setEnqueueTask(enqueueTask);
 //
 // LOBBY AND QUEUE
 //
