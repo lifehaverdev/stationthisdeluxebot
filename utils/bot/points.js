@@ -31,9 +31,13 @@ async function updateGroupPoints(group, pointsDeducted) {
 async function addPoints(task) {
     ({ promptObj, message } = task);
     const userId = promptObj.userId;
-    const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     
-
+    let rate = 2;
+    const doublePointTypes = ['MS3.2']; // You can add more types here if needed
+    if (doublePointTypes.includes(promptObj.type)) {
+        rate = 6;
+    }
+    const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     // Special handling for cook mode - always use qoints
     // Special handling for cook mode - always use qoints
     if (promptObj.isCookMode) {
@@ -108,11 +112,7 @@ async function addPoints(task) {
             }
         }
     
-        let rate = 2;
-        const doublePointTypes = ['MS3.2']; // You can add more types here if needed
-        if (doublePointTypes.includes(promptObj.type)) {
-            rate = 6;
-        }
+        
         
         
         const user = lobby[userId];
