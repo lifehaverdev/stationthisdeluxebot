@@ -52,7 +52,7 @@ async function addPoints(task) {
             const userEco = await userEconomy.findOne({ userId });
             if (userEco) {
                 userEco.qoints -= pointsToAdd;
-                await userEco.save();
+                await userEco.writeQoints(userEco.userId, userEco.qoints);
                 userQoints = userEco.qoints;
                 console.log('Using DB qoints for cook mode:', userQoints);
             } else {
