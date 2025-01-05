@@ -82,9 +82,10 @@ async function enqueueTask(task) {
     // Update doints for the user
     // Giving these placeholder doints makes it so that you can't spam requests without instant cost
     if (lobby[userId]) {
-        lobby[userId].doints = (lobby[userId].doints || 0) + 100;
+        const dointsToAdd = task.promptObj.type === 'MS3.3' ? 1000 : 100;
+        lobby[userId].doints = (lobby[userId].doints || 0) + dointsToAdd;
         // adding this to promptObj makes sure we take them off when it is deliver
-        task.promptObj.dointsAdded = 100;
+        task.promptObj.dointsAdded = dointsToAdd;
     }
 
     // Add the task to the queue, which is waiting to be request
