@@ -48,15 +48,21 @@ async function addPoints(task) {
     const group = getGroup(message);
 
     // Special handling for cook mode - always use qoints
+    // Special handling for cook mode - always use qoints
     if (promptObj.isCookMode) {
         user.qoints = (user.qoints || 0) - pointsToAdd;
         console.log(`Cook mode: Subtracted ${pointsToAdd} qoints from user ${userId}. New qoints: ${user.qoints}`);
+        
         try {
+            // Get fresh status from DB
+            const status = await globalStatusData.getGlobalStatus();
+            
             console.log('Points.js - Before mapping:', {
-                globalStatusCooking: globalStatus.cooking,
+                cookingTasks: status.cooking?.length || 0,
                 promptCollectionId: promptObj.collectionId
             });
-            const updatedCooking = globalStatus.cooking.map(cook => {
+
+            const updatedCooking = status.cooking.map(cook => {
                 console.log('Points.js - Mapping cook:', {
                     cookCollectionId: cook.collectionId,
                     promptCollectionId: promptObj.collectionId,
@@ -71,20 +77,11 @@ async function addPoints(task) {
                     }
                     : cook;
             });
-    
-            console.log('Points.js - After mapping:', {
-                updatedCooking,
-                length: updatedCooking.length
-            });
-    
-            await globalStatusData.updateStatus({
-                cooking: updatedCooking
-            }, false);
-    
-            console.log('Points.js - After updateStatus');
-    
+
+            await globalStatusData.updateStatus({ cooking: updatedCooking }, false);
+            
         } catch (error) {
-            console.error(`Failed to update global status for cooking task ${promptObj.collectionId}:`, error);
+            console.error(`Failed to update status for cooking task ${promptObj.collectionId}:`, error);
         }
     } else {
         const max = getMaxBalance(user);
