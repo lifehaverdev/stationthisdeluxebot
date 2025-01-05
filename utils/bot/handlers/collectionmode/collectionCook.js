@@ -299,8 +299,8 @@ class CollectionCook {
     
             // 1. Check qoints in both lobby and DB
             let userQoints = '0';
-            if (lobby[user]?.balance) {
-                userQoints = lobby[user].balance;
+            if (lobby[user]?.qoints) {
+                userQoints = lobby[user].qoints;
             } else {
                 const userEconomy = new UserEconomyDB();
                 const userEco = await userEconomy.findOne({ userId: user });
