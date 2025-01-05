@@ -193,7 +193,7 @@ class CollectionCook {
             const studio = new StudioDB();
             const existingGenerations = await studio.findMany({ 
                 filter: {
-                    collectionId: collection.collectionId,
+                    collectionId: collectionId,
                     type: 'generation'
                 }
             });
@@ -202,7 +202,7 @@ class CollectionCook {
 
 
             console.log('Existing generations check:', {
-                collectionId: collection.collectionId,
+                collectionId: collectionId,
                 count: generationCount,
                 maxLimit: 5
             });
@@ -1010,7 +1010,7 @@ class CollectionCook {
             return false;
         }
     }
-    async handleReview(action, message, user) {
+    async reviewCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
             const StudioDB = require('../../../../db/models/studio');
