@@ -68,7 +68,7 @@ class StudioDB extends BaseDB {
             const savedFiles = await Promise.all(urls.map(async (urlData) => {
                 // Extract url and type from the urlData object
                 const { url, type } = urlData;
-                
+                console.log('task object in saveGenerationResult', task)
                 const filename = `collection_${task.promptObj.collectionId}_${Date.now()}.${type === 'image' ? 'png' : type}`;
                 const fileId = await this.saveFileFromUrl(filename, url);  // Pass the URL string, not the whole object
 
