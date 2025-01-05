@@ -25,8 +25,8 @@ const {
     buildPromptObjFromWorkflow 
 } = require('./collectionmode/collectionUtils');
 // Add new imports:
-const CollectionCook = require('./collectionmode/collectionCook');
-const cookModeHandler = CollectionCook.getInstance();
+
+const cookModeHandler = require('./collectionmode/collectionCook');
 
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { StudioManager } = require('./collectionmode/studioManager')
