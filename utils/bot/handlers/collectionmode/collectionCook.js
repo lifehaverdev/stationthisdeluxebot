@@ -7,8 +7,8 @@ const {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
-    buildPromptObjFromWorkflow
 } = require('./collectionUtils');
+const { buildPromptObjFromWorkflow } = require('../iMake');
 const { sendMessage, editMessage, logThis } = require('../../../utils');
 const { enqueueTask } = require('../../queue');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
@@ -359,12 +359,14 @@ class CollectionCook {
             // 1. Check qoints in both lobby and DB
             let userQoints = '0';
             if (lobby[user]?.qoints) {
+                console.log('using in resume cooking user lobby qoints', lobby[user].qoints)
                 userQoints = lobby[user].qoints;
             } else {
                 const userEconomy = new UserEconomyDB();
                 const userEco = await userEconomy.findOne({ userId: user });
                 if (userEco) {
                     userQoints = userEco.qoints.toString() || '0';
+                    console.log('using in resume cooking user db qoints', userEco.qoints)
                 }
             }
     
