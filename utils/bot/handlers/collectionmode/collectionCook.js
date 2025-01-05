@@ -241,7 +241,7 @@ class CollectionCook {
                 targetSupply: collection.config.totalSupply || 5,  // Default to 5 for testing
                 lastGenerated: null,
                 generationStatus: 'pending',
-                qointsRequired: collection.config.totalSupply * 100,
+                qointsRequired: collection.config.totalSupply * 100 || 500,
                 userContextCache: {
                     ...userContext,
                     collection: {
@@ -754,26 +754,10 @@ class CollectionCook {
 
             // Build user context
             const workflowType = collection.config.workflow || 'MAKE';
+            // Use cached context but update the prompt
             const userContext = {
-                userId: user,
-                type: workflowType,
-                prompt: generatedPrompt,
-                basePrompt: -1,
-                userPrompt: -1,
-                input_cfg: 6,
-                input_width: 1024,
-                input_height: 1024,
-                input_checkpoint: 'flux-schnell',
-                input_negative: 'embedding:easynegative',
-                balance: lobby[user]?.balance || '0',
-                forceLogo: false,
-                input_batch: 1,
-                input_seed: -1,
-                controlNet: false,
-                styleTransfer: false,
-                openPose: false,
-                username: message.from?.username || 'unknown_user',
-                first_name: message.from?.first_name || 'Unknown',
+                ...cookingTask.userContextCache,
+                prompt: generatedPrompt
             };
 
             // Build and queue the task
@@ -799,8 +783,6 @@ class CollectionCook {
                 }, 
                 promptObj
             });
-
-            
 
         } catch (error) {
             console.error('Error queueing next generation:', error);

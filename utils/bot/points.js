@@ -31,23 +31,7 @@ async function updateGroupPoints(group, pointsDeducted) {
 async function addPoints(task) {
     ({ promptObj, message } = task);
     const userId = promptObj.userId;
-    if (!lobby[userId]) {
-        await checkIn(message);
-        if (!lobby.hasOwnProperty(userId)) {
-            console.error(`User ID ${userId} not found in lobby after check-in, unable to subtract doints.`);
-            return;
-        }
-    }
-
-    let rate = 2;
-    const doublePointTypes = ['MS3.2']; // You can add more types here if needed
-    if (doublePointTypes.includes(promptObj.type)) {
-        rate = 6;
-    }
     
-    const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
-    const user = lobby[userId];
-    const group = getGroup(message);
 
     // Special handling for cook mode - always use qoints
     // Special handling for cook mode - always use qoints
@@ -115,6 +99,23 @@ async function addPoints(task) {
 
         return; //Early return for cook mode
     } else {
+        if (!lobby[userId]) {
+            await checkIn(message);
+            if (!lobby.hasOwnProperty(userId)) {
+                console.error(`User ID ${userId} not found in lobby after check-in, unable to subtract doints.`);
+                return;
+            }
+        }
+    
+        let rate = 2;
+        const doublePointTypes = ['MS3.2']; // You can add more types here if needed
+        if (doublePointTypes.includes(promptObj.type)) {
+            rate = 6;
+        }
+        
+        const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
+        const user = lobby[userId];
+        const group = getGroup(message);
         const max = getMaxBalance(user);
         const credit = user.points + user.doints;
 
