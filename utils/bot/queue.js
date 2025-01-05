@@ -1,4 +1,4 @@
-const { globalStatus,taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
+const { taskQueue, waiting, successors, lobby, workspace, failures, getGroup } = require('../bot/bot');
 const { generate } = require('../../commands/make')
 const studioDB = require('../../db/models/studio');
 const {
@@ -23,6 +23,7 @@ const GlobalStatusDB = require('../../db/models/globalStatus');
 const globalStatusData = new GlobalStatusDB();
 const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
+const collectionCook = require('./handlers/collectionmode/collectionCook');
 
 //
 // LOBBY AND QUEUE
@@ -394,7 +395,7 @@ async function handleTaskCompletion(task) {
             }
 
             // Get fresh status from DB
-            const status = await globalStatusData.getGlobalStatus();
+            const status = await collectionCook.getCookingStatus();
 
             console.log('Queue - Before cooking map:', {
                 cookingTasks: status.cooking?.length || 0,
@@ -418,7 +419,7 @@ async function handleTaskCompletion(task) {
                 return cook;
             });
 
-            await globalStatusData.updateStatus({ cooking: updatedCooking }, false);
+            await collectionCook.updateCookingStatus({ cooking: updatedCooking });
 
             return true;
         } catch (error) {

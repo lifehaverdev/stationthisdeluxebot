@@ -2,6 +2,7 @@ const { lobby, globalStatus } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { FloorplanDB } = require('../../db/index');
 const GlobalStatusDB = require('../../db/models/globalStatus');
+const collectionCook = require('./handlers/collectionmode/collectionCook');
 const globalStatusData = new GlobalStatusDB();
 const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
 
@@ -55,7 +56,7 @@ async function addPoints(task) {
         
         try {
             // Get fresh status from DB
-            const status = await globalStatusData.getGlobalStatus();
+            const status = await collectionCook.getCookingStatus();
             
             console.log('Points.js - Before mapping:', {
                 cookingTasks: status.cooking?.length || 0,
@@ -78,7 +79,17 @@ async function addPoints(task) {
                     : cook;
             });
 
-            await globalStatusData.updateStatus({ cooking: updatedCooking }, false);
+            await collectionCook.updateCookingStatus({ cooking: updatedCooking });
+            // Call checkCookProgress to handle next generation
+            
+            try {
+                await collectionCook.checkCookProgress(
+                    task.promptObj.userId, 
+                    task.promptObj.collectionId
+                );
+            } catch (error) {
+                console.error('Error checking cook progress:', error);
+            }
             
         } catch (error) {
             console.error(`Failed to update status for cooking task ${promptObj.collectionId}:`, error);
