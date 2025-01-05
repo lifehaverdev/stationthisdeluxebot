@@ -95,6 +95,11 @@ class CollectionCook {
         }
     }
 
+    // Add a method for external status updates
+    async updateCookingStatus(updates) {
+        return await this.#updateCookingStatus(updates);
+    }
+
     // Private initialization method
     async initialize() {
         try {
@@ -488,8 +493,25 @@ class CollectionCook {
                 c.status === 'active'
             );
 
+            
+
             if (isStillActive) {
-                await this.queueNextGeneration(message, user, collection);
+                // Get collection info from cache or DB
+                const collection = await getOrLoadCollection(user, collectionId);
+                if (!collection) {
+                    throw new Error('Collection not found');
+                }
+
+                // Create dummy message object
+                const dummyMessage = {
+                    chat_id: user,
+                    from: {
+                        id: user,
+                        username: cookingTask.userContextCache?.username || 'unknown_user',
+                        first_name: cookingTask.userContextCache?.first_name || 'Unknown'
+                    }
+                };
+                await this.queueNextGeneration(dummyMessage, user, collection);
             }
         } catch (error) {
             console.error('[checkCookProgress] Error:', error);
@@ -686,8 +708,8 @@ class CollectionCook {
         try {
             // Check user's qoints first
             let userQoints = '0';
-            if (lobby[user]?.balance) {
-                userQoints = lobby[user].balance;
+            if (lobby[user]?.qoints) {
+                userQoints = lobby[user].qoints;
             } else {
                 // If not in lobby, check DB
                 const userEconomy = new UserEconomyDB();
@@ -704,7 +726,7 @@ class CollectionCook {
                     c.userId === user && 
                     c.collectionId === collection.collectionId
                 );
-                await this.pauseCookingTask(cookingTask, 'insufficient_qoints');
+                await this.pauseCooking(cookingTask, 'insufficient_qoints');
                 return;
             }
 
@@ -994,4 +1016,4 @@ class CollectionCook {
     }
 }
 
-module.exports = CollectionCook;
+module.exports = CollectionCook.getInstance();
