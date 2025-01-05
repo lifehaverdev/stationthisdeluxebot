@@ -1,4 +1,4 @@
-const { studio, globalStatus, lobby, flows } = require('../../bot');
+const { studio, lobby, flows } = require('../../bot');
 const GlobalStatusDB = require('../../../../db/models/globalStatus');
 const { CollectionDB } = require('../../../../db/index');
 const { 
@@ -16,6 +16,10 @@ const UserEconomyDB = require('../../../../db/models/userEconomy');
 class CollectionCook {
     // Private static instance
     static #instance = null;
+    // Private cached status
+    #cachedStatus = null;
+    #lastFetch = 0;
+    #cacheTimeout = 5000; // 5 seconds cache timeout
     
     // Private constructor
     constructor() {
@@ -42,17 +46,66 @@ class CollectionCook {
         return CollectionCook.#instance;
     }
 
+    // Private status management methods
+    async #getCookingStatus() {
+        const now = Date.now();
+        
+        // Return cached version if fresh
+        if (this.#cachedStatus && (now - this.#lastFetch) < this.#cacheTimeout) {
+            console.log('CollectionCook using cached status:', {
+                age: now - this.#lastFetch,
+                cookingTasks: this.#cachedStatus.cooking?.length || 0
+            });
+            return this.#cachedStatus;
+        }
+
+        // Fetch fresh status
+        console.log('CollectionCook fetching fresh status');
+        const freshStatus = await this.globalStatusDB.getGlobalStatus();
+        this.#cachedStatus = freshStatus;
+        this.#lastFetch = now;
+
+        console.log('CollectionCook status refreshed:', {
+            cookingTasks: freshStatus.cooking?.length || 0
+        });
+
+        return freshStatus;
+    }
+
+    async #updateCookingStatus(updates) {
+        try {
+            // Update DB
+            await this.globalStatusDB.updateStatus(updates, false);
+            
+            // Update cache with new values
+            this.#cachedStatus = {
+                ...this.#cachedStatus,
+                ...updates,
+                updatedAt: new Date()
+            };
+            
+            console.log('CollectionCook status updated:', {
+                cookingTasks: this.#cachedStatus.cooking?.length || 0
+            });
+        } catch (error) {
+            console.error('Error updating cooking status:', error);
+            // Invalidate cache on error
+            this.#cachedStatus = null;
+            throw error;
+        }
+    }
+
     // Private initialization method
     async initialize() {
         try {
             console.log('CollectionCook initialize starting...');
             const maxAttempts = 10;
             let attempts = 0;
-
+            const status = await this.#getCookingStatus();
             while (attempts < maxAttempts) {
-                console.log(`Checking globalStatus (attempt ${attempts + 1}/${maxAttempts})...`);
+                console.log(`Checking status (attempt ${attempts + 1}/${maxAttempts})...`);
                 
-                if (globalStatus.cooking) {
+                if (status.cooking) {
                     console.log('Global dependencies loaded, initializing cooking tasks...');
                     await this.initializeCookingTasks();
                     return;
@@ -64,9 +117,9 @@ class CollectionCook {
             }
 
             if (attempts >= maxAttempts) {
-                console.error('Timeout waiting for globalStatus. Current state:', {
-                    globalStatusExists: !!globalStatus,
-                    cookingArrayExists: !!globalStatus?.cooking
+                console.error('Timeout waiting for status. Current state:', {
+                    statusExists: !!status,
+                    cookingArrayExists: !!status?.cooking
                 });
             }
             
@@ -77,10 +130,11 @@ class CollectionCook {
 
     async initializeCookingTasks() {
         try {
-            if (globalStatus.cooking && globalStatus.cooking.length > 0) {
+            const status = await this.#getCookingStatus();
+            if (status.cooking && status.cooking.length > 0) {
                 console.log('Found active cooking tasks, resuming...');
                 
-                for (const cookTask of globalStatus.cooking) {
+                for (const cookTask of status.cooking) {
                     if (cookTask.status === 'active') {
                         await this.resumeCooking(cookTask);
                     }
@@ -182,10 +236,10 @@ class CollectionCook {
                     }
                 }
             };
-    
+            const status = await this.#getCookingStatus();
             // Update global status with new cooking task
-            const updatedCooking = [...globalStatus.cooking, cookingTask];
-            await this.globalStatusDB.updateStatus({ cooking: updatedCooking });
+            const updatedCooking = [...status.cooking, cookingTask];
+            await this.#updateCookingStatus({ cooking: updatedCooking });
     
             // 4. Queue first generation
             const workflow = flows.find(flow => flow.name === workflowType);
@@ -237,9 +291,9 @@ class CollectionCook {
     async pauseCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
-            
+            const status = await this.#getCookingStatus();
             // Find the cooking task
-            const taskIndex = globalStatus.cooking.findIndex(
+            const taskIndex = status.cooking.findIndex(
                 task => task.userId === user && task.collectionId === collectionId
             );
     
@@ -251,11 +305,11 @@ class CollectionCook {
                 });
                 return;
             }
-    
-            const existingTask = globalStatus.cooking[taskIndex];
+            
+            const existingTask = status.cooking[taskIndex];
     
             // Update task status
-            const updatedCooking = [...globalStatus.cooking];
+            const updatedCooking = [...status.cooking];
             updatedCooking[taskIndex] = {
                 ...existingTask,
                 status: 'paused',
@@ -270,7 +324,7 @@ class CollectionCook {
             };
     
             // Save to DB
-            await this.globalStatusDB.updateStatus({ cooking: updatedCooking });
+            await this.#updateCookingStatus({ cooking: updatedCooking });
             console.log(`Paused cooking task for user ${user}, collection ${collectionId}`);
     
             // Update UI
@@ -296,7 +350,7 @@ class CollectionCook {
         try {
             const user = cookTask.userId;
             const collectionId = cookTask.collectionId;
-    
+            const status = await this.#getCookingStatus();
             // 1. Check qoints in both lobby and DB
             let userQoints = '0';
             if (lobby[user]?.qoints) {
@@ -383,7 +437,7 @@ class CollectionCook {
             });
     
             // 5. Update cooking task status to active
-            const updatedCooking = globalStatus.cooking.map(task => {
+            const updatedCooking = status.cooking.map(task => {
                 if (task.userId === user && task.collectionId === collectionId) {
                     return {
                         ...task,
@@ -395,7 +449,7 @@ class CollectionCook {
                 return task;
             });
     
-            await this.globalStatusDB.updateStatus({ cooking: updatedCooking });
+            await this.#updateCookingStatus({ cooking: updatedCooking });
             console.log(`Successfully resumed cooking for user ${user}, collection ${collectionId}`);
             return true;
     
@@ -408,7 +462,8 @@ class CollectionCook {
     // For checking a specific cook's progress after generation
     async checkCookProgress(user, collectionId) {
         try {
-            const cookingTask = globalStatus.cooking.find(c => 
+            const status = await this.#getCookingStatus();
+            const cookingTask = status.cooking.find(c => 
                 c.userId === user && 
                 c.collectionId === collectionId
             );
@@ -427,7 +482,7 @@ class CollectionCook {
             await new Promise(resolve => setTimeout(resolve, 5000));
             
             // After delay, check if still active in globalStatus
-            const isStillActive = globalStatus.cooking.find(c => 
+            const isStillActive = status.cooking.find(c => 
                 c.userId === user && 
                 c.collectionId === collectionId && 
                 c.status === 'active'
@@ -445,15 +500,15 @@ class CollectionCook {
     async checkKitchen() {
         try {
             console.log('🔍 Checking kitchen status...');
-            
-            if (!globalStatus.cooking || globalStatus.cooking.length === 0) {
+            const status = await this.#getCookingStatus();
+            if (!status.cooking || status.cooking.length === 0) {
                 console.log('Kitchen is empty, no active cooks found');
                 return;
             }
 
-            console.log(`Found ${globalStatus.cooking.length} cooking tasks`);
+            console.log(`Found ${status.cooking.length} cooking tasks`);
             
-            for (const cookTask of globalStatus.cooking) {
+            for (const cookTask of status.cooking) {
                 if (cookTask.status !== 'active') {
                     console.log(`Skipping ${cookTask.status} cook for user ${cookTask.userId}`);
                     continue;
@@ -498,7 +553,8 @@ class CollectionCook {
     }
 
     async checkExistingCookTask(user) {
-        const currentStatus = globalStatus;
+        const status = await this.#getCookingStatus();
+        const currentStatus = status;
         return currentStatus.cooking?.find(task => 
             task.userId === user && task.status === 'active'
         );
@@ -643,7 +699,8 @@ class CollectionCook {
 
             if (parseInt(userQoints) < 100) {
                 console.log(`Insufficient qoints for user ${user}, pausing cook`);
-                const cookingTask = globalStatus.cooking.find(c => 
+                const status = await this.#getCookingStatus();
+                const cookingTask = status.cooking.find(c => 
                     c.userId === user && 
                     c.collectionId === collection.collectionId
                 );
@@ -738,7 +795,8 @@ class CollectionCook {
     async getControlPanel(collectionId, cookStatus = null) {
         // If no cookStatus provided, check if there's an existing cook
         if (!cookStatus) {
-            const existingCook = globalStatus.cooking.find(c => 
+            const status = await this.#getCookingStatus();
+            const existingCook = status.cooking.find(c => 
                 c.collectionId === collectionId && 
                 ['active', 'paused'].includes(c.status)
             );
@@ -798,12 +856,24 @@ class CollectionCook {
 
     async checkSupplyLimit(cookingTask) {
         if (cookingTask.generationCount >= 5) {
-            // Update cooking task status to completed
-            await this.globalStatusDB.updateCookingTask(cookingTask.userId, cookingTask.collectionId, {
-                status: 'completed',
-                completedAt: Date.now(),
-                completionReason: 'supply_limit_reached'
+            // Get current status
+            const status = await this.#getCookingStatus();
+            
+            // Update the specific task in the cooking array
+            const updatedCooking = status.cooking.map(task => {
+                if (task.userId === cookingTask.userId && task.collectionId === cookingTask.collectionId) {
+                    return {
+                        ...task,
+                        status: 'completed',
+                        completedAt: Date.now(),
+                        completionReason: 'supply_limit_reached'
+                    };
+                }
+                return task;
             });
+
+            // Update both cache and DB
+            await this.#updateCookingStatus({ cooking: updatedCooking });
             return true;
         }
         return false;
@@ -830,7 +900,8 @@ class CollectionCook {
             let attempts = 0;
             
             while (attempts < maxAttempts) {
-                if (flows && flows.length > 0 && globalStatus) {
+                const status = await this.#getCookingStatus();
+                if (flows && flows.length > 0 && status) {
                     console.log('Global dependencies loaded, initializing cooking tasks...');
                     await this.initializeCookingTasks();
                     return;
@@ -855,7 +926,8 @@ class CollectionCook {
             console.log(`Completion reason: ${reason}`);
     
             // 1. Update task status in globalStatus
-            const updatedCooking = globalStatus.cooking.map(task => {
+            const status = await this.#getCookingStatus();
+            const updatedCooking = status.cooking.map(task => {
                 if (task.userId === cookTask.userId && task.collectionId === cookTask.collectionId) {
                     return {
                         ...task,
@@ -868,7 +940,7 @@ class CollectionCook {
                 return task;
             });
     
-            await this.globalStatusDB.updateStatus({ cooking: updatedCooking });
+            await this.#updateCookingStatus({ cooking: updatedCooking });
     
             // 2. Get collection info for the message
             const collection = await getOrLoadCollection(cookTask.userId, cookTask.collectionId);
