@@ -31,6 +31,7 @@ async function updateGroupPoints(group, pointsDeducted) {
 async function addPoints(task) {
     ({ promptObj, message } = task);
     const userId = promptObj.userId;
+    const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     
 
     // Special handling for cook mode - always use qoints
@@ -113,7 +114,7 @@ async function addPoints(task) {
             rate = 6;
         }
         
-        const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
+        
         const user = lobby[userId];
         const group = getGroup(message);
         const max = getMaxBalance(user);
