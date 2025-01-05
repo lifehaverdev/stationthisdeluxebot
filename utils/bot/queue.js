@@ -395,31 +395,31 @@ async function handleTaskCompletion(task) {
             }
 
             // Get fresh status from DB
-            const status = await collectionCook.getCookingStatus();
+            // const status = await collectionCook.getCookingStatus();
 
-            console.log('Queue - Before cooking map:', {
-                cookingTasks: status.cooking?.length || 0,
-                taskCollectionId: task.promptObj.collectionId
-            });
+            // console.log('Queue - Before cooking map:', {
+            //     cookingTasks: status.cooking?.length || 0,
+            //     taskCollectionId: task.promptObj.collectionId
+            // });
 
-            const updatedCooking = status.cooking.map(cook => {
-                console.log('Queue - Mapping cook item:', {
-                    cookCollectionId: cook.collectionId,
-                    matchesTask: cook.collectionId === task.promptObj.collectionId,
-                    currentGenerationCount: cook.generationCount || 0
-                });
+            // const updatedCooking = status.cooking.map(cook => {
+            //     console.log('Queue - Mapping cook item:', {
+            //         cookCollectionId: cook.collectionId,
+            //         matchesTask: cook.collectionId === task.promptObj.collectionId,
+            //         currentGenerationCount: cook.generationCount || 0
+            //     });
 
-                if (cook.collectionId === task.promptObj.collectionId) {
-                    return {
-                        ...cook,
-                        lastGenerated: Date.now(),
-                        generationCount: (cook.generationCount || 0) + 1
-                    };
-                }
-                return cook;
-            });
+            //     if (cook.collectionId === task.promptObj.collectionId) {
+            //         return {
+            //             ...cook,
+            //             lastGenerated: Date.now(),
+            //             generationCount: (cook.generationCount || 0) + 1
+            //         };
+            //     }
+            //     return cook;
+            // });
 
-            await collectionCook.updateCookingStatus({ cooking: updatedCooking });
+            // await collectionCook.updateCookingStatus({ cooking: updatedCooking });
 
             return true;
         } catch (error) {
