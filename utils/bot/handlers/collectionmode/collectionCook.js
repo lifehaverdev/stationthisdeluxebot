@@ -75,6 +75,11 @@ class CollectionCook {
         return freshStatus;
     }
 
+    // Public method for external access
+    async getCookingStatus() {
+        return await this.#getCookingStatus();
+    }
+
     async #updateCookingStatus(updates) {
         try {
             // Update DB
