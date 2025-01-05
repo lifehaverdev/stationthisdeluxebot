@@ -994,6 +994,70 @@ class CollectionCook {
             return false;
         }
     }
+    async handleReview(action, message, user) {
+        try {
+            const collectionId = parseInt(action.split('_')[1]);
+            const StudioDB = require('../../../../db/models/studio');
+            const studio = new StudioDB();
+    
+            // Get all pieces for this collection
+            const pieces = await studio.findMany({ collectionId });
+            
+            // Calculate stats using the correct status field
+            const stats = {
+                total: pieces.length,
+                pending: pieces.filter(p => p.status === 'pending_review').length,
+                approved: pieces.filter(p => p.status === 'approved').length,
+                rejected: pieces.filter(p => p.status === 'rejected').length
+            };
+    
+            // Get collection info
+            const collection = await getOrLoadCollection(user, collectionId);
+            if (!collection) {
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: "❌ Collection not found"
+                });
+                return;
+            }
+    
+            // Create review interface
+            const reviewText = `📝 Collection Review\n\n` +
+                `Collection: ${collection.name}\n` +
+                `Total Generations: ${stats.total}\n\n` +
+                `📊 Status:\n` +
+                `• Pending Review: ${stats.pending}\n` +
+                `• Approved: ${stats.approved}\n` +
+                `• Rejected: ${stats.rejected}\n\n` +
+                `Use the controls below to manage your review:`;
+    
+            const reviewKeyboard = {
+                inline_keyboard: [
+                    [
+                        { 
+                            text: `${stats.pending > 0 ? "🔍 Begin Review" : "✅ All Reviewed"}`, 
+                            callback_data: stats.pending > 0 ? `cookReviewStart_${collectionId}` : `cookReviewDone_${collectionId}` 
+                        }
+                    ],
+                    [
+                        { text: "🔙 Back", callback_data: `cookMode_${collectionId}` }
+                    ]
+                ]
+            };
+    
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: reviewText,
+                reply_markup: reviewKeyboard
+            });
+    
+        } catch (error) {
+            console.error('Error handling review:', error);
+            await sendMessage(message, "❌ An error occurred while fetching review data.");
+        }
+    }
 }
 
 module.exports = CollectionCook.getInstance();
