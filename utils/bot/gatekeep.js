@@ -39,7 +39,7 @@ function regenerateDoints(userId) {
     }
 
     const timeSinceLastRun = Date.now() - userData.kickedAt;
-    const maxPoints = Math.floor((userData.balance + NOCOINERSTARTER) / POINTMULTI);
+    const maxPoints = calculateMaxPoints(userData.balance);
     const regenerationCycles = Math.floor(timeSinceLastRun / (LOBBY_CLEAN_INTERVAL));
     const regeneratedPoints = (maxPoints / 18) * regenerationCycles;
     const oldDoints = userData.doints;
@@ -51,6 +51,10 @@ function regenerateDoints(userId) {
     lobby[userId] = {
         ...userData
     }
+}
+
+function calculateMaxPoints(balance) {
+    return Math.floor((balance + NOCOINERSTARTER) / POINTMULTI);
 }
 
 function softResetPoints(userId) {
@@ -718,6 +722,7 @@ function pointsCalc(points) {
 module.exports =  {
     checkLobby, checkIn,
     //cleanLobby,
+    calculateMaxPoints,
     lobbyManager,
     POINTMULTI,
     NOCOINERSTARTER,
