@@ -1597,3 +1597,7 @@ prefixHandlers['cookPause_'] = (action, message, user) =>{
 prefixHandlers['cookResume_'] = (action, message, user) =>{
     cookModeHandler.resumeCooking(action, message, user);
 };
+
+prefixHandlers['cookReview_'] = (action, message, user) =>{
+    cookModeHandler.reviewCooking(action, message, user);
+};
