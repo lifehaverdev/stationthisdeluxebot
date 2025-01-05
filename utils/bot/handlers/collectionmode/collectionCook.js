@@ -210,6 +210,7 @@ class CollectionCook {
             const workflowType = collection.config.workflow || 'MAKE';
             const userContext = {
                 userId: user,
+                collectionId: collectionId,
                 type: workflowType,
                 prompt: generatedPrompt,
                 basePrompt: -1,

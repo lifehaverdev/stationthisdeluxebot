@@ -2,6 +2,7 @@ const { lobby, globalStatus } = require('../bot/bot')
 const { getGroup } = require('./handlers/iGroup');
 const { FloorplanDB } = require('../../db/index');
 const GlobalStatusDB = require('../../db/models/globalStatus');
+const UserEconomyDB = require('../../db/models/userEconomy');
 const collectionCook = require('./handlers/collectionmode/collectionCook');
 const globalStatusData = new GlobalStatusDB();
 const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
@@ -51,9 +52,25 @@ async function addPoints(task) {
     // Special handling for cook mode - always use qoints
     // Special handling for cook mode - always use qoints
     if (promptObj.isCookMode) {
-        user.qoints = (user.qoints || 0) - pointsToAdd;
-        console.log(`Cook mode: Subtracted ${pointsToAdd} qoints from user ${userId}. New qoints: ${user.qoints}`);
-        
+        // Check lobby first
+        if (lobby[userId]?.qoints !== undefined) {
+            console.log('Using lobby qoints for cook mode:', lobby[userId].qoints);
+            lobby[userId].qoints = (lobby[userId].qoints || 0) - pointsToAdd;
+            userQoints = lobby[userId].qoints;
+        } else {
+            // If not in lobby, work with DB
+            const userEconomy = new UserEconomyDB();
+            const userEco = await userEconomy.findOne({ userId });
+            if (userEco) {
+                userEco.qoints -= pointsToAdd;
+                await userEco.save();
+                userQoints = userEco.qoints;
+                console.log('Using DB qoints for cook mode:', userQoints);
+            } else {
+                console.error('No user economy found for cook mode user:', userId);
+                return;
+            }
+        }
         try {
             // Get fresh status from DB
             const status = await collectionCook.getCookingStatus();
@@ -94,6 +111,8 @@ async function addPoints(task) {
         } catch (error) {
             console.error(`Failed to update status for cooking task ${promptObj.collectionId}:`, error);
         }
+
+        return; //Early return for cook mode
     } else {
         const max = getMaxBalance(user);
         const credit = user.points + user.doints;
