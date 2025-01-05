@@ -1,6 +1,7 @@
 const { studio, lobby, flows } = require('../../bot');
 const GlobalStatusDB = require('../../../../db/models/globalStatus');
 const { CollectionDB } = require('../../../../db/index');
+const StudioDB  = require('../../../../db/models/studio');
 const { 
     getOrLoadCollection, 
     findExclusions, 
@@ -188,7 +189,31 @@ class CollectionCook {
     async startCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
-            
+            // Check for existing generations
+            const studio = new StudioDB();
+            const existingGenerations = await studio.findMany({ 
+                filter: {
+                    collectionId: collection.collectionId,
+                    type: 'generation'
+                }
+            });
+
+            const generationCount = existingGenerations?.length || 0;
+
+
+            console.log('Existing generations check:', {
+                collectionId: collection.collectionId,
+                count: generationCount,
+                maxLimit: 5
+            });
+
+            if (generationCount >= 5) {
+                await sendMessage({
+                    message,
+                    text: `⚠️ This collection already has ${existingGenerations} generations. Maximum limit is 5.`
+                });
+                return;
+            }
             // 1. Check qoints
             const userQoints = lobby[user]?.balance || '0';
             if (parseInt(userQoints) < 100) {
@@ -930,18 +955,9 @@ class CollectionCook {
     
             // 1. Update task status in globalStatus
             const status = await this.#getCookingStatus();
-            const updatedCooking = status.cooking.map(task => {
-                if (task.userId === cookTask.userId && task.collectionId === cookTask.collectionId) {
-                    return {
-                        ...task,
-                        status: 'completed',
-                        completedAt: Date.now(),
-                        completionReason: reason,
-                        deliveryStatus: 'pending'  // New field to track final delivery
-                    };
-                }
-                return task;
-            });
+            const updatedCooking = status.cooking.filter(cook => 
+                !(cook.userId === cookTask.userId && cook.collectionId === cookTask.collectionId)
+            );
     
             await this.#updateCookingStatus({ cooking: updatedCooking });
     
@@ -976,18 +992,17 @@ class CollectionCook {
                         { text: "👁 Review Collection", callback_data: `cookReview_${cookTask.collectionId}` },
                         { text: "📊 Final Stats", callback_data: `cookStats_${cookTask.collectionId}` }
                     ],
-                    [
-                        { text: "📦 Prepare Delivery", callback_data: `cookDeliver_${cookTask.collectionId}` }
-                    ]
+                    // [
+                    //     { text: "📦 Prepare Delivery", callback_data: `cookDeliver_${cookTask.collectionId}` }
+                    // ]
                 ]
             };
     
             // 5. Send completion message to user
             await sendMessage({
-                chat_id: cookTask.userId,
-                text: completionMessage,
-                reply_markup: completionControlPanel
-            });
+                chat: {id: cookTask.userId},
+                from: {id: cookTask.userId}
+            }, completionMessage, {reply_markup: completionControlPanel} );
     
             return true;
         } catch (error) {
