@@ -7,8 +7,8 @@ const {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
+    buildCookModePromptObjFromWorkflow
 } = require('./collectionUtils');
-const { buildPromptObjFromWorkflow } = require('../iMake');
 const { sendMessage, editMessage, logThis } = require('../../../utils');
 const { enqueueTask } = require('../../queue');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
@@ -252,13 +252,7 @@ class CollectionCook {
                 throw new Error(`Invalid workflow type: ${workflowType}`);
             }
     
-            let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message);
-            promptObj = {
-                ...promptObj,
-                isCookMode: true,
-                collectionId: collection.collectionId,
-                traits: selectedTraits
-            };
+            let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
     
             await enqueueTask({
                 message: {
@@ -430,13 +424,8 @@ class CollectionCook {
                 throw new Error(`Invalid workflow type: ${userContext.type}`);
             }
     
-            let promptObj = buildPromptObjFromWorkflow(workflow, userContext, dummyMessage);
-            promptObj = {
-                ...promptObj,
-                isCookMode: true,
-                collectionId: collectionId,
-                traits: userContext.traits || []
-            };
+            let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, dummyMessage);
+            
     
             await enqueueTask({
                 message: dummyMessage,
@@ -770,13 +759,8 @@ class CollectionCook {
                 throw new Error(`Invalid workflow type: ${workflowType}`);
             }
 
-            let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message);
-            promptObj = {
-                ...promptObj,
-                isCookMode: true,
-                collectionId: collection.collectionId,
-                traits: selectedTraits
-            };
+            let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
+            
 
             await enqueueTask({
                 message: {
@@ -901,17 +885,6 @@ class CollectionCook {
             return true;
         }
         return false;
-    }
-
-    // Helper method to build prompt object
-    buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
-        let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message);
-        return {
-            ...promptObj,
-            isCookMode: true,
-            collectionId: userContext.collectionId,
-            traits: userContext.traits
-        };
     }
 
     async initializeBot() {

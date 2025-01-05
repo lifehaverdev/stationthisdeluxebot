@@ -457,5 +457,5 @@ module.exports = {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
-    buildPromptObjFromWorkflow
+    buildCookModePromptObjFromWorkflow
 };
