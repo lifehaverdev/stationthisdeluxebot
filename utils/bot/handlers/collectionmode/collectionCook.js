@@ -475,12 +475,24 @@ class CollectionCook {
                 c.collectionId === collectionId
             );
 
+            console.log('Checking cook progress:', {
+                userId: user,
+                collectionId,
+                currentCount: cookingTask?.generationCount,
+                isActive: cookingTask?.status === 'active'
+            });
+
             if (!cookingTask || cookingTask.status !== 'active') {
                 return;
             }
 
             // Check generation count instead of supply
             if (cookingTask.generationCount >= 5) {  // Testing limit
+                console.log('Generation limit reached:', {
+                    userId: user,
+                    collectionId,
+                    finalCount: cookingTask.generationCount
+                });
                 await this.completeCookingTask(cookingTask, 'generation_limit_reached');
                 return;
             }

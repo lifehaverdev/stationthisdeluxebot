@@ -76,10 +76,17 @@ if is_container_running ${NEW_CONTAINER}; then
     echo "✨ Deployment completed successfully!"
     echo "📝 Tailing logs from the new container (first 30 seconds):"
     timeout 400 docker logs -f ${OLD_CONTAINER} 2>&1 &
+    CONSOLE_PID=$!
+    # Save logs continuously to log file
+    docker logs -f ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1 &
+    # Only wait for the console logging to finish
+    wait $CONSOLE_PID
 else
     echo "❌ Failed to start new container!"
     echo "Keeping old container running if it exists."
     docker rm -f ${NEW_CONTAINER} >> ${LOG_FILE} 2>&1
+
+
 fi
 
 # Print out the log file path for easy access
