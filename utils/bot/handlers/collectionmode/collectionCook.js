@@ -722,6 +722,11 @@ class CollectionCook {
         try {
             // Check user's qoints first
             let userQoints = '0';
+            const status = await this.#getCookingStatus();
+            const cookingTask = status.cooking.find(c => 
+                c.userId === user && 
+                c.collectionId === collection.collectionId
+            );
             if (lobby[user]?.qoints) {
                 userQoints = lobby[user].qoints;
             } else {
@@ -733,13 +738,9 @@ class CollectionCook {
                 }
             }
 
+
             if (parseInt(userQoints) < 100) {
                 console.log(`Insufficient qoints for user ${user}, pausing cook`);
-                const status = await this.#getCookingStatus();
-                const cookingTask = status.cooking.find(c => 
-                    c.userId === user && 
-                    c.collectionId === collection.collectionId
-                );
                 await this.pauseCooking(cookingTask, 'insufficient_qoints');
                 return;
             }
