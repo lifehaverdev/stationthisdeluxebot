@@ -328,6 +328,65 @@ async function processWaitlist(status, run_id, outputs) {
         }
 
         task.final = run;
+
+        if (task.isApiRequest && task.webhook_url) {
+            try {
+                let webhookPayload = {
+                    run_id,
+                    status: status,
+                    timestamp: Date.now()
+                };
+    
+                // Add status-specific information
+                switch(status) {
+                    case 'success':
+                        webhookPayload.outputs = run.outputs;
+                        webhookPayload.completion_time = Date.now() - task.runningStart;
+                        break;
+                    
+                    case 'running':
+                    case 'in_progress':
+                    case 'processing':
+                        webhookPayload.status = 'running';  // Normalize status
+                        if (!task.runningStart) {
+                            webhookPayload.started_at = Date.now();
+                        }
+                        break;
+                    
+                    case 'failed':
+                    case 'error':
+                        webhookPayload.status = 'failed';
+                        webhookPayload.error = 'Generation failed';
+                        break;
+                    
+                    case 'timeout':
+                    case 'cancelled':
+                        webhookPayload.status = status;
+                        webhookPayload.retry_count = task.retrying || 0;
+                        break;
+                    
+                    default:
+                        // Handle progress updates
+                        if (typeof status === 'string' && status.includes('%')) {
+                            webhookPayload.status = 'running';
+                            webhookPayload.progress = status;
+                        }
+                }
+    
+                await fetch(task.webhook_url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(webhookPayload)
+                });
+    
+            } catch (webhookError) {
+                console.error(`Failed to send webhook update to ${task.webhook_url}:`, webhookError);
+            }
+        }
+
+
         statusRouter(task, taskIndex, status);
 
     } catch (err) {
