@@ -537,7 +537,15 @@ commandRegistry['/tsa'] = {
                     chat: { id: DEV_DMS },
                     message_id: message.message_id
                 };
-                iAccount.displayAccountSettingsMenu(settingsMessage,true);
+                let profile = iAccount.buildUserProfile(settingsMessage, true);
+                const keyboard = iAccount.buildAccountSettingsKeyboard(target);
+                profile += `userId: ${target}`
+                sendMessage({...settingsMessage, from: {id: DEV_DMS}}, profile, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: keyboard
+                    }
+                });
             }
         }
     },

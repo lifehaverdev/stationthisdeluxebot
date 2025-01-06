@@ -1,0 +1,173 @@
+== Info: Host api.openai.com:443 was resolved.
+== Info: IPv6: (none)
+== Info: IPv4: 162.159.140.245, 172.66.0.243
+== Info:   Trying 162.159.140.245:443...
+== Info: Connected to api.openai.com (162.159.140.245) port 443
+== Info: ALPN: curl offers h2,http/1.1
+== Info: (304) (OUT), TLS handshake, Client hello (1):
+=> Send SSL data, 319 bytes (0x13f)
+0000: ...;...j......}.y.Y..h..L....-U...]... 2...........J.!.b.D...w..
+0040: sz./.~,.b.......0.,.(.$.......k.9.................=.5...../.+.'.
+0080: #.......g.3...E...<./...A.......................+............3.&
+00c0: .$... B}.p...R....r@..9......$.*....sG.........api.openai.com...
+0100: ....................................................h2.http/1.1
+== Info:  CAfile: /etc/ssl/cert.pem
+== Info:  CApath: none
+== Info: (304) (IN), TLS handshake, Server hello (2):
+<= Recv SSL data, 122 bytes (0x7a)
+0000: ...v..w.k...Ck....1...J.~.DgF....}..M. 2...........J.!.b.D...w..
+0040: sz./.~,......3.$... ....BP......n....H..ic.|x..]T..Y.+....
+== Info: (304) (IN), TLS handshake, Unknown (8):
+<= Recv SSL data, 19 bytes (0x13)
+0000: .................h2
+== Info: (304) (IN), TLS handshake, Certificate (11):
+<= Recv SSL data, 2538 bytes (0x9ea)
+0000: ...........0...0..T......... S...P..:<z.t_.0...*.H.=...0;1.0...U
+0040: ....US1.0...U....Google Trust Services1.0...U....WE10...24112422
+0080: 5224Z..250222235220Z0.1.0...U....api.openai.com0Y0...*.H.=....*.
+00c0: H.=....B...t..`Y1..[...@...G....z.@.u|..'.F.Tm........C....3..Qn
+0100: .4`[..75Cb...Y0..U0...U...........0...U.%..0...+.......0...U....
+0140: ...0.0...U...........*J'>.QH.......L0...U.#..0....w.5g......{..y
+0180: {...80^..+........R0P0'..+.....0...http://o.pki.goog/s/we1/oyA0%
+01c0: ..+.....0...http://i.pki.goog/we1.crt0+..U...$0"..api.openai.com
+0200: ..*.api.openai.com0...U. ..0.0...g.....06..U.../0-0+.).'.%http:/
+0240: /c.pki.goog/we1/hx34Vi4ORbM.crl0.....+.....y............u...1c@w
+0280: ...A..q....@.......2...7.P....`.?......F0D. \V.\......&...l....`
+02c0: ..Z...}...... l..'$...)....4i.~R.W.o'...8..5,..w.Nu.'\...8[l..?R
+0300: .......i...d.b.9.....`.?......H0F.!......\w.s...8...^.Hx.LL.~.}u
+0340: iWO..!...-g....DJz.........../.....0.Ox0...*.H.=....H.0E. 6.|...
+0380: .0c....l.>..v....df4..,.MX.!../.c...X.....#v6...v...o=...3..B...
+03c0: ..0...0..%..........w.,"Jv.].....0...*.H.=...0G1.0...U....US1"0 
+0400: ..U....Google Trust Services LLC1.0...U....GTS Root R40...231213
+0440: 090000Z..290220140000Z0;1.0...U....US1.0...U....Google Trust Ser
+0480: vices1.0...U....WE10Y0...*.H.=....*.H.=....B..o.:.gWGL!..@.G].XG
+04c0: .@.\....7..|..K.................Y.,&...&%....V...0..0...U.......
+0500: ....0...U.%..0...+.........+.......0...U.......0.......0...U....
+0540: ...w.5g......{..y{...80...U.#..0....L..t.I6.....>.j....04..+....
+0580: ....(0&0$..+.....0...http://i.pki.goog/r4.crt0+..U...$0"0 ......
+05c0: http://c.pki.goog/r/r4.crl0...U. ..0.0...g.....0...*.H.=....h.0e
+0600: .1....Q..C..u......@Az&....2-=....#H.R.>dy....,.nU..0&..h.b...~.
+0640: ...D~.LI..l.b4...~:..P.....}s..RAM..V....~0..z0..b.........0.3.C
+0680: .....I=..0...*.H........0W1.0...U....BE1.0...U....GlobalSign nv-
+06c0: sa1.0...U....Root CA1.0...U....GlobalSign Root CA0...23111503432
+0700: 1Z..280128000042Z0G1.0...U....US1"0 ..U....Google Trust Services
+0740:  LLC1.0...U....GTS Root R40v0...*.H.=....+...".b...ts.h.`.C.5..0
+0780: {KI...a...F.k.a.5.@.s...0Z.<..|.@v;...G.*...js..r9.)...._^X.e...
+07c0: e......s..j/.........0..0...U...........0...U.%..0...+.........+
+0800: .......0...U.......0....0...U.......L..t.I6.....>.j....0...U.#..
+0840: 0...`{f.E....P/}..4....K06..+........*0(0&..+.....0...http://i.p
+0880: ki.goog/gsr1.crt0-..U...&0$0". ....http://c.pki.goog/r/gsr1.crl0
+08c0: ...U. ..0.0...g.....0...*.H..............B........?c.....hH.9"s.
+0900: ..N-.1......6...y.....j.{.}.t..e.h*,,.B..q...-.k..n.}V.#XX.%...G
+0940: ... ........U.yu5,1[?e....B.....^.....-G...c~....k.......gX.....
+0980: .I.P[?:.%....\.yW.6...&.........>..n..<..8.A..^S.>. W...?H......
+09c0: j#....?/....n..F...g.3&...K..6.&;[........
+== Info: (304) (IN), TLS handshake, CERT verify (15):
+<= Recv SSL data, 79 bytes (0x4f)
+0000: ...K...G0E. 67I..*.Pyl.3m..p...:/.N...A......!....R.....x....s.0
+0040: J$......L....pL
+== Info: (304) (IN), TLS handshake, Finished (20):
+<= Recv SSL data, 52 bytes (0x34)
+0000: ...0.,1.Tl....n.. .k.y.$.|jr.-..Q.....S..U...{._.a..
+== Info: (304) (OUT), TLS handshake, Finished (20):
+=> Send SSL data, 52 bytes (0x34)
+0000: ...0.?.....G..~..z....D5.8.G.a.z....L9...}K..v.@..^.
+== Info: SSL connection using TLSv1.3 / AEAD-AES256-GCM-SHA384 / [blank] / UNDEF
+== Info: ALPN: server accepted h2
+== Info: Server certificate:
+== Info:  subject: CN=api.openai.com
+== Info:  start date: Nov 24 22:52:24 2024 GMT
+== Info:  expire date: Feb 22 23:52:20 2025 GMT
+== Info:  subjectAltName: host "api.openai.com" matched cert's "api.openai.com"
+== Info:  issuer: C=US; O=Google Trust Services; CN=WE1
+== Info:  SSL certificate verify ok.
+== Info: using HTTP/2
+== Info: [HTTP/2] [1] OPENED stream for https://api.openai.com/v1/images/generations
+== Info: [HTTP/2] [1] [:method: POST]
+== Info: [HTTP/2] [1] [:scheme: https]
+== Info: [HTTP/2] [1] [:authority: api.openai.com]
+== Info: [HTTP/2] [1] [:path: /v1/images/generations]
+== Info: [HTTP/2] [1] [accept: */*]
+== Info: [HTTP/2] [1] [content-type: application/json]
+== Info: [HTTP/2] [1] [authorization: Bearer sk-proj-qhZsXph3HPT1Q0r5BIYAT3BlbkFJRGRSOLZeDN2exrw19Cbd]
+== Info: [HTTP/2] [1] [user-agent: Curl-Debug-Client]
+== Info: [HTTP/2] [1] [content-length: 150]
+=> Send header, 237 bytes (0xed)
+0000: POST /v1/images/generations HTTP/2
+0024: Host: api.openai.com
+003a: Accept: */*
+0047: Content-Type: application/json
+0067: Authorization: Bearer sk-proj-qhZsXph3HPT1Q0r5BIYAT3BlbkFJRGRSOL
+00a7: ZeDN2exrw19Cbd
+00b7: User-Agent: Curl-Debug-Client
+00d6: Content-Length: 150
+00eb: 
+=> Send data, 150 bytes (0x96)
+0000: {.    "model": "dall-e-3",.    "prompt": "test prompt",.    "n":
+0040:  1,.    "size": "1024x1024",.    "quality": "standard",.    "res
+0080: ponse_format": "url".}
+== Info: upload completely sent off: 150 bytes
+<= Recv header, 13 bytes (0xd)
+0000: HTTP/2 200 
+<= Recv header, 37 bytes (0x25)
+0000: date: Mon, 06 Jan 2025 16:03:00 GMT
+<= Recv header, 32 bytes (0x20)
+0000: content-type: application/json
+<= Recv header, 22 bytes (0x16)
+0000: content-length: 1117
+<= Recv header, 28 bytes (0x1c)
+0000: openai-version: 2020-10-01
+<= Recv header, 37 bytes (0x25)
+0000: openai-organization: mony-group-llc
+<= Recv header, 52 bytes (0x34)
+0000: x-request-id: req_bf927e5242f4a7b1f755eee7834ff89a
+<= Recv header, 29 bytes (0x1d)
+0000: openai-processing-ms: 12256
+<= Recv header, 32 bytes (0x20)
+0000: access-control-allow-origin: *
+<= Recv header, 73 bytes (0x49)
+0000: strict-transport-security: max-age=31536000; includeSubDomains; 
+0040: preload
+<= Recv header, 26 bytes (0x1a)
+0000: cf-cache-status: DYNAMIC
+<= Recv header, 273 bytes (0x111)
+0000: set-cookie: __cf_bm=NOMk31rxic6Pcl7am4RdA3ojovTm1d1896hdUDWS0Lc-
+0040: 1736179380-1.0.1.1-SHFHx5TdndiA.hWtwJukNmH5sJVF8it4Fx_lHownjbnU3
+0080: wBM2_eylA7A7E46pDF5WdMe7pkFVHhIyKHBtiCWKQ; path=/; expires=Mon, 
+00c0: 06-Jan-25 16:33:00 GMT; domain=.api.openai.com; HttpOnly; Secure
+0100: ; SameSite=None
+<= Recv header, 33 bytes (0x21)
+0000: x-content-type-options: nosniff
+<= Recv header, 162 bytes (0xa2)
+0000: set-cookie: _cfuvid=IwNsyICktu_f7.bqXLySGT9lXJ228eFTM_QwD00B4nI-
+0040: 1736179380857-0.0.1.1-604800000; path=/; domain=.api.openai.com;
+0080:  HttpOnly; Secure; SameSite=None
+<= Recv header, 20 bytes (0x14)
+0000: server: cloudflare
+<= Recv header, 30 bytes (0x1e)
+0000: cf-ray: 8fdcef3d5af7fb24-BNA
+<= Recv header, 30 bytes (0x1e)
+0000: alt-svc: h3=":443"; ma=86400
+<= Recv header, 2 bytes (0x2)
+0000: 
+<= Recv data, 1117 bytes (0x45d)
+0000: {.  "created": 1736179380,.  "data": [.    {.      "revised_prom
+0040: pt": "Please imagine a serene scene of a calm lake during sunset
+0080: . The sky is filled with warm hues of orange and red, gradually 
+00c0: transitioning into an inky blue. The lake's water is reflecting 
+0100: these beautiful colors, making it seem as though the sky has bee
+0140: n captured in its serene surface. On the lake's shore, there's a
+0180:  small wooden dock with a fishing rod abandoned on it, while a l
+01c0: one rowboat is tethered to one of the dock posts, gently swingin
+0200: g with the subtle waves of the lake. The overall atmosphere of t
+0240: he scene exudes peace and tranquility.",.      "url": "https://o
+0280: aidalleapiprodscus.blob.core.windows.net/private/org-MqcI7dWyBK4
+02c0: v7rJjiT37fVPl/user-d51n4SwWKFD6JXVeQaPyAlFp/img-QY3gaX3Hys4QZcSg
+0300: pi847aBf.png?st=2025-01-06T15%3A03%3A00Z&se=2025-01-06T17%3A03%3
+0340: A00Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=d5
+0380: 05667d-d6c1-4a0a-bac7-5c84a87759f8&sktid=a48cca56-e6da-484e-a814
+03c0: -9c849652bcb3&skt=2025-01-06T00%3A52%3A04Z&ske=2025-01-07T00%3A5
+0400: 2%3A04Z&sks=b&skv=2024-08-04&sig=/pbQN1auwnw/OrvFmvwUu78PgSjQUCc
+0440: lQ4xlJ/3hccc%3D".    }.  ].}.
+<= Recv data, 0 bytes (0x0)
+== Info: Connection #0 to host api.openai.com left intact

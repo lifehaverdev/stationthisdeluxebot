@@ -115,9 +115,6 @@ async function addPoints(task) {
                 return;
             }
         }
-    
-        
-        
         
         const user = lobby[userId];
         const group = getGroup(message);
@@ -184,16 +181,15 @@ async function addPoints(task) {
                 console.log(`Points added to user ${user.id}. New total: ${user.points}`);
             }
         }
+        // Always remove placeholder doints
+        const beforeSub = user.doints;
+        user.doints = (Number(user.doints)) - (Number(promptObj.dointsAdded) || 100);
+        const afterSub = user.doints;
+        if (beforeSub - afterSub != promptObj.dointsAdded) {
+            console.log('its still broken arth');
+        }
     }
     
-
-    // Always remove placeholder doints
-    const beforeSub = user.doints;
-    user.doints = (Number(user.doints)) - (Number(promptObj.dointsAdded) || 100);
-    const afterSub = user.doints;
-    if (beforeSub - afterSub != promptObj.dointsAdded) {
-        console.log('its still broken arth');
-    }
 }
 
 module.exports = { addPoints };
