@@ -70,13 +70,18 @@ async function handleDiscWrite(message) {
         return false;
     }
 }
-async function handleWatermark(message, image = null, user = null) {
+async function handleWatermark(message, image = null, user = null, utils = false) {
     //sendMessage(message,`yes. this one needs a logo`)
-
+    if(utils){
+        console.log('utils watermark')
+        setUserState({...message,from: {id: user},chat: {id: message.chat.id}},STATES.WATERMARK)
+        sendMessage(message,'send in the photo you want to watermark')
+        return
+    }
     chatId = message.chat.id;
     const userId = user || message.from.id;
     const fileUrl = image || await getPhotoUrl(message);
-    //console.log('current lobby stats',lobby[userId].waterMark)
+    
     if(lobby[userId].waterMark == false) sendMessage(message,'you need to choose a watermark in account settings tho')
     try {
         await react(message,"💋")

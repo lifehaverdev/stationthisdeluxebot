@@ -35,8 +35,8 @@ async function addPointsToAllUsers(lobby) {
                 // Only process if there are actually points to update
                 if (oldPoints > 0 || oldDoints > 0 || oldBoints > 0) {
                     const totalPoints = oldPoints + oldBoints;
-                    const newDoints = oldDoints + oldPoints;
-                    const newExp = oldExp + totalPoints;
+                    const newDoints = Math.max(0, oldDoints + oldPoints);
+                    const newExp = Math.max(0, oldExp + totalPoints);
 
                     batch.updateOne(
                         { userId: user.userId },

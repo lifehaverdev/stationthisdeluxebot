@@ -257,6 +257,9 @@ function chooseIdByMachine(ids, promptObj) {
         if(promptObj.isCookMode) {
             return ids[0]  // Use first machine for cook mode
         }
+        if(promptObj.isAPI) {
+            return ids[2]  // Use third machine for API mode
+        }
         if(!promptObj.machine) {
             return ids[1]  // Default to second machine for regular generations
         }

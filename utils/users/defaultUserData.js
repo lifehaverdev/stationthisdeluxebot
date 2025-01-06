@@ -8,6 +8,8 @@ const defaultUserCore = {
     lastRunTime: null,
     lastTouch: null,
     createdAt: null,
+    apiKey: null,
+    apiKeyCreatedAt: null,
 };
 
 

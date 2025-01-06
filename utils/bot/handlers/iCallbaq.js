@@ -132,7 +132,7 @@ const handleSetVoice = (message, selectedName, userId) => {
         console.log('no Voice')
     }
 };
-const handleSetWatermark = async (message, selectedName, userId) => {
+const handleSetWatermark = async (message, selectedName, userId, utils = false) => {
     const messageId = message.message_id;
     const chatId = message.chat.id;
     if(!lobby.hasOwnProperty(userId)){
@@ -147,7 +147,11 @@ const handleSetWatermark = async (message, selectedName, userId) => {
         }
         let dms = message.chat.id > 0;
         // Update the workspace with the new watermark status
-        await returnToAccountMenu(message,userId)
+        if(utils){
+            iBrand.handleWatermark(message,null,userId,utils)
+        } else {
+            await returnToAccountMenu(message,userId)
+        }
         //setUserState({...message,from: {id: userId},chat: {id: chatId}},STATES.WATERMARK)
 
         // If an image is already in the workspace, route directly to handleWatermark
@@ -371,6 +375,10 @@ const handleSetWatermark = async (message, selectedName, userId) => {
         const selectedName = action.split('_').slice(1).join('_');
         actionMap['setWatermark'](message, selectedName, user);
     }
+    prefixHandlers['swmu_']= (action, message, user) => {
+        const selectedName = action.split('_').slice(1).join('_');
+        actionMap['setWatermark'](message, selectedName, user, true);
+    }
     prefixHandlers['regen_run_']= (action, message, user) => {
         const runIndex = parseInt(action.split('_')[2], 10);
         actionMap['regenRun'](message, runIndex, user);
@@ -430,7 +438,7 @@ const handleSetWatermark = async (message, selectedName, userId) => {
 // Main export function
 module.exports = function (bot) {
     bot.on('callback_query', async(callbackQuery) => {
-        //console.log(callbackQuery)
+        console.log('callbackQuery',callbackQuery)
         try {
             const { action, message, user } = parseCallbackData(callbackQuery);
 

@@ -17,7 +17,7 @@ const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const { TutorialManager, CHECKPOINTS } = require('./iStart');
-
+const crypto = require('crypto');
 const analytics = new AnalyticsEvents();
 
 /*
@@ -109,6 +109,14 @@ function buildPreferencesKeyboard(userId) {
     if(!lobby[userId].hasOwnProperty('customFileNames')){
         lobby[userId].customFileNames = false;
     }
+    // Initialize API key fields if they don't exist
+    if (!lobby[userId].hasOwnProperty('apiKey')) {
+        lobby[userId].apiKey = null;
+        lobby[userId].apiKeyCreatedAt = null;
+    }
+    const hasApiKey = lobby[userId].apiKey !== null;
+
+
     return [
         [
             {
@@ -129,9 +137,149 @@ function buildPreferencesKeyboard(userId) {
             {
                 text: 'Watermark', callback_data: 'toggleWaterMark'
             }
+        ],
+        [
+            {
+                text: hasApiKey ? 'Manage API Key 🔑' : 'Generate API Key 🔑',
+                callback_data: 'manageApiKey'
+            }
         ]
     ]
 }
+
+// Add handler for API key management
+async function handleApiKeyManagement(message, user) {
+    // Initialize API key fields if they don't exist
+    if (!lobby[user].hasOwnProperty('apiKey')) {
+        lobby[user].apiKey = null;
+        lobby[user].apiKeyCreatedAt = null;
+    }
+
+    const hasApiKey = lobby[user].apiKey !== null;
+    
+    if (!hasApiKey) {
+        // Generate new API key
+        const apiKey = `ms2_${crypto.randomBytes(16).toString('hex')}`;
+        const createdAt = Date.now();
+        
+        // Save to userCore
+        await userCore.updateOne(
+            { userId: user },
+            { 
+                apiKey,
+                apiKeyCreatedAt: createdAt
+            }
+        );
+        
+        // Update lobby
+        lobby[user].apiKey = apiKey;
+        lobby[user].apiKeyCreatedAt = createdAt;
+
+        // Show success message with instructions
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: `🔑 Your API Key has been generated!\n\n` +
+                `To use the API:\n` +
+                `1. Send requests to: http://134.209.71.109/v1/images/generations\n` +
+                `2. Include your API key in the Authorization header:\n` +
+                `   \`Authorization: Bearer ${apiKey}\`\n\n` +
+                `See the API documentation for more details.`,
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'Show API Key 👁️', callback_data: 'showApiKey' },
+                        { text: 'Refresh Key 🔄', callback_data: 'refreshApiKey' }
+                    ],
+                    [
+                        { text: 'Back to Preferences', callback_data: 'preferencesMenu' }
+                    ]
+                ]
+            }
+        });
+    } else {
+        // Show existing API key management options
+        const createdDate = new Date(lobby[user].apiKeyCreatedAt).toLocaleDateString();
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: `🔑 API Key Management\n\n` +
+                `Your API key was created on: ${createdDate}\n\n` +
+                `What would you like to do?`,
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'Show API Key 👁️', callback_data: 'showApiKey' },
+                        { text: 'Refresh Key 🔄', callback_data: 'refreshApiKey' }
+                    ],
+                    [
+                        { text: 'Back to Preferences', callback_data: 'preferencesMenu' }
+                    ]
+                ]
+            }
+        });
+    }
+}
+
+async function handleShowApiKey(message, user) {
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: `🔑 Your API Key:\n\n\`${lobby[user].apiKey}\`\n\nKeep this key secret\\!`,
+        options: {
+            parse_mode: 'MarkdownV2'
+        },
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Hide Key 🙈', callback_data: 'manageApiKey' }
+                ],
+                [
+                    { text: 'Back to Preferences', callback_data: 'preferencesMenu' }
+                ]
+            ]
+        }
+    });
+}
+
+async function handleRefreshApiKey(message, user) {
+    const newApiKey = `ms2_${crypto.randomBytes(16).toString('hex')}`;
+    const createdAt = Date.now();
+    
+    // Update in DB
+    await userCore.updateOne(
+        { userId: user },
+        { 
+            apiKey: newApiKey,
+            apiKeyCreatedAt: createdAt
+        }
+    );
+    
+    // Update lobby
+    lobby[user].apiKey = newApiKey;
+    lobby[user].apiKeyCreatedAt = createdAt;
+    
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: `🔑 Your API key has been refreshed!\n\nNew key:\n\`${newApiKey}\`\n\nPrevious key is now invalid.`,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Hide Key 🙈', callback_data: 'manageApiKey' }
+                ],
+                [
+                    { text: 'Back to Preferences', callback_data: 'preferencesMenu' }
+                ]
+            ]
+        }
+    });
+}
+
+actionMap['manageApiKey'] = handleApiKeyManagement
+actionMap['showApiKey'] = handleShowApiKey
+actionMap['refreshApiKey'] = handleRefreshApiKey
+
 actionMap['toggleAdvancedUser']= async (message, user) => {
     if(!lobby[user].advancedUser){
         lobby[user].advancedUser = true;
