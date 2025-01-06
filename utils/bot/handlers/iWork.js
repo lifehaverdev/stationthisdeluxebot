@@ -157,6 +157,8 @@ async function handleStatus(message) {
     if (taskQueue.length > 0) {
         const regularTasks = taskQueue.filter(task => !task.promptObj.isCookMode);
         const cookTasks = taskQueue.filter(task => task.promptObj.isCookMode);
+        const apiTasks = taskQueue.filter(task => task.isAPI);
+        
         
         if (regularTasks.length > 0) {
             msg += `🪑 \n${regularTasks.map(task => 
@@ -169,12 +171,20 @@ async function handleStatus(message) {
                 `${task.promptObj.userId == user ? 'YOU' : '👤'}: COOK #${task.promptObj.collectionId}`
             ).join('\n')}\n`;
         }
+
+        if (apiTasks.length > 0) {
+            msg += `🤖 \n${apiTasks.map(task => 
+                `API: ${task.promptObj.type}`
+            ).join('\n')}\n`;
+        }
     }
 
     // Similar separation for waiting tasks
     if (waiting.length > 0) {
         const regularWaiting = waiting.filter(task => !task.promptObj.isCookMode);
         const cookWaiting = waiting.filter(task => task.promptObj.isCookMode);
+        const apiWaiting = waiting.filter(task => task.isAPI);
+        
         
         if (regularWaiting.length > 0) {
             msg += `🪄 \n${regularWaiting.map(task => 
@@ -187,12 +197,21 @@ async function handleStatus(message) {
                 `${task.promptObj.userId == user ? 'YOU' : '🧑🏼‍🍳'}: COOK ${task.status}`
             ).join('\n')}\n`;
         }
+
+        if (apiWaiting.length > 0) {
+            msg += `🔄 \n${apiWaiting.map(task => 
+                `API: ${task.promptObj.type} ${task.status}${task.awaitedRequest ? ' (SYNC)' : ''}`
+            ).join('\n')}\n`;
+        }
+
     }
 
     // And for successors
     if (successors.length > 0) {
         const regularSuccessors = successors.filter(task => !task.promptObj.isCookMode);
         const cookSuccessors = successors.filter(task => task.promptObj.isCookMode);
+        const apiSuccessors = successors.filter(task => task.isAPI);
+        
         
         if (regularSuccessors.length > 0) {
             msg += `🕊️\n${regularSuccessors.map(task => 
@@ -203,6 +222,12 @@ async function handleStatus(message) {
         if (cookSuccessors.length > 0) {
             msg += `🍳\n${cookSuccessors.map(task => 
                 `${task.promptObj.userId == user ? 'YOU' : '👤'}: COOK #${task.promptObj.collectionId} attempt ${task.deliveryFail ? task.deliveryFail : 1}`
+            ).join('\n')}\n`;
+        }
+
+        if (apiSuccessors.length > 0) {
+            msg += `✅\n${apiSuccessors.map(task => 
+                `API: ${task.promptObj.type} complete${task.awaitedRequest ? ' (SYNC)' : ''}`
             ).join('\n')}\n`;
         }
     }

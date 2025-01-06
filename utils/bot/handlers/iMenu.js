@@ -571,15 +571,8 @@ actionMap['utils_rmbg'] = async (message, user) => {
     delete workspace[user]
 };
 
-actionMap['utils_watermark'] = async (message, user) => {
-    const image = workspace[user]?.imageUrl;
-    const ogmessage = workspace[user]?.message
-    // if (!image) {
-    //     await editMessage({chat_id: ogmessage.chat.id, message_id: ogmessage.message_id,text: `Please send an image to add a watermark.`})
-    //     setUserState({...message, from: {id: user}}, STATES.WATERMARK);
-    //     return;
-    // }
-    await handleWatermarkMenu(message,user);
+actionMap['utils_watermark'] = async (message, user, utils = true) => {
+    await handleWatermarkMenu(message,user,utils);
 };
 
 actionMap['utils_interrogate'] = async (message, user) => {
@@ -982,9 +975,9 @@ async function handleCheckpointMenu(message,user) {
     }
 }
 
-async function handleWatermarkMenu(message,user) {
+async function handleWatermarkMenu(message,user,utils = false) {
     if(user){
-        const reply_markup = getWatermarkMenu(user, message);
+        const reply_markup = getWatermarkMenu(user, message, utils);
         editMessage(
             {
                 chat_id: message.chat.id,
@@ -997,7 +990,7 @@ async function handleWatermarkMenu(message,user) {
         const botMessage = await sendMessage(message, 'Watermark Menu:');
         const chat_id = botMessage.chat.id;
         const message_id = botMessage.message_id;
-        const reply_markup = getWatermarkMenu(user, botMessage);
+        const reply_markup = getWatermarkMenu(user, botMessage, utils);
         editMessage(
             {
                 reply_markup,
@@ -1222,7 +1215,7 @@ function getVoiceMenu(userId, message) {
     };
 }
 
-function getWatermarkMenu(userId, message) {
+function getWatermarkMenu(userId, message, utils = false) {
     const group = getGroup(message)
     let settings;
     if(group){
@@ -1235,23 +1228,35 @@ function getWatermarkMenu(userId, message) {
         console.log('User not in the lobby', userId);
         return null;
     }
-
-    const watermarkKeyboard = watermarkmenu.map(watermark => {
-        const callbackData = compactSerialize({ ...baseData, action: `swm_${watermark.name}`});
-        if(isValidCallbackData(callbackData)) {
+    let watermarkKeyboard;
+    if(utils){
+        watermarkKeyboard = watermarkmenu.map(watermark => {
+            const callbackData = compactSerialize({ ...baseData, action: `swmu_${watermark.name}`});
+            if(isValidCallbackData(callbackData)) {
+                return [{
+                        text: `${watermark.name}`,
+                        callback_data: callbackData,
+                }]
+            } else {
+                console.error('Invalid callback_data:', callbackData);
+                return 
+            }
+        })
+    } else {
+        watermarkKeyboard = watermarkmenu.map(watermark => {
+            const callbackData = compactSerialize({ ...baseData, action: `swm_${watermark.name}`});
+            if(isValidCallbackData(callbackData)) {
             return [{
                     text: `${settings.waterMark == watermark.name ? '✅ '+watermark.name : watermark.name}`,
                     callback_data: callbackData,
-            }]
-        } else {
-            console.error('Invalid callback_data:', callbackData);
-            return 
-            // [{
-            //     text: `${voice.name} - Not Available`,
-            //     callback_data: 'invalid_callback_data'
-            // }]
-        }
-    })
+            }]          
+            } else {
+                console.error('Invalid callback_data:', callbackData);
+                return 
+            }
+        })
+    
+    }
 
     return {
         inline_keyboard: watermarkKeyboard

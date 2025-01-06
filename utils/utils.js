@@ -11,18 +11,19 @@ const bot = getBotInstance();
 const DEV_DMS = 5472638766;
 
 politeCommandList = [
-    { command: 'make', description: 'SDXL txt2img'},
-    { command: 'flux', description: 'FLUX txt2img'},
+    { command: 'quickmake', description: 'SDXL txt2img'},
+    { command: 'make', description: 'txt2img'},
     { command: 'status', description: 'Check the group queue status' },
     { command: 'stationthis', description: 'Configure this stationthisbot for this chat'},
 ];
 
 introductoryCommandList = [
     { command: 'help', description: 'See help description' },
-    { command: 'make', description: 'SDXL txt2img'},
+    { command: 'quickmake', description: 'SDXL txt2img'},
+    { command: 'make', description: 'txt2img'},
     { command: 'signin', description: 'Connect account' },
     { command: 'ca', description: 'Check chart buy' },
-    { command: 'loralist', description: 'See available LoRAs' },
+    { command: 'loras', description: 'See available LoRAs' },
     { command: 'status', description: 'Check the group queue status' },
 ]
 
@@ -35,8 +36,12 @@ fullCommandList = [
     { command: 'animate', description: 'Movie maker' },
     { command: 'make', description: 'txt2img'},
     { command: 'quickmake', description: 'SDXL txt2img'},
+    { command: 'watermark', description: 'reply with this command toadd a watermark to an image'},
+    { command: 'assist', description: 'include a prompt with the command for my assistance'},
     //{ command: 'flux', description: 'FLUX txt2img'},
     { command: 'vidthat', description: 'reply to image to create a gif'},
+    { command: 'vidthat2', description: 'reply to image with this command + a prompt to create a gif'},
+
     { command: 'set', description: 'Change your generation settings' },
     { command: 'signin', description: 'Connect account' },
     { command: 'signout', description: 'Disconnect account' },
@@ -46,7 +51,7 @@ fullCommandList = [
     { command: 'resetaccount', description: 'Return to default settings' },
     { command: 'quit', description: 'Exit a call and response UI' },
     { command: 'getseed', description: 'Capture the seed used on your last generation' },
-    { command: 'loralist', description: 'See available LoRAs' },
+    { command: 'loras', description: 'See available LoRAs' },
     { command: 'help', description: 'See help description' },
     { command: 'ca', description: 'Check chart buy' }
 ];

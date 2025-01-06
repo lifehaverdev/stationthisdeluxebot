@@ -17,6 +17,8 @@ class UserCoreDB extends BaseDB {
             lastRunTime: data.lastRunTime || new Date(),
             lastTouch: data.lastTouch || new Date(),
             createdAt: data.createdAt || new Date(),
+            apiKey: data.apiKey || null,
+            apiKeyCreatedAt: data.apiKeyCreatedAt || null,
         };
     }
 

@@ -649,7 +649,7 @@ async function handleTaskCompletion(task) {
 async function handleApiCompletion(task) {
     const run = task.final;
     let results = {
-        created: Date.now(),
+        created: Math.floor(Date.now() / 1000), // Convert to seconds
         data: []
     };
 
