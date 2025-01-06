@@ -9,6 +9,11 @@ const imageRouter = require('./api/index')
 const app = express();
 app.use(bodyParser.json());
 app.use('/v1/images', imageRouter);
+// Increase timeout for long-running requests
+app.use((req, res, next) => {
+  res.setTimeout(300000); // 5 minutes
+  next();
+});
 initialize();
 
 console.log('running server now');
