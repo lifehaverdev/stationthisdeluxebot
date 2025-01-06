@@ -438,7 +438,7 @@ const handleSetWatermark = async (message, selectedName, userId, utils = false) 
 // Main export function
 module.exports = function (bot) {
     bot.on('callback_query', async(callbackQuery) => {
-        console.log('callbackQuery',callbackQuery)
+        
         try {
             const { action, message, user } = parseCallbackData(callbackQuery);
 
