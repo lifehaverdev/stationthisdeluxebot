@@ -90,8 +90,23 @@ router.post('/generations', async (req, res) => {
             try {
                 const result = await new Promise((resolve, reject) => {
                     const checkInterval = setInterval(() => {
+                        // Add debug logging
+                        console.log('Checking for task:', run_id);
+                        console.log('Waiting array:', waiting.map(t => ({
+                            run_id: t.run_id,
+                            status: t.status,
+                            isAPI: t.isAPI
+                        })));
                         const task = waiting.find(t => t.run_id === run_id);
                         if (!task) {
+                            // The task might have been removed from waiting array after completion
+                            // Check successors array too
+                            const successTask = successors.find(t => t.run_id === run_id);
+                            if (successTask) {
+                                clearInterval(checkInterval);
+                                resolve(successTask.final);
+                                return;
+                            }
                             clearInterval(checkInterval);
                             reject(new Error('Task not found'));
                             return;
