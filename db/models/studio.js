@@ -162,12 +162,12 @@ class StudioDB extends BaseDB {
 
     // Update piece status
     async updatePieceStatus(collectionId, pieceId, status) {
-        console.log('Updating piece status:', {
-            pieceId,
-            collectionId,
-            newStatus: status,
-            timestamp: new Date().toISOString()
-        });
+        // console.log('Updating piece status:', {
+        //     pieceId,
+        //     collectionId,
+        //     newStatus: status,
+        //     timestamp: new Date().toISOString()
+        // });
 
         try {
             // Convert string ID to ObjectId
@@ -179,11 +179,11 @@ class StudioDB extends BaseDB {
                 { status, statusUpdatedAt: new Date() }  // Remove $set since BaseDB adds it
             );
 
-            console.log('Update result:', {
-                matchedCount: result.matchedCount,
-                modifiedCount: result.modifiedCount,
-                upsertedCount: result.upsertedCount
-            });
+            // console.log('Update result:', {
+            //     matchedCount: result.matchedCount,
+            //     modifiedCount: result.modifiedCount,
+            //     upsertedCount: result.upsertedCount
+            // });
 
             if (result.matchedCount === 0) {
                 console.warn('No document found matching criteria:', {

@@ -671,7 +671,11 @@ class CollectionCook {
             
             // Get all pieces for this collection
             const pieces = await studio.findMany({ collectionId });
-            return pieces.length;
+            // Count pieces that are either pending_review or approved
+            const validCount = pieces.filter(piece => 
+                piece.status === 'pending_review' || piece.status === 'approved'
+            ).length;
+            return validCount.length;
         } catch (error) {
             console.error('Error getting generation count:', error);
             return 0; // Return 0 as fallback
@@ -1170,9 +1174,9 @@ class CollectionCook {
             // Small delay to ensure image is set
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // Build traits display
-            const traitsDisplay = piece.traits
-                .map(trait => `• ${trait.type}: ${trait.value}`)
+            // Build traits display from traits object
+            const traitsDisplay = Object.entries(piece.traits)
+                .map(([type, value]) => `• ${type}: ${value}`)
                 .join('\n');
 
             // Create caption
