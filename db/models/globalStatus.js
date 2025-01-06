@@ -24,17 +24,17 @@ class GlobalStatusDB extends BaseDB {
     // Update specific status arrays - modified to work with existing updateOne
     async updateStatus(updates, shouldRefresh = false) {
         return this.monitorOperation(async () => {
-            console.log('[GlobalStatusDB] Starting updateStatus with:', updates);
+            //console.log('[GlobalStatusDB] Starting updateStatus with:', updates);
             
             const currentStatus = await this.getGlobalStatus();
-            console.log('[GlobalStatusDB] Current status from DB:', currentStatus);
+            //console.log('[GlobalStatusDB] Current status from DB:', currentStatus);
             
             const newStatus = {
                 ...currentStatus,
                 ...updates,
                 updatedAt: new Date()
             };
-            console.log('[GlobalStatusDB] New status to save:', newStatus);
+            //console.log('[GlobalStatusDB] New status to save:', newStatus);
             
             const result = await this.updateOne(
                 { type: 'globalStatus' },
@@ -42,7 +42,7 @@ class GlobalStatusDB extends BaseDB {
                 { upsert: true }
             );
             
-            console.log('[GlobalStatusDB] Update result:', result);
+            //console.log('[GlobalStatusDB] Update result:', result);
 
             // Immediately refresh the in-memory globalStatus
             // If necessary 
