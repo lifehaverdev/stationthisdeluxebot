@@ -831,7 +831,7 @@ class CollectionCook {
     async setupControlPanel(message, collection) {
         // Get actual generation count
         const generatedCount = await this.getCollectionGenerationCount(collection.collectionId);
-        console.log('generatedCount in setupControlPanel', generatedCount);
+        
         const controlPanel = await this.getControlPanel(collection.collectionId);
         
         await editMessage({

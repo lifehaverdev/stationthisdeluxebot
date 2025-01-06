@@ -990,6 +990,7 @@ function validateSolanaAddress(address) {
 
 module.exports = {
     //displayAccountSettingsMenu,
+    buildUserProfile, buildAccountSettingsKeyboard,
     returnToAccountMenu,
     handleSaveSettings, handleSeeSettings,
     handleSignIn, handleSignOut, handleAccountReset,
