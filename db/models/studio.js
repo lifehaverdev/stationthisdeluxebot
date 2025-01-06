@@ -33,8 +33,6 @@ class StudioDB extends BaseDB {
                     cfg: task.promptObj.input_cfg,
                     checkpoint: task.promptObj.input_checkpoint,
                     duration: task.runningStop - task.runningStart,
-                    rate: task.rate || 1,
-                    pointsSpent: task.pointsSpent
                 },
                 version: 1,
                 history: [],
@@ -135,8 +133,9 @@ class StudioDB extends BaseDB {
                     approved: pieces.filter(p => p.status === 'approved').length,
                     rejected: pieces.filter(p => p.status === 'rejected').length,
                     reviewed: pieces.filter(p => ['approved', 'rejected'].includes(p.status)).length,
-                    // TODO: Add average cost calculation once we implement cost tracking
-                    // averageCost: pieces.reduce((sum, p) => sum + (p.cost || 0), 0) / pieces.length
+                    averageDuration: pieces.length > 0 ? 
+                    pieces.reduce((sum, p) => sum + (p.generation?.duration || 0), 0) / pieces.length / 1000 : 0, // Convert to seconds,
+                    totalDuration: pieces.reduce((sum, p) => sum + (p.generation?.duration || 0), 0) / 1000
                 };
     
                 console.log('Collection stats calculated:', {
