@@ -741,19 +741,6 @@ function extractType(url) {
     }
 }
 
-setInterval(deliver, 2000)
-
-// Export variables and functions
-module.exports = {
-    processingRunIds,
-    waiting,
-    taskQueue,
-    enqueueTask,
-    processWaitlist,
-    //deliver
-    // Add other exports here if needed
-};
-
 
 setInterval(deliver, 2000)
 

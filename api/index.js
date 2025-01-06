@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { flows, waiting } = require('../utils/bot/bot')
+const { flows, waiting, successors } = require('../utils/bot/bot')
 const { defaultUserData } = require('../utils/users/defaultUserData');
 const { UserCore, UserEconomy, UserPref } = require('../db/index');
 const { buildPromptObjFromWorkflow } = require('../utils/bot/prompt');
