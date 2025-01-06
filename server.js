@@ -4,10 +4,11 @@ const { getBot } = require('./app');
 require('dotenv').config();
 const { processWaitlist } = require('./utils/bot/queue');
 const { initialize } = require('./utils/bot/intitialize')
+const imageRouter = require('./api/index')
 
 const app = express();
 app.use(bodyParser.json());
-
+app.use('/v1/images', imageRouter);
 initialize();
 
 console.log('running server now');

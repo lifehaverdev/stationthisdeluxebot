@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { flows, waiting } = require('../utils/bot/bot')
+const { defaultUserData } = require('../utils/users/defaultUserData');
 const { UserCore, UserEconomy, UserPref } = require('../db/index');
 const { buildPromptObjFromWorkflow } = require('../utils/bot/prompt');
 const { getDeploymentIdByType } = require('../utils/comfydeploy/deployment_ids');
-
+const { generate } = require('../commands/make');
 // Track ongoing generations
 const activeGenerations = new Map();
 
@@ -220,19 +222,22 @@ async function authenticateApiUser(apiKey) {
     try {
         // 1. Search UserCore for matching API key
         // We'll need to add an apiKey field to UserCore schema
-        const userCore = await UserCore.findOne({ apiKey: apiKey });
+        const userCoreData = new UserCore();
+        const userCore = await userCoreData.findOne({ apiKey: apiKey });
         if (!userCore) {
             throw new Error('Invalid API key');
         }
 
         // 2. Get user's economic data (for qoints balance)
-        const userEconomy = await UserEconomy.findOne({ userId: userCore.userId });
+        const userEconomyData = new UserEconomy();
+        const userEconomy = await userEconomyData.findOne({ userId: userCore.userId });
         if (!userEconomy || !userEconomy.qoints || userEconomy.qoints < 50) {
             throw new Error('Insufficient qoints');
         }
 
         // 3. Get user's preferences (for generation settings)
-        const userPref = await UserPref.findOne({ userId: userCore.userId });
+        const userPrefData = new UserPref();
+        const userPref = await userPrefData.findOne({ userId: userCore.userId });
 
         // 4. Combine into a user context object similar to what we use for Telegram
         const userContext = {
