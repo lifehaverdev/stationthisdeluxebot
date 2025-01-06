@@ -236,6 +236,7 @@ class CollectionCook {
             const userContext = {
                 userId: user,
                 collectionId: collectionId,
+                traits: selectedTraits,
                 type: workflowType,
                 prompt: generatedPrompt,
                 basePrompt: -1,
@@ -626,6 +627,9 @@ class CollectionCook {
             // Get collection info for better messaging
             const collection = await getOrLoadCollection(existingTask.userId, existingTask.collectionId);
             
+            // Get actual generation count
+        const generatedCount = await this.getCollectionGenerationCount(existingTask.collectionId);
+            
             // Get appropriate control panel based on task status
             const controlPanel = await this.getControlPanel(existingTask.collectionId, existingTask.status);
     
@@ -635,7 +639,7 @@ class CollectionCook {
                 statusText = "⚠️ You're already cooking this collection!\n\n" +
                             "Current status:\n" +
                             `Collection: ${collection.name}\n` +
-                            `Generated: ${existingTask.generationCount}/5\n` +
+                            `Generated: ${generatedCount}/5\n` +
                             `Last generated: ${existingTask.lastGenerated ? 
                                 new Date(existingTask.lastGenerated).toLocaleString() : 
                                 'Never'}\n\n` +
@@ -644,7 +648,7 @@ class CollectionCook {
                 statusText = "⚠️ You're already cooking another collection!\n\n" +
                             "Current cook status:\n" +
                             `Collection: ${collection.name}\n` +
-                            `Generated: ${existingTask.generationCount}/5\n` +
+                            `Generated: ${generatedCount}/5\n` +
                             `Last generated: ${existingTask.lastGenerated ? 
                                 new Date(existingTask.lastGenerated).toLocaleString() : 
                                 'Never'}\n\n` +
@@ -657,6 +661,20 @@ class CollectionCook {
         } catch (error) {
             console.error('Error handling existing cook task:', error);
             await sendMessage(message, "❌ An error occurred while checking cook status.");
+        }
+    }
+
+    async getCollectionGenerationCount(collectionId) {
+        try {
+            const StudioDB = require('../../../../db/models/studio');
+            const studio = new StudioDB();
+            
+            // Get all pieces for this collection
+            const pieces = await studio.findMany({ collectionId });
+            return pieces.length;
+        } catch (error) {
+            console.error('Error getting generation count:', error);
+            return 0; // Return 0 as fallback
         }
     }
 
@@ -818,6 +836,9 @@ class CollectionCook {
 
     // Then update our interface methods to use this:
     async setupControlPanel(message, statusMessage, collection) {
+        // Get actual generation count
+        const generatedCount = await this.getCollectionGenerationCount(collection.collectionId);
+        
         const controlPanel = await this.getControlPanel(collection.collectionId);
         
         await editMessage({
@@ -825,7 +846,7 @@ class CollectionCook {
             message_id: statusMessage.message_id,
             text: "🧑‍🍳 Cook Mode Ready!\n\n" +
                 `Collection: ${collection.name}\n` +
-                `Generated: ${0}/${collection.config.supply || 5}\n` +
+                `Generated: ${generatedCount}/${collection.config.supply || 5}\n` +
                 "Use the controls below to manage generation:",
             reply_markup: controlPanel
         });
@@ -1010,6 +1031,39 @@ class CollectionCook {
             return false;
         }
     }
+    async handleExit(action, message, user) {
+        try {
+            const collectionId = parseInt(action.split('_')[1]);
+            
+            // Get current status
+            const status = await this.#getCookingStatus();
+            
+            // Filter out this cook task
+            const updatedCooking = status.cooking.filter(task => 
+                !(task.userId === user && task.collectionId === collectionId)
+            );
+    
+            // Update global status
+            await this.#updateCookingStatus({ cooking: updatedCooking });
+    
+            // Update message to show exit confirmation
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: "👋 Exited cook mode.\n\n" +
+                      "You can start cooking again anytime by using the collection menu.",
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: "🔙 Back to Collection", callback_data: `cook_${collectionId}` }
+                    ]]
+                }
+            });
+    
+        } catch (error) {
+            console.error('Error handling cook exit:', error);
+            await sendMessage(message, "❌ An error occurred while exiting cook mode.");
+        }
+    }
     async reviewCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
@@ -1072,6 +1126,161 @@ class CollectionCook {
         } catch (error) {
             console.error('Error handling review:', error);
             await sendMessage(message, "❌ An error occurred while fetching review data.");
+        }
+    }
+
+    async handleReviewStart(action, message, user) {
+        try {
+            const collectionId = parseInt(action.split('_')[1]);
+            const studio = new StudioDB();
+    
+            // Get the next pending piece
+            const piece = await studio.getNextPendingPiece(collectionId);
+                console.log('piece we got', piece);
+            if (!piece) {
+                // No more pieces to review
+                const hasImage = !message.text;  // If no text, it's an image message
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    [hasImage ? 'caption' : 'text']: "✅ No more pieces to review!",
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: "🔙 Back to Review", callback_data: `cookReview_${collectionId}` }
+                        ]]
+                    }
+                });
+                return;
+            }
+    
+            
+            // Get the first image URL from files
+            const imageUrl = piece.files[0]?.url;
+            if (!imageUrl) {
+                throw new Error('No image URL found in piece data');
+            }
+
+            // First edit: Set the image
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                photo: imageUrl
+            });
+
+            // Small delay to ensure image is set
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Build traits display
+            const traitsDisplay = piece.traits
+                .map(trait => `• ${trait.type}: ${trait.value}`)
+                .join('\n');
+
+            // Create caption
+            const caption = `🖼 Generation Review\n\n` +
+            `Traits:\n${traitsDisplay}\n\n` +
+            `Prompt: ${piece.prompt.substring(0, 100)}...`;
+
+    
+            // Create review keyboard with piece ID
+            const reviewKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: "✅ Approve", callback_data: `cookDiscern_approve_${piece._id}_${collectionId}` },
+                        { text: "❌ Reject", callback_data: `cookDiscern_reject_${piece._id}_${collectionId}` }
+                    ],
+                    [
+                        { text: "🔙 Back", callback_data: `cookReview_${collectionId}` }
+                    ]
+                ]
+            };
+    
+            // Edit message with image and review options
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                //photo: imageUrl,
+                caption: caption,
+                
+                options: {
+                    reply_markup: reviewKeyboard,
+                    parse_mode: 'HTML',
+                    caption_entities: []
+                }
+            });
+    
+        } catch (error) {
+            console.error('Error starting review:', error);
+            await sendMessage(message, "❌ An error occurred while starting the review process.");
+        }
+    }
+    async handleReviewAction(action, message, user) {
+        try {
+            const [_, prefix, pieceId, collectionId] = action.split('_');
+            console.log('prefix, pieceId, collectionId:', prefix, pieceId, collectionId);
+            const isApprove = prefix === 'approve';
+            const studio = new StudioDB();
+            
+            // Update the piece status
+            await studio.updatePieceStatus(collectionId, pieceId, isApprove ? 'approved' : 'rejected');
+    
+            // Show brief confirmation
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                caption: `${isApprove ? '✅ Approved!' : '❌ Rejected!'}\n\nLoading next piece...`
+            });
+    
+            // Small delay for user to see the confirmation
+            await new Promise(resolve => setTimeout(resolve, 1000));
+    
+            // Load next piece by calling handleReviewStart
+            await this.handleReviewStart(`cookReviewStart_${collectionId}`, message, user);
+    
+        } catch (error) {
+            console.error('Error handling review action:', error);
+            await sendMessage(message, "❌ An error occurred while processing your review.");
+        }
+    }
+
+
+    async handleStats(action, message, user) {
+        try {
+            const collectionId = parseInt(action.split('_')[1]);
+            const studio = new StudioDB();
+            
+            // Get collection and stats
+            const collection = await getOrLoadCollection(user, collectionId);
+            const stats = await studio.getCollectionStats(collectionId);
+            
+            const reviewText = `📝 Collection Review\n\n` +
+                `Collection: ${collection.name}\n` +
+                `Total Generations: ${stats.total}\n\n` +
+                `📊 Status:\n` +
+                `• Total Reviewed: ${stats.reviewed}\n` +
+                `• Approved: ${stats.approved}\n` +
+                `• Rejected: ${stats.rejected}\n` +
+                `• Pending Review: ${stats.total - stats.reviewed}\n\n` +
+                // TODO: Add once implemented
+                // `💰 Average Cost: ${stats.averageCost || 'N/A'} points\n\n` +
+                `Use the controls below to manage your review:`;
+
+            // Create keyboard with back button
+            const keyboard = {
+                inline_keyboard: [[
+                    { text: "⬅️ Back", callback_data: `cook_${collectionId}` }
+                ]]
+            };
+
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: reviewText,
+                reply_markup: keyboard
+            });
+
+        } catch (error) {
+            console.error('Error showing stats:', error);
+            await sendMessage(message, "❌ An error occurred while showing collection stats.");
         }
     }
 }

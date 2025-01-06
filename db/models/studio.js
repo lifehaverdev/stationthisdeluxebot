@@ -2,7 +2,7 @@ const { BaseDB } = require('./BaseDB');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
-const { GridFSBucket } = require('mongodb');
+const { GridFSBucket, ObjectId } = require('mongodb');
 
 class StudioDB extends BaseDB {
     constructor() {
@@ -11,6 +11,10 @@ class StudioDB extends BaseDB {
 
     async saveGenerationResult(urls, task) {
         try {
+            // Calculate points if available from task
+            const pointsSpent = task.pointsToAdd || 
+                ((task.runningStop - task.runningStart) / 1000) * (task.rate || 1);
+
             // 1. Create studio document with all necessary information
             const studioDoc = {
                 collectionId: task.promptObj.collectionId,
@@ -28,6 +32,9 @@ class StudioDB extends BaseDB {
                     seed: task.promptObj.input_seed,
                     cfg: task.promptObj.input_cfg,
                     checkpoint: task.promptObj.input_checkpoint,
+                    duration: task.runningStop - task.runningStart,
+                    rate: task.rate || 1,
+                    pointsSpent: task.pointsSpent
                 },
                 version: 1,
                 history: [],
@@ -116,39 +123,85 @@ class StudioDB extends BaseDB {
         return this.findMany(query);
     }
 
-    // Get collection statistics
-    async getCollectionStats(collectionId) {
-        const stats = await this.aggregate([
-            { $match: { collectionId } },
-            { 
-                $group: {
-                    _id: '$status',
-                    count: { $sum: 1 },
-                    totalVersions: { $sum: '$version' }
-                }
+        // Get collection statistics
+        async getCollectionStats(collectionId) {
+            try {
+                // Get all pieces for this collection
+                const pieces = await this.findMany({ collectionId });
+                
+                // Calculate stats
+                const stats = {
+                    total: pieces.length,
+                    approved: pieces.filter(p => p.status === 'approved').length,
+                    rejected: pieces.filter(p => p.status === 'rejected').length,
+                    reviewed: pieces.filter(p => ['approved', 'rejected'].includes(p.status)).length,
+                    // TODO: Add average cost calculation once we implement cost tracking
+                    // averageCost: pieces.reduce((sum, p) => sum + (p.cost || 0), 0) / pieces.length
+                };
+    
+                console.log('Collection stats calculated:', {
+                    collectionId,
+                    ...stats
+                });
+    
+                return stats;
+    
+            } catch (error) {
+                console.error('Error getting collection stats:', {
+                    error: error.message,
+                    collectionId
+                });
+                throw error;
             }
-        ]);
-
-        return stats.reduce((acc, stat) => {
-            acc[stat._id] = {
-                count: stat.count,
-                totalVersions: stat.totalVersions
-            };
-            return acc;
-        }, {
-            pending_review: { count: 0, totalVersions: 0 },
-            approved: { count: 0, totalVersions: 0 },
-            rejected: { count: 0, totalVersions: 0 },
-            pending_regeneration: { count: 0, totalVersions: 0 }
-        });
-    }
+        }
+    
+        // TODO: Update studio document structure to include cost
+        // When implementing cost tracking, add these fields to the document:
+        // cost: Number,          // Points spent on this generation
+        // timestamp: Date        // When the cost was incurred
 
     // Update piece status
     async updatePieceStatus(collectionId, pieceId, status) {
-        return this.updateOne(
-            { _id: pieceId, collectionId },
-            { $set: { status, statusUpdatedAt: Date.now() } }
-        );
+        console.log('Updating piece status:', {
+            pieceId,
+            collectionId,
+            newStatus: status,
+            timestamp: new Date().toISOString()
+        });
+
+        try {
+            // Convert string ID to ObjectId
+            const objectId = new ObjectId(pieceId);
+            const numericCollectionId = parseInt(collectionId);
+            
+            const result = await this.updateOne(
+                { _id: objectId, collectionId: numericCollectionId },
+                { status, statusUpdatedAt: new Date() }  // Remove $set since BaseDB adds it
+            );
+
+            console.log('Update result:', {
+                matchedCount: result.matchedCount,
+                modifiedCount: result.modifiedCount,
+                upsertedCount: result.upsertedCount
+            });
+
+            if (result.matchedCount === 0) {
+                console.warn('No document found matching criteria:', {
+                    pieceId,
+                    collectionId: numericCollectionId
+                });
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error updating piece status:', {
+                error: error.message,
+                pieceId,
+                collectionId,
+                status
+            });
+            throw error;
+        }
     }
 
     // Get next piece for review
