@@ -655,16 +655,14 @@ async function handleApiCompletion(task) {
 
     // If outputs are present, process them
     if (run?.outputs && run.outputs.length > 0) {
-        run.outputs.forEach(outputItem => {
-            ["images", "gifs", "videos"].forEach(type => {
-                if (outputItem.data?.[type]?.length > 0) {
-                    outputItem.data[type].forEach(dataItem => {
-                        results.data.push({
-                            url: dataItem.url
-                        });
+        run.outputs.forEach(output => {
+            if (output.data?.images) {
+                output.data.images.forEach(image => {
+                    results.data.push({
+                        url: image.url
                     });
-                }
-            });
+                });
+            }
         });
 
         // Still track stats and add points
