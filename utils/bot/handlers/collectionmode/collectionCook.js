@@ -175,10 +175,10 @@ class CollectionCook {
             if (!collection) return;
 
             // 3. Initialize status message
-            const statusMessage = await this.createInitialStatusMessage(message);
+            await this.createInitialStatusMessage(message);
             
             // 4. Set up control panel and update status
-            await this.setupControlPanel(message, statusMessage, collection);
+            await this.setupControlPanel(message, collection);
 
         } catch (error) {
             console.error('Error initializing cook mode:', error);
@@ -190,22 +190,9 @@ class CollectionCook {
         try {
             const collectionId = parseInt(action.split('_')[1]);
             // Check for existing generations
-            const studio = new StudioDB();
-            const existingGenerations = await studio.findMany({ 
-                filter: {
-                    collectionId: collectionId,
-                    type: 'generation'
-                }
-            });
+            const existingGenerations = await this.getCollectionGenerationCount(collectionId);
 
             const generationCount = existingGenerations?.length || 0;
-
-
-            console.log('Existing generations check:', {
-                collectionId: collectionId,
-                count: generationCount,
-                maxLimit: 5
-            });
 
             if (generationCount >= 5) {
                 await sendMessage({
@@ -628,7 +615,7 @@ class CollectionCook {
             const collection = await getOrLoadCollection(existingTask.userId, existingTask.collectionId);
             
             // Get actual generation count
-        const generatedCount = await this.getCollectionGenerationCount(existingTask.collectionId);
+            const generatedCount = await this.getCollectionGenerationCount(existingTask.collectionId);
             
             // Get appropriate control panel based on task status
             const controlPanel = await this.getControlPanel(existingTask.collectionId, existingTask.status);
@@ -666,16 +653,17 @@ class CollectionCook {
 
     async getCollectionGenerationCount(collectionId) {
         try {
-            const StudioDB = require('../../../../db/models/studio');
             const studio = new StudioDB();
             
             // Get all pieces for this collection
             const pieces = await studio.findMany({ collectionId });
+            
             // Count pieces that are either pending_review or approved
             const validCount = pieces.filter(piece => 
                 piece.status === 'pending_review' || piece.status === 'approved'
             ).length;
-            return validCount.length;
+            
+            return validCount;
         } catch (error) {
             console.error('Error getting generation count:', error);
             return 0; // Return 0 as fallback
@@ -741,22 +729,22 @@ class CollectionCook {
     async createInitialStatusMessage(message) {
         try {
             // Send initial "please wait" message
-            const statusMessage = await sendMessage(message, 
-                "🧑‍🍳 Initializing cook mode...", 
-                { 
+            console.log('message in initializeInitialStatusMessage', message.message_id);
+            console.log('message in initializeInitialStatusMessage', message.chat.id);
+            await editMessage({
+                chat_id: message.chat.id, 
+                message_id: message.message_id,
+                text: "🧑‍🍳 Initializing cook mode...", 
+                options: {
                     reply_markup: { 
                         inline_keyboard: [[
                             { text: "⏳ Please wait...", callback_data: "wait" }
                         ]] 
                     }
                 }
-            );
+            });
     
-            if (!statusMessage) {
-                throw new Error('Failed to create initial status message');
-            }
-    
-            return statusMessage;
+            return message;
     
         } catch (error) {
             console.error('Error creating initial status message:', error);
@@ -805,6 +793,7 @@ class CollectionCook {
             // Use cached context but update the prompt
             const userContext = {
                 ...cookingTask.userContextCache,
+                traits: selectedTraits,
                 prompt: generatedPrompt
             };
 
@@ -839,18 +828,18 @@ class CollectionCook {
     }
 
     // Then update our interface methods to use this:
-    async setupControlPanel(message, statusMessage, collection) {
+    async setupControlPanel(message, collection) {
         // Get actual generation count
         const generatedCount = await this.getCollectionGenerationCount(collection.collectionId);
-        
+        console.log('generatedCount in setupControlPanel', generatedCount);
         const controlPanel = await this.getControlPanel(collection.collectionId);
         
         await editMessage({
             chat_id: message.chat.id,
-            message_id: statusMessage.message_id,
+            message_id: message.message_id,
             text: "🧑‍🍳 Cook Mode Ready!\n\n" +
                 `Collection: ${collection.name}\n` +
-                `Generated: ${generatedCount}/${collection.config.supply || 5}\n` +
+                `Generated: ${generatedCount}/${collection.config.supply ? collection.config.supply : 'Not set' || 5}\n` +
                 "Use the controls below to manage generation:",
             reply_markup: controlPanel
         });
@@ -1265,7 +1254,7 @@ class CollectionCook {
                 `• Rejected: ${stats.rejected}\n` +
                 `• Pending Review: ${stats.total - stats.reviewed}\n\n` +
                 // TODO: Add once implemented
-                // `💰 Average Cost: ${stats.averageCost || 'N/A'} points\n\n` +
+                `🕒 Average Duration: ${stats.averageDuration || 'N/A'} seconds\n\n` +
                 `Use the controls below to manage your review:`;
 
             // Create keyboard with back button
