@@ -110,7 +110,7 @@ router.post('/generations', async (req, res) => {
                     setTimeout(() => {
                         clearInterval(checkInterval);
                         reject(new Error('Generation timed out'));
-                    }, 120000);
+                    }, 300000);
                 });
 
                 return res.json(result);
