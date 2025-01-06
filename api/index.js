@@ -6,6 +6,7 @@ const { UserCore, UserEconomy, UserPref } = require('../db/index');
 const { buildPromptObjFromWorkflow } = require('../utils/bot/prompt');
 const { getDeploymentIdByType } = require('../utils/comfydeploy/deployment_ids');
 const { generate } = require('../commands/make');
+const { handleApiCompletion } = require('../utils/bot/queue');
 // Track ongoing generations
 const activeGenerations = new Map();
 
@@ -89,7 +90,7 @@ router.post('/generations', async (req, res) => {
         if (req.body.wait === true) {
             try {
                 const result = await new Promise((resolve, reject) => {
-                    const checkInterval = setInterval(() => {
+                    const checkInterval = setInterval(async() => {
                         const task = waiting.find(t => t.run_id === run_id);
                         if (!task) {
                             // The task might have been removed from waiting array after completion
@@ -97,7 +98,9 @@ router.post('/generations', async (req, res) => {
                             const successTask = successors.find(t => t.run_id === run_id);
                             if (successTask) {
                                 clearInterval(checkInterval);
-                                resolve(successTask.final);
+                                // Format the response using handleApiCompletion
+                                const formattedResult = await handleApiCompletion(successTask);
+                                resolve(formattedResult);
                                 return;
                             }
                             clearInterval(checkInterval);
