@@ -38,7 +38,11 @@ async function addPoints(task) {
         rate = 6;
     }
     const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
-    // Special handling for cook mode - always use qoints
+    
+    // Add these values to task for studio tracking
+    task.rate = rate;
+    task.pointsSpent = pointsToAdd;
+
     // Special handling for cook mode - always use qoints
     if (promptObj.isCookMode) {
         // Check lobby first

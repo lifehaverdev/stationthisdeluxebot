@@ -1601,3 +1601,19 @@ prefixHandlers['cookResume_'] = (action, message, user) =>{
 prefixHandlers['cookReview_'] = (action, message, user) =>{
     cookModeHandler.reviewCooking(action, message, user);
 };
+
+prefixHandlers['cookReviewStart_'] = (action, message, user) =>{
+    cookModeHandler.handleReviewStart(action, message, user);
+};
+
+prefixHandlers['cookExit_'] = (action, message, user) =>{
+    cookModeHandler.handleExit(action, message, user);
+};
+
+prefixHandlers['cookDiscern_'] = (action, message, user) =>{
+    cookModeHandler.handleReviewAction(action, message, user);
+};
+
+prefixHandlers['cookStats_'] = (action, message, user) =>{
+    cookModeHandler.handleStats(action, message, user);
+};
