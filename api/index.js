@@ -81,44 +81,58 @@ router.post('/generations', async (req, res) => {
             ...apiTask,
             run_id,
             timestamp: Date.now(),
-            isAPI: true
+            isAPI: true,
+            awaitedRequest: req.body.wait === true // Flag for synchronous requests
         });
 
-        // Return success response
-        res.status(202).json({
-            status: 'processing',
-            run_id,
-            message: 'Generation started. You will be notified via webhook when complete.'
-        });
-    } else {
-        throw new Error('Failed to generate run_id');
+        // If wait parameter is true, wait for completion
+        if (req.body.wait === true) {
+            try {
+                const result = await new Promise((resolve, reject) => {
+                    const checkInterval = setInterval(() => {
+                        const task = waiting.find(t => t.run_id === run_id);
+                        if (!task) {
+                            clearInterval(checkInterval);
+                            reject(new Error('Task not found'));
+                            return;
+                        }
+                        
+                        if (task.status === 'success') {
+                            clearInterval(checkInterval);
+                            // Don't handle completion here, let handleTaskCompletion do it
+                            resolve(task.final);
+                        } else if (task.status === 'failed') {
+                            clearInterval(checkInterval);
+                            reject(new Error('Generation failed'));
+                        }
+                    }, 1000);
+
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        reject(new Error('Generation timed out'));
+                    }, 120000);
+                });
+
+                return res.json(result);
+            } catch (error) {
+                return res.status(500).json({
+                    error: {
+                        message: error.message,
+                        type: 'generation_error'
+                    }
+                });
+            }
+        }
     }
-    
-    // Initialize generation tracking
-    activeGenerations.set(runId, {
-      status: 'processing',
-      progress: 0,
-      startTime: Date.now(),
-      defaultUser,
-      webhook_url
-    });
 
     // Immediately return the run ID
     res.status(202).json({
       status: 'processing',
-      run_id: runId,
+      run_id,
       message: 'Generation started. You will be notified via webhook when complete.'
     });
 
-    // Start the generation process asynchronously
-    startGeneration(runId, prompt, defaultUser).catch(error => {
-      console.error(`Generation failed for run ${runId}:`, error);
-      notifyWebhook(webhook_url, {
-        status: 'failed',
-        run_id: runId,
-        error: error.message
-      });
-    });
+    
 
   } catch (error) {
     console.error('Error initiating generation:', error);
@@ -130,70 +144,6 @@ router.post('/generations', async (req, res) => {
     });
   }
 });
-
-async function startGeneration(runId, prompt, defaultUser) {
-  try {
-    const generation = activeGenerations.get(runId);
-    
-    // Your actual generation logic here
-    // This will take ~90 seconds with the flux model
-    
-    // Update progress periodically
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += 1;
-      if (generation) {
-        generation.progress = progress;
-      }
-    }, 900); // Update every 900ms to reach ~100 in 90 seconds
-
-    // Simulate your flux model generation
-    await new Promise(resolve => setTimeout(resolve, 90000));
-    
-    clearInterval(progressInterval);
-
-    // Generation complete
-    const result = {
-      status: 'complete',
-      run_id: runId,
-      created: Math.floor(Date.now() / 1000),
-      data: [{
-        url: `https://your-storage-domain.com/images/${runId}.png`
-      }]
-    };
-
-    // Notify via webhook
-    if (generation && generation.webhook_url) {
-      await notifyWebhook(generation.webhook_url, result);
-    }
-
-    // Clean up
-    activeGenerations.delete(runId);
-
-    return result;
-  } catch (error) {
-    activeGenerations.delete(runId);
-    throw error;
-  }
-}
-
-async function notifyWebhook(webhookUrl, data) {
-  try {
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data)
-    });
-    
-    if (!response.ok) {
-      console.error(`Webhook notification failed: ${response.status}`);
-    }
-  } catch (error) {
-    console.error('Webhook notification error:', error);
-  }
-}
 
 // Progress checking endpoint
 router.get('/generations/:runId', (req, res) => {

@@ -453,39 +453,14 @@ async function handleTaskCompletion(task) {
                 throw error || new Error('Failed to save generation result');
             }
 
-            // Get fresh status from DB
-            // const status = await collectionCook.getCookingStatus();
-
-            // console.log('Queue - Before cooking map:', {
-            //     cookingTasks: status.cooking?.length || 0,
-            //     taskCollectionId: task.promptObj.collectionId
-            // });
-
-            // const updatedCooking = status.cooking.map(cook => {
-            //     console.log('Queue - Mapping cook item:', {
-            //         cookCollectionId: cook.collectionId,
-            //         matchesTask: cook.collectionId === task.promptObj.collectionId,
-            //         currentGenerationCount: cook.generationCount || 0
-            //     });
-
-            //     if (cook.collectionId === task.promptObj.collectionId) {
-            //         return {
-            //             ...cook,
-            //             lastGenerated: Date.now(),
-            //             generationCount: (cook.generationCount || 0) + 1
-            //         };
-            //     }
-            //     return cook;
-            // });
-
-            // await collectionCook.updateCookingStatus({ cooking: updatedCooking });
-
             return true;
         } catch (error) {
             console.error('Error handling cook mode completion:', error);
             return false;
         }
     }
+
+    
 
     const operation = async () => {
         // If this is a cook mode task, handle differently
@@ -626,6 +601,30 @@ async function handleTaskCompletion(task) {
     };
 
     if (run.status === 'success') {
+        if (task.isAPI) {
+            const apiResult = await handleApiCompletion(task);
+            
+            // If this is an awaited request, store the formatted result
+            if (task.awaitedRequest) {
+                task.final = apiResult;
+            } else {
+                // Otherwise, send webhook if URL is provided
+                if (task.webhook_url) {
+                    try {
+                        await fetch(task.webhook_url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(apiResult)
+                        });
+                    } catch (webhookError) {
+                        console.error(`Failed to send webhook update to ${task.webhook_url}:`, webhookError);
+                    }
+                }
+            }
+            return 'success';
+        }
         await operation();
         if (sent) {
             await addPoints(task);
@@ -645,6 +644,40 @@ async function handleTaskCompletion(task) {
         }
         return 'incomplete';
     }
+}
+
+async function handleApiCompletion(task) {
+    const run = task.final;
+    let results = {
+        created: Date.now(),
+        data: []
+    };
+
+    // If outputs are present, process them
+    if (run?.outputs && run.outputs.length > 0) {
+        run.outputs.forEach(outputItem => {
+            ["images", "gifs", "videos"].forEach(type => {
+                if (outputItem.data?.[type]?.length > 0) {
+                    outputItem.data[type].forEach(dataItem => {
+                        results.data.push({
+                            url: dataItem.url
+                        });
+                    });
+                }
+            });
+        });
+
+        // Still track stats and add points
+        await addPoints(task);
+        const out = {
+            urls: run.outputs || [],
+            tags: [],
+            texts: []
+        };
+        await userStats.saveGen({task, run, out});
+    }
+
+    return results;
 }
 
 function removeDoints(task) {
@@ -731,6 +764,7 @@ module.exports = {
     taskQueue,
     enqueueTask,
     processWaitlist,
+    handleApiCompletion,
     //deliver
     // Add other exports here if needed
 };
