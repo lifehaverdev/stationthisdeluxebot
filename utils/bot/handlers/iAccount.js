@@ -201,6 +201,7 @@ async function handleApiKeyManagement(message, user) {
     } else {
         // Show existing API key management options
         const createdDate = new Date(lobby[user].apiKeyCreatedAt).toLocaleDateString();
+        const API_URL = 'https://miladystation2.net/api/v1/images/generations';
         await editMessage({
             chat_id: message.chat.id,
             message_id: message.message_id,
