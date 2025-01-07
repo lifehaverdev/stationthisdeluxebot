@@ -578,6 +578,10 @@ async function displayFavorites(message, user) {
 
 async function displayPopularLoras(message, user = null) {
     // Get all active loras and sort by uses
+    if (lobby[user]?.progress?.currentStep) {  // This checks if user is in tutorial
+        const { TutorialManager, CHECKPOINTS } = require('./iStart')
+        await TutorialManager.checkpointReached(user, CHECKPOINTS.BUTTON_CLICKED, { message });
+    }
     const popularLoras = await loras.findMany({ disabled: false });
     const sortedLoras = popularLoras
         .sort((a, b) => (b.uses || 0) - (a.uses || 0))
