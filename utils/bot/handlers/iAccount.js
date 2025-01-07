@@ -210,7 +210,7 @@ async function handleApiKeyManagement(message, user) {
                 `To use the API:\n` +
                 `1. Send requests to: ${API_URL}\n` +
                 `2. Include your API key in the Authorization header:\n` +
-                `   \`Authorization: Bearer ${apiKey}\`\n\n` +
+                `   \`Authorization: Bearer ${lobby[user].apiKey}\`\n\n` +
                 `What would you like to do?`,
             reply_markup: {
                 inline_keyboard: [
