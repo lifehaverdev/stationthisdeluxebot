@@ -5,10 +5,10 @@ const { CollectionDB } = require('../../../../db/index');
 const collectionDB = new CollectionDB();
 console.log('buildPromptObjFromWorkflow imported as:', typeof buildPromptObjFromWorkflow);
 const test = false
-const LOG_TRAIT = test;
+const LOG_TRAIT = true;
 const LOG_SELECT = test;
 const LOG_CONFLICT = test;
-const LOG_EXCLUSION = test;
+const LOG_EXCLUSION = true;
 const LOG_VALIDATE = test;
 
 // === Collection Loading ===
@@ -41,31 +41,26 @@ function findExclusions(masterPrompt) {
     logThis(LOG_EXCLUSION, `[EXCLUSIONS] Processing master prompt: ${masterPrompt}`);
     const exclusions = [];
     
-    // Updated regex to better handle nested structures
-    const exclusionRegex = /\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\{([^}]+)\}/g;
+    // Updated regex to be less greedy and match individual blocks
+    const exclusionRegex = /\[([^\[\]]*\[[^\[\]]+\][^\[\]]*)\]\{([^}]+)\}/g;
     let match;
 
-    // Find all exclusion groups in the master prompt
     while ((match = exclusionRegex.exec(masterPrompt)) !== null) {
         const content = match[1];
         const exclusionGroup = match[2].split(',').map(trait => trait.trim());
         
         logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found content: "${content}" with exclusions: ${exclusionGroup.join(', ')}`);
         
-        // Find both single and double bracketed traits
-        const doubleTraitMatches = content.match(/\[\[([^\]]+)\]\]/g) || [];
-        const singleTraitMatches = content.match(/\[([^\[\]\{]+)\]/g) || [];
-        const allTraits = [
-            ...doubleTraitMatches.map(m => m.slice(2, -2)), // Remove [[ and ]]
-            ...singleTraitMatches.map(m => m.slice(1, -1))  // Remove [ and ]
-        ];
+        // Find the inner trait(s) - only match single-bracketed items
+        const traitMatches = content.match(/\[([^\[\]]+)\]/g) || [];
+        const traits = traitMatches.map(m => m.slice(1, -1).trim());
 
-        if (allTraits.length > 0) {
-            allTraits.forEach(targetTrait => {
+        if (traits.length > 0) {
+            traits.forEach(targetTrait => {
                 logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found target trait: ${targetTrait}`);
                 
-                // Create exclusion objects for each excluded trait
                 exclusionGroup.forEach(exclusion => {
+                    if (!exclusion) return;
                     logThis(LOG_EXCLUSION, `[EXCLUSIONS] Adding exclusion: ${targetTrait} <-> ${exclusion}`);
                     exclusions.push({
                         targetTrait,
@@ -78,7 +73,7 @@ function findExclusions(masterPrompt) {
         }
     }
 
-    // Clean the master prompt by removing only the exclusion markers while preserving brackets
+    // Clean the master prompt by removing only the exclusion markers
     const cleanedPrompt = masterPrompt.replace(/\{[^{}]*\}/g, '');
     logThis(LOG_EXCLUSION, `[EXCLUSIONS] Cleaned prompt: ${cleanedPrompt}`);
     logThis(LOG_EXCLUSION, `[EXCLUSIONS] Found ${exclusions.length} total exclusions`);
@@ -262,7 +257,7 @@ class TraitSelector {
             logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Active conflicts found: ${activeConflicts.join(', ')}`);
             
             if (activeConflicts.length > 0) {
-                const allConflictingTraits = [traitType, ...activeConflictingTraits];
+                const allConflictingTraits = [traitType, ...activeConflicts];
                 logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] All conflicting traits: ${allConflictingTraits.join(', ')}`);
                 
                 const nonEmptyTraits = allConflictingTraits.filter(t => 
