@@ -140,7 +140,7 @@ const tutorialSteps = {
         unlockedCommands: ['/loras'],
         checkpoints: {
             COMMAND_USED: true,
-            STYLE_CLICKED: true
+            BUTTON_CLICKED: true
         }
     },
     'loras_style': {
@@ -148,8 +148,7 @@ const tutorialSteps = {
         introduction:
             "These are some of our style LoRAs! Each one gives images a unique artistic touch.\n\n" +
             "Try combining your previous prompt with one of these styles. " +
-            "You can use `/make` or `/quickmake` and add the style name to your prompt!\n\n" +
-            "For example: `/make girl sitting alone at the club, cyberpunk style`",
+            "The 🔥 styles are popular with our users",
         nextStep: null,
         unlockedCommands: []
     },
@@ -158,6 +157,7 @@ const tutorialSteps = {
 
 const CHECKPOINTS = {
     COMMAND_USED: 'COMMAND_USED',
+    BUTTON_CLICKED: 'BUTTON_CLICKED',
     GENERATION_COMPLETE: 'GENERATION_COMPLETE',
     WALLET_CONNECTED: 'WALLET_CONNECTED',
     IMAGE_RECEIVED: 'IMAGE_RECEIVED',
