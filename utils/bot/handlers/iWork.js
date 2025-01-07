@@ -596,7 +596,8 @@ async function shakeFluxInterrogate(message, image = null) {
         const result = await makeInterrogationRequest(url);
         if (result.error) {
             console.error('Interrogation failed:', result.error);
-            sendMessage(message, 'Sorry, the interrogation failed. Please try again later.');
+            // Send the quota-specific message if it exists
+            sendMessage(message, result.error);
         } else {
             console.log('Interrogation successful:', result);
             sendMessage(message, result);
@@ -632,6 +633,15 @@ async function makeInterrogationRequest(url) {
 
     } catch (error) {
         console.error('Request failed:', error);
+        
+        // Check for quota errors
+        if (error.message.includes('quota') || error.message.includes('rate limit')) {
+            const quotaMessage = await handleHuggingFaceQuota(error);
+            if (quotaMessage) {
+                return { error: quotaMessage };
+            }
+        }
+        
         return { error: error.message };
     }
 }
@@ -673,20 +683,29 @@ async function streamEventResult(eventId) {
     try {
         const response = await fetch(streamUrl, { method: 'GET' });
         console.log('Stream response status:', response.status);
-        console.log('Stream response headers:', Object.fromEntries(response.headers));
 
         const result = await response.text();
         console.log('Raw stream response:', result);
 
+        // Split into individual events
         const lines = result.split('\n');
-        const dataLine = lines.find(line => line.startsWith('data:'));
-        console.log('Found data line:', dataLine);
-
-        if (!dataLine) {
-            throw new Error('No data line found in response');
+        
+        // Find the last data event that isn't null or heartbeat
+        let lastDataLine = null;
+        for (const line of lines) {
+            if (line.startsWith('data:')) {
+                const data = line.replace('data: ', '').trim();
+                if (data !== 'null') {
+                    lastDataLine = data;
+                }
+            }
         }
 
-        const jsonData = JSON.parse(dataLine.replace('data: ', ''));
+        if (!lastDataLine) {
+            throw new Error('No valid data found in response');
+        }
+
+        const jsonData = JSON.parse(lastDataLine);
         console.log('Parsed JSON data:', jsonData);
 
         return jsonData[0];
@@ -751,6 +770,25 @@ async function seeGlorp(address) {
     const balance = await getBalance(address)
     console.log('balance',balance)
     return balance
+}
+
+// Add this new function
+async function handleHuggingFaceQuota(error) {
+    // Extract wait time from error message using regex
+    const waitTimeMatch = error.message.match(/retry in (\d+):(\d+):(\d+)/);
+    if (waitTimeMatch) {
+        const [_, hours, minutes, seconds] = waitTimeMatch;
+        const totalMinutes = (parseInt(hours) * 60) + parseInt(minutes) + (parseInt(seconds) / 60);
+        const waitMessage = `⏳ Service quota exceeded. Please try again in ${Math.ceil(totalMinutes)} minutes.`;
+        return waitMessage;
+    }
+    
+    // If we can't parse the wait time but it's a quota error
+    if (error.message.includes('exceeded your GPU quota')) {
+        return '⏳ Service quota exceeded. Please try again in 15 minutes.';
+    }
+    
+    return null;
 }
 
 module.exports = {
