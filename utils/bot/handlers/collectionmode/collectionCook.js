@@ -1171,7 +1171,7 @@ class CollectionCook {
             // Create caption
             const caption = `🖼 Generation Review\n\n` +
             `Traits:\n${traitsDisplay}\n\n` +
-            `Prompt: ${piece.prompt.substring(0, 100)}...`;
+            `Prompt: ${piece.prompt}`;
 
     
             // Create review keyboard with piece ID
