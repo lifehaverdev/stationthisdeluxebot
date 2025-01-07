@@ -9,7 +9,6 @@ async function testGeneration() {
     try {
         console.log('Starting image generation...');
         const response = await openai.images.generate({
-            model: "flux-schnell",
             prompt: "test prompt for api generation through openai client",
             wait: true
         });
