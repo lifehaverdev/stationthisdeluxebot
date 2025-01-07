@@ -82,10 +82,11 @@ function shouldKick(userId) {
     }
 
     // New users ("newb") are exempt from being kicked
-    if (userData.newb) {
-        console.log(`User ${userId} is a newb and won't be kicked.`);
-        return false;
-    }
+    // if (userData.newb) {
+    //     console.log(`User ${userId} is a newb and won't be kicked.`);
+    //     return false;
+    // }
+    // i think this made it so that newbs didnt regen points. lets just save them
 
     // Check lastTouch timestamp
     const now = Date.now();
