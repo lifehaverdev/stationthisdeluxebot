@@ -57,7 +57,12 @@ fullCommandList = [
 ];
 const escapeMarkdown = (text) => {
     if (!text) return '';
-    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+    // First preserve any already escaped backticks
+    const preservedText = text.replace(/\\\`/g, '{{BACKTICK}}');
+    // Then escape special characters
+    const escapedText = preservedText.replace(/[_*[\]()~>#+=|{}.!-]/g, '\\$&');
+    // Finally restore the preserved backticks
+    return escapedText.replace(/{{BACKTICK}}/g, '\\`');
 };
 
 function setUserState(message,state) {

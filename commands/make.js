@@ -7,6 +7,8 @@ const { getDeploymentIdByType }= require('../utils/comfydeploy/deployment_ids.js
 const webHook = 'http://'+process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
 const baseNegPrompt = 'embedding:easynegative'
 
+
+
 // Common prompt object fields
 function buildCommonPromptObj(userContext, message) {
     return {

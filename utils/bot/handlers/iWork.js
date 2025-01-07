@@ -7,7 +7,7 @@ const { voiceModels } = require('../../models/voiceModelMenu')
 const { lobby, STATES, globalStatus, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
-
+const { TutorialManager, CHECKPOINTS } = require('./iStart')
 const iMenu = require('./iMenu');
 
 const { getBalance } = require('../../users/checkBalance.js');
@@ -234,6 +234,9 @@ async function handleStatus(message) {
     
     const reply_markup = { inline_keyboard: [[{ text: '🔄', callback_data: 'refresh'}]]}
     sendMessage(message, msg, {reply_markup: reply_markup});
+    if (lobby[user]?.progress?.currentStep) {  // This checks if user is in tutorial
+        await TutorialManager.checkpointReached(user, CHECKPOINTS.BOT_REPLY_SENT, { message });
+    }
 }
 
 async function loraList(message) {
@@ -540,6 +543,10 @@ async function shakeAssist(message, prompt = null, user = null) {
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
+    if (lobby[userId]?.progress?.currentStep) {  // This checks if user is in tutorial
+        const { TutorialManager, CHECKPOINTS } = require('./iStart')
+        await TutorialManager.checkpointReached(userId, CHECKPOINTS.BOT_REPLY_SENT, { message });
+    }
     delete workspace[userId]
     return true
 }
