@@ -174,6 +174,7 @@ async function handleApiKeyManagement(message, user) {
         // Update lobby
         lobby[user].apiKey = apiKey;
         lobby[user].apiKeyCreatedAt = createdAt;
+        const API_URL = 'https://miladystation2.net/api/v1/images/generations';
 
         // Show success message with instructions
         await editMessage({
@@ -181,7 +182,7 @@ async function handleApiKeyManagement(message, user) {
             message_id: message.message_id,
             text: `🔑 Your API Key has been generated!\n\n` +
                 `To use the API:\n` +
-                `1. Send requests to: http://134.209.71.109/v1/images/generations\n` +
+                `1. Send requests to: ${API_URL}\n` +
                 `2. Include your API key in the Authorization header:\n` +
                 `   \`Authorization: Bearer ${apiKey}\`\n\n` +
                 `See the API documentation for more details.`,
@@ -205,6 +206,10 @@ async function handleApiKeyManagement(message, user) {
             message_id: message.message_id,
             text: `🔑 API Key Management\n\n` +
                 `Your API key was created on: ${createdDate}\n\n` +
+                `To use the API:\n` +
+                `1. Send requests to: ${API_URL}\n` +
+                `2. Include your API key in the Authorization header:\n` +
+                `   \`Authorization: Bearer ${apiKey}\`\n\n` +
                 `What would you like to do?`,
             reply_markup: {
                 inline_keyboard: [
