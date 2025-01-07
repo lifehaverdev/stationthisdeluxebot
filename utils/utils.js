@@ -55,6 +55,10 @@ fullCommandList = [
     { command: 'help', description: 'See help description' },
     { command: 'ca', description: 'Check chart buy' }
 ];
+const escapeMarkdown = (text) => {
+    if (!text) return '';
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+};
 
 function setUserState(message,state) {
     const stateObj = {
@@ -523,7 +527,7 @@ module.exports = {
     editMessage, updateMessage,
     gated, chargeGated,
     calculateDiscount,
-    cleanPrompt,
+    cleanPrompt, escapeMarkdown,
     logThis,
     DEV_DMS, sendMessageDev,
     fullCommandList,

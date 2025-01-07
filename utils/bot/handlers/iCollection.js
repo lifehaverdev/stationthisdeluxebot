@@ -14,6 +14,7 @@ const {
     safeExecute,
     updateMessage,
     react ,
+    escapeMarkdown,
     logThis
 } = require('../../utils')
 const { 
@@ -605,7 +606,7 @@ async function handleTestCollection(message, user, collectionId) {
     await editMessage({
         chat_id: message.chat.id,
         message_id: message.message_id,
-        text: `Test Prompt Generated:\n\n\`\/${prefix} ${testPrompt}\`\n\nSelected Traits:\n${Object.entries(selectedTraits).map(([title, prompt]) => `${title}: ${prompt}`).join('\n')}`,
+        text: `Test Prompt Generated:\n\n\`\/${prefix} ${escapeMarkdown(testPrompt)}\`\n\nSelected Traits:\n${Object.entries(selectedTraits).map(([title, prompt]) => `${escapeMarkdown(title)}: ${escapeMarkdown(prompt)}`).join('\n')}`,
         reply_markup: {
             inline_keyboard: [
                 [{ text: '« Back', callback_data: `collectionConfigMenu_${collectionId}` }],
