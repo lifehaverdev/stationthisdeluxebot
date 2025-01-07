@@ -1,4 +1,4 @@
-const { sendMessage, sendMessageDev, editMessage, setUserState , safeExecute} = require('../../utils');
+const { sendMessage, sendMessageDev, editMessage, setUserState , safeExecute, escapeMarkdown} = require('../../utils');
 const { lobby, commandRegistry, prefixHandlers , stateHandlers, DEV_DMS } = require('../bot');
 const { Loras } = require('../../../db/models/loras.js');
 const loras = new Loras();
@@ -18,10 +18,7 @@ commandRegistry['/loralist'] = {
 };
 
 // Helper function to escape special characters for MarkdownV2
-const escapeMarkdown = (text) => {
-    if (!text) return '';
-    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
-};
+
 
 async function displayLoraMenu(message, user = null,category = 'main') {
     const chatId = message.chat.id;
