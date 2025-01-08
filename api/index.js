@@ -53,9 +53,9 @@ router.post('/generations', async (req, res) => {
         
     };
 
-    const watermarkPrompt = 'in very small font, add the text "ms2" to the bottom right of the image in a way that matches the style of the image'
+    const watermarkPrompt = 'in the bottom right corner of the image is a tiny imperceptible star'
     // Set up userContext with the prompt from the request
-    userContext.prompt = req.body.prompt + watermarkPrompt;
+    userContext.prompt = req.body.prompt ;//+ '\n' + watermarkPrompt;
     userContext.type = 'MAKE'; // Set the type in userContext
         
     // Use our existing function to build the promptObj
