@@ -64,7 +64,7 @@ const tutorialSteps = {
         unlockedCommands: ['/quickeffect'],
         checkpoints: {
             COMMAND_USED: true,
-            BOT_REPLY_SENT: true
+            BOT_RESULT_SENT: true
         }
     },
     'effect': {
@@ -89,7 +89,7 @@ const tutorialSteps = {
             "If you connect your wallet, I'll give you 1000 points! ⚡️ Then we can continue on to cool things\n" +
             "Ready to get those bonus points\\? Try: /signin\n" +
             "It will ask for your wallet address, you send that to the chat\n" +
-            "Then you will need to go to the project site /verify page and sign a message (not a transaction)" + 
+            "Then you will need to go to the project site verify page and sign a message (not a transaction) with the same wallet you provided" + 
             "It will give you a hash, once you send that back here to me, I give you your points 😼",
         nextStep: 'points_info',
         unlockedCommands: ['/signin'],
@@ -97,8 +97,8 @@ const tutorialSteps = {
             WALLET_CONNECTED: true
         }
     },
-    'points_info': {
-        command: null,
+    'points_info_assist': {
+        command: '/assist',
         introduction: 
             "Great! You've got your bonus points. 🎉\n\n" +
             "Let me explain how points work! ⚡️\n\n" +
@@ -111,10 +111,14 @@ const tutorialSteps = {
             "Type this command:\n" +
             "`/assist girl sitting alone at the club`",
         nextStep: 'assist',
-        unlockedCommands: ['/assist']
+        unlockedCommands: ['/assist'],
+        checkpoints: {
+            COMMAND_USED: true,
+            BOT_REPLY_SENT: true
+        }
     },
-    'assist': {
-        command: '/assist',
+    'loras': {
+        command: '/loras',
         introduction:
             "The `/assist` command is your creative companion! 🎨\n\n" +
             "I'll help expand your simple prompts into detailed descriptions that create better images. " +
@@ -128,18 +132,18 @@ const tutorialSteps = {
             COMMAND_USED: true,
             BOT_REPLY_SENT: true
         }
+        
     },
     'loras_menu': {
-        command: '/loras',
+        command: null,
         introduction:
             "Welcome to our LoRA collection! 🎨\n\n" +
             "These are mini custom models that help create specific styles or subjects. " +
             "The best part? You can even train your own!\n\n" +
-            "Click the *Style* button to explore some artistic styles. 👆",
+            "Click the *Popular* button to explore some of our most popular styles. 👆",
         nextStep: 'loras_style',
         unlockedCommands: ['/loras'],
         checkpoints: {
-            COMMAND_USED: true,
             BUTTON_CLICKED: true
         }
     },
@@ -162,7 +166,8 @@ const CHECKPOINTS = {
     WALLET_CONNECTED: 'WALLET_CONNECTED',
     IMAGE_RECEIVED: 'IMAGE_RECEIVED',
     EFFECT_APPLIED: 'EFFECT_APPLIED',
-    BOT_REPLY_SENT: 'BOT_REPLY_SENT'
+    BOT_REPLY_SENT: 'BOT_REPLY_SENT',
+    BOT_RESULT_SENT: 'BOT_RESULT_SENT'
 };
 
 class TutorialManager {

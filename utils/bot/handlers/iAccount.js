@@ -697,6 +697,14 @@ async function handleSignIn(message) {
     if (lobby[userId].wallet !== '') {
         let msg = `You are signed in to ${lobby[userId].wallet}`
         if (lobby[userId].verified) {
+            
+            msg += '\nand you are verified. Have fun'
+            sendMessage(message, msg, home);
+            setUserState(message, STATES.IDLE);
+            await analytics.trackAccountAction(message, 'verifiedsign_in_return', true, {
+                wallet: lobby[userId].wallet,
+                verified: lobby[userId].verified
+            });
             if (lobby[userId].progress?.currentStep === 'signin' && lobby[userId].verified) {
                 // Add bonus points
                 lobby[userId].qoints += 1000;
@@ -710,13 +718,6 @@ async function handleSignIn(message) {
                     );
                 }
             }
-            msg += '\nand you are verified. Have fun'
-            sendMessage(message, msg, home);
-            setUserState(message, STATES.IDLE);
-            await analytics.trackAccountAction(message, 'verifiedsign_in_return', true, {
-                wallet: lobby[userId].wallet,
-                verified: lobby[userId].verified
-            });
         } else {
             await handleVerify(message);
         }

@@ -633,9 +633,9 @@ async function handleTaskCompletion(task) {
                 tags: [],
                 texts: []
             };
-            if (lobby[userId]?.progress?.currentStep) {  // This checks if user is in tutorial
+            if (lobby[task.promptObj.userId]?.progress?.currentStep) {  // This checks if user is in tutorial
                 const { TutorialManager, CHECKPOINTS } = require('./handlers/iStart')
-                await TutorialManager.checkpointReached(userId, CHECKPOINTS.BOT_REPLY_SENT, { message });
+                await TutorialManager.checkpointReached(task.promptObj.userId, CHECKPOINTS.BOT_RESULT_SENT, { message });
             }
             await userStats.saveGen({task, run, out});
             return 'success';
