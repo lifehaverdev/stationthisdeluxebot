@@ -45,7 +45,8 @@ const tutorialSteps = {
         nextStep: 'quickeffect',
         unlockedCommands: ['/make'],
         checkpoints: {
-            COMMAND_USED: true
+            COMMAND_USED: true,
+            BOT_RESULT_SENT: true
         }
     },
     'quickeffect': {
@@ -110,11 +111,11 @@ const tutorialSteps = {
             "Now, let me show you something really cool that will help you create better images. " +
             "Type this command:\n" +
             "`/assist girl sitting alone at the club`",
-        nextStep: 'assist',
+        nextStep: 'loras',
         unlockedCommands: ['/assist'],
         checkpoints: {
             COMMAND_USED: true,
-            BOT_REPLY_SENT: true
+            BOT_ASSIST_SENT: true
         }
     },
     'loras': {
@@ -167,7 +168,8 @@ const CHECKPOINTS = {
     IMAGE_RECEIVED: 'IMAGE_RECEIVED',
     EFFECT_APPLIED: 'EFFECT_APPLIED',
     BOT_REPLY_SENT: 'BOT_REPLY_SENT',
-    BOT_RESULT_SENT: 'BOT_RESULT_SENT'
+    BOT_RESULT_SENT: 'BOT_RESULT_SENT',
+    BOT_ASSIST_SENT: 'BOT_ASSIST_SENT'
 };
 
 class TutorialManager {
