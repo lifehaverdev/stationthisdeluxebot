@@ -91,7 +91,7 @@ const tutorialSteps = {
             "It will ask for your wallet address, you send that to the chat\n" +
             "Then you will need to go to the project site verify page and sign a message (not a transaction) with the same wallet you provided" + 
             "It will give you a hash, once you send that back here to me, I give you your points 😼",
-        nextStep: 'points_info',
+        nextStep: 'points_info_assist',
         unlockedCommands: ['/signin'],
         checkpoints: {
             WALLET_CONNECTED: true
