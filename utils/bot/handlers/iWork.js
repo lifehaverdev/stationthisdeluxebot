@@ -566,6 +566,10 @@ async function shakeFluxAssist(message, prompt = null, user = null) {
     lobby[userId].points += time+5;
     sendMessage(message,`\`${result}\``,{parse_mode: 'MarkdownV2'});
     setUserState(message,STATES.IDLE);
+    if (lobby[userId]?.progress?.currentStep) {  // This checks if user is in tutorial
+        const { TutorialManager, CHECKPOINTS } = require('./iStart')
+        await TutorialManager.checkpointReached(userId, CHECKPOINTS.BOT_ASSIST_SENT, { message });
+    }
     delete workspace[userId]
     return true
 }
