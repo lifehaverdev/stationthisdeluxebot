@@ -545,7 +545,7 @@ async function shakeAssist(message, prompt = null, user = null) {
     setUserState(message,STATES.IDLE);
     if (lobby[userId]?.progress?.currentStep) {  // This checks if user is in tutorial
         const { TutorialManager, CHECKPOINTS } = require('./iStart')
-        await TutorialManager.checkpointReached(userId, CHECKPOINTS.BOT_REPLY_SENT, { message });
+        await TutorialManager.checkpointReached(userId, CHECKPOINTS.BOT_ASSIST_SENT, { message });
     }
     delete workspace[userId]
     return true
