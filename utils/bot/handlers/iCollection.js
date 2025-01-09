@@ -23,11 +23,13 @@ const {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
-    buildPromptObjFromWorkflow 
+    buildPromptObjFromWorkflow ,
+    getCollectionGenerationCount
 } = require('./collectionmode/collectionUtils');
 // Add new imports:
 
 const cookModeHandler = require('./collectionmode/collectionCook');
+const exportModeHandler = require('./collectionmode/collectionExport');
 
  const { CollectionMenuBuilder } = require('./collectionmode/menuBuilder');
  const { StudioManager } = require('./collectionmode/studioManager')
@@ -56,22 +58,34 @@ const LOG_TEST = test;
 
 */
 async function getMyCollections(userId) {
-    let collectionKeyboardOptions = [];
     
+    let collectionKeyboardOptions = [];
+    let hasExportableCollections = false;
     try {
         const collections = await collectionDB.getCollectionsByUserId(userId);
         
         if (collections.length > 0) {
+            
             for (const collection of collections) {
                 collectionKeyboardOptions.push([{ 
                     text: `${collection.name}`, 
                     callback_data: `ec_${collection.collectionId}` 
                 }]);
+                // Check if collection meets export criteria
+                if (collection.totalSupply) {
+                    const pieces = await getCollectionGenerationCount(collection.collectionId)
+                    if (pieces >= 5 || pieces >=collection.totalSupply) {
+                        hasExportableCollections = true;
+                    }
+                }
             }
         }
 
-        if (collections.length < 3) {
+        if (collections.length < 5) {
             collectionKeyboardOptions.push([{ text: '➕', callback_data: 'newcollection' }]);
+        }
+        if (hasExportableCollections) {
+            collectionKeyboardOptions.push([{ text: '📦 Export', callback_data: 'export_menu' }]);
         }
 
     } catch (error) {
