@@ -202,7 +202,7 @@ async function authenticateApiUser(apiKey) {
             await sendPrivateMessage(
               userCore.userId, 
               {from: {id: userCore.userId}, chat: {id: userCore.userId}, text: 'fake message'},
-              `You have 1000 charge left to use the API. That is probably 10 images. You can buy qoints using the connected wallet ${userCore.wallet} at https://miladystation2.net/charge`
+              `You have ${userEconomy.qoints} charge left to use the API. That is probably ${Math.floor(userEconomy.qoints / 100)} images. You can buy qoints using the connected wallet ${userCore.wallet} at https://miladystation2.net/charge`
             )
           } catch(error){
             console.error('Error sending private message to alert api low charge message:', error);
