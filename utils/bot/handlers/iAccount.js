@@ -269,6 +269,9 @@ async function handleRefreshApiKey(message, user) {
         chat_id: message.chat.id,
         message_id: message.message_id,
         text: `🔑 Your API key has been refreshed!\n\nNew key:\n\`${newApiKey}\`\n\nPrevious key is now invalid.`,
+        options: {
+            parse_mode: 'MarkdownV2'
+        },
         reply_markup: {
             inline_keyboard: [
                 [
