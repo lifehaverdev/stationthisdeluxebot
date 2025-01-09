@@ -2,6 +2,7 @@ const { studio } = require('../../bot');
 const { logThis } = require('../../../utils');
 const { buildPromptObjFromWorkflow } = require('../../prompt');
 const { CollectionDB } = require('../../../../db/index');
+const StudioDB = require('../../../../db/models/studio');
 const collectionDB = new CollectionDB();
 console.log('buildPromptObjFromWorkflow imported as:', typeof buildPromptObjFromWorkflow);
 const test = false
@@ -445,6 +446,26 @@ function calculateCompletionPercentage(collectionData) {
     return completionPercentage;
 }
 
+
+async function getCollectionGenerationCount(collectionId) {
+    try {
+        const studio = new StudioDB();
+        
+        // Get all pieces for this collection
+        const pieces = await studio.findMany({ collectionId });
+        
+        // Count pieces that are either pending_review or approved
+        const validCount = pieces.filter(piece => 
+            piece.status === 'pending_review' || piece.status === 'approved'
+        ).length;
+        
+        return validCount;
+    } catch (error) {
+        console.error('Error getting generation count:', error);
+        return 0; // Return 0 as fallback
+    }
+}
+
 module.exports = {
     getOrLoadCollection,
     calculateCompletionPercentage,
@@ -452,5 +473,6 @@ module.exports = {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
-    buildCookModePromptObjFromWorkflow
+    buildCookModePromptObjFromWorkflow,
+    getCollectionGenerationCount
 };

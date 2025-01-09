@@ -8,7 +8,8 @@ const {
     processPromptWithOptionals,
     TraitSelector,
     validateMasterPrompt,
-    buildCookModePromptObjFromWorkflow
+    buildCookModePromptObjFromWorkflow,
+    getCollectionGenerationCount
 } = require('./collectionUtils');
 const { sendMessage, editMessage, logThis } = require('../../../utils');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
@@ -190,7 +191,7 @@ class CollectionCook {
         try {
             const collectionId = parseInt(action.split('_')[1]);
             // Check for existing generations
-            const existingGenerations = await this.getCollectionGenerationCount(collectionId);
+            const existingGenerations = await getCollectionGenerationCount(collectionId);
 
             const generationCount = existingGenerations?.length || 0;
 
@@ -615,7 +616,7 @@ class CollectionCook {
             const collection = await getOrLoadCollection(existingTask.userId, existingTask.collectionId);
             
             // Get actual generation count
-            const generatedCount = await this.getCollectionGenerationCount(existingTask.collectionId);
+            const generatedCount = await getCollectionGenerationCount(existingTask.collectionId);
             
             // Get appropriate control panel based on task status
             const controlPanel = await this.getControlPanel(existingTask.collectionId, existingTask.status);
@@ -651,24 +652,7 @@ class CollectionCook {
         }
     }
 
-    async getCollectionGenerationCount(collectionId) {
-        try {
-            const studio = new StudioDB();
-            
-            // Get all pieces for this collection
-            const pieces = await studio.findMany({ collectionId });
-            
-            // Count pieces that are either pending_review or approved
-            const validCount = pieces.filter(piece => 
-                piece.status === 'pending_review' || piece.status === 'approved'
-            ).length;
-            
-            return validCount;
-        } catch (error) {
-            console.error('Error getting generation count:', error);
-            return 0; // Return 0 as fallback
-        }
-    }
+    
 
     async validateCollection(message, user, collectionId) {
         try {
@@ -830,7 +814,7 @@ class CollectionCook {
     // Then update our interface methods to use this:
     async setupControlPanel(message, collection) {
         // Get actual generation count
-        const generatedCount = await this.getCollectionGenerationCount(collection.collectionId);
+        const generatedCount = await getCollectionGenerationCount(collection.collectionId);
         
         const controlPanel = await this.getControlPanel(collection.collectionId);
         
@@ -839,7 +823,7 @@ class CollectionCook {
             message_id: message.message_id,
             text: "🧑‍🍳 Cook Mode Ready!\n\n" +
                 `Collection: ${collection.name}\n` +
-                `Generated: ${generatedCount}/${collection.config.supply ? collection.config.supply : 'Not set' || 5}\n` +
+                `Generated: ${generatedCount}/${collection.totalSupply ? collection.totalSupply : 'Not set' || 5}\n` +
                 "Use the controls below to manage generation:",
             reply_markup: controlPanel
         });

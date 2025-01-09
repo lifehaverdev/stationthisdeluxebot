@@ -1,5 +1,5 @@
 const { commandRegistry, lobby, loraTriggers } = require('../bot')
-const { sendMessage, escapeMarkdown } = require('../../utils')
+const { sendPrivateMessage, escapeMarkdown } = require('../../utils')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const { refreshLoraCache } = require('../../../db/models/cache');
 const { Loras } = require('../../../db/models/loras');
@@ -19,7 +19,6 @@ const tutorialSteps = {
         unlockedCommands: ['/start', '/quickmake'],
         checkpoints: {
             COMMAND_USED: true,
-            // GENERATION_COMPLETE: true
         }
     },
     'status': {
@@ -209,7 +208,7 @@ class TutorialManager {
             console.log('[Tutorial] Completed for user:', userId);
             lobby[userId].progress.completed = Date.now();
             // Optionally send a completion message
-            await sendMessage(message, "🎉 Tutorial completed! You now have access to all commands. Enjoy creating!");
+            await sendPrivateMessage(userId,message, "🎉 Tutorial completed! You now have access to all commands. Enjoy creating!");
             return;
         }
 
@@ -233,7 +232,7 @@ class TutorialManager {
         : tutorialSteps[nextStepId].introduction;
         const cleanIntroduction = escapeMarkdown(introduction);
         // Send the introduction for the next step
-        await sendMessage(message, cleanIntroduction, {parse_mode: 'MarkdownV2'});
+        await sendPrivateMessage(userId,message, cleanIntroduction, {parse_mode: 'MarkdownV2'});
 
         // If this step has no command, wait a moment before progressing
         if (!tutorialSteps[nextStepId].command) {
@@ -307,7 +306,7 @@ commandRegistry['/start'] = {
 
         // Send the first tutorial message
         
-        await sendMessage(message, escapeMarkdown(tutorialSteps['quickmake'].introduction), {parse_mode: 'MarkdownV2'});
+        await sendPrivateMessage(userId,message, escapeMarkdown(tutorialSteps['quickmake'].introduction), {parse_mode: 'MarkdownV2'});
     }
 };
 
