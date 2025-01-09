@@ -3,7 +3,6 @@ const { checkpointmenu } = require('./checkpointmenu');
 const { refreshLoraCache } = require('../../db/models/cache');
 
 async function handleLoraTrigger(prompt, checkpoint, balance) {
-  //onsole.log('handle lora trigger prompt checkpoint balance',prompt,checkpoint,balance)
   const loraDB = new Loras();
   let usedLoras = new Set();
   let addedLoraTags = new Set();
@@ -26,7 +25,6 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   // Get checkpoint version for filtering
   const cleanCheckpoint = checkpoint.replace('.safetensors', '');
   const checkpointDesc = checkpointmenu.find(item => item.name === cleanCheckpoint)?.description;
-  console.log('Checkpoint description:', checkpointDesc);
 
    // Skip LoRA processing if no checkpoint description is found
    if (!checkpointDesc) {
@@ -36,7 +34,31 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
 
   // Get cached LoRA data
   const { triggers, cognates } = await refreshLoraCache(loraDB);
+  // First pass: Check for multi-word triggers
+  for (const [triggerKey, triggerMatches] of triggers) {
+    if (triggerKey.includes(' ')) {  // Multi-word trigger
+      const escapedTrigger = triggerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const triggerRegex = new RegExp(`\\b${escapedTrigger}\\b`, 'i');
+      
+      if (triggerRegex.test(modifiedPrompt)) {
+        const versionMatchedTriggers = triggerMatches.filter(trigger => 
+          trigger.version === checkpointDesc
+        );
 
+        if (versionMatchedTriggers.length > 0) {
+          const loraInfo = versionMatchedTriggers[0];
+          const loraTag = `<lora:${loraInfo.lora_name}:${loraInfo.weight}>`;
+
+          if (!addedLoraTags.has(loraInfo.lora_name)) {
+            usedLoras.add(loraInfo.lora_name);
+            addedLoraTags.add(loraInfo.lora_name);
+            modifiedPrompt = modifiedPrompt.replace(triggerRegex, `${loraTag} ${triggerKey}`);
+            await loraDB.incrementUses(loraInfo.lora_name);
+          }
+        }
+      }
+    }
+  }
   // Process words one at a time
   // Split by whitespace but preserve punctuation for replacement
   const words = prompt.split(/\s+/).map(word => word.trim());

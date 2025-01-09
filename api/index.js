@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { flows, waiting, successors } = require('../utils/bot/bot')
+const { sendPrivateMessage } = require('../utils/utils')
 const { defaultUserData } = require('../utils/users/defaultUserData');
 const { UserCore, UserEconomy, UserPref } = require('../db/index');
 const { buildPromptObjFromWorkflow } = require('../utils/bot/prompt');
@@ -195,6 +196,17 @@ async function authenticateApiUser(apiKey) {
         const userEconomy = await userEconomyData.findOne({ userId: userCore.userId });
         if (!userEconomy || !userEconomy.qoints || userEconomy.qoints < 50) {
             throw new Error('Insufficient qoints');
+        }
+        if(userEconomy.qoints < 1000){
+          try{
+            await sendPrivateMessage(
+              userCore.userId, 
+              {from: {id: userCore.userId}, chat: {id: userCore.userId}, text: 'fake message'},
+              `You have 1000 charge left to use the API. That is probably 10 images. You can buy qoints using the connected wallet ${userCore.wallet} at https://miladystation2.net/charge`
+            )
+          } catch(error){
+            console.error('Error sending private message to alert api low charge message:', error);
+          }
         }
 
         // 3. Get user's preferences (for generation settings)
