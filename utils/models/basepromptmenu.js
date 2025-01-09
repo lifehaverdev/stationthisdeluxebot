@@ -7,7 +7,7 @@ const basepromptmenu = [
     {
         name: "wifeystation",
         description: "actual wifeystationmode",
-        baseprompt: "ws2, (petravoice) a cartoon woman, bold makeup, red lipstick, glsl - shaders, smooth soft focus, imagenet, twitter pfp, beautifully dithered gradients, low poly9 stardew valley character, upper body avatar, fluffy, hyperrealistic, toon aesthetic, low poly low resolution, pixelated graphics, blocky textures, retro game"
+        baseprompt: "wifeystation (petravoice) a cartoon woman, bold makeup, red lipstick, glsl - shaders, smooth soft focus, imagenet, twitter pfp, beautifully dithered gradients, low poly9 stardew valley character, upper body avatar, fluffy, hyperrealistic, toon aesthetic, low poly low resolution, pixelated graphics, blocky textures, retro game"
     },
     {
         name: '$CULT',
