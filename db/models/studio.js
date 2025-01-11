@@ -14,7 +14,7 @@ class StudioDB extends BaseDB {
             // Calculate points if available from task
             const pointsSpent = task.pointsToAdd || 
                 ((task.runningStop - task.runningStart) / 1000) * (task.rate || 1);
-
+            console.log('here is the traits in savegenerationresult',task.promptObj.traits)
             // 1. Create studio document with all necessary information
             const studioDoc = {
                 collectionId: task.promptObj.collectionId,
