@@ -775,56 +775,97 @@ async function submitTraining(message, user, loraId) {
         return;
     }
 
-    // Validate user has qoints and it's a number
-    // if (!userDat.qoints || isNaN(userDat.qoints)) {
-    //     console.error('Invalid qoints value:', userDat.qoints);
-    //     await sendMessage(message, 'There was an error with your qoints balance. Please contact support.');
-    //     return;
-    // }
-    //growth hack
-    // if(false && userDat.qoints < discountedPrice){
-    //     console.log('user does not have enough qoints');
-    //     const options = {
-    //         reply_markup: {
-    //             inline_keyboard: [
-    //                 [
-    //                     { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
-    //                 ]
-    //             ]
-    //         }
-    //     };
-    //     await sendMessage(message,`Submitting a training to make a lora costs you ${discountedPrice} 🧀1-time-use-points⚡️. You don't have that. You have ${userDat.qoints}. You may purchase more on the website`,options)
-    //     return
-    // } else {
-    //     // Calculate new qoints value and verify it's valid
-    //     const newQoints = userDat.qoints - discountedPrice;
-    //     if (isNaN(newQoints)) {
-    //         console.error('Error calculating new qoints value:', {
-    //             current: userDat.qoints,
-    //             price: discountedPrice,
-    //             calculated: newQoints
-    //         });
-    //         await sendMessage(message, 'There was an error processing your qoints. Please contact support.');
-    //         return;
-    //     }
-        
-    //     userDat.qoints = newQoints;
-    //     await userEconomy.writeUserDataPoint(user,'qoints',newQoints)
-    // }
-    workspace[user][loraId].status = 'SUBMITTED'
+    workspace[user][loraId].status = 'SUBMITTED';
     workspace[user][loraId].submitted = Date.now();
-    await loraDB.saveWorkspace(workspace[user][loraId])
+    await loraDB.saveWorkspace(workspace[user][loraId]);
+
+    // Update user's training menu
     const messageId = message.message_id;
     const chatId = message.chat.id;
-    const { text, reply_markup } = await buildTrainingMenu(user,loraId)
+    const { text, reply_markup } = await buildTrainingMenu(user, loraId);
     await editMessage({
         reply_markup,
         text,
         chat_id: chatId,
         message_id: messageId
-    })
-    setUserState({...message, from: {id: user}}, STATES.IDLE)
-    await sendMessage({from: {id:DEV_DMS}, chat: {id:DEV_DMS}},`user ${user} @${message.from.username} just submitted ${workspace[user][loraId].name} for training`)
+    });
+    setUserState({...message, from: {id: user}}, STATES.IDLE);
+
+    // Send notification to dev with sample images
+    try {
+        // Get first, middle and last filled slots
+        const filledSlots = workspace[user][loraId].images
+            .map((img, index) => ({ img, index }))
+            .filter(({ img }) => img !== '');
+        
+        const sampleSlots = [];
+        if (filledSlots.length > 0) {
+            // Always include first
+            sampleSlots.push(filledSlots[0]);
+            
+            // Include middle if we have at least 3 images
+            if (filledSlots.length >= 3) {
+                const midIndex = Math.floor(filledSlots.length / 2);
+                sampleSlots.push(filledSlots[midIndex]);
+            }
+            
+            // Include last if it's different from middle and first
+            if (filledSlots.length >= 2) {
+                sampleSlots.push(filledSlots[filledSlots.length - 1]);
+            }
+        }
+
+        // Send initial message with details
+        const devMessage = await sendMessage(
+            {from: {id:DEV_DMS}, chat: {id:DEV_DMS}},
+            `🆕 New LoRA Submission\n\n` +
+            `👤 User: ${user} @${message.from.username}\n` +
+            `📝 Name: ${workspace[user][loraId].name}\n` +
+            `💰 Price: ${discountedPrice} qoints\n` +
+            `🖼️ Total Images: ${workspace[user][loraId].images.filter(img => img !== '').length}`
+        );
+
+        // Send sample images using bucket pull
+        for (const { img: fileId, index: slotId } of sampleSlots) {
+            try {
+                const tempFilePath = await loraDB.bucketPull(fileId, loraId, slotId);
+                if (tempFilePath) {
+                    await sendPhoto(
+                        {chat: {id: DEV_DMS}}, 
+                        tempFilePath,
+                        {caption: `Sample from slot ${slotId}`}
+                    );
+                    await fs.promises.unlink(tempFilePath);
+                }
+            } catch (err) {
+                console.error(`Failed to send sample image from slot ${slotId}:`, err);
+            }
+        }
+
+        // Send admin control panel
+        await sendMessage(
+            {chat: {id: DEV_DMS}},
+            "Admin Controls:",
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Approve', callback_data: `trainDiscern_approve_${loraId}_${user}` },
+                            { text: '❌ Reject', callback_data: `trainDiscern_reject_${loraId}_${user}` }
+                        ],
+                        [
+                            { text: '💰 Demand Payment', callback_data: `trainDiscern_demand_${loraId}_${user}` }
+                        ]
+                    ]
+                }
+            }
+        );
+    } catch (error) {
+        console.error('Error sending dev notification:', error);
+        await sendMessage({chat: {id: DEV_DMS}}, 
+            `Error processing submission notification for LoRA ${loraId} from user ${user}: ${error.message}`
+        );
+    }
 }
 /*
 BACKEND
@@ -901,6 +942,220 @@ function findTool(userId, loraId) {
         console.warn(`Training object for LoRA ${loraId} not found under user ${userId}`);
     }
     return null;
+}
+
+prefixHandlers['trainDiscern_'] = async (action, message, user) => {
+    const [_, decision, loraId, userId] = action.split('_');
+    await handleDevDiscernment(decision, loraId, userId, message);
+}
+
+async function handleDevDiscernment(decision, loraId, userId, message) {
+    try {
+        // Load LoRA data and ensure workspace is initialized
+        const loraData = await getOrLoadLora(userId, loraId);
+        if (!workspace[userId]) {
+            workspace[userId] = {};
+        }
+        if (!workspace[userId][loraId]) {
+            workspace[userId][loraId] = loraData;
+        }
+        
+        const loraName = loraData.name;
+
+        switch (decision) {
+            case 'approve':
+                // Keep status as SUBMITTED, notify user
+                await sendMessage(
+                    { chat: { id: userId } },
+                    `✨ Good news! Your LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.`
+                );
+                
+                // Update dev message
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `✅ Approved LoRA "${loraName}" for training\nUser: ${userId}`
+                });
+                break;
+
+            case 'reject':
+                // Change status to REJECTED
+                workspace[userId][loraId].status = 'REJECTED';
+                await loraDB.saveWorkspace(workspace[userId][loraId]);
+                
+                // Notify user
+                await sendMessage(
+                    { chat: { id: userId } },
+                    `❌ Your LoRA training request "${loraName}" was not approved. This could be due to image quality issues or content guidelines. Feel free to try again with different images!`
+                );
+                
+                // Clean up workspace and files
+                await removeTraining(userId, loraId);
+                
+                // Update dev message
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `❌ Rejected LoRA "${loraName}"\nUser: ${userId}`
+                });
+                break;
+
+            case 'demand':
+                // Change status to PAYMENT_REQUIRED
+                workspace[userId][loraId].status = 'PAYMENT_REQUIRED';
+                await loraDB.saveWorkspace(workspace[userId][loraId]);
+                
+                // Calculate price
+                const loraPrice = 86400;
+                const discount = await calculateDiscount(userId);
+                const multiplier = (100 - discount) / 100;
+                const discountedPrice = Math.floor(loraPrice * multiplier);
+                
+                // Check user's qoints
+                const userEco = new Economy();
+                const userEconomy = await userEco.findOne({userId});
+                const hasQoints = userEconomy && userEconomy.qoints > 0;
+                
+                // Build keyboard based on qoint status
+                const keyboard = [
+                    [
+                        { text: '💰 Pay Premium', callback_data: `premiumTrain_pay_${loraId}_${discountedPrice}` },
+                        { text: '❌ Not Today', callback_data: `premiumTrain_cancel_${loraId}` }
+                    ]
+                ];
+                
+                if (!hasQoints) {
+                    keyboard.unshift([{ text: '🏦 Get Charged', url: `https://www.miladystation2.net/charge` }]);
+                }
+                
+                // Notify user with detailed payment requirement message
+                await sendMessage(
+                    { chat: { id: userId } },
+                    `💫 About your LoRA training request "${loraName}":\n\n` +
+                    `While we love creativity, this particular training set falls into our premium category ` +
+                    `due to its meme/entertainment nature.\n\n` +
+                    `Premium Training Cost: ${discountedPrice} qoints` +
+                    `${discount > 0 ? ` (includes your ${discount}% discount)` : ''}\n\n` +
+                    `Your current balance: ${userEconomy ? userEconomy.qoints : 0} qoints\n\n` +
+                    `Note: Qoints are our premium currency, different from regular points. ` +
+                    `${!hasQoints ? 'You currently have no qoints - click "Get Qoints" to purchase some!' : ''}\n\n` +
+                    `Would you like to proceed with the premium training?`,
+                    {
+                        reply_markup: {
+                            inline_keyboard: keyboard
+                        }
+                    }
+                );
+                
+                // Update dev message
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `💰 Requested premium payment (${discountedPrice} qoints) for LoRA "${loraName}"\nUser: ${userId}`
+                });
+                break;
+
+            default:
+                console.error(`Unknown decision type: ${decision}`);
+                return;
+        }
+    } catch (error) {
+        console.error('Error in handleDevDiscernment:', error);
+        await sendMessage(
+            { chat: { id: DEV_DMS } },
+            `Error processing discernment for LoRA ${loraId} (${decision}): ${error.message}`
+        );
+    }
+}
+
+prefixHandlers['premiumTrain_'] = async (action, message, user) => {
+    const [_, choice, loraId, price] = action.split('_');
+    await handlePremiumTrainChoice(choice, loraId, parseInt(price), message, user);
+}
+
+async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
+    try {
+        // Load LoRA data and ensure workspace is initialized
+        const loraData = await getOrLoadLora(user, loraId);
+        if (!workspace[user]) {
+            workspace[user] = {};
+        }
+        if (!workspace[user][loraId]) {
+            workspace[user][loraId] = loraData;
+        }
+
+        switch (choice) {
+            case 'pay':
+                // Check if user has enough qoints
+                const userEco = await userEconomy.findOne({userId: user});
+                if (!userEco || userEco.qoints < price) {
+                    await editMessage({
+                        chat_id: message.chat.id,
+                        message_id: message.message_id,
+                        text: "❌ Insufficient charge balance. Please get more charge and try again.",
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: '🏦 Get Charged', url: 'https://www.miladystation2.net/charge' }],
+                                [{ text: 'Cancel', callback_data: `premiumTrain_cancel_${loraId}` }]
+                            ]
+                        }
+                    });
+                    return;
+                }
+                userEco.qoints -= price;
+                // Deduct qoints
+                const success = await userEconomy.writeQoints(user, userEco.qoints);
+                if (!success) {
+                    await sendMessage(message, "Failed to process payment. Please try again later.");
+                    return;
+                }
+
+                // Update LoRA status to SUBMITTED (approved)
+                workspace[user][loraId].status = 'SUBMITTED';
+                workspace[user][loraId].paidAmount = price;
+                workspace[user][loraId].paidDate = Date.now();
+                await loraDB.saveWorkspace(workspace[user][loraId]);
+
+                // Notify user
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `✨ Payment successful! Your LoRA "${loraData.name}" has been approved for training.\n\n` +
+                          `Paid: ${price} qoints\n` +
+                          `Remaining balance: ${userEco.qoints - price} qoints`
+                });
+
+                // Notify dev
+                await sendMessage(
+                    { chat: { id: DEV_DMS } },
+                    `💰 Premium payment received!\n` +
+                    `User: ${user}\n` +
+                    `LoRA: ${loraData.name}\n` +
+                    `Amount: ${price} qoints`
+                );
+                break;
+
+            case 'cancel':
+                // Update message to show cancelled state
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `❌ Premium training cancelled for "${loraData.name}".\n\n` +
+                          `You can always try again later or submit a different training set!`
+                });
+
+                // Clean up workspace and files
+                await removeTraining(user, loraId);
+                break;
+
+            default:
+                console.error(`Unknown premium train choice: ${choice}`);
+                break;
+        }
+    } catch (error) {
+        console.error('Error in handlePremiumTrainChoice:', error);
+        await sendMessage(message, 'An error occurred while processing your request. Please try again later.');
+    }
 }
 
 
