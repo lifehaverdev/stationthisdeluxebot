@@ -193,7 +193,7 @@ class CollectionCook {
             // Check for existing generations
             const existingGenerations = await getCollectionGenerationCount(collectionId);
 
-            const generationCount = existingGenerations?.length || 0;
+            const generationCount = existingGenerations || 0;
 
             if (generationCount >= 5) {
                 await sendMessage({
