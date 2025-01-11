@@ -312,7 +312,7 @@ class TraitSelector {
         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
         
         const selectedTraits = {};
-        const traitDetails = {}; // Store full trait details
+        const traitDetails = []; // Store full trait details
         const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
         
         // First pass: Select traits
@@ -324,14 +324,14 @@ class TraitSelector {
                 selectedTraits[traitType.title] = selected.prompt;
                 
                 // Store full trait details
-                traitDetails[traitType.title] = {
+                traitDetails.push({
                     type: traitType.title,
                     value: {
                         name: selected.name,
                         prompt: selected.prompt,
                         rarity: selected.rarity
                     }
-                };
+                })
             }
         });
         
