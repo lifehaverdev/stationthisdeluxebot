@@ -6,10 +6,10 @@ const StudioDB = require('../../../../db/models/studio');
 const collectionDB = new CollectionDB();
 console.log('buildPromptObjFromWorkflow imported as:', typeof buildPromptObjFromWorkflow);
 const test = false
-const LOG_TRAIT = true;
+const LOG_TRAIT = test;
 const LOG_SELECT = test;
 const LOG_CONFLICT = test;
-const LOG_EXCLUSION = true;
+const LOG_EXCLUSION = test;
 const LOG_VALIDATE = test;
 
 // === Collection Loading ===

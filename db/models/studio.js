@@ -25,7 +25,7 @@ class StudioDB extends BaseDB {
                     type: urlData.type
                 })),
                 prompt: task.promptObj.prompt,
-                traits: task.promptObj.traits.details,
+                traits: task.promptObj.traits.details || task.promptObj.traits.selected || task.promptObj.traits || [],
                 workflow: task.promptObj.type,
                 generation: {
                     timestamp: Date.now(),
