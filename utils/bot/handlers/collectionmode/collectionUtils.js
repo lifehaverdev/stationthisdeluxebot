@@ -283,30 +283,66 @@ class TraitSelector {
         logThis(LOG_TRAIT, `[CONFLICT_RESOLVE] Final resolved traits:`, selectedTraits);
         return selectedTraits;
     }
+    // static generateTraitSelection(traitTypes, conflictMap) {
+    //     logThis(LOG_TRAIT, `[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
+        
+    //     const selectedTraits = {};
+    //     const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
+    //     logThis(LOG_TRAIT, `[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
+        
+    //     // First pass: Select traits
+    //     shuffledTypes.forEach(traitType => {
+    //         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
+    //         const selected = this.selectTraitValue(traitType);
+    //         if (selected) {
+    //             logThis(LOG_TRAIT, `[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
+    //             selectedTraits[traitType.title] = selected.prompt;
+    //         } else {
+    //             logThis(LOG_TRAIT, `[TRAIT_GENERATE] No value selected for ${traitType.title}`);
+    //         }
+    //     });
+        
+    //     logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
+    //     const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
+    //     logThis(LOG_TRAIT, `[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
+        
+    //     return resolvedTraits;
+    // }
     static generateTraitSelection(traitTypes, conflictMap) {
         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Starting trait generation with ${traitTypes.length} types`);
         
         const selectedTraits = {};
+        const traitDetails = {}; // Store full trait details
         const shuffledTypes = [...traitTypes].sort(() => Math.random() - 0.5);
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Shuffled trait types:`, shuffledTypes.map(t => t.title));
         
         // First pass: Select traits
         shuffledTypes.forEach(traitType => {
             logThis(LOG_TRAIT, `[TRAIT_GENERATE] Processing selection for: ${traitType.title}`);
             const selected = this.selectTraitValue(traitType);
             if (selected) {
-                logThis(LOG_TRAIT, `[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.prompt}`);
+                logThis(LOG_TRAIT, `[TRAIT_GENERATE] Selected ${traitType.title}: ${selected.name}`);
                 selectedTraits[traitType.title] = selected.prompt;
-            } else {
-                logThis(LOG_TRAIT, `[TRAIT_GENERATE] No value selected for ${traitType.title}`);
+                
+                // Store full trait details
+                traitDetails[traitType.title] = {
+                    type: traitType.title,
+                    value: {
+                        name: selected.name,
+                        prompt: selected.prompt,
+                        rarity: selected.rarity
+                    }
+                };
             }
         });
         
         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
         const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
-        logThis(LOG_TRAIT, `[TRAIT_GENERATE] Final trait selection:`, resolvedTraits);
-        
-        return resolvedTraits;
+
+        // Return both prompt traits and detailed traits
+        return {
+            promptTraits: resolvedTraits,
+            details: traitDetails
+        };
     }
 }
 

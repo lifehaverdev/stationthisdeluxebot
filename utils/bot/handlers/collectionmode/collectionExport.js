@@ -1,7 +1,7 @@
-const { studio, prefixHandlers } = require('../../bot');
+const { studio, prefixHandlers, STATES, stateHandlers, lobby } = require('../../bot');
 const { CollectionDB } = require('../../../../db/index');
 const StudioDB = require('../../../../db/models/studio');
-const { sendMessage, editMessage, sendDocument, logThis } = require('../../../utils');
+const { sendMessage, editMessage, sendDocument, setUserState, safeExecute } = require('../../../utils');
 const { getOrLoadCollection, getCollectionGenerationCount } = require('./collectionUtils');
 const fs = require('fs');
 const path = require('path');
@@ -25,13 +25,17 @@ async function handleExportMenu(action, message, user) {
         case 'images':
             await collectionExport.handleExportSelectionImages(action,message, user);
             break;
-        case 'pinned':
-            console.log('pinned',action,message, user);
+        case 'next':
+            await collectionExport.handleExportNextStep(action,message, user);
+            break;
+        case 'platform':
+            await collectionExport.handleExportSelectionPinned(action,message, user);
             break;
         case 'cancel':
             await collectionExport.handleExportCancel(message, user);
             break;
         default:
+            console.log('default',action)
             break;
     }
 }
@@ -69,7 +73,7 @@ class CollectionExport {
                     const collectionNames = groupCollections.map(c => c.name).join(", ");
                     keyboard.push([{
                         text: `🔗 ${date} - ${collectionNames}`,
-                        callback_data: `export_pinned_${timestamp}`
+                        callback_data: `export_next_${timestamp}`
                     }]);
                 }
             }
@@ -196,7 +200,7 @@ class CollectionExport {
             if (collections.exported.length > 0) {
                 keyboard.push([{ 
                     text: "🔗 Generate Metadata (Need IPFS/Arweave URL)", 
-                    callback_data: "export_pinned" 
+                    callback_data: "export_next" 
                 }]);
             }
             keyboard.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
@@ -424,19 +428,31 @@ class CollectionExport {
             await editMessage({
                 chat_id: message.chat.id,
                 message_id: message.message_id,
-                text: "✅ Your collection images are ready!\n\n" +
-                    "Next Steps:\n" +
-                    "1. Upload these images to a permanent storage solution:\n" +
-                    "   • IPFS (via Pinata, NFT.Storage, etc.)\n" +
-                    "   • Arweave\n" +
-                    "We need a link to your images to complete the metadata generation process.\n" +
-                    "Come back to here when you're ready to generate your metadata files!\n" +
-                    "Or get back here later with /account > Create > export",
+                text: "🎉 Your collections have been exported successfully!\n\n" +
+                    "🚀 Choose your launch platform:\n\n" +
+                    "Different platforms have different requirements for metadata:",
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: "🔗 Upload to IPFS", url: "https://www.pinata.cloud/" }],
-                        [{ text: "🔗 Upload to Arweave", url: "https://www.arweave.org/" }],
-                        [{ text: "I did it! I have a link!", callback_data: "export_pinned"}]
+                        [{
+                            text: "ScatterArt - Insta Reveal",
+                            callback_data: "export_platform_scatter_instant"
+                        }],
+                        [{
+                            text: "ScatterArt - Custom Reveal",
+                            callback_data: "export_platform_scatter_custom"
+                        }],
+                        [{
+                            text: "LaunchMyNFT",
+                            callback_data: "export_platform_launchmynft"
+                        }],
+                        [{
+                            text: "Self-Hosted (Advanced)",
+                            callback_data: "export_platform_custom"
+                        }],
+                        [{
+                            text: "❌ Cancel",
+                            callback_data: "cancel"
+                        }]
                     ]
                 }
             });
@@ -449,6 +465,127 @@ class CollectionExport {
             });
         }
     }
+    async handleExportNextStep(action, message, user) {
+        // Store export timestamp from action
+        const exportTimestamp = action.split('_')[2];
+        
+        if (!studio[user]) {
+            studio[user] = {};
+        }
+        
+        studio[user].exportIntent = {
+            timestamp: exportTimestamp,
+            status: 'pending'
+        };
+
+        // Show platform selection menu
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: "🚀 Choose your launch platform:\n\n" +
+                  "Different platforms have different requirements for metadata:",
+            reply_markup: {
+                inline_keyboard: [
+                    [{
+                        text: "ScatterArt - Insta Reveal",
+                        callback_data: "export_platform_scatter_instant"
+                    }],
+                    [{
+                        text: "ScatterArt - Custom Reveal",
+                        callback_data: "export_platform_scatter_custom"
+                    }],
+                    [{
+                        text: "LaunchMyNFT",
+                        callback_data: "export_platform_launchmynft"
+                    }],
+                    [{
+                        text: "Self-Hosted (Advanced)",
+                        callback_data: "export_platform_custom"
+                    }],
+                    [{
+                        text: "❌ Cancel",
+                        callback_data: "cancel"
+                    }]
+                ]
+            }
+        });
+    }
+    async handleExportSelectionPinned(action, message, user) {
+        const platform = action.split('_')[2];
+        const exportTimestamp = action.split('_')[3];
+        const studioDb = new StudioDB();
+        if (!studio[user]) {
+            studio[user] = {};
+        }
+
+        switch (platform) {
+            case 'launchmynft':
+                if (!studio[user]) studio[user] = {};
+                studio[user].launchMyNFT = {
+                    timestamp: exportTimestamp,
+                    status: 'awaiting_name',
+                    collections: await studioDb.findMany({
+                        exportedAt: parseInt(exportTimestamp)
+                    })
+                };
+
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: "Let's set up how your NFTs will appear on marketplaces! 📝\n\n" +
+                          "First, what name should appear before each NFT number?\n\n" +
+                          "Examples:\n" +
+                          "• 'Milady' → Milady #1, Milady 2, etc.\n" +
+                          "To get the first you would respond with 'Milady #'\n\n" +
+                          "Type your preferred collection piece name:",
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: "❌ Cancel", callback_data: "export_cancel" }
+                        ]]
+                    }
+                });
+
+                // Set state to handle user input
+                setUserState(
+                    { ...message, from: { id: user } },
+                    STATES.SETEXPORT
+                );
+                break;
+
+            case 'scatter_instant':
+            case 'scatter_custom':
+            case 'custom':
+                // For all other platforms, we need hosting URL first
+                studio[user].mustprovidepinnedaddress = {
+                    timestamp: exportTimestamp,
+                    platform: platform,
+                    status: 'pending'
+                };
+
+                setUserState(
+                    { ...message, from: { id: user } },
+                    STATES.SETEXPORT
+                );
+
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: "🔗 Please provide the base URL where your images are hosted:\n\n" +
+                        "Examples:\n" +
+                        "• IPFS: ipfs://QmYourHash/\n" +
+                        "• Arweave: https://arweave.net/YourHash/\n" +
+                        "• Other: https://your-hosting.com/collection/\n\n" +
+                        "Make sure the URL ends with a forward slash (/)",
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: "❌ Cancel", callback_data: "cancel" }
+                        ]]
+                    }
+                });
+                break;
+        }
+    }
+    
 }
 
 async function createAndSendBatch(batchDir, batchNumber, message, startIndex) {
@@ -485,6 +622,206 @@ async function createAndSendBatch(batchDir, batchNumber, message, startIndex) {
     });
 
     return zipPath;
+}
+
+stateHandlers[STATES.SETEXPORT] = (message) => safeExecute(message, handleSetExport);
+
+async function handleSetExport(message) {
+    const user = message.from.id;
+    try {
+        // Check if we're expecting a pinned address
+        if (studio[user]?.mustprovidepinnedaddress) {
+            const baseUrl = message.text.trim();
+            
+            // Basic URL validation
+            if (!baseUrl.endsWith('/')) {
+                await sendMessage({
+                    message,
+                    text: "❌ URL must end with a forward slash (/)\nPlease try again:"
+                });
+                return;
+            }
+
+            // Transform IPFS URL if needed
+            
+            let testUrl;
+            if (baseUrl.startsWith('ipfs://')) {
+                const ipfsHash = baseUrl.replace('ipfs://', '').replace('/', '');
+                testUrl = `${process.env.PINATA_PREPEND}${ipfsHash}/1.png${process.env.PINATA_APPEND}`;
+            } else {
+                testUrl = `${baseUrl}1.png`;
+            }
+
+            // Test URL by attempting to fetch first image
+            try {
+                console.log('testUrl',testUrl)
+                // Get collections from this export timestamp
+                const studioDb = new StudioDB();
+                const collections = await studioDb.findMany({
+                    exportedAt: parseInt(studio[user].mustprovidepinnedaddress.timestamp)
+                });
+
+                // Try to fetch the first image (1.png)
+                const response = await axios.head(testUrl);
+                
+                if (response.status !== 200) {
+                    throw new Error('Image not accessible');
+                }
+
+                // URL is valid, store it and show metadata format options
+                studio[user].mustprovidepinnedaddress.status = 'validated';
+                studio[user].mustprovidepinnedaddress.baseUrl = baseUrl;
+
+                // Show metadata format selection
+                await sendMessage(
+                    message,
+                    "✅ URL validated successfully!\n\n" +
+                        "Choose your metadata format:",
+                    {reply_markup: {
+                        inline_keyboard: [
+                            [{ 
+                                text: "ETH (Standard ERC721)", 
+                                callback_data: "export_metadata_eth" 
+                            }],
+                            [{ 
+                                text: "SOL (Metaplex)", 
+                                callback_data: "export_metadata_sol_metaplex" 
+                            }],
+                            [{ 
+                                text: "SOL (Core)", 
+                                callback_data: "export_metadata_sol_core" 
+                            }],
+                            [{ 
+                                text: "SOL (CNFT)", 
+                                callback_data: "export_metadata_sol_cnft" 
+                            }],
+                            [{ 
+                                text: "❌ Cancel", 
+                                callback_data: "cancel" 
+                            }]
+                        ]
+                    }}
+                );
+
+            } catch (error) {
+                console.error('URL validation error:', error);
+                await sendMessage(
+                    message,
+                    "❌ Could not validate URL. Please ensure:\n" +
+                    "1. The URL is accessible\n" +
+                    "2. Image files are named as numbers (1.png, 2.png, etc.)\n" +
+                    "3. You have proper permissions set\n\n" +
+                    "Please try again:"
+                );
+            }
+        }
+
+        if(studio[user]?.launchMyNFT) {
+            const context = studio[user].launchMyNFT;
+            const response = message.text.trim();
+
+            switch (context.status) {
+                case 'awaiting_name':
+                    context.name = response;
+                    context.status = 'awaiting_symbol';
+                    
+                    await sendMessage(
+                        message,
+                        "Great! Now we need a symbol (ticker) for your collection.\n" +
+                        "Example: 'BAYC' for Bored Apes\n\n" +
+                        "Type your collection symbol (2-5 characters):"
+                    );
+                    break;
+
+                case 'awaiting_symbol':
+                    if (response.length < 2 || response.length > 5) {
+                        await sendMessage(
+                            message,
+                            "Symbol must be 2-5 characters.\nPlease try again:"
+                        );
+                        return;
+                    }
+                    
+                    context.symbol = response.toUpperCase();
+                    context.status = 'awaiting_description';
+                    
+                    await sendMessage(
+                        message,
+                        "Perfect! Finally, provide a description for your collection.\n" +
+                        "This will be visible on marketplaces.\n\n" +
+                        "Type your collection description:"
+                    );
+                    break;
+
+                case 'awaiting_description':
+                    
+                    context.description = response;
+                    context.status = 'complete';
+                    console.log('context',context)
+                    const timestamp = parseInt(studio[user].exportIntent.timestamp)
+                    console.log('timestamp',timestamp)
+                    // Prepare the metadata files
+                    const studioDb = new StudioDB();
+                    const pieces = await studioDb.findMany({
+                        'export.timestamp': timestamp 
+                    });
+                    console.log('pieces',pieces)
+                    // Create temp directory for JSONs
+                    const exportDir = path.join(__dirname, '../../../../temp', `metadata_${user}`);
+                    fs.mkdirSync(exportDir, { recursive: true });
+
+                    // Generate individual JSONs for each piece
+                    for (const piece of pieces) {
+                            console.log('piece',piece)
+                            const metadata = {
+                                name: `${context.name} ${piece.export.number}`,
+                                symbol: context.symbol,
+                                description: context.description,
+                                image: `/${piece.export.number}.png`,
+                                attributes: piece.traits.map(trait => ({
+                                    trait_type: trait.type,
+                                    value: trait.value.name
+                                }))
+                            };
+
+                            fs.writeFileSync(
+                                path.join(exportDir, `${piece.export.number}.json`),
+                                JSON.stringify(metadata, null, 2)
+                            );
+                        
+                    }
+
+                    // Zip and send
+                    const zipPath = path.join(exportDir, 'metadata.zip');
+                    const output = fs.createWriteStream(zipPath);
+                    const archive = archiver('zip', { zlib: { level: 9 } });
+                    
+                    archive.pipe(output);
+                    archive.glob('*.json', {
+                        cwd: exportDir
+                    });
+                    await archive.finalize();
+
+                    await sendDocument(
+                        message, 
+                        zipPath,
+                        { caption: "✅ Here are your LaunchMyNFT metadata files!" }
+                    );
+
+                    // Cleanup
+                    fs.rmSync(exportDir, { recursive: true, force: true });
+                    delete studio[user].launchMyNFT;
+                    break;
+            }
+        }
+
+    } catch (error) {
+        console.error('Error in handleSetExport:', error);
+        await sendMessage(
+            message,
+            "❌ An error occurred. Please try again or contact support."
+        );
+    }
 }
 
 module.exports = new CollectionExport();
