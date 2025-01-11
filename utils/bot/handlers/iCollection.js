@@ -50,7 +50,7 @@ const { Collection } = require('mongodb');
  const studioAction = new StudioAction(studio)
 
 // Logging toggles
-const test = true;
+const test = false;
 const LOG_TEST = test;
 
 
