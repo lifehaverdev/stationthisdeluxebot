@@ -336,13 +336,13 @@ class TraitSelector {
         });
         
         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
-        console.log('selectedTraits',selectedTraits)
+        console.log('traitDetails',traitDetails)
         const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
 
         // Return both prompt traits and detailed traits
         return {
             selectedTraits: resolvedTraits,
-            details: traitDetails
+            traitDetails: traitDetails
         };
     }
 }
