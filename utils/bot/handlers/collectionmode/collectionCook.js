@@ -217,6 +217,7 @@ class CollectionCook {
             const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
             const conflictMap = TraitSelector.buildConflictMap(exclusions);
             const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+            console.log('selectedTraits',selectedTraits)
             const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
     
             // Build user context
