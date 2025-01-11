@@ -50,7 +50,7 @@ const { Collection } = require('mongodb');
  const studioAction = new StudioAction(studio)
 
 // Logging toggles
-const test = false;
+const test = true;
 const LOG_TEST = test;
 
 
@@ -611,8 +611,8 @@ async function handleTestCollection(message, user, collectionId) {
     const conflictMap = TraitSelector.buildConflictMap(exclusions);
     logThis(LOG_TEST, `[TEST_COLLECTION] Built conflict map with ${conflictMap.size} entries`);
     
-    const {selectedTraits, _} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
-    logThis(LOG_TEST, `[TEST_COLLECTION] Generated trait selection: ${selectedTraits}`);
+    const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+    logThis(LOG_TEST, `[TEST_COLLECTION] Generated trait selection: ${selectedTraits}, details: ${traitDetails}`);
     
     const testPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
     logThis(LOG_TEST, `[TEST_COLLECTION] Final processed prompt: ${testPrompt}`);

@@ -87,7 +87,7 @@ function findExclusions(masterPrompt) {
 
 function processPromptWithOptionals(masterPrompt, traitValues) {
     let processedPrompt = masterPrompt;
-    
+    console.log('traitValues',traitValues)
     // First pass: Process trait values and track which ones are empty
     const emptyTraits = new Set();
     Object.entries(traitValues).forEach(([traitType, value]) => {
@@ -336,11 +336,12 @@ class TraitSelector {
         });
         
         logThis(LOG_TRAIT, `[TRAIT_GENERATE] Initial selection complete. Resolving conflicts...`);
+        console.log('selectedTraits',selectedTraits)
         const resolvedTraits = this.resolveConflicts(selectedTraits, conflictMap);
 
         // Return both prompt traits and detailed traits
         return {
-            promptTraits: resolvedTraits,
+            selectedTraits: resolvedTraits,
             details: traitDetails
         };
     }
