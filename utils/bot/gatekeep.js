@@ -61,11 +61,20 @@ function softResetPoints(userId) {
     const userData = lobby[userId];
     const maxPoints = calculateMaxPoints(userData.balance);
     const regeneratedPoints = (maxPoints / 18);
-    const oldDoints = userData.doints;
-
-    userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
     
-    console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
+    // Store old values for logging
+    const oldDoints = userData.doints;
+    const oldPoints = userData.points;
+
+    // If doints are 0 but points exist, create negative doints
+    if (userData.doints <= 0 && userData.points > 0) {
+        userData.doints -= regeneratedPoints; // This will make doints negative
+        console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Points: ${oldPoints} (unchanged) | Doints: ${oldDoints} → ${userData.doints} (negative) | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
+    } else {
+        // Otherwise subtract from doints as before
+        userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
+        console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
+    }
     
     lobby[userId] = {
         ...userData
@@ -80,13 +89,6 @@ function shouldKick(userId) {
         console.log(`User ${userId} not found in the lobby. Kicking.`);
         return true;
     }
-
-    // New users ("newb") are exempt from being kicked
-    // if (userData.newb) {
-    //     console.log(`User ${userId} is a newb and won't be kicked.`);
-    //     return false;
-    // }
-    // i think this made it so that newbs didnt regen points. lets just save them
 
     // Check lastTouch timestamp
     const now = Date.now();
@@ -643,7 +645,7 @@ async function handleUserData(userId, message) {
 async function checkUserPoints(userId, group, message) {
     console.log('checking user points')
     const user = lobby[userId];
-    const totalPoints = user.points + (user.doints || 0);
+    const totalPoints = user.points + user.doints;
     const outOfPoints = pointsCalc(totalPoints) > (user.balance + NOCOINERSTARTER);
 
     if (

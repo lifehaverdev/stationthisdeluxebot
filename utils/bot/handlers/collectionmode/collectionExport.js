@@ -435,19 +435,19 @@ class CollectionExport {
                     inline_keyboard: [
                         [{
                             text: "ScatterArt - Insta Reveal",
-                            callback_data: "export_platform_scatter_instant"
+                            callback_data: `export_platform_scatter_instant_${exportTimestamp}`
                         }],
                         [{
                             text: "ScatterArt - Custom Reveal",
-                            callback_data: "export_platform_scatter_custom"
+                            callback_data: `export_platform_scatter_custom_${exportTimestamp}`
                         }],
                         [{
                             text: "LaunchMyNFT",
-                            callback_data: "export_platform_launchmynft"
+                            callback_data: `export_platform_launchmynft_${exportTimestamp}`
                         }],
                         [{
                             text: "Self-Hosted (Advanced)",
-                            callback_data: "export_platform_custom"
+                            callback_data: `export_platform_custom_${exportTimestamp}`
                         }],
                         [{
                             text: "❌ Cancel",
@@ -488,19 +488,19 @@ class CollectionExport {
                 inline_keyboard: [
                     [{
                         text: "ScatterArt - Insta Reveal",
-                        callback_data: "export_platform_scatter_instant"
+                        callback_data: `export_platform_scatter_instant_${exportTimestamp}`
                     }],
                     [{
                         text: "ScatterArt - Custom Reveal",
-                        callback_data: "export_platform_scatter_custom"
+                        callback_data: `export_platform_scatter_custom_${exportTimestamp}`
                     }],
                     [{
                         text: "LaunchMyNFT",
-                        callback_data: "export_platform_launchmynft"
+                        callback_data: `export_platform_launchmynft_${exportTimestamp}`
                     }],
                     [{
                         text: "Self-Hosted (Advanced)",
-                        callback_data: "export_platform_custom"
+                        callback_data: `export_platform_custom_${exportTimestamp}`
                     }],
                     [{
                         text: "❌ Cancel",
@@ -778,9 +778,10 @@ async function handleSetExport(message) {
                                 symbol: context.symbol,
                                 description: context.description,
                                 image: `/${piece.export.number}.png`,
-                                attributes: piece.traits.map(trait => ({
-                                    trait_type: trait.type,
-                                    value: trait.value.name
+                                attributes: Object.entries(piece.traits)
+                                .map(([type, traitData]) => ({
+                                    trait_type: type,
+                                    value: traitData.value.name
                                 }))
                             };
 

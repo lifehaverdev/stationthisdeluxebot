@@ -1148,43 +1148,61 @@ class CollectionCook {
             // Small delay to ensure image is set
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // Build traits display from traits object
-            const traitsDisplay = piece.traits
-                .map(trait => `• ${trait.type}: ${trait.value.name}`)
+            // Create base caption with traits
+            const traitsDisplay = Object.entries(piece.traits)
+                .map(([type, traitData]) => `• ${type}: ${traitData.value.name}`)
                 .join('\n');
 
-            // Create caption
-            const caption = `🖼 Generation Review\n\n` +
-            `Traits:\n${traitsDisplay}\n\n` +
-            `Prompt: ${piece.prompt}`;
+            const baseCaption = `🖼 Generation Review\n\n` +
+                              `Traits:\n${traitsDisplay}`;
 
-    
-            // Create review keyboard with piece ID
-            const reviewKeyboard = {
-                inline_keyboard: [
-                    [
-                        { text: "✅ Approve", callback_data: `cookDiscern_approve_${piece._id}_${collectionId}` },
-                        { text: "❌ Reject", callback_data: `cookDiscern_reject_${piece._id}_${collectionId}` }
-                    ],
-                    [
-                        { text: "🔙 Back", callback_data: `cookReview_${collectionId}` }
-                    ]
-                ]
-            };
-    
-            // Edit message with image and review options
-            await editMessage({
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-                //photo: imageUrl,
-                caption: caption,
-                
-                options: {
-                    reply_markup: reviewKeyboard,
-                    parse_mode: 'HTML',
-                    caption_entities: []
-                }
-            });
+            // Check if adding prompt would exceed limit (Telegram limit is 1024 characters)
+            if ((baseCaption + `\n\nPrompt: ${piece.prompt}`).length > 1024) {
+                // Send image with traits only
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    caption: baseCaption,
+                    options: {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "✅ Approve", callback_data: `cookDiscern_approve_${piece._id}_${collectionId}` },
+                                    { text: "❌ Reject", callback_data: `cookDiscern_reject_${piece._id}_${collectionId}` }
+                                ]
+                            ]
+                        }   
+                    }    
+                });
+
+                // Send prompt in separate message
+                await sendMessage(message.reply_to_message,
+                    `📝 Prompt:\n${piece.prompt}`,
+                    {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: "❌ Close", callback_data: "cancel" }]
+                            ]
+                        }
+                    });
+            } else {
+                // Everything fits, send as single message
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    caption: baseCaption + `\n\nPrompt: ${piece.prompt}`,
+                    options: {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: "✅ Approve", callback_data: `cookDiscern_approve_${piece._id}_${collectionId}` },
+                                    { text: "❌ Reject", callback_data: `cookDiscern_reject_${piece._id}_${collectionId}` }
+                                ]
+                            ]
+                        }
+                    }
+                });
+            }
     
         } catch (error) {
             console.error('Error starting review:', error);
