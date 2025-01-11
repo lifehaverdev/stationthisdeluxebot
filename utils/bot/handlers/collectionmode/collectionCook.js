@@ -216,7 +216,7 @@ class CollectionCook {
             // Process master prompt and generate traits
             const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
             const conflictMap = TraitSelector.buildConflictMap(exclusions);
-            const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+            const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
             const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
     
             // Build user context
@@ -224,7 +224,7 @@ class CollectionCook {
             const userContext = {
                 userId: user,
                 collectionId: collectionId,
-                traits: selectedTraits,
+                traits: {details: traitDetails, selected: selectedTraits},
                 type: workflowType,
                 prompt: generatedPrompt,
                 basePrompt: -1,
@@ -407,7 +407,7 @@ class CollectionCook {
                 // Process master prompt and generate traits
                 const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
                 const conflictMap = TraitSelector.buildConflictMap(exclusions);
-                const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+                const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
                 const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
     
                 userContext = {
@@ -428,7 +428,7 @@ class CollectionCook {
                     controlNet: false,
                     styleTransfer: false,
                     openPose: false,
-                    traits: selectedTraits
+                    traits: {details: traitDetails, selected: selectedTraits}
                 };
             }
     
@@ -572,9 +572,9 @@ class CollectionCook {
                         await this.completeCookingTask(cookTask, 'collection_not_found');
                         continue;
                     }
-
+                    const generatedCount = await getCollectionGenerationCount(cookTask.collectionId);
                     // Check generation count instead of supply
-                    if (cookTask.generationCount >= 5) {  // Testing limit
+                    if (generatedCount >= Math.min(collection.totalSupply, 5)) {  // Testing limit
                         console.log(`Generation limit reached for collection ${cookTask.collectionId}`);
                         await this.completeCookingTask(cookTask, 'generation_limit_reached');
                         continue;
@@ -769,7 +769,7 @@ class CollectionCook {
             // Process master prompt and generate traits
             const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
             const conflictMap = TraitSelector.buildConflictMap(exclusions);
-            const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+            const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
             const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
 
             // Build user context
@@ -777,7 +777,7 @@ class CollectionCook {
             // Use cached context but update the prompt
             const userContext = {
                 ...cookingTask.userContextCache,
-                traits: selectedTraits,
+                traits: {details: traitDetails, selected: selectedTraits},
                 prompt: generatedPrompt
             };
 
@@ -1148,8 +1148,8 @@ class CollectionCook {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             // Build traits display from traits object
-            const traitsDisplay = Object.entries(piece.traits)
-                .map(([type, value]) => `• ${type}: ${value}`)
+            const traitsDisplay = piece.traits
+                .map(trait => `• ${trait.type}: ${trait.value.name}`)
                 .join('\n');
 
             // Create caption

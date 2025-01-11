@@ -611,7 +611,7 @@ async function handleTestCollection(message, user, collectionId) {
     const conflictMap = TraitSelector.buildConflictMap(exclusions);
     logThis(LOG_TEST, `[TEST_COLLECTION] Built conflict map with ${conflictMap.size} entries`);
     
-    const selectedTraits = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+    const {selectedTraits, _} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
     logThis(LOG_TEST, `[TEST_COLLECTION] Generated trait selection: ${selectedTraits}`);
     
     const testPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);

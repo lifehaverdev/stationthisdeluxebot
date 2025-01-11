@@ -114,6 +114,8 @@ const STATES = {
 
     TRIPO: 'TRIPO',
 
+    SETEXPORT: 'SETEXPORT',
+
     // Add more states as needed
 };
 //for setters
