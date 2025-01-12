@@ -9,7 +9,8 @@ const {
     TraitSelector,
     validateMasterPrompt,
     buildCookModePromptObjFromWorkflow,
-    getCollectionGenerationCount
+    getCollectionGenerationCount,
+    createConfigHash
 } = require('./collectionUtils');
 const { sendMessage, editMessage, logThis } = require('../../../utils');
 const UserEconomyDB = require('../../../../db/models/userEconomy');
