@@ -74,7 +74,7 @@ async function getMyCollections(userId) {
                 // Check if collection meets export criteria
                 if (collection.totalSupply) {
                     const pieces = await getCollectionGenerationCount(collection.collectionId)
-                    if (pieces >= 5 || pieces >=collection.totalSupply) {
+                    if (pieces >=collection.totalSupply) {
                         hasExportableCollections = true;
                     }
                 }

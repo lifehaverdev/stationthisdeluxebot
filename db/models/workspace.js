@@ -37,7 +37,7 @@ class LoraDB extends BaseDB {
     }
 
     async loadLora(loraId) {
-        return this.findOne({ loraId });
+        return this.findOne({ loraId: parseInt(loraId) });
     }
 
     async deleteWorkspace(loraId) {

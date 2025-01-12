@@ -61,29 +61,55 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   }
   // Process words one at a time
   // Split by whitespace but preserve punctuation for replacement
-  const words = prompt.split(/\s+/).map(word => word.trim());
+  //const words = prompt.split(/\s+/).map(word => word.trim());
+  // Process words with potential punctuation
+  const words = prompt.match(/[\w]+[.,!?()[\]{}'"]*|[.,!?()[\]{}'"]*[\w]+/g) || [];
+  console.log('Found words:', words); // Debug log
+
   let processedWords = new Set();
 
   for (const word of words) {
     // Skip if word is part of an existing LoRA tag
     if (/<lora:[^>]+>/.test(word)) continue;
 
-    // Check for weight syntax: either number suffix or :number
-    const weightMatch = word.match(/^(.*?)(?:(\d(?:\.\d+)?)|:(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
+    // Modified to only treat trailing numbers as weights if they follow a non-digit
+    const weightMatch = word.match(/^(\d+|.*?(?:\d+)??)(?:(\d(?:\.\d+)?)|:(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
     if (!weightMatch) continue;
-
+    // Strip punctuation for matching
+    const wordLower = word.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
+    console.log('\nProcessing word for cognates:', {
+      original: word,
+      lowercase: wordLower,
+      checkpointDesc: checkpointDesc
+    });
     const [, baseWord, numericWeight, colonWeight] = weightMatch;
     const customWeight = colonWeight || numericWeight;
     
+    // If the word is all digits and there's a numericWeight, treat the whole thing as the baseWord
+    if (/^\d+$/.test(word) && numericWeight) {
+        baseWord = word;
+    }
+    
     // Strip punctuation for matching
-    const wordLower = baseWord.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
+    //const wordLower = baseWord.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
     
     if (processedWords.has(wordLower)) continue;
     processedWords.add(wordLower);
     
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
+    console.log('Cognate match:', {
+      found: !!cognateMatch,
+      matchDetails: cognateMatch,
+      versionMatch: cognateMatch?.version === checkpointDesc
+    });
     if (cognateMatch && cognateMatch.version === checkpointDesc) {
+      console.log('Found valid cognate match:', {
+        word: wordLower,
+        loraName: cognateMatch.lora_name,
+        version: cognateMatch.version,
+        replaceWith: cognateMatch.replaceWith
+      });
       const weight = customWeight ? parseFloat(customWeight) / 10 : cognateMatch.weight;
       const loraTag = `<lora:${cognateMatch.lora_name}:${weight}>`;
       
@@ -91,19 +117,19 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
         usedLoras.add(cognateMatch.lora_name);
         addedLoraTags.add(cognateMatch.lora_name);
         
-        // Use word boundary and optional punctuation in regex
+        // Enhanced regex to handle surrounding punctuation and ensure we're replacing the whole word
         modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+          new RegExp(`\\b${wordLower}\\b`, 'i'),
           `${loraTag} ${cognateMatch.replaceWith}`
         );
-      } else {
-        modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`(?<!<lora:[^>]*)\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
-          cognateMatch.replaceWith
-        );
-      }
 
-      await loraDB.incrementUses(cognateMatch.lora_name);
+        await loraDB.incrementUses(cognateMatch.lora_name);
+        console.log('Applied cognate replacement:', {
+          from: wordLower,
+          to: `${loraTag} ${cognateMatch.replaceWith}`,
+          newPrompt: modifiedPrompt
+        });
+      }
       continue;
     }
 

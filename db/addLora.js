@@ -81,7 +81,7 @@ async function addLoraInteractive() {
             description: null,
             triggerWords: [triggerWord],
             uses: 0,
-            exampleImagePath: `loraExamples/${loraName}.png`,
+            exampleImagePath: `loraExamples/${loraName}.jpg`,
             tags: {},
             cognates: cognates,
             disabled: false,
