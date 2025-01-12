@@ -1146,18 +1146,6 @@ class CollectionCook {
                 throw new Error('No image URL found in piece data');
             }
 
-            // First edit: Set the image
-            await editMessage({
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-                photo: imageUrl
-            });
-
-            // Small delay to ensure image is set
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Create base caption with traits
-            console.log('traits off piece',piece.traits);
             const traitsDisplay = piece.traits
                 .map(trait => `• ${trait.type}: ${trait.value.name}`)
                 .join('\n');
@@ -1172,6 +1160,7 @@ class CollectionCook {
                     chat_id: message.chat.id,
                     message_id: message.message_id,
                     caption: baseCaption,
+                    photo: imageUrl,
                     options: {
                         reply_markup: {
                             inline_keyboard: [
@@ -1200,6 +1189,7 @@ class CollectionCook {
                     chat_id: message.chat.id,
                     message_id: message.message_id,
                     caption: baseCaption + `\n\nPrompt: ${piece.prompt}`,
+                    photo: imageUrl,
                     options: {
                         reply_markup: {
                             inline_keyboard: [
