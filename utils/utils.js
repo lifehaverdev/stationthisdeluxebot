@@ -1,5 +1,6 @@
 const { getBotInstance, lobby, rooms, getBurned } = require('./bot/bot'); 
 const defaultUserData = require('./users/defaultUserData.js')
+const fs = require('fs');
 
 function getGroup(message) {
     const group = rooms.find(group => group.id == message.chat.id)
@@ -447,41 +448,70 @@ async function editMessage({ reply_markup = null, chat_id, message_id, text = nu
     
     // Helper function for error handling
     const handleError = (error, context) => {
-        console.error(`Error editing message ${context}:`, {
-            message: error.message || '',
-            name: error.name || '',
-            code: error.code || '',
-            chat_id,
-            message_id,
-            text,
-        });
+        // Only log if it's not a "no text/caption to edit" error
+        if (!error.message?.includes('no text in the message to edit') && 
+            !error.message?.includes('no caption in the message to edit')) {
+            console.error(`Error editing message ${context}:`, {
+                message: error.message || '',
+                name: error.name || '',
+                code: error.code || '',
+                chat_id,
+                message_id,
+                text,
+            });
+        }
+        return error; // Return error for handling
     };
 
     try {
-        //console.log('Editing message with the following details:', { chat_id, message_id, text, reply_markup, ...options });
-
-        // Edit the message text if provided
-        if (text) {
-            await bot.editMessageText(text, { chat_id, message_id, ...options });
+        // Special handling for local image files
+        if (photo && !photo.startsWith('http')) {
+            // Delete the old message
+            await bot.deleteMessage(chat_id, message_id);
+            
+            // Send new message with photo
+            await bot.sendPhoto(chat_id, fs.createReadStream(photo), {
+                caption: caption,
+                reply_markup,
+                ...options
+            });
+            return;
         }
 
-        // Edit the reply markup if provided
+        // Handle text/caption updates
+        if (text || caption) {
+            const content = text || caption;
+            try {
+                // Try editing as text first
+                await bot.editMessageText(content, { chat_id, message_id, ...options });
+            } catch (textError) {
+                // If text edit fails, try editing as caption
+                try {
+                    await bot.editMessageCaption(content, { chat_id, message_id, ...options });
+                } catch (captionError) {
+                    // If both fail with non-standard errors, throw the original error
+                    if (!textError.message?.includes('no text in the message to edit') &&
+                        !captionError.message?.includes('no caption in the message to edit')) {
+                        throw textError;
+                    }
+                }
+            }
+        }
+
+        // Edit reply markup if provided
         if (reply_markup) {
             await bot.editMessageReplyMarkup(reply_markup, { chat_id, message_id, ...options });
         }
 
-        // Edit the message media if a photo URL is provided
-        if (photo) {
+        // Handle URL photo updates
+        if (photo && photo.startsWith('http')) {
             const media = {
                 type: 'photo',
-                media: photo
+                media: photo,
+                caption: caption,
+                parse_mode: options.parse_mode
             };
             await bot.editMessageMedia(media, { chat_id, message_id, reply_markup, ...options });
-        }
-
-        // Edit the message caption if provided
-        if (caption) {
-            await bot.editMessageCaption(caption, { chat_id, message_id, ...options });
         }
 
     } catch (error) {

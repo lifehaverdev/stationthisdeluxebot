@@ -646,7 +646,7 @@ async function displayLoraDetail(message, loraName, user = null) {
     }
 
     // Check for example image
-    const imagePath = path.join(process.cwd(), 'loraExamples', `${loraName}.png`);
+    const imagePath = path.join(process.cwd(), 'loraExamples', `${loraName}.jpg`);
     let hasImage = false;
     try {
         await fs.access(imagePath);
@@ -656,13 +656,7 @@ async function displayLoraDetail(message, loraName, user = null) {
     }
 
     // Build message text with better formatting
-    let messageText = `*${escapeMarkdown(getLoraDisplayName(lora))}*\n`;
-    messageText += `\`${lora.lora_name}\`\n\n`;
-    
-    // Add description if available
-    if (lora.description) {
-        messageText += `_${escapeMarkdown(lora.description)}_\n\n`;
-    }
+    let messageText = `*${escapeMarkdown(getLoraDisplayName(lora))}*\n\n`;
 
     // Stats section
     messageText += '*Stats* 📊\n';
@@ -675,24 +669,32 @@ async function displayLoraDetail(message, loraName, user = null) {
     messageText += '*Trigger Words* 📝\n';
     messageText += '`' + escapeMarkdown(lora.triggerWords.join(', ')) + '`\n\n';
 
+    // Example prompt section if available
+    if (lora.examplePrompt) {
+        messageText += '*Example Prompt* 💭\n';
+        messageText += '`' + escapeMarkdown(lora.examplePrompt) + '`\n\n';
+    }
+
     // Image status
     if (!hasImage) {
         messageText += '_No example image available_\n';
     }
 
-    // Add civitai link if available
-    if (lora.civitaiLink) {
-        messageText += `\n[View on Civitai](${lora.civitaiLink.replace(/[)\\]/g, '\\$&')})\n`;
-    }
-
     const isFavorited = isLoraFavorited(user, loraName);
+    // Find user's existing rating
+    const userRating = lora.ratings?.find(r => r.userId === user)?.rating;
+    
     const keyboard = [
-        // Rating buttons
+        // Rating buttons - show current rating if exists, otherwise show rating options
         [
-            { text: '⭐', callback_data: `lorarate_${loraName}_1` },
-            { text: '⭐⭐', callback_data: `lorarate_${loraName}_2` },
-            { text: '⭐⭐⭐', callback_data: `lorarate_${loraName}_3` },
-        ],
+            userRating 
+                ? { text: '⭐'.repeat(userRating), callback_data: 'noop' }
+                : [
+                    { text: '⭐', callback_data: `lorarate_${loraName}_1` },
+                    { text: '⭐⭐', callback_data: `lorarate_${loraName}_2` },
+                    { text: '⭐⭐⭐', callback_data: `lorarate_${loraName}_3` },
+                ]
+        ].flat(), // Flatten array since we might have nested arrays
         // Action buttons
         [
             { 
@@ -709,23 +711,36 @@ async function displayLoraDetail(message, loraName, user = null) {
     };
 
     try {
-        if (user) {
-            await editMessage({
-                text: messageText,
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-                options
-            });
-        } else {
-            await sendMessage(message, messageText, options);
-        }
-
-        // If there's an image, send it as a follow-up message
         if (hasImage) {
-            await sendMessage(message, {
+            // If there's an image, send everything as one message
+            console.log('imagePath', imagePath)
+            const photoMessage = {
                 photo: imagePath,
-                caption: `Example for ${getLoraDisplayName(lora)}`
-            });
+                caption: messageText,
+                options
+            };
+
+            if (user) {
+                await editMessage({
+                    ...photoMessage,
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                });
+            } else {
+                await sendMessage(message, photoMessage);
+            }
+        } else {
+            // No image, send as text only
+            if (user) {
+                await editMessage({
+                    text: messageText,
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    options
+                });
+            } else {
+                await sendMessage(message, messageText, options);
+            }
         }
     } catch (error) {
         console.error('Error in displayLoraDetail:', error);
@@ -765,6 +780,62 @@ prefixHandlers['lorafav_'] = async (action, message, user) => {
     // Redisplay the lora detail page with updated favorite status
     await displayLoraDetail(message, loraName, user);
 };
+
+// Add this to your existing prefixHandlers
+prefixHandlers['lorarate_'] = async (action, message, user) => {
+    const [loraName, rating] = action.replace('lorarate_', '').split('_');
+    await handleLoraRate(message, loraName, parseInt(rating), user);
+};
+
+async function handleLoraRate(message, loraName, rating, user) {
+    if (!user) {
+        console.error('No user found for rating action');
+        return;
+    }
+
+    try {
+        const lora = await loras.findOne({ lora_name: loraName });
+        if (!lora) {
+            console.error(`LoRA not found: ${loraName}`);
+            return;
+        }
+
+        // Initialize or update ratings array
+        if (!lora.ratings || !Array.isArray(lora.ratings)) {
+            lora.ratings = [];
+        }
+
+        // Check if user has already rated
+        const existingRatingIndex = lora.ratings.findIndex(r => r.userId === user);
+        
+        if (existingRatingIndex !== -1) {
+            // Update existing rating
+            lora.ratings[existingRatingIndex].rating = rating;
+        } else {
+            // Add new rating
+            lora.ratings.push({ userId: user, rating: rating });
+        }
+
+        // Calculate average rating
+        const totalRating = lora.ratings.reduce((sum, r) => sum + r.rating, 0);
+        lora.rating = totalRating / lora.ratings.length;
+
+        // Save to database
+        await loras.updateOne(
+            { lora_name: loraName },
+            { 
+                ratings: lora.ratings,
+                rating: lora.rating
+            }
+        );
+
+        // Redisplay the lora detail page with updated rating
+        await displayLoraDetail(message, loraName, user);
+
+    } catch (error) {
+        console.error('Error in handleLoraRate:', error);
+    }
+}
 
 // Add new function to handle requests
 async function handleLoraRequest(message, user) {

@@ -11,6 +11,31 @@ const LOG_SELECT = test;
 const LOG_CONFLICT = test;
 const LOG_EXCLUSION = test;
 const LOG_VALIDATE = test;
+const crypto = require('crypto');
+
+// === Configuration Hashing ===
+function createConfigHash(collection) {
+    // Extract required values
+    const { totalSupply, config: { traitTypes, masterPrompt } } = collection;
+    
+    // Create a string of all trait prompts
+    const traitPrompts = traitTypes
+        .flatMap(traitType => 
+            traitType.traits.map(trait => trait.prompt)
+        )
+        .sort() // Sort for consistency
+        .join('|'); // Join with delimiter
+    
+    // Combine all values into a single string
+    const configString = `${masterPrompt}|${traitPrompts}|${totalSupply}`;
+    
+    // Create SHA-256 hash
+    const hash = crypto.createHash('sha256')
+        .update(configString)
+        .digest('hex');
+    
+    return hash;
+}
 
 // === Collection Loading ===
 async function getOrLoadCollection(userId, collectionId) {
@@ -36,6 +61,8 @@ async function getOrLoadCollection(userId, collectionId) {
     studio[userId][collectionId] = collectionData;
     return collectionData;
 }
+
+
 
 // === Prompt Processing ===
 function findExclusions(masterPrompt) {
@@ -436,7 +463,8 @@ function buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
         ...promptObj,
         isCookMode: true,
         collectionId: userContext.collectionId,
-        traits: userContext.traits
+        traits: userContext.traits,
+        configHash: userContext.configHash
     };
 
     return promptObj;
@@ -486,5 +514,6 @@ module.exports = {
     TraitSelector,
     validateMasterPrompt,
     buildCookModePromptObjFromWorkflow,
-    getCollectionGenerationCount
+    getCollectionGenerationCount,
+    createConfigHash
 };

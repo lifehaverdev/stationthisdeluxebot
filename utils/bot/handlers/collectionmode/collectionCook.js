@@ -190,16 +190,17 @@ class CollectionCook {
     async startCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
+            const collection = await getOrLoadCollection(user, collectionId);
             // Check for existing generations
             const existingGenerations = await getCollectionGenerationCount(collectionId);
 
             const generationCount = existingGenerations || 0;
 
-            if (generationCount >= 5) {
-                await sendMessage({
+            if (generationCount >= (collection.totalSupply || 5)) {
+                await sendMessage(
                     message,
-                    text: `⚠️ This collection already has ${existingGenerations} generations. Maximum limit is 5.`
-                });
+                    `⚠️ This collection already has ${existingGenerations} generations. Maximum limit is ${collection.totalSupply}.`
+                );
                 return;
             }
             // 1. Check qoints
@@ -210,8 +211,11 @@ class CollectionCook {
             }
     
             // 2. Load collection and generate prompt
-            const collection = await getOrLoadCollection(user, collectionId);
+            
             const { masterPrompt, traitTypes } = collection.config;
+
+            // Generate config hash
+            const configHash = createConfigHash(collection);
             
             // Process master prompt and generate traits
             const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
@@ -226,6 +230,7 @@ class CollectionCook {
                 userId: user,
                 collectionId: collectionId,
                 traits: {details: traitDetails, selected: selectedTraits},
+                configHash,
                 type: workflowType,
                 prompt: generatedPrompt,
                 basePrompt: -1,
@@ -253,10 +258,10 @@ class CollectionCook {
                 startedAt: Date.now(),
                 status: 'active',
                 generationCount: 0,  // Changed from currentBatch
-                targetSupply: collection.config.totalSupply || 5,  // Default to 5 for testing
+                targetSupply: collection.totalSupply || 5,  // Default to 5 for testing
                 lastGenerated: null,
                 generationStatus: 'pending',
-                qointsRequired: collection.config.totalSupply * 100 || 500,
+                qointsRequired: collection.totalSupply * 100 || 500,
                 userContextCache: {
                     ...userContext,
                     collection: {
@@ -316,12 +321,13 @@ class CollectionCook {
     async pauseCooking(action, message, user) {
         try {
             const collectionId = parseInt(action.split('_')[1]);
+            const collection = await getOrLoadCollection(user, collectionId);
             const status = await this.#getCookingStatus();
             // Find the cooking task
             const taskIndex = status.cooking.findIndex(
                 task => task.userId === user && task.collectionId === collectionId
             );
-    
+            
             if (taskIndex === -1) {
                 await editMessage({
                     chat_id: message.chat.id,
@@ -360,7 +366,7 @@ class CollectionCook {
                 message_id: message.message_id,
                 text: "⏸ Cook Mode Paused\n\n" +
                     `Collection: ${collectionId}\n` +
-                    `Progress: ${existingTask.generationCount}/5\n` +
+                    `Progress: ${existingTask.generationCount}/${collection.totalSupply || 5}\n` +
                     "Generation will resume when you press play.",
                 reply_markup: controlPanel
             });
@@ -489,7 +495,7 @@ class CollectionCook {
                 c.userId === user && 
                 c.collectionId === collectionId
             );
-
+            const collection = await getOrLoadCollection(user, collectionId);
             console.log('Checking cook progress:', {
                 userId: user,
                 collectionId,
@@ -502,7 +508,7 @@ class CollectionCook {
             }
 
             // Check generation count instead of supply
-            if (cookingTask.generationCount >= 5) {  // Testing limit
+            if (cookingTask.generationCount >= (collection.totalSupply || 5)) {  // Testing limit
                 console.log('Generation limit reached:', {
                     userId: user,
                     collectionId,
@@ -526,7 +532,7 @@ class CollectionCook {
 
             if (isStillActive) {
                 // Get collection info from cache or DB
-                const collection = await getOrLoadCollection(user, collectionId);
+                
                 if (!collection) {
                     throw new Error('Collection not found');
                 }
@@ -575,7 +581,7 @@ class CollectionCook {
                     }
                     const generatedCount = await getCollectionGenerationCount(cookTask.collectionId);
                     // Check generation count instead of supply
-                    if (generatedCount >= Math.min(collection.totalSupply, 5)) {  // Testing limit
+                    if (generatedCount >= (collection.totalSupply || 5)) {  // Testing limit
                         console.log(`Generation limit reached for collection ${cookTask.collectionId}`);
                         await this.completeCookingTask(cookTask, 'generation_limit_reached');
                         continue;
@@ -628,7 +634,7 @@ class CollectionCook {
                 statusText = "⚠️ You're already cooking this collection!\n\n" +
                             "Current status:\n" +
                             `Collection: ${collection.name}\n` +
-                            `Generated: ${generatedCount}/5\n` +
+                            `Generated: ${generatedCount}/${collection.totalSupply || 5}\n` +
                             `Last generated: ${existingTask.lastGenerated ? 
                                 new Date(existingTask.lastGenerated).toLocaleString() : 
                                 'Never'}\n\n` +
@@ -637,7 +643,7 @@ class CollectionCook {
                 statusText = "⚠️ You're already cooking another collection!\n\n" +
                             "Current cook status:\n" +
                             `Collection: ${collection.name}\n` +
-                            `Generated: ${generatedCount}/5\n` +
+                            `Generated: ${generatedCount}/${collection.totalSupply || 5}\n` +
                             `Last generated: ${existingTask.lastGenerated ? 
                                 new Date(existingTask.lastGenerated).toLocaleString() : 
                                 'Never'}\n\n` +
@@ -886,14 +892,15 @@ class CollectionCook {
             message_id: message.message_id,
             text: statusText +
                 `Collection: ${collection.name}\n` +
-                `Generated: ${cookingTask.generationCount}/5\n` +
+                `Generated: ${cookingTask.generationCount}/${collection.totalSupply || 5}\n` +
                 "Use the controls below to manage generation:",
             reply_markup: controlPanel
         });
     }
 
     async checkSupplyLimit(cookingTask) {
-        if (cookingTask.generationCount >= 5) {
+        const collection = await getOrLoadCollection(cookingTask.userId, cookingTask.collectionId);
+        if (cookingTask.generationCount >= (collection.totalSupply || 5)) {
             // Get current status
             const status = await this.#getCookingStatus();
             
@@ -966,7 +973,7 @@ class CollectionCook {
             // 3. Create completion message with appropriate context
             let completionMessage = "✨ Collection Cooking Complete!\n\n";
             completionMessage += `Collection: ${collection.name}\n`;
-            completionMessage += `Generated: ${cookTask.generationCount}/5\n\n`;
+            completionMessage += `Generated: ${cookTask.generationCount}/${collection.totalSupply || 5}\n\n`;
     
             switch (reason) {
                 case 'generation_limit_reached':
@@ -1149,8 +1156,9 @@ class CollectionCook {
             await new Promise(resolve => setTimeout(resolve, 500));
 
             // Create base caption with traits
-            const traitsDisplay = Object.entries(piece.traits)
-                .map(([type, traitData]) => `• ${type}: ${traitData.value.name}`)
+            console.log('traits off piece',piece.traits);
+            const traitsDisplay = piece.traits
+                .map(trait => `• ${trait.type}: ${trait.value.name}`)
                 .join('\n');
 
             const baseCaption = `🖼 Generation Review\n\n` +
