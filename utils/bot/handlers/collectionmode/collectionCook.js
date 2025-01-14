@@ -652,7 +652,12 @@ class CollectionCook {
             }
     
             // Send message with current status and controls
-            await sendMessage(message, statusText, { reply_markup: controlPanel });
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: statusText,
+                reply_markup: controlPanel
+            });
     
         } catch (error) {
             console.error('Error handling existing cook task:', error);
