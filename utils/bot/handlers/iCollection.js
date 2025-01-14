@@ -1632,3 +1632,7 @@ prefixHandlers['cookDiscern_'] = (action, message, user) =>{
 prefixHandlers['cookStats_'] = (action, message, user) =>{
     cookModeHandler.handleStats(action, message, user);
 };
+
+prefixHandlers['cookPrompt_'] = (action, message, user) =>{
+    cookModeHandler.handlePromptShow(action, message, user);
+};

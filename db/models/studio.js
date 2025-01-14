@@ -216,6 +216,11 @@ class StudioDB extends BaseDB {
             }
         );
     }
+
+    async getPieceById(pieceId) {
+        const objectId = new ObjectId(pieceId);
+        return this.findOne({ _id: objectId });
+    }
 }
 
 module.exports = StudioDB;
