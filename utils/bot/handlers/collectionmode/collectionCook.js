@@ -1122,7 +1122,6 @@ class CollectionCook {
     
             // Get the next pending piece
             const piece = await studio.getNextPendingPiece(collectionId);
-                console.log('piece we got', piece);
             if (!piece) {
                 // No more pieces to review
                 const hasImage = !message.text;  // If no text, it's an image message
@@ -1167,22 +1166,15 @@ class CollectionCook {
                                 [
                                     { text: "✅ Approve", callback_data: `cookDiscern_approve_${piece._id}_${collectionId}` },
                                     { text: "❌ Reject", callback_data: `cookDiscern_reject_${piece._id}_${collectionId}` }
+                                ],
+                                [
+                                    { text: "📝 Show Prompt", callback_data: `cookPrompt_${piece._id}` }
                                 ]
                             ]
                         }   
                     }    
                 });
 
-                // Send prompt in separate message
-                await sendMessage(message.reply_to_message,
-                    `📝 Prompt:\n${piece.prompt}`,
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: "❌ Close", callback_data: "cancel" }]
-                            ]
-                        }
-                    });
             } else {
                 // Everything fits, send as single message
                 await editMessage({
@@ -1276,6 +1268,36 @@ class CollectionCook {
         } catch (error) {
             console.error('Error showing stats:', error);
             await sendMessage(message, "❌ An error occurred while showing collection stats.");
+        }
+    }
+
+    async handlePromptShow(action, message, user) {
+        try {
+            const [_, pieceId] = action.split('_');
+            console.log('pieceId', pieceId);
+            const studio = new StudioDB();
+            const piece = await studio.getPieceById(pieceId);
+            // Get the piece
+            if (!piece) {
+                await sendMessage(message, "❌ Piece not found.");
+                return;
+            }
+    
+            // Send prompt in a temporary message
+            await sendMessage(message,
+                `📝 Prompt:\n${piece.prompt}`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: "❌ Close", callback_data: "cancel" }
+                        ]]
+                    }
+                }
+            );
+    
+        } catch (error) {
+            console.error('Error showing prompt:', error);
+            await sendMessage(message, "❌ An error occurred while showing the prompt.");
         }
     }
 }
