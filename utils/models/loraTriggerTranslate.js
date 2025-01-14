@@ -9,8 +9,8 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   let modifiedPrompt = prompt;
 
   console.log('\n=== LoRA Translation Process ===');
-  console.log('Input prompt:', prompt);
-  console.log('Checkpoint:', checkpoint);
+  //console.log('Input prompt:', prompt);
+  //console.log('Checkpoint:', checkpoint);
 
   // Pre-scan for existing LoRA tags
   const existingLoraTags = prompt.match(/<lora:([^:]+):[^>]+>/g) || [];
@@ -64,7 +64,7 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
   //const words = prompt.split(/\s+/).map(word => word.trim());
   // Process words with potential punctuation
   const words = prompt.match(/[\w]+[.,!?()[\]{}'"]*|[.,!?()[\]{}'"]*[\w]+/g) || [];
-  console.log('Found words:', words); // Debug log
+  //console.log('Found words:', words); // Debug log
 
   let processedWords = new Set();
 
@@ -77,11 +77,11 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     if (!weightMatch) continue;
     // Strip punctuation for matching
     const wordLower = word.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
-    console.log('\nProcessing word for cognates:', {
-      original: word,
-      lowercase: wordLower,
-      checkpointDesc: checkpointDesc
-    });
+    // console.log('\nProcessing word for cognates:', {
+    //   original: word,
+    //   lowercase: wordLower,
+    //   checkpointDesc: checkpointDesc
+    // });
     const [, baseWord, numericWeight, colonWeight] = weightMatch;
     const customWeight = colonWeight || numericWeight;
     
@@ -98,18 +98,18 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     
     // Check cognates first
     const cognateMatch = cognates.get(wordLower);
-    console.log('Cognate match:', {
-      found: !!cognateMatch,
-      matchDetails: cognateMatch,
-      versionMatch: cognateMatch?.version === checkpointDesc
-    });
+    // console.log('Cognate match:', {
+    //   found: !!cognateMatch,
+    //   matchDetails: cognateMatch,
+    //   versionMatch: cognateMatch?.version === checkpointDesc
+    // });
     if (cognateMatch && cognateMatch.version === checkpointDesc) {
-      console.log('Found valid cognate match:', {
-        word: wordLower,
-        loraName: cognateMatch.lora_name,
-        version: cognateMatch.version,
-        replaceWith: cognateMatch.replaceWith
-      });
+      // console.log('Found valid cognate match:', {
+      //   word: wordLower,
+      //   loraName: cognateMatch.lora_name,
+      //   version: cognateMatch.version,
+      //   replaceWith: cognateMatch.replaceWith
+      // });
       const weight = customWeight ? parseFloat(customWeight) / 10 : cognateMatch.weight;
       const loraTag = `<lora:${cognateMatch.lora_name}:${weight}>`;
       
@@ -124,11 +124,11 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
         );
 
         await loraDB.incrementUses(cognateMatch.lora_name);
-        console.log('Applied cognate replacement:', {
-          from: wordLower,
-          to: `${loraTag} ${cognateMatch.replaceWith}`,
-          newPrompt: modifiedPrompt
-        });
+        // console.log('Applied cognate replacement:', {
+        //   from: wordLower,
+        //   to: `${loraTag} ${cognateMatch.replaceWith}`,
+        //   newPrompt: modifiedPrompt
+        // });
       }
       continue;
     }

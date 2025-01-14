@@ -205,9 +205,9 @@ class CollectionCook {
                 return;
             }
             // 1. Check qoints
-            const userQoints = lobby[user]?.balance || '0';
+            const userQoints = lobby[user]?.qoints || 0;
             if (parseInt(userQoints) < 100) {
-                await sendMessage(message, "❌ Insufficient qoints to start cooking (100 required).");
+                await sendMessage(message, "❌ Insufficient charge to start cooking.", {reply_markup: {inline_keyboard: [[{text: '💰 Buy Charge', url: 'https://miladystation2.net/charge'}]]}});
                 return;
             }
     
@@ -768,7 +768,7 @@ class CollectionCook {
 
             if (parseInt(userQoints) < 100) {
                 console.log(`Insufficient qoints for user ${user}, pausing cook`);
-                await this.pauseCooking(cookingTask, 'insufficient_qoints');
+                await this.completeCookingTask(cookingTask, 'insufficient_qoints');
                 return;
             }
 
