@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@privy-io/server-auth": "^1.17.2",
     "@solana/web3.js": "^1.91.4",
     "api": "^6.1.1",
     "archiver": "^7.0.1",
