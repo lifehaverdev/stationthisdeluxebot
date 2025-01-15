@@ -53,15 +53,12 @@ class UserPrefDB extends BaseDB {
     }
 
     async writeUserData(userId, data) {
-        console.log('writeUserData called with userId:', userId);
-        console.log('writeUserData input data:', JSON.stringify(data, null, 2));
         const prefData = this.massageData(data);
-        console.log('writeUserData massaged data:', JSON.stringify(prefData, null, 2));
         const result = await this.updateOne(
             { userId },
             prefData,
         );
-        console.log('writeUserData result:', result);
+        console.log('pref writeUserData result:', result);
         return result;
     }
 

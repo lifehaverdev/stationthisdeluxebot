@@ -25,7 +25,9 @@ async function refreshLoraCache(db) {
         // Handle trigger words
         if (lora.triggerWords && Array.isArray(lora.triggerWords)) {
             for (const word of lora.triggerWords) {
+                console.log('Processing trigger word:', word, typeof word); // Debug log
                 const wordLower = word.toLowerCase();
+                console.log('After toLowerCase:', wordLower, typeof wordLower); // Debug log
                 if (!cache.triggers.has(wordLower)) {
                     cache.triggers.set(wordLower, []);
                 }

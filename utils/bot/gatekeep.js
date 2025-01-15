@@ -148,13 +148,7 @@ async function kick(userId) {
         if (coreData.verified) {
             const fullData = await fetchFullUserData(userId);
             if (fullData) {
-                // Preserve the current session's preferences by only filling in missing fields
-                // rather than overwriting everything
-                Object.assign({}, fullData, updatedData); // Prioritize updatedData over fullData
-                
-                // Alternative approach: Save current state to database before kicking
-                // await saveUserPreferences(userId, updatedData);
-                // Object.assign(updatedData, fullData);
+                updatedData = Object.assign({}, updatedData, fullData); // Save the merged result
             }
         }
 
