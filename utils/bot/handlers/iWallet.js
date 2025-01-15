@@ -132,7 +132,7 @@ class PrivyInterface {
     async getSolanaWalletBalance(walletId) {
         try {
             const body = {
-                chain_id: "solana:mainnet", // CAIP-2 chain ID for Solana mainnet
+                chain_id: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:7S3P4HxJpyyigGzodYwHtCxZyUQe9JiBMHyRWXArAaKv", // CAIP-2 chain ID for Solana mainnet
                 token_addresses: [] // Empty array since we're just checking SOL balance
             };
     
