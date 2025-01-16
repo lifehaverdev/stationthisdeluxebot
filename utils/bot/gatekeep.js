@@ -209,7 +209,7 @@ async function batchKick(userIds) {
             if (coreData.verified) {
                 const fullData = fullDataResults[verifiedUsers.findIndex(v => v.userData.userId === userId)];
                 if (fullData) {
-                    Object.assign({}, fullData, baseData);
+                    baseData = Object.assign({}, baseData, fullData);
                 }
             }
 

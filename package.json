@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@privy-io/server-auth": "^1.17.2",
+    "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.91.4",
     "api": "^6.1.1",
     "archiver": "^7.0.1",
@@ -10,6 +11,7 @@
     "crypto": "^1.0.1",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
     "express": "^4.19.2",
     "form-data": "^4.0.1",
     "http": "^0.0.1-security",

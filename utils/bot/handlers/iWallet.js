@@ -1,5 +1,22 @@
 const crypto = require('crypto');
 const dotenv = require('dotenv');
+const { getBalance } = require('../../users/checkBalance');
+const { 
+    Connection, 
+    PublicKey, 
+    LAMPORTS_PER_SOL,
+    SystemProgram,
+    Transaction,
+} = require('@solana/web3.js');
+const { 
+    createTransferInstruction,
+    getAssociatedTokenAddress,
+    createAssociatedTokenAccountInstruction,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID
+} = require('@solana/spl-token');
+const { ethers } = require('ethers');
+
 dotenv.config();
 
 class PrivyInterface {
@@ -8,7 +25,267 @@ class PrivyInterface {
         this.APP_SECRET = process.env.PRIVY_APP_SECRET;
         this.AUTH_KEY = process.env.PRIVY_AUTH_KEY;
         this.API_BASE_URL = 'https://api.privy.io/v1'; // Updated base URL
+        // Add pending transactions storage
+        this.pendingTransactions = new Map();
+        
+        this.connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com');
+        //this.ethProvider = new ethers.providers.JsonRpcProvider(process.env.ETH_RPC_URL);
+        this.jupiterHandler = new JupiterHandler();
+         // Start the transaction monitor
+         this.startTransactionMonitor();
     }
+
+    // Transaction Status Enum
+    static TxStatus = {
+        SUBMITTED: 'submitted',
+        PENDING: 'pending',
+        CONFIRMED: 'confirmed',
+        FAILED: 'failed',
+        UNKNOWN: 'unknown'
+    };
+
+
+    // Transaction monitoring system
+    startTransactionMonitor() {
+        setInterval(() => this.checkPendingTransactions(), 10000); // Check every 10 seconds
+    }
+
+    async estimateGasCost(chainType, operation, params = {}) {
+        if (chainType === 'ethereum') {
+            // Get current gas price
+            const gasPrice = await this.ethProvider.getGasPrice();
+            
+            // Known gas limits for different operations
+            const GAS_LIMITS = {
+                ETH_TRANSFER: 21000,  // Standard ETH transfer
+                ERC20_TRANSFER: 65000, // Approximate for ERC20 transfers
+                // Add more operations as needed
+            };
+
+            const gasLimit = GAS_LIMITS[operation];
+            const gasCostWei = gasPrice.mul(gasLimit);
+            const gasCostEth = ethers.utils.formatEther(gasCostWei);
+
+            return {
+                estimatedGas: gasLimit,
+                gasPrice: gasPrice.toString(),
+                totalCost: gasCostEth,
+                currency: 'ETH'
+            };
+        }
+        
+        if (chainType === 'solana') {
+            // Solana's static fees (in SOL)
+            const SOLANA_FEES = {
+                SOL_TRANSFER: 0.000005,
+                TOKEN_TRANSFER: 0.000004598
+            };
+
+            return {
+                estimatedGas: SOLANA_FEES[operation],
+                currency: 'SOL'
+            };
+        }
+    }
+
+    async submitTransaction(params) {
+        const {
+            chainType,  // 'ethereum' or 'solana'
+            walletId,
+            fromAddress,
+            toAddress,
+            amount,
+            tokenAddress = null  // null for native token transfers
+        } = params;
+
+        try {
+            // Create transaction based on chain type
+            const body = {
+                method: 'signAndSendTransaction',
+                caip2: this._getChainId(chainType),
+                params: await this._createTransactionParams(params)
+            };
+
+            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', body);
+
+            // Create transaction record
+            const txRecord = {
+                id: response.data.hash,
+                chainType,
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                fromAddress,
+                toAddress,
+                amount,
+                tokenAddress,
+                submittedAt: new Date().toISOString(),
+                confirmations: 0,
+                requiredConfirmations: this._getRequiredConfirmations(chainType)
+            };
+
+            // Add to pending transactions
+            this.pendingTransactions.set(response.data.hash, txRecord);
+
+            return {
+                success: true,
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                transaction: txRecord
+            };
+
+        } catch (error) {
+            return this._handleError(error, `submit ${chainType} transaction`);
+        }
+    }
+
+    async checkTransactionStatus(txHash, chainType) {
+        try {
+            if (this.pendingTransactions.has(txHash)) {
+                const txRecord = this.pendingTransactions.get(txHash);
+                
+                let status;
+                if (chainType === 'solana') {
+                    status = await this._checkSolanaTransaction(txHash);
+                } else if (chainType === 'ethereum') {
+                    status = await this._checkEthereumTransaction(txHash);
+                }
+
+                // Update transaction record
+                txRecord.status = status.status;
+                txRecord.confirmations = status.confirmations;
+                txRecord.error = status.error;
+                
+                if (status.isComplete) {
+                    this.pendingTransactions.delete(txHash);
+                }
+
+                return {
+                    success: true,
+                    transaction: txRecord
+                };
+            }
+
+            return {
+                success: false,
+                error: 'Transaction not found in monitoring system'
+            };
+        } catch (error) {
+            return this._handleError(error, 'check transaction status');
+        }
+    }
+
+    async _checkSolanaTransaction(txHash) {
+        const status = await this.connection.getSignatureStatus(txHash);
+        
+        if (status.value?.err) {
+            return {
+                status: PrivyInterface.TxStatus.FAILED,
+                error: status.value.err,
+                isComplete: true
+            };
+        }
+
+        if (status.value?.confirmationStatus === 'finalized') {
+            return {
+                status: PrivyInterface.TxStatus.CONFIRMED,
+                confirmations: 32, // Solana finality
+                isComplete: true
+            };
+        }
+
+        return {
+            status: PrivyInterface.TxStatus.PENDING,
+            confirmations: status.value?.confirmations || 0,
+            isComplete: false
+        };
+    }
+
+    async _checkEthereumTransaction(txHash) {
+        const tx = await this.ethProvider.getTransaction(txHash);
+        if (!tx) {
+            return {
+                status: PrivyInterface.TxStatus.UNKNOWN,
+                isComplete: false
+            };
+        }
+
+        const confirmations = tx.confirmations || 0;
+        
+        if (confirmations >= 12) { // Standard ETH finality
+            return {
+                status: PrivyInterface.TxStatus.CONFIRMED,
+                confirmations,
+                isComplete: true
+            };
+        }
+
+        return {
+            status: PrivyInterface.TxStatus.PENDING,
+            confirmations,
+            isComplete: false
+        };
+    }
+
+    _getRequiredConfirmations(chainType) {
+        return chainType === 'solana' ? 32 : 12; // Solana vs ETH
+    }
+
+    _getChainId(chainType) {
+        return chainType === 'solana' 
+            ? 'solana:mainnet' 
+            : 'eip155:1'; // Mainnet ETH
+    }
+
+    async checkTransactionStatus(txHash, chainType) {
+        try {
+            if (this.pendingTransactions.has(txHash)) {
+                const txRecord = this.pendingTransactions.get(txHash);
+                
+                let status;
+                if (chainType === 'solana') {
+                    status = await this._checkSolanaTransaction(txHash);
+                } else if (chainType === 'ethereum') {
+                    status = await this._checkEthereumTransaction(txHash);
+                }
+
+                // Update transaction record
+                txRecord.status = status.status;
+                txRecord.confirmations = status.confirmations;
+                txRecord.error = status.error;
+                
+                if (status.isComplete) {
+                    this.pendingTransactions.delete(txHash);
+                }
+
+                return {
+                    success: true,
+                    transaction: txRecord
+                };
+            }
+
+            return {
+                success: false,
+                error: 'Transaction not found in monitoring system'
+            };
+        } catch (error) {
+            return this._handleError(error, 'check transaction status');
+        }
+    }
+
+    // Internal method to check all pending transactions
+    async checkPendingTransactions() {
+        for (const [txHash, txRecord] of this.pendingTransactions) {
+            try {
+                const result = await this.checkTransactionStatus(txHash, txRecord.chainType);
+                if (result.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
+                    result.transaction.status === PrivyInterface.TxStatus.FAILED) {
+                    // Emit event or callback here if needed
+                    console.log(`Transaction ${txHash} completed:`, result.transaction);
+                }
+            } catch (error) {
+                console.error(`Error checking transaction ${txHash}:`, error);
+            }
+        }
+    }
+
 
     _handleError(error, context) {
         console.error(`Error in ${context}:`, {
@@ -42,6 +319,92 @@ class PrivyInterface {
             .digest('hex');
 
         return `t=${timestamp},s=${signature}`;
+    }
+
+    async _createTransactionParams(params) {
+        const { chainType, fromAddress, toAddress, amount, tokenAddress } = params;
+
+        if (chainType === 'solana') {
+            return this._createSolanaTransactionParams(fromAddress, toAddress, amount, tokenAddress);
+        } else if (chainType === 'ethereum') {
+            return this._createEthereumTransactionParams(fromAddress, toAddress, amount, tokenAddress);
+        }
+
+        throw new Error(`Unsupported chain type: ${chainType}`);
+    }
+
+    async _createSolanaTransactionParams(fromAddress, toAddress, amount, tokenAddress) {
+        try {
+            let transaction = new Transaction();
+
+            if (tokenAddress) {
+                // Token transfer (MS2 or other SPL tokens)
+                const mint = new PublicKey(tokenAddress);
+                const fromPubkey = new PublicKey(fromAddress);
+                const toPubkey = new PublicKey(toAddress);
+
+                // Get token accounts for both addresses
+                const fromTokenAccount = await getAssociatedTokenAddress(
+                    mint,
+                    fromPubkey
+                );
+                
+                const toTokenAccount = await getAssociatedTokenAddress(
+                    mint,
+                    toPubkey
+                );
+
+                // Check if destination token account exists
+                const toAccountInfo = await this.connection.getAccountInfo(toTokenAccount);
+                if (!toAccountInfo) {
+                    transaction.add(
+                        createAssociatedTokenAccountInstruction(
+                            fromPubkey, // payer
+                            toTokenAccount,
+                            toPubkey,
+                            mint
+                        )
+                    );
+                }
+
+                // Add transfer instruction
+                transaction.add(
+                    createTransferInstruction(
+                        fromTokenAccount,
+                        toTokenAccount,
+                        fromPubkey,
+                        amount * 1000000 // Convert to token decimals (6 for MS2)
+                    )
+                );
+            } else {
+                // Native SOL transfer
+                transaction.add(
+                    SystemProgram.transfer({
+                        fromPubkey: new PublicKey(fromAddress),
+                        toPubkey: new PublicKey(toAddress),
+                        lamports: amount * LAMPORTS_PER_SOL
+                    })
+                );
+            }
+
+            // Get recent blockhash
+            const { blockhash } = await this.connection.getLatestBlockhash();
+            transaction.recentBlockhash = blockhash;
+            transaction.feePayer = new PublicKey(fromAddress);
+
+            // Serialize the transaction
+            const serializedTransaction = transaction.serialize({
+                requireAllSignatures: false,
+                verifySignatures: false
+            });
+
+            return {
+                transaction: serializedTransaction.toString('base64'),
+                encoding: 'base64'
+            };
+        } catch (error) {
+            throw new Error(`Failed to create Solana transaction: ${error.message}`);
+        }
     }
 
     async _makeApiCall(endpoint, method = 'GET', body = null) {
@@ -82,6 +445,49 @@ class PrivyInterface {
             return JSON.parse(responseText);
         } catch (error) {
             return this._handleError(error, `API call to ${endpoint}`);
+        }
+    }
+
+    async _trackGasUsage(address, operation, callback) {
+        try {
+            // Get balance before operation
+            const balanceBefore = await this.getNativeSolBalance(address);
+            
+            // Perform the operation
+            const result = await callback();
+            
+            // Wait for transaction confirmation with better error handling
+            console.log(`Waiting for transaction ${result.hash} to confirm...`);
+            try {
+                await this.connection.confirmTransaction(result.hash, 'confirmed');
+                
+                // Get balance after operation (now that transaction is confirmed)
+                const balanceAfter = await this.getNativeSolBalance(address);
+                
+                // Calculate gas used
+                const gasUsed = balanceBefore - balanceAfter;
+                
+                return {
+                    ...result,
+                    gas: {
+                        used: gasUsed,
+                        operation,
+                        balanceBefore,
+                        balanceAfter,
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            } catch (confirmError) {
+                return {
+                    success: false,
+                    error: `Transaction confirmation failed: ${confirmError.message}`,
+                    hash: result.hash,
+                    context: operation,
+                    timestamp: new Date().toISOString()
+                };
+            }
+        } catch (error) {
+            return this._handleError(error, `track gas usage for ${operation}`);
         }
     }
 
@@ -129,72 +535,498 @@ class PrivyInterface {
         }
     }
 
-    async getSolanaWalletBalance(walletId) {
+    async sendSol(walletId, fromAddress, toAddress, amount) {
+        return this.submitTransaction({
+            chainType: 'solana',
+            walletId,
+            fromAddress,
+            toAddress,
+            amount,
+            tokenAddress: null  // null indicates native SOL transfer
+        });
+    }
+
+    async sendMS2Solana(walletId, fromAddress, toAddress, amount) {
+        return this.submitTransaction({
+            chainType: 'solana',
+            walletId,
+            fromAddress,
+            toAddress,
+            amount,
+            tokenAddress: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'  // MS2 mint address
+        });
+    }
+
+    async buyMS2Solana(walletId, fromAddress, solAmount) {
         try {
-            const body = {
-                chain_id: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:7S3P4HxJpyyigGzodYwHtCxZyUQe9JiBMHyRWXArAaKv", // CAIP-2 chain ID for Solana mainnet
-                token_addresses: [] // Empty array since we're just checking SOL balance
-            };
-    
-            const response = await this._makeApiCall(`/wallets/${walletId}/balance`, 'POST', body);
+            // Add buffer for fees (0.01 SOL)
+            const totalNeeded = solAmount + 0.01;
             
-            if (response.success === false) {
-                throw new Error(response.error);
+            // Check if wallet has enough SOL
+            const balance = await this.getSolanaWalletBalance(fromAddress);
+            if (balance < totalNeeded) {
+                throw new Error(`Insufficient SOL balance. Need ${totalNeeded} SOL (including fees), have ${balance} SOL`);
             }
-    
+
+            // Get the swap transaction data
+            const swapResult = await this.jupiterHandler.getMS2SwapTransaction(solAmount, fromAddress);
+            if (!swapResult.success) {
+                throw new Error(`Failed to get swap transaction: ${swapResult.error}`);
+            }
+
+            // Submit through Privy
+            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', {
+                method: 'signAndSendTransaction',
+                caip2: this._getChainId('solana'),
+                params: {
+                    transaction: swapResult.data.swapTransaction,
+                    encoding: 'base64'
+                }
+            });
+
+            // Check if response indicates success
+            if (!response?.data?.hash) {
+                throw new Error(`Transaction failed: ${JSON.stringify(response?.error || 'Unknown error')}`);
+            }
+
+            // Create transaction record
+            const txRecord = {
+                id: response.data.hash,
+                chainType: 'solana',
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                fromAddress,
+                operation: 'BUY_MS2',
+                solAmount,
+                submittedAt: new Date().toISOString(),
+                confirmations: 0,
+                requiredConfirmations: 32
+            };
+
+            this.pendingTransactions.set(response.data.hash, txRecord);
+
+            return {
+                success: true,
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                transaction: txRecord
+            };
+
+        } catch (error) {
+            return this._handleError(error, 'buy MS2');
+        }
+    }
+
+    async sendEth(walletId, fromAddress, toAddress, amount) {
+        // Get gas estimate before transaction
+        const gasEstimate = await this.estimateGasCost('ethereum', 'ETH_TRANSFER');
+        console.log(`Estimated gas cost: ${gasEstimate.totalCost} ETH`);
+
+        // Proceed with transaction...
+        return this.submitTransaction({
+            chainType: 'ethereum',
+            walletId,
+            fromAddress,
+            toAddress,
+            amount,
+            gasEstimate  // Include estimate in transaction record
+        });
+    }
+
+    async getSolanaWalletBalance(walletAddress) {
+        try {
+            // Get native SOL balance
+            const nativeBalance = await this.getNativeSolBalance(walletAddress);
+            
+            // Get MS2 token balance using your existing function
+            const tokenBalance = await getBalance(walletAddress);
+
             return {
                 success: true,
                 balance: {
-                    native: response.native_balance,
-                    tokens: response.token_balances
+                    native: nativeBalance,
+                    ms2: tokenBalance
                 }
             };
         } catch (error) {
             return this._handleError(error, 'get Solana wallet balance');
         }
     }
+
+    async getNativeSolBalance(walletAddress) {
+        try {
+            const publicKey = new PublicKey(walletAddress);
+            const balance = await this.connection.getBalance(publicKey);
+            return balance / LAMPORTS_PER_SOL; // Convert from lamports to SOL
+        } catch (error) {
+            return this._handleError(error, 'get native SOL balance');
+        }
+    }
+
+    _getChainId(chainType) {
+        const networks = {
+            solana: {
+                mainnet: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+                testnet: 'solana:testnet',
+                devnet: 'solana:devnet'
+            },
+            ethereum: {
+                mainnet: 'eip155:1',
+                goerli: 'eip155:5',
+                sepolia: 'eip155:11155111'
+            }
+        };
+
+        // For now, just return mainnet. Later we can add network selection
+        return networks[chainType].mainnet;
+    }
+
 }
 
-// Test Functions
-// async function testPrivyInterface() {
-//     try {
-//         console.log('Testing Privy Interface...');
-//         const privy = new PrivyInterface();
+class JupiterHandler {
+    constructor() {
+        this.API_BASE_URL = 'https://quote-api.jup.ag/v6';
         
-//         // Test SOL wallet creation
-//         console.log('\n☀️ Testing SOL wallet creation...');
-//         const solResult = await privy.createSolWallet();
-//         console.log('SOL wallet result:', JSON.stringify(solResult, null, 2));
+        // Common token addresses
+        this.TOKENS = {
+            SOL: 'So11111111111111111111111111111111111111112',
+            MS2: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg',
+            USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+        };
+    }
+
+    async getQuote({
+        inputMint,
+        outputMint,
+        amount,
+        slippageBps = 50  // default 0.5% slippage
+    }) {
+        try {
+            const url = `${this.API_BASE_URL}/quote?` + new URLSearchParams({
+                inputMint,
+                outputMint,
+                amount: amount.toString(),
+                slippageBps: slippageBps.toString()
+            });
+
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`Jupiter API error: ${response.status} ${response.statusText}`);
+            }
+
+            const quoteData = await response.json();
+            return {
+                success: true,
+                data: quoteData
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: `Failed to get Jupiter quote: ${error.message}`
+            };
+        }
+    }
+
+    // Helper method for SOL -> MS2 quotes
+    async getMS2Quote(solAmount) {
+        // Convert SOL to lamports
+        const lamports = solAmount * 1_000_000_000;
         
-//     } catch (error) {
-//         console.error('Test failed:', error);
-//     }
+        return this.getQuote({
+            inputMint: this.TOKENS.SOL,
+            outputMint: this.TOKENS.MS2,
+            amount: lamports
+        });
+    }
+
+    async getSwapTransaction(quoteResponse, userPublicKey) {
+        try {
+            const response = await fetch(`${this.API_BASE_URL}/swap`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    quoteResponse,
+                    userPublicKey,
+                    wrapAndUnwrapSol: true  // Handle SOL wrapping automatically
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Jupiter swap API error: ${response.status} ${response.statusText}`);
+            }
+
+            const swapData = await response.json();
+            return {
+                success: true,
+                data: swapData
+            };
+
+        } catch (error) {
+            return {
+                success: false,
+                error: `Failed to get swap transaction: ${error.message}`
+            };
+        }
+    }
+
+    // Helper method for SOL -> MS2 swap transaction
+    async getMS2SwapTransaction(solAmount, userPublicKey) {
+        // 1. Get quote first
+        const quoteResult = await this.getMS2Quote(solAmount);
+        if (!quoteResult.success) {
+            return quoteResult;
+        }
+
+        // 2. Get swap transaction
+        return this.getSwapTransaction(quoteResult.data, userPublicKey);
+    }
+}
+
+class TransactionMonitor {
+    static TIMEOUTS = {
+        SOLANA: {
+            INITIAL: 2 * 60 * 1000,     // 2 minutes
+            EXTENDED: 30 * 60 * 1000,   // 30 minutes
+        },
+        ETHEREUM: {
+            INITIAL: 5 * 60 * 1000,     // 5 minutes
+            EXTENDED: 60 * 60 * 1000,   // 1 hour
+            FINAL: 4 * 60 * 60 * 1000   // 4 hours
+        }
+    };
+
+    async monitorTransaction(txHash, chain = 'SOLANA') {
+        console.log(`🔍 Starting ${chain} transaction monitoring...`);
+        
+        // First tier - Active monitoring
+        const quickResult = await this.activeMonitoring(txHash, chain);
+        if (quickResult.confirmed) return quickResult;
+
+        // Second tier - Extended monitoring
+        console.log('⏳ Switching to extended monitoring...');
+        const extendedResult = await this.extendedMonitoring(txHash, chain);
+        if (extendedResult.confirmed || chain === 'SOLANA') return extendedResult;
+
+        // Third tier - Only for ETH, final long monitoring
+        if (chain === 'ETHEREUM') {
+            console.log('⌛ Switching to final extended monitoring (ETH only)...');
+            return this.finalMonitoring(txHash);
+        }
+    }
+
+    async getRequiredConfirmations(chain) {
+        return chain === 'ETHEREUM' ? 12 : 32; // 12 for ETH, 32 for SOL
+    }
+
+    async getTransactionStatus(txHash, chain) {
+        // Implementation depends on your specific ETH/SOL clients
+        return chain === 'ETHEREUM' 
+            ? await this.getEthereumStatus(txHash)
+            : await this.getSolanaStatus(txHash);
+    }
+
+    async finalMonitoring(txHash) {
+        const startTime = Date.now();
+        const checkInterval = 15 * 60 * 1000; // Check every 15 minutes
+
+        while (Date.now() - startTime < TransactionMonitor.TIMEOUTS.ETHEREUM.FINAL) {
+            try {
+                const status = await this.getTransactionStatus(txHash, 'ETHEREUM');
+                if (status.confirmations >= 12) {
+                    return { confirmed: true, status };
+                }
+                
+                // Check if transaction was dropped/replaced
+                if (status.isDropped) {
+                    return {
+                        confirmed: false,
+                        status: 'DROPPED',
+                        reason: 'Transaction was dropped or replaced'
+                    };
+                }
+            } catch (error) {
+                console.log('Final monitoring check failed:', error.message);
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+
+        return {
+            confirmed: false,
+            status: 'FAILED',
+            reason: 'Transaction exceeded maximum lifetime (4 hours)'
+        };
+    }
+}
+
+
+// Test function
+// async function testJupiterQuote() {
+//     const jupiter = new JupiterHandler();
+    
+//     console.log('🚀 Testing Jupiter Quote API...');
+//     console.log('Getting quote for 0.1 SOL -> MS2');
+    
+//     const result = await jupiter.getMS2Quote(0.1);
+//     console.log('Quote result:', JSON.stringify(result, null, 2));
 // }
 
 // Updated test function
-async function testPrivyInterface() {
-    try {
-        console.log('Testing Privy Interface...');
-        const privy = new PrivyInterface();
+async function testJupiterSwap() {
+    const jupiter = new JupiterHandler();
+    
+    console.log('🚀 Testing Jupiter Swap API...');
+    console.log('Getting swap transaction for 0.1 SOL -> MS2');
+    
+    const testWallet = '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ';
+    const result = await jupiter.getMS2SwapTransaction(0.1, testWallet);
+    console.log('Swap transaction result:', JSON.stringify(result, null, 2));
+}
+
+//just redid submitTransaction 
+
+async function testSolTransfer() {
+    const privy = new PrivyInterface();
+    
+    console.log('🌟 Testing SOL transfer...');
+    const result = await privy.sendSol(
+        'tvbjabl6vz4q3ll2tuocmctj',
+        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
+        '7CYDtKY7xXiGZHQJqhxfSHL1po36H8B4VfYUCH7dm4mi',
+        0.001
+    );
+    
+    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
+    
+    if (result.success) {
+        console.log('\n📡 Monitoring transaction...');
+        const txHash = result.transaction.id;
         
-        // Test SOL wallet balance
-        console.log('\n💰 Testing SOL wallet balance...');
-        const solWalletId = "tvbjabl6vz4q3ll2tuocmctj";
-        const balanceResult = await privy.getSolanaWalletBalance(solWalletId);
-        console.log('SOL balance result:', JSON.stringify(balanceResult, null, 2));
+        // Return a promise that resolves when monitoring is complete
+        return new Promise((resolve) => {
+            const interval = setInterval(async () => {
+                const status = await privy.checkTransactionStatus(txHash, 'solana');
+                console.log('Transaction status:', JSON.stringify(status, null, 2));
+                
+                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
+                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
+                    clearInterval(interval);
+                    console.log('\n✅ Transaction monitoring complete');
+                    resolve();
+                }
+            }, 5000);
+
+            // Timeout after 2 minutes just in case
+            setTimeout(() => {
+                clearInterval(interval);
+                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
+                resolve();
+            }, 120000);
+        });
+    }
+}
+
+// Test function for MS2 transfer
+async function testMS2Transfer() {
+    const privy = new PrivyInterface();
+    
+    console.log('🎮 Testing MS2 transfer...');
+    const result = await privy.sendMS2Solana(
+        'tvbjabl6vz4q3ll2tuocmctj',
+        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
+        '7CYDtKY7xXiGZHQJqhxfSHL1po36H8B4VfYUCH7dm4mi',
+        1  // amount in MS2
+    );
+    
+    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
+    
+    if (result.success) {
+        console.log('\n📡 Monitoring transaction...');
+        const txHash = result.transaction.id;
         
-    } catch (error) {
-        console.error('Test failed:', error);
+        return new Promise((resolve) => {
+            const interval = setInterval(async () => {
+                const status = await privy.checkTransactionStatus(txHash, 'solana');
+                console.log('Transaction status:', JSON.stringify(status, null, 2));
+                
+                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
+                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
+                    clearInterval(interval);
+                    console.log('\n✅ Transaction monitoring complete');
+                    resolve();
+                }
+            }, 5000);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
+                resolve();
+            }, 120000);
+        });
+    }
+}
+
+async function testMS2Buy() {
+    const privy = new PrivyInterface();
+    
+    console.log('💫 Testing MS2 Buy...');
+    console.log('Attempting to buy MS2 with 0.01 SOL');
+    
+    const result = await privy.buyMS2Solana(
+        'tvbjabl6vz4q3ll2tuocmctj',
+        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
+        0.001  // amount in SOL
+    );
+    
+    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
+    
+    if (result.success) {
+        console.log('\n📡 Monitoring transaction...');
+        const txHash = result.transaction.id;
+        
+        return new Promise((resolve) => {
+            const interval = setInterval(async () => {
+                const status = await privy.checkTransactionStatus(txHash, 'solana');
+                console.log('Transaction status:', JSON.stringify(status, null, 2));
+                
+                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
+                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
+                    clearInterval(interval);
+                    console.log('\n✅ Transaction monitoring complete');
+                    resolve();
+                }
+            }, 5000);
+
+            // Timeout after 2 minutes
+            setTimeout(() => {
+                clearInterval(interval);
+                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
+                resolve();
+            }, 120000);
+        });
     }
 }
 
 // Run tests if this file is run directly
+// if (require.main === module) {
+//     testMS2Transfer().then(() => {
+//         console.log('\n🏁 Tests complete');
+//         // Give a moment for any final console logs to complete
+//         setTimeout(() => process.exit(0), 1000);
+//     }).catch(error => {
+//         console.error('\n❌ Tests failed:', error);
+//         setTimeout(() => process.exit(1), 1000);
+//     });
+// }
+
+// Run test if file is run directly
 if (require.main === module) {
-    testPrivyInterface().then(() => {
-        console.log('Tests complete');
+    testMS2Buy().then(() => {
+        console.log('\n✅ Test complete');
         process.exit(0);
     }).catch(error => {
-        console.error('Tests failed:', error);
+        console.error('\n❌ Test failed:', error);
         process.exit(1);
     });
 }
