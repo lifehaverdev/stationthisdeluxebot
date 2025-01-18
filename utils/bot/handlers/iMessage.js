@@ -198,19 +198,32 @@ commandRegistry['/charlottefangsavedme'] = {
 
 commandRegistry['/ca'] = {
     handler: (message) => {
-        const caMessage="`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`"
+        const caMessage="SOLANA:\n`AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg`\n\nETHEREUM:\n`0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820`\n"
         sendMessage(message,caMessage,
                 {
                     reply_markup: {inline_keyboard: [
                         [
                             {
-                                text: 'Chart', 
+                                text: 'Sol Chart', 
                                 url: 'https://www.coingecko.com/en/coins/station-this'
                             },
                             {
                                 text: 'Buy',
                                 url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
                             },
+                            
+                        ],
+                        [
+                            {
+                                text: 'Eth Chart', 
+                                url: 'https://www.dextools.io/app/en/ether/pair-explorer/0xdc7e9e9808bb28aa4cbef08fe604c4ab4cfe0402?t=1737136827755'
+                            },
+                            {
+                                text: 'Buy',
+                                url: 'https://app.uniswap.org/swap?chain=mainnet&inputCurrency=NATIVE&outputCurrency=0x98ed411b8cf8536657c660db8aa55d9d4baaf820'
+                            },
+                        ],
+                        [
                             {
                                 text: 'Site',
                                 url: 'https://miladystation2.net'
@@ -222,7 +235,7 @@ commandRegistry['/ca'] = {
             )
         },
         condition: (message) => {
-            return message.chat.type !== 'private' && message.text.includes('@stationthisbot');
+            return message.chat.id > 0 || (message.chat.id < 0 && message.text.includes('@stationthisbot'));
         }
     },
 commandRegistry['/flush'] = {

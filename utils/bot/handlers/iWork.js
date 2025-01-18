@@ -701,23 +701,47 @@ async function streamEventResult(eventId) {
         // Split into individual events
         const lines = result.split('\n');
         
-        // Find the last data event that isn't null or heartbeat
+        // Track both error and data events
         let lastDataLine = null;
+        let errorMessage = null;
+
         for (const line of lines) {
+            // Check for error events
+            if (line.startsWith('event: error')) {
+                errorMessage = 'Server returned an error event';
+                continue;
+            }
+
+            // Process data events
             if (line.startsWith('data:')) {
                 const data = line.replace('data: ', '').trim();
-                if (data !== 'null') {
-                    lastDataLine = data;
+                if (data !== 'null' && data !== '') {
+                    try {
+                        // Verify the data is valid JSON before storing
+                        JSON.parse(data);
+                        lastDataLine = data;
+                    } catch (e) {
+                        console.warn('Invalid JSON data received:', data);
+                    }
                 }
             }
         }
 
+        // Handle different scenarios
+        if (errorMessage) {
+            throw new Error(errorMessage);
+        }
+        
         if (!lastDataLine) {
-            throw new Error('No valid data found in response');
+            throw new Error('No valid data received from the server');
         }
 
         const jsonData = JSON.parse(lastDataLine);
         console.log('Parsed JSON data:', jsonData);
+
+        if (!Array.isArray(jsonData) || jsonData.length === 0) {
+            throw new Error('Invalid response format from server');
+        }
 
         return jsonData[0];
 
@@ -725,6 +749,13 @@ async function streamEventResult(eventId) {
         console.error('Error streaming result:', error);
         if (error.response) {
             console.log('Error response:', await error.response.text());
+        }
+        // Provide more specific error messages
+        if (error.message === 'No valid data received from the server') {
+            throw new Error('The image analysis service is currently unavailable. Please try again later.');
+        }
+        if (error.message === 'Server returned an error event') {
+            throw new Error('The server encountered an error processing your request. Please try again.');
         }
         throw error;
     }

@@ -13,6 +13,7 @@ const {
     getAssociatedTokenAddress,
     createAssociatedTokenAccountInstruction,
     TOKEN_PROGRAM_ID,
+    createBurnInstruction,
     ASSOCIATED_TOKEN_PROGRAM_ID
 } = require('@solana/spl-token');
 const { ethers } = require('ethers');
@@ -615,6 +616,93 @@ class PrivyInterface {
         }
     }
 
+    async burnMS2Solana(walletId, fromAddress, amount) {
+        try {
+            // Get the user's MS2 token account
+            const fromPubkey = new PublicKey(fromAddress);
+            const mint = new PublicKey('AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
+            const tokenAccount = await getAssociatedTokenAddress(
+                mint,
+                fromPubkey
+            );
+
+            // Create burn transaction
+            const burnTx = await this._createMS2BurnTransaction(
+                fromAddress,
+                tokenAccount.toString(),
+                amount * 1000000 // Convert to token decimals (6 for MS2)
+            );
+
+            // Submit through Privy
+            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', {
+                method: 'signAndSendTransaction',
+                caip2: this._getChainId('solana'),
+                params: {
+                    transaction: burnTx,
+                    encoding: 'base64'
+                }
+            });
+
+            // Create transaction record
+            const txRecord = {
+                id: response.data.hash,
+                chainType: 'solana',
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                fromAddress,
+                operation: 'BURN_MS2',
+                amount,
+                submittedAt: new Date().toISOString(),
+                confirmations: 0,
+                requiredConfirmations: 32
+            };
+
+            this.pendingTransactions.set(response.data.hash, txRecord);
+
+            return {
+                success: true,
+                status: PrivyInterface.TxStatus.SUBMITTED,
+                transaction: txRecord
+            };
+
+        } catch (error) {
+            return this._handleError(error, 'burn MS2');
+        }
+    }
+
+    async _createMS2BurnTransaction(fromAddress, tokenAddress, amount) {
+        try {
+            const transaction = new Transaction();
+            const fromPubkey = new PublicKey(fromAddress);
+            const mintPublicKey = new PublicKey('AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
+            const tokenAccountPublicKey = new PublicKey(tokenAddress);
+
+            // Use createBurnInstruction directly instead of Token.createBurnInstruction
+            const burnInstruction = createBurnInstruction(
+                tokenAccountPublicKey, // source (token account)
+                mintPublicKey,         // mint
+                fromPubkey,           // owner
+                amount,               // amount
+                []                    // multiSigners (empty array for single signer)
+            );
+            transaction.add(burnInstruction);
+
+            // Get recent blockhash
+            const { blockhash } = await this.connection.getLatestBlockhash('finalized');
+            transaction.recentBlockhash = blockhash;
+            transaction.feePayer = fromPubkey;
+
+            // Serialize the transaction
+            const serializedTransaction = transaction.serialize({
+                requireAllSignatures: false,
+                verifySignatures: true
+            });
+
+            return serializedTransaction.toString('base64');
+        } catch (error) {
+            throw new Error(`Failed to create MS2 burn transaction: ${error.message}`);
+        }
+    }
+
     async sendEth(walletId, fromAddress, toAddress, amount) {
         // Get gas estimate before transaction
         const gasEstimate = await this.estimateGasCost('ethereum', 'ETH_TRANSFER');
@@ -1008,6 +1096,46 @@ async function testMS2Buy() {
     }
 }
 
+async function testMS2Burn() {
+    const privy = new PrivyInterface();
+    
+    console.log('🔥 Testing MS2 Burn...');
+    console.log('Attempting to burn 1 MS2');
+    
+    const result = await privy.burnMS2Solana(
+        'tvbjabl6vz4q3ll2tuocmctj',
+        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
+        1  // amount in MS2
+    );
+    
+    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
+    
+    if (result.success) {
+        console.log('\n📡 Monitoring transaction...');
+        const txHash = result.transaction.id;
+        
+        return new Promise((resolve) => {
+            const interval = setInterval(async () => {
+                const status = await privy.checkTransactionStatus(txHash, 'solana');
+                console.log('Transaction status:', JSON.stringify(status, null, 2));
+                
+                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
+                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
+                    clearInterval(interval);
+                    console.log('\n✅ Transaction monitoring complete');
+                    resolve();
+                }
+            }, 5000);
+
+            setTimeout(() => {
+                clearInterval(interval);
+                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
+                resolve();
+            }, 120000);
+        });
+    }
+}
+
 // Run tests if this file is run directly
 // if (require.main === module) {
 //     testMS2Transfer().then(() => {
@@ -1022,7 +1150,7 @@ async function testMS2Buy() {
 
 // Run test if file is run directly
 if (require.main === module) {
-    testMS2Buy().then(() => {
+    testMS2Burn().then(() => {
         console.log('\n✅ Test complete');
         process.exit(0);
     }).catch(error => {
