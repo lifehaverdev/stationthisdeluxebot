@@ -6,10 +6,12 @@ class UserStats extends BaseDB {
     }
 
     async saveGen({ task, run, out }) {
+        let groupId;
+        task.message.chat.id ? groupId = task.message.chat.id : groupId = 'unknown';
         const genData = {
             userId: task.promptObj.userId,
             username: task.promptObj.username || 'unknown',
-            groupId: task.message.chat.id || 'unknown',
+            groupId: groupId,
             timestamp: new Date(),
             promptObj: task.promptObj,
             runId: run.run_id,
