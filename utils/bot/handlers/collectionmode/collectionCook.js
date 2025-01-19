@@ -1,4 +1,4 @@
-const { studio, lobby, flows } = require('../../bot');
+const { studio, lobby, flows, waiting } = require('../../bot');
 const GlobalStatusDB = require('../../../../db/models/globalStatus');
 const { CollectionDB } = require('../../../../db/index');
 const StudioDB  = require('../../../../db/models/studio');
@@ -759,6 +759,8 @@ class CollectionCook {
                 c.userId === user && 
                 c.collectionId === collection.collectionId
             );
+
+            //get qoints charge
             if (lobby[user]?.qoints) {
                 userQoints = lobby[user].qoints;
             } else {
@@ -770,53 +772,78 @@ class CollectionCook {
                 }
             }
 
-
             if (parseInt(userQoints) < 100) {
                 console.log(`Insufficient qoints for user ${user}, pausing cook`);
                 await this.completeCookingTask(cookingTask, 'insufficient_qoints');
                 return;
             }
 
-            const { masterPrompt, traitTypes } = collection.config;
-            
-            // Process master prompt and generate traits
-            const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
-            const conflictMap = TraitSelector.buildConflictMap(exclusions);
-            const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
-            const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
+            // Calculate how many generations we can queue based on qoints
+            const maxPossibleGens = Math.min(
+                Math.floor(parseInt(userQoints) / 100),  // How many we can afford
+                5  // Maximum desired queue size
+            );
 
-            // Build user context
-            const workflowType = collection.config.workflow || 'MAKE';
-            // Use cached context but update the prompt
-            const userContext = {
-                ...cookingTask.userContextCache,
-                traits: {details: traitDetails, selected: selectedTraits},
-                prompt: generatedPrompt
-            };
+            // Count current waiting tasks for this collection
+            const currentWaitingTasks = waiting.filter(task => 
+                task.promptObj.userId === user && 
+                task.promptObj.collectionId === collection.collectionId
+            ).length;
 
-            // Build and queue the task
-            const workflow = flows.find(flow => flow.name === workflowType);
-            if (!workflow) {
-                throw new Error(`Invalid workflow type: ${workflowType}`);
+            console.log(`Current waiting tasks for collection: ${currentWaitingTasks}`);
+
+            // Calculate how many more tasks we need to queue
+            const targetQueueSize = 3; // Minimum desired queue size
+            const tasksToQueue = Math.min(
+                maxPossibleGens,
+                Math.max(0, targetQueueSize - currentWaitingTasks)
+            );
+
+            console.log(`Queueing ${tasksToQueue} additional tasks`);
+            // Queue multiple tasks if needed
+            for (let i = 0; i < tasksToQueue; i++) {
+                const { masterPrompt, traitTypes } = collection.config;
+                
+                // Process master prompt and generate traits
+                const { exclusions, cleanedPrompt } = findExclusions(masterPrompt);
+                const conflictMap = TraitSelector.buildConflictMap(exclusions);
+                const {selectedTraits, traitDetails} = TraitSelector.generateTraitSelection(traitTypes, conflictMap);
+                const generatedPrompt = processPromptWithOptionals(cleanedPrompt, selectedTraits);
+
+                // Build user context
+                const workflowType = collection.config.workflow || 'MAKE';
+                // Use cached context but update the prompt
+                const userContext = {
+                    ...cookingTask.userContextCache,
+                    traits: {details: traitDetails, selected: selectedTraits},
+                    prompt: generatedPrompt
+                };
+
+                // Build and queue the task
+                const workflow = flows.find(flow => flow.name === workflowType);
+                if (!workflow) {
+                    throw new Error(`Invalid workflow type: ${workflowType}`);
+                }
+
+                let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
+                
+
+                await this.#enqueueTask({
+                    message: {
+                        ...message,
+                        from: {
+                            id: user,
+                            username: userContext.username || 'unknown_user',
+                            first_name: userContext.first_name || 'Unknown'
+                        },
+                        chat: {
+                            id: user
+                        }
+                    }, 
+                    promptObj
+                });
+                console.log(`Queued task ${i + 1} of ${tasksToQueue}`);
             }
-
-            let promptObj = buildCookModePromptObjFromWorkflow(workflow, userContext, message);
-            
-
-            await this.#enqueueTask({
-                message: {
-                    ...message,
-                    from: {
-                        id: user,
-                        username: userContext.username || 'unknown_user',
-                        first_name: userContext.first_name || 'Unknown'
-                    },
-                    chat: {
-                        id: user
-                    }
-                }, 
-                promptObj
-            });
 
         } catch (error) {
             console.error('Error queueing next generation:', error);

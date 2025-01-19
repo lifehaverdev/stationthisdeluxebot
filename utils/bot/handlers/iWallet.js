@@ -175,8 +175,19 @@ class PrivyInterface {
 
     async _checkSolanaTransaction(txHash) {
         const status = await this.connection.getSignatureStatus(txHash);
-        
+        console.log('🔄 Transaction status:', status);
+    
+        if (!status.value) {
+            console.log('⚠️ No status value returned');
+            return {
+                status: PrivyInterface.TxStatus.PENDING,
+                confirmations: 0,
+                isComplete: false
+            };
+        }
+    
         if (status.value?.err) {
+            console.log('❌ Transaction error:', status.value.err);
             return {
                 status: PrivyInterface.TxStatus.FAILED,
                 error: status.value.err,
@@ -185,13 +196,14 @@ class PrivyInterface {
         }
 
         if (status.value?.confirmationStatus === 'finalized') {
+            console.log('🔄 Transaction finalized');
             return {
                 status: PrivyInterface.TxStatus.CONFIRMED,
                 confirmations: 32, // Solana finality
                 isComplete: true
             };
         }
-
+        console.log('⏳ Current confirmations:', status.value?.confirmations || 0);
         return {
             status: PrivyInterface.TxStatus.PENDING,
             confirmations: status.value?.confirmations || 0,
