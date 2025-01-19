@@ -141,7 +141,7 @@ async function handleMs2ImgFile(message, imageUrl = null, prompt = null) {
         if (prompt.trim()) {
             console.log('handle ms2img wit da prompt')
             // If both prompt and image are available, proceed to handleTask
-            return await iMake.handleTask(message, 'I2I', STATES.IMG2IMG, true, null);
+            return await iMake.handleTask(message, 'QUICKI2I', STATES.QUICKIMG2IMG, true, null);
         } else {
             console.log('handle ms2img wit no prompt')
             // If prompt is missing, set state and ask for it
