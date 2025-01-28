@@ -295,7 +295,8 @@ async function getSecondaryTags(primaryTag) {
     
     const relevantLoras = await loras.findMany({
         [`tags.${primaryTag}`]: true,
-        disabled: false
+        disabled: false,
+        hidden: { $ne: true }
     });
 
     // Get counts for each tag
@@ -459,7 +460,7 @@ async function displayLorasByTag(message, primaryTag, secondaryTag, user = null)
 
 async function displayRecentLoras(message, user = null) {
     // Get all active loras
-    const allLoras = await loras.findMany({ disabled: false });
+    const allLoras = await loras.findMany({ disabled: false, hidden: { $ne: true } });
     
     // Calculate the cutoff date for the last 30 days
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
