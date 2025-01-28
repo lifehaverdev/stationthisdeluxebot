@@ -1,9 +1,8 @@
 const defaultUserCore = {
     userId: '',
+    wallets: [],
     wallet: '',
-    ethWallet: '',
     verified: false,
-    ethVerified: false,
     kickedAt: null,
     lastRunTime: null,
     lastTouch: null,

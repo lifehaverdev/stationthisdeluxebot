@@ -197,7 +197,7 @@ async function batchKick(userIds) {
             const coreData = coreDataResults[index];
             if (!coreData) return null;
 
-            const baseData = {
+            let baseData = {
                 ...coreData,
                 ...lobbyData,
                 kickedAt: Date.now(),

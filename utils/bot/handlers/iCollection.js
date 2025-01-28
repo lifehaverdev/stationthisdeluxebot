@@ -81,13 +81,16 @@ async function getMyCollections(userId) {
             }
         }
 
-        if (collections.length < 5) {
             collectionKeyboardOptions.push([{ text: '➕', callback_data: 'newcollection' }]);
-        }
+        
         if (hasExportableCollections) {
-            collectionKeyboardOptions.push([{ text: '📦 Export', callback_data: 'export_menu' }]);
+            //collectionKeyboardOptions.push([{ text: '📦 Export', callback_data: 'export_menu' }]);
+            try {
+                sendMessage(DEV_DMS, 'hasExportableCollections')
+            } catch (error) {
+                console.error('Failed to send message to DEV_DMS:', error);
+            }
         }
-
     } catch (error) {
         console.error('Failed to load collections:', error);
     }

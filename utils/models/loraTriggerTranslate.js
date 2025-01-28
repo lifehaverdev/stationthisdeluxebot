@@ -2,18 +2,12 @@ const { Loras } = require('../../db/models/loras');
 const { checkpointmenu } = require('./checkpointmenu');
 const { refreshLoraCache } = require('../../db/models/cache');
 
-async function handleLoraTrigger(prompt, checkpoint, balance) {
-  const loraDB = new Loras();
-  let usedLoras = new Set();
-  let addedLoraTags = new Set();
-  let modifiedPrompt = prompt;
-
-  console.log('\n=== LoRA Translation Process ===');
-  //console.log('Input prompt:', prompt);
-  //console.log('Checkpoint:', checkpoint);
-
-  // Pre-scan for existing LoRA tags
+// Extract existing LoRA tags from prompt
+function extractExistingLoraTags(prompt) {
+  const usedLoras = new Set();
+  const addedLoraTags = new Set();
   const existingLoraTags = prompt.match(/<lora:([^:]+):[^>]+>/g) || [];
+  
   for (const tag of existingLoraTags) {
     const loraName = tag.match(/<lora:([^:]+):/)?.[1];
     if (loraName) {
@@ -21,147 +15,248 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
       addedLoraTags.add(loraName);
     }
   }
+  
+  return { usedLoras, addedLoraTags };
+}
 
-  // Get checkpoint version for filtering
+// Get checkpoint version and validate
+function getCheckpointVersion(checkpoint) {
   const cleanCheckpoint = checkpoint.replace('.safetensors', '');
   const checkpointDesc = checkpointmenu.find(item => item.name === cleanCheckpoint)?.description;
-
-   // Skip LoRA processing if no checkpoint description is found
-   if (!checkpointDesc) {
+  
+  if (!checkpointDesc) {
     console.log('Warning: No checkpoint description found, skipping LoRA processing');
-    return prompt;
   }
+  
+  return checkpointDesc;
+}
 
-  // Get cached LoRA data
-  const { triggers, cognates } = await refreshLoraCache(loraDB);
-  // First pass: Check for multi-word triggers
+async function processMultiWordTriggers(prompt, triggers, cognates, checkpointDesc, addedLoraTags, usedLoras, loraDB) {
+  let modifiedPrompt = prompt;
+  
+  // Process multi-word triggers
   for (const [triggerKey, triggerMatches] of triggers) {
-    if (triggerKey.includes(' ')) {  // Multi-word trigger
-      const escapedTrigger = triggerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const triggerRegex = new RegExp(`\\b${escapedTrigger}\\b`, 'i');
+    if (!triggerKey.includes(' ')) continue;  // Skip single-word triggers
+    
+    const escapedTrigger = triggerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const triggerRegex = new RegExp(`\\b${escapedTrigger}(?::(\\d*\\.?\\d+))?`, 'i');
+    console.log('## Regex debug:', {
+      triggerKey,
+      escapedTrigger,
+      regexString: triggerRegex.toString(),
+      prompt: modifiedPrompt,
+    });
+    const match = modifiedPrompt.match(triggerRegex);
+    
+    if (match) {
+      console.log('## Multi-word match:', {
+        fullMatch: match[0],
+        trigger: triggerKey,
+        weight: match[1],
+      });
+
+      const weight = match[1] ? parseFloat(match[1]) : undefined;  // Get weight if present
       
-      if (triggerRegex.test(modifiedPrompt)) {
-        const versionMatchedTriggers = triggerMatches.filter(trigger => 
-          trigger.version === checkpointDesc
-        );
-
-        if (versionMatchedTriggers.length > 0) {
-          const loraInfo = versionMatchedTriggers[0];
-          const loraTag = `<lora:${loraInfo.lora_name}:${loraInfo.weight}>`;
-
-          if (!addedLoraTags.has(loraInfo.lora_name)) {
-            usedLoras.add(loraInfo.lora_name);
-            addedLoraTags.add(loraInfo.lora_name);
-            modifiedPrompt = modifiedPrompt.replace(triggerRegex, `${loraTag} ${triggerKey}`);
-            await loraDB.incrementUses(loraInfo.lora_name);
-          }
-        }
-      }
+      const loraInfo = {
+        ...triggerMatches[0],
+        customWeight: weight  // Pass the weight to applyLoraTag
+      };
+      
+      const { modifiedText, loraName } = await applyLoraTag(
+        modifiedPrompt,
+        triggerKey,
+        loraInfo,
+        addedLoraTags,
+        usedLoras,
+        loraDB
+      );
+      modifiedPrompt = modifiedText;
+      
     }
   }
-  // Process words one at a time
-  // Split by whitespace but preserve punctuation for replacement
-  //const words = prompt.split(/\s+/).map(word => word.trim());
-  // Process words with potential punctuation
-  const words = prompt.match(/[\w]+[.,!?()[\]{}'"]*|[.,!?()[\]{}'"]*[\w]+/g) || [];
-  //console.log('Found words:', words); // Debug log
 
+    // Process multi-word cognates
+    for (const [cognateKey, cognateInfo] of cognates) {
+      if (!cognateKey.includes(' ')) continue;  // Skip single-word cognates
+      
+      const escapedCognate = cognateKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const cognateRegex = new RegExp(`\\b${escapedCognate}(?::(\d*\.?\d+))?\\b`, 'i');
+      const match = modifiedPrompt.match(cognateRegex);
+      
+      if (match) {
+        const weight = match[1] ? parseFloat(match[1]) : undefined;  // Match trigger handling
+        
+        const loraInfo = {
+          ...cognateInfo,
+          customWeight: weight  // Match trigger handling
+        };
+        
+        const { modifiedText, loraName } = await applyLoraTag(
+          modifiedPrompt,
+          cognateKey,
+          loraInfo,
+          addedLoraTags,
+          usedLoras,
+          loraDB
+        );
+        modifiedPrompt = modifiedText;
+      }
+    }
+  
+  return modifiedPrompt;
+}
+
+// Parse word and extract weight
+function parseWordAndWeight(word) {
+  const weightMatch = word.match(/^(.*?)(?::(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
+  console.log('## Weight parsing:', {
+    word,
+    weightMatch,
+  });
+  
+  if (!weightMatch) return null;
+  
+  const [, baseWord, weight] = weightMatch;
+  const result = {
+    baseWord: baseWord.trim(),
+    weight: weight ? parseFloat(weight) : null,
+    wordLower: baseWord.toLowerCase().trim().replace(/[.,!?()[\]{}'"]/g, '')
+  };
+  
+  console.log('## Parsed result:', result);
+  return result;
+}
+
+async function applyLoraTag(text, originalWord, loraInfo, addedLoraTags, usedLoras, loraDB) {
+  const weight = loraInfo.customWeight || loraInfo.weight;
+  console.log('## Applying LoRA tag:', {
+    originalWord,
+    loraName: loraInfo.lora_name,
+    customWeight: loraInfo.customWeight,
+    defaultWeight: loraInfo.weight,
+    finalWeight: weight
+  });
+  
+  const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
+  
+  if (!addedLoraTags.has(loraInfo.lora_name)) {
+    usedLoras.add(loraInfo.lora_name);
+    addedLoraTags.add(loraInfo.lora_name);
+    
+    // Match the full pattern including weight if present
+    const escapedWord = originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const replacement = loraInfo.replaceWith || originalWord;
+    const modifiedText = text.replace(
+      new RegExp(`(?<!<lora:[^>]*)\\b${escapedWord}(?::\\d*\\.?\\d+)?\\b`, 'i'),
+      `${loraTag} ${replacement}`
+    );
+    
+    await loraDB.incrementUses(loraInfo.lora_name);
+    return { modifiedText, loraName: loraInfo.lora_name };
+  }
+  
+  return { modifiedText: text, loraName: null };
+}
+
+async function handleLoraTrigger(prompt, checkpoint, balance) {
+  const loraDB = new Loras();
+  let modifiedPrompt = prompt;
+
+  console.log('\n=== LoRA Translation Process ===');
+
+  // Extract existing tags and initialize tracking sets
+  const { usedLoras, addedLoraTags } = extractExistingLoraTags(prompt);
+  console.log('## usedLoras:', usedLoras);
+  console.log('## addedLoraTags:', addedLoraTags);
+  // Validate checkpoint
+  const checkpointDesc = getCheckpointVersion(checkpoint);
+  if (!checkpointDesc) return prompt;
+  console.log('## checkpointDesc:', checkpointDesc);
+
+  // Get cached LoRA data
+  // Get cached LoRA data and filter by checkpoint version
+  const { triggers: allTriggers, cognates: allCognates } = await refreshLoraCache(loraDB);
+
+  // Filter triggers Map
+  const triggers = new Map(
+    Array.from(allTriggers).map(([key, triggerList]) => [
+      key,
+      triggerList.filter(trigger => trigger.version === checkpointDesc)
+    ]).filter(([_, triggerList]) => triggerList.length > 0)
+  );
+
+  // Filter cognates Map
+  const cognates = new Map(
+    Array.from(allCognates).filter(([_, cognate]) => 
+      cognate.version === checkpointDesc
+    )
+  );
+
+  // Process multi-word triggers first
+  modifiedPrompt = await processMultiWordTriggers(
+    modifiedPrompt,
+    triggers,
+    cognates,
+    checkpointDesc,
+    addedLoraTags,
+    usedLoras,
+    loraDB
+  );
+  console.log('## modifiedPrompt:', modifiedPrompt);
+  // Change the word splitting regex to keep weights attached
+  const words = modifiedPrompt.match(/\b[\w]+(?::\d*\.?\d+)?[.,!?()[\]{}'"]*\b|\b[.,!?()[\]{}'"]*[\w]+(?::\d*\.?\d+)?\b/g) || [];
   let processedWords = new Set();
 
   for (const word of words) {
-    // Skip if word is part of an existing LoRA tag
     if (/<lora:[^>]+>/.test(word)) continue;
 
-    // Modified to only treat trailing numbers as weights if they follow a non-digit
-    const weightMatch = word.match(/^(\d+|.*?(?:\d+)??)(?:(\d(?:\.\d+)?)|:(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
-    if (!weightMatch) continue;
-    // Strip punctuation for matching
-    const wordLower = word.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
-    // console.log('\nProcessing word for cognates:', {
-    //   original: word,
-    //   lowercase: wordLower,
-    //   checkpointDesc: checkpointDesc
-    // });
-    const [, baseWord, numericWeight, colonWeight] = weightMatch;
-    const customWeight = colonWeight || numericWeight;
+    const parsedWord = parseWordAndWeight(word);
+    if (!parsedWord) continue;
     
-    // If the word is all digits and there's a numericWeight, treat the whole thing as the baseWord
-    if (/^\d+$/.test(word) && numericWeight) {
-        baseWord = word;
-    }
-    
-    // Strip punctuation for matching
-    //const wordLower = baseWord.toLowerCase().replace(/[.,!?()[\]{}'"]/g, '');
-    
+    const { baseWord, weight, wordLower } = parsedWord;
     if (processedWords.has(wordLower)) continue;
     processedWords.add(wordLower);
-    
-    // Check cognates first
-    const cognateMatch = cognates.get(wordLower);
-    // console.log('Cognate match:', {
-    //   found: !!cognateMatch,
-    //   matchDetails: cognateMatch,
-    //   versionMatch: cognateMatch?.version === checkpointDesc
-    // });
-    if (cognateMatch && cognateMatch.version === checkpointDesc) {
-      // console.log('Found valid cognate match:', {
-      //   word: wordLower,
-      //   loraName: cognateMatch.lora_name,
-      //   version: cognateMatch.version,
-      //   replaceWith: cognateMatch.replaceWith
-      // });
-      const weight = customWeight ? parseFloat(customWeight) / 10 : cognateMatch.weight;
-      const loraTag = `<lora:${cognateMatch.lora_name}:${weight}>`;
-      
-      if (!addedLoraTags.has(cognateMatch.lora_name)) {
-        usedLoras.add(cognateMatch.lora_name);
-        addedLoraTags.add(cognateMatch.lora_name);
-        
-        // Enhanced regex to handle surrounding punctuation and ensure we're replacing the whole word
-        modifiedPrompt = modifiedPrompt.replace(
-          new RegExp(`\\b${wordLower}\\b`, 'i'),
-          `${loraTag} ${cognateMatch.replaceWith}`
-        );
 
-        await loraDB.incrementUses(cognateMatch.lora_name);
-        // console.log('Applied cognate replacement:', {
-        //   from: wordLower,
-        //   to: `${loraTag} ${cognateMatch.replaceWith}`,
-        //   newPrompt: modifiedPrompt
-        // });
-      }
+    // Process cognates
+    const cognateMatch = cognates.get(wordLower);
+    if (cognateMatch?.version === checkpointDesc) {
+      const loraInfo = {
+        ...cognateMatch,
+        customWeight: weight,
+        replaceWith: cognateMatch.replaceWith
+      };
+      const result = await applyLoraTag(
+        modifiedPrompt,
+        wordLower,
+        loraInfo,
+        addedLoraTags,
+        usedLoras,
+        loraDB
+      );
+      modifiedPrompt = result.modifiedText;
       continue;
     }
 
-    // Check trigger words
+    // Process trigger words
     const triggerMatches = triggers.get(wordLower) || [];
-    if (triggerMatches.length > 0) {
-      // Filter matches by version and take the first match
-      const versionMatchedTriggers = triggerMatches.filter(trigger => trigger.version === checkpointDesc);
-      if (versionMatchedTriggers.length > 0) {
-        console.log(`Found trigger word matches for "${word}":`, triggerMatches);
-        const loraInfo = versionMatchedTriggers[0];
-        const weight = customWeight ? parseFloat(customWeight) / 10 : loraInfo.weight;
-        const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
+    const versionMatchedTriggers = triggerMatches.filter(
+      trigger => trigger.version === checkpointDesc
+    );
 
-        if (!addedLoraTags.has(loraInfo.lora_name)) {
-          usedLoras.add(loraInfo.lora_name);
-          addedLoraTags.add(loraInfo.lora_name);
-          
-          // Clean up the trigger word by removing weight syntax
-          const cleanWord = baseWord.replace(/(?:\d+(?:\.\d+)?|:\d*\.?\d+)$/, '');
-          const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-          modifiedPrompt = modifiedPrompt.replace(
-            new RegExp(`(?<!<lora:[^>]*)${escapedWord}`, 'i'),
-            `${loraTag} ${cleanWord}`
-          );
-        }
-
-        await loraDB.incrementUses(loraInfo.lora_name);
-      } else {
-        console.log(`No trigger word matches found for "${word}" with checkpoint version ${checkpointDesc}`);
-      }
+    if (versionMatchedTriggers.length > 0) {
+      const loraInfo = {
+        ...versionMatchedTriggers[0],
+        customWeight: weight
+      };
+      const result = await applyLoraTag(
+        modifiedPrompt,
+        baseWord,
+        loraInfo,
+        addedLoraTags,
+        usedLoras,
+        loraDB
+      );
+      modifiedPrompt = result.modifiedText;
     }
   }
 

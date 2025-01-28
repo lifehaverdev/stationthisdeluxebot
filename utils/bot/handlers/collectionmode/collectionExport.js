@@ -286,8 +286,7 @@ class CollectionExport {
                 const piece = shuffledPieces[i];
                 const exportNumber = i + 1;
                 // Get the export timestamp from the first piece (they all have the same timestamp)
-                
-
+            
                 // Save export number to piece document
                 // Add update operation to batch
                 studioDb.batchOperations.push(collection => 
@@ -308,16 +307,18 @@ class CollectionExport {
                 shuffledPieces[i] = { ...piece, exportNumber };
             }
             // Execute all updates in one batch
+            console.log('executing batch export db update in studio')
             await studioDb.executeBatch();
 
             //
             //SECTION 2: Download images
             //
-            const MAX_BATCH_SIZE = 1.95 * 1024 * 1024 * 1024; // 1.95GB in bytes
+            const MAX_BATCH_SIZE = 1.5 * 1024 * 1024 * 1024; // 1.95GB in bytes
             let currentBatchSize = 0;
             let currentBatchNumber = 1;
             let batchStartIndex = 1;
             // Create temp directory for this export
+            console.log('creating export dir')
             const exportDir = path.join(__dirname, '../../../../temp', `export_${user}`);
             if (!fs.existsSync(exportDir)) {
                 fs.mkdirSync(exportDir, { recursive: true });
@@ -331,13 +332,15 @@ class CollectionExport {
             // Download and rename images
             let currentIndex = 1;
             for (const piece of shuffledPieces) {
+                
+                if(currentIndex > 1000) break;
                 const imageUrl = piece.files[0]?.url; // Assuming first file is the image
                 if (imageUrl) {
                     try {
                         // Check file size first
                         const headResponse = await axios.head(imageUrl);
                         const fileSize = parseInt(headResponse.headers['content-length']) || 0;
-
+                        console.log('downloading image', currentIndex, 'file size: ',fileSize, 'current batch size: ',currentBatchSize)
                         // If adding this file would exceed batch size, zip and send current batch
                         if (currentBatchSize + fileSize > MAX_BATCH_SIZE) {
                             // Zip and send current batch
@@ -397,16 +400,16 @@ class CollectionExport {
                 );
                 
                 // Cleanup final batch
-                fs.rmSync(currentBatchDir, { recursive: true, force: true });
-                fs.unlinkSync(finalBatchZipPath);
+                //fs.rmSync(currentBatchDir, { recursive: true, force: true });
+                //fs.unlinkSync(finalBatchZipPath);
             }
 
             //
             //SECTION 5: Cleanup
             //
-            fs.rmSync(exportDir, { recursive: true, force: true });
+            //fs.rmSync(exportDir, { recursive: true, force: true });
             const collectionDb = new CollectionDB();
-            // Update all selected collections with the export timestamp
+            // // Update all selected collections with the export timestamp
             for (const collectionId of studio[user].exportContext.collections) {
                 await collectionDb.updateOne(
                     { collectionId: collectionId },
@@ -617,9 +620,13 @@ async function createAndSendBatch(batchDir, batchNumber, message, startIndex) {
         `Sending batch ${batchNumber} (images ${startIndex}-${startIndex + files.length - 1})...`
     );
 
-    await sendDocument(message, zipPath, {
-        caption: `Batch ${batchNumber} - Images ${startIndex}-${startIndex + files.length - 1}`
-    });
+    try {
+        await sendDocument(message, zipPath, {
+            caption: `Batch ${batchNumber} - Images ${startIndex}-${startIndex + files.length - 1}`
+        });
+    } catch (error) {
+        console.error('Error sending batch:', error);
+    }
 
     return zipPath;
 }

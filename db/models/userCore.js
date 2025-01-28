@@ -9,10 +9,9 @@ class UserCoreDB extends BaseDB {
     massageData(data) {
         return {
             userId: data.userId,
+            wallets: data.wallets || [],
             wallet: data.wallet || '',
-            ethWallet: data.ethWallet || '',
             verified: data.verified || false,
-            ethVerified: data.ethVerified || false,
             kickedAt: data.kickedAt || '',
             lastRunTime: data.lastRunTime || new Date(),
             lastTouch: data.lastTouch || new Date(),
