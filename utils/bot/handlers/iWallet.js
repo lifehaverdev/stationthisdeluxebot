@@ -1,4 +1,4 @@
-const { PrivyInterface, JupiterHandler, TransactionMonitor } = require('../../../privy');
+const { PrivyInterface } = require('../../../privy');
 const { lobby, abacus, prefixHandlers, actionMap, commandRegistry } = require('../bot');
 const { getBalance, getNFTBalance } = require('../../users/checkBalance');
 const { UserCore } = require('../../../db/index');
