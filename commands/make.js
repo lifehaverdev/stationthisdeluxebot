@@ -202,15 +202,15 @@ async function generate(promptObj) {
         const body = prepareRequest(promptObj);
         
         let run_id;
-        const response = null
-            // await fetch("https://www.comfydeploy.com/api/run", {
-            //     method: "POST",
-            //     headers: {
-            //         "Content-Type": "application/json",
-            //         "Authorization": "Bearer " + process.env.COMFY_DEPLOY_API_KEY,
-            //     },
-            //     body: JSON.stringify(body),
-            // });
+        const response = //null
+            await fetch("https://www.comfydeploy.com/api/run", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + process.env.COMFY_DEPLOY_API_KEY,
+                },
+                body: JSON.stringify(body),
+            });
         
 
         if (response.ok) {
