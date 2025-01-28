@@ -1,1174 +1,807 @@
-const crypto = require('crypto');
-const dotenv = require('dotenv');
-const { getBalance } = require('../../users/checkBalance');
-const { 
-    Connection, 
-    PublicKey, 
-    LAMPORTS_PER_SOL,
-    SystemProgram,
-    Transaction,
-} = require('@solana/web3.js');
-const { 
-    createTransferInstruction,
-    getAssociatedTokenAddress,
-    createAssociatedTokenAccountInstruction,
-    TOKEN_PROGRAM_ID,
-    createBurnInstruction,
-    ASSOCIATED_TOKEN_PROGRAM_ID
-} = require('@solana/spl-token');
-const { ethers } = require('ethers');
+const { PrivyInterface, JupiterHandler, TransactionMonitor } = require('../../../privy');
+const { lobby, abacus, prefixHandlers, actionMap, commandRegistry } = require('../bot');
+const { getBalance, getNFTBalance } = require('../../users/checkBalance');
+const { UserCore } = require('../../../db/index');
+const {
+    sendMessage,
+    react,
+    editMessage
+} = require('../../utils');
 
-dotenv.config();
+// Define wallet types
+const WALLET_TYPES = {
+    PRIVY_SOL: 'PRIVY_SOL',
+    PRIVY_ETH: 'PRIVY_ETH',
+    CONNECTED_SOL: 'CONNECTED_SOL',
+    CONNECTED_ETH: 'CONNECTED_ETH'
+};
 
-class PrivyInterface {
+// Define transaction types
+const TX_TYPES = {
+    CHAIN_SELECT: 'CHAIN_SELECT',
+    WALLET_CREATE: 'WALLET_CREATE',
+    MS2_SWAP: 'MS2_SWAP',
+    WALLET_VERIFY: 'WALLET_VERIFY'
+};
+
+class AbacusHelper {
+    static createEntry(userId, txType, data = {}) {
+        userId = parseInt(userId);
+        if (!abacus[userId]) {
+            abacus[userId] = {};
+        }
+
+        const baseEntry = {
+            txType,
+            data,
+            timestamp: Date.now(),
+            heading: this.getHeading(txType),
+            description: this.getDescription(txType, data),
+            status: 'pending'
+        };
+
+        abacus[userId][txType] = baseEntry;
+        return baseEntry;
+    }
+
+    static updateStatus(userId, txType, status) {
+        if (abacus[userId]?.[txType]) {
+            abacus[userId][txType].status = status;
+            return abacus[userId][txType];
+        }
+        return null;
+    }
+
+    static updateDescription(userId, txType) {
+        if (!abacus[userId]?.[txType]) return;
+        
+        const entry = abacus[userId][txType];
+        entry.description = this.getDescription(txType, entry.data);
+    }
+
+    static clearEntry(userId, txType) {
+        if (abacus[userId] && abacus[userId][txType]) {
+            delete abacus[userId][txType];
+        }
+    }
+
+    static getHeading(txType) {
+        const headings = {
+            [TX_TYPES.CHAIN_SELECT]: '🌟 Chain Selection',
+            [TX_TYPES.WALLET_CREATE]: '👛 Wallet Creation',
+            [TX_TYPES.MS2_SWAP]: '💱 MS2 Token Swap',
+            [TX_TYPES.WALLET_VERIFY]: '✅ Wallet Verification'
+        };
+        return headings[txType] || 'Transaction';
+    }
+
+    static getDescription(txType, data) {
+        switch (txType) {
+            case TX_TYPES.CHAIN_SELECT:
+                if (!data.info) {
+                    return 'Please select a chain to continue.';
+                }
+                return `You are about to select ${data.info} as your primary chain.\n\n` +
+                       `This will create a new wallet for you on the ${data.info} network.`;
+            case TX_TYPES.MS2_SWAP:
+                if (!data.amount || !data.chain) {
+                    return 'Please complete swap details to continue.';
+                }
+                return `Swap Details:\n` +
+                       `Amount: ${data.amount} ${data.chain}\n` +
+                       `Expected MS2: ${data.expectedMS2}\n\n` +
+                       `Gas Fee (estimated): ${data.gasFee} ${data.chain}`;
+            // Add more cases as needed
+            default:
+                return 'Please confirm this transaction';
+        }
+    }
+
+    static getPendingTransaction(userId) {
+        if (!abacus[userId]) return null;
+        return Object.values(abacus[userId])
+            .find(entry => entry?.status === 'pending');
+    }
+}
+
+class WalletHandler {
     constructor() {
-        this.APP_ID = process.env.PRIVY_APP_ID;
-        this.APP_SECRET = process.env.PRIVY_APP_SECRET;
-        this.AUTH_KEY = process.env.PRIVY_AUTH_KEY;
-        this.API_BASE_URL = 'https://api.privy.io/v1'; // Updated base URL
-        // Add pending transactions storage
-        this.pendingTransactions = new Map();
+        this.privy = new PrivyInterface();
+    }
+
+    async promptChainSelection(message) {
+        const userId = message.from.id;
         
-        this.connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com');
-        //this.ethProvider = new ethers.providers.JsonRpcProvider(process.env.ETH_RPC_URL);
-        this.jupiterHandler = new JupiterHandler();
-         // Start the transaction monitor
-         this.startTransactionMonitor();
-    }
-
-    // Transaction Status Enum
-    static TxStatus = {
-        SUBMITTED: 'submitted',
-        PENDING: 'pending',
-        CONFIRMED: 'confirmed',
-        FAILED: 'failed',
-        UNKNOWN: 'unknown'
-    };
-
-
-    // Transaction monitoring system
-    startTransactionMonitor() {
-        setInterval(() => this.checkPendingTransactions(), 10000); // Check every 10 seconds
-    }
-
-    async estimateGasCost(chainType, operation, params = {}) {
-        if (chainType === 'ethereum') {
-            // Get current gas price
-            const gasPrice = await this.ethProvider.getGasPrice();
-            
-            // Known gas limits for different operations
-            const GAS_LIMITS = {
-                ETH_TRANSFER: 21000,  // Standard ETH transfer
-                ERC20_TRANSFER: 65000, // Approximate for ERC20 transfers
-                // Add more operations as needed
-            };
-
-            const gasLimit = GAS_LIMITS[operation];
-            const gasCostWei = gasPrice.mul(gasLimit);
-            const gasCostEth = ethers.utils.formatEther(gasCostWei);
-
-            return {
-                estimatedGas: gasLimit,
-                gasPrice: gasPrice.toString(),
-                totalCost: gasCostEth,
-                currency: 'ETH'
-            };
-        }
-        
-        if (chainType === 'solana') {
-            // Solana's static fees (in SOL)
-            const SOLANA_FEES = {
-                SOL_TRANSFER: 0.000005,
-                TOKEN_TRANSFER: 0.000004598
-            };
-
-            return {
-                estimatedGas: SOLANA_FEES[operation],
-                currency: 'SOL'
-            };
-        }
-    }
-
-    async submitTransaction(params) {
-        const {
-            chainType,  // 'ethereum' or 'solana'
-            walletId,
-            fromAddress,
-            toAddress,
-            amount,
-            tokenAddress = null  // null for native token transfers
-        } = params;
-
-        try {
-            // Create transaction based on chain type
-            const body = {
-                method: 'signAndSendTransaction',
-                caip2: this._getChainId(chainType),
-                params: await this._createTransactionParams(params)
-            };
-
-            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', body);
-
-            // Create transaction record
-            const txRecord = {
-                id: response.data.hash,
-                chainType,
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                fromAddress,
-                toAddress,
-                amount,
-                tokenAddress,
-                submittedAt: new Date().toISOString(),
-                confirmations: 0,
-                requiredConfirmations: this._getRequiredConfirmations(chainType)
-            };
-
-            // Add to pending transactions
-            this.pendingTransactions.set(response.data.hash, txRecord);
-
-            return {
-                success: true,
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                transaction: txRecord
-            };
-
-        } catch (error) {
-            return this._handleError(error, `submit ${chainType} transaction`);
-        }
-    }
-
-    async checkTransactionStatus(txHash, chainType) {
-        try {
-            if (this.pendingTransactions.has(txHash)) {
-                const txRecord = this.pendingTransactions.get(txHash);
-                
-                let status;
-                if (chainType === 'solana') {
-                    status = await this._checkSolanaTransaction(txHash);
-                } else if (chainType === 'ethereum') {
-                    status = await this._checkEthereumTransaction(txHash);
-                }
-
-                // Update transaction record
-                txRecord.status = status.status;
-                txRecord.confirmations = status.confirmations;
-                txRecord.error = status.error;
-                
-                if (status.isComplete) {
-                    this.pendingTransactions.delete(txHash);
-                }
-
-                return {
-                    success: true,
-                    transaction: txRecord
-                };
-            }
-
-            return {
-                success: false,
-                error: 'Transaction not found in monitoring system'
-            };
-        } catch (error) {
-            return this._handleError(error, 'check transaction status');
-        }
-    }
-
-    async _checkSolanaTransaction(txHash) {
-        const status = await this.connection.getSignatureStatus(txHash);
-        console.log('🔄 Transaction status:', status);
-    
-        if (!status.value) {
-            console.log('⚠️ No status value returned');
-            return {
-                status: PrivyInterface.TxStatus.PENDING,
-                confirmations: 0,
-                isComplete: false
-            };
-        }
-    
-        if (status.value?.err) {
-            console.log('❌ Transaction error:', status.value.err);
-            return {
-                status: PrivyInterface.TxStatus.FAILED,
-                error: status.value.err,
-                isComplete: true
-            };
-        }
-
-        if (status.value?.confirmationStatus === 'finalized') {
-            console.log('🔄 Transaction finalized');
-            return {
-                status: PrivyInterface.TxStatus.CONFIRMED,
-                confirmations: 32, // Solana finality
-                isComplete: true
-            };
-        }
-        console.log('⏳ Current confirmations:', status.value?.confirmations || 0);
-        return {
-            status: PrivyInterface.TxStatus.PENDING,
-            confirmations: status.value?.confirmations || 0,
-            isComplete: false
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '⚡ Solana', callback_data: 'preConfirm_SOL' },
+                    { text: '💎 Ethereum', callback_data: 'preConfirm_ETH' }
+                ]
+            ]
         };
-    }
+    
+        const sent =  await sendMessage(message, 
+            '🌟 Welcome to MS2! Please select your preferred chain:\n\n' +
+            '• Solana: Fast & low-cost transactions\n' +
+            '• Ethereum: Widely supported & secure\n\n' +
+            'This will be your primary chain for MS2 transactions.',
+            { reply_markup: keyboard }
+        );
 
-    async _checkEthereumTransaction(txHash) {
-        const tx = await this.ethProvider.getTransaction(txHash);
-        if (!tx) {
-            return {
-                status: PrivyInterface.TxStatus.UNKNOWN,
-                isComplete: false
-            };
-        }
-
-        const confirmations = tx.confirmations || 0;
-        
-        if (confirmations >= 12) { // Standard ETH finality
-            return {
-                status: PrivyInterface.TxStatus.CONFIRMED,
-                confirmations,
-                isComplete: true
-            };
-        }
-
-        return {
-            status: PrivyInterface.TxStatus.PENDING,
-            confirmations,
-            isComplete: false
-        };
-    }
-
-    _getRequiredConfirmations(chainType) {
-        return chainType === 'solana' ? 32 : 12; // Solana vs ETH
-    }
-
-    _getChainId(chainType) {
-        return chainType === 'solana' 
-            ? 'solana:mainnet' 
-            : 'eip155:1'; // Mainnet ETH
-    }
-
-    async checkTransactionStatus(txHash, chainType) {
-        try {
-            if (this.pendingTransactions.has(txHash)) {
-                const txRecord = this.pendingTransactions.get(txHash);
-                
-                let status;
-                if (chainType === 'solana') {
-                    status = await this._checkSolanaTransaction(txHash);
-                } else if (chainType === 'ethereum') {
-                    status = await this._checkEthereumTransaction(txHash);
-                }
-
-                // Update transaction record
-                txRecord.status = status.status;
-                txRecord.confirmations = status.confirmations;
-                txRecord.error = status.error;
-                
-                if (status.isComplete) {
-                    this.pendingTransactions.delete(txHash);
-                }
-
-                return {
-                    success: true,
-                    transaction: txRecord
-                };
-            }
-
-            return {
-                success: false,
-                error: 'Transaction not found in monitoring system'
-            };
-        } catch (error) {
-            return this._handleError(error, 'check transaction status');
-        }
-    }
-
-    // Internal method to check all pending transactions
-    async checkPendingTransactions() {
-        for (const [txHash, txRecord] of this.pendingTransactions) {
-            try {
-                const result = await this.checkTransactionStatus(txHash, txRecord.chainType);
-                if (result.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
-                    result.transaction.status === PrivyInterface.TxStatus.FAILED) {
-                    // Emit event or callback here if needed
-                    console.log(`Transaction ${txHash} completed:`, result.transaction);
-                }
-            } catch (error) {
-                console.error(`Error checking transaction ${txHash}:`, error);
-            }
-        }
-    }
-
-
-    _handleError(error, context) {
-        console.error(`Error in ${context}:`, {
-            message: error.message,
-            stack: error.stack,
-            context
+        // Create abacus entry right away with the callback prefix
+        AbacusHelper.createEntry(userId, TX_TYPES.CHAIN_SELECT, {
+            callback_data_prefix: 'selectChain_',
+            originalMessageId: message.message_id,
+            sentMessageId: sent.message_id,
+            chain: null
         });
+    }
 
+    async handleChainSelection(action, message, userId) {
+        const selectedChain = action.split('_')[1]; // 'selectChain_SOL' -> 'SOL'
+
+        try {
+            // Create wallet for selected chain
+            const wallet = await this.createPrivyWallet(userId, selectedChain);
+            
+            if (wallet.success) {
+                const minBalance = selectedChain === 'SOL' ? '0.01 SOL' : '0.01 ETH';
+                const msg = `✅ Your ${selectedChain} wallet has been created!\n\n` +
+                           `📋 Address: \`${wallet.wallet.address}\`\n\n` +
+                           `To complete setup, please send:\n` +
+                           `1️⃣ At least ${minBalance} for transaction fees\n` +
+                           `2️⃣ Your MS2 tokens\n\n` +
+                           `Once you've sent both, type /verify to activate your wallet.`;
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: `✅ I've Sent the Tokens`, callback_data: 'verify_wallet' }]
+                    ]
+                };
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: msg,
+                    options: {
+                        reply_markup: keyboard
+                    }
+                });
+            } else {
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: '❌ Failed to create wallet. Please try again later or contact support.'
+                });
+            }
+        } catch (error) {
+            console.error('Chain selection error:', error);
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: '❌ An error occurred. Please try again later or contact support.'
+            });
+        }
+    }
+
+    async verifyWalletSetup(message) {
+        const userId = message.from.id;
+        try {
+            const assetInfo = await this.getUserAssets(userId);
+            if (!assetInfo.success) {
+                return await sendMessage(message, 
+                    '❌ Failed to check balances. Please try again later.');
+            }
+
+            // Check different scenarios
+            const hasSolNative = assetInfo.assets.SOL.native >= 0.01;
+            const hasEthNative = assetInfo.assets.ETH.native >= 0.01;
+            const hasMS2 = assetInfo.totalMS2 > 0;
+
+            // Scenario 1: Empty wallet
+            if (!hasSolNative && !hasEthNative) {
+                return await sendMessage(message,
+                    '⚠️ Your wallet needs some funds to get started!\n\n' +
+                    'Please send either:\n' +
+                    '• SOL to your Solana wallet\n' +
+                    '• ETH to your Ethereum wallet\n\n' +
+                    'Use /wallet to see your addresses.'
+                );
+            }
+
+            // Scenario 2: Has native tokens but no MS2
+            if ((hasSolNative || hasEthNative) && !hasMS2) {
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: '🛍️ Buy MS2 Tokens', callback_data: 'buy_ms2' }],
+                        [{ text: '💡 Learn More', callback_data: 'learn_ms2' }]
+                    ]
+                };
+
+                return await sendMessage(message,
+                    '💫 Great! You have some native tokens.\n\n' +
+                    'You can either:\n' +
+                    '• Buy MS2 tokens to unlock unlimited generations\n' +
+                    '• Continue without MS2 and pay per generation\n\n' +
+                    `Current Balance:\n` +
+                    `${hasSolNative ? `• ${assetInfo.assets.SOL.native} SOL\n` : ''}` +
+                    `${hasEthNative ? `• ${assetInfo.assets.ETH.native} ETH\n` : ''}`,
+                    { reply_markup: keyboard }
+                );
+            }
+
+            // Scenario 3: Has MS2
+            if (hasMS2) {
+                // Update user status in database
+                const userCoreDb = new UserCore();
+                await userCoreDb.updateOne(
+                    { userId },
+                    { status: 'active', setupComplete: true }
+                );
+
+                const keyboard = {
+                    inline_keyboard: [
+                        [{ text: '👤 Check Account', callback_data: 'check_account' }]
+                    ]
+                };
+
+                return await sendMessage(message,
+                    '🎉 Welcome to MS2!\n\n' +
+                    `Total MS2 Balance: ${assetInfo.totalMS2}\n\n` +
+                    '📝 Quick Guide:\n' +
+                    '• Your points replenish over time\n' +
+                    '• Use /account to check your point balance\n' +
+                    '• Each generation costs 1 point\n' +
+                    '• Points replenish faster with more MS2\n\n' +
+                    '🎮 Ready to start generating? Try /create!',
+                    { reply_markup: keyboard }
+                );
+            }
+
+        } catch (error) {
+            console.error('Verify setup error:', error);
+            return await sendMessage(message,
+                '❌ An error occurred during verification. Please try again later.');
+        }
+    }
+
+    
+    // Create a wallet object with standardized structure
+    createWalletObject(address, type, privyId = null) {
         return {
-            success: false,
-            error: error.message,
-            context,
-            timestamp: new Date().toISOString()
+            address,
+            type,
+            privyId,
+            createdAt: new Date().toISOString(),
+            lastUsed: new Date().toISOString()
         };
     }
 
-    _getBasicAuthHeader() {
-        const auth = Buffer.from(`${this.APP_ID}:${this.APP_SECRET}`).toString('base64');
-        return `Basic ${auth}`;
-    }
-
-    _createAuthSignature(method, path, body = '') {
-        if (!this.AUTH_KEY) return null;
-        
-        const timestamp = Math.floor(Date.now() / 1000);
-        const message = `${timestamp}.${method}.${path}${body ? '.' + JSON.stringify(body) : ''}`;
-        
-        const signature = crypto
-            .createHmac('sha256', this.AUTH_KEY)
-            .update(message)
-            .digest('hex');
-
-        return `t=${timestamp},s=${signature}`;
-    }
-
-    async _createTransactionParams(params) {
-        const { chainType, fromAddress, toAddress, amount, tokenAddress } = params;
-
-        if (chainType === 'solana') {
-            return this._createSolanaTransactionParams(fromAddress, toAddress, amount, tokenAddress);
-        } else if (chainType === 'ethereum') {
-            return this._createEthereumTransactionParams(fromAddress, toAddress, amount, tokenAddress);
-        }
-
-        throw new Error(`Unsupported chain type: ${chainType}`);
-    }
-
-    async _createSolanaTransactionParams(fromAddress, toAddress, amount, tokenAddress) {
+    // Add a wallet to user's wallets array
+    async addWalletToUser(userId, wallet) {
+        const userCoreDb = new UserCore();
         try {
-            let transaction = new Transaction();
+            console.log(`📝 Adding wallet for user ${userId}:`, wallet);
 
-            if (tokenAddress) {
-                // Token transfer (MS2 or other SPL tokens)
-                const mint = new PublicKey(tokenAddress);
-                const fromPubkey = new PublicKey(fromAddress);
-                const toPubkey = new PublicKey(toAddress);
-
-                // Get token accounts for both addresses
-                const fromTokenAccount = await getAssociatedTokenAddress(
-                    mint,
-                    fromPubkey
-                );
-                
-                const toTokenAccount = await getAssociatedTokenAddress(
-                    mint,
-                    toPubkey
-                );
-
-                // Check if destination token account exists
-                const toAccountInfo = await this.connection.getAccountInfo(toTokenAccount);
-                if (!toAccountInfo) {
-                    transaction.add(
-                        createAssociatedTokenAccountInstruction(
-                            fromPubkey, // payer
-                            toTokenAccount,
-                            toPubkey,
-                            mint
-                        )
-                    );
+            // Update lobby if user exists there
+            if (lobby[userId]) {
+                console.log('🏠 User found in lobby, updating...');
+                if (!lobby[userId].wallets) {
+                    lobby[userId].wallets = [];
                 }
-
-                // Add transfer instruction
-                transaction.add(
-                    createTransferInstruction(
-                        fromTokenAccount,
-                        toTokenAccount,
-                        fromPubkey,
-                        amount * 1000000 // Convert to token decimals (6 for MS2)
-                    )
-                );
-            } else {
-                // Native SOL transfer
-                transaction.add(
-                    SystemProgram.transfer({
-                        fromPubkey: new PublicKey(fromAddress),
-                        toPubkey: new PublicKey(toAddress),
-                        lamports: amount * LAMPORTS_PER_SOL
-                    })
-                );
+                lobby[userId].wallets.push(wallet);
+                console.log('✅ Lobby updated:', lobby[userId].wallets);
             }
 
-            // Get recent blockhash
-            const { blockhash } = await this.connection.getLatestBlockhash();
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = new PublicKey(fromAddress);
-
-            // Serialize the transaction
-            const serializedTransaction = transaction.serialize({
-                requireAllSignatures: false,
-                verifySignatures: false
-            });
-
-            return {
-                transaction: serializedTransaction.toString('base64'),
-                encoding: 'base64'
-            };
-        } catch (error) {
-            throw new Error(`Failed to create Solana transaction: ${error.message}`);
-        }
-    }
-
-    async _makeApiCall(endpoint, method = 'GET', body = null) {
-        try {
-            const url = `${this.API_BASE_URL}${endpoint}`;
-            console.log('Making API call to:', url);
+            // Get user from database
+            const user = await userCoreDb.findOne({ userId });
             
-            const headers = {
-                'Authorization': this._getBasicAuthHeader(),
-                'privy-app-id': this.APP_ID,
-                'Content-Type': 'application/json'
-            };
-
-            // Add authorization signature for POST requests to specific endpoints
-            if (method === 'POST' && endpoint === '/wallets') {
-                const signature = this._createAuthSignature(method, endpoint, body);
-                if (signature) {
-                    headers['privy-authorization-signature'] = signature;
-                }
-            }
-
-            console.log('Request headers:', headers);
-            if (body) console.log('Request body:', body);
-
-            const response = await fetch(url, {
-                method,
-                headers,
-                ...(body && { body: JSON.stringify(body) })
-            });
-
-            const responseText = await response.text();
-            console.log('Response:', responseText);
-
-            if (!response.ok) {
-                throw new Error(`API call failed: ${response.status} ${response.statusText}\n${responseText}`);
-            }
-
-            return JSON.parse(responseText);
-        } catch (error) {
-            return this._handleError(error, `API call to ${endpoint}`);
-        }
-    }
-
-    async _trackGasUsage(address, operation, callback) {
-        try {
-            // Get balance before operation
-            const balanceBefore = await this.getNativeSolBalance(address);
-            
-            // Perform the operation
-            const result = await callback();
-            
-            // Wait for transaction confirmation with better error handling
-            console.log(`Waiting for transaction ${result.hash} to confirm...`);
-            try {
-                await this.connection.confirmTransaction(result.hash, 'confirmed');
-                
-                // Get balance after operation (now that transaction is confirmed)
-                const balanceAfter = await this.getNativeSolBalance(address);
-                
-                // Calculate gas used
-                const gasUsed = balanceBefore - balanceAfter;
-                
-                return {
-                    ...result,
-                    gas: {
-                        used: gasUsed,
-                        operation,
-                        balanceBefore,
-                        balanceAfter,
-                        timestamp: new Date().toISOString()
-                    }
-                };
-            } catch (confirmError) {
+            if (!user) {
+                console.log('❌ User not found in database');
                 return {
                     success: false,
-                    error: `Transaction confirmation failed: ${confirmError.message}`,
-                    hash: result.hash,
-                    context: operation,
-                    timestamp: new Date().toISOString()
+                    error: 'User not found in database'
                 };
             }
-        } catch (error) {
-            return this._handleError(error, `track gas usage for ${operation}`);
-        }
-    }
 
-    async createEthWallet() {
-        try {
-            const body = {
-                chain_type: 'ethereum',
-                idempotency_key: `eth_wallet_${Date.now()}`
-            };
+            // Initialize wallets array if it doesn't exist
+            if (!user.wallets) {
+                user.wallets = [];
+            }
 
-            const response = await this._makeApiCall('/wallets', 'POST', body);
+            // Add new wallet
+            user.wallets.push(wallet);
+
+            // Update user in database
             
-            if (response.success === false) {
-                throw new Error(response.error);
-            }
+            console.log('💾 Updating database...');
+            await userCoreDb.updateOne({ userId }, { wallets: user.wallets });
+            console.log('✅ Database updated');
 
             return {
                 success: true,
-                wallet: response
+                wallet
             };
         } catch (error) {
-            return this._handleError(error, 'create ETH wallet');
-        }
-    }
-
-    async createSolWallet() {
-        try {
-            const body = {
-                chain_type: 'solana',
-                idempotency_key: `sol_wallet_${Date.now()}`
-            };
-
-            const response = await this._makeApiCall('/wallets', 'POST', body);
+            console.error('❌ Error adding wallet:', error);
             
-            if (response.success === false) {
-                throw new Error(response.error);
+            // If we succeeded in updating lobby but database failed,
+            // rollback lobby changes to maintain consistency
+            if (lobby[userId]?.wallets) {
+                console.log('🔄 Rolling back lobby changes due to error');
+                lobby[userId].wallets = lobby[userId].wallets.filter(w => 
+                    w.address !== wallet.address
+                );
             }
 
-            return {
-                success: true,
-                wallet: response
-            };
-        } catch (error) {
-            return this._handleError(error, 'create SOL wallet');
-        }
-    }
-
-    async sendSol(walletId, fromAddress, toAddress, amount) {
-        return this.submitTransaction({
-            chainType: 'solana',
-            walletId,
-            fromAddress,
-            toAddress,
-            amount,
-            tokenAddress: null  // null indicates native SOL transfer
-        });
-    }
-
-    async sendMS2Solana(walletId, fromAddress, toAddress, amount) {
-        return this.submitTransaction({
-            chainType: 'solana',
-            walletId,
-            fromAddress,
-            toAddress,
-            amount,
-            tokenAddress: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'  // MS2 mint address
-        });
-    }
-
-    async buyMS2Solana(walletId, fromAddress, solAmount) {
-        try {
-            // Add buffer for fees (0.01 SOL)
-            const totalNeeded = solAmount + 0.01;
-            
-            // Check if wallet has enough SOL
-            const balance = await this.getSolanaWalletBalance(fromAddress);
-            if (balance < totalNeeded) {
-                throw new Error(`Insufficient SOL balance. Need ${totalNeeded} SOL (including fees), have ${balance} SOL`);
-            }
-
-            // Get the swap transaction data
-            const swapResult = await this.jupiterHandler.getMS2SwapTransaction(solAmount, fromAddress);
-            if (!swapResult.success) {
-                throw new Error(`Failed to get swap transaction: ${swapResult.error}`);
-            }
-
-            // Submit through Privy
-            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', {
-                method: 'signAndSendTransaction',
-                caip2: this._getChainId('solana'),
-                params: {
-                    transaction: swapResult.data.swapTransaction,
-                    encoding: 'base64'
-                }
-            });
-
-            // Check if response indicates success
-            if (!response?.data?.hash) {
-                throw new Error(`Transaction failed: ${JSON.stringify(response?.error || 'Unknown error')}`);
-            }
-
-            // Create transaction record
-            const txRecord = {
-                id: response.data.hash,
-                chainType: 'solana',
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                fromAddress,
-                operation: 'BUY_MS2',
-                solAmount,
-                submittedAt: new Date().toISOString(),
-                confirmations: 0,
-                requiredConfirmations: 32
-            };
-
-            this.pendingTransactions.set(response.data.hash, txRecord);
-
-            return {
-                success: true,
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                transaction: txRecord
-            };
-
-        } catch (error) {
-            return this._handleError(error, 'buy MS2');
-        }
-    }
-
-    async burnMS2Solana(walletId, fromAddress, amount) {
-        try {
-            // Get the user's MS2 token account
-            const fromPubkey = new PublicKey(fromAddress);
-            const mint = new PublicKey('AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
-            const tokenAccount = await getAssociatedTokenAddress(
-                mint,
-                fromPubkey
-            );
-
-            // Create burn transaction
-            const burnTx = await this._createMS2BurnTransaction(
-                fromAddress,
-                tokenAccount.toString(),
-                amount * 1000000 // Convert to token decimals (6 for MS2)
-            );
-
-            // Submit through Privy
-            const response = await this._makeApiCall(`/wallets/${walletId}/rpc`, 'POST', {
-                method: 'signAndSendTransaction',
-                caip2: this._getChainId('solana'),
-                params: {
-                    transaction: burnTx,
-                    encoding: 'base64'
-                }
-            });
-
-            // Create transaction record
-            const txRecord = {
-                id: response.data.hash,
-                chainType: 'solana',
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                fromAddress,
-                operation: 'BURN_MS2',
-                amount,
-                submittedAt: new Date().toISOString(),
-                confirmations: 0,
-                requiredConfirmations: 32
-            };
-
-            this.pendingTransactions.set(response.data.hash, txRecord);
-
-            return {
-                success: true,
-                status: PrivyInterface.TxStatus.SUBMITTED,
-                transaction: txRecord
-            };
-
-        } catch (error) {
-            return this._handleError(error, 'burn MS2');
-        }
-    }
-
-    async _createMS2BurnTransaction(fromAddress, tokenAddress, amount) {
-        try {
-            const transaction = new Transaction();
-            const fromPubkey = new PublicKey(fromAddress);
-            const mintPublicKey = new PublicKey('AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg');
-            const tokenAccountPublicKey = new PublicKey(tokenAddress);
-
-            // Use createBurnInstruction directly instead of Token.createBurnInstruction
-            const burnInstruction = createBurnInstruction(
-                tokenAccountPublicKey, // source (token account)
-                mintPublicKey,         // mint
-                fromPubkey,           // owner
-                amount,               // amount
-                []                    // multiSigners (empty array for single signer)
-            );
-            transaction.add(burnInstruction);
-
-            // Get recent blockhash
-            const { blockhash } = await this.connection.getLatestBlockhash('finalized');
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = fromPubkey;
-
-            // Serialize the transaction
-            const serializedTransaction = transaction.serialize({
-                requireAllSignatures: false,
-                verifySignatures: true
-            });
-
-            return serializedTransaction.toString('base64');
-        } catch (error) {
-            throw new Error(`Failed to create MS2 burn transaction: ${error.message}`);
-        }
-    }
-
-    async sendEth(walletId, fromAddress, toAddress, amount) {
-        // Get gas estimate before transaction
-        const gasEstimate = await this.estimateGasCost('ethereum', 'ETH_TRANSFER');
-        console.log(`Estimated gas cost: ${gasEstimate.totalCost} ETH`);
-
-        // Proceed with transaction...
-        return this.submitTransaction({
-            chainType: 'ethereum',
-            walletId,
-            fromAddress,
-            toAddress,
-            amount,
-            gasEstimate  // Include estimate in transaction record
-        });
-    }
-
-    async getSolanaWalletBalance(walletAddress) {
-        try {
-            // Get native SOL balance
-            const nativeBalance = await this.getNativeSolBalance(walletAddress);
-            
-            // Get MS2 token balance using your existing function
-            const tokenBalance = await getBalance(walletAddress);
-
-            return {
-                success: true,
-                balance: {
-                    native: nativeBalance,
-                    ms2: tokenBalance
-                }
-            };
-        } catch (error) {
-            return this._handleError(error, 'get Solana wallet balance');
-        }
-    }
-
-    async getNativeSolBalance(walletAddress) {
-        try {
-            const publicKey = new PublicKey(walletAddress);
-            const balance = await this.connection.getBalance(publicKey);
-            return balance / LAMPORTS_PER_SOL; // Convert from lamports to SOL
-        } catch (error) {
-            return this._handleError(error, 'get native SOL balance');
-        }
-    }
-
-    _getChainId(chainType) {
-        const networks = {
-            solana: {
-                mainnet: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
-                testnet: 'solana:testnet',
-                devnet: 'solana:devnet'
-            },
-            ethereum: {
-                mainnet: 'eip155:1',
-                goerli: 'eip155:5',
-                sepolia: 'eip155:11155111'
-            }
-        };
-
-        // For now, just return mainnet. Later we can add network selection
-        return networks[chainType].mainnet;
-    }
-
-}
-
-class JupiterHandler {
-    constructor() {
-        this.API_BASE_URL = 'https://quote-api.jup.ag/v6';
-        
-        // Common token addresses
-        this.TOKENS = {
-            SOL: 'So11111111111111111111111111111111111111112',
-            MS2: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg',
-            USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
-        };
-    }
-
-    async getQuote({
-        inputMint,
-        outputMint,
-        amount,
-        slippageBps = 50  // default 0.5% slippage
-    }) {
-        try {
-            const url = `${this.API_BASE_URL}/quote?` + new URLSearchParams({
-                inputMint,
-                outputMint,
-                amount: amount.toString(),
-                slippageBps: slippageBps.toString()
-            });
-
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-                throw new Error(`Jupiter API error: ${response.status} ${response.statusText}`);
-            }
-
-            const quoteData = await response.json();
-            return {
-                success: true,
-                data: quoteData
-            };
-
-        } catch (error) {
             return {
                 success: false,
-                error: `Failed to get Jupiter quote: ${error.message}`
+                error: error.message
             };
         }
     }
 
-    // Helper method for SOL -> MS2 quotes
-    async getMS2Quote(solAmount) {
-        // Convert SOL to lamports
-        const lamports = solAmount * 1_000_000_000;
-        
-        return this.getQuote({
-            inputMint: this.TOKENS.SOL,
-            outputMint: this.TOKENS.MS2,
-            amount: lamports
-        });
+    // Create a new Privy wallet for user
+    async createPrivyWallet(userId, chain) {
+        try {
+            // Uncomment this when ready to use real Privy integration
+            const walletResponse = await this.privy[chain === 'SOL' ? 'createSolWallet' : 'createEthWallet']();
+            
+            // The response should directly contain id and address
+            // If these don't exist, it means the API call failed
+            if (!walletResponse.id || !walletResponse.address || !walletResponse.chain_type) {
+                throw new Error(`Invalid wallet response from Privy: ${JSON.stringify(walletResponse)}`);
+            }
+
+            // Create our standardized wallet object
+            const wallet = {
+                address: walletResponse.address,
+                type: chain === 'SOL' ? WALLET_TYPES.PRIVY_SOL : WALLET_TYPES.PRIVY_ETH,
+                privyId: walletResponse.id,
+                assets: [],
+                createdAt: new Date().toISOString(),
+                lastUsed: new Date().toISOString()
+            };
+
+            // Add wallet to user's wallets array
+            return await this.addWalletToUser(userId, wallet);
+
+        } catch (error) {
+            console.error('Error creating Privy wallet:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     }
 
-    async getSwapTransaction(quoteResponse, userPublicKey) {
+    // Add a connected wallet
+    async addConnectedWallet(userId, address, chain) {
         try {
-            const response = await fetch(`${this.API_BASE_URL}/swap`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
+            const wallet = this.createWalletObject(
+                address,
+                chain === 'SOL' ? WALLET_TYPES.CONNECTED_SOL : WALLET_TYPES.CONNECTED_ETH
+            );
+
+            return await this.addWalletToUser(userId, wallet);
+        } catch (error) {
+            console.error('Error adding connected wallet:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    async getUserAssets(userId) {
+        try {
+            let wallets;
+            console.log(`🔍 Getting assets for user ${userId}`);
+
+            // First check lobby
+            if (lobby[userId]?.wallets?.length > 0) {
+                console.log('📍 Found wallets in lobby:', lobby[userId].wallets);
+                wallets = lobby[userId].wallets;
+            } else {
+                console.log('🔄 No wallets in lobby, checking database...');
+                const userCoreDb = new UserCore();
+                const user = await userCoreDb.findOne({ userId });
+                
+                if (!user?.wallets?.length) {
+                    console.log('❌ No wallets found in database');
+                    return null;
+                }
+
+                console.log('💾 Found wallets in database:', user.wallets);
+                if (!lobby[userId]) lobby[userId] = {};
+                lobby[userId].wallets = user.wallets;
+                wallets = user.wallets;
+            }
+
+            // Initialize assets object with USD values
+            const assets = {
+                SOL: { 
+                    native: 0,
+                    ms2: 0,
+                    ms2_usd: 0,
+                    nfts: {},
+                    tokens: {}
                 },
-                body: JSON.stringify({
-                    quoteResponse,
-                    userPublicKey,
-                    wrapAndUnwrapSol: true  // Handle SOL wrapping automatically
-                })
-            });
+                ETH: { 
+                    native: 0,
+                    ms2: 0,
+                    ms2_usd: 0,
+                    tokens: {}
+                }
+            };
 
-            if (!response.ok) {
-                throw new Error(`Jupiter swap API error: ${response.status} ${response.statusText}`);
+            // Process each wallet
+            for (const wallet of wallets) {
+                const chain = wallet.type.includes('SOL') ? 'SOL' : 'ETH';
+                console.log(`📊 Processing ${chain} wallet: ${wallet.address}`);
+
+                // Get native and MS2 balances
+                const balances = chain === 'SOL'
+                    ? await this.privy.getSolanaWalletBalance(wallet.address)
+                    : await this.privy.getEthereumWalletBalance(wallet.address);
+
+                if (balances.success) {
+                    assets[chain].native += balances.balance.native;
+                    assets[chain].ms2 += balances.balance.ms2;
+
+                    // Calculate USD value for MS2
+                    const ms2UsdValue = chain === 'SOL'
+                        ? await this.privy.getMS2SOLUSDValue(balances.balance.ms2)
+                        : await this.privy.getMS2ETHUSDValue(balances.balance.ms2);
+
+                    if (ms2UsdValue.success) {
+                        assets[chain].ms2_usd += ms2UsdValue.value.usd;
+                    }
+                }
+
+                // Process additional assets in wallet.assets array
+                if (wallet.assets?.length > 0) {
+                    console.log(`🔍 Checking additional assets for wallet: ${wallet.address}`);
+                    
+                    for (const asset of wallet.assets) {
+                        if (chain === 'SOL') {
+                            if (asset.type === 'nft') {
+                                const nftCount = await getNFTBalance(wallet.address, asset.address);
+                                if (nftCount > 0) {
+                                    assets.SOL.nfts[asset.address] = nftCount;
+                                }
+                            } else {
+                                const tokenBalance = await getBalance(wallet.address, asset.address);
+                                if (tokenBalance > 0) {
+                                    assets.SOL.tokens[asset.address] = tokenBalance;
+                                }
+                            }
+                        } else {
+                            const tokenBalance = await this.privy.getEthTokenBalance(wallet.address, asset.address);
+                            if (tokenBalance > 0) {
+                                assets.ETH.tokens[asset.address] = tokenBalance;
+                            }
+                        }
+                    }
+                }
             }
 
-            const swapData = await response.json();
+            // Calculate totals
+            const totalMS2 = Object.values(assets).reduce((sum, chainAssets) => 
+                sum + chainAssets.ms2, 0
+            );
+            const totalMS2USD = Object.values(assets).reduce((sum, chainAssets) => 
+                sum + chainAssets.ms2_usd, 0
+            );
+
+            console.log('💰 Total assets:', assets);
+            console.log('🎯 Total MS2:', totalMS2);
+            console.log('💵 Total MS2 USD Value:', totalMS2USD);
+            
             return {
                 success: true,
-                data: swapData
+                assets,
+                totalMS2,
+                totalMS2USD
             };
 
         } catch (error) {
+            console.error('❌ Error getting user assets:', error);
             return {
                 success: false,
-                error: `Failed to get swap transaction: ${error.message}`
+                error: error.message
             };
         }
     }
 
-    // Helper method for SOL -> MS2 swap transaction
-    async getMS2SwapTransaction(solAmount, userPublicKey) {
-        // 1. Get quote first
-        const quoteResult = await this.getMS2Quote(solAmount);
-        if (!quoteResult.success) {
-            return quoteResult;
-        }
+    async handleMS2Purchase(message, userId) {
+        try {
+            // Get current assets
+            const assetInfo = await this.getUserAssets(userId);
+            if (!assetInfo.success) {
+                return await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: '❌ Failed to fetch your balance. Please try again later.'
+                });
+            }
 
-        // 2. Get swap transaction
-        return this.getSwapTransaction(quoteResult.data, userPublicKey);
+            // Get wallet type and balance
+            const { chain, native: balance } = assetInfo.assets;
+            const isEth = chain === 'ETH';
+            
+            // Check minimum balance for gas
+            const minGas = isEth ? 0.001 : 0.01; // ETH needs less gas than SOL
+            if (balance < minGas) {
+                return await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `⚠️ Insufficient ${isEth ? 'ETH' : 'SOL'} balance for swap.\n` +
+                          `You need at least ${minGas} ${isEth ? 'ETH' : 'SOL'} for gas fees.`
+                });
+            }
+
+            // Reserve gas amount
+            const gasReserve = isEth ? 0.0005 : 0.001;
+            const swappableAmount = balance - gasReserve;
+            
+            // Get MS2 quote based on chain
+            let quote;
+            if (isEth) {
+                quote = await this.privy.getMS2ETHQuote();
+            } else {
+                quote = await this.privy.getMS2Quote(swappableAmount);
+            }
+
+            if (!quote.success) {
+                return await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: '❌ Failed to get MS2 price quote. Please try again.'
+                });
+            }
+
+            // Calculate options differently based on chain
+            const options = [0.25, 0.5, 0.75, 1.0].map(percent => {
+                const nativeAmount = (swappableAmount * percent).toFixed(4);
+                let ms2Amount;
+                
+                if (isEth) {
+                    // ETH quote gives us price per MS2
+                    ms2Amount = (nativeAmount / quote.price.eth).toFixed(2);
+                } else {
+                    // SOL quote gives us direct output amount
+                    ms2Amount = (quote.data.outAmount * percent / 1_000_000).toFixed(2);
+                }
+
+                return {
+                    native: nativeAmount,
+                    ms2: ms2Amount
+                };
+            });
+
+            const keyboard = {
+                inline_keyboard: [
+                    options.map(opt => ({
+                        text: `${opt.native} ${isEth ? 'ETH' : 'SOL'} → ${opt.ms2} MS2`,
+                        callback_data: `swap_ms2_${opt.native}`
+                    })),
+                    [
+                        { text: '🔄 Refresh Quote', callback_data: 'refresh_ms2_quote' },
+                        { text: '❌ Cancel', callback_data: 'cancel_ms2_swap' }
+                    ]
+                ]
+            };
+
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: '💱 MS2 Swap Calculator\n\n' +
+                      `Available: ${balance} ${isEth ? 'ETH' : 'SOL'}\n` +
+                      `Reserved for gas: ${gasReserve} ${isEth ? 'ETH' : 'SOL'}\n` +
+                      `Swappable: ${swappableAmount} ${isEth ? 'ETH' : 'SOL'}\n\n` +
+                      'Select how much you want to swap:',
+                reply_markup: keyboard
+            });
+
+        } catch (error) {
+            console.error('MS2 purchase error:', error);
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: '❌ An error occurred. Please try again later.'
+            });
+        }
     }
 }
 
-class TransactionMonitor {
-    static TIMEOUTS = {
-        SOLANA: {
-            INITIAL: 2 * 60 * 1000,     // 2 minutes
-            EXTENDED: 30 * 60 * 1000,   // 30 minutes
-        },
-        ETHEREUM: {
-            INITIAL: 5 * 60 * 1000,     // 5 minutes
-            EXTENDED: 60 * 60 * 1000,   // 1 hour
-            FINAL: 4 * 60 * 60 * 1000   // 4 hours
+commandRegistry['/signup'] = {
+    handler: async (message) => {
+        const userId = message.from.id;
+        const walletHandler = new WalletHandler();
+
+        try {
+            // First check lobby for existing wallets
+            if (lobby.hasOwnProperty(userId) && 
+                lobby[userId].hasOwnProperty('wallets') && 
+                lobby[userId].wallets.length > 0) {
+                return await sendMessage(message, 
+                    '⚠️ You already have a wallet setup. Use /wallet to view your details.');
+            }
+
+            // If not in lobby, check database
+            const userCoreDb = new UserCore();
+            const user = await userCoreDb.findOne({ userId });
+            if (user?.wallets?.length > 0) {
+                // Update lobby with wallet info from database
+                if (!lobby[userId]) lobby[userId] = {};
+                lobby[userId].wallets = user.wallets;
+                
+                return await sendMessage(message, 
+                    '⚠️ You already have a wallet setup. Use /wallet to view your details.');
+            }
+
+            // No existing wallets found, start chain selection process
+            await walletHandler.promptChainSelection(message);
+
+        } catch (error) {
+            console.error('Signup error:', error);
+            await sendMessage(message, 
+                '❌ An error occurred during signup. Please try again later.');
         }
+    }
+
+    
+};
+
+// Add these to your actionMap
+actionMap['buy_ms2'] = async (message, user) => {
+    const walletHandler = new WalletHandler();
+    await walletHandler.handleMS2Purchase(message, user.id);
+};
+
+actionMap['refresh_ms2_quote'] = async (message, user) => {
+    const walletHandler = new WalletHandler();
+    await walletHandler.handleMS2Purchase(message, user.id);
+};
+
+actionMap['cancel_ms2_swap'] = async (message, user) => {
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: '❌ MS2 swap cancelled.\n\nUse /verify when you\'re ready to check your balance again!'
+    });
+};
+
+// Now preConfirm just needs to build the final callback data
+prefixHandlers['preConfirm_'] = async (action, message, userId) => {
+    const info = action.split('_')[1];
+    // Get all pending transactions for the user
+    const userAbacus = abacus[userId];
+    const pendingTx = Object.values(userAbacus || {})
+        .find(entry => entry?.status === 'pending');
+    
+    if (!pendingTx) {
+        return await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: '❌ Session expired. Please start over.'
+        });
+    }
+
+    // Build the final callback data from prefix + selection
+    const finalCallback = `${pendingTx.data.callback_data_prefix}${info}`;
+    
+    // Update abacus with the complete callback data
+    pendingTx.data.finalCallback = finalCallback;
+    pendingTx.data.info = info;
+
+    // Update the description now that we have the info
+    AbacusHelper.updateDescription(userId, pendingTx.txType);
+
+    // Update original message
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: '⏳ Processing your selection...'
+    });
+
+    // Send confirmation message
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: '✅ Confirm', callback_data: finalCallback },
+                { text: '❌ Cancel', callback_data: 'cancel_tx' }
+            ]
+        ]
     };
 
-    async monitorTransaction(txHash, chain = 'SOLANA') {
-        console.log(`🔍 Starting ${chain} transaction monitoring...`);
-        
-        // First tier - Active monitoring
-        const quickResult = await this.activeMonitoring(txHash, chain);
-        if (quickResult.confirmed) return quickResult;
-
-        // Second tier - Extended monitoring
-        console.log('⏳ Switching to extended monitoring...');
-        const extendedResult = await this.extendedMonitoring(txHash, chain);
-        if (extendedResult.confirmed || chain === 'SOLANA') return extendedResult;
-
-        // Third tier - Only for ETH, final long monitoring
-        if (chain === 'ETHEREUM') {
-            console.log('⌛ Switching to final extended monitoring (ETH only)...');
-            return this.finalMonitoring(txHash);
-        }
-    }
-
-    async getRequiredConfirmations(chain) {
-        return chain === 'ETHEREUM' ? 12 : 32; // 12 for ETH, 32 for SOL
-    }
-
-    async getTransactionStatus(txHash, chain) {
-        // Implementation depends on your specific ETH/SOL clients
-        return chain === 'ETHEREUM' 
-            ? await this.getEthereumStatus(txHash)
-            : await this.getSolanaStatus(txHash);
-    }
-
-    async finalMonitoring(txHash) {
-        const startTime = Date.now();
-        const checkInterval = 15 * 60 * 1000; // Check every 15 minutes
-
-        while (Date.now() - startTime < TransactionMonitor.TIMEOUTS.ETHEREUM.FINAL) {
-            try {
-                const status = await this.getTransactionStatus(txHash, 'ETHEREUM');
-                if (status.confirmations >= 12) {
-                    return { confirmed: true, status };
-                }
-                
-                // Check if transaction was dropped/replaced
-                if (status.isDropped) {
-                    return {
-                        confirmed: false,
-                        status: 'DROPPED',
-                        reason: 'Transaction was dropped or replaced'
-                    };
-                }
-            } catch (error) {
-                console.log('Final monitoring check failed:', error.message);
-            }
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-        }
-
-        return {
-            confirmed: false,
-            status: 'FAILED',
-            reason: 'Transaction exceeded maximum lifetime (4 hours)'
-        };
-    }
-}
-
-
-// Test function
-// async function testJupiterQuote() {
-//     const jupiter = new JupiterHandler();
-    
-//     console.log('🚀 Testing Jupiter Quote API...');
-//     console.log('Getting quote for 0.1 SOL -> MS2');
-    
-//     const result = await jupiter.getMS2Quote(0.1);
-//     console.log('Quote result:', JSON.stringify(result, null, 2));
-// }
-
-// Updated test function
-async function testJupiterSwap() {
-    const jupiter = new JupiterHandler();
-    
-    console.log('🚀 Testing Jupiter Swap API...');
-    console.log('Getting swap transaction for 0.1 SOL -> MS2');
-    
-    const testWallet = '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ';
-    const result = await jupiter.getMS2SwapTransaction(0.1, testWallet);
-    console.log('Swap transaction result:', JSON.stringify(result, null, 2));
-}
-
-//just redid submitTransaction 
-
-async function testSolTransfer() {
-    const privy = new PrivyInterface();
-    
-    console.log('🌟 Testing SOL transfer...');
-    const result = await privy.sendSol(
-        'tvbjabl6vz4q3ll2tuocmctj',
-        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
-        '7CYDtKY7xXiGZHQJqhxfSHL1po36H8B4VfYUCH7dm4mi',
-        0.001
+    await sendMessage(message, 
+        `${pendingTx.heading}\n\n${pendingTx.description}`,
+        { reply_markup: keyboard }
     );
-    
-    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
-    
-    if (result.success) {
-        console.log('\n📡 Monitoring transaction...');
-        const txHash = result.transaction.id;
-        
-        // Return a promise that resolves when monitoring is complete
-        return new Promise((resolve) => {
-            const interval = setInterval(async () => {
-                const status = await privy.checkTransactionStatus(txHash, 'solana');
-                console.log('Transaction status:', JSON.stringify(status, null, 2));
-                
-                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
-                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
-                    clearInterval(interval);
-                    console.log('\n✅ Transaction monitoring complete');
-                    resolve();
-                }
-            }, 5000);
+};
 
-            // Timeout after 2 minutes just in case
-            setTimeout(() => {
-                clearInterval(interval);
-                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
-                resolve();
-            }, 120000);
-        });
-    }
-}
-
-// Test function for MS2 transfer
-async function testMS2Transfer() {
-    const privy = new PrivyInterface();
-    
-    console.log('🎮 Testing MS2 transfer...');
-    const result = await privy.sendMS2Solana(
-        'tvbjabl6vz4q3ll2tuocmctj',
-        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
-        '7CYDtKY7xXiGZHQJqhxfSHL1po36H8B4VfYUCH7dm4mi',
-        1  // amount in MS2
-    );
-    
-    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
-    
-    if (result.success) {
-        console.log('\n📡 Monitoring transaction...');
-        const txHash = result.transaction.id;
-        
-        return new Promise((resolve) => {
-            const interval = setInterval(async () => {
-                const status = await privy.checkTransactionStatus(txHash, 'solana');
-                console.log('Transaction status:', JSON.stringify(status, null, 2));
-                
-                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
-                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
-                    clearInterval(interval);
-                    console.log('\n✅ Transaction monitoring complete');
-                    resolve();
-                }
-            }, 5000);
-
-            setTimeout(() => {
-                clearInterval(interval);
-                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
-                resolve();
-            }, 120000);
-        });
-    }
-}
-
-async function testMS2Buy() {
-    const privy = new PrivyInterface();
-    
-    console.log('💫 Testing MS2 Buy...');
-    console.log('Attempting to buy MS2 with 0.01 SOL');
-    
-    const result = await privy.buyMS2Solana(
-        'tvbjabl6vz4q3ll2tuocmctj',
-        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
-        0.001  // amount in SOL
-    );
-    
-    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
-    
-    if (result.success) {
-        console.log('\n📡 Monitoring transaction...');
-        const txHash = result.transaction.id;
-        
-        return new Promise((resolve) => {
-            const interval = setInterval(async () => {
-                const status = await privy.checkTransactionStatus(txHash, 'solana');
-                console.log('Transaction status:', JSON.stringify(status, null, 2));
-                
-                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
-                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
-                    clearInterval(interval);
-                    console.log('\n✅ Transaction monitoring complete');
-                    resolve();
-                }
-            }, 5000);
-
-            // Timeout after 2 minutes
-            setTimeout(() => {
-                clearInterval(interval);
-                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
-                resolve();
-            }, 120000);
-        });
-    }
-}
-
-async function testMS2Burn() {
-    const privy = new PrivyInterface();
-    
-    console.log('🔥 Testing MS2 Burn...');
-    console.log('Attempting to burn 1 MS2');
-    
-    const result = await privy.burnMS2Solana(
-        'tvbjabl6vz4q3ll2tuocmctj',
-        '3VttTfc9BiW24Nvw1oxoi1TtwBZ7Zyj1ZKcYr4453RbQ',
-        1  // amount in MS2
-    );
-    
-    console.log('Initial transaction result:', JSON.stringify(result, null, 2));
-    
-    if (result.success) {
-        console.log('\n📡 Monitoring transaction...');
-        const txHash = result.transaction.id;
-        
-        return new Promise((resolve) => {
-            const interval = setInterval(async () => {
-                const status = await privy.checkTransactionStatus(txHash, 'solana');
-                console.log('Transaction status:', JSON.stringify(status, null, 2));
-                
-                if (status.transaction.status === PrivyInterface.TxStatus.CONFIRMED || 
-                    status.transaction.status === PrivyInterface.TxStatus.FAILED) {
-                    clearInterval(interval);
-                    console.log('\n✅ Transaction monitoring complete');
-                    resolve();
-                }
-            }, 5000);
-
-            setTimeout(() => {
-                clearInterval(interval);
-                console.log('\n⚠️ Transaction monitoring timed out after 2 minutes');
-                resolve();
-            }, 120000);
-        });
-    }
-}
-
-// Run tests if this file is run directly
-// if (require.main === module) {
-//     testMS2Transfer().then(() => {
-//         console.log('\n🏁 Tests complete');
-//         // Give a moment for any final console logs to complete
-//         setTimeout(() => process.exit(0), 1000);
-//     }).catch(error => {
-//         console.error('\n❌ Tests failed:', error);
-//         setTimeout(() => process.exit(1), 1000);
-//     });
-// }
-
-// Run test if file is run directly
-if (require.main === module) {
-    testMS2Burn().then(() => {
-        console.log('\n✅ Test complete');
-        process.exit(0);
-    }).catch(error => {
-        console.error('\n❌ Test failed:', error);
-        process.exit(1);
+prefixHandlers['swap_ms2_'] = async (action, message, user) => {
+    const solAmount = action.split('_')[2];
+    // Here we'll implement the actual swap logic
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: '🔄 Preparing swap...\n\n' +
+              `Amount: ${solAmount} SOL\n\n` +
+              'Please follow these steps:\n' +
+              '1. Visit [Jupiter Exchange Link]\n' +
+              '2. Connect your wallet\n' +
+              '3. Input these exact amounts\n' +
+              '4. Complete the swap\n\n' +
+              'Use /verify after swapping to check your new balance!'
     });
-}
+};
 
-module.exports = new PrivyInterface();
+actionMap['learn_ms2'] = async (message, user) => {
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: '💡 About MS2:\n\n' +
+              '• Holding MS2 gives you unlimited generations\n' +
+              '• Points replenish automatically\n' +
+              '• More MS2 = More Gens & Faster replenishment\n' +
+              '• No MS2? Pay per generation\n\n' +
+              'Ready to get started? Use /start to check out the tutorial!'
+    });
+};
+
+actionMap['check_account'] = async (message, user) => {
+    // Redirect to account command
+    message.text = '/account';
+    commandRegistry['/account']({...message, from: user});
+};
+
+// When a chain is selected, update both lobby and database
+prefixHandlers['selectChain_'] = async (action, message, userId) => {
+    const walletHandler = new WalletHandler();
+
+    try {
+        const result = await walletHandler.handleChainSelection(action, message, userId);
+        if (result?.success) {
+            // Update lobby
+            if (!lobby[userId]) lobby[userId] = {};
+            if (!lobby[userId].wallets) lobby[userId].wallets = [];
+            lobby[userId].wallets.push(result.wallet);
+        }
+    } catch (error) {
+        console.error('Chain selection error:', error);
+    }
+};
+
+prefixHandlers['selectChain_'] = async (action, message, userId) => {
+    const walletHandler = new WalletHandler();
+
+    try {
+        const result = await walletHandler.handleChainSelection(action, message, userId);
+        if (result?.success) {
+            // Update lobby
+            if (!lobby[userId]) lobby[userId] = {};
+            if (!lobby[userId].wallets) lobby[userId].wallets = [];
+            lobby[userId].wallets.push(result.wallet);
+        }
+    } catch (error) {
+        console.error('Chain selection error:', error);
+    }
+};
+
+commandRegistry['/verify'] = {
+    handler: async (message) => {
+        const walletHandler = new WalletHandler();
+        await walletHandler.verifyWalletSetup(message);
+    }
+};
+actionMap['verify_wallet'] = async (message, user) => {
+    const walletHandler = new WalletHandler();
+    await walletHandler.verifyWalletSetup({...message, from: {id: user}});
+};
+
+module.exports = {
+    WalletHandler,
+    WALLET_TYPES
+};

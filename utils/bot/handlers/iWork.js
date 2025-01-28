@@ -8,6 +8,7 @@ const { lobby, STATES, globalStatus, startup, waiting, taskQueue, workspace, get
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
 const { TutorialManager, CHECKPOINTS } = require('./iStart')
+const LoraDB = require('../../../db/models/workspace.js')
 const iMenu = require('./iMenu');
 
 const { getBalance } = require('../../users/checkBalance.js');
@@ -140,10 +141,44 @@ async function handleStatus(message) {
     if (message.from.id == DEV_DMS) {
         msg += `💫⏳ ${convertTime(runtime)}\n`;
         
-        // Check existing globalStatus variable for training
-        const activeTraining = globalStatus.training?.find(t => t.status === 'TRAINING');
-        if (activeTraining) {
-            msg += `🔄 Training: ${activeTraining.name}\n`;
+        // Add training progress section
+        try {
+            const db = new LoraDB();
+            const trainings = await db.findMany({ status: 'TRAINING' });
+            if (trainings.length > 0) {
+                msg += `🔄 Training:\n`;
+                msg += '⚡️ Progress:\n';
+                for (const training of trainings) {
+                    const percentage = training.trainingPercentage || 0;
+                    msg += `${training.name} ${percentage}%\n`;
+                }
+                msg += '\n';
+            } else {
+                msg += 'No training in progress\n';
+            }
+        } catch (error) {
+            console.error('Error fetching training status:', error);
+        }
+
+        // Add captioning progress section
+        try {
+            const db = new LoraDB(); // You'll need to implement this to get your database connection
+            const trainings = await db.findMany({ status: 'CAPTIONING' })
+            if (trainings.length > 0) {
+                msg += '📝 Captioning:\n';
+                for (const training of trainings) {
+                    const imageCount = training.images?.length || 0;
+                    const captionCount = training.captions?.filter(caption => caption !== '').length || 0;
+                    const percentage = imageCount > 0 ? Math.round((captionCount / imageCount) * 100) : 0;
+                    
+                    msg += `${training.name} ${percentage}%\n`;
+                }
+                msg += '\n';
+            } else {
+                msg += 'No captioning in progress\n';
+            }
+        } catch (error) {
+            console.error('Error fetching captioning status:', error);
         }
         
         msg += '\n';
@@ -667,7 +702,7 @@ async function getEventId(url) {
                 data: [{ path: url }]
             })
         });
-
+        
         console.log('Event ID response status:', response.status);
         console.log('Event ID response headers:', Object.fromEntries(response.headers));
         
@@ -694,7 +729,8 @@ async function streamEventResult(eventId) {
     try {
         const response = await fetch(streamUrl, { method: 'GET' });
         console.log('Stream response status:', response.status);
-
+        console.log('Stream response headers:', Object.fromEntries(response.headers));
+        console.log('Stream response:', response);
         const result = await response.text();
         console.log('Raw stream response:', result);
 

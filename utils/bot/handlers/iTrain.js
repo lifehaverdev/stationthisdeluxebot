@@ -37,9 +37,8 @@ async function getMyLoras(userId) {
             }
         }
 
-        if (trainings.length < 3) {
-            loraKeyboardOptions.push([{ text: '➕', callback_data: 'newLora' }]);
-        }
+        loraKeyboardOptions.push([{ text: '➕', callback_data: 'newLora' }]);
+        
     } catch (error) {
         console.error('Failed to get trainings:', error);
     }
@@ -850,7 +849,11 @@ async function submitTraining(message, user, loraId) {
                 reply_markup: {
                     inline_keyboard: [
                         [
-                            { text: '✅ Approve', callback_data: `trainDiscern_approve_${loraId}_${user}` },
+                            { text: '✅ Style', callback_data: `trainDiscern_approveStyle_${loraId}_${user}` },
+                            { text: '✅ Subject', callback_data: `trainDiscern_approveSubject_${loraId}_${user}` }
+                        ],
+                        [
+                            
                             { text: '❌ Reject', callback_data: `trainDiscern_reject_${loraId}_${user}` }
                         ],
                         [
@@ -964,17 +967,27 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
 
         switch (decision) {
             case 'approve':
-                // Keep status as SUBMITTED, notify user
+            case 'approveStyle':
+            case 'approveSubject':
+                // Set training type and status
+                workspace[userId][loraId].status = 'APPROVED';
+                workspace[userId][loraId].trainingType = decision === 'approveStyle' ? 'style' : 
+                    decision === 'approveSubject' ? 'subject' : 
+                    decision === 'approve' ? 'style' : 'subject';
+                workspace[userId][loraId].name = workspace[userId][loraId].name.replace(/\s+/g, '');
+                await loraDB.saveWorkspace(workspace[userId][loraId]);
+
+                // Notify user
                 await sendMessage(
                     { chat: { id: userId } },
-                    `✨ Good news! Your LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.`
+                    `✨ Good news! Your ${decision === 'approveStyle' ? 'style' : 'subject'} LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.`
                 );
                 
                 // Update dev message
                 await editMessage({
                     chat_id: message.chat.id,
                     message_id: message.message_id,
-                    text: `✅ Approved LoRA "${loraName}" for training\nUser: ${userId}`
+                    text: `✅ Approved ${decision === 'approveStyle' ? 'Style' : 'Subject'} LoRA "${loraName}" for training\nUser: ${userId}`
                 });
                 break;
 

@@ -97,6 +97,107 @@ async function getBalance(address, ca = "AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcT
     }
     return balance
 }
+
+async function getEthBalance(address, tokenAddress = "0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820") { // Replace with actual MS2 token address
+    const isMS2 = tokenAddress === "0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820"; // Replace with actual MS2 token address
+    console.log('checking ETH balance, ms2:', isMS2);
+    
+    let balance = null;
+    const url = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY}`;
+    
+    try {
+        // If checking MS2 token balance
+        if (isMS2) {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: 1,
+                    jsonrpc: "2.0",
+                    method: "alchemy_getTokenBalances",
+                    params: [address, [tokenAddress]]
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.error || !data.result?.tokenBalances?.length) {
+                sendMessage(
+                    {chat: {id: DEV_DMS}, from: {id: DEV_DMS}},
+                    `ETH ${address} balance check failed: ${JSON.stringify(data)}`
+                );
+                balance = 0;
+            } else {
+                // Convert from wei to token units (assuming 18 decimals)
+                balance = parseInt(data.result.tokenBalances[0].tokenBalance) / 1e18;
+            }
+        } 
+        // If checking native ETH balance
+        else {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: 1,
+                    jsonrpc: "2.0",
+                    method: "eth_getBalance",
+                    params: [address, "latest"]
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.error || !data.result) {
+                sendMessage(
+                    {chat: {id: DEV_DMS}, from: {id: DEV_DMS}},
+                    `ETH ${address} native balance check failed: ${JSON.stringify(data)}`
+                );
+                balance = 0;
+            } else {
+                // Convert wei to ETH
+                balance = parseInt(data.result, 16) / 1e18;
+            }
+        }
+
+        // Handle blessings/curses similar to Solana if needed
+        if (isMS2 && blessings.hasOwnProperty(address)) {
+            console.log('we have this blessed', address);
+            if (balance === 0 || isNaN(balance)) {
+                balance = blessings[address];
+            } else {
+                balance += blessings[address];
+            }
+        }
+
+        if (isMS2 && curses.hasOwnProperty(address)) {
+            console.log('we have this cursed', address);
+            if (balance === 0 || isNaN(balance)) {
+                balance = 0;
+            } else {
+                balance -= curses[address];
+            }
+        }
+
+        // Handle burns if needed for ETH
+        const burnRecord = burns.find(burn => burn.wallet === address);
+        if (isMS2 && burnRecord) {
+            balance += parseInt(burnRecord.burned) * 2 / 1000000;
+        }
+
+        return balance;
+
+    } catch (error) {
+        console.error('ETH balance check error:', error);
+        return 0;
+    }
+}
+
 const getNFTBalance = async (ownerAddress, mintAddress) => {
     const url = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_KEY}`;
     let page = 1;
@@ -168,10 +269,67 @@ const getNFTBalance = async (ownerAddress, mintAddress) => {
     return nftCount;
 };
 
-// Example Usage
-// const ownerAddress = '86xCnPeV69n6t3DnyGvkKobf9FdN2H9oiVDdaMpo2MMY';
-// const mintAddress = 'BUjZjAS2vbbb65g7Z1Ca9ZRVYoJscURG5L3AkVvHP9ac';
-// getNFTBalance(ownerAddress, mintAddress);
+const getEthNFTBalance = async (ownerAddress, contractAddress) => {
+    const url = `https://eth-mainnet.g.alchemy.com/nft/v3/${process.env.ALCHEMY_KEY}/getNFTsForOwner`;
+    let pageKey = null;
+    let allNFTs = [];
+    let hasMore = true;
+
+    while (hasMore) {
+        try {
+            console.log('Fetching ETH NFTs, pageKey:', pageKey);
+            
+            // Construct URL with parameters
+            let fetchUrl = `${url}?owner=${ownerAddress}&withMetadata=true&pageSize=100`;
+            if (contractAddress) {
+                fetchUrl += `&contractAddresses[]=${contractAddress}`;
+            }
+            if (pageKey) {
+                fetchUrl += `&pageKey=${pageKey}`;
+            }
+
+            const response = await fetch(fetchUrl, {
+                method: 'GET',
+                headers: {
+                    'accept': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.ownedNfts && data.ownedNfts.length > 0) {
+                allNFTs = allNFTs.concat(data.ownedNfts);
+                
+                // Check if there are more pages
+                if (data.pageKey) {
+                    pageKey = data.pageKey;
+                } else {
+                    hasMore = false;
+                }
+            } else {
+                hasMore = false;
+            }
+
+        } catch (err) {
+            console.error('Error fetching ETH NFTs:', err);
+            hasMore = false;
+        }
+    }
+
+    // If we're looking for a specific contract
+    if (contractAddress) {
+        const filteredNFTs = allNFTs.filter(nft => 
+            nft.contract.address.toLowerCase() === contractAddress.toLowerCase()
+        );
+
+        console.log(`Number of NFTs owned by ${ownerAddress} for contract ${contractAddress}:`, filteredNFTs.length);
+        return filteredNFTs.length;
+    }
+
+    // If we just want total NFT count
+    console.log(`Total number of NFTs owned by ${ownerAddress}:`, allNFTs.length);
+    return allNFTs.length;
+};
 
   
 function checkBlacklist(wallet) {
@@ -190,5 +348,6 @@ function checkBlacklist(wallet) {
 
 module.exports = {
     getBalance, getNFTBalance,
+    getEthBalance, getEthNFTBalance,
     checkBlacklist
 }

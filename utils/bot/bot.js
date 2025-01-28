@@ -13,6 +13,7 @@ const lobby = {};
 const stateHandlers = {};//from imessage
 const actionMap = {}; const prefixHandlers = {};
 const workspace = {};
+const abacus = {};
 const commandRegistry = {};
 const studio = {};
 // Add the new globalStatus object
@@ -244,7 +245,7 @@ module.exports = {
     getBurned,
     getGroup, getGroupById,
     lobby, 
-    workspace, studio,
+    workspace, studio, abacus,
     globalStatus,
     stateHandlers,
     actionMap, prefixHandlers, commandRegistry,
