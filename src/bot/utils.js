@@ -1,5 +1,6 @@
-const { getBotInstance, lobby, rooms, getBurned } = require('./bot/bot'); 
-const defaultUserData = require('./users/defaultUserData.js')
+const { lobby, rooms, getBurned } = require('./core/core'); 
+const {getBotInstance} = require('./core/bot');
+const {defaultUserData} = require('./core/users/defaultUserData.js')
 const fs = require('fs');
 
 function getGroup(message) {

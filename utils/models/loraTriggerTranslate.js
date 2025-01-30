@@ -40,20 +40,11 @@ async function processMultiWordTriggers(prompt, triggers, cognates, checkpointDe
     
     const escapedTrigger = triggerKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const triggerRegex = new RegExp(`\\b${escapedTrigger}(?::(\\d*\\.?\\d+))?`, 'i');
-    console.log('## Regex debug:', {
-      triggerKey,
-      escapedTrigger,
-      regexString: triggerRegex.toString(),
-      prompt: modifiedPrompt,
-    });
+
     const match = modifiedPrompt.match(triggerRegex);
     
     if (match) {
-      console.log('## Multi-word match:', {
-        fullMatch: match[0],
-        trigger: triggerKey,
-        weight: match[1],
-      });
+      
 
       const weight = match[1] ? parseFloat(match[1]) : undefined;  // Get weight if present
       
@@ -109,10 +100,6 @@ async function processMultiWordTriggers(prompt, triggers, cognates, checkpointDe
 // Parse word and extract weight
 function parseWordAndWeight(word) {
   const weightMatch = word.match(/^(.*?)(?::(\d*\.?\d+))?[.,!?()[\]{}'"]*$/);
-  console.log('## Weight parsing:', {
-    word,
-    weightMatch,
-  });
   
   if (!weightMatch) return null;
   
@@ -123,19 +110,11 @@ function parseWordAndWeight(word) {
     wordLower: baseWord.toLowerCase().trim().replace(/[.,!?()[\]{}'"]/g, '')
   };
   
-  console.log('## Parsed result:', result);
   return result;
 }
 
 async function applyLoraTag(text, originalWord, loraInfo, addedLoraTags, usedLoras, loraDB) {
   const weight = loraInfo.customWeight || loraInfo.weight;
-  console.log('## Applying LoRA tag:', {
-    originalWord,
-    loraName: loraInfo.lora_name,
-    customWeight: loraInfo.customWeight,
-    defaultWeight: loraInfo.weight,
-    finalWeight: weight
-  });
   
   const loraTag = `<lora:${loraInfo.lora_name}:${weight}>`;
   
@@ -166,12 +145,11 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
 
   // Extract existing tags and initialize tracking sets
   const { usedLoras, addedLoraTags } = extractExistingLoraTags(prompt);
-  console.log('## usedLoras:', usedLoras);
-  console.log('## addedLoraTags:', addedLoraTags);
+  
   // Validate checkpoint
   const checkpointDesc = getCheckpointVersion(checkpoint);
   if (!checkpointDesc) return prompt;
-  console.log('## checkpointDesc:', checkpointDesc);
+  
 
   // Get cached LoRA data
   // Get cached LoRA data and filter by checkpoint version
@@ -202,7 +180,7 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     usedLoras,
     loraDB
   );
-  console.log('## modifiedPrompt:', modifiedPrompt);
+  
   // Change the word splitting regex to keep weights attached
   const words = modifiedPrompt.match(/\b[\w]+(?::\d*\.?\d+)?[.,!?()[\]{}'"]*\b|\b[.,!?()[\]{}'"]*[\w]+(?::\d*\.?\d+)?\b/g) || [];
   let processedWords = new Set();

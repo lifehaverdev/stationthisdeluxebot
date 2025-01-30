@@ -1,6 +1,7 @@
 # tmp/*
 
 db/data/*
+src/db/data/*
 
 # Logs
 logs
