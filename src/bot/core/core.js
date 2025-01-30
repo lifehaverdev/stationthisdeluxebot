@@ -192,7 +192,6 @@ module.exports = {
     actionMap, prefixHandlers, commandRegistry,
     rooms, flows, burns, loraTriggers,
     taskQueue, waiting, processes, successors, failures,
-    startup,
     SET_COMMANDS,
     STATE_TO_LOBBYPARAM,
     SETTER_TO_STATE,

@@ -1,9 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const { getBot } = require('./stationthisbot');
+const { getBot } = require('./bot/app');
 require('dotenv').config();
-const { processWaitlist } = require('./utils/bot/queue');
-const { initialize } = require('./utils/bot/intitialize')
+const { processWaitlist } = require('./bot/business/queue');
+const { initialize } = require('./bot/business/initialize')
 const imageRouter = require('./api/index')
 
 const app = express();
