@@ -189,7 +189,7 @@ commandRegistry['/status'] = {
     //         }
     //     }
     // },
-commandRegistry['/charlottefangsavedme'] = {
+commandRegistry['/remiliaworldorder'] = {
     handler: (message) => {
         console.log('cheeseworld!!!')
                 lobby[message.from.id].balance = 600001;
