@@ -137,8 +137,7 @@ Follow the standard FLUX format:
             });
 
             ledger[userId].finalPrompt = finalPrompt.result;
-            // Maintain the riff state as we still need to handle the yes/no response
-            setUserState(message, 'riff');
+            
             const options = {
                 reply_markup: {
                     inline_keyboard: [
@@ -151,7 +150,7 @@ Follow the standard FLUX format:
                 },
                 parse_mode: 'MarkdownV2'
             };
-
+            setUserState(message, 'IDLE')
             return sendMessage(
                 message, 
                 escapeMarkdown(`I think we have enough details! Here's a proposed prompt:\n\n\`${finalPrompt.result}\``), 
@@ -395,7 +394,7 @@ stateHandlers['tweak'] = (message) => safeExecute(message, async () => {
             },
             parse_mode: 'MarkdownV2'
         };
-
+        setUserState(message, 'IDLE')
         return sendMessage(
             message,
             escapeMarkdown(`Updated prompt:\n\n\`${modifiedPrompt.result}\``),

@@ -1,4 +1,4 @@
-const { lobby, STATES } = require('./bot'); 
+const { lobby, ledger, studio, workspace, abacus, STATES } = require('./bot'); 
 // Old MongoDB imports (commented out for reference)
 // const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
 
@@ -154,6 +154,19 @@ async function kick(userId) {
 
         // Write to all relevant collections
         try {
+            // Clean up any active user data from various systems
+            if (ledger && ledger[userId]) {
+                delete ledger[userId];
+            }
+            if (workspace && workspace[userId]) {
+                delete workspace[userId];
+            }
+            if (studio && studio[userId]) {
+                delete studio[userId];
+            }
+            if (abacus && abacus[userId]) {
+                delete abacus[userId];
+            }
             await userCore.writeUserData(userId, updatedData);
             await userEconomy.writeUserData(userId, updatedData);
             await userPref.writeUserData(userId, updatedData);
@@ -229,8 +242,22 @@ async function batchKick(userIds) {
 
         await Promise.all(writePromises);
         
-        // 6. Clean up lobby
-        userIds.forEach(userId => delete lobby[userId]);
+        // 6. Clean up all user data from various systems
+        userIds.forEach(userId => {
+            delete lobby[userId];
+            if (ledger && ledger[userId]) {
+                delete ledger[userId];
+            }
+            if (workspace && workspace[userId]) {
+                delete workspace[userId];
+            }
+            if (studio && studio[userId]) {
+                delete studio[userId];
+            }
+            if (abacus && abacus[userId]) {
+                delete abacus[userId];
+            }
+        });
 
         console.log(`Successfully batch kicked ${kickData.length} users`);
         return true;
