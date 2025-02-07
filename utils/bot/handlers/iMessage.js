@@ -49,6 +49,7 @@ const iGroup = require('./iGroup')
 const iCollection = require('./iCollection')
 const iResponse = require('./iResponse')
 const iTrain = require('./iTrain')
+const iRiff = require('./iRiff')
 //const iWallet = require('./iWallet')
 
 const botName = 'stationthisdeluxebot'//process.env.BOT_NAME

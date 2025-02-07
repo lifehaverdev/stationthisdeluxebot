@@ -385,7 +385,7 @@ function optionAppendage(msg){
 }
 
 async function react(message, emoji = null) {
-    if(emoji){
+    if(emoji && message && message.chat && message.chat.id && message.message_id){
         await bot.setMessageReaction(message.chat.id, message.message_id, {
             reaction: [
                 {
@@ -395,15 +395,17 @@ async function react(message, emoji = null) {
             ]
         })
     } else {
-        bot.sendChatAction(message.chat.id,'upload_photo')
-        await bot.setMessageReaction(message.chat.id, message.message_id, {
-            reaction: [
+        if(message && message.chat && message.chat.id && message.message_id){
+            bot.sendChatAction(message.chat.id,'upload_photo')
+            await bot.setMessageReaction(message.chat.id, message.message_id, {
+                reaction: [
                 {
                     type: 'emoji',
                     emoji: '👌'
                 }
             ]
-        })
+            })
+        }
     }
     
 }
