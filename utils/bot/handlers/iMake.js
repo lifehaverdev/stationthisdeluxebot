@@ -120,7 +120,13 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         return;
     }
 
-    if (!group && settings.state.state !== STATES.IDLE && settings.state.state !== defaultState) {
+    if (
+        !group && 
+        settings.state.state !== STATES.IDLE && 
+        settings.state.state !== defaultState &&
+        settings.state.state !== 'riff' &&
+        settings.state.state !== 'tweak'
+    ) {
         console.log('kicked out cause of state', defaultState, settings.state);
         return;
     }
