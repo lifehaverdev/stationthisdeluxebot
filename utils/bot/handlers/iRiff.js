@@ -1,4 +1,4 @@
-const { lobby, commandRegistry, stateHandlers, actionMap } = require('../bot')
+const { lobby, commandRegistry, stateHandlers, actionMap, prefixHandlers } = require('../bot')
 const { sendMessage, setUserState, safeExecute, editMessage, react, escapeMarkdown } = require('../../utils')
 const { gptAssist, formatters } = require('../../../commands/assist')
 const { handleFlux } = require('./iMake')

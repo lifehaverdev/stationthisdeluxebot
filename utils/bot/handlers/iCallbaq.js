@@ -11,6 +11,7 @@ const {
     setUserState,
     react
 } = require('../../utils');
+const { callbackCheckIn } = require('../gatekeep')
 const { handleStatus } = require('./iWork');
 const { startSet } = require('./iSettings');
 const { handleRegen, handleHipFire } = require('./iMake')
@@ -441,6 +442,11 @@ module.exports = function (bot) {
         
         try {
             const { action, message, user } = parseCallbackData(callbackQuery);
+
+            // Check if user exists in lobby, if not check them in
+            if (!lobby.hasOwnProperty(callbackQuery.from.id)) {
+                await callbackCheckIn(callbackQuery);
+            }
 
             // Track the menu interaction
             await analytics.trackMenuInteraction(

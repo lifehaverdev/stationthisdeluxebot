@@ -125,7 +125,8 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
         settings.state.state !== STATES.IDLE && 
         settings.state.state !== defaultState &&
         settings.state.state !== 'riff' &&
-        settings.state.state !== 'tweak'
+        settings.state.state !== 'tweak' &&
+        (message.isDirect && message.isDirect !== true)
     ) {
         console.log('kicked out cause of state', defaultState, settings.state);
         return;
