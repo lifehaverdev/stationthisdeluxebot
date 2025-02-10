@@ -392,6 +392,30 @@ async function checkIn(message) {
     return true;
 }
 
+async function callbackCheckIn(callbackQuery) {
+    const userId = callbackQuery.from.id;
+
+       // Create a modified message object with correct user info
+       const messageWithUserInfo = {
+        ...callbackQuery.message,
+        from: {
+            ...callbackQuery.message.from,
+            ...callbackQuery.from  // This will override with the callback user's info
+        }
+    };
+
+    if (!(await handleUserData(userId, messageWithUserInfo))) {
+        await react(callbackQuery.message, "👻");
+        return false;
+    }
+    console.log('setting callback user to idle');
+    setUserState(callbackQuery.message, STATES.IDLE);
+    console.log(`${callbackQuery.from.first_name} is checked in via callback.`);
+    return true;
+}
+
+
+
 const CACHE_EXPIRY_TIME = 1000 * 60 * 60 * 24; //1 day expiry on asset balance cache
 
 // Function to calculate user's maximum points
@@ -745,6 +769,7 @@ function pointsCalc(points) {
 
 module.exports =  {
     checkLobby, checkIn,
+    callbackCheckIn,
     //cleanLobby,
     calculateMaxPoints,
     lobbyManager,
