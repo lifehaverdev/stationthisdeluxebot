@@ -308,55 +308,43 @@ async function processWaitlist(status, run_id, outputs) {
 
     try {
         console.log(`Processing waitlist update - Status: ${status}, Run ID: ${run_id}`);
-        console.log('Received outputs:', outputs);
-
+        
         const taskIndex = waiting.findIndex(task => task.run_id === run_id);
-
         if (taskIndex === -1) {
-            await analytics.trackError(
-                new Error('Task not found in waiting array'),
-                { run_id, status }
-            );
+            console.log(`Task not found for run_id: ${run_id}`);
             return;
         }
-        
-        const task = waiting[taskIndex];
-        console.log('Found task:', {
-            run_id: task.run_id,
-            status: task.status,
-            lastProcessedStatus: task.lastProcessedStatus
-        });
 
+        const task = waiting[taskIndex];
+        
+        // Merge new outputs with existing ones
+        if (!task.allOutputs) task.allOutputs = [];
+        if (outputs && outputs.length > 0) {
+            task.allOutputs = [...task.allOutputs, ...outputs];
+        }
+
+        // Skip if we've already processed this exact status
         if (task.lastProcessedStatus === status) {
             console.log(`Status ${status} already processed for run_id ${run_id}, skipping`);
             return;
         }
+        
         task.lastProcessedStatus = status;
         task.status = status;
 
         await analytics.trackGeneration(task, { run_id }, status);
 
-        // Handle different update formats
-        let run;
-        if (typeof outputs === 'string') {
-            console.log('Processing string output (Tripo format)');
-            run = {
-                status,
-                run_id,
-                outputs: [{
-                    data: {
-                        text: [outputs]
-                    }
-                }]
-            };
-        } else {
-            console.log('Processing standard webhook format');
-            run = { status, run_id, outputs };
-        }
-
-        console.log('Created run object:', run);
+        // Create run object with accumulated outputs
+        const run = { 
+            status, 
+            run_id, 
+            outputs: task.allOutputs 
+        };
+        
+        console.log('Accumulated outputs:', JSON.stringify(task.allOutputs, null, 2));
         task.final = run;
 
+        // Handle webhook notifications if needed
         if (task.isApiRequest && task.webhook_url) {
             try {
                 let webhookPayload = {
@@ -414,7 +402,6 @@ async function processWaitlist(status, run_id, outputs) {
             }
         }
 
-
         statusRouter(task, taskIndex, status);
         console.log('Status routing complete');
 
@@ -459,6 +446,7 @@ async function handleTaskCompletion(task) {
     let sent = true;
 
     console.log('Starting handleTaskCompletion for run_id:', task.run_id);
+    console.log('Full run object:', JSON.stringify(run, null, 2));
 
     // New helper function to handle cook mode completions
     async function handleCookModeCompletion(urls, task) {
@@ -570,47 +558,22 @@ async function handleTaskCompletion(task) {
             if (run?.outputs && run.outputs.length > 0) {
                 console.log(`Processing ${run.outputs.length} outputs for run_id:`, task.run_id);
                 
-                // Find the output with images (usually from SaveImage node)
-                const imageOutput = run.outputs.find(output => 
-                    output.node_meta?.node_class === 'SaveImage' || 
-                    output.data?.images?.length > 0
-                );
-                
-                if (imageOutput) {
-                    console.log('Found image output:', JSON.stringify(imageOutput, null, 2));
-                    
-                    const dataToProcess = imageOutput.data;
-                    console.log('Data to process:', JSON.stringify(dataToProcess, null, 2));
-
-                    possibleTypes.forEach(type => {
-                        if (dataToProcess?.[type]?.length > 0) {
-                            console.log(`Found ${dataToProcess[type].length} ${type} to process`);
-                            if (type === 'text') {
-                                texts = dataToProcess[type];
-                            } else if (type === 'tags') {
-                                tags = dataToProcess[type];
-                            } else {
-                                dataToProcess[type].forEach(dataItem => {
-                                    if (!dataItem.url) {
-                                        console.log('Skipping data item without URL:', dataItem);
-                                        return;
-                                    }
-                                    console.log('Processing data item:', JSON.stringify(dataItem, null, 2));
-                                    const url = dataItem.url;
-                                    const fileType = extractType(url);
-                                    urls.push({ type: fileType, url });
-                                    console.log(`Added ${fileType.toUpperCase()} URL:`, url);
+                // Process all outputs, not just SaveImage
+                run.outputs.forEach(output => {
+                    if (output.data?.images?.length > 0) {
+                        console.log(`Found images in output:`, JSON.stringify(output.data.images, null, 2));
+                        output.data.images.forEach(image => {
+                            if (image.url) {
+                                urls.push({ 
+                                    type: extractType(image.url), 
+                                    url: image.url 
                                 });
                             }
-                        } else {
-                            console.log(`No ${type} found in processed data`);
-                        }
-                    });
-                } else {
-                    console.log('No image output found in outputs');
-                }
+                        });
+                    }
+                });
 
-                console.log('Final URLs to process:', urls);
+                console.log('Processed URLs:', urls);
                 
                 if (urls.length === 0) {
                     console.log('No valid URLs found to process');
