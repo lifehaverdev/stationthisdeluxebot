@@ -250,16 +250,25 @@ function statusRouter(task, taskIndex, status) {
     }
 }
 async function deliver() {
+    if (successors.length === 0) return;
     //console.log('❤️')
-    if(successors.length > 0){
         const task = successors[0];
-        const run_id = task.run_id;
         successors.shift()
+
+        const run_id = task.run_id;
+        
         try {
+                    // Check if task has already been processed
+            if (task.processed) {
+                console.log(`Task ${run_id} has already been processed, skipping`);
+                return;
+            }
+            
             let result;
             
             if(!task.backOff ||(task.backOff && task.backOff > Date.now())){
                 result = await handleTaskCompletion(task);
+                task.processed = true;
             } else {
                 successors.push(task)
                 return
@@ -268,24 +277,30 @@ async function deliver() {
             if (result === 'success') {
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
             } else if (result === 'not sent') {
-                console.error(`Failed to send task with run_id ${run_id}, not removing from waiting array.`);
-                task.deliveryFail = (task.deliveryFail || 0) + 1;
-                if (task.deliveryFail > 2) {
-                    console.log(`Exceeded retry attempts for task: ${run_id}. Moving to failures.`);
-                    failures.push(task);
-                    sendMessage(task.message, 'i... i failed you.');
-                    return;
-                }
-                const now = Date.now();
-                task.backOff = now + task.deliveryFail * task.deliveryFail * 2000;
-                console.log(`Retrying task ${run_id} after backoff: ${task.backOff - now}ms`);
-                successors.push(task);
+                handleDeliveryFailure(task, run_id);
             }
-            
         } catch (err) {
             console.error('Exception in deliver:', err);
+            handleDeliveryFailure(task, run_id);
         } 
-    } 
+}
+
+
+function handleDeliveryFailure(task, run_id) {
+    console.error(`Failed to send task with run_id ${run_id}`);
+    task.deliveryFail = (task.deliveryFail || 0) + 1;
+    
+    if (task.deliveryFail > 2) {
+        console.log(`Exceeded retry attempts for task: ${run_id}. Moving to failures.`);
+        failures.push(task);
+        sendMessage(task.message, 'i... i failed you.');
+        return;
+    }
+    
+    const now = Date.now();
+    task.backOff = now + task.deliveryFail * task.deliveryFail * 2000;
+    console.log(`Retrying task ${run_id} after backoff: ${task.backOff - now}ms`);
+    successors.push(task);
 }
 
 async function processWaitlist(status, run_id, outputs) {
@@ -302,8 +317,14 @@ async function processWaitlist(status, run_id, outputs) {
             );
             return;
         }
-
+        
         const task = waiting[taskIndex];
+        // Prevent processing the same status multiple times
+        if (task.lastProcessedStatus === status) {
+            console.log(`Status ${status} already processed for run_id ${run_id}, skipping`);
+            return;
+        }
+        task.lastProcessedStatus = status;
         task.status = status;
 
         // Track generation completion
@@ -692,9 +713,32 @@ function removeDoints(task) {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-  }
+}
+
+const recentSends = {};
 
 async function sendMedia(message, fileToSend, type, promptObj) {
+    // Add a unique key for this specific media send
+    const sendKey = `${message.chat.id}_${fileToSend}_${Date.now()}`;
+    
+    if (recentSends.has(sendKey)) {
+        console.log(`Preventing duplicate send for ${sendKey}`);
+        return true;
+    }
+
+    // Track this send with an expiration timestamp
+    recentSends.set(sendKey, Date.now() + 5000);
+    
+    // Periodically clean up expired entries (could be moved outside if needed)
+    if (recentSends.size > 100) {  // Only clean up when map gets large
+        const now = Date.now();
+        for (const [key, expiry] of recentSends) {
+            if (expiry < now) {
+                recentSends.delete(key);
+            }
+        }
+    }
+
     let options = {};
     if (type === 'image') {
         if(promptObj.type == 'RMBG' || promptObj.type == 'UPSCALE'){

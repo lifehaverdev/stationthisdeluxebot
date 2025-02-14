@@ -228,6 +228,12 @@ commandRegistry['/ca'] = {
                         ],
                         [
                             {
+                                text: 'Bridge MS2',
+                                url: 'https://portalbridge.com/'
+                            }
+                        ],
+                        [
+                            {
                                 text: 'Site',
                                 url: 'https://miladystation2.net'
                             }

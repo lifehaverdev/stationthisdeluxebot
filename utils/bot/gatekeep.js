@@ -1,4 +1,4 @@
-const { lobby, ledger, studio, workspace, abacus, STATES } = require('./bot'); 
+const { lobby, ledger, burns, studio, workspace, abacus, STATES } = require('./bot'); 
 // Old MongoDB imports (commented out for reference)
 // const { getUserDataByUserId, addPointsToAllUsers, writeUserData, createDefaultUserData } = require('../../db/mongodb')
 
@@ -18,6 +18,7 @@ const { setUserState, sendMessage, react } = require('../utils');
 const { initialize } =  require('./intitialize')
 const {defaultUserData,validateUserData} = require('../users/defaultUserData')
 const { AnalyticsEvents } = require('../../db/models/analyticsEvents');
+const { getUserAssets } = require('./handlers/iWallet');
 const analytics = new AnalyticsEvents();
 
 //const { home } = require('../models/userKeyboards');
@@ -607,13 +608,46 @@ async function handleUserData(userId, message) {
 
             // Fetch balance if user is verified
             if (userData.verified) {
+                // try {
+                //     const balance = await getBalance(userData.wallet);
+                //     lobby[userId].balance = balance;
+                //     console.log(`User ${userId} balance updated: ${balance}`);
+                // } catch (error) {
+                //     console.warn(`Failed to fetch balance for userId ${userId}:`, error);
+                //     lobby[userId].balance = 0; // Default balance
+                // }
                 try {
-                    const balance = await getBalance(userData.wallet);
-                    lobby[userId].balance = balance;
-                    console.log(`User ${userId} balance updated: ${balance}`);
+                    const assetData = await getUserAssets(userId);
+                    
+                    if (assetData?.success) {
+                        let totalBalance = assetData.assets.ms2;
+                        // Check for burns and add them to balance
+                        // Check for burns using the OG wallet from wallets array
+                        const ogWallet = lobby[userId].wallets.find(w => w.isOg);
+                        
+                        if (ogWallet) {
+                            const burnRecord = burns.find(burn => 
+                                burn.wallet.toLowerCase() === ogWallet.address.toLowerCase()
+                            );
+                            
+                            if (burnRecord) {
+                                const burnBonus = (parseInt(burnRecord.burned) * 2) / 1000000;
+                                totalBalance += burnBonus;
+                                console.log(`Added burn bonus of ${burnBonus} MS2 for OG wallet ${ogWallet.address}`);
+                            }
+                        }
+                        lobby[userId].balance = totalBalance;
+                        lobby[userId].worth = assetData.assets.ms2_usd;
+                        console.log(`User ${userId} balance updated: ${assetData.assets.ms2} MS2 ($${assetData.assets.ms2_usd})`);
+                    } else {
+                        console.warn(`Failed to fetch assets for userId ${userId}: No valid response`);
+                        lobby[userId].balance = 0;
+                        lobby[userId].worth = 0;
+                    }
                 } catch (error) {
-                    console.warn(`Failed to fetch balance for userId ${userId}:`, error);
-                    lobby[userId].balance = 0; // Default balance
+                    console.warn(`Failed to fetch assets for userId ${userId}:`, error);
+                    lobby[userId].balance = 0;
+                    lobby[userId].worth = 0;
                 }
             }
 
@@ -666,13 +700,46 @@ async function handleUserData(userId, message) {
             // Update lastTouch as normal
             lobby[userId].lastTouch = Date.now();
             if(lobby[userId].balance == '' && lobby[userId].verified) {
+                // try {
+                //     const balance = await getBalance(lobby[userId].wallet);
+                //     lobby[userId].balance = balance;
+                //     console.log(`User ${userId} balance updated: ${balance}`);
+                // } catch (error) {
+                //     console.warn(`Failed to fetch balance for userId ${userId}:`, error);
+                //     lobby[userId].balance = 0; // Default balance
+                // }
                 try {
-                    const balance = await getBalance(lobby[userId].wallet);
-                    lobby[userId].balance = balance;
-                    console.log(`User ${userId} balance updated: ${balance}`);
+                    const assetData = await getUserAssets(userId);
+                    
+                    if (assetData?.success) {
+                        let totalBalance = assetData.assets.ms2;
+                        // Check for burns and add them to balance
+                        // Check for burns using the OG wallet from wallets array
+                        const ogWallet = lobby[userId].wallets.find(w => w.isOg);
+                        
+                        if (ogWallet) {
+                            const burnRecord = burns.find(burn => 
+                                burn.wallet.toLowerCase() === ogWallet.address.toLowerCase()
+                            );
+                            
+                            if (burnRecord) {
+                                const burnBonus = (parseInt(burnRecord.burned) * 2) / 1000000;
+                                totalBalance += burnBonus;
+                                console.log(`Added burn bonus of ${burnBonus} MS2 for OG wallet ${ogWallet.address}`);
+                            }
+                        }
+                        lobby[userId].balance = totalBalance;
+                        lobby[userId].worth = assetData.assets.ms2_usd;
+                        console.log(`User ${userId} balance updated: ${assetData.assets.ms2} MS2 ($${assetData.assets.ms2_usd})`);
+                    } else {
+                        console.warn(`Failed to fetch assets for userId ${userId}: No valid response`);
+                        lobby[userId].balance = 0;
+                        lobby[userId].worth = 0;
+                    }
                 } catch (error) {
-                    console.warn(`Failed to fetch balance for userId ${userId}:`, error);
-                    lobby[userId].balance = 0; // Default balance
+                    console.warn(`Failed to fetch assets for userId ${userId}:`, error);
+                    lobby[userId].balance = 0;
+                    lobby[userId].worth = 0;
                 }
             }
             console.log(`${new Date(lobby[userId].lastTouch)} Updated lastTouch for userId ${userId} ${message.from.username}`);
@@ -713,7 +780,7 @@ async function checkUserPoints(userId, group, message) {
                         { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' }
                     ],
                     [
-                        { text: 'Charge ⚡️', url: 'https://miladystation2.net/charge' }
+                        { text: 'Charge ⚡️', callback_data: 'gated_charge' }
                     ]
                 ]
             }

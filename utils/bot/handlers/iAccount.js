@@ -68,7 +68,7 @@ async function returnToAccountMenu(message, user) {
 function buildAccountSettingsKeyboard(userId) {
     return [
         [
-           { text: '🔄', callback_data: 'refreshQoints' }
+           { text: '👛', callback_data: 'see_wallets' }
         ],
         [
             {text: 'Settings ⚙️', callback_data: 'preferencesMenu'}

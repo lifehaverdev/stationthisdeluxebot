@@ -27,6 +27,8 @@ const { getGroup } = require('./iGroup')
 const { enqueueTask } = require('../queue')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
+const { handleSignUpVerification, handleChargePurchase } = require('./iWallet');
+
 /*
 Uniformity and confluence with iResponse
 private menus, must only be selectable by intended user
@@ -502,4 +504,30 @@ module.exports = function (bot) {
             });
         }
     });
+}
+
+async function handleCallback(ctx) {
+    const callbackData = ctx.callbackQuery.data;
+    
+    if (callbackData === 'verify_signup') {
+        const verified = await handleSignUpVerification(ctx, signUpAmount);
+        if (verified) {
+            await ctx.reply('✅ Account verified successfully! You can now use the bot.');
+        } else {
+            await ctx.reply('❌ Transfer not found. Please make sure you sent the exact amount and try again.');
+        }
+    }
+    
+    else if (callbackData.startsWith('buy_charge_')) {
+        const amount = parseFloat(callbackData.split('_')[2]);
+        const chargeAmount = await handleChargePurchase(ctx, amount);
+        
+        if (chargeAmount > 0) {
+            await ctx.reply(`✅ Purchase successful! ${chargeAmount} charge added to your balance.`);
+        } else {
+            await ctx.reply('❌ Transfer not found. Please make sure you sent the exact amount and try again.');
+        }
+    }
+    
+    // ... existing callback handlers ...
 }
