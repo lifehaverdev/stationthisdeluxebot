@@ -593,17 +593,19 @@ async function handleTaskCompletion(task) {
                             fileToSend = await addWaterMark(url, promptObj.waterMark);
                         }
                         
-                        console.log('Sending media...');
+                        console.log('Calling sendMedia...');
                         const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
-                        console.log('Media send response:', mediaResponse);
+                        console.log('sendMedia returned:', mediaResponse);
                         
                         if (!mediaResponse) {
                             console.error('Media send failed');
                             sent = false;
+                            break; // Exit the loop on first failure
                         }
                     } catch (err) {
-                        console.error('Error sending media:', err.message || err);
+                        console.error('Error in media send loop:', err);
                         sent = false;
+                        break;
                     }
                 }
 
@@ -740,39 +742,43 @@ async function sendMedia(message, fileToSend, type, promptObj) {
     // Track this send with an expiration timestamp
     recentSends.set(sendKey, Date.now() + 5000);
     
-    // Periodically clean up expired entries (could be moved outside if needed)
-    if (recentSends.size > 100) {  // Only clean up when map gets large
-        const now = Date.now();
-        for (const [key, expiry] of recentSends) {
-            if (expiry < now) {
-                recentSends.delete(key);
-            }
-        }
-    }
-
     let options = {};
-    if (type === 'image') {
-        if(promptObj.type == 'RMBG' || promptObj.type == 'UPSCALE'){
-            const response = await sendDocument(message, fileToSend, options);
-            return response
+    let sendResult = false;
+
+    try {
+        if (type === 'image') {
+            if(promptObj.type == 'RMBG' || promptObj.type == 'UPSCALE'){
+                console.log('Sending as document:', fileToSend);
+                sendResult = await sendDocument(message, fileToSend, options);
+            } else {
+                console.log('Sending as photo:', fileToSend);
+                if(promptObj.advancedUser && message.chat.id > 0) {
+                    options = {caption: promptObj.lastSeed};
+                }
+                sendResult = await sendPhoto(message, fileToSend, options);
+            }
+            console.log('Send result:', sendResult ? 'success' : 'failed');
+            
+            if (sendResult && shouldApplyWatermark(message, promptObj, type)) {
+                fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
+            }
+        } else if (type === 'gif') {
+            console.log('Sending animation:', fileToSend);
+            sendResult = await sendAnimation(message, fileToSend);
+            console.log('Animation send result:', sendResult ? 'success' : 'failed');
+        } else if (type === 'video') {
+            console.log('Sending video:', fileToSend);
+            sendResult = await sendVideo(message, fileToSend);
+            console.log('Video send result:', sendResult ? 'success' : 'failed');
+        } else {
+            console.error(`Unknown URL type for URL: ${fileToSend}`);
+            return false;
         }
-        console.log('Sending photo:', fileToSend);
-        
-        if(promptObj.advancedUser && message.chat.id > 0) options = {caption: promptObj.lastSeed}
-        const response = await sendPhoto(message, fileToSend, options);
-        if (response && (shouldApplyWatermark(message, promptObj, type))){
-            fs.unlinkSync(fileToSend); // Remove the temporary watermarked file
-        }
-        return response;
-    } else if (type === 'gif') {
-        console.log('Sending animation:', fileToSend);
-        return await sendAnimation(message, fileToSend);
-    } else if (type === 'video') {
-        console.log('Sending video:', fileToSend);
-        return await sendVideo(message, fileToSend);
-    } else {
-        console.error(`Unknown URL type for URL: ${fileToSend}`);
-        return null;
+
+        return sendResult;
+    } catch (error) {
+        console.error('Error in sendMedia:', error);
+        return false;
     }
 }
 
