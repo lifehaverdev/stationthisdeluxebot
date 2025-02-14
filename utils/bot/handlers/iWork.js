@@ -7,6 +7,7 @@ const { voiceModels } = require('../../models/voiceModelMenu')
 const { lobby, STATES, globalStatus, startup, waiting, taskQueue, workspace, getBotInstance, getPhotoUrl, successors } = require('../bot.js')
 const { txt2Speech } = require('../../../commands/speak')
 const { promptAssist } = require('../../../commands/assist')
+const { getMS2Price } = require('./iWallet')
 const { TutorialManager, CHECKPOINTS } = require('./iStart')
 const LoraDB = require('../../../db/models/workspace.js')
 const iMenu = require('./iMenu');
@@ -140,7 +141,9 @@ async function handleStatus(message) {
 
     if (message.from.id == DEV_DMS) {
         msg += `💫⏳ ${convertTime(runtime)}\n`;
-        
+        const ms2Price = await getMS2Price();
+        const ms2PerDollar = ms2Price ? (1 / ms2Price).toFixed(2) : 'N/A';
+        msg += `⭐️ ${ms2PerDollar} MS2/USD\n\n`;
         // Add training progress section
         try {
             const db = new LoraDB();
@@ -183,7 +186,9 @@ async function handleStatus(message) {
         
         msg += '\n';
     } else {
-        msg += '⭐️\n\n';
+        const ms2Price = await getMS2Price();
+        const ms2PerDollar = ms2Price ? (1 / ms2Price).toFixed(2) : 'N/A';
+        msg += `⭐️ ${ms2PerDollar} MS2/USD\n\n`;
     }
 
     group ? msg += `${group.title}\n ⚡️${group.qoints}\n\n` : null;
