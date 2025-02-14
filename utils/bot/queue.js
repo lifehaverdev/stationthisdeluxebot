@@ -725,9 +725,17 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const recentSends = {};
+// Track both recent sends and processed URLs
+const recentSends = new Map();
+const processedUrls = new Map();
 
 async function sendMedia(message, fileToSend, type, promptObj) {
+    // Check if we've already processed this URL recently
+    if (processedUrls.has(fileToSend)) {
+        console.log(`Already processed URL: ${fileToSend}`);
+        return true;
+    }
+
     // Add a unique key for this specific media send
     const sendKey = `${message.chat.id}_${fileToSend}_${Date.now()}`;
     
@@ -738,7 +746,20 @@ async function sendMedia(message, fileToSend, type, promptObj) {
 
     // Track this send with an expiration timestamp
     recentSends.set(sendKey, Date.now() + 5000);
+    processedUrls.set(fileToSend, Date.now() + 5000);
     
+    // Clean up old entries
+    for (const [key, timestamp] of recentSends.entries()) {
+        if (timestamp < Date.now()) {
+            recentSends.delete(key);
+        }
+    }
+    for (const [url, timestamp] of processedUrls.entries()) {
+        if (timestamp < Date.now()) {
+            processedUrls.delete(url);
+        }
+    }
+
     let options = {};
     let sendResult = false;
 
