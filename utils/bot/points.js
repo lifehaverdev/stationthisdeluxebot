@@ -30,7 +30,7 @@ async function updateGroupPoints(group, pointsDeducted) {
 
 async function addPoints(task) {
     ({ promptObj, message } = task);
-    const userId = promptObj.userId;
+    const userId = parseInt(promptObj.userId);
     
     let rate = 2;
     const doublePointTypes = ['MS3.2']; // You can add more types here if needed

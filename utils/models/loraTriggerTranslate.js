@@ -238,7 +238,7 @@ async function handleLoraTrigger(prompt, checkpoint, balance) {
     }
   }
 
-  console.log('\nFinal prompt:', modifiedPrompt);
+  //console.log('\nFinal prompt:', modifiedPrompt);
   console.log('=== End LoRA Translation ===\n');
 
   return modifiedPrompt;
