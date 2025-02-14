@@ -577,7 +577,12 @@ async function handleTaskCompletion(task) {
                     // Handle both output formats
                     let dataToProcess = outputItem.data;
                     if (Array.isArray(outputItem.data)) {
-                        console.log('Found array data format');
+                        console.log('Found array data - checking if this is node execution data');
+                        // Skip if this looks like node execution data
+                        if (outputItem.data[0]?.class_type) {
+                            console.log('Skipping node execution data');
+                            return;
+                        }
                         // First format - array of objects
                         dataToProcess = { images: outputItem.data };
                     }
@@ -592,6 +597,10 @@ async function handleTaskCompletion(task) {
                                 tags = dataToProcess[type];
                             } else {
                                 dataToProcess[type].forEach(dataItem => {
+                                    if (!dataItem.url) {
+                                        console.log('Skipping data item without URL:', dataItem);
+                                        return;
+                                    }
                                     console.log('Processing data item:', JSON.stringify(dataItem, null, 2));
                                     const url = dataItem.url;
                                     const fileType = extractType(url);
@@ -606,6 +615,11 @@ async function handleTaskCompletion(task) {
                 });
 
                 console.log('Final URLs to process:', urls);
+                
+                if (urls.length === 0) {
+                    console.log('No valid URLs found to process');
+                    return 'not sent';
+                }
 
                 for (const { url, type } of urls) {
                     try {
