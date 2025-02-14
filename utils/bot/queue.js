@@ -307,7 +307,9 @@ async function processWaitlist(status, run_id, outputs) {
     removeStaleTasks();
 
     try {
-        // Check the "waiting" task array for a matching ID
+        console.log(`Processing waitlist update - Status: ${status}, Run ID: ${run_id}`);
+        console.log('Received outputs:', outputs);
+
         const taskIndex = waiting.findIndex(task => task.run_id === run_id);
 
         if (taskIndex === -1) {
@@ -319,7 +321,12 @@ async function processWaitlist(status, run_id, outputs) {
         }
         
         const task = waiting[taskIndex];
-        // Prevent processing the same status multiple times
+        console.log('Found task:', {
+            run_id: task.run_id,
+            status: task.status,
+            lastProcessedStatus: task.lastProcessedStatus
+        });
+
         if (task.lastProcessedStatus === status) {
             console.log(`Status ${status} already processed for run_id ${run_id}, skipping`);
             return;
@@ -327,13 +334,12 @@ async function processWaitlist(status, run_id, outputs) {
         task.lastProcessedStatus = status;
         task.status = status;
 
-        // Track generation completion
         await analytics.trackGeneration(task, { run_id }, status);
 
         // Handle different update formats
         let run;
         if (typeof outputs === 'string') {
-            // Websocket format (typically from tripo)
+            console.log('Processing string output (Tripo format)');
             run = {
                 status,
                 run_id,
@@ -344,10 +350,11 @@ async function processWaitlist(status, run_id, outputs) {
                 }]
             };
         } else {
-            // Standard webhook format
+            console.log('Processing standard webhook format');
             run = { status, run_id, outputs };
         }
 
+        console.log('Created run object:', run);
         task.final = run;
 
         if (task.isApiRequest && task.webhook_url) {
@@ -409,6 +416,7 @@ async function processWaitlist(status, run_id, outputs) {
 
 
         statusRouter(task, taskIndex, status);
+        console.log('Status routing complete');
 
     } catch (err) {
         await analytics.trackError(err, { 
