@@ -572,24 +572,40 @@ async function handleTaskCompletion(task) {
                 
                 run.outputs.forEach((outputItem, index) => {
                     console.log(`Processing output ${index + 1}/${run.outputs.length}`);
+                    console.log('Raw output item:', JSON.stringify(outputItem, null, 2));
+
+                    // Handle both output formats
+                    let dataToProcess = outputItem.data;
+                    if (Array.isArray(outputItem.data)) {
+                        console.log('Found array data format');
+                        // First format - array of objects
+                        dataToProcess = { images: outputItem.data };
+                    }
+                    console.log('Processed data structure:', JSON.stringify(dataToProcess, null, 2));
+
                     possibleTypes.forEach(type => {
-                        if (outputItem.data?.[type]?.length > 0) {
-                            console.log(`Found ${outputItem.data[type].length} ${type} to process`);
+                        if (dataToProcess?.[type]?.length > 0) {
+                            console.log(`Found ${dataToProcess[type].length} ${type} to process`);
                             if (type === 'text') {
-                                texts = outputItem.data[type]; // Directly assign the text array
+                                texts = dataToProcess[type];
                             } else if (type === 'tags') {
-                                tags = outputItem.data[type]; // Directly assign the text array
+                                tags = dataToProcess[type];
                             } else {
-                                outputItem.data[type].forEach(dataItem => {
+                                dataToProcess[type].forEach(dataItem => {
+                                    console.log('Processing data item:', JSON.stringify(dataItem, null, 2));
                                     const url = dataItem.url;
                                     const fileType = extractType(url);
                                     urls.push({ type: fileType, url });
-                                    console.log(`${fileType.toUpperCase()} URL:`, url);
+                                    console.log(`Added ${fileType.toUpperCase()} URL:`, url);
                                 });
                             }
+                        } else {
+                            console.log(`No ${type} found in processed data`);
                         }
                     });
                 });
+
+                console.log('Final URLs to process:', urls);
 
                 for (const { url, type } of urls) {
                     try {
