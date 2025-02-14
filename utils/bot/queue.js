@@ -450,6 +450,8 @@ async function handleTaskCompletion(task) {
     const run = task.final;
     let sent = true;
 
+    console.log('Starting handleTaskCompletion for run_id:', task.run_id);
+
     // New helper function to handle cook mode completions
     async function handleCookModeCompletion(urls, task) {
         console.log('handleCookModeCompletion received:', {
@@ -558,10 +560,13 @@ async function handleTaskCompletion(task) {
 
             // If outputs are present, process them
             if (run?.outputs && run.outputs.length > 0) {
-                //console.log("Outputs found:", outputs.length);
-                run.outputs.forEach(outputItem => {
+                console.log(`Processing ${run.outputs.length} outputs for run_id:`, task.run_id);
+                
+                run.outputs.forEach((outputItem, index) => {
+                    console.log(`Processing output ${index + 1}/${run.outputs.length}`);
                     possibleTypes.forEach(type => {
-                        if (outputItem.data && outputItem.data[type] && outputItem.data[type].length > 0) {
+                        if (outputItem.data?.[type]?.length > 0) {
+                            console.log(`Found ${outputItem.data[type].length} ${type} to process`);
                             if (type === 'text') {
                                 texts = outputItem.data[type]; // Directly assign the text array
                             } else if (type === 'tags') {
@@ -580,21 +585,25 @@ async function handleTaskCompletion(task) {
 
                 for (const { url, type } of urls) {
                     try {
+                        console.log(`Attempting to send ${type} from URL:`, url);
                         let fileToSend = url;
-                        //console.log(promptObj.waterMark)
+                        
                         if (shouldApplyWatermark(message, promptObj, type)) {
-                            promptObj.waterMark = 'mslogo'
-                            fileToSend = await addWaterMark(url,promptObj.waterMark); // Watermark the image
+                            console.log('Applying watermark...');
+                            fileToSend = await addWaterMark(url, promptObj.waterMark);
                         }
-                        console.log('alright we send now',fileToSend)
+                        
+                        console.log('Sending media...');
                         const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
-                        //console.log('this is response from sendMedia',mediaResponse)
-                        if (!mediaResponse) sent = false;
+                        console.log('Media send response:', mediaResponse);
+                        
+                        if (!mediaResponse) {
+                            console.error('Media send failed');
+                            sent = false;
+                        }
                     } catch (err) {
                         console.error('Error sending media:', err.message || err);
-                    }
-                    if(urls.length>1){
-                        await sleep(250);
+                        sent = false;
                     }
                 }
 
@@ -616,7 +625,7 @@ async function handleTaskCompletion(task) {
                     }
                 }
             } else {
-                console.log(`No outputs to process for status: ${run.status}`);
+                console.log(`No outputs to process for run_id: ${task.run_id}, status: ${run.status}`);
             }
         }
     };
@@ -647,6 +656,7 @@ async function handleTaskCompletion(task) {
             return 'success';
         }
         await operation();
+        console.log(`Task completion result - sent: ${sent}`);
         if (sent) {
             await addPoints(task);
             const out = {
@@ -661,6 +671,7 @@ async function handleTaskCompletion(task) {
             await userStats.saveGen({task, run, out});
             return 'success';
         } else {
+            console.error(`Failed to send media for run_id: ${task.run_id}`);
             return 'not sent';
         }
     } else {
