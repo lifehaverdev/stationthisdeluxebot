@@ -570,23 +570,17 @@ async function handleTaskCompletion(task) {
             if (run?.outputs && run.outputs.length > 0) {
                 console.log(`Processing ${run.outputs.length} outputs for run_id:`, task.run_id);
                 
-                run.outputs.forEach((outputItem, index) => {
-                    console.log(`Processing output ${index + 1}/${run.outputs.length}`);
-                    console.log('Raw output item:', JSON.stringify(outputItem, null, 2));
-
-                    // Handle both output formats
-                    let dataToProcess = outputItem.data;
-                    if (Array.isArray(outputItem.data)) {
-                        console.log('Found array data - checking if this is node execution data');
-                        // Skip if this looks like node execution data
-                        if (outputItem.data[0]?.class_type) {
-                            console.log('Skipping node execution data');
-                            return;
-                        }
-                        // First format - array of objects
-                        dataToProcess = { images: outputItem.data };
-                    }
-                    console.log('Processed data structure:', JSON.stringify(dataToProcess, null, 2));
+                // Find the output with images (usually from SaveImage node)
+                const imageOutput = run.outputs.find(output => 
+                    output.node_meta?.node_class === 'SaveImage' || 
+                    output.data?.images?.length > 0
+                );
+                
+                if (imageOutput) {
+                    console.log('Found image output:', JSON.stringify(imageOutput, null, 2));
+                    
+                    const dataToProcess = imageOutput.data;
+                    console.log('Data to process:', JSON.stringify(dataToProcess, null, 2));
 
                     possibleTypes.forEach(type => {
                         if (dataToProcess?.[type]?.length > 0) {
@@ -612,7 +606,9 @@ async function handleTaskCompletion(task) {
                             console.log(`No ${type} found in processed data`);
                         }
                     });
-                });
+                } else {
+                    console.log('No image output found in outputs');
+                }
 
                 console.log('Final URLs to process:', urls);
                 
