@@ -202,11 +202,11 @@ async function addPoints(task) {
                 // If user has qoints and is over max, subtract from qoints and add to boints
                 user.qoints = Math.max(0, user.qoints - pointsToAdd);
                 user.boints = (user.boints || 0) + pointsToAdd;
-                console.log(`Points moved from qoints to boints for user ${user.id}. New qoints: ${user.qoints}, new boints: ${user.boints}`);
+                console.log(`Points moved from qoints to boints for user ${user.userId}. New qoints: ${user.qoints}, new boints: ${user.boints}`);
             } else {
                 // Otherwise add points normally
                 user.points += pointsToAdd;
-                console.log(`Points added to user ${user.id}. New total: ${user.points}`);
+                console.log(`Points added to user ${user.userId}. New total: ${user.points}`);
             }
         }
         // Always remove placeholder doints

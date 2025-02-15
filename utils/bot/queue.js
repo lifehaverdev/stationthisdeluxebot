@@ -259,8 +259,8 @@ async function deliver() {
         
         try {
                     // Check if task has already been processed
-            if (task.processed) {
-                console.log(`Task ${run_id} has already been processed, skipping`);
+            if (task.processed && !task.deliveryFail) {
+                console.log(`Task ${run_id} has already been processed successfully, skipping`);
                 return;
             }
             
@@ -273,7 +273,6 @@ async function deliver() {
                 successors.push(task)
                 return
             }
-            
             if (result === 'success') {
                 console.log(`👍 ${task.promptObj.username} ${run_id}`);
             } else if (result === 'not sent') {
