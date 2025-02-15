@@ -416,7 +416,7 @@ function chargeGated(message) {
     react(message,reacts[which])
     const reply_markup = {
         inline_keyboard: [
-            [{text: 'Add Charge ⚡️', url: `https://miladystation2.net/charge`}]
+            [{text: 'Add Charge ⚡️', url: `gated_charge`}]
         ]
     }
     sendMessage(message, "You need to have charge on your account to use this feature. Please add funds to continue.", {reply_markup})
@@ -547,8 +547,11 @@ async function calculateDiscount(user) {
 function logThis(active, message) {
     if (active) console.log(message);
 }
-
-
+const POINTMULTI = 540;
+const NOCOINERSTARTER = 199800;
+function calculateMaxPoints(balance) {
+    return Math.floor((balance + NOCOINERSTARTER) / POINTMULTI);
+}
 
 module.exports = {
     sendPhoto,
@@ -568,4 +571,5 @@ module.exports = {
     logThis,
     DEV_DMS, sendMessageDev,
     fullCommandList,
+    calculateMaxPoints
 }

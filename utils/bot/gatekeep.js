@@ -771,13 +771,13 @@ async function checkUserPoints(userId, group, message) {
         react(message, randomReact);
 
         const nextRegenTime = timeTillTurnover();
-        const messageText = `🚫 You have hit your point limit!\n✨ Your points will regenerate every 15 minutes. (theoretically, dm art if they don’t)\n🔄 You'll regain some points in ${Math.ceil(nextRegenTime)} minutes.\n💰 Want to continue now? Buy more MS2 and keep creating! 🥂 OR charge up your points directly 👾 with discounts for owning MS2 and using the bot!`;
+        const messageText = `🚫 You have hit your point limit!\n✨ Your replinishable points will regenerate every 15 minutes.\n🔄 You'll regain ${calculateMaxPoints(user.balance)/18} points in ${Math.ceil(nextRegenTime)} minutes.\n💰 Want to continue now? Buy more MS2 and keep creating (use /ibought)! 🥂\n\nOR charge up your points directly 👾 \n`;
         const options = {
             reply_markup: {
                 inline_keyboard: [
                     [
                         { text: 'Buy 🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
-                        { text: 'Chart 📈', url: 'https://www.dextools.io/app/en/solana/pair-explorer/3gwq3YqeBqgtSu1b3pAwdEsWc4jiLT8VpMEbBNY5cqkp?t=1719513335558' }
+                        { text: 'Chart 📈', url: 'https://www.coingecko.com/en/coins/station-this' }
                     ],
                     [
                         { text: 'Charge ⚡️', callback_data: 'gated_charge' }
