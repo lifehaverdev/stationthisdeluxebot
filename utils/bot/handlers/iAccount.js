@@ -5,7 +5,8 @@ const { getBotInstance, lobby, rooms, STATES, startup, getBurned, getNextPeriodT
 const bot = getBotInstance()
 const { 
     sendMessage, editMessage, setUserState, safeExecute, makeBaseData, compactSerialize, DEV_DMS ,
-    fullCommandList
+    fullCommandList,
+    calculateMaxPoints,
 } = require('../../utils')
 const { checkLobby, lobbyManager, NOCOINERSTARTER, POINTMULTI, LOBBY_CLEAN_MINUTE, LOBBY_CLEAN_INTERVAL, lastCleanTime } = require('../gatekeep')
 const { verifyHash } = require('../../users/verify.js')
@@ -505,7 +506,7 @@ function buildUserProfile(message, dms) {
         bars += i < toLevelUpRatio * 6 ? '🟩' : '⬜️';
     }
 
-    const maxPoints = Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI);
+    const maxPoints = calculateMaxPoints(lobby[userId].balance)//Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI);
     let qoints = lobby[userId].qoints;
     let doints = lobby[userId].doints || 0;
     const pointBars = createBalancedBar(maxPoints, lobby[userId].points + doints, qoints);

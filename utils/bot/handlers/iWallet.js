@@ -7,6 +7,7 @@ const {
     react,
     editMessage,
     escapeMarkdown,
+    calculateMaxPoints
 } = require('../../utils');
 const { 
     Connection, 
@@ -1012,7 +1013,7 @@ actionMap['verify_wallet'] = async (message, user) => {
     await walletHandler.verifyWalletSetup({...message, from: {id: user}});
 };
 
-async function verifyTransfer(toAddress, expectedAmount, fromBlock = '0x0') {
+async function verifyTransfer(toAddress, fromAddress = null, fromBlock = '0x0', expectedAmount = null) {
     try {
         const response = await axios.post(
             `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY}`,
@@ -1020,33 +1021,61 @@ async function verifyTransfer(toAddress, expectedAmount, fromBlock = '0x0') {
                 id: 1,
                 jsonrpc: '2.0',
                 method: 'alchemy_getAssetTransfers',
-                params: [
-                    {
-                        fromBlock,
-                        toBlock: 'latest',
-                        toAddress,
-                        category: ['external'],
-                        order: 'desc', // Most recent first
-                        withMetadata: true,
-                        excludeZeroValue: true,
-                        maxCount: '0x64' // Check last 100 transfers
-                    }
-                ]
-            },
-            {
-                headers: {
-                    'accept': 'application/json',
-                    'content-type': 'application/json'
-                }
+                params: [{
+                    fromBlock,
+                    toBlock: 'latest',
+                    toAddress,
+                    fromAddress,
+                    category: ['external', 'erc20'],
+                    contractAddresses: [TOKENS.MS2_ETH],
+                    order: 'desc',
+                    withMetadata: true,
+                    excludeZeroValue: true,
+                    maxCount: '0x64'
+                }]
             }
         );
 
-        const transfers = response.data.result.transfers;
-        
-        // Look for a transfer matching our expected amount
-        return transfers.find(transfer => 
-            Math.abs(parseFloat(transfer.value) - expectedAmount) < 0.0001 // Allow small rounding differences
-        );
+        console.log('response:', response.data);
+
+        // Check if response and result exist
+        if (!response?.data?.result?.transfers) {
+            console.error('Invalid response structure:', response.data);
+            return null;
+        }
+
+        const transfers = response.data.result.transfers.map(transfer => {
+            // Determine if this is an MS2 transfer by checking category and asset
+            const isMS2 = transfer.category === 'erc20' && 
+                         transfer.rawContract?.address?.toLowerCase() === TOKENS.MS2_ETH.toLowerCase();
+
+            return {
+                from: transfer.from,
+                to: transfer.to,
+                value: transfer.value,
+                hash: transfer.hash,
+                blockNum: transfer.blockNum,
+                // For MS2, value is already adjusted by contract decimals according to docs
+                // but we store it with different decimals, so adjust accordingly
+                adjustedValue: isMS2 ? transfer.value * 1e12 : transfer.value,
+                type: isMS2 ? 'ms2' : 'eth',
+                asset: transfer.asset,
+                timestamp: transfer.metadata?.blockTimestamp,
+                uniqueId: transfer.uniqueId
+            };
+        });
+
+        console.log('Found transfers:', transfers);
+
+        // If expectedAmount provided, find that specific transfer
+        if (expectedAmount !== null) {
+            return transfers.find(transfer => 
+                Math.abs(transfer.adjustedValue - expectedAmount) < 0.0001
+            );
+        }
+
+        // Otherwise return the most recent transfer
+        return transfers[0] || null;
     } catch (error) {
         console.error('Error verifying transfer:', error);
         return null;
@@ -1105,10 +1134,10 @@ async function handleSignUpVerification(message, expectedAmount) {
                 error: 'Verification session not found or expired. Please start over.'
             };
         }
-        console.log('userId',userId)
+        console.log('userId', userId);
 
-        // Verify the transfer occurred
-        const transfer = await verifyTransfer(receivingAddress, amount);
+        // Look for ETH transfer of the expected amount
+        const transfer = await verifyTransfer(receivingAddress, null, '0x0', amount);
         if (!transfer) {
             return {
                 success: false,
@@ -1117,8 +1146,16 @@ async function handleSignUpVerification(message, expectedAmount) {
         }
         console.log('transfer:', transfer);
 
+        // Verify this is an ETH transfer (not MS2)
+        if (transfer.type !== 'eth') {
+            return {
+                success: false,
+                error: 'Please send ETH for wallet verification, not tokens.'
+            };
+        }
+
         // Validate the exact amount (allowing for minor rounding differences)
-        const receivedAmount = parseFloat(transfer.value);
+        const receivedAmount = transfer.value;
         const difference = Math.abs(receivedAmount - amount);
         if (difference > 0.0001) { // Allow 0.0001 ETH difference for rounding
             return {
@@ -1156,7 +1193,10 @@ async function handleSignUpVerification(message, expectedAmount) {
         }
 
         // Check if wallet already exists
-        const existingWallet = user.wallets?.find(w => w.address.toLowerCase() === transfer.from.toLowerCase());
+        const existingWallet = user.wallets?.find(w => 
+            w.address.toLowerCase() === transfer.from.toLowerCase()
+        );
+        
         if (!existingWallet) {
             // Add wallet to user's wallets array
             const updatedWallets = [...(user.wallets || []), walletObject];
@@ -1200,28 +1240,88 @@ async function handleSignUpVerification(message, expectedAmount) {
     }
 }
 
-// Function to handle charge purchase verification
-async function handleChargePurchase(ctx, amount) {
-    const receivingAddress = process.env.RECEIVING_WALLET_ADDRESS;
-    
+// Add the prefix handler for confirmCharge
+actionMap['confirmCharge'] = async (message, userId) => {
     try {
-        const transfer = await verifyTransfer(receivingAddress, amount);
-        
-        if (transfer) {
-            // Calculate charge amount based on ETH sent
-            const chargeAmount = calculateChargeAmount(amount);
-            
-            // Update user's charge balance
-            await db.updateUserBalance(ctx.from.id, chargeAmount);
-            
-            return chargeAmount;
+        const chargeWallet = getChargeWallet(userId);
+        if (!chargeWallet) {
+            throw new Error('No verified ETH wallet found');
         }
-        return 0;
+
+        // Look for recent transfers from user's active wallet
+        const transfer = await verifyTransfer(
+            process.env.RECEIVING_WALLET_ADDRESS,
+            chargeWallet.address,  // fromAddress
+            '0x0'  // fromBlock
+        );
+
+        if (!transfer) {
+            await editMessage({
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                text: '❌ No recent transfers found from your wallet. Please try again after sending funds.',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '🔄 Try Again', callback_data: 'confirmCharge' },
+                        { text: '❌ Cancel', callback_data: 'cancel' }
+                    ]]
+                }
+            });
+            return;
+        }
+
+        // Calculate points based on transfer type
+        const qoints = transfer.type === 'ms2' 
+            ? await calculateChargeAmountMS2(transfer.adjustedValue)
+            : await calculateChargeAmount(transfer.value);
+
+        // Update user's points in both database and lobby
+        const userEconomy = new UserEconomy();
+        const currentQoints = lobby[userId]?.qoints || 0;
+        const newPointBalance = currentQoints + qoints;
+
+        // Update database
+        await userEconomy.writeQoints(parseInt(userId), newPointBalance);
+
+        // Update lobby
+        if (!lobby[userId]) lobby[userId] = {};
+        lobby[userId].qoints = newPointBalance;
+
+        // Send success message with appropriate value display
+        const displayAmount = transfer.type === 'ms2' 
+            ? `${transfer.adjustedValue.toFixed(2)} MS2`
+            : `${transfer.value.toFixed(6)} ETH`;
+
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: `✅ Transfer verified!\n\n` +
+                  `Received: ${displayAmount}\n` +
+                  `Added: ${qoints} points\n` +
+                  `New Balance: ${newPointBalance} points`,
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: '🔄 Charge More', callback_data: 'gated_charge' },
+                    { text: '❌ Close', callback_data: 'delete_message' }
+                ]]
+            }
+        });
+
     } catch (error) {
-        console.error('Error in charge purchase:', error);
-        return 0;
+        console.error('Error in charge confirmation:', error);
+        await editMessage({
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            text: `❌ Error verifying transfer: ${error.message}`,
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: '🔄 Try Again', callback_data: 'confirmCharge' },
+                    { text: '❌ Cancel', callback_data: 'cancel' }
+                ]]
+            }
+        });
     }
-}
+};
 
 
 async function calculateChargeAmountMS2(ms2Amount) {
@@ -1264,38 +1364,63 @@ async function calculateChargeAmount(ethAmount) {
     }
 }
 
+// Helper function to get user's most recent verified ETH wallet
+function getChargeWallet(userId) {
+    const verifiedEthWallets = lobby[userId]?.wallets?.filter(w => 
+        w.verified && w.type === WALLET_TYPES.CONNECTED_ETH
+    ) || [];
+
+    if (!verifiedEthWallets.length) {
+        return null;
+    }
+
+    // Get the most recently created ETH wallet
+    return verifiedEthWallets.sort((a, b) => 
+        new Date(b.createdAt) - new Date(a.createdAt)
+    )[0];
+}
+
 // Create a function to generate the charge message and options
 async function createChargeMessage(userId) {
     const user = lobby[userId];
+    const chargeWallet = getChargeWallet(userId);
 
-    // Check if user has verified wallets
-    if (!lobby[userId]?.wallets || !lobby[userId].wallets.some(w => w.verified)) {
+    if (!chargeWallet) {
         return {
-            text: 'You need to verify a wallet first! Use /verify to get started.',
+            text: 'You need to verify an ETH wallet first! Use /verify to get started.',
             options: {
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: '..nvm', callback_data: 'delete_message' }
+                        { text: '..nvm', callback_data: 'cancel' }
                     ]]
                 }
             }
         };
     }
 
+    // Check if active wallet is different and is a SOL wallet
+    const activeWallet = lobby[userId]?.wallets?.find(w => w.active);
+    let warningMessage = '';
+    if (activeWallet && activeWallet.type.includes('SOL')) {
+        warningMessage = `⚠️ Note: Your active wallet is a Solana wallet. Please send funds from your ETH wallet:\n` +
+                        `\`${chargeWallet.address}\`\n\n`;
+    }
+//• 0.1 SOL = ${await calculateChargeAmount(0.1)} points ⚡️
     const chargeInfo = `
-🔋 Charge your points with MS2, ETH, or SOL!
+${warningMessage}🔋 Charge your points with MS2 or ETH!
+
 
 Current Rates:
-• 1000 MS2 = ${await calculateChargeAmountMS2(1000)} points
-• 1,000,000 MS2 = ${await calculateChargeAmountMS2(1000000)} points
-• 0.001 ETH = ${await calculateChargeAmount(0.001)} points
-• 0.1 SOL = ${await calculateChargeAmount(0.1)} points
-Your current points: ${user.points + user.doints} / ${Math.floor((lobby[userId].balance + NOCOINERSTARTER) / POINTMULTI)}
+
+• 1000 MS2 = ${await calculateChargeAmountMS2(1000)} points ⚡️
+• 0.001 ETH = ${await calculateChargeAmount(0.001)} points ⚡️
+
+Your current points: ${user.points + user.doints} / ${calculateMaxPoints(lobby[userId].balance)}
 
 To charge:
 1. Send MS2 (eth) or ETH to \`${process.env.RECEIVING_WALLET_ADDRESS}\`
 2. Click 'Confirm Transfer' below
-3. We'll check your balance and add points!
+3. We'll check your balance and add points ⚡️!
 
 Need MS2? Use the Buy button below!
     `;
@@ -1305,14 +1430,17 @@ Need MS2? Use the Buy button below!
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: 'Confirm (ETH) Transfer ✅', callback_data: 'confirmCharge_eth' },
-                    { text: 'Confirm (SOL) Transfer ✅', callback_data: 'confirmCharge_sol' },
-                    { text: 'Buy MS2 (ETH)🛒', url: 'https://app.uniswap.org/swap?chain=mainnet&inputCurrency=NATIVE&outputCurrency=0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820' },
-                    { text: 'Buy MS2 (SOL)🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
+                    { text: 'Confirm Transfer ✅', callback_data: 'confirmCharge' },
+                ],
+                [
+                    { text: 'MS2(ETH)🛒', url: 'https://app.uniswap.org/swap?chain=mainnet&inputCurrency=NATIVE&outputCurrency=0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820' },
+                    { text: 'MS2(SOL)🛒', url: 'https://jup.ag/swap/SOL-AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg' },
+                ],
+                [
                     { text: 'Bridge MS2', url: 'https://portalbridge.com/' }
                 ],
                 [
-                    { text: '..nvm', callback_data: 'delete_message' }
+                    { text: '..nvm', callback_data: 'cancel' }
                 ]
             ]
         }
@@ -1607,7 +1735,7 @@ prefixHandlers['switchWallet_'] = async (action, message, userId) => {
             reply_markup: {
                 inline_keyboard: [[
                     { text: '🔄 Try Again', callback_data: 'switch_wallet' },
-                    { text: '❌ Close', callback_data: 'delete_message' }
+                    { text: '❌ Close', callback_data: 'cancel' }
                 ]]
             }
         });
@@ -1616,7 +1744,7 @@ prefixHandlers['switchWallet_'] = async (action, message, userId) => {
 
 // Run test if file is run directly
 if (require.main === module) {
-    calculateChargeAmount(0.0001).then(() => {
+    verifyTransfer(process.env.RECEIVING_WALLET_ADDRESS, '0x1821bd18cbdd267ce4e389f893ddfe7beb333ab6', '0x0', null).then(() => {
         console.log('\n✅ Test complete');
         process.exit(0);
     }).catch(error => {
@@ -1637,7 +1765,6 @@ module.exports = {
     WALLET_TYPES,
     verifyTransfer,
     handleSignUpVerification,
-    handleChargePurchase,
     getMS2Price,
     getETHPrice,
     getUserAssets,
