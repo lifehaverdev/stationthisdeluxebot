@@ -1013,8 +1013,14 @@ actionMap['verify_wallet'] = async (message, user) => {
     await walletHandler.verifyWalletSetup({...message, from: {id: user}});
 };
 
-async function verifyTransfer(toAddress, fromAddress = null, fromBlock = '0x0', expectedAmount = null) {
+async function verifyTransfer(toAddress, fromAddress = null, fromBlock = null, expectedAmount = null) {
     try {
+        // If fromBlock not provided, calculate block from 1 hour ago
+        if (!fromBlock) {
+            const provider = new ethers.JsonRpcProvider(`https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY}`);
+            const currentBlock = await provider.getBlockNumber();
+            fromBlock = '0x' + Math.max(0, currentBlock - 300).toString(16);
+        }
         const response = await axios.post(
             `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY}`,
             {
@@ -1137,7 +1143,7 @@ async function handleSignUpVerification(message, expectedAmount) {
         console.log('userId', userId);
 
         // Look for ETH transfer of the expected amount
-        const transfer = await verifyTransfer(receivingAddress, null, '0x0', amount);
+        const transfer = await verifyTransfer(receivingAddress, null, null, amount);
         if (!transfer) {
             return {
                 success: false,
@@ -1252,7 +1258,8 @@ actionMap['confirmCharge'] = async (message, userId) => {
         const transfer = await verifyTransfer(
             process.env.RECEIVING_WALLET_ADDRESS,
             chargeWallet.address,  // fromAddress
-            '0x0'  // fromBlock
+            null,  // fromBlock
+            null,
         );
 
         if (!transfer) {
@@ -1744,7 +1751,7 @@ prefixHandlers['switchWallet_'] = async (action, message, userId) => {
 
 // Run test if file is run directly
 if (require.main === module) {
-    verifyTransfer(process.env.RECEIVING_WALLET_ADDRESS, '0x1821bd18cbdd267ce4e389f893ddfe7beb333ab6', '0x0', null).then(() => {
+    verifyTransfer(process.env.RECEIVING_WALLET_ADDRESS, '0x1821bd18cbdd267ce4e389f893ddfe7beb333ab6', null, null).then(() => {
         console.log('\n✅ Test complete');
         process.exit(0);
     }).catch(error => {
