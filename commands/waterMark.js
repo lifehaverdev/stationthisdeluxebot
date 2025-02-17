@@ -4,9 +4,9 @@ const { watermarkmenu } = require('../utils/models/watermarks')
 async function addWaterMark (filename,markName) {
         console.log(filename,markName)
     try {
-        // if(markName == false){
-        //     markName = 'ms2logo'
-        // }
+        if(markName == false){
+            markName = 'ms2logo'
+        }
         
         console.log('markName after false check',markName)
         const watermarkProps = watermarkmenu.find(watermark => watermark.name == markName )
