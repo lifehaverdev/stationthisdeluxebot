@@ -4,7 +4,7 @@ const { watermarkmenu } = require('../utils/models/watermarks')
 async function addWaterMark (filename,markName) {
         console.log(filename,markName)
     try {
-        if(markName == false){
+        if(markName == false || markName == undefined){
             markName = 'ms2logo'
         }
         
