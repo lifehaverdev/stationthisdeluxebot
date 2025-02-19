@@ -46,22 +46,20 @@ async function addPoints(task) {
     // Special handling for API requests - always use qoints from DB
     if (task.isAPI) {
         const userEconomy = new UserEconomyDB();
-        const userEco = await userEconomy.findOne({ userId });
+        const userEco = await userEconomy.findOne({ userId: parseInt(userId) });
         
         if (!userEco) {
             console.error('No user economy found for API user:', userId);
-            throw new Error('Insufficient qoints balance');
+            // Set qoints to 0 instead of throwing error
+            await userEconomy.writeQoints(parseInt(userId), 0);
+            return;
         }
 
-        // Subtract points from user's qoints
-        userEco.qoints -= pointsToAdd;
-        
-        if (userEco.qoints < 0) {
-            throw new Error('Insufficient qoints balance');
-        }
+        // Subtract points from user's qoints, but don't let it go below 0
+        userEco.qoints = Math.max(0, userEco.qoints - pointsToAdd);
 
         // Update the DB with new balance
-        await userEconomy.writeQoints(userEco.userId, userEco.qoints);
+        await userEconomy.writeQoints(parseInt(userEco.userId), userEco.qoints);
         console.log('API request: Deducted qoints from DB:', {
             userId,
             pointsSpent: pointsToAdd,

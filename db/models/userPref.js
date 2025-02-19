@@ -53,9 +53,11 @@ class UserPrefDB extends BaseDB {
     }
 
     async writeUserData(userId, data) {
-        const prefData = this.massageData(data);
+        // Convert userId to integer if it's a string
+        const parsedUserId = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+        const prefData = this.massageData({ ...data, userId: parsedUserId });
         const result = await this.updateOne(
-            { userId },
+            { userId: parsedUserId },
             prefData,
         );
         console.log('pref writeUserData result:', result);
