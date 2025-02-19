@@ -1021,24 +1021,32 @@ async function verifyTransfer(toAddress, fromAddress = null, fromBlock = null, e
             const currentBlock = await provider.getBlockNumber();
             fromBlock = '0x' + Math.max(0, currentBlock - 300).toString(16);
         }
+
+        // Build params object, only including fromAddress if it exists
+        const params = {
+            fromBlock,
+            toBlock: 'latest',
+            toAddress,
+            category: ['external', 'erc20'],
+            contractAddresses: [TOKENS.MS2_ETH],
+            order: 'desc',
+            withMetadata: true,
+            excludeZeroValue: true,
+            maxCount: '0x64'
+        };
+
+        // Only add fromAddress if it's provided
+        if (fromAddress) {
+            params.fromAddress = fromAddress;
+        }
+
         const response = await axios.post(
             `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_KEY}`,
             {
                 id: 1,
                 jsonrpc: '2.0',
                 method: 'alchemy_getAssetTransfers',
-                params: [{
-                    fromBlock,
-                    toBlock: 'latest',
-                    toAddress,
-                    fromAddress,
-                    category: ['external', 'erc20'],
-                    contractAddresses: [TOKENS.MS2_ETH],
-                    order: 'desc',
-                    withMetadata: true,
-                    excludeZeroValue: true,
-                    maxCount: '0x64'
-                }]
+                params: [params]
             }
         );
 

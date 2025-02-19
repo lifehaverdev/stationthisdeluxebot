@@ -340,7 +340,7 @@ async function processWaitlist(status, run_id, outputs) {
             outputs: task.allOutputs 
         };
         
-        console.log('Accumulated outputs:', JSON.stringify(task.allOutputs, null, 2));
+        //console.log('Accumulated outputs:', JSON.stringify(task.allOutputs, null, 2));
         task.final = run;
 
         // Handle webhook notifications if needed
@@ -445,7 +445,7 @@ async function handleTaskCompletion(task) {
     let sent = true;
 
     console.log('Starting handleTaskCompletion for run_id:', task.run_id);
-    console.log('Full run object:', JSON.stringify(run, null, 2));
+    //console.log('Full run object:', JSON.stringify(run, null, 2));
 
     // New helper function to handle cook mode completions
     async function handleCookModeCompletion(urls, task) {
@@ -560,7 +560,7 @@ async function handleTaskCompletion(task) {
                 // Process all outputs, not just SaveImage
                 run.outputs.forEach(output => {
                     if (output.data?.images?.length > 0) {
-                        console.log(`Found images in output:`, JSON.stringify(output.data.images, null, 2));
+                        //console.log(`Found images in output:`, JSON.stringify(output.data.images, null, 2));
                         output.data.images.forEach(image => {
                             if (image.url) {
                                 urls.push({ 
@@ -572,7 +572,7 @@ async function handleTaskCompletion(task) {
                     }
                 });
 
-                console.log('Processed URLs:', urls);
+                //console.log('Processed URLs:', urls);
                 
                 if (urls.length === 0) {
                     console.log('No valid URLs found to process');
@@ -581,7 +581,7 @@ async function handleTaskCompletion(task) {
 
                 for (const { url, type } of urls) {
                     try {
-                        console.log(`Attempting to send ${type} from URL:`, url);
+                        //console.log(`Attempting to send ${type} from URL:`, url);
                         let fileToSend = url;
                         
                         if (shouldApplyWatermark(message, promptObj, type)) {
@@ -589,9 +589,9 @@ async function handleTaskCompletion(task) {
                             fileToSend = await addWaterMark(url, promptObj.waterMark);
                         }
                         
-                        console.log('Calling sendMedia...');
+                        //console.log('Calling sendMedia...');
                         const mediaResponse = await sendMedia(message, fileToSend, type, promptObj);
-                        console.log('sendMedia returned:', mediaResponse);
+                        //console.log('sendMedia returned:', mediaResponse);
                         
                         if (!mediaResponse) {
                             console.error('Media send failed');
