@@ -680,31 +680,31 @@ commandRegistry['/gift'] = {
             await checkIn(target);
         }
 
-        if (!lobby[target.from.id].pendingQoints) {
-            lobby[target.from.id].pendingQoints = 0;
+        if (!lobby[target.from.id].qoints) {
+            lobby[target.from.id].qoints = 0;
         }
 
-        const current = lobby[target.from.id].pendingQoints + lobby[target.from.id].qoints;
+        const current = lobby[target.from.id].qoints;
         message.text = message.text.replace('/gift', '').replace(`@stationthisdeluxebot`, '');
         const howMuch = parseInt(message.text);
-        const balance = lobby[userId]?.qoints + lobby[userId]?.pendingQoints || 0;
+        const balance = lobby[userId]?.qoints || 0;
 
         console.log('gift before', current, howMuch, balance);
 
         if (userId === DEV_DMS) {
             // Developer can freely gift qoints
-            lobby[target.from.id].pendingQoints += howMuch;
-            await userDB.writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints);
+            lobby[target.from.id].qoints += howMuch;
+            await userDB.writeUserDataPoint(target.from.id, 'qoints', lobby[target.from.id].qoints);
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
         } else if (!isNaN(howMuch) && howMuch <= balance && howMuch > 0) {
             // Regular user gift logic
-            lobby[target.from.id].pendingQoints += howMuch;
+            lobby[target.from.id].qoints += howMuch;
             lobby[userId].qoints -= howMuch;
             await userDB
                 .startBatch()
                 .writeUserDataPoint(userId, 'qoints', lobby[userId].qoints,true)
-                .writeUserDataPoint(target.from.id, 'pendingQoints', lobby[target.from.id].pendingQoints,true)
+                .writeUserDataPoint(target.from.id, 'qoints', lobby[target.from.id].qoints,true)
                 .executeBatch()
             await react(message, '✍️');
             sendMessage(message, `@${target.from.username} thanks you for your generosity! Use /account and refresh to process your gift.`);
