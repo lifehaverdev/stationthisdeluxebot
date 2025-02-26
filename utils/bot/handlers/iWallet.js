@@ -17,6 +17,9 @@ const {
 const { ethers } = require('ethers');
 const axios = require('axios');
 require('dotenv').config();
+const { TutorialManager, CHECKPOINTS } = require('./iStart');
+const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
+const analytics = new AnalyticsEvents();
 
 const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com');
 
@@ -1008,10 +1011,10 @@ actionMap['add_wallet'] = async (message, user) => {
     await walletHandler.promptChainSelection(message);
 };
 
-actionMap['verify_wallet'] = async (message, user) => {
-    const walletHandler = new WalletHandler();
-    await walletHandler.verifyWalletSetup({...message, from: {id: user}});
-};
+// actionMap['verify_wallet'] = async (message, user) => {
+//     const walletHandler = new WalletHandler();
+//     await walletHandler.verifyWalletSetup({...message, from: {id: user}});
+// };
 
 async function verifyTransfer(toAddress, fromAddress = null, fromBlock = null, expectedAmount = null) {
     try {
@@ -1101,6 +1104,23 @@ actionMap['verify_wallet'] = async (message, user) => {
     const result = await handleSignUpVerification(message, expectedAmount);
     
     if (result.success) {
+        await analytics.trackAccountAction(message, 'verified_eth_wallet', true, {
+            wallet: lobby[user].wallet,
+            verified: lobby[user].verified
+        });
+        if (lobby[user].progress?.currentStep === 'verify') {
+            // Add bonus points
+            lobby[user].qoints += 1000;
+                    
+            // Trigger the wallet connected checkpoint since they're already verified
+            if (message.chat.id > 0) {
+                await TutorialManager.checkpointReached(
+                    user,
+                    CHECKPOINTS.WALLET_CONNECTED,
+                    { message }
+                );
+            }
+        }
         await editMessage({
             chat_id: message.chat.id,
             message_id: message.message_id,
