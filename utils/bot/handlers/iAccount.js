@@ -18,9 +18,8 @@ const { getGroup } = require('./iGroup')
 const { home } = require("./iMenu")
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const { TutorialManager, CHECKPOINTS } = require('./iStart');
-const crypto = require('crypto');
 const analytics = new AnalyticsEvents();
-
+const crypto = require('crypto');
 /*
 Let's upgrade protection
 Cull mutliple userids on same wallet address

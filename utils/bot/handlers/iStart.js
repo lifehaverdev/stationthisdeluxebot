@@ -73,26 +73,26 @@ const tutorialSteps = {
             "Great! Now you know how to use img2img generation with quickeffect.\n\n" +
             "Try using `/effect` on the same image instead! This command gives you a higher quality generation.\n\n" +
             "Just reply to the same image with the same prompt but using `/effect` instead and see the difference! 🎨",
-        nextStep: 'signin',
-        unlockedCommands: ['/effect'],
+        nextStep: 'verify',
+        unlockedCommands: ['/verify'],
         checkpoints: {
             COMMAND_USED: true,
             //BOT_REPLY_SENT: true
         }
     },
-    'signin': {
-        command: '/signin',
+    'verify': {
+        command: '/verify',
         introduction: 
             "By the way, let's talk about points! 🎯\n\n" +
-            "You currently start with 370 points, however if you own MS2 you may connect a wallet and be credited with more points to work with, as well as unlocking more features of the bot (me).\n\n" +
+            "You currently start with 370 points, however if you own MS2 you may connect an ETH wallet and be credited with more points to work with, as well as unlocking more features of the bot (me).\n\n" +
             "It's okay if you don't have any MS2 yet, let's do this! 🎁\n\n" +
             "If you connect your wallet, I'll give you 1000 points! ⚡️ Then we can continue on to cool things\n" +
-            "Ready to get those bonus points\\? Try: /signin\n" +
-            "It will ask for your wallet address, you send that to the chat\n" +
-            "Then you will need to go to the project site verify page and sign a message (not a transaction) with the same wallet you provided" + 
-            "It will give you a hash, once you send that back here to me, I give you your points 😼",
+            "Ready to get those bonus points\\? Try: /verify\n" +
+            "It will give you a specific amount of ETH to send to the bot wallet. (like cents worth) \n" +
+            "Just send the exact amount to the wallet address and click confirm" + 
+            "then I give you your points 😼",
         nextStep: 'points_info_assist',
-        unlockedCommands: ['/signin'],
+        unlockedCommands: ['/verify'],
         checkpoints: {
             WALLET_CONNECTED: true
         }
@@ -107,11 +107,12 @@ const tutorialSteps = {
             "2. *Points* 🎯 - These are based on your MS2 token holdings\n\n" +
             "Every generation costs points, but don't worry! Your points automatically replenish. " +
             "Every 15 minutes, you get back 1/18th of your total points balance, meaning a full recharge every 4\.5 hours!\n\n" +
+            "check your points in /account\n\n" +
             "Now, let me show you something really cool that will help you create better images. " +
             "Type this command:\n" +
-            "`/assist girl sitting alone at the club`",
+            "`/riff girl sitting alone at the club`",
         nextStep: 'loras',
-        unlockedCommands: ['/assist'],
+        unlockedCommands: ['/riff'],
         checkpoints: {
             COMMAND_USED: true,
             BOT_ASSIST_SENT: true
@@ -120,7 +121,7 @@ const tutorialSteps = {
     'loras': {
         command: '/loras',
         introduction:
-            "The `/assist` command is your creative companion! 🎨\n\n" +
+            "The `/riff` command is your creative companion! 🎨\n\n" +
             "I'll help expand your simple prompts into detailed descriptions that create better images. " +
             "Try using the expanded prompt with `/make` or `/quickmake`!\n\n" +
             "Now, let me show you something really powerful - custom AI models we call LoRAs. " +
