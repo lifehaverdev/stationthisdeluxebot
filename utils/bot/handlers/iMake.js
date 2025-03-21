@@ -322,6 +322,10 @@ async function handleHipFire(message, user) {
     }
 }
 
+async function handleAgain(message) {
+    await handleHipFire(message, message.from.id);
+}
+
 async function handleMs2Prompt(message) {
     // Use handleTask with 'I2I' as the taskType and STATES.I2I as the state
     await handleTask(message, 'I2I', STATES.MS2PROMPT, true, null);
@@ -369,6 +373,7 @@ module.exports = {
     handleTask,
     handleRegen, 
     handleHipFire,
+    handleAgain,
     handleMake, 
     handleMake3, 
     handleMs2Prompt,
