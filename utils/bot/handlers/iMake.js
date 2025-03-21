@@ -154,7 +154,7 @@ async function handleTask(message, taskType, defaultState, needsTypeCheck = fals
 
     // Append control, style, and pose flags to the type
     if (settings.createSwitch === 'QUICKMAKE' && 
-        (settings.type == 'QUICKMAKE' || settings.type == 'QUICKI2I' || settings.type == 'QUICKI2I_AUTO') &&
+        (finalType == 'QUICKMAKE' || finalType == 'QUICKI2I' || finalType == 'QUICKI2I_AUTO') &&
         (settings.controlNet || settings.styleTransfer || settings.openPose)) {
         finalType += '_PLUS';
     }
