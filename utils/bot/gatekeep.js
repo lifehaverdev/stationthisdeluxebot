@@ -67,15 +67,10 @@ function softResetPoints(userId) {
     const oldDoints = userData.doints;
     const oldPoints = userData.points;
 
-    // If doints are 0 but points exist, create negative doints
-    if (userData.doints <= 0 && userData.points > 0) {
-        userData.doints -= regeneratedPoints; // This will make doints negative
-        console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Points: ${oldPoints} (unchanged) | Doints: ${oldDoints} → ${userData.doints} (negative) | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
-    } else {
-        // Otherwise subtract from doints as before
-        userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
-        console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
-    }
+    // Always subtract from doints, regardless of points status
+    userData.doints = Math.max(userData.doints - regeneratedPoints, 0);
+    
+    console.log(`$$$ SoftReset [${userId}] | Balance: ${userData.balance} | Points: ${oldPoints} | Doints: ${oldDoints} → ${userData.doints} | MaxPoints: ${maxPoints} | Regenerated: ${regeneratedPoints}`);
     
     lobby[userId] = {
         ...userData
@@ -123,6 +118,7 @@ function addExp(userId) {
 }
 
 async function kick(userId) {
+    userId = parseInt(userId);
     const userData = lobby[userId];
     if (!userData) {
         console.error(`Attempted to kick userId ${userId} but no userData found in lobby`);
