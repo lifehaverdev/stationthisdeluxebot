@@ -104,6 +104,10 @@ commandRegistry['/regen'] = {
     handler: iMake.handleRegen,
 };
 
+commandRegistry['/again'] = {
+    handler: iMake.handleAgain,
+};
+
 commandRegistry['/getseed'] = {
     handler: iWork.saySeed,
 };
