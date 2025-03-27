@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.775.0",
     "@privy-io/server-auth": "^1.17.2",
     "@solana/spl-token": "^0.4.9",
     "@solana/web3.js": "^1.91.4",

@@ -493,6 +493,7 @@ function handleCommandListEdit(message, user, index, command) {
 function buildUserProfile(message, dms) {
     message.from.is_bot ? message = message.reply_to_message : null 
     const userId = message.from.id;
+    const userWallet = lobby[userId].wallets.find(wallet => wallet.active)?.address
     const totalExp = (lobby[userId].exp + lobby[userId].points);
     const level = Math.floor(Math.cbrt(totalExp));
     
@@ -518,7 +519,7 @@ function buildUserProfile(message, dms) {
     let accountInfo = '\n';
     accountInfo += `<b>${message.from.username}</b> \n`;
     if (dms) {
-        accountInfo += `<b>${lobby[userId].wallet}</b>\n`
+        accountInfo += `<b>${userWallet}</b>\n`
         accountInfo += `<b>MS2 Balance:</b> ${lobby[userId].balance - burned}🎮\n`;
         accountInfo += `<b>MS2 Burned:</b> ${burned / 2}🔥\n`;
     }
@@ -660,74 +661,76 @@ async function handleSeeSettings(message) {
 }
 
 async function handleSignIn(message) {
-    const userId = message.from.id;
+    sendMessage(message, 'we use /verify now')
+    return;
+    // const userId = message.from.id;
     
-    // First check - verify user is in lobby
-    if (!lobby[userId]) {
-        console.error('User not in lobby during signin attempt');
-        sendMessage(message, 'Please try again in a few moments');
-        return;
-    }
+    // // First check - verify user is in lobby
+    // if (!lobby[userId]) {
+    //     console.error('User not in lobby during signin attempt');
+    //     sendMessage(message, 'Please try again in a few moments');
+    //     return;
+    // }
 
-    // Check for dbFetchFailed flag
-    if (lobby[userId].dbFetchFailed) {
-        try {
-            // First try to get core data
-            const coreData = await fetchUserCore(userId);
+    // // Check for dbFetchFailed flag
+    // if (lobby[userId].dbFetchFailed) {
+    //     try {
+    //         // First try to get core data
+    //         const coreData = await fetchUserCore(userId);
             
-            if (coreData && coreData.verified) {
-                // If verified, fetch everything
-                const fullData = await fetchFullUserData(userId);
-                if (fullData) {
-                    sendMessage(message, 'Found your existing account! Restoring your data...');
-                    lobby[userId] = fullData;
-                    delete lobby[userId].dbFetchFailed;
-                    await analytics.trackAccountAction(message, 'restored_account', true, {
-                        wallet: lobby[userId].wallet,
-                        verified: lobby[userId].verified
-                    });
-                    return;
-                }
-            }
-        } catch (error) {
-            console.error('Failed to restore user data during signin:', error);
-            sendMessage(message, 'Unable to verify account status. Please try again later.');
-            return;
-        }
-    }
+    //         if (coreData && coreData.verified) {
+    //             // If verified, fetch everything
+    //             const fullData = await fetchFullUserData(userId);
+    //             if (fullData) {
+    //                 sendMessage(message, 'Found your existing account! Restoring your data...');
+    //                 lobby[userId] = fullData;
+    //                 delete lobby[userId].dbFetchFailed;
+    //                 await analytics.trackAccountAction(message, 'restored_account', true, {
+    //                     wallet: lobby[userId].wallet,
+    //                     verified: lobby[userId].verified
+    //                 });
+    //                 return;
+    //             }
+    //         }
+    //     } catch (error) {
+    //         console.error('Failed to restore user data during signin:', error);
+    //         sendMessage(message, 'Unable to verify account status. Please try again later.');
+    //         return;
+    //     }
+    // }
 
-    // Rest of signin logic...
-    if (lobby[userId].wallet !== '') {
-        let msg = `You are signed in to ${lobby[userId].wallet}`
-        if (lobby[userId].verified) {
+    // // Rest of signin logic...
+    // if (lobby[userId].wallet !== '') {
+    //     let msg = `You are signed in to ${lobby[userId].wallet}`
+    //     if (lobby[userId].verified) {
             
-            msg += '\nand you are verified. Have fun'
-            sendMessage(message, msg, home);
-            setUserState(message, STATES.IDLE);
-            await analytics.trackAccountAction(message, 'verifiedsign_in_return', true, {
-                wallet: lobby[userId].wallet,
-                verified: lobby[userId].verified
-            });
-            if (lobby[userId].progress?.currentStep === 'signin' && lobby[userId].verified) {
-                // Add bonus points
-                lobby[userId].qoints += 1000;
+    //         msg += '\nand you are verified. Have fun'
+    //         sendMessage(message, msg, home);
+    //         setUserState(message, STATES.IDLE);
+    //         await analytics.trackAccountAction(message, 'verifiedsign_in_return', true, {
+    //             wallet: lobby[userId].wallet,
+    //             verified: lobby[userId].verified
+    //         });
+    //         if (lobby[userId].progress?.currentStep === 'signin' && lobby[userId].verified) {
+    //             // Add bonus points
+    //             lobby[userId].qoints += 1000;
                 
-                // Trigger the wallet connected checkpoint since they're already verified
-                if (message.chat.id > 0) {
-                    await TutorialManager.checkpointReached(
-                        userId,
-                        CHECKPOINTS.WALLET_CONNECTED,
-                        { message }
-                    );
-                }
-            }
-        } else {
-            await handleVerify(message);
-        }
-    } else {
-        sendMessage(message, "What's your Solana address?");
-        setUserState(message, STATES.SIGN_IN);
-    }
+    //             // Trigger the wallet connected checkpoint since they're already verified
+    //             if (message.chat.id > 0) {
+    //                 await TutorialManager.checkpointReached(
+    //                     userId,
+    //                     CHECKPOINTS.WALLET_CONNECTED,
+    //                     { message }
+    //                 );
+    //             }
+    //         }
+    //     } else {
+    //         await handleVerify(message);
+    //     }
+    // } else {
+    //     sendMessage(message, "What's your Solana address?");
+    //     setUserState(message, STATES.SIGN_IN);
+    // }
 }
 
 // Helper function to check if user has valuable data
@@ -922,71 +925,73 @@ async function updateUserVerificationStatus(userId, user) {
 }
 
 async function handleSignOut(message) {
-    const userId = message.from.id;
+    sendMessage(message, 'ok .. ');
+    return true;
+    // const userId = message.from.id;
 
-    // Fetch user data
-    let userData = lobby[userId];
+    // // Fetch user data
+    // let userData = lobby[userId];
     
-    if (!userData) {
-        // First try to get core data
-        const coreData = await fetchUserCore(userId);
-        if (coreData) {
-            if (coreData.verified) {
-                // If verified, fetch all data
-                userData = await fetchFullUserData(userId);
-            } else {
-                // If not verified, core data is enough
-                userData = coreData;
-            }
-        }
-    }
+    // if (!userData) {
+    //     // First try to get core data
+    //     const coreData = await fetchUserCore(userId);
+    //     if (coreData) {
+    //         if (coreData.verified) {
+    //             // If verified, fetch all data
+    //             userData = await fetchFullUserData(userId);
+    //         } else {
+    //             // If not verified, core data is enough
+    //             userData = coreData;
+    //         }
+    //     }
+    // }
 
-    console.log(userData?.userId || userId, 'signing out');
-    if (userData) {
-        try {
-            // Update user data in the database
-            const updatedUserData = {
-                ...userData,
-                wallet: '',  // Clear wallet as part of sign-out
-                verified: false  // Reset verification status
-            };
+    // console.log(userData?.userId || userId, 'signing out');
+    // if (userData) {
+    //     try {
+    //         // Update user data in the database
+    //         const updatedUserData = {
+    //             ...userData,
+    //             wallet: '',  // Clear wallet as part of sign-out
+    //             verified: false  // Reset verification status
+    //         };
 
-            await userCore
-                .startBatch()
-                .writeUserDataPoint(userId, 'wallet', '', true)
-                .writeUserDataPoint(userId, 'verified', false, true)
-                .executeBatch();
-            await userPref.writeUserData(userId, updatedUserData);
-        } catch (error) {
-            console.error('Error writing user data:', error);
-            return false; // Exit early on error
-        }
-    } else {
-        try {
-            sendMessage({from: {id: DEV_DMS}, chat: {id: DEV_DMS}},`hey art, ${userId} guy, doesnt have ANY user data and they signing out`)
-        } catch (err) {
-            console.log('haha you tried to send a dev dm message because someone was signing out but we dont have ANYTHING on them.Shouldnt happen tbh',err)
-        }   
-    }
+    //         await userCore
+    //             .startBatch()
+    //             .writeUserDataPoint(userId, 'wallet', '', true)
+    //             .writeUserDataPoint(userId, 'verified', false, true)
+    //             .executeBatch();
+    //         await userPref.writeUserData(userId, updatedUserData);
+    //     } catch (error) {
+    //         console.error('Error writing user data:', error);
+    //         return false; // Exit early on error
+    //     }
+    // } else {
+    //     try {
+    //         sendMessage({from: {id: DEV_DMS}, chat: {id: DEV_DMS}},`hey art, ${userId} guy, doesnt have ANY user data and they signing out`)
+    //     } catch (err) {
+    //         console.log('haha you tried to send a dev dm message because someone was signing out but we dont have ANYTHING on them.Shouldnt happen tbh',err)
+    //     }   
+    // }
 
-    // Clean up in-memory lobby object
-    if (lobby[userId]) {
-        delete lobby[userId];
-    }
+    // // Clean up in-memory lobby object
+    // if (lobby[userId]) {
+    //     delete lobby[userId];
+    // }
 
-    // Notify the user
-    try {
-        await sendMessage(message, 'You are signed out', signedOut);
-        await analytics.trackAccountAction(message, 'sign_out', true, {
-            wallet: lobby[userId].wallet,
-            verified: lobby[userId].verified
-        });
-    } catch (error) {
-        console.error('Error sending sign-out message:', error);
-        return false; // Exit early on error
-    }
+    // // Notify the user
+    // try {
+    //     await sendMessage(message, 'You are signed out', signedOut);
+    //     await analytics.trackAccountAction(message, 'sign_out', true, {
+    //         wallet: lobby[userId].wallet,
+    //         verified: lobby[userId].verified
+    //     });
+    // } catch (error) {
+    //     console.error('Error sending sign-out message:', error);
+    //     return false; // Exit early on error
+    // }
 
-    return true; // Indicate successful sign-out
+    // return true; // Indicate successful sign-out
 }
 
 async function handleAccountSettings(message) {

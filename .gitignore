@@ -3,6 +3,9 @@
 db/data/*
 src/db/data/*
 
+temp/*
+output/*
+
 # Logs
 logs
 *.log
