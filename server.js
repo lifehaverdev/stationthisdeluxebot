@@ -5,6 +5,9 @@ require('dotenv').config();
 const { processWaitlist } = require('./utils/bot/queue');
 const { initialize } = require('./utils/bot/intitialize')
 const imageRouter = require('./api/index')
+//const { createCollectionZip } = require('./db/operations/downloadCollection');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 app.use(bodyParser.json());
@@ -53,6 +56,59 @@ app.post('/api/webhook', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// app.get('/download/:collectionId', async (req, res) => {
+//     try {
+//         const collectionId = req.params.collectionId;
+//         const collectionPath = path.join(__dirname, 'output', 'testexecs');
+//         const zipPath = path.join(__dirname, 'temp', `collection_${collectionId}.zip`);
+//         console.log('collectionPath', collectionPath);
+//         console.log('zipPath', zipPath);
+//         // Create temp directory if it doesn't exist
+//         if (!fs.existsSync(path.join(__dirname, 'temp'))) {
+//             fs.mkdirSync(path.join(__dirname, 'temp'));
+//         }
+//         console.log('creating zip file');
+//         // Create the zip file
+//         await createCollectionZip(collectionPath, zipPath);
+//         console.log('zip file created');
+//         // Set headers for file download
+//         res.setHeader('Content-Type', 'application/zip');
+//         res.setHeader('Content-Disposition', `attachment; filename=collection_${collectionId}.zip`);
+//         console.log('setting headers');
+//         // Stream the file to the response
+//         const fileStream = fs.createReadStream(zipPath);
+//         console.log('streaming file');
+//         fileStream.pipe(res);
+//         console.log('file streamed');
+
+//         // Clean up the zip file after sending
+//         fileStream.on('end', () => {
+//             fs.unlink(zipPath, (err) => {
+//                 if (err) console.error('Error cleaning up zip file:', err);
+//             });
+//         });
+
+//     } catch (error) {
+//         console.error('Download error:', error);
+//         res.status(500).send('Error creating download');
+//     }
+// });
+
+// For testing, add a simple download page
+// app.get('/download', (req, res) => {
+//     res.send(`
+//         <html>
+//             <body>
+//                 <h1>Collection Download Test</h1>
+//                 <p>Click the button to download the test collection:</p>
+//                 <button onclick="window.location.href='/download/6702415579280'">
+//                     Download Collection
+//                 </button>
+//             </body>
+//         </html>
+//     `);
+// });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

@@ -602,8 +602,8 @@ async function handleUserData(userId, message) {
             lobbyManager.addUser(userId, userData);
             console.log(`User ${userId} added to the lobby.`);
 
-            // Fetch balance if user is verified
-            if (userData.verified) {
+            // Fetch balance if user has a connected ETH wallet
+            if (userData.wallets?.some(wallet => wallet.type === 'CONNECTED_ETH')) {
                 // try {
                 //     const balance = await getBalance(userData.wallet);
                 //     lobby[userId].balance = balance;
@@ -645,6 +645,8 @@ async function handleUserData(userId, message) {
                     lobby[userId].balance = 0;
                     lobby[userId].worth = 0;
                 }
+            } else {
+                sendMessage(message, 'Use /verify to connect your ETH wallet and get credited')
             }
 
             // Handle returning users
