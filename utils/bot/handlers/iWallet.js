@@ -418,7 +418,8 @@ class WalletHandler {
                 // Generate a random number between 1-90 to ensure amount is under 0.00009
                 let amount;
                 do {
-                    amount = (0.0000 + Math.floor(Math.random() * 90) / 1000000).toFixed(6);
+                    // Start with 0.00001 to ensure non-zero value, then add random amount
+                    amount = (0.00001 + Math.floor(Math.random() * 90) / 1000000).toFixed(6);
                 } while (
                     // Check if amount is already in use by another user
                     Object.values(abacus).some(entry => 
