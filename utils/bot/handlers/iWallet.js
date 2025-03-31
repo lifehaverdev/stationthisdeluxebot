@@ -430,14 +430,19 @@ class WalletHandler {
                 );
                 return amount;
             };
-            const verificationAmount = generateUniqueAmount();
 
-            // Store in abacus
-            abacus[userId] = {
-                type: 'verify',
-                amount: verificationAmount,
-                date: Date.now()
-            };
+            // Only generate and store new amount if one doesn't exist
+            let verificationAmount;
+            if (!abacus[userId] || abacus[userId].type !== 'verify') {
+                verificationAmount = generateUniqueAmount();
+                abacus[userId] = {
+                    type: 'verify', 
+                    amount: verificationAmount,
+                    date: Date.now()
+                };
+            } else {
+                verificationAmount = abacus[userId].amount;
+            }
 
             // Create keyboard
             const keyboard = {
@@ -457,7 +462,7 @@ class WalletHandler {
 
             // Send instructions
             await sendMessage(
-                {...message, from: {id: userId}},
+                {...message, from: {id: userId}, message_id: null},
                 msg,
                 { parse_mode: "MarkdownV2", reply_markup: keyboard }
             );
@@ -1084,11 +1089,19 @@ async function verifyTransfer(toAddress, fromAddress = null, fromBlock = null, e
 
         console.log('Found transfers:', transfers);
 
-        // If expectedAmount provided, find that specific transfer
+        // If expectedAmount provided, find that specific transfer with strict matching
         if (expectedAmount !== null) {
-            return transfers.find(transfer => 
-                Math.abs(transfer.adjustedValue - expectedAmount) < 0.0001
+            const matchingTransfer = transfers.find(transfer => 
+                // Use strict tolerance for amount matching
+                Math.abs(transfer.value - expectedAmount) < 0.000001
             );
+            
+            if (!matchingTransfer) {
+                console.log(`No transfer found matching exact amount ${expectedAmount}`);
+                return null;
+            }
+            
+            return matchingTransfer;
         }
 
         // Otherwise return the most recent transfer
@@ -1171,7 +1184,14 @@ async function handleSignUpVerification(message, expectedAmount) {
         console.log('userId', userId);
 
         // Look for ETH transfer of the expected amount
-        const transfer = await verifyTransfer(receivingAddress, null, null, amount);
+        const transfer = await verifyTransfer(
+            receivingAddress,
+            null,  // fromAddress can be null since we don't know it yet
+            null,  // fromBlock can be null to use default
+            expectedAmount  // This is the critical parameter
+        );
+
+        // Add strict amount validation
         if (!transfer) {
             return {
                 success: false,
@@ -1188,13 +1208,12 @@ async function handleSignUpVerification(message, expectedAmount) {
             };
         }
 
-        // Validate the exact amount (allowing for minor rounding differences)
+        // Validate the exact amount with strict equality
         const receivedAmount = transfer.value;
-        const difference = Math.abs(receivedAmount - amount);
-        if (difference > 0.0001) { // Allow 0.0001 ETH difference for rounding
+        if (Math.abs(receivedAmount - expectedAmount) > 0.000001) { // Much stricter tolerance
             return {
                 success: false,
-                error: `Transfer amount mismatch. Expected ${amount} ETH, received ${receivedAmount} ETH`
+                error: `Transfer amount mismatch. Expected exactly ${expectedAmount} ETH, received ${receivedAmount} ETH`
             };
         }
 
