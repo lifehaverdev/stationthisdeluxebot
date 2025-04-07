@@ -1,0 +1,37 @@
+---
+description: This rule governs a major refactor and migration of a legacy codebase. It focuses on decoupling integrations (especially Telegram), introducing an internal API, and reorganizing all logic into a new src/ structure. Agents should consult the full rule for workflows involving rewrites, file moves, or structural planning with .md files.
+globs: 
+alwaysApply: false
+---
+
+---
+
+### 🧠 Updated Cursor Rules (More Generalized)
+
+Here’s a version that works for both large and small changes:
+
+```markdown
+## Cursor Refactor Assistant — Project Rules
+
+This codebase is undergoing a major overhaul. All AI-assisted edits must follow these principles:
+
+### 🔍 General Goals
+- Reduce tight coupling (especially with Telegram)
+- Extract core logic into `src/core`, and integrations into `src/integrations`
+- Reorganize legacy folders into a clean `src/` directory structure
+- Add internal APIs to expose reusable functionality
+- Improve naming, modularity, and error handling
+
+### 🧭 Workflow Rules
+- Each file or folder targeted for change should have a `.plan.md` file in `/plans/`
+- The `.plan.md` should explain the current role, issues, and future migration plan
+- Cursor should **refer to the `.plan.md`** before suggesting code changes
+- Cursor can suggest **file splits, merges, renames**, or **folder moves** as part of plans
+- After refactor, a `.after.md` file should summarize the new state
+
+### 📌 Code Practices
+- Use `src/` as the root for all new code
+- Prefer composition over inheritance
+- Keep business logic out of integrations
+- Always export named functions unless a default export is justified
+- Include JSDoc or inline comments for exported functions
