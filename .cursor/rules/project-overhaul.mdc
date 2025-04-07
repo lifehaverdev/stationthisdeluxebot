@@ -35,3 +35,30 @@ This codebase is undergoing a major overhaul. All AI-assisted edits must follow 
 - Keep business logic out of integrations
 - Always export named functions unless a default export is justified
 - Include JSDoc or inline comments for exported functions
+
+### 🧪 Testing Rules (During Integration)
+
+- **Every new or refactored module must include a corresponding test file in `/tests/`**
+  - Mirror the folder structure (e.g., `src/core/points/ → tests/core/points/`)
+  - Name test files with `.test.js` suffix
+
+- **Use Jest as the testing framework**
+  - Globals like `describe`, `test`, `expect`, and `jest.mock()` are available
+  - Do not `import` or `require` Jest directly
+
+- **Test coverage must include:**
+  - Core service methods (public API)
+  - Edge cases and invalid inputs
+  - All new business logic paths
+
+- **If a file is adapted (e.g., `gatekeep.js` now uses `UserService`):**
+  - Create or update a test that verifies this integration
+  - Ensure legacy behavior is preserved during Phase 1
+
+- **Mock all database and external service calls**
+  - Use `jest.mock()` to simulate repository behavior
+  - Do not perform real data operations in unit tests
+
+- **Update `status.md` after test coverage is added for a module**
+  - Include a short description of what's covered in `tests/README.md`
+
