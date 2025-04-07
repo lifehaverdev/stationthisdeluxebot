@@ -1,7 +1,9 @@
 const { S3, ListObjectsV2Command, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
-const StudioDB = require('../models/studio');
+//const StudioDB = require('../models/studio');
 const axios = require('axios');
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 
 class SpacesUploader {
     constructor() {
@@ -68,10 +70,12 @@ class SpacesUploader {
     async uploadCollection(collectionId, options = {}) {
         const {
             bucketName = process.env.DO_SPACE_NAME,
-            prefix = 'exectest/private', // This will create exectest/private/assets/
+            prefix = 'cultexecbadges/private',
             startIndex = 1,
             endIndex = null,
-            cleanup = true // Add cleanup option
+            cleanup = true,
+            totalSupply = 4440, // Add total supply parameter
+            unrevealedImageUrl = 'https://ms2.fun/public/unrevealed.png' // Add unrevealed image URL
         } = options;
 
         try {
@@ -80,80 +84,89 @@ class SpacesUploader {
                 await this.cleanupExistingFiles(bucketName, prefix);
             }
 
-            // Get collection pieces from database
-            const studioDb = new StudioDB();
-            const pieces = await studioDb.findMany({ 
-                collectionId,
-                status: { $in: ['approved', 'pending_review'] }
-            });
-
-            console.log(`Found ${pieces.length} pieces to process`);
             
-            // Process pieces within the specified range
-            const end = endIndex || pieces.length;
+            const exportDir = path.join(__dirname, '../../temp', `export_STB OFFICIAL COLLECTION TEST`);
+
+            console.log(`Reading files from ${exportDir}`);
+            
             let processed = 0;
             let failed = 0;
 
-            for (let i = 0; i < pieces.length && (i + startIndex) <= end; i++) {
-                const piece = pieces[i];
-                const number = i + startIndex;
-
+            // Create a Set of all piece numbers we'll process
+            const processedNumbers = new Set();
+            
+            // First pass: Upload actual pieces from local files
+            for (let number = startIndex; number <= totalSupply; number++) {
                 try {
-                    console.log(`Processing piece ${number}/${end}`);
+                    const imagePath = path.join(exportDir, `${number}.png`);
+                    const metadataPath = path.join(exportDir, `${number}.json`);
 
-                    // 1. Upload image to assets folder
-                    const imageUrl = piece.files[0]?.url;
-                    if (!imageUrl) {
-                        console.error(`No image URL for piece ${number}`);
-                        failed++;
-                        continue;
-                    }
+                    // Check if we have a real piece (image exists)
+                    if (fs.existsSync(imagePath)) {
+                        console.log(`Processing piece ${number}/${totalSupply}`);
+                        processedNumbers.add(number);
 
-                    // Download image
-                    const imageResponse = await axios({
-                        url: imageUrl,
-                        responseType: 'arraybuffer'
-                    });
+                        // Read and upload image
+                        const imageData = fs.readFileSync(imagePath);
+                        await this.s3.putObject({
+                            Bucket: bucketName,
+                            Key: `${prefix}/assets/${number}.png`,
+                            Body: imageData,
+                            ContentType: 'image/png',
+                            ACL: 'public-read'
+                        });
 
-                    // Upload image to Spaces
-                    await this.s3.putObject({
-                        Bucket: bucketName,
-                        Key: `${prefix}/assets/${number}.png`,
-                        Body: imageResponse.data,
-                        ContentType: 'image/png',
-                        ACL: 'public-read'
-                    });
+                        // For real pieces, read metadata from file
+                        const metadataPath = path.join(exportDir, `${number}.json`);
+                        const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+                        // Update image path to be relative
+                        metadata.image = `../assets/${number}.png`;
 
-                    // 2. Create and upload metadata to metadata folder
-                    const metadata = {
-                        name: `${piece.collection?.name || 'Exec'} #${number}`,
-                        description: piece.collection?.description || "",
-                        image: `../assets/${number}.png`, // Relative path from metadata to assets
-                        attributes: Object.entries(piece.traits || {})
-                            .map(([type, traitData]) => ({
-                                trait_type: type,
-                                value: traitData.value.name
-                            }))
-                    };
+                        await this.s3.putObject({
+                            Bucket: bucketName,
+                            Key: `${prefix}/metadata/${number}.json`,
+                            Body: JSON.stringify(metadata, null, 2),
+                            ContentType: 'application/json',
+                            ACL: 'public-read'
+                        });
 
-                    await this.s3.putObject({
-                        Bucket: bucketName,
-                        Key: `${prefix}/metadata/${number}.json`,
-                        Body: JSON.stringify(metadata, null, 2),
-                        ContentType: 'application/json',
-                        ACL: 'public-read'
-                    });
-
-                    processed++;
-
-                    // Log progress every 10 pieces
-                    if (processed % 10 === 0) {
-                        console.log(`Processed ${processed} pieces. Failed: ${failed}`);
+                        processed++;
                     }
 
                 } catch (error) {
                     console.error(`Error processing piece ${number}:`, error);
                     failed++;
+                }
+            }
+
+            // Second pass: Fill gaps with placeholder metadata
+            for (let number = startIndex; number <= totalSupply; number++) {
+                if (!processedNumbers.has(number)) {
+                    try {
+                        // Create and upload placeholder metadata
+                        const placeholderMetadata = {
+                            name: `CULT INCORPORATED BADGE ${number}`,
+                            description: `You are now an Executive of the Cult.
+Backed by 1,000,000 $EXEC and subject to burn if unaligned.
+This badge confirms your standing, your timing, and your loyalty.
+Transfer with care. Hold with conviction. You were chosen.`,
+                            image: unrevealedImageUrl,
+                            attributes: [] // Empty attributes for placeholder
+                        };
+
+                        await this.s3.putObject({
+                            Bucket: bucketName,
+                            Key: `${prefix}/metadata/${number}.json`,
+                            Body: JSON.stringify(placeholderMetadata, null, 2),
+                            ContentType: 'application/json',
+                            ACL: 'public-read'
+                        });
+
+                        processed++;
+                    } catch (error) {
+                        console.error(`Error creating placeholder ${number}:`, error);
+                        failed++;
+                    }
                 }
             }
 

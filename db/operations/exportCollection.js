@@ -33,61 +33,105 @@ async function exportCollection(collectionId, totalSupply, outputPath = null) {
         const studioDb = new StudioDB();
         const pieces = await studioDb.findMany({
             collectionId,
-            status: { $in: ['approved', 'pending_review'] }
+            status: { $in: ['approved'] },
+            isIn: { $ne: true } // Only get pieces that aren't already in the collection
         });
 
-        // Shuffle and limit to totalSupply
-        const shuffledPieces = pieces
-            .sort(() => Math.random() - 0.5)
-            .slice(0, totalSupply);
+        // Create array of all possible numbers 1 to totalSupply
+        const allNumbers = Array.from({ length: totalSupply }, (_, i) => i + 1);
+        
+        // Shuffle ALL numbers first
+        const shuffledNumbers = allNumbers.sort(() => Math.random() - 0.5);
 
-        // Download and save images/metadata
-        for (let i = 0; i < shuffledPieces.length; i++) {
-            const piece = shuffledPieces[i];
-            const number = i + 1;
+        // This will hold our piece-to-number assignments
+        const assignments = new Map();
+        
+        // Assign pieces to the first N shuffled numbers
+        pieces.forEach((piece, index) => {
+            if (index < shuffledNumbers.length) {
+                assignments.set(shuffledNumbers[index], piece);
+            }
+        });
+
+        // Now process in numerical order, using assignments map
+        for (let number = 1; number <= totalSupply; number++) {
+            const piece = assignments.get(number);
             
-            // Download image
-            const imageUrl = piece.files[0]?.url;
-            if (imageUrl) {
-                try {
-                    const response = await axios({
-                        url: imageUrl,
-                        responseType: 'stream'
-                    });
+            if (piece) {
+                // This is a real piece - mark it and export it
+                await studioDb.updateOne(
+                    { _id: piece._id },
+                    { 
+                        isIn: true,
+                        assignedNumber: number 
+                    }
+                );
 
-                    // Save image
-                    const imagePath = path.join(exportDir, `${number}.png`);
-                    const writer = fs.createWriteStream(imagePath);
-                    response.data.pipe(writer);
+                // Download image
+                const imageUrl = piece.files[0]?.url;
+                if (imageUrl) {
+                    try {
+                        const response = await axios({
+                            url: imageUrl,
+                            responseType: 'stream'
+                        });
 
-                    await new Promise((resolve, reject) => {
-                        writer.on('finish', resolve);
-                        writer.on('error', reject);
-                    });
+                        // Save image
+                        const imagePath = path.join(exportDir, `${number}.png`);
+                        const writer = fs.createWriteStream(imagePath);
+                        response.data.pipe(writer);
 
-                    // Create and save metadata
-                    const metadata = {
-                        name: `${collection.name} #${number}`,
-                        description: collection.description || "",
-                        image: `${number}.png`,
-                        attributes: Object.entries(piece.traits)
-                            .map(([type, traitData]) => ({
-                                trait_type: type,
-                                value: traitData.value.name
-                            }))
-                    };
+                        await new Promise((resolve, reject) => {
+                            writer.on('finish', resolve);
+                            writer.on('error', reject);
+                        });
 
-                    fs.writeFileSync(
-                        path.join(exportDir, `${number}.json`),
-                        JSON.stringify(metadata, null, 2)
-                    );
+                        // Create and save metadata
+                        const metadata = {
+                            name: `CULT INCORPORATED BADGE ${number}`,
+                            description: collection.description || `You are now an Executive of the Cult.
+Backed by 1,000,000 $EXEC and subject to burn if unaligned.
+This badge confirms your standing, your timing, and your loyalty.
+Transfer with care. Hold with conviction. You were chosen.`,
+                            image: `${number}.png`,
+                            attributes: [
+                                ...piece.traits.map(trait => ({
+                                    trait_type: trait.type,
+                                    value: trait.value.name
+                                })),
+                                {
+                                    trait_type: "prompt",
+                                    value: piece.prompt
+                                }
+                            ]
+                        };
 
-                    metrics.pieces++;
-                    console.log(`Exported piece ${number}/${totalSupply}`);
+                        fs.writeFileSync(
+                            path.join(exportDir, `${number}.json`),
+                            JSON.stringify(metadata, null, 2)
+                        );
 
-                } catch (error) {
-                    console.error(`Error exporting piece ${number}:`, error);
+                        metrics.pieces++;
+                        console.log(`Exported piece ${number}/${totalSupply}`);
+
+                    } catch (error) {
+                        console.error(`Error exporting piece ${number}:`, error);
+                    }
                 }
+            } else {
+                // This is a placeholder slot
+                const metadata = {
+                    name: `${collection.name} #${number}`,
+                    description: collection.description || "",
+                    image: `https://ms2.fun/public/unrevealed.png`,
+                    attributes: [],
+                    isPlaceholder: true
+                };
+
+                fs.writeFileSync(
+                    path.join(exportDir, `${number}.json`),
+                    JSON.stringify(metadata, null, 2)
+                );
             }
         }
 
