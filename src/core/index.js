@@ -7,6 +7,8 @@ const user = require('./user');
 const points = require('./points');
 const generation = require('./generation');
 const events = require('./shared/events');
+const workflow = require('./workflow');
+const command = require('./command');
 
 // Initialize integrated components
 function initializeIntegrations() {
@@ -24,6 +26,8 @@ module.exports = {
   user,
   points,
   generation,
+  workflow,
+  command,
   
   // Shared components
   events,
