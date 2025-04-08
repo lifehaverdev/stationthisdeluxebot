@@ -29,7 +29,10 @@ tests/
 ├── core/                   # Tests for core domain logic
 │   ├── user/               # User domain tests
 │   ├── points/             # Points domain tests
-│   └── generation/         # Generation domain tests
+│   ├── generation/         # Generation domain tests
+│   ├── session/            # Session management tests
+│   └── shared/             # Shared infrastructure tests
+│       └── mongo/          # MongoDB repository tests
 ├── integration/            # Integration tests
 ├── setup.js                # Global test setup and utilities
 └── README.md               # Test documentation
@@ -90,6 +93,33 @@ const mockPoints = global.testUtils.createMockPoints({
 - Use Jest's mocking capabilities for external services and APIs
 - Create mock repositories for data access testing
 - Use in-memory implementations for integration tests
+
+### MongoDB Mocking
+
+For MongoDB repository tests, we use Jest's mocking capabilities to mock the MongoDB client:
+
+```javascript
+jest.mock('mongodb', () => {
+  const mockCollection = {
+    find: jest.fn().mockReturnThis(),
+    findOne: jest.fn(),
+    // ... other collection methods
+  };
+  
+  return {
+    MongoClient: jest.fn().mockImplementation(() => ({
+      db: jest.fn().mockReturnValue({
+        collection: jest.fn().mockReturnValue(mockCollection)
+      }),
+      connect: jest.fn().mockResolvedValue(undefined),
+      topology: { isConnected: jest.fn().mockReturnValue(true) }
+    })),
+    ObjectId: jest.fn(id => ({ _id: id, toString: () => id }))
+  };
+});
+```
+
+This allows us to test repository logic without requiring a real MongoDB connection.
 
 ## Best Practices
 
