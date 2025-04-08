@@ -400,6 +400,28 @@ function createSessionAdapter(legacyLobby = {}, sessionService = null) {
       const updatedSession = await this.updateSession(userId, updates, updateLegacy);
       
       return !!updatedSession;
+    },
+
+    /**
+     * Retrieves analytics-specific session data for a user in a single call
+     * to minimize the overhead of multiple async requests
+     * 
+     * @param {string|number} userId - The user ID to get analytics data for
+     * @returns {Promise<object>} Object with properties needed for analytics
+     */
+    async getUserAnalyticsData(userId) {
+      const session = await this.getSession(userId, false);
+      if (!session) return {};
+      
+      const now = Date.now();
+      
+      return {
+        kickedAt: session.kickedAt,
+        verified: session.verified || false,
+        lastTouch: session.lastTouch,
+        timeSinceLastTouch: now - (session.lastTouch || 0),
+        wallet: session.wallet
+      };
     }
   };
 }
