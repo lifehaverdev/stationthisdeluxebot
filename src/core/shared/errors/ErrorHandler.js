@@ -7,16 +7,24 @@
 
 const { AppError, ERROR_SEVERITY } = require('./AppError');
 
+// Helper to check if we're in a test environment
+const isTestEnvironment = () => process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+
+// Environment variable to force logging even in tests
+const FORCE_ERROR_LOGGING = process.env.FORCE_ERROR_LOGGING === 'true';
+
 class ErrorHandler {
   /**
    * Create a new ErrorHandler
    * @param {Object} options Handler options
    * @param {Object} options.logger Logger instance
    * @param {Object} options.reportError Error reporting function or object
+   * @param {boolean} options.forceLogging Force logging even in test environment
    */
   constructor(options = {}) {
     this.logger = options.logger || console;
     this.reportError = options.reportError || null;
+    this.forceLogging = options.forceLogging || FORCE_ERROR_LOGGING;
     
     // For compatibility with tests that expect a reporter property
     this.reporter = this.reportError;
@@ -94,6 +102,12 @@ class ErrorHandler {
    * @private
    */
   _logError(error) {
+    // Skip detailed logging in test environment to keep test output clean
+    // unless explicitly forced (for testing the logging itself)
+    if (isTestEnvironment() && !this.forceLogging) {
+      return;
+    }
+    
     const logLevel = this._getLogLevel(error.severity);
     let logMessage = `[${error.code}] ${error.message}`;
     

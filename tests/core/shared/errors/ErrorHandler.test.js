@@ -32,10 +32,11 @@ describe('ErrorHandler', () => {
       reportCriticalError: jest.fn()
     };
     
-    // Create error handler with mocks
+    // Create error handler with mocks and force logging for tests
     handler = new ErrorHandler({
       logger: mockLogger,
-      reportError: mockReporter
+      reportError: mockReporter,
+      forceLogging: true // Enable logging for tests
     });
   });
   
