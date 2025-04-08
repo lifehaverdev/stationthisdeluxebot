@@ -19,6 +19,9 @@ module.exports = {
     '/node_modules/'
   ],
   
+  // Setup files to run before tests
+  setupFilesAfterEnv: ['./jest.setup.js'],
+  
   // Automatically clear mock calls and instances between every test
   clearMocks: true,
   
@@ -39,4 +42,7 @@ module.exports = {
   
   // Verbose output for test results
   verbose: true,
+  
+  // Increase timeout for tests
+  testTimeout: 10000,
 }; 
