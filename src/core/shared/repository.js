@@ -1,33 +1,23 @@
 /**
- * Generic Repository Interface
- * Provides a standard interface for data access operations
- * This is an abstract class that should be extended by concrete repository implementations
+ * Base Repository
+ * Provides a common interface for all repositories
  */
 
 class Repository {
   /**
    * Create a new entity
-   * @param {Object} data - The data to create the entity with
-   * @returns {Promise<Object>} - The created entity
+   * @param {Object} data - Entity data
+   * @returns {Promise<Object>} - Created entity
    */
   async create(data) {
     throw new Error('Method not implemented');
   }
 
   /**
-   * Find an entity by ID
-   * @param {string|number} id - The ID of the entity to find
-   * @returns {Promise<Object|null>} - The found entity or null if not found
-   */
-  async findById(id) {
-    throw new Error('Method not implemented');
-  }
-
-  /**
    * Find entities by query
-   * @param {Object} query - The query criteria
-   * @param {Object} [options] - Additional options (pagination, sorting, etc.)
-   * @returns {Promise<Array<Object>>} - The found entities
+   * @param {Object} query - Query criteria
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<Array<Object>>} - Found entities
    */
   async find(query, options = {}) {
     throw new Error('Method not implemented');
@@ -35,59 +25,72 @@ class Repository {
 
   /**
    * Find one entity by query
-   * @param {Object} query - The query criteria
-   * @returns {Promise<Object|null>} - The found entity or null if not found
+   * @param {Object} query - Query criteria
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<Object|null>} - Found entity or null
    */
-  async findOne(query) {
+  async findOne(query, options = {}) {
+    throw new Error('Method not implemented');
+  }
+
+  /**
+   * Find an entity by ID
+   * @param {string} id - Entity ID
+   * @returns {Promise<Object|null>} - Found entity or null
+   */
+  async findById(id) {
+    throw new Error('Method not implemented');
+  }
+
+  /**
+   * Update one entity by query
+   * @param {Object} query - Query criteria
+   * @param {Object} data - Data to update
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<Object|null>} - Updated entity or null
+   */
+  async updateOne(query, data, options = {}) {
     throw new Error('Method not implemented');
   }
 
   /**
    * Update an entity by ID
-   * @param {string|number} id - The ID of the entity to update
-   * @param {Object} data - The data to update the entity with
-   * @returns {Promise<Object|null>} - The updated entity or null if not found
+   * @param {string} id - Entity ID
+   * @param {Object} data - Data to update
+   * @returns {Promise<Object|null>} - Updated entity or null
    */
   async updateById(id, data) {
     throw new Error('Method not implemented');
   }
 
   /**
-   * Update entities by query
-   * @param {Object} query - The query criteria
-   * @param {Object} data - The data to update the entities with
-   * @returns {Promise<number>} - The number of entities updated
+   * Delete one entity by query
+   * @param {Object} query - Query criteria
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<boolean>} - Whether deletion was successful
    */
-  async update(query, data) {
+  async deleteOne(query, options = {}) {
     throw new Error('Method not implemented');
   }
 
   /**
    * Delete an entity by ID
-   * @param {string|number} id - The ID of the entity to delete
-   * @returns {Promise<boolean>} - Whether the entity was deleted
+   * @param {string} id - Entity ID
+   * @returns {Promise<boolean>} - Whether deletion was successful
    */
   async deleteById(id) {
     throw new Error('Method not implemented');
   }
 
   /**
-   * Delete entities by query
-   * @param {Object} query - The query criteria
-   * @returns {Promise<number>} - The number of entities deleted
-   */
-  async delete(query) {
-    throw new Error('Method not implemented');
-  }
-
-  /**
    * Count entities by query
-   * @param {Object} query - The query criteria
-   * @returns {Promise<number>} - The number of entities matching the query
+   * @param {Object} query - Query criteria
+   * @param {Object} [options={}] - Additional options
+   * @returns {Promise<number>} - Count of entities
    */
-  async count(query) {
+  async count(query, options = {}) {
     throw new Error('Method not implemented');
   }
 }
 
-module.exports = Repository; 
+module.exports = { Repository }; 

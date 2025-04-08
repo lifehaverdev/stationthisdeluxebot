@@ -103,6 +103,12 @@ src/
 │   │   ├── repository.js    # User data access abstraction
 │   │   └── events.js        # User-related events
 │   │
+│   ├── session/             # Session domain model and lifecycle
+│   │   ├── model.js         # Session data structures
+│   │   ├── service.js       # SessionService lifecycle operations
+│   │   ├── repository.js    # MongoDB abstraction for sessions
+│   │   └── state.js         # In-memory state container logic
+│   │
 │   ├── points/              # Points system
 │   │   ├── model.js         # Points types and operations
 │   │   ├── calculation.js   # Points calculation logic

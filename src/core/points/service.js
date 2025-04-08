@@ -4,9 +4,9 @@
  */
 
 const { UserPoints, PointType, PointOperation } = require('./models');
-const PointsRepository = require('./repository');
+const { PointsRepository } = require('./repository');
 const PointsCalculationService = require('./calculation-service');
-const eventBus = require('../shared/events');
+const eventBus = require('../shared/events').default;
 
 /**
  * Points Service
@@ -324,4 +324,4 @@ class PointsService {
   }
 }
 
-module.exports = PointsService; 
+module.exports = { PointsService }; 

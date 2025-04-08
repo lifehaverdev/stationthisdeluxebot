@@ -1,80 +1,78 @@
 /**
- * Event Bus System
- * A minimal implementation of an event bus for broadcasting events between services
- * Allows for loose coupling between components through a publish-subscribe pattern
+ * Event Bus
+ * Simple event handling system for cross-module communication
  */
 
 class EventBus {
   constructor() {
-    this.listeners = {};
+    this.events = {};
   }
 
   /**
-   * Subscribe to an event with a callback function
-   * @param {string} event - The event name to subscribe to
-   * @param {Function} callback - The function to call when the event is published
+   * Subscribe to an event
+   * @param {string} event - Name of the event to subscribe to
+   * @param {Function} callback - Function to call when event occurs
    * @returns {Function} - Unsubscribe function
    */
   subscribe(event, callback) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
+    if (!this.events[event]) {
+      this.events[event] = [];
     }
     
-    this.listeners[event].push(callback);
+    this.events[event].push(callback);
     
-    // Return unsubscribe function
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-      if (this.listeners[event].length === 0) {
-        delete this.listeners[event];
-      }
-    };
+    return () => this.unsubscribe(event, callback);
   }
 
   /**
-   * Publish an event with optional data
-   * @param {string} event - The event name to publish
-   * @param {*} data - The data to pass to subscribers
+   * Unsubscribe from an event
+   * @param {string} event - Name of the event to unsubscribe from
+   * @param {Function} callback - Function to unsubscribe
    */
-  publish(event, data) {
-    if (!this.listeners[event]) {
+  unsubscribe(event, callback) {
+    if (!this.events[event]) {
       return;
     }
     
-    this.listeners[event].forEach(callback => {
+    this.events[event] = this.events[event].filter(cb => cb !== callback);
+  }
+
+  /**
+   * Publish an event
+   * @param {string} event - Name of the event to publish
+   * @param {*} data - Data to pass to event subscribers
+   */
+  publish(event, data) {
+    if (!this.events[event]) {
+      return;
+    }
+    
+    this.events[event].forEach(callback => {
       try {
         callback(data);
       } catch (error) {
-        console.error(`Error in event listener for '${event}':`, error);
+        console.error(`Error in event handler for ${event}:`, error);
       }
     });
   }
 
   /**
-   * Get all active event names with subscribers
-   * @returns {Array<string>} - Array of event names
+   * Remove all subscribers for an event
+   * @param {string} event - Name of the event to clear
    */
-  getActiveEvents() {
-    return Object.keys(this.listeners);
-  }
-
-  /**
-   * Clear all listeners for a specific event
-   * @param {string} event - Event name to clear
-   */
-  clearEvent(event) {
-    delete this.listeners[event];
-  }
-
-  /**
-   * Clear all events and listeners
-   */
-  clearAll() {
-    this.listeners = {};
+  clear(event) {
+    if (event) {
+      delete this.events[event];
+    } else {
+      this.events = {};
+    }
   }
 }
 
 // Create a singleton instance
 const eventBus = new EventBus();
 
-module.exports = eventBus; 
+// For backward compatibility
+module.exports = eventBus;
+module.exports.events = eventBus;
+module.exports.default = eventBus; 

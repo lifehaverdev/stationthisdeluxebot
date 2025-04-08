@@ -1,25 +1,35 @@
 /**
  * User Module
- * Exports components for user management
+ * Main export file for the user management module
  */
 
-const UserService = require('./service');
-const UserRepository = require('./repository');
 const { User, UserCore, UserEconomy, UserPreferences } = require('./models');
+const { UserRepository } = require('./repository');
+const { UserService } = require('./service');
 
+// Export factory function to create the user system
+function createUserSystem(options = {}) {
+  const repository = new UserRepository(options.repository);
+  const service = new UserService(repository, options.service);
+  
+  return {
+    repository,
+    service
+  };
+}
+
+// Export all components
 module.exports = {
-  // Service
-  UserService,
-  
-  // Repository
-  UserRepository,
-  
   // Models
   User,
   UserCore,
   UserEconomy,
   UserPreferences,
   
-  // Default export is the service for convenience
-  service: new UserService()
+  // Core services
+  UserRepository,
+  UserService,
+  
+  // Factory
+  createUserSystem
 }; 

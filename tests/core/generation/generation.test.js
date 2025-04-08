@@ -9,57 +9,108 @@ const COMPLETED = 'completed';
 const FAILED = 'failed';
 const CANCELLED = 'cancelled';
 
-// Mock events module
-jest.mock('../../../src/core/shared/events', () => ({
-  events: {
-    publish: jest.fn(),
-    subscribe: jest.fn(),
-    unsubscribe: jest.fn()
-  },
-  default: {
-    publish: jest.fn(),
-    subscribe: jest.fn(),
-    unsubscribe: jest.fn()
-  },
-  publish: jest.fn(),
-  subscribe: jest.fn(),
-  unsubscribe: jest.fn()
-}));
+// Mock console.error to prevent error output during tests
+const originalConsoleError = console.error;
+beforeAll(() => {
+  console.error = jest.fn();
+});
 
-// Mock modules before import
-jest.mock('../../../src/core/generation/repository');
-jest.mock('../../../src/core/generation/models', () => {
-  const actual = jest.requireActual('../../../src/core/generation/models');
+afterAll(() => {
+  console.error = originalConsoleError;
+});
+
+// Mock events module
+jest.mock('../../../src/core/shared/events', () => {
+  const eventMock = {
+    publish: jest.fn(),
+    subscribe: jest.fn(),
+    unsubscribe: jest.fn()
+  };
   return {
-    ...actual,
-    GenerationRequest: jest.fn().mockImplementation((data = {}) => {
-      return {
-        userId: data.userId || '',
-        type: data.type || 'DEFAULT',
-        prompt: data.prompt || '',
-        negativePrompt: data.negativePrompt || '',
-        settings: {
-          width: 1024,
-          height: 1024,
-          steps: 30,
-          ...(data.settings || {})
-        },
-        validate: jest.fn().mockImplementation(() => {
-          return {
-            isValid: !!data.userId,
-            errors: data.userId ? [] : ['User ID is required']
-          };
-        }),
-        getCost: jest.fn().mockReturnValue(100),
-        toJSON: jest.fn().mockReturnValue(data)
-      };
-    })
+    // Default export
+    __esModule: true,
+    default: eventMock,
+    // Named exports
+    events: eventMock,
+    publish: eventMock.publish,
+    subscribe: eventMock.subscribe,
+    unsubscribe: eventMock.unsubscribe
   };
 });
 
+// Create mock GenerationRequest constructor
+const mockGenerationRequest = jest.fn().mockImplementation((data = {}) => {
+  return {
+    userId: data.userId || '',
+    type: data.type || 'DEFAULT',
+    prompt: data.prompt || '',
+    negativePrompt: data.negativePrompt || '',
+    settings: {
+      width: 1024,
+      height: 1024,
+      steps: 30,
+      ...(data.settings || {})
+    },
+    validate: jest.fn().mockImplementation(() => {
+      return {
+        isValid: !!data.userId,
+        errors: data.userId ? [] : ['User ID is required']
+      };
+    }),
+    getCost: jest.fn().mockReturnValue(100),
+    toJSON: jest.fn().mockReturnValue(data)
+  };
+});
+
+// Mock modules before import
+jest.mock('../../../src/core/generation/repository');
+jest.mock('../../../src/core/generation/models', () => ({
+  GenerationRequest: mockGenerationRequest,
+  GenerationStatus: {
+    PENDING: 'pending',
+    PROCESSING: 'processing',
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+    CANCELLED: 'cancelled'
+  },
+  GenerationType: {
+    IMAGE: 'image',
+    VIDEO: 'video',
+    AUDIO: 'audio',
+    TEXT: 'text'
+  },
+  GenerationModel: {
+    DEFAULT: 'DEFAULT',
+    MS3: 'MS3',
+    MS3_3: 'MS3.3'
+  },
+  GenerationTask: jest.fn().mockImplementation((data = {}) => {
+    return {
+      taskId: data.taskId || 'task-123',
+      userId: data.userId || '',
+      request: data.request || mockGenerationRequest(),
+      status: data.status || 'pending',
+      response: data.response || null,
+      createdAt: data.createdAt || new Date(),
+      getProcessingTime: jest.fn().mockReturnValue(5.0),
+      toJSON: jest.fn().mockReturnValue(data)
+    };
+  }),
+  GenerationResponse: jest.fn().mockImplementation((data = {}) => {
+    return {
+      requestId: data.requestId || '',
+      userId: data.userId || '',
+      outputs: data.outputs || [],
+      success: data.success || false,
+      error: data.error || '',
+      toJSON: jest.fn().mockReturnValue(data)
+    };
+  })
+}));
+
 // Import after mocking
-const { GenerationService, GenerationRequest, GenerationStatus } = require('../../../src/core/generation');
-const { events } = require('../../../src/core/shared/events');
+const { GenerationService, GenerationStatus } = require('../../../src/core/generation');
+const eventBus = require('../../../src/core/shared/events').default;
 
 // Mock repository instance
 const mockRepository = {
@@ -71,7 +122,7 @@ const mockRepository = {
         taskId: 'existing-task',
         userId: 'test-user',
         status: PENDING,
-        request: new GenerationRequest({
+        request: mockGenerationRequest({
           userId: 'test-user',
           type: 'image',
           prompt: 'test prompt',
@@ -100,8 +151,6 @@ const mockRepository = {
   cleanupOldTasks: jest.fn(async () => 0)
 };
 
-
-
 // Mock the points service if used
 const mockPointsService = {
   hasSufficientPoints: jest.fn(async () => true),
@@ -118,7 +167,7 @@ const mockPointsService = {
 };
 
 // Spy on events
-jest.spyOn(events, 'publish');
+jest.spyOn(eventBus, 'publish');
 
 describe('GenerationService', () => {
   let generationService;
@@ -137,7 +186,7 @@ describe('GenerationService', () => {
   describe('createTask', () => {
     test('should create a new generation task', async () => {
       // Arrange
-      const requestData = new GenerationRequest({
+      const requestData = mockGenerationRequest({
         userId: 'test-user',
         type: 'image',
         prompt: 'test prompt',
@@ -168,7 +217,7 @@ describe('GenerationService', () => {
       expect(result.request.userId).toBe('test-user');
       expect(result.request.prompt).toBe('test prompt');
       expect(mockRepository.saveTask).toHaveBeenCalledTimes(1);
-      expect(events.publish).toHaveBeenCalledWith('generation:task-created', expect.objectContaining({
+      expect(eventBus.publish).toHaveBeenCalledWith('generation:task-created', expect.objectContaining({
         taskId: result.id,
         userId: 'test-user'
       }));
@@ -176,7 +225,7 @@ describe('GenerationService', () => {
     
     test('should validate request data', async () => {
       // Arrange
-      const invalidRequestData = new GenerationRequest({
+      const invalidRequestData = mockGenerationRequest({
         // Missing userId
         type: 'image',
         prompt: 'test prompt'
@@ -225,7 +274,7 @@ describe('GenerationService', () => {
         taskId: 'existing-task',
         userId: 'test-user',
         status: GenerationStatus.PENDING,
-        request: new GenerationRequest({
+        request: mockGenerationRequest({
           userId: 'test-user',
           type: 'image',
           prompt: 'test prompt',
@@ -259,7 +308,7 @@ describe('GenerationService', () => {
         expect.any(Object)
       );
       expect(mockPointsService.deductPoints).toHaveBeenCalled();
-      expect(events.publish).toHaveBeenCalledWith('generation:task-processing', expect.objectContaining({
+      expect(eventBus.publish).toHaveBeenCalledWith('generation:task-processing', expect.objectContaining({
         taskId: 'existing-task',
         userId: 'test-user'
       }));
@@ -315,7 +364,7 @@ describe('GenerationService', () => {
           completedAt: new Date().toISOString()
         };
         
-        events.publish('generation:task-completed', {
+        eventBus.publish('generation:task-completed', {
           taskId: result.id,
           userId: result.userId
         });
@@ -332,7 +381,7 @@ describe('GenerationService', () => {
         expect(result.status).toBe(GenerationStatus.COMPLETED);
         expect(result.response).toBeDefined();
         expect(result.response.outputs).toHaveLength(2);
-        expect(events.publish).toHaveBeenCalledWith('generation:task-completed', expect.objectContaining({
+        expect(eventBus.publish).toHaveBeenCalledWith('generation:task-completed', expect.objectContaining({
           taskId: 'existing-task',
           userId: 'test-user'
         }));
@@ -354,7 +403,7 @@ describe('GenerationService', () => {
         taskId: 'existing-task',
         userId: 'test-user',
         status: GenerationStatus.PENDING, // Not processing yet
-        request: new GenerationRequest({
+        request: mockGenerationRequest({
           userId: 'test-user',
           type: 'image',
           prompt: 'test prompt',
@@ -399,7 +448,7 @@ describe('GenerationService', () => {
           completedAt: new Date().toISOString()
         };
         
-        events.publish('generation:task-failed', {
+        eventBus.publish('generation:task-failed', {
           taskId: result.id,
           userId: result.userId,
           error: error
@@ -418,7 +467,7 @@ describe('GenerationService', () => {
         expect(result.response).toBeDefined();
         expect(result.response.error).toBe('Test error message');
         expect(mockPointsService.addPoints).toHaveBeenCalled(); // Points refunded
-        expect(events.publish).toHaveBeenCalledWith('generation:task-failed', expect.objectContaining({
+        expect(eventBus.publish).toHaveBeenCalledWith('generation:task-failed', expect.objectContaining({
           taskId: 'existing-task',
           userId: 'test-user',
           error: 'Test error message'

@@ -1,30 +1,35 @@
 /**
  * Generation Module
- * Exports components for managing generation tasks
+ * Main export file for the generation management module
  */
 
-const GenerationService = require('./service');
-const GenerationRepository = require('./repository');
-const { 
-  GenerationRequest, 
-  GenerationResponse, 
-  GenerationTask, 
-  GenerationStatus 
-} = require('./models');
+const { GenerationTask, GenerationStatus, GenerationType, GenerationModel } = require('./models');
+const { GenerationRepository } = require('./repository');
+const { GenerationService } = require('./service');
 
+// Export factory function to create the generation system
+function createGenerationSystem(options = {}) {
+  const repository = new GenerationRepository(options.repository);
+  const service = new GenerationService(repository, options.service);
+  
+  return {
+    repository,
+    service
+  };
+}
+
+// Export all components
 module.exports = {
-  // Service
-  GenerationService,
-  
-  // Repository
-  GenerationRepository,
-  
   // Models
-  GenerationRequest,
-  GenerationResponse,
   GenerationTask,
   GenerationStatus,
+  GenerationType,
+  GenerationModel,
   
-  // Default export is the service for convenience
-  service: new GenerationService()
+  // Core services
+  GenerationRepository,
+  GenerationService,
+  
+  // Factory
+  createGenerationSystem
 }; 

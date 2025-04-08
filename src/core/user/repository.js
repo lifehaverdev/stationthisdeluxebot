@@ -3,9 +3,9 @@
  * Provides data access for user entities while maintaining backward compatibility
  */
 
-const Repository = require('../shared/repository');
+const { Repository } = require('../shared/repository');
 const { User, UserCore, UserEconomy, UserPreferences } = require('./models');
-const eventBus = require('../shared/events');
+const eventBus = require('../shared/events').default;
 
 // This will be replaced with actual DB clients in the future
 let legacyDB = null;
@@ -267,4 +267,4 @@ class UserRepository extends Repository {
   }
 }
 
-module.exports = UserRepository; 
+module.exports = { UserRepository }; 

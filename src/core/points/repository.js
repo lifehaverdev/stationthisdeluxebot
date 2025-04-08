@@ -3,9 +3,9 @@
  * Handles data access for points entities
  */
 
-const Repository = require('../shared/repository');
+const { Repository } = require('../shared/repository');
 const { UserPoints } = require('./models');
-const eventBus = require('../shared/events');
+const eventBus = require('../shared/events').default;
 
 // This will be replaced with actual DB clients in the future
 let legacyDB = null;
@@ -275,4 +275,4 @@ class PointsRepository extends Repository {
   }
 }
 
-module.exports = PointsRepository; 
+module.exports = { PointsRepository }; 

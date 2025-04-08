@@ -8,10 +8,12 @@ const {
   GenerationRequest, 
   GenerationResponse, 
   GenerationTask, 
-  GenerationStatus 
+  GenerationStatus, 
+  GenerationModel, 
+  GenerationType 
 } = require('./models');
-const GenerationRepository = require('./repository');
-const eventBus = require('../shared/events');
+const { GenerationRepository } = require('./repository');
+const eventBus = require('../shared/events').default;
 
 // For testing compatibility
 const events = eventBus.events || eventBus;
@@ -328,4 +330,4 @@ class GenerationService {
   }
 }
 
-module.exports = GenerationService; 
+module.exports = { GenerationService }; 
