@@ -21,21 +21,23 @@ const existingUser = {
 };
 
 // Mock events module
-jest.mock('../../../src/core/shared/events', () => ({
-  events: {
+jest.mock('../../../src/core/shared/events', () => {
+  const eventMock = {
     publish: jest.fn(),
     subscribe: jest.fn(),
     unsubscribe: jest.fn()
-  },
-  default: {
-    publish: jest.fn(),
-    subscribe: jest.fn(),
-    unsubscribe: jest.fn()
-  },
-  publish: jest.fn(),
-  subscribe: jest.fn(),
-  unsubscribe: jest.fn()
-}));
+  };
+  return {
+    // Default export
+    __esModule: true,
+    default: eventMock,
+    // Named exports
+    events: eventMock,
+    publish: eventMock.publish,
+    subscribe: eventMock.subscribe,
+    unsubscribe: eventMock.unsubscribe
+  };
+});
 
 // Mock entire modules
 jest.mock('../../../src/core/user/repository');
@@ -70,10 +72,10 @@ jest.mock('../../../src/core/user/models', () => {
 
 // Importing after mocking to get the mocked version
 const { UserService, User } = require('../../../src/core/user');
-const eventBus = require('../../../src/core/shared/events');
+const eventBus = require('../../../src/core/shared/events').default;
 
-// For testing compatibility
-const events = eventBus.events || eventBus;
+// For testing verification
+const events = eventBus;
 
 // Mock a repository instance for our tests
 const mockRepository = {

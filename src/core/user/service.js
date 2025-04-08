@@ -1,11 +1,11 @@
 /**
  * User Service
- * Provides business logic for user management operations
+ * Provides business logic for user management
  */
 
 const { User } = require('./models');
-const UserRepository = require('./repository');
-const eventBus = require('../shared/events');
+const { UserRepository } = require('./repository');
+const eventBus = require('../shared/events').default;
 
 // For testing compatibility
 const events = eventBus.events || eventBus;
@@ -259,4 +259,4 @@ class UserService {
   }
 }
 
-module.exports = UserService; 
+module.exports = { UserService }; 

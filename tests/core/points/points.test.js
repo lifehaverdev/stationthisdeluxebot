@@ -10,16 +10,23 @@ const PointType = {
 };
 
 // Mock events module
-jest.mock('../../../src/core/shared/events', () => ({
-  publish: jest.fn(),
-  subscribe: jest.fn(),
-  unsubscribe: jest.fn(),
-  events: {
+jest.mock('../../../src/core/shared/events', () => {
+  const eventMock = {
     publish: jest.fn(),
     subscribe: jest.fn(),
     unsubscribe: jest.fn()
-  }
-}));
+  };
+  return {
+    // Default export
+    __esModule: true,
+    default: eventMock,
+    // Named exports
+    events: eventMock,
+    publish: eventMock.publish,
+    subscribe: eventMock.subscribe,
+    unsubscribe: eventMock.unsubscribe
+  };
+});
 
 // Mock modules before import
 jest.mock('../../../src/core/points/repository');
@@ -27,7 +34,7 @@ jest.mock('../../../src/core/points/calculation-service');
 
 // Import after mocking
 const { PointsService } = require('../../../src/core/points');
-const eventBus = require('../../../src/core/shared/events');
+const eventBus = require('../../../src/core/shared/events').default;
 const { UserPoints } = require('../../../src/core/points/models');
 
 // Mock repository instance

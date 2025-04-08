@@ -3,9 +3,9 @@
  * Handles data access for generation tasks
  */
 
-const Repository = require('../shared/repository');
+const { Repository } = require('../shared/repository');
 const { GenerationTask, GenerationStatus } = require('./models');
-const eventBus = require('../shared/events');
+const eventBus = require('../shared/events').default;
 
 // This will be replaced with proper storage in the future
 const inMemoryTasks = new Map();
@@ -211,4 +211,4 @@ class GenerationRepository extends Repository {
   }
 }
 
-module.exports = GenerationRepository; 
+module.exports = { GenerationRepository }; 

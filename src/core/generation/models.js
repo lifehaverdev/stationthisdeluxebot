@@ -4,6 +4,31 @@
  */
 
 /**
+ * Generation type enum
+ * @readonly
+ * @enum {string}
+ */
+const GenerationType = {
+  IMAGE: 'image',
+  VIDEO: 'video',
+  AUDIO: 'audio',
+  TEXT: 'text'
+};
+
+/**
+ * Generation model enum
+ * @readonly
+ * @enum {string}
+ */
+const GenerationModel = {
+  DEFAULT: 'DEFAULT',
+  MS3: 'MS3',
+  MS3_3: 'MS3.3',
+  SDXL: 'SDXL',
+  SD2: 'SD2'
+};
+
+/**
  * Generation Request
  * Represents a request to generate content
  */
@@ -200,15 +225,16 @@ class GenerationResponse {
 }
 
 /**
- * Generation Task Status
+ * Generation Status
+ * @readonly
  * @enum {string}
  */
 const GenerationStatus = {
-  PENDING: 'pending',     // Task is waiting to be processed
-  PROCESSING: 'processing', // Task is being processed
-  COMPLETED: 'completed',   // Task completed successfully
-  FAILED: 'failed',       // Task failed
-  CANCELLED: 'cancelled'    // Task was cancelled
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled'
 };
 
 /**
@@ -338,5 +364,7 @@ module.exports = {
   GenerationRequest,
   GenerationResponse,
   GenerationTask,
-  GenerationStatus
+  GenerationStatus,
+  GenerationType,
+  GenerationModel
 }; 
