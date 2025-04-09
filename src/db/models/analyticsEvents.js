@@ -1,362 +1,100 @@
-const { BaseDB } = require('./BaseDB');
-const { PRIORITY } = require('../utils/queue');
-const { lobby, waiting, taskQueue } = require('../../bot/core/core')
+/**
+ * Analytics Events Model
+ * 
+ * Defines the schema and event types for analytics events.
+ * Used by the analytics events adapter for tracking user actions.
+ */
 
+// Define the event types
 const EVENT_TYPES = {
-    GENERATION: 'generation',
-    COMMAND: 'command',
-    MENU: 'menu_interaction',
-    QUEUE: 'queue_event',
-    DELIVERY: 'delivery_event',
-    ERROR: 'error_event',
-    USER_STATE: 'user_state',
-    GATEKEEPING: 'gatekeeping',
-    ASSET_CHECK: 'asset_check',
-    ACCOUNT: 'account_action',
-    VERIFICATION: 'verification'
+  COMMAND: 'command',
+  QUEUE: 'queue',
+  GENERATION: 'generation',
+  DELIVERY: 'delivery',
+  ERROR: 'error',
+  MENU_INTERACTION: 'menu_interaction',
+  USER_JOIN: 'user_join',
+  USER_LEAVE: 'user_leave',
+  GATEKEEPING: 'gatekeeping',
+  ASSET_CHECK: 'asset_check',
+  ACCOUNT_ACTION: 'account_action',
+  VERIFICATION: 'verification',
+  WORKFLOW: 'workflow'
 };
 
-class AnalyticsEvents extends BaseDB {
-    constructor() {
-        super('history');
-    }
+// Define schema for analytics events
+const ANALYTICS_SCHEMA = {
+  type: { type: String, required: true, enum: Object.values(EVENT_TYPES) },
+  userId: { type: Number, required: true },
+  username: { type: String, default: 'unknown' },
+  timestamp: { type: Date, default: Date.now },
+  data: { type: Object, default: {} },
+  groupId: { type: Number, sparse: true },
+  runId: { type: String, sparse: true },
+  messageId: { type: String, sparse: true }
+};
 
-    async trackQueueEvent(task, eventType) {
-        // Special handling for cook mode tasks
-        if (task.promptObj.isCookMode) {
-            const event = {
-                type: EVENT_TYPES.QUEUE,
-                userId: task.promptObj.userId,
-                username: task.promptObj.username || 'unknown_user',
-                timestamp: new Date(),
-                data: {
-                    eventType,
-                    runId: task.run_id,
-                    queuePosition: waiting.length,
-                    waitingCount: waiting.length,
-                    queueCount: taskQueue.length,
-                    isCookMode: true,
-                    collectionId: task.promptObj.collectionId
-                },
-                // Skip group tracking for cook mode
-                groupId: null
-            };
+/**
+ * Mock implementation of the analytics events model
+ * This is a placeholder for the actual MongoDB model
+ */
+class AnalyticsEvents {
+  /**
+   * Create an instance of the analytics events model
+   */
+  constructor() {
+    this.collection = 'analytics_events';
+    this.schema = ANALYTICS_SCHEMA;
+  }
 
-            return this.updateOne(
-                { runId: task.run_id, type: EVENT_TYPES.QUEUE },
-                event,
-                { upsert: true }
-            );
-        }
+  /**
+   * Mock implementation of updateOne
+   * @param {Object} query - Query to find document
+   * @param {Object} update - Update to apply
+   * @param {Object} options - Options for update
+   * @returns {Promise<Object>} - Result of update
+   */
+  async updateOne(query, update, options = {}) {
+    console.log('AnalyticsEvents.updateOne called', { query, update, options });
+    return {
+      acknowledged: true,
+      modifiedCount: 1,
+      upsertedId: options.upsert ? 'mock-id-' + Date.now() : null,
+      upsertedCount: options.upsert ? 1 : 0,
+      matchedCount: 1
+    };
+  }
 
-        // Original handling for regular tasks
-        const queuePosition = eventType === 'enqueued' 
-            ? waiting.length 
-            : waiting.findIndex(t => t.run_id === task.run_id);
+  /**
+   * Mock implementation of findOne
+   * @param {Object} query - Query to find document
+   * @returns {Promise<Object>} - Result of find
+   */
+  async findOne(query) {
+    console.log('AnalyticsEvents.findOne called', { query });
+    return null;
+  }
 
-        const event = {
-            type: EVENT_TYPES.QUEUE,
-            userId: task.promptObj.userId,
-            username: task.promptObj.username,
-            timestamp: new Date(),
-            data: {
-                eventType,
-                runId: task.run_id,
-                queuePosition: queuePosition >= 0 ? queuePosition : null,
-                waitingCount: waiting.length,
-                queueCount: taskQueue.length
-            },
-            groupId: task.message.chat.id < 0 ? task.message.chat.id : null
-        };
-
-        return this.updateOne(
-            { runId: task.run_id, type: EVENT_TYPES.QUEUE },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackGeneration(task, run, status) {
-        try {
-            // Handle cook mode tasks differently
-            if (task.promptObj.isCookMode) {
-                const event = {
-                    type: EVENT_TYPES.GENERATION,
-                    userId: task.promptObj.userId,
-                    username: task.promptObj.username || 'unknown_user',
-                    timestamp: new Date(),
-                    data: {
-                        status,
-                        runId: task.run_id,
-                        isCookMode: true,
-                        collectionId: task.promptObj.collectionId
-                    }
-                };
-    
-                return this.updateOne(
-                    { runId: task.run_id, type: EVENT_TYPES.GENERATION },
-                    event,
-                    { upsert: true }
-                );
-            }
-    
-            // Original handling for regular tasks
-            const event = {
-                type: EVENT_TYPES.GENERATION,
-                userId: task.message.from.id,
-                username: task.message.from.username,
-                timestamp: new Date(),
-                data: {
-                    status,
-                    runId: task.run_id
-                },
-                groupId: task.message.chat.id < 0 ? task.message.chat.id : null
-            };
-    
-            return this.updateOne(
-                { runId: task.run_id, type: EVENT_TYPES.GENERATION },
-                event,
-                { upsert: true }
-            );
-        } catch (error) {
-            console.error('Error tracking generation:', error);
-        }
-    }
-
-    async trackCommand(message, command, isCustom = false) {
-        const event = {
-            type: EVENT_TYPES.COMMAND,
-            userId: message.from.id,
-            username: message.from.username,
-            timestamp: new Date(),
-            data: {
-                command,
-                isCustomCommand: isCustom,
-                chatType: message.chat.type,
-                messageThreadId: message.message_thread_id || null,
-                hasArgs: message.text !== command,
-                isReply: !!message.reply_to_message
-            },
-            groupId: message.chat.id < 0 ? message.chat.id : null
-        };
-
-        return this.updateOne(
-            { runId: message.message_id, type: EVENT_TYPES.COMMAND },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackDeliveryEvent(task, success, error = null) {
-        const event = {
-            type: EVENT_TYPES.DELIVERY,
-            userId: task.promptObj.userId,
-            username: task.promptObj.username,
-            timestamp: new Date(),
-            data: {
-                success,
-                runId: task.run_id,
-                error: error ? {
-                    message: error.message,
-                    code: error.code
-                } : null,
-                retryCount: task.deliveryFail || 0,
-                totalTime: Date.now() - task.timestamp
-            },
-            groupId: task.message.chat.id < 0 ? task.message.chat.id : null
-        };
-
-        return this.updateOne(
-            { runId: task.run_id, type: EVENT_TYPES.DELIVERY },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackError(error, context) {
-        const event = {
-            type: EVENT_TYPES.ERROR,
-            timestamp: new Date(),
-            data: {
-                error: {
-                    message: error.message,
-                    stack: error.stack,
-                    code: error.code
-                },
-                context
-            }
-        };
-
-        return this.updateOne(
-            { timestamp: event.timestamp, type: EVENT_TYPES.ERROR },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackMenuInteraction(callbackQuery, action, isCustom = false) {
-        const event = {
-            type: EVENT_TYPES.MENU,
-            userId: callbackQuery.from.id,
-            username: callbackQuery.from.username,
-            timestamp: new Date(),
-            data: {
-                action,
-                isCustomAction: isCustom,
-                chatType: callbackQuery.message.chat.type,
-                messageThreadId: callbackQuery.message.message_thread_id || null,
-                replyToMessage: !!callbackQuery.message.reply_to_message,
-                callbackMessageId: callbackQuery.message.message_id
-            },
-            groupId: callbackQuery.message.chat.id < 0 ? callbackQuery.message.chat.id : null
-        };
-
-        return this.updateOne(
-            { 
-                runId: `${callbackQuery.message.message_id}_${callbackQuery.id}`, 
-                type: EVENT_TYPES.MENU 
-            },
-            event,
-            { upsert: true }
-        );
-    }
-
-    // User State Events
-    async trackUserJoin(userId, username, isFirstTime = false) {
-        const event = {
-            type: EVENT_TYPES.USER_STATE,
-            userId,
-            username,
-            timestamp: new Date(),
-            data: {
-                eventType: isFirstTime ? 'first_join' : 'check_in',
-                kickedAt: lobby[userId]?.kickedAt,
-                verified: lobby[userId]?.verified || false
-            },
-            groupId: null
-        };
-
-        return this.updateOne(
-            { userId, type: EVENT_TYPES.USER_STATE, timestamp: event.timestamp },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackUserKick(userId, username, reason = 'inactivity') {
-        const event = {
-            type: EVENT_TYPES.USER_STATE,
-            userId,
-            username,
-            timestamp: new Date(),
-            data: {
-                eventType: 'kicked',
-                reason,
-                lastTouch: lobby[userId]?.lastTouch,
-                timeSinceLastTouch: Date.now() - (lobby[userId]?.lastTouch || 0)
-            },
-            groupId: null
-        };
-
-        return this.updateOne(
-            { userId, type: EVENT_TYPES.USER_STATE, timestamp: event.timestamp },
-            event,
-            { upsert: true }
-        );
-    }
-
-    // Gatekeeping Events
-    async trackGatekeeping(message, reason, details = {}) {
-        const event = {
-            type: EVENT_TYPES.GATEKEEPING,
-            userId: message.from.id,
-            username: message.from.username,
-            timestamp: new Date(),
-            data: {
-                eventType: reason,
-                chatType: message.chat.type,
-                ...details
-            },
-            groupId: message.chat.id < 0 ? message.chat.id : null
-        };
-
-        return this.updateOne(
-            { 
-                userId: message.from.id, 
-                type: EVENT_TYPES.GATEKEEPING, 
-                timestamp: event.timestamp 
-            },
-            event,
-            { upsert: true }
-        );
-    }
-
-    // Asset Check Events
-    async trackAssetCheck(userId, username, checkType, result, details = {}) {
-        const event = {
-            type: EVENT_TYPES.ASSET_CHECK,
-            userId,
-            username,
-            timestamp: new Date(),
-            data: {
-                eventType: checkType,
-                result,
-                ...details
-            },
-            groupId: null
-        };
-
-        return this.updateOne(
-            { userId, type: EVENT_TYPES.ASSET_CHECK, timestamp: event.timestamp },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackAccountAction(message, action, success, details = {}) {
-        const event = {
-            type: EVENT_TYPES.ACCOUNT,
-            userId: message.from.id,
-            username: message.from.username,
-            timestamp: new Date(),
-            data: {
-                action,
-                success,
-                ...details
-            },
-            groupId: null
-        };
-
-        return this.updateOne(
-            { userId: message.from.id, type: EVENT_TYPES.ACCOUNT, timestamp: event.timestamp },
-            event,
-            { upsert: true }
-        );
-    }
-
-    async trackVerification(message, success, details = {}) {
-        const event = {
-            type: EVENT_TYPES.VERIFICATION,
-            userId: message.from.id,
-            username: message.from.username,
-            timestamp: new Date(),
-            data: {
-                success,
-                wallet: lobby[message.from.id]?.wallet,
-                ...details
-            },
-            groupId: null
-        };
-
-        return this.updateOne(
-            { userId: message.from.id, type: EVENT_TYPES.VERIFICATION, timestamp: event.timestamp },
-            event,
-            { upsert: true }
-        );
-    }
+  /**
+   * Mock implementation of find
+   * @param {Object} query - Query to find documents
+   * @returns {Object} - Find cursor
+   */
+  find(query) {
+    console.log('AnalyticsEvents.find called', { query });
+    return {
+      sort: () => ({
+        limit: () => ({
+          toArray: async () => []
+        })
+      })
+    };
+  }
 }
 
+// Export the model and event types
 module.exports = {
-    AnalyticsEvents,
-    EVENT_TYPES
-};
+  EVENT_TYPES,
+  ANALYTICS_SCHEMA,
+  AnalyticsEvents: new AnalyticsEvents()
+}; 

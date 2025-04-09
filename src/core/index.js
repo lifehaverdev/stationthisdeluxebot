@@ -1,37 +1,31 @@
 /**
- * Core Module
- * Exports all core domain components and services
+ * Core Module Export
+ * 
+ * Exports all core modules for easy importing.
  */
 
-const user = require('./user');
-const points = require('./points');
-const generation = require('./generation');
-const events = require('./shared/events');
-const workflow = require('./workflow');
+const analytics = require('./analytics');
 const command = require('./command');
-
-// Initialize integrated components
-function initializeIntegrations() {
-  // Connect points with generation service
-  generation.service = new generation.GenerationService({
-    pointsService: points.service
-  });
-}
-
-// Optional: Initialize integrations automatically
-initializeIntegrations();
+const generation = require('./generation');
+const points = require('./points');
+const queue = require('./queue');
+const session = require('./session');
+const shared = require('./shared');
+const user = require('./user');
+const validation = require('./validation');
+const workflow = require('./workflow');
+const ui = require('./ui');
 
 module.exports = {
-  // Domain modules
-  user,
-  points,
-  generation,
-  workflow,
+  analytics,
   command,
-  
-  // Shared components
-  events,
-  
-  // Initialize integrations (exposed for manual initialization if needed)
-  initializeIntegrations
+  generation,
+  points,
+  queue,
+  session,
+  shared,
+  user,
+  validation,
+  workflow,
+  ui
 }; 
