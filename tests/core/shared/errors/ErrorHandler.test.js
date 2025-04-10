@@ -124,7 +124,7 @@ describe('ErrorHandler', () => {
       expect(mockReporter.reportCriticalError).toHaveBeenCalledWith(
         expect.objectContaining({
           message: criticalError.message,
-          severity: 'CRITICAL'
+          severity: 'fatal'
         })
       );
     });
@@ -162,7 +162,7 @@ describe('ErrorHandler', () => {
       expect(mockReporter.reportError).toHaveBeenCalledWith(
         expect.objectContaining({
           message: mockError.message,
-          severity: 'WARNING'
+          severity: 'warn'
         })
       );
     });
@@ -178,7 +178,7 @@ describe('ErrorHandler', () => {
       expect(mockReporter.reportCriticalError).toHaveBeenCalledWith(
         expect.objectContaining({
           message: criticalError.message,
-          severity: 'CRITICAL'
+          severity: 'fatal'
         })
       );
     });

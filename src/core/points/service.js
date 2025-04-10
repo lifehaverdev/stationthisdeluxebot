@@ -322,6 +322,150 @@ class PointsService {
   getGenerationCost(generationConfig = {}) {
     return this.calculationService.getGenerationCost(generationConfig);
   }
+
+  /**
+   * Allocate points for a task
+   * @param {string} userId - User ID
+   * @param {Object} task - Task details
+   * @param {string} task.type - Task type (e.g., 'MS3', 'MS3.3')
+   * @param {string} [task.source='manual'] - Source of the task
+   * @returns {Promise<Object>} - Updated user points and allocated amount
+   */
+  async allocateTaskPoints(userId, task) {
+    const taskType = task.type || 'DEFAULT';
+    
+    // Determine points to add based on task type
+    const dointsToAdd = taskType === 'MS3.3' ? 1000 : 100;
+    
+    // Check if user has sufficient doints capacity
+    const userPoints = await this.getUserPoints(userId);
+    if (!userPoints) {
+      throw new Error(`User ${userId} not found`);
+    }
+    
+    // Add doints as a temporary reservation
+    const updatedPoints = await this.addPoints(
+      userId, 
+      dointsToAdd, 
+      PointType.DOINTS, 
+      `task_allocation:${taskType}`
+    );
+    
+    // Publish specific event for task allocation
+    eventBus.publish('points:task:allocated', {
+      userId,
+      taskType,
+      dointsAllocated: dointsToAdd,
+      newDointsBalance: updatedPoints.doints
+    });
+    
+    return {
+      userPoints: updatedPoints,
+      dointsAllocated: dointsToAdd
+    };
+  }
+  
+  /**
+   * Release allocated points if task fails or is cancelled
+   * @param {string} userId - User ID
+   * @param {number} amount - Amount to release
+   * @param {string} [reason='task_cancelled'] - Reason for releasing
+   * @returns {Promise<UserPoints>} - Updated user points
+   */
+  async releaseTaskPoints(userId, amount, reason = 'task_cancelled') {
+    // Deduct the previously added doints
+    const updatedPoints = await this.deductPoints(
+      userId,
+      amount,
+      PointType.DOINTS,
+      reason
+    );
+    
+    // Publish event
+    eventBus.publish('points:task:released', {
+      userId,
+      amount,
+      reason,
+      newDointsBalance: updatedPoints.doints
+    });
+    
+    return updatedPoints;
+  }
+  
+  /**
+   * Process points after task completion
+   * @param {string} userId - User ID
+   * @param {Object} task - Task details
+   * @param {string} task.type - Task type
+   * @param {number} task.runningStart - Task start timestamp
+   * @param {number} task.runningStop - Task end timestamp
+   * @param {number} task.dointsAllocated - Doints allocated for the task
+   * @param {string} [task.groupId] - Group ID if task was executed in a group
+   * @returns {Promise<Object>} - Updated points and processing details
+   */
+  async processTaskCompletion(userId, task) {
+    // Get user points
+    const userPoints = await this.getUserPoints(userId);
+    if (!userPoints) {
+      throw new Error(`User ${userId} not found`);
+    }
+    
+    // Calculate points based on task runtime
+    let rate = 2;
+    const doublePointTypes = ['MS3.2']; 
+    if (doublePointTypes.includes(task.type)) {
+      rate = 6;
+    }
+    
+    // Use actual runtime or estimate if not available
+    const runtime = (task.runningStop && task.runningStart) 
+      ? (task.runningStop - task.runningStart) / 1000
+      : 30; // Default to 30 seconds if no runtime info
+      
+    const pointsToAdd = runtime * rate;
+    
+    // Check for group status
+    if (task.groupId) {
+      // TODO: Implement group points processing
+      // This will be handled by a GroupPointsService in the future
+      eventBus.publish('points:task:group', {
+        userId,
+        groupId: task.groupId,
+        pointsToAdd
+      });
+      
+      return {
+        userPoints,
+        pointsAdded: 0,
+        dointsRemoved: task.dointsAllocated || 0,
+        groupHandled: true
+      };
+    }
+    
+    // For regular users, remove allocated doints and add regular points
+    const updatedPoints = await this.deductPoints(
+      userId, 
+      task.dointsAllocated || 0, 
+      PointType.DOINTS, 
+      'task_completed'
+    );
+    
+    // Add points based on calculation
+    const finalPoints = await this.addPoints(
+      userId,
+      pointsToAdd,
+      PointType.POINTS,
+      `task_reward:${task.type}`
+    );
+    
+    // Return updated points and processing details
+    return {
+      userPoints: finalPoints,
+      pointsAdded: pointsToAdd,
+      dointsRemoved: task.dointsAllocated || 0,
+      rate
+    };
+  }
 }
 
 module.exports = { PointsService }; 

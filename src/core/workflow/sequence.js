@@ -150,11 +150,25 @@ class WorkflowSequence {
     };
     
     // Create a new workflow state
-    return new WorkflowState({
+    const workflow = new WorkflowState({
+      id: workflowId,
+      name: this.name,
       steps: this.steps,
-      initialStep: this.initialStep,
-      context: workflowContext
-    });
+      startStep: this.initialStep,
+    }, workflowContext);
+    
+    // For backward compatibility with tests
+    workflow.context = workflowContext;
+    workflow.getState = function() {
+      return {
+        currentStepId: this.currentStep,
+        steps: this.steps,
+        data: this.data,
+        context: this.context
+      };
+    };
+    
+    return workflow;
   }
   
   /**

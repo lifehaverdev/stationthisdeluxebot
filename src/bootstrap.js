@@ -6,7 +6,7 @@
  * the new architecture components.
  */
 
-const telegramIntegration = require('./integrations/telegram');
+const { initializeTelegramIntegration } = require('./integrations/telegram');
 const featureFlags = require('./config/featureFlags');
 
 // Import references to legacy global objects
@@ -37,26 +37,67 @@ function bootstrap(options = {}) {
   // Log feature flags
   console.log('Feature flags:', featureFlags.getAllFlags());
   
-  // Initialize Telegram integration
-  const telegram = telegramIntegration.initialize({
+  // Skip features that can't be initialized due to missing dependencies
+  const missingDependencies = {};
+  
+  if (featureFlags.isEnabled('useNewAccountPoints') && !options.workflowManager) {
+    console.warn('⚠️ [BOOTSTRAP] Workflow manager missing, disabling account points workflow');
+    missingDependencies.accountPoints = true;
+  }
+  
+  if (featureFlags.isEnabled('useNewAccountPoints') && !options.sessionManager) {
+    console.warn('⚠️ [BOOTSTRAP] Session manager missing, disabling account points workflow');
+    missingDependencies.accountPoints = true;
+  }
+  
+  if (featureFlags.isEnabled('useNewAccountPoints') && !options.accountPointsService) {
+    console.warn('⚠️ [BOOTSTRAP] Account points service missing, disabling account points workflow');
+    missingDependencies.accountPoints = true;
+  }
+  
+  // Initialize Telegram integration with dependency-aware flags
+  const telegramOptions = {
     bot: botInstance,
-    commandRegistry: cmdRegistry
-  });
+    commandRegistry: cmdRegistry,
+    sessionManager: options.sessionManager || null,
+    workflowManager: options.workflowManager || null,
+    accountPointsService: options.accountPointsService || null,
+    logger: options.logger || console,
+    // Override flags based on available dependencies
+    featureOverrides: {
+      useNewAccountPoints: featureFlags.isEnabled('useNewAccountPoints') && !missingDependencies.accountPoints,
+      useNewAccountCommands: featureFlags.isEnabled('useNewAccountCommands') && !missingDependencies.accountPoints
+    }
+  };
   
-  console.log('Bootstrap complete. New architecture components are ready.');
+  try {
+    initializeTelegramIntegration(telegramOptions);
+    
+    // Mark commands as initialized on the bot instance to avoid duplication
+    if (botInstance && featureFlags.isEnabled('useNewAccountCommands')) {
+      botInstance.initedAccountCommands = true;
+    }
+    
+    console.log('Bootstrap complete. New architecture components are ready.');
+  } catch (error) {
+    console.error('❌ Error initializing Telegram integration:', error);
+    console.log('Bootstrap failed. New architecture components may not be available.');
+  }
   
-  // Return references to initialized components
+  // Return references
   return {
-    sessionManager: telegram.sessionManager,
     featureFlags
   };
 }
 
 // If this file is required directly, attempt to bootstrap
+// Disabled for now to avoid conflicts with stationthisbot.js
+/*
 if (require.main !== module && bot && commandRegistry) {
   console.log('Auto-bootstrapping new architecture components...');
   bootstrap();
 }
+*/
 
 module.exports = {
   bootstrap,

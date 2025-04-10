@@ -11,6 +11,9 @@ class FeatureFlags {
       useNewSessionManager: false,
       useNewErrorHandler: false,
       useNewCommandRouter: false,
+      useNewMakeCommand: false,
+      useNewAccountPoints: false,
+      useNewAccountCommands: false,
       // Override with any provided initial values
       ...initialFlags
     };
@@ -65,7 +68,13 @@ class FeatureFlags {
 // Export a singleton instance with default settings
 // Enable the session manager for our initial integration
 const featureFlags = new FeatureFlags({
-  useNewSessionManager: true
+  useNewSessionManager: true,
+  // The make command flag is initially disabled for testing
+  useNewMakeCommand: false,
+  // Enable the new account points feature for testing
+  useNewAccountPoints: true,
+  // Enable account commands for Phase 3 overhaul
+  useNewAccountCommands: true
 });
 
 module.exports = featureFlags; 

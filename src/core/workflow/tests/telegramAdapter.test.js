@@ -191,16 +191,19 @@ describe('Telegram Adapter', () => {
       })
     };
     
+    // Create workflow with context
     const workflow = new WorkflowState({
       id: 'progress-workflow',
       name: 'Progress Workflow',
       steps,
       startStep: 'progress',
-      data: {},
-      context: {
-        taskProgress: 50 // Initial progress value
-      }
+      data: {}
     });
+    
+    // Set context directly to ensure it's properly initialized
+    workflow.context = {
+      taskProgress: 50 // Set progress value
+    };
     
     return workflow;
   };
@@ -290,7 +293,13 @@ describe('Telegram Adapter', () => {
       const workflow = createProgressWorkflow();
       const chatId = 123456;
       
+      // Debug the workflow context before rendering
+      console.log('Workflow context before rendering:', workflow.context);
+      
       await renderStep(mockBot, chatId, workflow.getCurrentStep(), workflow);
+      
+      // Debug the actual message content
+      console.log('ACTUAL MESSAGE:', mockBot.sendMessage.mock.calls[0][1]);
       
       expect(mockBot.sendMessage).toHaveBeenCalledWith(
         chatId,

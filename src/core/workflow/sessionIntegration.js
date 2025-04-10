@@ -117,17 +117,41 @@ async function retrieveWorkflow(sessionManager, userId, workflowId, steps, names
       return null;
     }
 
+    // Ensure context contains workflowId
+    const context = serialized.context || {};
+    if (!context.workflowId) {
+      context.workflowId = workflowId;
+    }
+
     // Create a new WorkflowState from serialized data
-    return new WorkflowState({
+    const workflow = new WorkflowState({
       id: serialized.id || workflowId,
       name: serialized.name,
       steps: steps,
-      startStep: serialized.startStep,
-      currentStep: serialized.currentStep,
-      data: serialized.data || {},
-      history: serialized.history || [],
-      context: serialized.context || {}
-    });
+      startStep: serialized.currentStep || serialized.startStep,
+      history: serialized.history || []
+    }, context);
+    
+    // Set current state from serialized data
+    workflow.currentStep = serialized.currentStep;
+    workflow.data = serialized.data || {};
+    workflow.errors = serialized.errors || [];
+    workflow.completed = serialized.completed || false;
+    workflow.startedAt = serialized.startedAt || Date.now();
+    workflow.updatedAt = serialized.updatedAt || Date.now();
+    workflow.completedAt = serialized.completedAt || null;
+    
+    // For backward compatibility with tests
+    workflow.getState = function() {
+      return {
+        currentStepId: this.currentStep,
+        steps: this.steps,
+        data: this.data,
+        context: this.context
+      };
+    };
+
+    return workflow;
   } catch (error) {
     throw new AppError('Failed to retrieve workflow from session', {
       severity: ERROR_SEVERITY.ERROR,

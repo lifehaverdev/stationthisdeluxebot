@@ -10,6 +10,7 @@ const InputComponent = require('./InputComponent');
 const MessageComponent = require('./MessageComponent');
 const SelectComponent = require('./SelectComponent');
 const CarouselComponent = require('./CarouselComponent');
+const PointsBarComponent = require('./PointsBarComponent');
 
 module.exports = {
   TextComponent,
@@ -17,5 +18,6 @@ module.exports = {
   InputComponent,
   MessageComponent,
   SelectComponent,
-  CarouselComponent
+  CarouselComponent,
+  PointsBarComponent
 }; 

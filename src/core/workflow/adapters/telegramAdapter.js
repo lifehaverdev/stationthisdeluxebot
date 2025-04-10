@@ -82,7 +82,12 @@ async function renderStep(bot, chatId, step, workflowState) {
       // For progress indicators
       if (workflowState.context && workflowState.context[step.ui.progressKey]) {
         const progress = workflowState.context[step.ui.progressKey];
-        messageText += `Progress: ${progress}%\n`;
+        console.log('Progress value from context:', progress, 'from key:', step.ui.progressKey);
+        messageText += `Processing your request... ${progress}%\n`;
+      } else if (step.ui.progressKey) {
+        // If progressKey is specified but not found, show a default message
+        console.log('Progress key specified but not found in context:', step.ui.progressKey);
+        messageText += `Processing your request... 0%\n`;
       }
       
       return bot.sendMessage(chatId, messageText, messageOptions);
@@ -156,6 +161,11 @@ async function processCallbackQuery(bot, callbackQuery, workflowState) {
   // Process input based on action type
   let processed = false;
   
+  // Ensure data property exists
+  if (!workflowState.data) {
+    workflowState.data = {};
+  }
+  
   if (action === 'selection') {
     // Store the selected option
     workflowState.data[stepId] = value;
@@ -176,7 +186,9 @@ async function processCallbackQuery(bot, callbackQuery, workflowState) {
     });
     
     // Move to the next step if processing was successful
-    workflowState.moveToNextStep();
+    if (typeof workflowState.moveToNextStep === 'function') {
+      workflowState.moveToNextStep();
+    }
     
     // Return success
     return { 
@@ -212,10 +224,15 @@ async function processMessage(bot, message, workflowState) {
   let input;
   let processed = false;
   
+  // Ensure data property exists
+  if (!workflowState.data) {
+    workflowState.data = {};
+  }
+  
   // Check if this message type matches what the current step expects
   if (step.ui.type === 'text_input' && message.text) {
     // Validate the input if needed
-    const validationResult = step.validate(message.text);
+    const validationResult = step.validate ? step.validate(message.text) : { valid: true };
     
     if (!validationResult.valid) {
       // Send error message
@@ -252,7 +269,9 @@ async function processMessage(bot, message, workflowState) {
   
   if (processed) {
     // Move to the next step
-    workflowState.moveToNextStep();
+    if (typeof workflowState.moveToNextStep === 'function') {
+      workflowState.moveToNextStep();
+    }
     
     // Return success
     return {
