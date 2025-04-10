@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 ---
 description: This rule governs a major refactor and migration of a legacy codebase. It focuses on decoupling integrations (especially Telegram), introducing an internal API, and reorganizing all logic into a new `src/` structure. 

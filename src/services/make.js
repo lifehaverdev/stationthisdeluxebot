@@ -1,7 +1,7 @@
-const { handleLoraTrigger } = require('../bot/core/models/loraTriggerTranslate.js')
-const defaultSettings = require('../bot/core/models/defaultSettings.js')
-const {getBasePromptByName } = require('../bot/core/models/basepromptmenu.js')
-const { getDeploymentIdByType }= require('../comfyuideploy/deployment_ids.js');
+const { handleLoraTrigger } = require('../../utils/models/loraTriggerTranslate')
+const defaultSettings = require('../../utils/models/defaultSettings')
+const {getBasePromptByName } = require('../../utils/models/basepromptmenu')
+const { getDeploymentIdByType }= require('../../utils/comfydeploy/deployment_ids');
 // Function to handle sending the generated image
 
 const webHook = 'http://'+process.env.ME+'/api/webhook'//"https://446a-2601-483-802-6d20-c06d-1229-e139-d3cc.ngrok-free.app/api/webhook"
@@ -65,20 +65,6 @@ function applyMapping(promptObj, userContext, key, value) {
         // Default values for missing userContext fields
         promptObj[key] = typeof value === 'number' ? value : 'default_value';
     }
-}
-
-
-// Common prompt object fields
-function buildCommonPromptObj(userContext, message) {
-    return {
-        type: userContext.type || 'default_type',
-        username: message.from.username || 'unknown_user',
-        balance: userContext.balance,
-        userId: userContext.userId,
-        photoStats: { height: 1024, width: 1024 },
-        timeRequested: Date.now(),
-        userBasePrompt: userContext.userBasePrompt
-    };
 }
 
 

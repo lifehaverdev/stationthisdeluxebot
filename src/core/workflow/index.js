@@ -8,6 +8,7 @@
 const { WorkflowState, WorkflowStep } = require('./state');
 const { WorkflowSequence, WorkflowBuilder } = require('./sequence');
 const sessionIntegration = require('./sessionIntegration');
+const { createMakeImageWorkflow } = require('./workflows/MakeImageWorkflow');
 
 module.exports = {
   // Core components
@@ -24,5 +25,7 @@ module.exports = {
   createFormWorkflow: WorkflowBuilder.createFormWorkflow,
   
   // Session integration
-  session: sessionIntegration
+  session: sessionIntegration,
+
+  createMakeImageWorkflow,
 }; 
