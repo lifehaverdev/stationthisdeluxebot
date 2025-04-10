@@ -1,43 +1,24 @@
 /**
  * Points Module
- * Main export file for the points management module
+ * 
+ * Exports the PointsService and related utilities for point management across the application.
  */
 
-const { UserPoints, PointType, PointOperation, PointConstants } = require('./models');
-const { PointsRepository } = require('./repository');
-const { PointsService } = require('./service');
-const PointsCalculationService = require('./calculation-service');
+const { PointsService, createPointsService, POINT_OPERATION } = require('./PointsService');
 
-// Export factory function to create the points system
-function createPointsSystem(options = {}) {
-  const repository = options.repository || new PointsRepository(options.repositoryOptions);
-  const calculationService = options.calculationService || new PointsCalculationService(options.calculationOptions);
-  
-  const service = options.service || new PointsService({
-    pointsRepository: repository,
-    calculationService
-  });
-  
-  return {
-    repository,
-    service,
-    calculationService
-  };
+/**
+ * Factory function to create a points service with default configuration
+ * @param {Object} options - Configuration options
+ * @returns {PointsService} Configured points service instance
+ */
+function createDefaultPointsService(options = {}) {
+  // Apply any default configuration here if needed
+  return createPointsService(options);
 }
 
-// Export all components
 module.exports = {
-  // Models
-  UserPoints,
-  PointType,
-  PointOperation,
-  PointConstants,
-  
-  // Core services
-  PointsRepository,
   PointsService,
-  PointsCalculationService,
-  
-  // Factory
-  createPointsSystem
+  createPointsService,
+  createDefaultPointsService,
+  POINT_OPERATION,
 }; 
