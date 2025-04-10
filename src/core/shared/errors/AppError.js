@@ -1,267 +1,390 @@
 /**
- * AppError
+ * Application Error
  * 
- * Base error class for application-specific errors.
- * Provides standardized error handling with support for error codes, 
- * categorization, logging, and contextual information.
- * 
- * @module core/shared/errors/AppError
+ * Consistent error class for application-level errors.
  */
 
 /**
  * Error severity levels
+ * @enum {string}
  */
 const ERROR_SEVERITY = {
-  INFO: 'info',      // Informational messages - typically not shown to users
-  WARNING: 'warning', // Warning messages - may be shown to users
-  ERROR: 'error',    // Standard errors - shown to users
-  CRITICAL: 'critical' // Critical errors - require immediate attention
+  DEBUG: 'debug',
+  INFO: 'info',
+  WARN: 'warn',
+  WARNING: 'warn', // Alias for WARN
+  ERROR: 'error',
+  FATAL: 'fatal',
+  CRITICAL: 'fatal' // Alias for FATAL
 };
 
 /**
  * Error categories
+ * @enum {string}
  */
 const ERROR_CATEGORY = {
-  VALIDATION: 'validation', // Input validation errors
-  AUTHENTICATION: 'authentication', // Auth-related errors
-  AUTHORIZATION: 'authorization', // Permission-related errors
-  DATABASE: 'database', // Database operation errors
-  EXTERNAL: 'external', // External service errors
-  NETWORK: 'network', // Network-related errors
-  INTERNAL: 'internal', // Internal application errors
-  RESOURCE: 'resource', // Resource not found or unavailable
-  CONFIG: 'config', // Configuration errors
-  UNKNOWN: 'unknown' // Uncategorized errors
+  UNKNOWN: 'unknown',
+  VALIDATION: 'validation',
+  AUTHENTICATION: 'authentication',
+  AUTHORIZATION: 'authorization',
+  DATABASE: 'database',
+  EXTERNAL: 'external',
+  NETWORK: 'network',
+  RESOURCE: 'resource',
+  CONFIG: 'config'
 };
 
 /**
- * Base application error class
+ * Application Error class
  * @extends Error
  */
 class AppError extends Error {
   /**
    * Create a new AppError
    * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   * @param {string} [options.code] - Error code (e.g. 'ERR_INVALID_INPUT')
-   * @param {string} [options.category=ERROR_CATEGORY.UNKNOWN] - Error category
-   * @param {string} [options.severity=ERROR_SEVERITY.ERROR] - Error severity
-   * @param {Object} [options.context={}] - Additional context data
-   * @param {Error} [options.cause] - Original error that caused this error
-   * @param {string} [options.userMessage] - User-friendly error message
-   * @param {string} [options.helpLink] - Link to documentation or help page
+   * @param {string|Object} [code] - Error code or options object
+   * @param {Object} [options] - Additional error options
+   * @param {Error} [options.cause] - Underlying error causing this error
+   * @param {string} [options.severity] - Error severity level
+   * @param {Object} [options.context] - Additional error context
+   * @param {string} [options.category] - Error category
+   * @param {string} [options.userMessage] - User-friendly error message 
+   * @param {string} [options.helpLink] - Link to help documentation
+   * @param {string} [options.code] - Error code (alternative to providing directly)
    */
-  constructor(message, options = {}) {
-    super(message);
+  constructor(message, code, options = {}) {
+    // Support both forms: (message, code, options) and (message, options)
+    let errorCode = 'APP_ERROR';
+    let errorOptions = {};
     
-    // Standard error properties
-    this.name = this.constructor.name;
-    
-    // Ensure stack trace points to the actual error location
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, this.constructor);
+    if (typeof code === 'string') {
+      errorCode = code;
+      errorOptions = options || {};
+    } else if (typeof code === 'object') {
+      errorOptions = code || {};
+      if (errorOptions.code) {
+        errorCode = errorOptions.code;
+      }
     }
     
-    // Set Error-specific properties
-    this.code = options.code || 'APP_ERROR';
-    this.category = options.category || ERROR_CATEGORY.UNKNOWN;
-    this.severity = options.severity || ERROR_SEVERITY.ERROR;
-    this.context = options.context || {};
-    this.cause = options.cause;
-    this.userMessage = options.userMessage || this.getUserFriendlyMessage();
-    this.helpLink = options.helpLink;
+    super(message);
+    
+    this.name = this.constructor.name;
+    this.code = errorCode;
+    this.severity = errorOptions.severity || ERROR_SEVERITY.ERROR;
+    this.category = errorOptions.category || ERROR_CATEGORY.UNKNOWN;
+    this.context = { ...(errorOptions.context || {}) };
+    this.cause = errorOptions.cause;
+    this.userMessage = errorOptions.userMessage;
+    this.helpLink = errorOptions.helpLink;
     this.timestamp = new Date();
     
-    // Add the original error's info if present
+    // Add cause to context for easy access
     if (this.cause) {
       this.context.cause = {
-        message: this.cause.message,
         name: this.cause.name,
-        stack: this.cause.stack,
-        ...(this.cause.context || {})
+        message: this.cause.message,
+        stack: this.cause.stack
       };
+    }
+    
+    // Capture stack trace
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, this.constructor);
     }
   }
   
   /**
-   * Get a user-friendly error message
-   * @returns {string} User-friendly message
+   * Create an error from an existing error
+   * @param {Error} error - Original error
+   * @param {string|Object} [code] - Error code to use or options object
+   * @param {Object} [options] - Additional error options
+   * @returns {AppError} New AppError instance or updated original if it's an AppError
+   * @static
+   */
+  static from(error, code, options = {}) {
+    // If the error is already an AppError, just add the context and return it
+    if (error instanceof AppError) {
+      const errorOptions = typeof code === 'object' ? code : options;
+      if (errorOptions.context) {
+        error.withContext(errorOptions.context);
+      }
+      return error;
+    }
+    
+    // Handle both (error, code, options) and (error, options) forms
+    let errorCode = 'CONVERTED';
+    let errorOptions = {};
+    
+    if (typeof code === 'string') {
+      errorCode = code;
+      errorOptions = options || {};
+    } else if (typeof code === 'object') {
+      errorOptions = code || {};
+    }
+    
+    return new AppError(
+      error.message,
+      errorCode,
+      {
+        cause: error,
+        ...errorOptions
+      }
+    );
+  }
+  
+  /**
+   * Create a validation error
+   * @param {string} message - Error message
+   * @param {Object} [options] - Additional error options
+   * @returns {AppError} New validation error
+   * @static
+   */
+  static validation(message, options = {}) {
+    return new AppError(
+      message,
+      'VALIDATION_ERROR',
+      {
+        severity: ERROR_SEVERITY.WARN,
+        category: ERROR_CATEGORY.VALIDATION,
+        ...options
+      }
+    );
+  }
+  
+  /**
+   * Create a not found error
+   * @param {string} entity - Entity that wasn't found
+   * @param {string} [identifier] - Identifier that was used to search
+   * @param {Object} [options] - Additional error options
+   * @returns {AppError} New not found error
+   * @static
+   */
+  static notFound(entity, identifier, options = {}) {
+    const message = identifier 
+      ? `${entity} not found with identifier: ${identifier}`
+      : `${entity} not found`;
+      
+    return new AppError(
+      message,
+      'NOT_FOUND',
+      {
+        severity: ERROR_SEVERITY.WARN,
+        category: ERROR_CATEGORY.RESOURCE,
+        context: { entity, identifier },
+        ...options
+      }
+    );
+  }
+  
+  /**
+   * Create an unauthorized error
+   * @param {string} [message] - Error message
+   * @param {Object} [options] - Additional error options
+   * @returns {AppError} New unauthorized error
+   * @static
+   */
+  static unauthorized(message = 'Unauthorized access', options = {}) {
+    return new AppError(
+      message,
+      'UNAUTHORIZED',
+      {
+        severity: ERROR_SEVERITY.WARN,
+        category: ERROR_CATEGORY.AUTHORIZATION,
+        ...options
+      }
+    );
+  }
+
+  /**
+   * Add context information to this error
+   * @param {Object} context - Context information to add
+   * @returns {AppError} this error instance for chaining
+   */
+  addContext(context) {
+    this.context = { ...this.context, ...context };
+    return this;
+  }
+  
+  /**
+   * Add context information to this error (alias for addContext)
+   * @param {Object} context - Context information to add
+   * @returns {AppError} this error instance for chaining
+   */
+  withContext(context) {
+    return this.addContext(context);
+  }
+
+  /**
+   * Get a user-friendly message for this error
+   * @returns {string} User-friendly error message
    */
   getUserFriendlyMessage() {
-    // Default implementation returns a generic message based on category
-    switch(this.category) {
+    // Return explicitly set user message if available
+    if (this._userMessage) {
+      return this._userMessage;
+    }
+    
+    // Default messages based on error category
+    switch (this.category) {
       case ERROR_CATEGORY.VALIDATION:
         return 'The provided input is invalid.';
       case ERROR_CATEGORY.AUTHENTICATION:
         return 'Authentication failed. Please sign in again.';
       case ERROR_CATEGORY.AUTHORIZATION:
-        return 'You do not have permission to perform this action.';
-      case ERROR_CATEGORY.DATABASE:
-        return 'A database error occurred. Please try again later.';
-      case ERROR_CATEGORY.EXTERNAL:
-        return 'An external service error occurred. Please try again later.';
+        return 'You are not authorized to perform this action.';
       case ERROR_CATEGORY.NETWORK:
         return 'A network error occurred. Please check your connection and try again.';
       case ERROR_CATEGORY.RESOURCE:
-        return 'The requested resource was not found.';
+        return 'The requested resource could not be found.';
+      case ERROR_CATEGORY.DATABASE:
+        return 'A database error occurred. Please try again later.';
+      case ERROR_CATEGORY.CONFIG:
+        return 'A configuration error occurred. Please contact support.';
       default:
         return 'An error occurred. Please try again later.';
     }
   }
   
   /**
-   * Add additional context to the error
-   * @param {Object} contextData - Additional context data
-   * @returns {AppError} this instance for chaining
+   * Get the user-friendly message (property accessor)
    */
-  withContext(contextData) {
-    this.context = {
-      ...this.context,
-      ...contextData
-    };
-    return this;
+  get userMessage() {
+    return this._userMessage || this.getUserFriendlyMessage();
   }
   
   /**
-   * Convert error to a plain object for logging/serialization
+   * Set the user-friendly message
+   */
+  set userMessage(value) {
+    this._userMessage = value;
+  }
+  
+  /**
+   * Format the error for logging or display
    * @param {boolean} [includeStack=true] - Whether to include stack trace
-   * @returns {Object} Plain object representation
+   * @returns {Object} Formatted error object
    */
   toJSON(includeStack = true) {
-    return {
+    const result = {
       name: this.name,
       message: this.message,
       code: this.code,
       category: this.category,
       severity: this.severity,
-      timestamp: this.timestamp,
-      context: this.context,
-      userMessage: this.userMessage,
-      helpLink: this.helpLink,
-      ...(includeStack && { stack: this.stack })
+      timestamp: this.timestamp
     };
-  }
-  
-  /**
-   * Create a new AppError from an existing Error
-   * @param {Error} error - Original error
-   * @param {Object} [options={}] - Additional options
-   * @returns {AppError} New AppError instance
-   * @static
-   */
-  static from(error, options = {}) {
-    if (error instanceof AppError) {
-      // Already an AppError, add any new context and return
-      return error.withContext(options.context || {});
+    
+    if (this._userMessage) {
+      result.userMessage = this._userMessage;
     }
     
-    return new AppError(
-      options.message || error.message, 
-      {
-        cause: error,
-        ...options
-      }
-    );
+    if (Object.keys(this.context).length > 0) {
+      result.context = this.context;
+    }
+    
+    if (this.cause) {
+      result.cause = this.cause instanceof AppError
+        ? this.cause.toJSON(includeStack)
+        : {
+            name: this.cause.name,
+            message: this.cause.message
+          };
+    }
+    
+    if (includeStack) {
+      result.stack = this.stack;
+    }
+    
+    return result;
   }
 }
 
 /**
- * Validation error class
+ * Validation Error class for handling validation-specific errors
+ * @extends AppError
  */
 class ValidationError extends AppError {
   /**
    * Create a new ValidationError
    * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   * @param {Object|Array} [options.validationErrors=[]] - Validation error details
+   * @param {Object} [options] - Additional error options
+   * @param {Object|Array} [options.validationErrors] - Specific validation errors
    */
   constructor(message, options = {}) {
-    // First create the base error without userMessage
-    super(message, {
-      code: options.code || 'ERR_VALIDATION',
+    super(message, 'ERR_VALIDATION', {
       category: ERROR_CATEGORY.VALIDATION,
       severity: ERROR_SEVERITY.WARNING,
-      ...options,
-      userMessage: undefined // Prevent base class from setting userMessage
+      ...options
     });
     
-    // Initialize validationErrors as an empty array by default
-    this.validationErrors = [];
-    
-    // Handle both array and object formats
-    if (options.validationErrors) {
-      if (Array.isArray(options.validationErrors)) {
-        this.validationErrors = options.validationErrors;
-        this._validationErrorsFormat = 'array';
-      } else if (typeof options.validationErrors === 'object') {
-        this.validationErrors = options.validationErrors;
-        this._validationErrorsFormat = 'object';
-      }
-    } else {
-      this._validationErrorsFormat = 'array';
-    }
-
-    // Now set the userMessage based on validation errors
-    this.userMessage = options.userMessage || this.getUserFriendlyMessage();
+    this.validationErrors = options.validationErrors || [];
   }
-  
+
   /**
-   * Get a user-friendly error message
-   * @returns {string} User-friendly message
+   * Get a user-friendly message for this validation error
+   * @returns {string} User-friendly error message
+   * @override
    */
   getUserFriendlyMessage() {
-    if (this._validationErrorsFormat === 'array') {
-      if (!this.validationErrors || this.validationErrors.length === 0) {
-        return 'The provided input is invalid.';
+    if (this._userMessage) {
+      return this._userMessage;
+    }
+
+    const validationErrors = this.validationErrors;
+    
+    if (!validationErrors || 
+        (Array.isArray(validationErrors) && validationErrors.length === 0) || 
+        (typeof validationErrors === 'object' && Object.keys(validationErrors).length === 0)) {
+      return 'Validation failed. Please check your input.';
+    }
+    
+    // If validationErrors is an object with a single property
+    if (typeof validationErrors === 'object' && !Array.isArray(validationErrors)) {
+      const keys = Object.keys(validationErrors);
+      if (keys.length === 1) {
+        const field = keys[0];
+        return `Invalid value for ${field}: ${validationErrors[field]}`;
       }
-      
-      if (this.validationErrors.length === 1) {
-        const error = this.validationErrors[0];
-        return `Invalid value for ${error.field}: ${error.message}`;
-      }
-      
-      return 'Multiple validation errors occurred. Please check your input.';
-    } else {
-      // Object format
-      if (!this.validationErrors || Object.keys(this.validationErrors).length === 0) {
-        return 'The provided input is invalid.';
-      }
-      
-      const fields = Object.keys(this.validationErrors);
-      if (fields.length === 1) {
-        const field = fields[0];
-        return `Invalid value for ${field}: ${this.validationErrors[field]}`;
-      }
-      
       return 'Multiple validation errors occurred. Please check your input.';
     }
+    
+    // For array format
+    if (Array.isArray(validationErrors) && validationErrors.length === 1) {
+      const error = validationErrors[0];
+      if (error.field) {
+        return `Invalid value for ${error.field}: ${error.message}`;
+      }
+      return error.message || 'Validation failed. Please check your input.';
+    }
+    
+    return 'Multiple validation errors occurred. Please check your input.';
   }
   
   /**
-   * Convert error to a plain object for logging/serialization
+   * Format the error for logging or display
    * @param {boolean} [includeStack=true] - Whether to include stack trace
-   * @returns {Object} Plain object representation
+   * @returns {Object} Formatted error object
+   * @override
    */
   toJSON(includeStack = true) {
-    return {
-      ...super.toJSON(includeStack),
-      validationErrors: this.validationErrors || {}
-    };
+    const result = super.toJSON(includeStack);
+    
+    if (this.validationErrors) {
+      result.validationErrors = this.validationErrors;
+    }
+    
+    return result;
   }
 }
 
 /**
- * Authentication error class
+ * Authentication Error class for handling auth-related errors
+ * @extends AppError
  */
 class AuthenticationError extends AppError {
-  /**
-   * Create a new AuthenticationError
-   * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   */
   constructor(message, options = {}) {
-    super(message, {
-      code: options.code || 'ERR_AUTHENTICATION',
+    super(message, 'ERR_AUTHENTICATION', {
       category: ERROR_CATEGORY.AUTHENTICATION,
       severity: ERROR_SEVERITY.ERROR,
       ...options
@@ -270,17 +393,12 @@ class AuthenticationError extends AppError {
 }
 
 /**
- * Authorization error class
+ * Authorization Error class for handling permission-related errors
+ * @extends AppError
  */
 class AuthorizationError extends AppError {
-  /**
-   * Create a new AuthorizationError
-   * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   */
   constructor(message, options = {}) {
-    super(message, {
-      code: options.code || 'ERR_AUTHORIZATION',
+    super(message, 'ERR_AUTHORIZATION', {
       category: ERROR_CATEGORY.AUTHORIZATION,
       severity: ERROR_SEVERITY.ERROR,
       ...options
@@ -289,17 +407,12 @@ class AuthorizationError extends AppError {
 }
 
 /**
- * Database error class
+ * Database Error class for handling DB-related errors
+ * @extends AppError
  */
 class DatabaseError extends AppError {
-  /**
-   * Create a new DatabaseError
-   * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   */
   constructor(message, options = {}) {
-    super(message, {
-      code: options.code || 'ERR_DATABASE',
+    super(message, 'ERR_DATABASE', {
       category: ERROR_CATEGORY.DATABASE,
       severity: ERROR_SEVERITY.ERROR,
       ...options
@@ -308,17 +421,12 @@ class DatabaseError extends AppError {
 }
 
 /**
- * Network error class
+ * Network Error class for handling network-related errors
+ * @extends AppError
  */
 class NetworkError extends AppError {
-  /**
-   * Create a new NetworkError
-   * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   */
   constructor(message, options = {}) {
-    super(message, {
-      code: options.code || 'ERR_NETWORK',
+    super(message, 'ERR_NETWORK', {
       category: ERROR_CATEGORY.NETWORK,
       severity: ERROR_SEVERITY.ERROR,
       ...options
@@ -327,52 +435,35 @@ class NetworkError extends AppError {
 }
 
 /**
- * Resource not found error class
+ * NotFound Error class for handling not found resources
+ * @extends AppError
  */
 class NotFoundError extends AppError {
-  /**
-   * Create a new NotFoundError
-   * @param {string} resourceType - Type of resource not found
-   * @param {string|number} resourceId - ID of resource not found
-   * @param {Object} [options={}] - Error options
-   */
-  constructor(resourceType, resourceId, options = {}) {
-    const message = `${resourceType} with ID '${resourceId}' not found`;
-    
-    super(message, {
-      code: options.code || 'ERR_NOT_FOUND',
+  constructor(entity, identifier, options = {}) {
+    const message = identifier 
+      ? `${entity} with ID '${identifier}' not found`
+      : `${entity} not found`;
+      
+    super(message, 'ERR_NOT_FOUND', {
       category: ERROR_CATEGORY.RESOURCE,
       severity: ERROR_SEVERITY.WARNING,
-      context: {
-        resourceType,
-        resourceId,
-        ...(options.context || {})
-      },
+      context: { resourceType: entity, resourceId: identifier },
+      userMessage: `The requested ${entity} could not be found.`,
       ...options
     });
-  }
-  
-  /**
-   * Get a user-friendly error message
-   * @returns {string} User-friendly message
-   */
-  getUserFriendlyMessage() {
-    return `The requested ${this.context.resourceType} could not be found.`;
+    
+    this.entity = entity;
+    this.identifier = identifier;
   }
 }
 
 /**
- * Configuration error class
+ * Configuration Error class for handling config-related errors
+ * @extends AppError
  */
 class ConfigurationError extends AppError {
-  /**
-   * Create a new ConfigurationError
-   * @param {string} message - Error message
-   * @param {Object} [options={}] - Error options
-   */
   constructor(message, options = {}) {
-    super(message, {
-      code: options.code || 'ERR_CONFIG',
+    super(message, 'ERR_CONFIG', {
       category: ERROR_CATEGORY.CONFIG,
       severity: ERROR_SEVERITY.ERROR,
       ...options
@@ -380,7 +471,6 @@ class ConfigurationError extends AppError {
   }
 }
 
-// Export error classes and constants
 module.exports = {
   AppError,
   ValidationError,

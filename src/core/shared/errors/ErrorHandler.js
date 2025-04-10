@@ -137,7 +137,7 @@ class ErrorHandler {
       if (typeof this.reportError.reportCriticalError === 'function') {
         this.reportError.reportCriticalError({
           message: error.message,
-          severity: 'CRITICAL'  // Use uppercase for matching test expectations
+          severity: error.severity // Use the severity directly from the error
         });
       } else if (typeof this.reportError === 'function') {
         this.reportError(error.toJSON());
@@ -157,14 +157,9 @@ class ErrorHandler {
     
     try {
       if (typeof this.reportError.reportError === 'function') {
-        // Use the original severity from the error object
-        const severityToReport = typeof error.severity === 'string' 
-          ? error.severity.toUpperCase() 
-          : 'ERROR';
-          
         this.reportError.reportError({
           message: error.message,
-          severity: severityToReport
+          severity: error.severity // Use the severity directly from the error
         });
       } else if (typeof this.reportError === 'function') {
         this.reportError(error.toJSON());
