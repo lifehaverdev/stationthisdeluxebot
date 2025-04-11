@@ -14,6 +14,7 @@ class FeatureFlags {
       useNewMakeCommand: false,
       useNewAccountPoints: false,
       useNewAccountCommands: false,
+      useInternalAPI: false,
       // Override with any provided initial values
       ...initialFlags
     };
@@ -70,11 +71,15 @@ class FeatureFlags {
 const featureFlags = new FeatureFlags({
   useNewSessionManager: true,
   // The make command flag is initially disabled for testing
-  useNewMakeCommand: false,
+  useNewMakeCommand: true,
   // Enable the new account points feature for testing
   useNewAccountPoints: true,
   // Enable account commands for Phase 3 overhaul
-  useNewAccountCommands: true
+  useNewAccountCommands: true,
+  // Enable internal API
+  useInternalAPI: true,
+  // Disable command router until fully tested
+  useNewCommandRouter: false
 });
 
 module.exports = featureFlags; 

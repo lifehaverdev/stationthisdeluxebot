@@ -20,9 +20,23 @@ const AccountPointsService = require('./core/account/points');
 const { createAccountPointsWorkflow } = require('./core/workflow/workflows/accountPoints');
 const { registerAccountCommands } = require('./commands/accountCommands');
 const { initializeTelegramIntegration } = require('./integrations/telegram');
+// Import the internal API
+const internalAPI = require('./core/internalAPI');
+// Import the web command route
+const commandRoute = require('./integrations/web/commandRoute');
+// Import the telegram command handler
+const { registerCommandHandlers } = require('./integrations/telegram/commandHandler');
+// Import the web router
+const { setupWebRouter } = require('./integrations/web/router');
+
+// Check for webonly mode
+const isWebOnly = process.argv.includes('--webonly');
 
 console.log('🚀 Starting StationThis Bot with new architecture...');
 console.log('📦 Loading environment variables and dependencies...');
+if (isWebOnly) {
+  console.log('⚠️ Running in web-only mode - Telegram polling disabled');
+}
 
 // Initialize Express app
 const app = express();
@@ -58,9 +72,10 @@ let commandRegistry;
 let workflowManager;
 
 try {
-  bot = new TelegramBot(botToken, { polling: true });
-  logger.info('Telegram bot instance created');
-  console.log('✅ Telegram bot instance created successfully');
+  // Initialize bot with polling disabled in web-only mode
+  bot = new TelegramBot(botToken, { polling: !isWebOnly });
+  logger.info('Telegram bot instance created' + (isWebOnly ? ' (polling disabled)' : ''));
+  console.log('✅ Telegram bot instance created successfully' + (isWebOnly ? ' (polling disabled)' : ''));
 
   // Initialize core services
   console.log('🧩 Initializing core services...');
@@ -87,6 +102,15 @@ try {
   });
   logger.info('Workflow manager initialized');
   console.log('  ✓ Workflow manager created');
+
+  // Initialize internal API
+  console.log('  ↳ Initializing internal API...');
+  internalAPI.setup({
+    sessionManager,
+    // Any other dependencies can be passed here
+  });
+  logger.info('Internal API initialized');
+  console.log('  ✓ Internal API initialized');
 
   // Initialize account points service
   console.log('💰 Initializing account points service...');
@@ -126,6 +150,14 @@ try {
     logger.info('Telegram integration initialized');
     console.log('  ✓ Telegram integration initialized');
     
+    // Set up Telegram command handlers via internalAPI
+    if (featureFlags.isEnabled('useInternalAPI')) {
+      console.log('  ↳ Registering Telegram commands with internal API...');
+      registerCommandHandlers(bot, commandRegistry.getAll());
+      logger.info('Telegram command handlers registered with internal API');
+      console.log('  ✓ Telegram command handlers registered with internal API');
+    }
+    
     // Add a simple ping command to verify the bot is working
     console.log('  ↳ Adding basic command handlers...');
     bot.onText(/\/ping/, (msg) => {
@@ -153,8 +185,10 @@ try {
   • Session Manager: ${sessionManager ? '✅' : '❌'}
   • Command Registry: ${commandRegistry ? '✅' : '❌'}
   • Workflow Manager: ${workflowManager ? '✅' : '❌'}
+  • Internal API: ${internalAPI ? '✅' : '❌'}
+  • Telegram Polling: ${!isWebOnly ? '✅' : '❌ (web-only mode)'}
   
-🛠 Visit the dashboard at http://localhost:3001 for more details
+🛠 Visit the dashboard at http://localhost:3001/interface for more details
       `;
       
       bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
@@ -176,7 +210,7 @@ try {
     console.log('📝 Registering account commands...');
     try {
       // Check if the points command is already registered
-      if (!commandRegistry.hasCommand('points')) {
+      if (!commandRegistry.has('points')) {
         registerAccountCommands(commandRegistry, {
           accountPointsService,
           workflowManager,
@@ -235,199 +269,77 @@ try {
   
   // Status endpoint with more detailed information
   app.get('/api/status', (req, res) => {
+    // Get command information
+    const commands = commandRegistry.getAll().map(cmd => ({
+      name: cmd.name,
+      description: cmd.description,
+      category: cmd.metadata?.category
+    }));
+
     res.json({
       status: 'ok',
       uptime: process.uptime(),
       timestamp: Date.now(),
       version: process.env.VERSION || '1.0.0',
       activeSessions: sessionManager ? sessionManager.countActiveSessions() : 'N/A',
+      commandCount: commands.length,
+      commands: commands,
       components: {
         bot: !!bot,
+        telegramPolling: !isWebOnly,
+        webOnly: isWebOnly,
         sessionManager: !!sessionManager,
         commandRegistry: !!commandRegistry,
         workflowManager: !!workflowManager,
+        internalAPI: !!internalAPI,
         featureFlags: featureFlags.getAllFlags()
       }
     });
   });
-  
-  // Web dashboard
+
+  // Mount the command route
+  if (featureFlags.isEnabled('useInternalAPI')) {
+    console.log('  ↳ Mounting command route...');
+    app.use('/api/commands', commandRoute);
+    logger.info('Command route mounted at /api/commands');
+    console.log('  ✓ Command route mounted');
+  }
+
+  // Mount the web interface
+  console.log('  ↳ Setting up web interface...');
+  const webRouter = setupWebRouter({ app });
+  app.use('/interface', webRouter);
+  logger.info('Web interface mounted at /interface');
+  console.log('  ✓ Web interface mounted');
+
+  // Legacy redirect from root to web interface
   app.get('/', (req, res) => {
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>StationThis Bot Dashboard</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 1rem;
-            }
-            header {
-              background: #5865F2;
-              color: white;
-              padding: 1rem;
-              border-radius: 0.5rem;
-              margin-bottom: 2rem;
-              text-align: center;
-            }
-            .card {
-              background: white;
-              border-radius: 0.5rem;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-              padding: 1.5rem;
-              margin-bottom: 1.5rem;
-            }
-            .status {
-              display: flex;
-              align-items: center;
-              margin-bottom: 0.5rem;
-            }
-            .status-indicator {
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              margin-right: 0.75rem;
-            }
-            .status-active {
-              background-color: #43B581;
-            }
-            .status-inactive {
-              background-color: #F04747;
-            }
-            .feature-flags {
-              display: grid;
-              grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-              gap: 1rem;
-            }
-            .feature-flag {
-              background: #f5f5f5;
-              padding: 0.5rem;
-              border-radius: 0.25rem;
-            }
-            .tag {
-              display: inline-block;
-              background: #5865F2;
-              color: white;
-              padding: 0.25rem 0.5rem;
-              border-radius: 0.25rem;
-              font-size: 0.75rem;
-              margin-right: 0.5rem;
-            }
-          </style>
-        </head>
-        <body>
-          <header>
-            <h1>StationThis Bot Dashboard</h1>
-            <p>New Architecture Status</p>
-          </header>
-          
-          <div class="card">
-            <h2>System Status</h2>
-            <div class="status">
-              <div class="status-indicator status-active"></div>
-              <span>System Active - Uptime: <span id="uptime">calculating...</span></span>
-            </div>
-            <div class="status">
-              <div class="status-indicator ${bot ? 'status-active' : 'status-inactive'}"></div>
-              <span>Telegram Bot: ${bot ? 'Connected' : 'Disconnected'}</span>
-            </div>
-            <div class="status">
-              <div class="status-indicator ${workflowManager ? 'status-active' : 'status-inactive'}"></div>
-              <span>Workflow System: ${workflowManager ? 'Active' : 'Inactive'}</span>
-            </div>
-          </div>
-          
-          <div class="card">
-            <h2>Feature Flags</h2>
-            <div class="feature-flags">
-              ${Object.entries(featureFlags.getAllFlags()).map(([key, value]) => `
-                <div class="feature-flag">
-                  <div class="status">
-                    <div class="status-indicator ${value ? 'status-active' : 'status-inactive'}"></div>
-                    <span>${key}</span>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          
-          <div class="card">
-            <h2>Quick Links</h2>
-            <p><a href="/api/health">Health Check API</a></p>
-            <p><a href="/api/status">Status API</a></p>
-          </div>
-          
-          <script>
-            // Update uptime in real-time
-            function updateUptime() {
-              fetch('/api/health')
-                .then(response => response.json())
-                .then(data => {
-                  const uptime = Math.floor(data.uptime);
-                  const hours = Math.floor(uptime / 3600);
-                  const minutes = Math.floor((uptime % 3600) / 60);
-                  const seconds = uptime % 60;
-                  
-                  document.getElementById('uptime').textContent = 
-                    \`\${hours}h \${minutes}m \${seconds}s\`;
-                })
-                .catch(error => console.error('Error fetching uptime:', error));
-            }
-            
-            // Initial update and set interval
-            updateUptime();
-            setInterval(updateUptime, 1000);
-          </script>
-        </body>
-      </html>
-    `);
-  });
-  
-  console.log('  ✓ Health endpoint configured');
-  console.log('  ✓ Status endpoint configured');
-  console.log('  ✓ Web dashboard configured');
-
-  // Start server
-  console.log('🚀 Starting Express server...');
-  const port = process.env.PORT || 3001; // Use a different port than the legacy server
-  app.listen(port, () => {
-    logger.info(`Server is running on port ${port}`);
-    logger.info('StationThis Bot is ready!');
-    console.log(`✅ Server started on port ${port}`);
-    console.log('🎉 StationThis Bot is ready!');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    res.redirect('/interface');
   });
 
-  // Handle errors
-  process.on('uncaughtException', (error) => {
-    console.error('❌ UNCAUGHT EXCEPTION:', error);
-    logger.error('Uncaught exception', { error });
+  // Start Express server
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`🌐 Express server running on port ${PORT}`);
+    logger.info(`Express server started on port ${PORT}`);
+    console.log(`🌎 Web interface available at http://localhost:${PORT}/interface`);
   });
 
-  process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ UNHANDLED REJECTION:', reason);
-    logger.error('Unhandled rejection', { reason });
-  });
-
+  console.log('✅ StationThis Bot initialization complete');
 } catch (error) {
-  console.error('❌ STARTUP ERROR:', error);
-  logger.error('Error starting bot', { error });
+  console.error('❌ Error initializing StationThis Bot:', error);
+  logger.error('Initialization failed', { error });
   process.exit(1);
 }
 
-// Export for testing
+// Export references to key components
 module.exports = {
-  app,
   bot,
-  sessionManager,
   commandRegistry,
-  workflowManager
+  sessionManager,
+  workflowManager,
+  featureFlags,
+  internalAPI,
+  app
 };
 

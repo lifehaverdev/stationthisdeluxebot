@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StationThis | Control Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="workspace-container">
+        <!-- Top HUD Bar - Floating over workspace -->
+        <div class="floating-hud">
+            <div class="status-display">
+                <div class="status-item">
+                    <span class="status-label">EXP</span>
+                    <div class="status-bar">
+                        <div class="status-fill exp-fill" style="width: 35%"></div>
+                    </div>
+                    <span class="status-value">35%</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">POINTS</span>
+                    <div class="status-bar">
+                        <div class="status-fill points-fill" style="width: 75%"></div>
+                    </div>
+                    <span class="status-value">75/100</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">CHARGE</span>
+                    <div class="charge-display">
+                        <i class="fas fa-bolt active"></i>
+                        <i class="fas fa-bolt active"></i>
+                        <i class="fas fa-bolt active"></i>
+                        <i class="fas fa-bolt"></i>
+                        <i class="fas fa-bolt"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="date-display" id="date-time">Thursday 08:11 PM</div>
+        </div>
+
+        <!-- Main Workspace Area -->
+        <div class="workspace">
+            <div class="workspace-grid" id="workspace-grid">
+                <!-- Only 2 example squares -->
+                <div class="grid-cell" data-x="0" data-y="0">
+                    <div class="cell-content">
+                        <i class="fas fa-square"></i>
+                    </div>
+                    <div class="cell-coords">(0,0)</div>
+                </div>
+                <div class="grid-cell" data-x="1" data-y="0">
+                    <div class="cell-content">
+                        <i class="fas fa-square"></i>
+                    </div>
+                    <div class="cell-coords">(1,0)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Toolbar -->
+        <div class="tools-panel">
+            <div class="tools-header">
+                <div class="user-info">
+                    <div class="user-avatar">
+                        <i class="fas fa-user-astronaut"></i>
+                    </div>
+                    <div>
+                        <div class="user-name">Commander Alex</div>
+                        <div class="user-level">Level 7</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tools-container">
+                <button class="tool-btn make-btn">
+                    <i class="fas fa-magic"></i>
+                    <span>Make</span>
+                </button>
+                <button class="tool-btn effect-btn">
+                    <i class="fas fa-wand-magic-sparkles"></i>
+                    <span>Effect</span>
+                </button>
+                <button class="tool-btn rmbg-btn">
+                    <i class="fas fa-eraser"></i>
+                    <span>RMBG</span>
+                </button>
+                <button class="tool-btn upscale-btn">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                    <span>Upscale</span>
+                </button>
+                <button class="tool-btn vidthat-btn">
+                    <i class="fas fa-film"></i>
+                    <span>VidThat</span>
+                </button>
+                <button class="tool-btn cheesethat-btn">
+                    <i class="fas fa-cheese"></i>
+                    <span>CheeseThat</span>
+                </button>
+            </div>
+            
+            <div class="resources-display">
+                <div class="resource-item">
+                    <i class="fas fa-coins"></i>
+                    <span>Credits: 4,250</span>
+                </div>
+                <div class="resource-item">
+                    <i class="fas fa-bolt"></i>
+                    <span>Energy: 75%</span>
+                </div>
+                <div class="resource-item">
+                    <i class="fas fa-microchip"></i>
+                    <span>Computing: 42%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Status Bar -->
+        <div class="bottom-bar">
+            <div class="status-left">
+                <div class="status-item">
+                    <i class="fas fa-circle status-online"></i>
+                    <span>StationThis Control Online</span>
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-server"></i>
+                    <span>v1.0.0</span>
+                </div>
+            </div>
+            
+            <div class="status-center">
+                <div class="command-input-container">
+                    <span class="command-prompt">&gt;</span>
+                    <input type="text" class="command-input" id="command-input" placeholder="Enter command...">
+                    <button type="submit" class="command-submit" id="command-submit">
+                        <i class="fas fa-terminal"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="status-right">
+                <div class="status-item">
+                    <i class="fas fa-clock"></i>
+                    <span id="uptime">Uptime: 3h 45m</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Radar Corner Element -->
+        <div class="radar-corner">
+            <div class="radar-display">
+                <div class="radar-sweep"></div>
+                <div class="radar-rings"></div>
+                <div class="radar-dots">
+                    <div class="radar-dot" style="top: 40%; left: 60%;"></div>
+                    <div class="radar-dot" style="top: 30%; left: 30%;"></div>
+                </div>
+            </div>
+            <div class="corner-connectors">
+                <div class="corner-line horizontal"></div>
+                <div class="corner-line vertical"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Output Modal -->
+    <div class="modal" id="command-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Command Output</h2>
+                <button class="close-modal" id="close-command-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="result-container" id="result-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js"></script>
+</body>
+</html> 
