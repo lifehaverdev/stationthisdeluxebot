@@ -8,6 +8,10 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const TelegramBot = require('node-telegram-bot-api');
+const path = require('path');
+
+// Import the web router
+const { setupWebRouter } = require('./integrations/web/router');
 
 console.log('🚀 Starting StationThis Simple Bot...');
 
@@ -33,15 +37,34 @@ logger.info('Initializing StationThis Simple Bot...');
 // Create Telegram bot instance
 console.log('🤖 Creating Telegram bot instance...');
 const botToken = process.env.TELEGRAM_TOKEN;
-if (!botToken) {
+const skipTelegram = process.env.SKIP_TELEGRAM === 'true';
+
+if (!botToken && !skipTelegram) {
   console.error('❌ ERROR: TELEGRAM_TOKEN environment variable is not set');
   process.exit(1);
+} else if (skipTelegram) {
+  console.log('⚠️ Telegram integration disabled by SKIP_TELEGRAM flag');
 }
 
 try {
-  const bot = new TelegramBot(botToken, { polling: true });
-  logger.info('Telegram bot instance created');
-  console.log('✅ Telegram bot instance created successfully');
+  // Create a mock bot if Telegram is skipped
+  let bot;
+  if (skipTelegram) {
+    // Create a mock bot object with the methods we use
+    bot = {
+      onText: () => {},
+      on: () => {},
+      sendMessage: () => {},
+      sendPhoto: () => {}
+    };
+    logger.info('Mock Telegram bot created (Telegram integration disabled)');
+    console.log('✅ Mock Telegram bot created successfully');
+  } else {
+    // Create a real Telegram bot
+    bot = new TelegramBot(botToken, { polling: true });
+    logger.info('Telegram bot instance created');
+    console.log('✅ Telegram bot instance created successfully');
+  }
   
   // Add simple commands
   console.log('📝 Adding basic command handlers...');
@@ -81,7 +104,7 @@ try {
     const statusMessage = `
 🤖 *StationThis Bot Status*
 ✅ *Online* | Uptime: ${hours}h ${minutes}m ${seconds}s
-🛠 Visit the dashboard at http://localhost:3001 for more details
+🛠 Visit the dashboard at http://localhost:3002/interface for more details
     `;
     
     bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
@@ -167,113 +190,16 @@ try {
     });
   });
   
-  // Simple web dashboard
+  // Mount the web interface
+  console.log('  ↳ Setting up web interface...');
+  const webRouter = setupWebRouter({ app });
+  app.use('/interface', webRouter);
+  logger.info('Web interface mounted at /interface');
+  console.log('  ✓ Web interface mounted');
+
+  // Redirect root to interface
   app.get('/', (req, res) => {
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>StationThis Bot Dashboard</title>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              line-height: 1.6;
-              color: #333;
-              max-width: 800px;
-              margin: 0 auto;
-              padding: 1rem;
-            }
-            header {
-              background: #5865F2;
-              color: white;
-              padding: 1rem;
-              border-radius: 0.5rem;
-              margin-bottom: 2rem;
-              text-align: center;
-            }
-            .card {
-              background: white;
-              border-radius: 0.5rem;
-              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-              padding: 1.5rem;
-              margin-bottom: 1.5rem;
-            }
-            .status {
-              display: flex;
-              align-items: center;
-              margin-bottom: 0.5rem;
-            }
-            .status-indicator {
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              margin-right: 0.75rem;
-            }
-            .status-active {
-              background-color: #43B581;
-            }
-          </style>
-        </head>
-        <body>
-          <header>
-            <h1>StationThis Simple Bot</h1>
-            <p>Bot Status Dashboard</p>
-          </header>
-          
-          <div class="card">
-            <h2>System Status</h2>
-            <div class="status">
-              <div class="status-indicator status-active"></div>
-              <span>System Active - Uptime: <span id="uptime">calculating...</span></span>
-            </div>
-            <div class="status">
-              <div class="status-indicator status-active"></div>
-              <span>Telegram Bot: Connected</span>
-            </div>
-          </div>
-          
-          <div class="card">
-            <h2>Bot Commands</h2>
-            <ul>
-              <li><code>/ping</code> - Check if the bot is online</li>
-              <li><code>/status</code> - View bot status</li>
-              <li><code>/make [prompt]</code> - Generate an AI image</li>
-              <li><code>/help</code> - Show help message</li>
-            </ul>
-          </div>
-          
-          <div class="card">
-            <h2>Quick Links</h2>
-            <p><a href="/api/health">Health Check API</a></p>
-            <p><a href="/api/status">Status API</a></p>
-          </div>
-          
-          <script>
-            // Update uptime in real-time
-            function updateUptime() {
-              fetch('/api/health')
-                .then(response => response.json())
-                .then(data => {
-                  const uptime = Math.floor(data.uptime);
-                  const hours = Math.floor(uptime / 3600);
-                  const minutes = Math.floor((uptime % 3600) / 60);
-                  const seconds = uptime % 60;
-                  
-                  document.getElementById('uptime').textContent = 
-                    \`\${hours}h \${minutes}m \${seconds}s\`;
-                })
-                .catch(error => console.error('Error fetching uptime:', error));
-            }
-            
-            // Initial update and set interval
-            updateUptime();
-            setInterval(updateUptime, 1000);
-          </script>
-        </body>
-      </html>
-    `);
+    res.redirect('/interface');
   });
   
   console.log('✅ Web routes configured');
@@ -283,6 +209,7 @@ try {
   app.listen(port, () => {
     logger.info(`Server is running on port ${port}`);
     console.log(`✅ Server started on port ${port}`);
+    console.log(`🌎 Web interface available at http://localhost:${port}/interface`);
     console.log('🎉 StationThis Simple Bot is ready!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   });
