@@ -6,7 +6,25 @@
  */
 
 const { EventEmitter } = require('events');
-const fetch = require('node-fetch');
+// Replace node-fetch with a conditional import for native fetch or a simple fetch function
+// const fetch = require('node-fetch');
+// Use native fetch if available, otherwise create a minimal implementation
+const fetch = (...args) => {
+  // If we're in Node 18+ or a browser, use native fetch
+  if (typeof globalThis.fetch === 'function') {
+    return globalThis.fetch(...args);
+  }
+  
+  // Very simple implementation for older Node versions - for testing only
+  // In production, you should use a proper polyfill or update to Node 18+
+  console.warn('Using fetch polyfill - consider upgrading to Node 18+ or installing node-fetch@2');
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      reject(new Error('Fetch is not available in this environment. Please use Node 18+ or install node-fetch@2'));
+    }, 10);
+  });
+};
+
 const { AppError, ERROR_SEVERITY } = require('../../core/shared/errors');
 
 /**
@@ -359,6 +377,67 @@ class ComfyClient extends EventEmitter {
         run_id: runId,
         progress: data.progress,
         timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Test connection to the ComfyDeploy API
+   * @returns {Promise<boolean>} - True if connection is successful
+   */
+  async connect() {
+    try {
+      // In development mode with a dev-key, just log a message and return success
+      if (process.env.NODE_ENV === 'development' && this.apiKey === 'dev-key') {
+        console.log('🧪 Running in development mode with mock ComfyDeploy API');
+        this.emit('connection:success', {
+          timestamp: Date.now(),
+          mock: true
+        });
+        return true;
+      }
+      
+      // Emit connection attempt event
+      this.emit('connection:attempt', {
+        timestamp: Date.now()
+      });
+      
+      // Send a simple HEAD request to the API
+      const response = await fetch(`${this.baseUrl}/health`, {
+        method: 'HEAD',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
+      
+      if (response.ok) {
+        // Emit connection success event
+        this.emit('connection:success', {
+          timestamp: Date.now()
+        });
+        
+        return true;
+      } else {
+        throw new Error(`API returned ${response.status}`);
+      }
+    } catch (error) {
+      // Emit connection error event
+      this.emit('connection:error', {
+        error: error.message,
+        timestamp: Date.now()
+      });
+      
+      // In development mode, don't throw to allow fallback to mock workflows
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to connect to ComfyDeploy API (using mock workflows):', error.message);
+        return false;
+      }
+      
+      // In production, throw as AppError
+      throw new AppError('Failed to connect to ComfyDeploy API', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'COMFY_CONNECTION_FAILED',
+        cause: error
       });
     }
   }

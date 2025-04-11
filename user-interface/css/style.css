@@ -614,4 +614,49 @@ body {
     .status-bar {
         overflow-x: auto;
     }
+}
+
+/* Add styles for the navigation menu */
+.navigation-menu {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    border-radius: 10px;
+    padding: 5px 15px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.navigation-menu ul {
+    display: flex;
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+.navigation-menu li {
+    margin: 0 5px;
+}
+
+.navigation-menu a {
+    display: block;
+    color: #ccc;
+    text-decoration: none;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    transition: color 0.3s;
+    border-bottom: 2px solid transparent;
+}
+
+.navigation-menu a:hover {
+    color: #00e5ff;
+}
+
+.navigation-menu a.active {
+    color: #00e5ff;
+    border-bottom: 2px solid #00e5ff;
 } 

@@ -62,6 +62,84 @@ class ComfyDeployService extends EventEmitter {
   }
 
   /**
+   * Initialize the service
+   * @returns {Promise<void>}
+   */
+  async initialize() {
+    try {
+      // Add some default workflows if none are provided
+      if (!this.workflows || this.workflows.length === 0) {
+        this.workflows = [
+          {
+            name: 'DEFAULT',
+            description: 'Basic text-to-image generation',
+            inputs: {
+              prompt: { 
+                type: 'text', 
+                label: 'Prompt',
+                description: 'Describe what you want to generate',
+                required: true,
+                default: ''
+              },
+              negative_prompt: { 
+                type: 'text', 
+                label: 'Negative Prompt',
+                description: 'Things you want to avoid in the image',
+                required: false,
+                default: ''
+              },
+              width: { 
+                type: 'number', 
+                label: 'Width',
+                min: 512,
+                max: 2048,
+                step: 64,
+                default: 1024
+              },
+              height: { 
+                type: 'number', 
+                label: 'Height',
+                min: 512,
+                max: 2048,
+                step: 64,
+                default: 1024
+              }
+            }
+          },
+          {
+            name: 'UPSCALE',
+            description: 'Upscale an existing image',
+            inputs: {
+              image: { 
+                type: 'file', 
+                label: 'Image',
+                description: 'Image to upscale',
+                required: true
+              },
+              scale: { 
+                type: 'number', 
+                label: 'Scale Factor',
+                min: 1,
+                max: 4,
+                step: 1,
+                default: 2
+              }
+            }
+          }
+        ];
+      }
+      
+      // Connect to the client
+      await this.client.connect();
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize ComfyDeployService:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate an image using ComfyDeploy
    * @param {GenerationRequest|Object} promptObj - Generation request or prompt object
    * @param {Object} userContext - User context information
@@ -293,6 +371,25 @@ class ComfyDeployService extends EventEmitter {
         });
       });
     });
+  }
+
+  /**
+   * Get available workflows
+   * @returns {Array} - List of available workflows
+   */
+  getAvailableWorkflows() {
+    try {
+      // Return the workflows with minimal information needed by the frontend
+      return this.workflows.map(workflow => ({
+        id: workflow.name,
+        name: workflow.name,
+        description: workflow.description || workflow.name,
+        parameters: workflow.inputs || {}
+      }));
+    } catch (error) {
+      console.error('Error getting available workflows:', error);
+      return [];
+    }
   }
 }
 

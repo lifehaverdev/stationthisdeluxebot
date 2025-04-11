@@ -5,24 +5,25 @@
  * Manages command registration, discovery, and metadata.
  */
 
-const { AppError, ERROR_SEVERITY } = require('../shared/errors');
+const { Command } = require('./Command');
+const { AppError } = require('../shared/errors/AppError');
+const featureFlags = require('../../config/featureFlags');
+const fs = require('fs');
+const path = require('path');
+
+// Singleton instance
+let instance = null;
 
 class CommandRegistry {
-  /**
-   * Singleton instance
-   * @type {CommandRegistry}
-   */
-  static #instance;
-
   /**
    * Get the singleton instance of CommandRegistry
    * @returns {CommandRegistry}
    */
   static getInstance() {
-    if (!CommandRegistry.#instance) {
-      CommandRegistry.#instance = new CommandRegistry();
+    if (!instance) {
+      instance = new CommandRegistry();
     }
-    return CommandRegistry.#instance;
+    return instance;
   }
 
   /**
@@ -46,6 +47,35 @@ class CommandRegistry {
      * @type {Map<string, Set<string>>}
      */
     this.categories = new Map();
+    
+    // Auto-register commands if enabled
+    this.autoRegisterCommands();
+  }
+
+  /**
+   * Auto-register commands from dedicated folder
+   */
+  autoRegisterCommands() {
+    try {
+      // Register workflow commands if feature flag is enabled
+      if (featureFlags.isEnabled('useServices')) {
+        try {
+          // Load workflow commands
+          const workflowsCommand = require('../../commands/workflowsCommand');
+          const workflowCommand = require('../../commands/workflowCommand');
+          
+          // Register workflow commands
+          this.register(workflowsCommand);
+          this.register(workflowCommand);
+          
+          console.log('Workflow commands registered');
+        } catch (error) {
+          console.warn('Error registering workflow commands:', error.message);
+        }
+      }
+    } catch (error) {
+      console.warn('Error auto-registering commands:', error.message);
+    }
   }
 
   /**
@@ -62,21 +92,18 @@ class CommandRegistry {
     // Validate command structure
     if (!command || typeof command !== 'object') {
       throw new AppError('Invalid command definition', {
-        severity: ERROR_SEVERITY.ERROR,
         code: 'INVALID_COMMAND_DEFINITION'
       });
     }
 
     if (!command.name || typeof command.name !== 'string') {
       throw new AppError('Command must have a name', {
-        severity: ERROR_SEVERITY.ERROR,
         code: 'MISSING_COMMAND_NAME'
       });
     }
 
     if (!command.execute || typeof command.execute !== 'function') {
       throw new AppError(`Command '${command.name}' must have an execute function`, {
-        severity: ERROR_SEVERITY.ERROR,
         code: 'MISSING_COMMAND_EXECUTE'
       });
     }
@@ -84,7 +111,6 @@ class CommandRegistry {
     // Check if command already exists
     if (this.commands.has(command.name)) {
       throw new AppError(`Command '${command.name}' is already registered`, {
-        severity: ERROR_SEVERITY.ERROR,
         code: 'COMMAND_ALREADY_REGISTERED'
       });
     }

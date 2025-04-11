@@ -8,7 +8,7 @@
  */
 
 const { createSessionAdapter } = require('../session/adapter');
-const { EVENT_TYPES } = require('../../db/models/analyticsEvents');
+const { EVENT_TYPES } = require('../../db/models/analyticsEventsRepository');
 
 class AnalyticsEventsAdapter {
   /**
@@ -247,27 +247,35 @@ class AnalyticsEventsAdapter {
   }
 
   /**
-   * Track an error
+   * Track an error event
    * @param {Error} error - Error object
-   * @param {Object} context - Context information
+   * @param {Object} context - Error context
    * @returns {Promise<Object>} - Mock response
    */
   async trackError(error, context) {
+    // Generate a unique run ID for the error
+    const errorId = `error_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    
+    const userId = context.userId || (context.message?.from?.id || 0);
+    const username = context.username || (context.message?.from?.username || 'unknown');
+    
     const event = {
       type: EVENT_TYPES.ERROR,
+      userId,
+      username,
       timestamp: new Date(),
       data: {
-        error: {
-          message: error.message,
-          stack: error.stack,
-          code: error.code
-        },
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
         context
-      }
+      },
+      groupId: context.groupId || (context.message?.chat?.id < 0 ? context.message?.chat?.id : null),
+      runId: context.runId || errorId
     };
 
     return this.updateOne(
-      { timestamp: event.timestamp, type: EVENT_TYPES.ERROR },
+      { runId: context.runId || errorId, type: EVENT_TYPES.ERROR },
       event,
       { upsert: true }
     );
@@ -282,26 +290,24 @@ class AnalyticsEventsAdapter {
    */
   async trackMenuInteraction(callbackQuery, action, isCustom = false) {
     const event = {
-      type: EVENT_TYPES.MENU,
+      type: EVENT_TYPES.MENU_INTERACTION,
       userId: callbackQuery.from.id,
       username: callbackQuery.from.username,
       timestamp: new Date(),
       data: {
         action,
         isCustomAction: isCustom,
-        chatType: callbackQuery.message.chat.type,
-        messageThreadId: callbackQuery.message.message_thread_id || null,
-        replyToMessage: !!callbackQuery.message.reply_to_message,
-        callbackMessageId: callbackQuery.message.message_id
+        data: callbackQuery.data,
+        inlineMessageId: callbackQuery.inline_message_id || null,
+        messageId: callbackQuery.message?.message_id,
+        chatInstance: callbackQuery.chat_instance
       },
-      groupId: callbackQuery.message.chat.id < 0 ? callbackQuery.message.chat.id : null
+      groupId: callbackQuery.message?.chat.id < 0 ? callbackQuery.message?.chat.id : null,
+      messageId: callbackQuery.message?.message_id
     };
 
     return this.updateOne(
-      { 
-        runId: `${callbackQuery.message.message_id}_${callbackQuery.id}`, 
-        type: EVENT_TYPES.MENU 
-      },
+      { messageId: callbackQuery.message?.message_id, type: EVENT_TYPES.MENU_INTERACTION },
       event,
       { upsert: true }
     );
@@ -309,63 +315,64 @@ class AnalyticsEventsAdapter {
 
   /**
    * Track a user join event
-   * @param {string} userId - User ID
+   * @param {number|string} userId - User ID
    * @param {string} username - Username
    * @param {boolean} isFirstTime - Whether it's the first time
    * @returns {Promise<Object>} - Mock response
    */
   async trackUserJoin(userId, username, isFirstTime = false) {
-    // Get user session data from SessionAdapter instead of direct lobby access
-    const sessionData = await this.sessionAdapter.getUserSessionData(userId);
-    
     const event = {
-      type: EVENT_TYPES.USER_STATE,
+      type: EVENT_TYPES.USER_JOIN,
       userId,
       username,
       timestamp: new Date(),
       data: {
-        eventType: isFirstTime ? 'first_join' : 'check_in',
-        kickedAt: sessionData?.kickedAt || null,
-        verified: sessionData?.verified || false
-      },
-      groupId: null
+        isFirstTime,
+        source: 'unknown'
+      }
     };
 
     return this.updateOne(
-      { userId, type: EVENT_TYPES.USER_STATE, timestamp: event.timestamp },
+      { userId, type: EVENT_TYPES.USER_JOIN },
       event,
       { upsert: true }
     );
   }
 
   /**
-   * Track a user kick event
-   * @param {string} userId - User ID
+   * Track a user leave event
+   * @param {number|string} userId - User ID
    * @param {string} username - Username
-   * @param {string} reason - Reason for kick
+   * @param {string} reason - Reason for leaving
    * @returns {Promise<Object>} - Mock response
    */
   async trackUserKick(userId, username, reason = 'inactivity') {
-    // Get user session data from SessionAdapter instead of direct lobby access
-    const sessionData = await this.sessionAdapter.getUserSessionData(userId);
-    const lastTouch = sessionData?.lastTouch || Date.now();
+    // First check if we have a join record for the user
+    const previousJoin = await this.sessionAdapter.query(
+      async (db) => {
+        return db.collection(this.collectionsName).findOne({
+          userId,
+          type: EVENT_TYPES.USER_JOIN
+        });
+      }
+    );
     
     const event = {
-      type: EVENT_TYPES.USER_STATE,
+      type: EVENT_TYPES.USER_LEAVE,
       userId,
       username,
       timestamp: new Date(),
       data: {
-        eventType: 'kicked',
         reason,
-        lastTouch,
-        timeSinceLastTouch: Date.now() - lastTouch
-      },
-      groupId: null
+        joinTimestamp: previousJoin?.timestamp || null,
+        durationDays: previousJoin?.timestamp 
+          ? Math.floor((Date.now() - new Date(previousJoin.timestamp).getTime()) / (1000 * 60 * 60 * 24))
+          : null
+      }
     };
 
     return this.updateOne(
-      { userId, type: EVENT_TYPES.USER_STATE, timestamp: event.timestamp },
+      { userId, type: EVENT_TYPES.USER_LEAVE },
       event,
       { upsert: true }
     );
@@ -374,7 +381,7 @@ class AnalyticsEventsAdapter {
   /**
    * Track a gatekeeping event
    * @param {Object} message - Message object
-   * @param {string} reason - Reason string
+   * @param {string} reason - Reason for gatekeeping
    * @param {Object} details - Additional details
    * @returns {Promise<Object>} - Mock response
    */
@@ -385,19 +392,17 @@ class AnalyticsEventsAdapter {
       username: message.from.username,
       timestamp: new Date(),
       data: {
-        eventType: reason,
+        reason,
         chatType: message.chat.type,
+        messageId: message.message_id,
         ...details
       },
-      groupId: message.chat.id < 0 ? message.chat.id : null
+      groupId: message.chat.id < 0 ? message.chat.id : null,
+      messageId: message.message_id
     };
 
     return this.updateOne(
-      { 
-        userId: message.from.id, 
-        type: EVENT_TYPES.GATEKEEPING, 
-        timestamp: event.timestamp 
-      },
+      { messageId: message.message_id, type: EVENT_TYPES.GATEKEEPING },
       event,
       { upsert: true }
     );
@@ -405,10 +410,10 @@ class AnalyticsEventsAdapter {
 
   /**
    * Track an asset check event
-   * @param {string} userId - User ID
+   * @param {number|string} userId - User ID
    * @param {string} username - Username
    * @param {string} checkType - Check type
-   * @param {string} result - Result string
+   * @param {boolean} result - Check result
    * @param {Object} details - Additional details
    * @returns {Promise<Object>} - Mock response
    */
@@ -419,15 +424,14 @@ class AnalyticsEventsAdapter {
       username,
       timestamp: new Date(),
       data: {
-        eventType: checkType,
+        checkType,
         result,
         ...details
-      },
-      groupId: null
+      }
     };
 
     return this.updateOne(
-      { userId, type: EVENT_TYPES.ASSET_CHECK, timestamp: event.timestamp },
+      { userId, type: EVENT_TYPES.ASSET_CHECK, 'data.checkType': checkType },
       event,
       { upsert: true }
     );
@@ -443,20 +447,22 @@ class AnalyticsEventsAdapter {
    */
   async trackAccountAction(message, action, success, details = {}) {
     const event = {
-      type: EVENT_TYPES.ACCOUNT,
+      type: EVENT_TYPES.ACCOUNT_ACTION,
       userId: message.from.id,
       username: message.from.username,
       timestamp: new Date(),
       data: {
         action,
         success,
+        messageId: message.message_id,
         ...details
       },
-      groupId: null
+      groupId: message.chat.id < 0 ? message.chat.id : null,
+      messageId: message.message_id
     };
 
     return this.updateOne(
-      { userId: message.from.id, type: EVENT_TYPES.ACCOUNT, timestamp: event.timestamp },
+      { messageId: message.message_id, type: EVENT_TYPES.ACCOUNT_ACTION },
       event,
       { upsert: true }
     );
@@ -470,9 +476,6 @@ class AnalyticsEventsAdapter {
    * @returns {Promise<Object>} - Mock response
    */
   async trackVerification(message, success, details = {}) {
-    // Get user session data from SessionAdapter instead of direct lobby access
-    const sessionData = await this.sessionAdapter.getUserSessionData(message.from.id);
-    
     const event = {
       type: EVENT_TYPES.VERIFICATION,
       userId: message.from.id,
@@ -480,14 +483,15 @@ class AnalyticsEventsAdapter {
       timestamp: new Date(),
       data: {
         success,
-        wallet: sessionData?.wallet || null,
+        messageId: message.message_id,
         ...details
       },
-      groupId: null
+      groupId: message.chat.id < 0 ? message.chat.id : null,
+      messageId: message.message_id
     };
 
     return this.updateOne(
-      { userId: message.from.id, type: EVENT_TYPES.VERIFICATION, timestamp: event.timestamp },
+      { messageId: message.message_id, type: EVENT_TYPES.VERIFICATION },
       event,
       { upsert: true }
     );
@@ -496,16 +500,16 @@ class AnalyticsEventsAdapter {
 
 /**
  * Create a new AnalyticsEventsAdapter
- * @param {Object} options - Configuration options
- * @returns {AnalyticsEventsAdapter} - New adapter instance
+ * @param {Object} options - Options for the adapter
+ * @returns {AnalyticsEventsAdapter} - The adapter instance
  */
 function createAnalyticsEventsAdapter(options = {}) {
-  // If no sessionAdapter is provided, create one
+  // Create a session adapter if not provided
   const sessionAdapter = options.sessionAdapter || createSessionAdapter();
   
   return new AnalyticsEventsAdapter({
-    ...options,
-    sessionAdapter
+    sessionAdapter,
+    ...options
   });
 }
 

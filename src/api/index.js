@@ -1,5 +1,18 @@
+/**
+ * API Entry Point
+ * 
+ * This module sets up the Express API server and routes.
+ * It provides HTTP access to the internal API functionality.
+ */
+
 const express = require('express');
-const router = express.Router();
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const { Logger } = require('../utils/logger');
+const internalAPI = require('../core/internalAPI');
+const { SessionManager } = require('../core/session/manager');
+const webhookRoutes = require('./routes/webhookRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
 const { flows, waiting, successors } = require('../bot/core/core')
 const { sendPrivateMessage } = require('../bot/utils')
 const { defaultUserData } = require('../bot/core/users/defaultUserData');
@@ -11,222 +24,195 @@ const { handleApiCompletion } = require('../bot/business/queue');
 // Track ongoing generations
 const activeGenerations = new Map();
 
-// Image generation endpoint
-router.post('/generations', async (req, res) => {
-  try {
-    // Get API key from Authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        error: {
-          message: "Missing or invalid Authorization header",
-          type: "authentication_error"
-        }
+// Initialize logger
+const logger = new Logger({
+  level: process.env.LOG_LEVEL || 'info',
+  name: 'api'
+});
+
+/**
+ * Create and configure API server
+ * @param {Object} options - API server options
+ * @param {SessionManager} options.sessionManager - Session manager instance
+ * @returns {Object} - Express app instance
+ */
+function createAPIServer(options = {}) {
+  // Get session manager from options or create new one
+  const sessionManager = options.sessionManager || new SessionManager();
+
+  // Initialize internal API
+  internalAPI.setup({
+    sessionManager
+  });
+
+  // Create Express app
+  const app = express();
+
+  // Configure middleware
+  app.use(cors());
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ extended: true }));
+
+  // Request logging middleware
+  app.use((req, res, next) => {
+    logger.info(`${req.method} ${req.url}`, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+    next();
+  });
+
+  // Mount routes
+  app.use('/api/webhooks', webhookRoutes);
+  app.use('/api/services', serviceRoutes);
+
+  // API routes
+  app.post('/api/commands/:command', async (req, res) => {
+    try {
+      const { command } = req.params;
+      const { args = {}, userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          status: 'error',
+          error: 'userId is required'
+        });
+      }
+
+      const result = await internalAPI.runCommand(command, args, { userId });
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in command endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
       });
     }
-    const apiKey = authHeader.split(' ')[1];
-
-    // Authenticate and get user context
-    const userContext = await authenticateApiUser(apiKey);
-
-    const { ids, inputs } = getDeploymentIdByType('MAKE');
-
-    // Get the workflow from our flows
-    const workflow = flows.find(flow => flow.name === 'MAKE'); // Default to MAKE for now
-    if (!workflow) {
-        return res.status(400).json({
-            error: {
-                message: "Invalid workflow type",
-                type: "invalid_workflow_error"
-            }
-        });
-    }
-
-    // Create a simplified message object that mimics Telegram structure
-    const message = {
-        from: {
-            id: userContext.userId,
-            username: 'api_user',
-        },
-        chat: {
-            id: `${userContext.userId}`
-        },
-        
-    };
-
-    const watermarkPrompt = 'in the bottom right corner of the image is a tiny imperceptible star'
-    // Set up userContext with the prompt from the request
-    userContext.prompt = req.body.prompt ;//+ '\n' + watermarkPrompt;
-    userContext.type = 'MAKE'; // Set the type in userContext
-        
-    // Use our existing function to build the promptObj
-    const promptObj = buildPromptObjFromWorkflow(
-        workflow,           // The actual workflow object from flows
-        userContext,        // user context with preferences
-        message            // simplified message object
-    );
-    promptObj.isAPI = true;
-    
-    // Create an API-specific task
-    const apiTask = {
-        message,
-        promptObj,
-        timestamp: Date.now(),
-        isApiRequest: true, // Special flag for API requests
-    };
-
-    // Generate directly (skipping queue)
-    const run_id = await generate(promptObj);
-
-    if (run_id !== -1 && run_id !== undefined) {
-        // Add to waiting array with API identifier
-        waiting.push({
-            ...apiTask,
-            run_id,
-            timestamp: Date.now(),
-            isAPI: true,
-            awaitedRequest: req.body.wait === true // Flag for synchronous requests
-        });
-
-        // If wait parameter is true, wait for completion
-        if (req.body.wait === true) {
-            try {
-                const result = await new Promise((resolve, reject) => {
-                    const checkInterval = setInterval(async() => {
-                        const task = waiting.find(t => t.run_id === run_id);
-                        if (!task) {
-                            // The task might have been removed from waiting array after completion
-                            // Check successors array too
-                            const successTask = successors.find(t => t.run_id === run_id);
-                            if (successTask) {
-                                clearInterval(checkInterval);
-                                // Format the response using handleApiCompletion
-                                const formattedResult = await handleApiCompletion(successTask);
-                                resolve(formattedResult);
-                                return;
-                            }
-                            clearInterval(checkInterval);
-                            reject(new Error('Task not found'));
-                            return;
-                        }
-                        
-                        if (task.status === 'success') {
-                            clearInterval(checkInterval);
-                            // Don't handle completion here, let handleTaskCompletion do it
-                            resolve(task.final);
-                        } else if (task.status === 'failed') {
-                            clearInterval(checkInterval);
-                            reject(new Error('Generation failed'));
-                        }
-                    }, 1000);
-
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        reject(new Error('Generation timed out'));
-                    }, 300000);
-                });
-
-                return res.json(result);
-            } catch (error) {
-                return res.status(500).json({
-                    error: {
-                        message: error.message,
-                        type: 'generation_error'
-                    }
-                });
-            }
-        }
-    }
-
-    // Immediately return the run ID
-    res.status(202).json({
-      status: 'processing',
-      run_id,
-      message: 'Generation started. You will be notified via webhook when complete.'
-    });
-
-    
-
-  } catch (error) {
-    console.error('Error initiating generation:', error);
-    res.status(500).json({
-      error: {
-        message: 'Failed to initiate generation',
-        type: 'internal_server_error'
-      }
-    });
-  }
-});
-
-// Progress checking endpoint
-router.get('/generations/:runId', (req, res) => {
-  const { runId } = req.params;
-  const generation = activeGenerations.get(runId);
-  
-  if (!generation) {
-    return res.status(404).json({
-      error: {
-        message: 'Generation not found or already complete',
-        type: 'not_found_error'
-      }
-    });
-  }
-
-  res.json({
-    status: generation.status,
-    progress: generation.progress,
-    run_id: runId
   });
-});
 
-// Pseudo code for api/index.js
-
-async function authenticateApiUser(apiKey) {
+  app.get('/api/users/:userId/session', async (req, res) => {
     try {
-        // 1. Search UserCore for matching API key
-        // We'll need to add an apiKey field to UserCore schema
-        const userCoreData = new UserCore();
-        const userCore = await userCoreData.findOne({ apiKey: apiKey });
-        if (!userCore) {
-            throw new Error('Invalid API key');
-        }
-
-        // 2. Get user's economic data (for qoints balance)
-        const userEconomyData = new UserEconomy();
-        const userEconomy = await userEconomyData.findOne({ userId: userCore.userId });
-        if (!userEconomy || !userEconomy.qoints || userEconomy.qoints < 50) {
-            throw new Error('Insufficient qoints');
-        }
-        if(userEconomy.qoints < 1000){
-          try{
-            await sendPrivateMessage(
-              userCore.userId, 
-              {from: {id: userCore.userId}, chat: {id: userCore.userId}, text: 'fake message'},
-              `You have ${userEconomy.qoints} charge left to use the API. That is probably ${Math.floor(userEconomy.qoints / 100)} images. You can buy qoints using the connected wallet ${userCore.wallet} at https://miladystation2.net/charge`
-            )
-          } catch(error){
-            console.error('Error sending private message to alert api low charge message:', error);
-          }
-        }
-
-        // 3. Get user's preferences (for generation settings)
-        const userPrefData = new UserPref();
-        const userPref = await userPrefData.findOne({ userId: userCore.userId });
-
-        // 4. Combine into a user context object similar to what we use for Telegram
-        const userContext = {
-            ...defaultUserData, // Base defaults
-            ...userCore,        // Core data
-            ...userEconomy,     // Economic data (qoints)
-            ...userPref,        // User preferences
-            type: 'MAKE'        // Default type for API requests
-        };
-
-        return userContext;
+      const { userId } = req.params;
+      const result = await internalAPI.getSession(userId);
+      res.json(result);
     } catch (error) {
-        console.error('Authentication error:', error);
-        throw error;
+      logger.error('Error in session endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
     }
+  });
+
+  app.post('/api/users/:userId/tasks', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { taskName, payload = {} } = req.body;
+
+      if (!taskName) {
+        return res.status(400).json({
+          status: 'error',
+          error: 'taskName is required'
+        });
+      }
+
+      const result = await internalAPI.startTask(taskName, payload, { userId });
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in task endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  app.post('/api/users', async (req, res) => {
+    try {
+      const userData = req.body;
+      const result = await internalAPI.createUser(userData);
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in create user endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  app.put('/api/users/:userId/preferences', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const preferences = req.body;
+      const result = await internalAPI.updateUserPreferences(userId, preferences);
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in update preferences endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  app.get('/api/users/:userId/credit', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const result = await internalAPI.getUserCredit(userId);
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in get credit endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  app.post('/api/users/:userId/credit', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount, source } = req.body;
+
+      if (!amount || typeof amount !== 'number') {
+        return res.status(400).json({
+          status: 'error',
+          error: 'amount is required and must be a number'
+        });
+      }
+
+      const result = await internalAPI.addUserCredit(userId, amount, source);
+      res.json(result);
+    } catch (error) {
+      logger.error('Error in add credit endpoint', { error });
+      res.status(500).json({
+        status: 'error',
+        error: error.message || 'Internal server error'
+      });
+    }
+  });
+
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // Error handling middleware
+  app.use((err, req, res, next) => {
+    logger.error('Unhandled error', { error: err });
+    res.status(500).json({
+      status: 'error',
+      error: err.message || 'Internal server error'
+    });
+  });
+
+  return app;
 }
 
-module.exports = router;
+module.exports = {
+  createAPIServer
+};

@@ -1,85 +1,72 @@
 /**
- * Feature flags management for controlling rollout of new components
+ * Feature Flags Configuration
  * 
- * This system allows gradual rollout of new features with easy rollback capability
+ * Controls which new architecture features are enabled.
+ * This is used during the transition from legacy to new architecture.
  */
 
-class FeatureFlags {
-  constructor(initialFlags = {}) {
-    this.flags = {
-      // Default all flags to false
-      useNewSessionManager: false,
-      useNewErrorHandler: false,
-      useNewCommandRouter: false,
-      useNewMakeCommand: false,
-      useNewAccountPoints: false,
-      useNewAccountCommands: false,
-      useInternalAPI: false,
-      // Override with any provided initial values
-      ...initialFlags
-    };
-  }
+const environmentOverrides = process.env.FEATURE_FLAGS ? 
+  JSON.parse(process.env.FEATURE_FLAGS) : {};
 
-  /**
-   * Check if a feature flag is enabled
-   * @param {string} flagName - Name of the flag to check
-   * @returns {boolean} - Whether the flag is enabled
-   */
-  isEnabled(flagName) {
-    if (!this.flags.hasOwnProperty(flagName)) {
-      console.warn(`Unknown feature flag checked: ${flagName}`);
-      return false;
-    }
-    return this.flags[flagName];
-  }
+// Default feature flag settings
+const featureFlags = {
+  // Account-related features
+  useNewAccountPoints: false,
+  useNewAccountCommands: false,
+  
+  // Service-related features
+  useServices: true,  // Make sure this is always true
+  
+  // Integration-related features
+  useInternalAPI: true,
+  
+  // Additional features
+  enableLogging: true,
+  enableMetrics: false,
+  
+  // Override from environment
+  ...environmentOverrides
+};
 
-  /**
-   * Enable a feature flag
-   * @param {string} flagName - Name of the flag to enable
-   */
-  enable(flagName) {
-    if (!this.flags.hasOwnProperty(flagName)) {
-      console.warn(`Unknown feature flag enabled: ${flagName}`);
-    }
-    this.flags[flagName] = true;
-    console.log(`Feature flag enabled: ${flagName}`);
-  }
-
-  /**
-   * Disable a feature flag
-   * @param {string} flagName - Name of the flag to disable
-   */
-  disable(flagName) {
-    if (!this.flags.hasOwnProperty(flagName)) {
-      console.warn(`Unknown feature flag disabled: ${flagName}`);
-    }
-    this.flags[flagName] = false;
-    console.log(`Feature flag disabled: ${flagName}`);
-  }
-
-  /**
-   * Get all feature flags and their status
-   * @returns {Object} - All flags with their current values
-   */
-  getAllFlags() {
-    return { ...this.flags };
-  }
+/**
+ * Check if a feature flag is enabled
+ * @param {string} flag - The feature flag to check
+ * @returns {boolean} Whether the feature is enabled
+ */
+function isEnabled(flag) {
+  return featureFlags[flag] === true;
 }
 
-// Export a singleton instance with default settings
-// Enable the session manager for our initial integration
-const featureFlags = new FeatureFlags({
-  useNewSessionManager: true,
-  // The make command flag is initially disabled for testing
-  useNewMakeCommand: true,
-  // Enable the new account points feature for testing
-  useNewAccountPoints: true,
-  // Enable account commands for Phase 3 overhaul
-  useNewAccountCommands: true,
-  // Enable internal API
-  useInternalAPI: true,
-  // Disable command router until fully tested
-  useNewCommandRouter: false
-});
+/**
+ * Get the value of a feature flag
+ * @param {string} flag - The feature flag to get
+ * @returns {*} The feature flag value
+ */
+function get(flag) {
+  return featureFlags[flag];
+}
 
-module.exports = featureFlags; 
+/**
+ * Set a feature flag
+ * @param {string} flag - The feature flag to set
+ * @param {*} value - The value to set
+ * @returns {void}
+ */
+function set(flag, value) {
+  featureFlags[flag] = value;
+}
+
+/**
+ * Get all feature flags
+ * @returns {Object} All feature flags
+ */
+function getAllFlags() {
+  return { ...featureFlags };
+}
+
+module.exports = {
+  isEnabled,
+  get,
+  set,
+  getAllFlags
+}; 

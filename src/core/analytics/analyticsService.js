@@ -1,114 +1,272 @@
-const { AnalyticsEvents, EVENT_TYPES } = require('../../db/models/analyticsEvents');
+/**
+ * Analytics Service
+ * 
+ * High-level service for tracking user activities and application events.
+ * Provides a simplified interface over the AnalyticsEventsAdapter.
+ */
+
+const { AnalyticsEventsAdapter, createAnalyticsEventsAdapter } = require('./analyticsEventsAdapter');
+const { EVENT_TYPES } = require('../../db/models/analyticsEventsRepository');
 
 /**
- * Service that handles analytics operations with decoupled session access
+ * Analytics Service
+ * Provides high-level methods for tracking user activities
  */
 class AnalyticsService {
   /**
-   * @param {Object} options
-   * @param {Object} options.sessionAdapter - Session adapter instance
-   * @param {Object} options.analyticsEvents - Optional instance of AnalyticsEvents
+   * Create a new AnalyticsService
+   * @param {Object} options - Configuration options
+   * @param {AnalyticsEventsAdapter} options.adapter - The analytics adapter to use
+   * @param {boolean} [options.enabled=true] - Whether analytics is enabled
    */
-  constructor({ sessionAdapter, analyticsEvents = null }) {
-    this.sessionAdapter = sessionAdapter;
-    this.analytics = analyticsEvents || new AnalyticsEvents();
-    this.EVENT_TYPES = EVENT_TYPES;
+  constructor(options) {
+    this.adapter = options.adapter;
+    this.enabled = options.enabled !== false;
+    
+    // Bind methods to ensure proper this context
+    this.trackCommand = this.trackCommand.bind(this);
+    this.trackCompletion = this.trackCompletion.bind(this);
+    this.trackError = this.trackError.bind(this);
+    this.trackUserAction = this.trackUserAction.bind(this);
+    this.trackWorkflow = this.trackWorkflow.bind(this);
   }
 
   /**
-   * Tracks a user joining event
-   * @param {number|string} userId - User ID
-   * @param {string} username - Username
-   * @param {string} source - Origin of the join
-   * @param {Object} details - Additional details
-   * @returns {Promise<any>} - Result of tracking operation
+   * Check if analytics is enabled before tracking
+   * @private
+   * @returns {boolean} - Whether to proceed with tracking
    */
-  async trackUserJoin(userId, username, source, details = {}) {
-    const userData = await this.sessionAdapter.getUserAnalyticsData(userId);
-    return this.analytics.trackUserJoin(userId, username, source, details);
+  _checkEnabled() {
+    if (!this.enabled) {
+      return false;
+    }
+    
+    if (!this.adapter) {
+      console.warn('Analytics adapter not available');
+      return false;
+    }
+    
+    return true;
   }
 
   /**
-   * Tracks a user kick event
-   * @param {number|string} userId - User ID 
-   * @param {string} username - Username
-   * @param {string} reason - Reason for kicking
-   * @returns {Promise<any>} - Result of tracking operation
+   * Track a user command
+   * @param {Object} command - Command object
+   * @param {Object} user - User object
+   * @param {Object} context - Additional context
+   * @returns {Promise<Object>} - Tracking result
    */
-  async trackUserKick(userId, username, reason) {
-    const userData = await this.sessionAdapter.getUserAnalyticsData(userId);
-    return this.analytics.trackUserKick(
-      userId, 
-      username, 
-      reason,
-      {
-        lastTouch: userData.lastTouch,
-        timeSinceLastTouch: userData.timeSinceLastTouch
-      }
-    );
+  async trackCommand(command, user, context = {}) {
+    if (!this._checkEnabled()) return null;
+    
+    try {
+      const event = {
+        type: EVENT_TYPES.COMMAND,
+        userId: user.id,
+        username: user.username || 'unknown',
+        timestamp: new Date(),
+        data: {
+          command: command.name,
+          args: command.args,
+          source: context.source || 'unknown',
+          interface: context.interface || 'unknown',
+          success: context.success !== false,
+          duration: context.duration || 0,
+          ...context.extra
+        }
+      };
+      
+      return await this.adapter.updateOne(
+        { userId: user.id, type: EVENT_TYPES.COMMAND, timestamp: event.timestamp },
+        event,
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error('Error tracking command:', error);
+      return null;
+    }
   }
 
   /**
-   * Tracks a verification event
-   * @param {Object} message - Message object
-   * @param {boolean} success - Whether verification was successful
-   * @param {Object} details - Additional details
-   * @returns {Promise<any>} - Result of tracking operation
+   * Track a generation completion
+   * @param {Object} task - Task object
+   * @param {Object} result - Result object
+   * @param {Object} context - Additional context
+   * @returns {Promise<Object>} - Tracking result
    */
-  async trackVerification(message, success, details = {}) {
-    const userData = await this.sessionAdapter.getUserAnalyticsData(message.from.id);
-    const enhancedDetails = {
-      ...details,
-      wallet: userData.wallet
-    };
-    return this.analytics.trackVerification(message, success, enhancedDetails);
+  async trackCompletion(task, result, context = {}) {
+    if (!this._checkEnabled()) return null;
+    
+    try {
+      const event = {
+        type: EVENT_TYPES.GENERATION,
+        userId: task.userId,
+        username: task.username || 'unknown',
+        timestamp: new Date(),
+        runId: task.id || `task_${Date.now()}`,
+        data: {
+          taskId: task.id,
+          taskType: task.type,
+          status: result.status || 'completed',
+          duration: context.duration || (Date.now() - (task.timestamp || Date.now())),
+          interface: context.interface || 'unknown',
+          cost: context.cost || 0,
+          ...context.extra
+        }
+      };
+      
+      return await this.adapter.updateOne(
+        { runId: event.runId, type: EVENT_TYPES.GENERATION },
+        event,
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error('Error tracking completion:', error);
+      return null;
+    }
   }
 
   /**
-   * Tracks a gatekeeping event
-   * @param {Object} message - Message object
-   * @param {string} reason - Reason for gatekeeping
-   * @param {Object} details - Additional details
-   * @returns {Promise<any>} - Result of tracking operation
+   * Track an error
+   * @param {Error} error - Error object
+   * @param {Object} context - Error context
+   * @returns {Promise<Object>} - Tracking result
    */
-  async trackGatekeeping(message, reason, details = {}) {
-    return this.analytics.trackGatekeeping(message, reason, details);
+  async trackError(error, context = {}) {
+    if (!this._checkEnabled()) return null;
+    
+    try {
+      const errorId = `error_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      
+      const event = {
+        type: EVENT_TYPES.ERROR,
+        userId: context.userId || 0,
+        username: context.username || 'unknown',
+        timestamp: new Date(),
+        runId: context.runId || errorId,
+        data: {
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          source: context.source || 'unknown',
+          interface: context.interface || 'unknown',
+          ...context.extra
+        }
+      };
+      
+      return await this.adapter.updateOne(
+        { runId: event.runId, type: EVENT_TYPES.ERROR },
+        event,
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error('Error tracking error:', error);
+      return null;
+    }
   }
 
   /**
-   * Tracks an asset check event
-   * @param {number|string} userId - User ID
-   * @param {string} username - Username
-   * @param {string} checkType - Type of asset check
-   * @param {any} result - Result of the check
-   * @param {Object} details - Additional details
-   * @returns {Promise<any>} - Result of tracking operation
+   * Track a user action
+   * @param {string} action - Action name
+   * @param {Object} user - User object
+   * @param {Object} context - Additional context
+   * @returns {Promise<Object>} - Tracking result
    */
-  async trackAssetCheck(userId, username, checkType, result, details = {}) {
-    return this.analytics.trackAssetCheck(userId, username, checkType, result, details);
+  async trackUserAction(action, user, context = {}) {
+    if (!this._checkEnabled()) return null;
+    
+    try {
+      const event = {
+        type: EVENT_TYPES.ACCOUNT_ACTION,
+        userId: user.id,
+        username: user.username || 'unknown',
+        timestamp: new Date(),
+        data: {
+          action,
+          success: context.success !== false,
+          source: context.source || 'unknown',
+          interface: context.interface || 'unknown',
+          ...context.extra
+        }
+      };
+      
+      return await this.adapter.updateOne(
+        { userId: user.id, type: EVENT_TYPES.ACCOUNT_ACTION, timestamp: event.timestamp },
+        event,
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error('Error tracking user action:', error);
+      return null;
+    }
   }
 
   /**
-   * Tracks an account action event
-   * @param {Object} message - Message object
-   * @param {string} action - Action performed
-   * @param {boolean} success - Whether action was successful
-   * @param {Object} details - Additional details
-   * @returns {Promise<any>} - Result of tracking operation
+   * Track a workflow execution
+   * @param {string} workflow - Workflow name
+   * @param {Object} data - Workflow data
+   * @param {Object} context - Additional context
+   * @returns {Promise<Object>} - Tracking result
    */
-  async trackAccountAction(message, action, success, details = {}) {
-    return this.analytics.trackAccountAction(message, action, success, details);
+  async trackWorkflow(workflow, data, context = {}) {
+    if (!this._checkEnabled()) return null;
+    
+    try {
+      const event = {
+        type: EVENT_TYPES.WORKFLOW,
+        userId: data.userId || context.userId || 0,
+        username: data.username || context.username || 'unknown',
+        timestamp: new Date(),
+        runId: data.runId || `workflow_${Date.now()}`,
+        data: {
+          workflow,
+          status: data.status || 'started',
+          source: context.source || 'unknown',
+          interface: context.interface || 'unknown',
+          ...context.extra,
+          workflowData: data
+        }
+      };
+      
+      return await this.adapter.updateOne(
+        { runId: event.runId, type: EVENT_TYPES.WORKFLOW },
+        event,
+        { upsert: true }
+      );
+    } catch (error) {
+      console.error('Error tracking workflow:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Enable analytics tracking
+   */
+  enable() {
+    this.enabled = true;
+  }
+
+  /**
+   * Disable analytics tracking
+   */
+  disable() {
+    this.enabled = false;
   }
 }
 
 /**
- * Creates an instance of AnalyticsService
- * @param {Object} options
- * @param {Object} options.sessionAdapter - Session adapter instance
- * @returns {AnalyticsService} - New AnalyticsService instance
+ * Create a new AnalyticsService
+ * @param {Object} options - Configuration options
+ * @returns {AnalyticsService} - The service instance
  */
-function createAnalyticsService({ sessionAdapter }) {
-  return new AnalyticsService({ sessionAdapter });
+function createAnalyticsService(options = {}) {
+  // Create an adapter if not provided
+  const adapter = options.adapter || createAnalyticsEventsAdapter(options);
+  
+  return new AnalyticsService({
+    adapter,
+    ...options
+  });
 }
 
 module.exports = {
