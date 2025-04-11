@@ -59,10 +59,17 @@ console.log('🔍 Logging system initialized');
 
 // Create Telegram bot instance
 console.log('🤖 Creating Telegram bot instance...');
-const botToken = process.env.TELEGRAM_TOKEN;
-if (!botToken) {
-  console.error('❌ ERROR: TELEGRAM_TOKEN environment variable is not set');
-  throw new AppError('TELEGRAM_TOKEN environment variable is not set', 'CONFIG_ERROR');
+const botToken = process.env.TELEGRAM_TOKEN || (
+  process.env.NODE_ENV === 'production' 
+    ? (() => {
+        throw new AppError('TELEGRAM_TOKEN required in production', 'CONFIG_ERROR');
+      })()
+    : 'mock-telegram-token-for-dev'
+);
+
+if (process.env.NODE_ENV !== 'production' && botToken === 'mock-telegram-token-for-dev') {
+  console.warn('⚠️  Using mock Telegram token - for development only');
+  console.warn('⚠️  Set TELEGRAM_TOKEN in .env for production use');
 }
 
 // Define reference variables outside the try block for module exports
@@ -111,6 +118,41 @@ try {
   });
   logger.info('Internal API initialized');
   console.log('  ✓ Internal API initialized');
+
+  // Initialize services for interface-agnostic functionality
+  console.log('🔌 Initializing service layer...');
+  const { initializeAllServices } = require('./services/initializer');
+  
+  let services = {};
+  if (featureFlags.isEnabled('useServices')) {
+    console.log('  ↳ Initializing services...');
+    // Use an immediately invoked async function
+    (async () => {
+      try {
+        services = await initializeAllServices({
+          comfyDeploy: {
+            workflowRefreshInterval: 3600000, // 1 hour
+            config: {
+              apiKey: process.env.COMFY_DEPLOY_API_KEY,
+              baseUrl: process.env.COMFY_DEPLOY_BASE_URL,
+              webhookUrl: process.env.COMFY_DEPLOY_WEBHOOK_URL
+            }
+          }
+        });
+        
+        const serviceNames = services.registry.getServiceNames();
+        logger.info('Services initialized', { serviceNames });
+        console.log(`  ✓ Services initialized (${serviceNames.length} services)`);
+        serviceNames.forEach(name => console.log(`    - ${name}`));
+      } catch (error) {
+        logger.error('Error initializing services', { error });
+        console.error('  ❌ Error initializing services:', error.message);
+        console.log('    Continuing startup without services');
+      }
+    })();
+  } else {
+    console.log('  ⚠️ Services disabled by feature flag');
+  }
 
   // Initialize account points service
   console.log('💰 Initializing account points service...');
@@ -284,6 +326,11 @@ try {
       activeSessions: sessionManager ? sessionManager.countActiveSessions() : 'N/A',
       commandCount: commands.length,
       commands: commands,
+      services: {
+        enabled: featureFlags.isEnabled('useServices'),
+        count: services.registry?.getServiceNames().length || 0,
+        names: services.registry?.getServiceNames() || []
+      },
       components: {
         bot: !!bot,
         telegramPolling: !isWebOnly,

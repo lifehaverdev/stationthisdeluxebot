@@ -36,7 +36,7 @@ class MongoRepository extends Repository {
 
     this.collectionName = options.collectionName;
     this.dbName = options.dbName || process.env.BOT_NAME || 'application';
-    this.connectionString = options.connectionString || process.env.MONGO_PASS;
+    this.connectionString = options.connectionString || process.env.MONGO_PASS || 'mongodb://localhost:27017';
     this.connectionOptions = options.connectionOptions || {
       useUnifiedTopology: true,
       maxPoolSize: 10,
@@ -45,7 +45,8 @@ class MongoRepository extends Repository {
     };
 
     if (!this.connectionString) {
-      throw new Error('MongoDB connection string not provided and not available in environment');
+      console.warn('MongoDB connection string not provided, using localhost default');
+      this.connectionString = 'mongodb://localhost:27017';
     }
 
     // Add monitoring capabilities

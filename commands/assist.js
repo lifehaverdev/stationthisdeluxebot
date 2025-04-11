@@ -2,7 +2,7 @@ const http = require("http");
 const OpenAI = require("openai");
 require('dotenv').config();
 
-//console.log(process.env.OPENAI_API);
+console.log(process.env.OPENAI_API);
 const openai = new OpenAI({apiKey: process.env.OPENAI_API});
 // Initialize a separate OpenAI client for uncensored access
 const unrestrictedAI = new OpenAI({

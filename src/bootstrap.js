@@ -8,6 +8,7 @@
 
 const { initializeTelegramIntegration } = require('./integrations/telegram');
 const featureFlags = require('./config/featureFlags');
+const { initializeAllServices } = require('./services/initializer');
 
 // Import references to legacy global objects
 let bot, commandRegistry;
@@ -55,6 +56,28 @@ function bootstrap(options = {}) {
     missingDependencies.accountPoints = true;
   }
   
+  // Initialize services if enabled
+  let services = {};
+  if (featureFlags.isEnabled('useServices')) {
+    console.log('🌟 Initializing services...');
+    try {
+      services = initializeAllServices({
+        comfyDeploy: {
+          workflowRefreshInterval: options.workflowRefreshInterval || 3600000, // 1 hour
+          config: {
+            apiKey: process.env.COMFY_DEPLOY_API_KEY,
+            baseUrl: process.env.COMFY_DEPLOY_BASE_URL,
+            webhookUrl: process.env.COMFY_DEPLOY_WEBHOOK_URL
+          }
+        }
+      });
+      console.log(`  ✓ Services initialized - found ${services.registry.getServiceNames().length} services`);
+    } catch (error) {
+      console.error('  ❌ Error initializing services:', error);
+      console.warn('    Continuing bootstrap without services');
+    }
+  }
+  
   // Initialize Telegram integration with dependency-aware flags
   const telegramOptions = {
     bot: botInstance,
@@ -66,7 +89,8 @@ function bootstrap(options = {}) {
     // Override flags based on available dependencies
     featureOverrides: {
       useNewAccountPoints: featureFlags.isEnabled('useNewAccountPoints') && !missingDependencies.accountPoints,
-      useNewAccountCommands: featureFlags.isEnabled('useNewAccountCommands') && !missingDependencies.accountPoints
+      useNewAccountCommands: featureFlags.isEnabled('useNewAccountCommands') && !missingDependencies.accountPoints,
+      useServices: featureFlags.isEnabled('useServices')
     }
   };
   
@@ -86,7 +110,8 @@ function bootstrap(options = {}) {
   
   // Return references
   return {
-    featureFlags
+    featureFlags,
+    services
   };
 }
 

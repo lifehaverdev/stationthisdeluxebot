@@ -1,0 +1,154 @@
+/* Generation Form Styles */
+.generation-form-container {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.workflow-selection {
+    display: flex;
+    gap: 10px;
+}
+
+#workflow-selector {
+    flex: 1;
+}
+
+#refresh-workflows {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.refresh-icon {
+    font-size: 18px;
+}
+
+#workflow-parameters {
+    margin-top: 20px;
+}
+
+.parameter-group {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.parameter-group legend {
+    font-weight: bold;
+    padding: 0 10px;
+}
+
+.parameter-input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.parameter-description {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Job Status Styles */
+#job-status-container {
+    margin-top: 30px;
+}
+
+.job-status {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.job-status h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.status {
+    margin-bottom: 15px;
+}
+
+.status-value {
+    font-weight: bold;
+}
+
+.progress {
+    height: 10px;
+    background: #f0f0f0;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(to right, #4CAF50, #8BC34A);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.result-container {
+    margin-top: 15px;
+}
+
+.result-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.download-button {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 8px 15px;
+    background: #2196F3;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.download-button:hover {
+    background: #0b7dda;
+}
+
+.result-text {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.error-message {
+    background: #ffebee;
+    border-left: 4px solid #f44336;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+.error-message h4 {
+    color: #d32f2f;
+    margin-top: 0;
+}
+
+/* Loading state */
+#generation-form.loading {
+    opacity: 0.7;
+    pointer-events: none;
+} 
