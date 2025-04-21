@@ -88,10 +88,14 @@ class ComfyDeployMapper {
       throw new Error('No deployment IDs available');
     }
     
-    // For now, just select the first ID
-    // This can be expanded to have more sophisticated selection logic
-    // based on load balancing, specific model needs, etc.
-    return ids[0];
+    // Check if we have multiple deployment IDs
+    if (ids.length > 1) {
+      // Use the second ID as the default (index 1)
+      return ids[1];
+    } else {
+      // Fallback to the first ID if only one is available
+      return ids[0];
+    }
   }
 
   /**

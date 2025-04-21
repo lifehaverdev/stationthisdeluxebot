@@ -95,6 +95,27 @@ class ComfyClient extends EventEmitter {
       payload.webhook_data = options.webhookData;
     }
     
+    // Add detailed logging for debugging
+    console.log('FINAL REQUEST TO COMFYDEPLOY API:', {
+      deployment_id: payload.deployment_id,
+      inputs: payload.inputs,
+      originalInputs: requestData.originalPrompt?.settings?.inputs || {},
+      inputDecisions: requestData.inputDecisions || {}
+    });
+    
+    // Full pre-flight check of the payload for any null/undefined values
+    console.log('COMFY CLIENT PRE-FLIGHT CHECK:', {
+      input_keys: Object.keys(payload.inputs),
+      null_values: Object.entries(payload.inputs)
+        .filter(([k, v]) => v === null || v === undefined)
+        .map(([k]) => k),
+      empty_strings: Object.entries(payload.inputs)
+        .filter(([k, v]) => v === '')
+        .map(([k]) => k),
+      value_types: Object.entries(payload.inputs)
+        .map(([k, v]) => `${k}: ${typeof v}${Array.isArray(v) ? ' (array)' : ''}`)
+    });
+    
     try {
       // Emit request event
       this.emit('request:start', {

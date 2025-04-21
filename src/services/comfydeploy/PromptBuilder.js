@@ -244,63 +244,227 @@ class PromptBuilder {
     // Choose deployment ID
     const deploymentId = this._chooseDeploymentId(promptObj);
     
-    // Build inputs object based on input template if available
-    const inputs = {};
+    // Initialize tracking for input decisions and normalized inputs
+    const inputDecisions = {};
+    const normalizedInputs = {};
     
-    // Always add the prompt if it exists
-    if (promptObj.finalPrompt) {
-      inputs.prompt = promptObj.finalPrompt;
-    }
+    // Log initial state for debugging
+    console.log('PROMPTBUILDER INPUT SOURCES:', {
+      workflowType: promptObj.type,
+      hasSettings: !!promptObj.settings,
+      settingsKeys: promptObj.settings ? Object.keys(promptObj.settings) : [],
+      hasInputsInSettings: !!(promptObj.settings && promptObj.settings.inputs),
+      originalInputsCount: promptObj.settings && promptObj.settings.inputs ? Object.keys(promptObj.settings.inputs).length : 0
+    });
     
-    // Add negative prompt
-    inputs.negative_prompt = promptObj.negativePrompt;
+    // STEP 1: Determine ALL potentially requested inputs
+    // --------------------------------------------------
+    // 1a. Extract requested inputs from UI (these are highest priority)
+    const requestedInputs = [];
     
-    // Add common settings
-    inputs.width = promptObj.input_width || promptObj.photoStats.width;
-    inputs.height = promptObj.input_height || promptObj.photoStats.height;
-    inputs.seed = promptObj.input_seed || -1;
-    inputs.steps = promptObj.input_steps;
-    inputs.cfg_scale = promptObj.input_cfg;
-    inputs.batch_size = promptObj.input_batch;
-    
-    // Add sampler and checkpoint if provided
-    if (promptObj.input_sampler) {
-      inputs.sampler_name = promptObj.input_sampler;
-    }
-    
-    if (promptObj.input_checkpoint) {
-      inputs.checkpoint = promptObj.input_checkpoint;
-    }
-    
-    // Add input image if available
-    if (promptObj.input_image_url) {
-      inputs.image = promptObj.input_image_url;
-    }
-    
-    // Apply any template-specific inputs from deploymentInfo
-    if (promptObj.inputTemplate) {
-      Object.entries(promptObj.inputTemplate).forEach(([key, defaultValue]) => {
-        // Only set if not already defined
-        if (inputs[key] === undefined) {
-          // Check if prompt object has this value
-          if (promptObj[key] !== undefined) {
-            inputs[key] = promptObj[key];
-          } else if (promptObj.settings && promptObj.settings[key] !== undefined) {
-            inputs[key] = promptObj.settings[key];
-          } else {
-            inputs[key] = defaultValue;
+    if (promptObj.settings && promptObj.settings.inputs) {
+      Object.entries(promptObj.settings.inputs).forEach(([key, value]) => {
+        // Handle numeric keys that point to input names
+        if (!isNaN(parseInt(key)) && value) {
+          const inputName = value.startsWith('input_') ? value : `input_${value}`;
+          requestedInputs.push(inputName);
+        } 
+        // Handle direct input name keys
+        else if (key.startsWith('input_') || !isNaN(parseInt(key))) {
+          // Skip numeric keys as values (already handled above)
+          if (isNaN(parseInt(key))) {
+            requestedInputs.push(key.startsWith('input_') ? key : `input_${key}`);
           }
         }
       });
     }
     
-    // Build final result
+    // 1b. Define core inputs that should be included by default
+    const coreInputs = [
+      'input_seed', 'input_prompt', 'input_cfg', 
+      'input_batch', 'input_width', 'input_height',
+      'input_steps'
+    ];
+    
+    // 1c. Combine and deduplicate all inputs
+    const allPossibleInputs = [...new Set([...requestedInputs, ...coreInputs])];
+    
+    console.log('Input processing strategy:', {
+      requestedFromUI: requestedInputs,
+      coreInputs: coreInputs,
+      combinedInputs: allPossibleInputs
+    });
+    
+    // STEP 2: Collect all input values in PRIORITY ORDER
+    // --------------------------------------------------
+    
+    // PRIORITY 1: User-supplied values from UI (settings.inputs)
+    // These are direct values from the frontend, highest priority
+    if (promptObj.settings && promptObj.settings.inputs) {
+      Object.entries(promptObj.settings.inputs).forEach(([key, value]) => {
+        // Skip numeric keys (they are just references to input names)
+        if (!isNaN(parseInt(key))) {
+          return;
+        }
+        
+        // Normalize the key name
+        const normalizedKey = key.startsWith('input_') ? key : `input_${key}`;
+        
+        // Only accept defined values
+        if (value !== undefined && value !== null) {
+          normalizedInputs[normalizedKey] = value;
+          inputDecisions[normalizedKey] = { 
+            source: 'settings.inputs (direct UI input)',
+            priority: 1
+          };
+        }
+      });
+    }
+    
+    // PRIORITY 2: Direct settings object values
+    // Second highest priority, these come from the workflow request but not necessarily UI
+    if (promptObj.settings) {
+      Object.entries(promptObj.settings).forEach(([key, value]) => {
+        // Skip the inputs object which we already processed
+        if (key === 'inputs') return;
+        
+        // Normalize the key name
+        const normalizedKey = key.startsWith('input_') ? key : `input_${key}`;
+        
+        // Only set if not already defined and value is valid
+        if (normalizedInputs[normalizedKey] === undefined && value !== undefined && value !== null) {
+          normalizedInputs[normalizedKey] = value;
+          inputDecisions[normalizedKey] = { 
+            source: 'settings (direct parameter)',
+            priority: 2
+          };
+        }
+      });
+    }
+    
+    // PRIORITY 3: Special prompt handlers for prompt/negative
+    // Handle finalPrompt specially
+    if (normalizedInputs['input_prompt'] === undefined && promptObj.finalPrompt) {
+      normalizedInputs['input_prompt'] = promptObj.finalPrompt;
+      inputDecisions['input_prompt'] = { 
+        source: 'finalPrompt (processed text)',
+        priority: 3
+      };
+    }
+    
+    // Handle negative prompt specially
+    if (normalizedInputs['input_negative'] === undefined && promptObj.negativePrompt) {
+      // Only set if this input is requested or we'll include all inputs later
+      if (requestedInputs.includes('input_negative') || requestedInputs.length === 0) {
+        normalizedInputs['input_negative'] = promptObj.negativePrompt;
+        inputDecisions['input_negative'] = { 
+          source: 'negativePrompt',
+          priority: 3
+        };
+      }
+    }
+    
+    // PRIORITY 4: Direct promptObj inputs (prefixed with input_)
+    // Values set on the prompt object directly
+    Object.entries(promptObj).forEach(([key, value]) => {
+      // Only process input_ prefixed keys
+      if (key.startsWith('input_') && value !== undefined && value !== null) {
+        // Only set if not already defined
+        if (normalizedInputs[key] === undefined) {
+          normalizedInputs[key] = value;
+          inputDecisions[key] = { 
+            source: 'promptObj (direct input_* property)',
+            priority: 4
+          };
+        }
+      }
+    });
+    
+    // PRIORITY 5: Non-prefixed values from promptObj
+    // Check for non-prefixed versions of needed inputs
+    allPossibleInputs.forEach(inputName => {
+      if (normalizedInputs[inputName] === undefined && inputName.startsWith('input_')) {
+        const shortName = inputName.replace('input_', '');
+        if (promptObj[shortName] !== undefined && promptObj[shortName] !== null) {
+          normalizedInputs[inputName] = promptObj[shortName];
+          inputDecisions[inputName] = { 
+            source: `promptObj.${shortName} (non-prefixed property)`,
+            priority: 5
+          };
+        }
+      }
+    });
+    
+    // PRIORITY 6: Default values (lowest priority)
+    // Apply only if no value has been set yet
+    const defaultsToAdd = {
+      'input_width': promptObj.photoStats?.width || this.defaultSettings.WIDTH,
+      'input_height': promptObj.photoStats?.height || this.defaultSettings.HEIGHT,
+      'input_seed': -1, // Default seed is -1 (random)
+      'input_batch': 1, // Default batch size
+      'input_cfg': this.defaultSettings.CFG, // Default CFG
+      'input_steps': this.defaultSettings.STEPS // Default steps
+    };
+    
+    // Only apply defaults for requested inputs that are still missing values
+    allPossibleInputs.forEach(inputName => {
+      if (normalizedInputs[inputName] === undefined && defaultsToAdd[inputName] !== undefined) {
+        normalizedInputs[inputName] = defaultsToAdd[inputName];
+        inputDecisions[inputName] = { 
+          source: `default value`,
+          priority: 6
+        };
+      }
+    });
+    
+    // STEP 3: Build the final inputs object
+    // -------------------------------------
+    // Create the final output based on what inputs were requested
+    const finalInputs = {};
+    
+    // If we have explicitly requested inputs, prioritize those
+    if (requestedInputs.length > 0) {
+      // First, include ALL requested inputs from UI
+      requestedInputs.forEach(inputName => {
+        const normalizedName = inputName.startsWith('input_') ? inputName : `input_${inputName}`;
+        if (normalizedInputs[normalizedName] !== undefined) {
+          finalInputs[normalizedName] = normalizedInputs[normalizedName];
+        }
+      });
+      
+      // Then ensure core inputs are included even if not explicitly requested
+      coreInputs.forEach(inputName => {
+        if (finalInputs[inputName] === undefined && normalizedInputs[inputName] !== undefined) {
+          finalInputs[inputName] = normalizedInputs[inputName];
+        }
+      });
+    } 
+    // If no specific inputs were requested, include all normalized inputs
+    else {
+      Object.assign(finalInputs, normalizedInputs);
+    }
+    
+    // Log the final inputs for debugging
+    console.log('FINAL INPUTS BEING SENT TO COMFYDEPLOY:', finalInputs);
+    
+    // Generate detailed decision audit log
+    console.log('PROMPT BUILDER DECISION AUDIT:', {
+      workflowType: promptObj.type,
+      requestedInputs: requestedInputs,
+      coreInputs: coreInputs,
+      allPossibleInputs: allPossibleInputs,
+      normalizedInputCount: Object.keys(normalizedInputs).length,
+      finalInputsCount: Object.keys(finalInputs).length,
+      inputDecisions,
+      finalInputValues: finalInputs,
+    });
+    
+    // Return the final request structure
     return {
       deployment_id: deploymentId,
-      inputs,
-      
-      // Include original prompt object for reference and debugging
-      originalPrompt: promptObj
+      inputs: finalInputs,
+      originalPrompt: promptObj,
+      inputDecisions
     };
   }
 
@@ -315,10 +479,14 @@ class PromptBuilder {
       throw new Error(`No deployment IDs available for type: ${promptObj.type}`);
     }
     
-    // For now, just use the first ID
-    // More sophisticated logic could be implemented here based on load balancing,
-    // specific input requirements, etc.
-    return promptObj.deploymentIds[0];
+    // Check if we have multiple deployment IDs
+    if (promptObj.deploymentIds.length > 1) {
+      // Use the second ID as the default (index 1)
+      return promptObj.deploymentIds[1];
+    } else {
+      // Fallback to the first ID if only one is available
+      return promptObj.deploymentIds[0];
+    }
   }
 }
 

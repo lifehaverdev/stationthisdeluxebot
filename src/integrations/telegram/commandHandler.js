@@ -6,12 +6,19 @@
 
 const { runCommand } = require('../../core/internalAPI');
 const { Logger } = require('../../utils/logger');
+const TelegramSessionAdapter = require('./adapters/sessionAdapter');
+const { CommandRegistry } = require('../../core/command/registry');
+const { WorkflowManager } = require('../../core/workflow/manager');
 
 // Initialize logger
 const logger = new Logger({
   level: process.env.LOG_LEVEL || 'info',
   name: 'telegram-command'
 });
+
+// Get singleton instances of required components
+const commandRegistry = CommandRegistry.getInstance();
+const workflowManager = global.workflowManager;
 
 /**
  * Create a session context object from a Telegram message
@@ -37,46 +44,34 @@ function createSessionContext(msg) {
 }
 
 /**
- * Parse command arguments from a Telegram message
+ * Parse command arguments from message text
  * @param {string} text - Message text
- * @param {string} command - Command name
+ * @param {string} command - Command name to parse
  * @returns {Object} - Parsed arguments
  */
 function parseArgs(text, command) {
-  // Remove the command from the text
-  const argsText = text.replace(new RegExp(`^/${command}(@\\w+)?\\s*`), '').trim();
+  // Skip the command itself and parse the rest as args
+  const parts = text.split(/\s+/);
+  const commandPart = parts[0].substring(1).split('@')[0]; // Remove leading / and any trailing @botname
   
-  // If there are no arguments, return an empty object
-  if (!argsText) {
+  if (commandPart !== command) {
     return {};
   }
   
-  // Try to parse as JSON if it starts with { or [
-  if (argsText.startsWith('{') || argsText.startsWith('[')) {
-    try {
-      return JSON.parse(argsText);
-    } catch (error) {
-      // If it's not valid JSON, continue with simple parsing
-    }
-  }
-  
-  // Simple parsing: split by spaces and create key-value pairs
-  // Format: key1=value1 key2="value with spaces"
+  // Extract args based on space-separated values
   const args = {};
-  const regex = /([^\s=]+)=(?:"([^"]+)"|([^\s]+))/g;
+  
+  // Extract named arguments in form --name=value or --flag
+  const namedArgsRegex = /--([a-zA-Z0-9_]+)(?:=([^\s]+))?/g;
   let match;
   
-  while ((match = regex.exec(argsText)) !== null) {
+  while ((match = namedArgsRegex.exec(text)) !== null) {
     const key = match[1];
-    const value = match[2] || match[3]; // Either quoted or non-quoted value
+    const value = match[2] === undefined ? true : match[2];
     args[key] = value;
   }
   
-  // If no key-value pairs were found, use the text as a 'text' argument
-  if (Object.keys(args).length === 0) {
-    args.text = argsText;
-  }
-  
+  // Return args
   return args;
 }
 
@@ -94,6 +89,17 @@ async function handleCommand(bot, msg, command) {
       userId: msg.from.id,
       chatId: msg.chat.id
     });
+    
+    // Create session adapter if not already created
+    const sessionAdapter = new TelegramSessionAdapter({
+      bot,
+      commandRegistry,
+      workflowManager,
+      logger
+    });
+    
+    // Initialize session first
+    await sessionAdapter.handleMessage(msg);
     
     // Create session context
     const sessionContext = createSessionContext(msg);
@@ -123,63 +129,100 @@ async function handleCommand(bot, msg, command) {
             reply_to_message_id: msg.message_id 
           });
         }
+      } else if (result.result && typeof result.result === 'string') {
+        // Send plain text response
+        await bot.sendMessage(msg.chat.id, result.result, { 
+          parse_mode: 'Markdown',
+          reply_to_message_id: msg.message_id 
+        });
       } else {
-        // Default success message with result data
-        let responseText = 'Command executed successfully';
-        
-        if (result.result) {
-          try {
-            // Try to include the result as JSON
-            const resultStr = JSON.stringify(result.result, null, 2);
-            if (resultStr.length < 800) { // Prevent massive messages
-              responseText += `\n\nResult:\n${resultStr}`;
-            }
-          } catch (error) {
-            // If JSON stringify fails, just use the success message
-          }
-        }
-        
-        await bot.sendMessage(msg.chat.id, responseText, { 
+        // Send default success message
+        await bot.sendMessage(msg.chat.id, 'Command executed successfully', { 
           reply_to_message_id: msg.message_id 
         });
       }
     } else {
-      // Handle error
-      await bot.sendMessage(msg.chat.id, `Error: ${result.error}`, { 
+      // Send error message
+      await bot.sendMessage(msg.chat.id, `❌ Error: ${result.error}`, { 
         reply_to_message_id: msg.message_id 
       });
     }
   } catch (error) {
-    logger.error('Error handling Telegram command', { 
-      command, 
-      userId: msg.from.id,
-      error 
-    });
+    logger.error('Error handling command', { command, error });
     
     // Send error message
-    await bot.sendMessage(msg.chat.id, 'An error occurred while processing your command', { 
+    await bot.sendMessage(msg.chat.id, '❌ An error occurred while processing your command', { 
       reply_to_message_id: msg.message_id 
     });
   }
 }
 
 /**
- * Register command handlers with a Telegram bot
+ * Register command handlers with the Telegram bot
  * @param {Object} bot - Telegram bot instance
- * @param {Object[]} commands - Array of command definitions
+ * @param {Array} commands - Array of commands to register
  */
 function registerCommandHandlers(bot, commands) {
+  if (!Array.isArray(commands)) {
+    throw new Error('Commands must be an array');
+  }
+  
+  // Create a single session adapter instance to reuse
+  const sessionAdapter = new TelegramSessionAdapter({
+    bot,
+    commandRegistry,
+    workflowManager,
+    logger
+  });
+  
+  // Register command handlers
   commands.forEach(command => {
-    // Create regex pattern for the command
-    const pattern = new RegExp(`^/${command.name}(@\\w+)?\\s*`);
+    const commandPattern = new RegExp(`^/${command.name}(?:@\\w+)?(?:\\s+(.*))?$`);
     
-    // Register handler
-    bot.onText(pattern, (msg) => {
-      handleCommand(bot, msg, command.name);
+    bot.onText(commandPattern, async (msg) => {
+      try {
+        // Initialize session first
+        await sessionAdapter.handleMessage(msg);
+        
+        // Handle the command
+        await handleCommand(bot, msg, command.name);
+      } catch (error) {
+        logger.error('Error in command handler', { command: command.name, error });
+      }
     });
     
-    logger.info(`Registered Telegram handler for /${command.name}`);
+    logger.info(`Registered handler for /${command.name}`);
   });
+  
+  // Handle all non-command messages for workflow interactions
+  bot.on('message', async (msg) => {
+    // Skip command messages, they're handled by the command handlers
+    if (msg.text && msg.text.startsWith('/')) {
+      return;
+    }
+    
+    try {
+      // Route message through session adapter
+      const result = await sessionAdapter.routeMessage(msg);
+      
+      // Handle different routing outcomes
+      if (result.type === 'workflow') {
+        // Continue workflow with this input
+        await workflowManager.continueWorkflow(
+          result.workflowId,
+          result.sessionInfo.userId,
+          result.input
+        );
+      } else if (result.type === 'default') {
+        // Send help message
+        await sessionAdapter.sendHelpMessage(msg);
+      }
+    } catch (error) {
+      logger.error('Error handling message', { error });
+    }
+  });
+  
+  logger.info('Registered handler for non-command messages');
 }
 
 module.exports = {

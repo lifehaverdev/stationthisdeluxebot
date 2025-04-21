@@ -9,6 +9,69 @@
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/workflow-toolbar.css">
+    <style>
+        /* Login Modal Z-index to ensure it's on top */
+        .login-modal {
+            z-index: 2000 !important;
+        }
+        
+        /* Custom modal styling for StationThis theme */
+        .login-modal .modal-content {
+            background-color: #0a1929;
+            color: #c8ddf2;
+            border: 1px solid #254a77;
+            font-family: 'Exo 2', sans-serif;
+        }
+        
+        .login-modal .modal-header {
+            border-bottom: 1px solid #254a77;
+        }
+        
+        .login-modal .modal-footer {
+            border-top: 1px solid #254a77;
+        }
+        
+        .login-modal .tab-button {
+            color: #c8ddf2;
+        }
+        
+        .login-modal .tab-button.active {
+            border-bottom: 2px solid #3f85f7;
+        }
+        
+        .login-modal .form-group input {
+            background-color: #0c2440;
+            border: 1px solid #254a77;
+            color: #fff;
+        }
+        
+        .login-modal .submit-button, 
+        .login-modal .guest-button {
+            background-color: #126bc5;
+        }
+        
+        .login-modal .form-text,
+        .login-modal .small-text {
+            color: #8cadd3;
+        }
+        
+        .login-modal .wallet-button {
+            background-color: #0c2440;
+            color: #3f85f7;
+            border: 1px solid #3f85f7;
+        }
+        
+        .login-modal .error-message {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: #ff6b6b;
+            border: 1px solid rgba(220, 53, 69, 0.5);
+        }
+        
+        .login-modal .close-button {
+            color: #c8ddf2;
+        }
+    </style>
 </head>
 <body>
     <div class="workspace-container">
@@ -84,31 +147,8 @@
                 </div>
             </div>
             
-            <div class="tools-container">
-                <button class="tool-btn make-btn">
-                    <i class="fas fa-magic"></i>
-                    <span>Make</span>
-                </button>
-                <button class="tool-btn effect-btn">
-                    <i class="fas fa-wand-magic-sparkles"></i>
-                    <span>Effect</span>
-                </button>
-                <button class="tool-btn rmbg-btn">
-                    <i class="fas fa-eraser"></i>
-                    <span>RMBG</span>
-                </button>
-                <button class="tool-btn upscale-btn">
-                    <i class="fas fa-expand-arrows-alt"></i>
-                    <span>Upscale</span>
-                </button>
-                <button class="tool-btn vidthat-btn">
-                    <i class="fas fa-film"></i>
-                    <span>VidThat</span>
-                </button>
-                <button class="tool-btn cheesethat-btn">
-                    <i class="fas fa-cheese"></i>
-                    <span>CheeseThat</span>
-                </button>
+            <div class="workflow-toolbar-container">
+                <!-- Dynamic workflow buttons will be loaded here by WorkflowToolbar.js -->
             </div>
             
             <div class="resources-display">
@@ -188,6 +228,124 @@
         </div>
     </div>
 
+    <!-- Add login modal container -->
+    <div id="modal-container"></div>
+
+    <!-- Include session API service and login modal -->
+    <script src="js/sessionApiService.js"></script>
+    <script src="js/LoginModal.js"></script>
+    
+    <!-- Include main scripts -->
     <script src="js/main.js"></script>
+    <script src="js/workflow-toolbar.js"></script>
+    
+    <!-- Initialize login modal -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize API service
+            const apiService = new SessionApiService({
+                baseUrl: '/api/internal'
+            });
+            
+            // Check if user is already logged in
+            const apiKey = localStorage.getItem('apiKey');
+            
+            if (!apiKey) {
+                // User is not logged in, show login modal
+                const loginModal = new LoginModal({
+                    apiService: apiService,
+                    onLogin: function(loginData) {
+                        console.log('User logged in:', loginData);
+                        
+                        // Store API key in localStorage
+                        if (loginData.apiKey) {
+                            localStorage.setItem('apiKey', loginData.apiKey);
+                        }
+                        
+                        // Store session info
+                        if (loginData.session) {
+                            localStorage.setItem('sessionData', JSON.stringify(loginData.session));
+                            
+                            // Update UI with user data if needed
+                            updateUserInterface(loginData.session);
+                        }
+                    },
+                    onCancel: function() {
+                        console.log('Login cancelled');
+                        // Optional: Redirect to a public page or show limited interface
+                    }
+                });
+                
+                // Show login modal automatically
+                loginModal.show();
+            } else {
+                // User is already logged in, load their session data
+                loadUserSession(apiKey, apiService);
+            }
+        });
+        
+        // Function to load user session data
+        async function loadUserSession(apiKey, apiService) {
+            try {
+                const response = await apiService.getSession(apiKey);
+                
+                if (response.success) {
+                    // Session is valid, update UI
+                    updateUserInterface(response.session);
+                } else {
+                    // Session is invalid, remove from localStorage and show login
+                    localStorage.removeItem('apiKey');
+                    localStorage.removeItem('sessionData');
+                    
+                    // Reload page to trigger login flow
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error('Error loading session:', error);
+                // Handle error (could show login modal again)
+            }
+        }
+        
+        // Function to update UI with user data
+        function updateUserInterface(sessionData) {
+            // Update user name if available
+            if (sessionData.userId) {
+                const userNameElement = document.querySelector('.user-name');
+                if (userNameElement) {
+                    // Format user ID - for display purposes
+                    let displayName = sessionData.userId;
+                    
+                    // If it's a wallet address, truncate it
+                    if (displayName.startsWith('wallet_')) {
+                        const address = displayName.replace('wallet_', '');
+                        displayName = `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+                    }
+                    
+                    // If it's a guest, use a friendly name
+                    if (displayName.startsWith('guest_')) {
+                        displayName = 'Guest User';
+                    }
+                    
+                    userNameElement.textContent = displayName;
+                }
+            }
+            
+            // Update points if available
+            if (sessionData.points !== undefined) {
+                const pointsValueElement = document.querySelector('.status-item:nth-child(2) .status-value');
+                if (pointsValueElement) {
+                    pointsValueElement.textContent = `${sessionData.points}/100`;
+                }
+                
+                const pointsFillElement = document.querySelector('.points-fill');
+                if (pointsFillElement) {
+                    const percentage = Math.min(100, Math.max(0, sessionData.points));
+                    pointsFillElement.style.width = `${percentage}%`;
+                }
+            }
+            
+            // You can update other UI elements based on session data
+        }
+    </script>
 </body>
 </html> 
