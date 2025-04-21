@@ -105,9 +105,16 @@ async function loadWorkflows() {
         workflows.push({
           name: flow.name,
           ids: flow.ids || [],
-          inputs: inputTemplate,
+          inputs: parsedInputs, // Use the array of input names directly for UI compatibility
+          inputTemplate: inputTemplate, // Keep the template for other uses
           parsedInputs: parsedInputs, // Keep original input names for reference
           active: flow.active !== false // Default to active if not specified
+        });
+        
+        logger.debug(`Processed workflow ${flow.name}:`, {
+          inputCount: parsedInputs.length,
+          sampleInputs: parsedInputs.slice(0, 3),
+          inputTemplate: Object.keys(inputTemplate).slice(0, 3)
         });
       } catch (error) {
         logger.error('Error processing workflow', { 

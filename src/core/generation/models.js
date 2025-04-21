@@ -46,7 +46,13 @@ class GenerationRequest {
    * @param {Object} [data.metadata={}] - Additional metadata
    */
   constructor(data = {}) {
-    this.userId = data.userId || '';
+    // Extract userId from different possible locations
+    this.userId = data.userId || 
+                 (data.user && data.user.id) || // Extract from user.id if available
+                 (data.userContext && data.userContext.userId) || // Or from userContext
+                 (data.context && data.context.userId) || // Or from context
+                 '';
+                 
     this.type = data.type || 'DEFAULT';
     this.prompt = data.prompt || '';
     this.negativePrompt = data.negativePrompt || '';

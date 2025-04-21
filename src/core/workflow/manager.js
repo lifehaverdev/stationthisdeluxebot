@@ -7,6 +7,7 @@
 
 const { WorkflowState } = require('./state');
 const { AppError } = require('../shared/errors/AppError');
+const { getWorkflowService } = require('../../services/comfydeploy/WorkflowService');
 
 /**
  * WorkflowManager class
@@ -49,6 +50,102 @@ class WorkflowManager {
    */
   getWorkflowDefinition(id) {
     return this.workflowDefinitions.get(id) || null;
+  }
+
+  /**
+   * Get all workflow definitions
+   * @returns {Object} Map of all workflow definitions
+   */
+  getWorkflowDefinitions() {
+    // Convert Map to a plain object for easier serialization
+    const definitions = {};
+    this.workflowDefinitions.forEach((value, key) => {
+      definitions[key] = value;
+    });
+    return definitions;
+  }
+
+  /**
+   * Synchronize workflow definitions with the WorkflowService
+   * This ensures that both the WorkflowManager and WorkflowService
+   * have the same workflow definitions available.
+   * 
+   * @param {boolean} [bidirectional=true] - If true, synchronize in both directions
+   * @returns {Promise<Object>} Result with counts of synchronized workflows
+   */
+  async synchronizeWithWorkflowService(bidirectional = true) {
+    try {
+      const { comfyDeployService } = require('../../services/comfydeploy/service');
+      const workflowService = getWorkflowService();
+      let managerToServiceCount = 0;
+      let serviceToManagerCount = 0;
+      
+      // Step 1: Get all workflow definitions from both sources
+      const managerWorkflows = this.getWorkflowDefinitions();
+      const serviceWorkflows = workflowService ? workflowService.getAllWorkflows() || [] : [];
+      
+      // Step 2: Sync manager workflows to service (if missing)
+      if (bidirectional) {
+        const serviceWorkflowNames = serviceWorkflows.map(w => w.name);
+        
+        for (const [name, workflow] of Object.entries(managerWorkflows)) {
+          if (!serviceWorkflowNames.includes(name)) {
+            if (comfyDeployService && typeof comfyDeployService.registerExternalWorkflow === 'function') {
+              // Use the direct registration method if available
+              const registered = comfyDeployService.registerExternalWorkflow({
+                name: workflow.name || name,
+                inputs: workflow.inputs || [],
+                active: workflow.active !== false
+              });
+              
+              if (registered) {
+                managerToServiceCount++;
+                this.logger.info(`Registered workflow from manager to service: ${name}`);
+              }
+            } else if (workflowService) {
+              // Otherwise add to service's workflow array
+              serviceWorkflows.push({
+                name: workflow.name || name,
+                inputs: workflow.inputs || [],
+                active: workflow.active !== false
+              });
+              managerToServiceCount++;
+              this.logger.info(`Synchronized workflow from manager to service: ${name}`);
+            }
+          }
+        }
+      }
+      
+      // Step 3: Sync service workflows to manager (always do this)
+      for (const workflow of serviceWorkflows) {
+        const workflowName = workflow.name;
+        if (!this.workflowDefinitions.has(workflowName)) {
+          this.registerWorkflowDefinition(workflowName, workflow);
+          serviceToManagerCount++;
+          this.logger.info(`Synchronized workflow from service to manager: ${workflowName}`);
+        }
+      }
+      
+      this.logger.info('Workflow synchronization completed', {
+        managerToService: managerToServiceCount,
+        serviceToManager: serviceToManagerCount,
+        bidirectional
+      });
+      
+      return {
+        success: true,
+        managerToService: managerToServiceCount,
+        serviceToManager: serviceToManagerCount
+      };
+    } catch (error) {
+      this.logger.error('Failed to synchronize workflows', { error });
+      return { 
+        success: false, 
+        error: error.message,
+        managerToService: 0,
+        serviceToManager: 0
+      };
+    }
   }
 
   /**
@@ -221,6 +318,77 @@ class WorkflowManager {
     } catch (error) {
       this.logger.error(`Failed to get user workflows for user: ${userId}`, { error });
       return [];
+    }
+  }
+
+  /**
+   * Get diagnostic information about workflow registrations
+   * Shows which workflows are registered in which services
+   * 
+   * @returns {Promise<Object>} Diagnostic information
+   */
+  async getDiagnostics() {
+    try {
+      const workflowService = getWorkflowService();
+      const managerWorkflows = this.getWorkflowDefinitions();
+      
+      // Create a map of all workflow names from both sources
+      const allWorkflowNames = new Set();
+      
+      // Add workflow names from manager
+      Object.keys(managerWorkflows).forEach(name => allWorkflowNames.add(name));
+      
+      // Add workflow names from service
+      if (workflowService) {
+        const serviceWorkflows = workflowService.getAllWorkflows() || [];
+        serviceWorkflows.forEach(workflow => allWorkflowNames.add(workflow.name));
+      }
+      
+      // Create diagnostic entries for each workflow
+      const workflows = Array.from(allWorkflowNames).map(name => {
+        const inManager = !!managerWorkflows[name];
+        const inService = workflowService ? 
+          !!workflowService.getWorkflowByName(name) : 
+          false;
+        
+        return {
+          name,
+          inManager,
+          inService,
+          status: inManager && inService ? 'synchronized' : 
+                 inManager ? 'manager-only' :
+                 inService ? 'service-only' : 'unknown'
+        };
+      });
+      
+      const diagnostics = {
+        timestamp: new Date(),
+        workflowCount: workflows.length,
+        managerCount: Object.keys(managerWorkflows).length,
+        serviceCount: workflowService ? 
+          (workflowService.getAllWorkflows() || []).length : 
+          0,
+        serviceAvailable: !!workflowService,
+        workflows: workflows,
+        summary: {
+          synchronized: workflows.filter(w => w.status === 'synchronized').length,
+          managerOnly: workflows.filter(w => w.status === 'manager-only').length,
+          serviceOnly: workflows.filter(w => w.status === 'service-only').length
+        }
+      };
+      
+      this.logger.debug('Workflow diagnostics generated', {
+        workflowCount: diagnostics.workflowCount,
+        synchronized: diagnostics.summary.synchronized
+      });
+      
+      return diagnostics;
+    } catch (error) {
+      this.logger.error('Failed to generate workflow diagnostics', { error });
+      return {
+        error: error.message,
+        timestamp: new Date()
+      };
     }
   }
 }

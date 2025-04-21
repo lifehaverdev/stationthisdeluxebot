@@ -1,0 +1,35 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Rule: Internal Services (internal-services.mdc)
+
+### Purpose
+To define the structure and usage of internal service modules that coordinate business logic and side effects.
+
+### Rules
+
+1. **Services live in `src/services/` or feature subfolders**
+   - Use one file per service domain (e.g., `points/`, `tokens/`, `training/`)
+   - Shared system-level services (like session or event handling) may live in `src/core/`
+
+2. **Service functions must be stateless and callable from workflows**
+   - Services must not rely on platform-specific state
+   - Accept input explicitly and return results or throw errors
+
+3. **Side effects and system integration go here**
+   - API calls, point debits, webhook triggers, and analytics should live in services
+   - Workflows and UI may *call* services, but must not perform side effects directly
+
+4. **Services may use repositories internally**
+   - Combine multiple repositories if needed to coordinate logic
+   - Validation should be performed here if not done at a higher level
+
+5. **Avoid UI or platform logic in services**
+   - Services must never render components, menus, or Telegram messages
+
+---
+
+Use this rule when developing logic for user actions, task execution, account operations, or side-effect management.
+

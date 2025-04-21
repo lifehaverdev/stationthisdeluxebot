@@ -1,0 +1,71 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+ # Refactor Task: Media and Account Commands Migration
+
+## Mission Overview
+You are assigned to migrate the media and account commands from the legacy architecture to the new clean architecture. This is a critical blocker for Phase 4 readiness. Your task involves implementing proper test coverage, following established patterns, and ensuring the new implementations maintain feature parity with the legacy code.
+
+## Target Files and Modules
+- Primary focus: 
+  - `src/commands/mediaCommand.js`
+  - `src/commands/accountCommands.js`
+- Related tests:
+  - `tests/commands/mediaCommand.test.js`
+  - `tests/commands/accountCommands.test.js`
+- Reference implementations:
+  - `src/commands/makeCommand.js` (follow this pattern)
+  - `tests/commands/makeCommand.e2e.test.js` (example of good test coverage)
+
+## Current Status
+- `/make` command has been successfully migrated with comprehensive E2E tests
+- Media commands are partially migrated but lack sufficient test coverage
+- Account commands need comprehensive tests for account management, settings, and preferences
+- Current service layer test coverage is at 30% and needs improvement
+
+## Technical Requirements
+1. **Follow Clean Architecture Principles**
+   - Separate business logic from UI and platform specifics
+   - Use workflow system for multi-step interactions
+   - Implement proper validation for all inputs
+
+2. **Implement Comprehensive Tests**
+   - Create unit tests for core functionality
+   - Develop integration tests for workflow interactions
+   - Add E2E tests for critical user journeys
+   - Target 80%+ test coverage for these commands
+
+3. **Maintain Feature Parity**
+   - Ensure all existing features are preserved
+   - Use feature flags for gradual rollout
+   - Provide migration path for user data
+
+4. **Standardize Test Organization**
+   - Follow naming conventions established in `tests/commands/README.md`
+   - Place tests in appropriate directories
+   - Document test coverage and patterns
+
+## Success Criteria
+- All tests pass with 80%+ coverage
+- Feature parity with legacy implementations
+- Documentation updated with migration patterns
+- Feature flags implemented for gradual rollout
+- Clean architectural separation of concerns
+
+## Reference Patterns and Examples
+- Command pattern: See `src/commands/makeCommand.js`
+- Workflow implementation: See `src/core/workflow/workflows/MakeImageWorkflow.js`
+- Test implementation: See `tests/commands/makeCommand.e2e.test.js`
+- UI components: See `src/core/ui/components/`
+
+## Execution Notes
+- Start with understating the existing implementations
+- Identify core business logic that needs to be preserved
+- Extract platform-specific code to adapters
+- Implement tests for each component
+- Test for regressions across platforms
+
+## Timeline and Priority
+This task is critical for Phase 4 readiness and should be completed before additional feature work. It represents a high-priority blocker for the overall refactor progress.

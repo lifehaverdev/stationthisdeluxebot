@@ -3,393 +3,572 @@
  * 
  * Platform-agnostic implementations of media-related commands
  * such as image-to-image, background removal, upscaling, etc.
+ * 
+ * This implementation follows the clean architecture pattern and uses
+ * the workflow system for complex interactions.
  */
 
 const { v4: uuidv4 } = require('uuid');
 const { AppError, ERROR_SEVERITY } = require('../core/shared/errors');
-const config = require('../services/comfydeploy/config');
+const { createMediaOperationWorkflow, resumeWorkflowWithWebhook } = require('../core/workflow/workflows/MediaOperationWorkflow');
 
 /**
- * Common function to handle all media operations
+ * Handler for the media operations commands
  * 
  * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance (ComfyDeployMediaService)
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.operationType - Type of operation ('image-to-image', 'background-removal', etc.)
- * @param {Object} context.params - Operation-specific parameters
- * @returns {Promise<Object>} - Operation result
+ * @returns {Promise<Object>} Command execution result
  */
-async function processMediaOperation(context) {
+async function mediaCommandHandler(context) {
   const {
-    mediaService,
-    sessionManager,
-    pointsService,
     userId,
-    operationType,
-    params = {}
+    platform,
+    sessionManager,
+    uiManager,
+    mediaService,
+    pointsService,
+    analyticsService,
+    workflowEngine,
+    parameters = {},
+    messageContext = {},
+    operationType
   } = context;
 
-  if (!mediaService) {
-    throw new AppError('Media service is required', {
+  if (!userId) {
+    throw new AppError('User ID is required', {
       severity: ERROR_SEVERITY.ERROR,
-      code: 'MEDIA_SERVICE_REQUIRED'
-    });
-  }
-
-  if (!sessionManager) {
-    throw new AppError('SessionManager is required', {
-      severity: ERROR_SEVERITY.ERROR,
-      code: 'SESSION_MANAGER_REQUIRED'
-    });
-  }
-
-  // Get or create user session
-  let session;
-  try {
-    session = await sessionManager.getSession(userId);
-    
-    // If session doesn't exist, create it
-    if (!session) {
-      session = await sessionManager.createSession(userId, {
-        createdAt: Date.now(),
-        lastActivity: Date.now()
-      });
-    } else {
-      // Update last activity
-      await sessionManager.updateSession(userId, {
-        lastActivity: Date.now(),
-        lastCommand: `/${operationType}`
-      });
-    }
-  } catch (error) {
-    console.error('Error accessing session:', error);
-    throw new AppError('Failed to access session data', {
-      severity: ERROR_SEVERITY.ERROR,
-      code: 'SESSION_ACCESS_FAILED',
-      cause: error
-    });
-  }
-
-  // Check if user has sufficient points if points service is available
-  if (pointsService) {
-    // Get cost for this operation type
-    const operationCost = config.getOperationCost(operationType);
-    
-    const hasEnoughPoints = await pointsService.hasSufficientPoints(
-      userId, 
-      operationCost, 
-      'points'
-    );
-    
-    if (!hasEnoughPoints) {
-      throw new AppError('Insufficient points for this operation', {
-        severity: ERROR_SEVERITY.WARNING,
-        code: 'INSUFFICIENT_POINTS',
-        userFacing: true
-      });
-    }
-  }
-
-  // Process the operation based on type
-  let result;
-  try {
-    switch (operationType) {
-      case 'image-to-image':
-        result = await mediaService.processImageToImage({
-          userId,
-          prompt: params.prompt,
-          imageUrl: params.imageUrl,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl,
-          metadata: params.metadata
-        });
-        break;
-        
-      case 'background-removal':
-        result = await mediaService.removeBackground({
-          userId,
-          imageUrl: params.imageUrl,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl
-        });
-        break;
-        
-      case 'upscale':
-        result = await mediaService.upscaleImage({
-          userId,
-          imageUrl: params.imageUrl,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl
-        });
-        break;
-        
-      case 'interrogate':
-        result = await mediaService.interrogateImage({
-          userId,
-          imageUrl: params.imageUrl,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl
-        });
-        break;
-        
-      case 'animate':
-        result = await mediaService.animateImage({
-          userId,
-          prompt: params.prompt,
-          imageUrl: params.imageUrl,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl
-        });
-        break;
-        
-      case 'video':
-        result = await mediaService.generateVideo({
-          userId,
-          prompt: params.prompt,
-          settings: params.settings,
-          callbackUrl: params.callbackUrl
-        });
-        break;
-        
-      default:
-        throw new AppError(`Unknown operation type: ${operationType}`, {
-          severity: ERROR_SEVERITY.ERROR,
-          code: 'UNKNOWN_OPERATION_TYPE',
-          userFacing: true
-        });
-    }
-  } catch (error) {
-    console.error(`Error processing ${operationType} operation:`, error);
-    throw new AppError(`Failed to process ${operationType} operation`, {
-      severity: ERROR_SEVERITY.ERROR,
-      code: 'MEDIA_OPERATION_FAILED',
-      cause: error,
+      code: 'MISSING_USER_ID',
       userFacing: true
     });
   }
 
-  // Store the operation in the session for tracking
-  const userOperations = session.get('mediaOperations') || [];
-  userOperations.push({
-    id: result.taskId,
-    type: operationType,
-    createdAt: Date.now(),
-    runId: result.run_id,
-    status: 'queued'
-  });
+  if (!operationType) {
+    throw new AppError('Operation type is required', {
+      severity: ERROR_SEVERITY.ERROR,
+      code: 'MISSING_OPERATION_TYPE',
+      userFacing: true
+    });
+  }
 
-  // Update session
-  await sessionManager.updateSession(userId, {
-    mediaOperations: userOperations.slice(-10), // Keep only the 10 most recent operations
-    lastMediaOperation: operationType
-  });
+  if (!mediaService) {
+    throw new AppError('Media service is required', {
+      severity: ERROR_SEVERITY.ERROR,
+      code: 'MISSING_MEDIA_SERVICE'
+    });
+  }
 
-  // Return operation result
+  try {
+    // Track command usage
+    analyticsService?.trackEvent('command:media:initiated', {
+      userId,
+      platform,
+      operationType,
+      timestamp: Date.now()
+    });
+
+    // Get user's session if available
+    let userSession;
+    if (sessionManager) {
+      userSession = await sessionManager.getSession(userId);
+      if (!userSession) {
+        // Create a new session if none exists
+        userSession = await sessionManager.createSession(userId, {
+          createdAt: Date.now(),
+          lastActivity: Date.now()
+        });
+      } else {
+        // Update existing session
+        await sessionManager.updateSession(userId, {
+          lastActivity: Date.now(),
+          lastCommand: operationType
+        });
+      }
+    }
+
+    // Prepare the workflow options
+    const workflowOptions = {
+      mediaService,
+      pointsService,
+      analyticsService,
+      deliveryAdapter: createPlatformDeliveryAdapter(platform, uiManager, messageContext)
+    };
+
+    // Create the workflow instance
+    const workflow = createMediaOperationWorkflow(workflowOptions);
+
+    // Initialize the workflow state with user context
+    const initialState = {
+      userId,
+      platform,
+      operationType,
+      username: messageContext.username || userSession?.get('username'),
+      chatId: messageContext.chatId,
+      threadId: messageContext.threadId,
+      locale: messageContext.locale || userSession?.get('locale') || 'en',
+      balance: userSession?.get('points')?.balance,
+      workflowId: uuidv4(),
+      startedAt: Date.now(),
+      platformContext: messageContext,
+      callbackUrl: messageContext.callbackUrl
+    };
+
+    // If we have a pre-defined image URL or prompt, add it to the workflow context
+    if (parameters.imageUrl) {
+      initialState.imageUrl = parameters.imageUrl;
+    }
+
+    if (parameters.prompt) {
+      initialState.prompt = parameters.prompt;
+    }
+
+    // If we have settings, add them to the workflow context
+    if (parameters.settings) {
+      initialState.settings = parameters.settings;
+    }
+
+    // Start the workflow using the WorkflowEngine if available
+    if (workflowEngine) {
+      const startedWorkflow = await workflowEngine.startWorkflow('MediaOperationWorkflow', initialState, workflow);
+      
+      // Return information about the started workflow
+      return {
+        success: true,
+        message: `${operationType} workflow started`,
+        workflowId: startedWorkflow.id,
+        initialStep: startedWorkflow.currentStep
+      };
+    }
+
+    // Fallback to manual workflow initialization if no WorkflowEngine
+    const workflowInstance = workflow.createWorkflow({
+      context: initialState
+    });
+
+    // If we have a specific operation type, jump to that step
+    if (operationType && operationType !== 'media') {
+      // Process the operation type selection
+      await workflowInstance.processInput(operationType);
+    }
+
+    // Render the current step UI using the UIManager
+    const currentStep = workflowInstance.getCurrentStep();
+    
+    if (!currentStep) {
+      throw new AppError('Failed to initialize workflow', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'WORKFLOW_INIT_FAILED',
+        userFacing: true
+      });
+    }
+
+    // Extract UI definition from the current step
+    const uiDefinition = currentStep.ui || {};
+
+    // Create platform-specific context for UI rendering
+    const renderContext = {
+      chatId: messageContext.chatId,
+      threadId: messageContext.threadId,
+      messageId: messageContext.messageId,
+      workflowId: workflowInstance.id,
+      stepId: currentStep.id
+    };
+
+    // Render the UI component
+    const renderResult = await renderStepUI(uiManager, platform, uiDefinition, renderContext);
+
+    // Store the workflow in the user's session
+    if (sessionManager) {
+      await sessionManager.updateSession(userId, {
+        workflows: {
+          [workflowInstance.id]: workflowInstance.serialize()
+        }
+      });
+    }
+
+    // Return information about the started workflow
+    return {
+      success: true,
+      message: `${operationType} workflow started`,
+      workflowId: workflowInstance.id,
+      uiRendered: !!renderResult,
+      initialStep: currentStep.id
+    };
+  } catch (error) {
+    // Track error
+    analyticsService?.trackEvent('command:media:error', {
+      userId,
+      platform,
+      operationType,
+      error: error.message,
+      code: error.code,
+      timestamp: Date.now()
+    });
+
+    // Handle error based on severity
+    if (error.severity === ERROR_SEVERITY.WARNING) {
+      // For warnings, return a user-friendly error
+      return {
+        success: false,
+        message: error.userFacing ? error.message : `Could not start ${operationType} operation`,
+        error: error.message,
+        code: error.code
+      };
+    }
+
+    // For critical errors, rethrow for the command router to handle
+    throw error;
+  }
+}
+
+/**
+ * Create a platform-specific delivery adapter
+ * @private
+ * @param {string} platform - Platform identifier
+ * @param {Object} uiManager - UI Manager instance
+ * @param {Object} messageContext - Message context for delivery
+ * @returns {Object} Delivery adapter
+ */
+function createPlatformDeliveryAdapter(platform, uiManager, messageContext) {
   return {
-    taskId: result.taskId,
-    runId: result.run_id,
-    status: result.status,
-    operationType,
-    timestamp: Date.now()
+    deliverMedia: async ({ userId, mediaType, media, context }) => {
+      try {
+        // Create a result component
+        const component = uiManager.createComponent('result', {
+          mediaType,
+          mediaSrc: media,
+          prompt: context.prompt,
+          settings: context.settings,
+          operationType: context.operationType
+        });
+
+        // Render the component on the specified platform
+        const renderContext = {
+          chatId: messageContext.chatId,
+          threadId: messageContext.threadId,
+          userId
+        };
+
+        const result = await uiManager.render(component, {}, platform, renderContext);
+
+        return {
+          id: `delivery-${Date.now()}`,
+          success: true,
+          mediaUrl: media,
+          renderResult: result
+        };
+      } catch (error) {
+        console.error('Error delivering media:', error);
+        
+        // Return minimal success to avoid breaking the workflow
+        return {
+          id: `delivery-${Date.now()}`,
+          success: false,
+          error: error.message
+        };
+      }
+    },
+    
+    deliverErrorMessage: async ({ userId, error, platformContext }) => {
+      try {
+        // Create an error component
+        const component = uiManager.createComponent('error', {
+          message: error.userFacing ? error.message : 'Operation failed',
+          code: error.code
+        });
+
+        // Render the component on the specified platform
+        const renderContext = {
+          chatId: messageContext.chatId,
+          threadId: messageContext.threadId,
+          userId
+        };
+
+        const result = await uiManager.render(component, {}, platform, renderContext);
+
+        return {
+          id: `error-${Date.now()}`,
+          success: true,
+          renderResult: result
+        };
+      } catch (err) {
+        console.error('Error delivering error message:', err);
+        
+        // Just log the failure, don't break the workflow
+        return {
+          id: `error-${Date.now()}`,
+          success: false,
+          error: err.message
+        };
+      }
+    }
   };
 }
 
 /**
- * Process image-to-image generation
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.prompt - Generation prompt
- * @param {string} context.imageUrl - Source image URL
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
+ * Render a step's UI
+ * @private
+ * @param {Object} uiManager - UI Manager instance
+ * @param {string} platform - Platform identifier
+ * @param {Object} uiDefinition - UI definition from workflow step
+ * @param {Object} context - Rendering context
+ * @returns {Promise<Object>} Render result
  */
-async function processImageToImage(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'image-to-image',
-    params: {
-      prompt: context.prompt,
-      imageUrl: context.imageUrl,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl,
-      metadata: context.metadata
-    }
-  });
+async function renderStepUI(uiManager, platform, uiDefinition, context) {
+  if (!uiManager || !uiDefinition) {
+    return null;
+  }
+
+  try {
+    // Create component based on UI definition
+    const component = uiManager.createComponent(uiDefinition.type, uiDefinition);
+    
+    // Render the component
+    return await uiManager.render(component, {}, platform, context);
+  } catch (error) {
+    console.error('Error rendering UI:', error);
+    return null;
+  }
 }
 
 /**
- * Remove background from image
+ * Process webhook events for media operations
  * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
+ * @param {Object} context - Webhook context
+ * @param {Object} context.payload - Webhook payload
  * @param {string} context.userId - User ID
- * @param {string} context.imageUrl - Source image URL
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
+ * @param {string} context.workflowId - Workflow ID
+ * @param {Object} context.sessionManager - Session manager
+ * @returns {Promise<Object>} Webhook processing result
  */
-async function removeBackground(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'background-removal',
-    params: {
-      imageUrl: context.imageUrl,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl
-    }
-  });
-}
-
-/**
- * Upscale image
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.imageUrl - Source image URL
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
- */
-async function upscaleImage(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'upscale',
-    params: {
-      imageUrl: context.imageUrl,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl
-    }
-  });
-}
-
-/**
- * Analyze image content (interrogate)
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.imageUrl - Source image URL
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
- */
-async function interrogateImage(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'interrogate',
-    params: {
-      imageUrl: context.imageUrl,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl
-    }
-  });
-}
-
-/**
- * Generate animation from image
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.prompt - Generation prompt
- * @param {string} context.imageUrl - Source image URL
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
- */
-async function animateImage(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'animate',
-    params: {
-      prompt: context.prompt,
-      imageUrl: context.imageUrl,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl
-    }
-  });
-}
-
-/**
- * Generate video from prompt
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {Object} context.sessionManager - SessionManager instance
- * @param {Object} context.pointsService - PointsService instance
- * @param {string} context.userId - User ID
- * @param {string} context.prompt - Generation prompt
- * @param {Object} [context.settings] - Additional settings
- * @returns {Promise<Object>} - Operation result
- */
-async function generateVideo(context) {
-  return processMediaOperation({
-    ...context,
-    operationType: 'video',
-    params: {
-      prompt: context.prompt,
-      settings: context.settings,
-      callbackUrl: context.callbackUrl
-    }
-  });
-}
-
-/**
- * Check status of a media operation
- * 
- * @param {Object} context - Command execution context
- * @param {Object} context.mediaService - Media service instance
- * @param {string} context.runId - ComfyDeploy run ID
- * @param {string} context.taskId - Task ID
- * @param {string} context.userId - User ID
- * @returns {Promise<Object>} - Operation status
- */
-async function checkMediaOperationStatus(context) {
-  const { mediaService, runId, taskId, userId } = context;
+async function processMediaWebhook(context) {
+  const { payload, userId, workflowId, sessionManager } = context;
   
-  if (!mediaService) {
-    throw new AppError('Media service is required', {
+  if (!payload || !userId || !workflowId || !sessionManager) {
+    throw new AppError('Missing required webhook parameters', {
       severity: ERROR_SEVERITY.ERROR,
-      code: 'MEDIA_SERVICE_REQUIRED'
+      code: 'INVALID_WEBHOOK'
     });
   }
   
   try {
-    const status = await mediaService.checkStatus({
-      run_id: runId,
-      taskId,
-      userId
+    // Get the user's session
+    const session = await sessionManager.getSession(userId);
+    if (!session) {
+      throw new AppError('User session not found', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'SESSION_NOT_FOUND'
+      });
+    }
+    
+    // Get the serialized workflow from the session
+    const serializedWorkflow = session.get(`workflows.${workflowId}`);
+    if (!serializedWorkflow) {
+      throw new AppError('Workflow not found in session', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'WORKFLOW_NOT_FOUND'
+      });
+    }
+    
+    // Resume the workflow with the webhook payload
+    const updatedWorkflow = await resumeWorkflowWithWebhook(serializedWorkflow, payload);
+    
+    // Update the workflow in the session
+    await sessionManager.updateSession(userId, {
+      [`workflows.${workflowId}`]: updatedWorkflow.serialize()
     });
     
-    return status;
+    return {
+      success: true,
+      workflowId,
+      status: payload.status,
+      updatedWorkflow: updatedWorkflow.getCurrentStepId()
+    };
   } catch (error) {
-    console.error('Error checking media operation status:', error);
-    throw new AppError('Failed to check operation status', {
-      severity: ERROR_SEVERITY.ERROR,
-      code: 'STATUS_CHECK_FAILED',
-      cause: error
-    });
+    console.error('Error processing media webhook:', error);
+    
+    return {
+      success: false,
+      error: {
+        message: error.message,
+        code: error.code || 'WEBHOOK_PROCESSING_ERROR'
+      }
+    };
   }
 }
 
+/**
+ * Create an image-to-image command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createImageToImageCommand(dependencies) {
+  return {
+    name: 'image-to-image',
+    description: 'Transform an image using AI',
+    aliases: ['img2img', 'i2i'],
+    category: 'media',
+    usage: '/image-to-image [prompt] - Upload an image to transform it based on your prompt',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'image-to-image'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Create a background removal command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createRemoveBackgroundCommand(dependencies) {
+  return {
+    name: 'remove-background',
+    description: 'Remove the background from an image',
+    aliases: ['rembg', 'nobg'],
+    category: 'media',
+    usage: '/remove-background - Upload an image to remove its background',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'background-removal'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Create an upscale command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createUpscaleCommand(dependencies) {
+  return {
+    name: 'upscale',
+    description: 'Enhance image quality and resolution',
+    aliases: ['enhance'],
+    category: 'media',
+    usage: '/upscale - Upload an image to enhance its quality',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'upscale'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Create an image analysis command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createAnalyzeImageCommand(dependencies) {
+  return {
+    name: 'analyze',
+    description: 'Analyze an image to get a description or prompt',
+    aliases: ['interrogate', 'describe'],
+    category: 'media',
+    usage: '/analyze - Upload an image to get its description',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'interrogate'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Create an animate image command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createAnimateCommand(dependencies) {
+  return {
+    name: 'animate',
+    description: 'Animate a still image',
+    aliases: ['motion'],
+    category: 'media',
+    usage: '/animate [prompt] - Upload an image to animate it based on your prompt',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'animate'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Create a video generation command handler
+ * 
+ * @param {Object} dependencies - Command dependencies
+ * @returns {Object} Command handler
+ */
+function createVideoCommand(dependencies) {
+  return {
+    name: 'video',
+    description: 'Generate a video from a prompt',
+    aliases: ['vid'],
+    category: 'media',
+    usage: '/video [prompt] - Generate a video from a text description',
+    execute: async (input) => {
+      return mediaCommandHandler({
+        ...input,
+        ...dependencies,
+        operationType: 'video'
+      });
+    },
+    processWebhook: processMediaWebhook
+  };
+}
+
+/**
+ * Register media commands with the command registry
+ * 
+ * @param {Object} registry - Command registry to register with
+ * @param {Object} dependencies - Dependencies to inject into commands
+ */
+function registerMediaCommands(registry, dependencies) {
+  if (!registry) {
+    throw new AppError('Command registry is required', {
+      severity: ERROR_SEVERITY.ERROR,
+      code: 'REGISTRY_REQUIRED'
+    });
+  }
+  
+  // Create and register all media commands
+  registry.register(createImageToImageCommand(dependencies));
+  registry.register(createRemoveBackgroundCommand(dependencies));
+  registry.register(createUpscaleCommand(dependencies));
+  registry.register(createAnalyzeImageCommand(dependencies));
+  registry.register(createAnimateCommand(dependencies));
+  registry.register(createVideoCommand(dependencies));
+}
+
 module.exports = {
-  processMediaOperation,
-  processImageToImage,
-  removeBackground,
-  upscaleImage,
-  interrogateImage,
-  animateImage,
-  generateVideo,
-  checkMediaOperationStatus
+  createImageToImageCommand,
+  createRemoveBackgroundCommand,
+  createUpscaleCommand,
+  createAnalyzeImageCommand,
+  createAnimateCommand,
+  createVideoCommand,
+  registerMediaCommands,
+  processMediaWebhook
 }; 

@@ -67,66 +67,30 @@ class ComfyDeployService extends EventEmitter {
    */
   async initialize() {
     try {
-      // Add some default workflows if none are provided
-      if (!this.workflows || this.workflows.length === 0) {
-        this.workflows = [
-          {
-            name: 'DEFAULT',
-            description: 'Basic text-to-image generation',
-            inputs: {
-              prompt: { 
-                type: 'text', 
-                label: 'Prompt',
-                description: 'Describe what you want to generate',
-                required: true,
-                default: ''
-              },
-              negative_prompt: { 
-                type: 'text', 
-                label: 'Negative Prompt',
-                description: 'Things you want to avoid in the image',
-                required: false,
-                default: ''
-              },
-              width: { 
-                type: 'number', 
-                label: 'Width',
-                min: 512,
-                max: 2048,
-                step: 64,
-                default: 1024
-              },
-              height: { 
-                type: 'number', 
-                label: 'Height',
-                min: 512,
-                max: 2048,
-                step: 64,
-                default: 1024
-              }
-            }
-          },
-          {
-            name: 'UPSCALE',
-            description: 'Upscale an existing image',
-            inputs: {
-              image: { 
-                type: 'file', 
-                label: 'Image',
-                description: 'Image to upscale',
-                required: true
-              },
-              scale: { 
-                type: 'number', 
-                label: 'Scale Factor',
-                min: 1,
-                max: 4,
-                step: 1,
-                default: 2
-              }
-            }
-          }
-        ];
+      // Try to get workflows from the WorkflowService first
+      const { getWorkflowService } = require('./WorkflowService');
+      const workflowService = getWorkflowService();
+      
+      if (workflowService) {
+        // If WorkflowService exists, try to get workflows from it
+        if (!workflowService.workflows || workflowService.workflows.length === 0) {
+          // Initialize the WorkflowService if needed
+          console.log('Initializing WorkflowService to load workflows');
+          await workflowService.initialize();
+        }
+        
+        // Get workflows from the service
+        const serviceWorkflows = workflowService.getAllWorkflows();
+        if (serviceWorkflows && serviceWorkflows.length > 0) {
+          console.log(`Using ${serviceWorkflows.length} workflows from WorkflowService`);
+          this.workflows = serviceWorkflows;
+        } else {
+          console.warn('No workflows found in WorkflowService, using defaults');
+          this._setDefaultWorkflows();
+        }
+      } else {
+        console.warn('WorkflowService not available, using default workflows');
+        this._setDefaultWorkflows();
       }
       
       // Connect to the client
@@ -136,6 +100,110 @@ class ComfyDeployService extends EventEmitter {
     } catch (error) {
       console.error('Failed to initialize ComfyDeployService:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Set default workflows if none are available from other sources
+   * @private
+   */
+  _setDefaultWorkflows() {
+    // Only set defaults if no workflows are available
+    if (!this.workflows || this.workflows.length === 0) {
+      this.workflows = [
+        {
+          name: 'DEFAULT',
+          description: 'Basic text-to-image generation',
+          inputs: {
+            prompt: { 
+              type: 'text', 
+              label: 'Prompt',
+              description: 'Describe what you want to generate',
+              required: true,
+              default: ''
+            },
+            negative_prompt: { 
+              type: 'text', 
+              label: 'Negative Prompt',
+              description: 'Things you want to avoid in the image',
+              required: false,
+              default: ''
+            },
+            width: { 
+              type: 'number', 
+              label: 'Width',
+              min: 512,
+              max: 2048,
+              step: 64,
+              default: 1024
+            },
+            height: { 
+              type: 'number', 
+              label: 'Height',
+              min: 512,
+              max: 2048,
+              step: 64,
+              default: 1024
+            }
+          }
+        },
+        {
+          name: 'UPSCALE',
+          description: 'Upscale an existing image',
+          inputs: {
+            image: { 
+              type: 'file', 
+              label: 'Image',
+              description: 'Image to upscale',
+              required: true
+            },
+            scale: { 
+              type: 'number', 
+              label: 'Scale Factor',
+              min: 1,
+              max: 4,
+              step: 1,
+              default: 2
+            }
+          }
+        },
+        {
+          name: 'MAKE',
+          description: 'Generate an image from text prompt',
+          inputs: {
+            prompt: { 
+              type: 'text', 
+              label: 'Prompt',
+              description: 'Describe what you want to generate',
+              required: true,
+              default: ''
+            },
+            negative_prompt: { 
+              type: 'text', 
+              label: 'Negative Prompt',
+              description: 'Things you want to avoid in the image',
+              required: false,
+              default: ''
+            },
+            width: { 
+              type: 'number', 
+              label: 'Width',
+              min: 512,
+              max: 2048,
+              step: 64,
+              default: 1024
+            },
+            height: { 
+              type: 'number', 
+              label: 'Height',
+              min: 512,
+              max: 2048,
+              step: 64,
+              default: 1024
+            }
+          }
+        }
+      ];
     }
   }
 
@@ -151,10 +219,39 @@ class ComfyDeployService extends EventEmitter {
    */
   async generate(promptObj, userContext, options = {}) {
     try {
+      // Handle different formats of userId in userContext
+      const userId = userContext.userId || 
+                    (userContext.user && userContext.user.id) || 
+                    (promptObj && promptObj.userId);
+      
+      if (!userId) {
+        throw new AppError('userId is required for generation', {
+          severity: ERROR_SEVERITY.ERROR,
+          code: 'MISSING_USER_ID'
+        });
+      }
+      
+      // Ensure userId is available in promptObj for the GenerationRequest constructor
+      if (promptObj && !promptObj.userId) {
+        promptObj.userId = userId;
+      }
+      
       // Ensure promptObj is a GenerationRequest
       const request = promptObj instanceof GenerationRequest
         ? promptObj
         : new GenerationRequest(promptObj);
+      
+      // Double-check userId is set in the request
+      if (!request.userId && userId) {
+        request.userId = userId;
+      }
+      
+      // Log generation request information
+      console.log('Generation request prepared:', {
+        userId: request.userId,
+        type: request.type,
+        contextUserId: userId
+      });
       
       // Validate request
       const validationResult = request.validate();
@@ -332,9 +429,17 @@ class ComfyDeployService extends EventEmitter {
     const workflow = this.workflows.find(flow => flow.name === type);
     
     if (!workflow) {
-      throw new AppError(`Deployment info not found for type: ${type}`, {
+      // Get list of available workflow names for better error reporting
+      const availableWorkflows = this.workflows.map(w => w.name).join(', ');
+      
+      throw new AppError(`Deployment info not found for type: ${type}. Available workflows: ${availableWorkflows || 'none'}`, {
         severity: ERROR_SEVERITY.ERROR,
-        code: 'DEPLOYMENT_INFO_NOT_FOUND'
+        code: 'DEPLOYMENT_INFO_NOT_FOUND',
+        details: {
+          requestedType: type,
+          availableWorkflows: this.workflows.map(w => w.name),
+          workflowCount: this.workflows.length
+        }
       });
     }
     

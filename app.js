@@ -32,6 +32,13 @@ const generationRoutes = require('./src/integrations/web/generationRoutes');
 
 // Add ComfyDeploy service
 const { ComfyDeployService } = require('./src/services/comfydeploy/service');
+const { ComfyDeployAdapter } = require('./src/services/comfydeploy/adapter');
+const { ServiceRegistry } = require('./src/services/registry');
+
+// Database and repositories
+const { DatabaseService } = require('./src/db/dbService');
+const { WorkflowRepository } = require('./src/db/repositories/workflowRepository');
+const { WorkflowLoader } = require('./src/core/workflow/loader');
 
 // Create logger
 const logger = new Logger({
@@ -50,6 +57,8 @@ const featureFlags = {
   useNewAccountCommands: true,
   useNewAccountPoints: true,
   useServices: true,
+  preloadWorkflows: true,
+  preloadMetadata: true,
   isEnabled: (flag) => featureFlags[flag] === true
 };
 
@@ -76,6 +85,11 @@ let botInstance = null;
 let sessionManager = null; 
 let commandRegistry = null;
 let workflowManager = null;
+let dbService = null;
+let repositories = {};
+
+// Use the ServiceRegistry singleton
+const serviceRegistry = ServiceRegistry.getInstance();
 
 // Create Telegram bot instance (singleton pattern)
 function initializeBot() {
@@ -104,6 +118,66 @@ function initializeBot() {
   return botInstance;
 }
 
+// Initialize database connection
+async function initializeDatabase() {
+  console.log('💾 Initializing database connection...');
+  try {
+    dbService = new DatabaseService({
+      uri: process.env.MONGO_PASS || 'mongodb://localhost:27017/stationthis',
+      options: {
+        useNewUrlParser: true,
+        useUnifiedTopology: true
+      },
+      logger
+    });
+    
+    await dbService.connect();
+    console.log('  ✓ Database connection established');
+    
+    return dbService;
+  } catch (error) {
+    console.error('  ❌ Failed to connect to database:', error.message);
+    logger.error('Database initialization failed', { error });
+    // Continue without database in development mode
+    if (process.env.NODE_ENV === 'production') {
+      throw new AppError('Database connection required in production', 'DATABASE_ERROR');
+    } else {
+      console.warn('  ⚠️ Continuing without database in development mode');
+      return null;
+    }
+  }
+}
+
+// Initialize repositories
+async function initializeRepositories() {
+  console.log('📚 Initializing repositories...');
+  
+  if (!dbService || !dbService.isConnected()) {
+    console.warn('  ⚠️ Database not connected, repositories will not be available');
+    return {};
+  }
+  
+  try {
+    // Initialize workflow repository
+    console.log('  ↳ Initializing workflow repository...');
+    const workflowRepository = new WorkflowRepository({
+      db: dbService,
+      logger
+    });
+    repositories.workflow = workflowRepository;
+    console.log('  ✓ Workflow repository initialized');
+    
+    // Add more repositories here...
+    
+    return repositories;
+  } catch (error) {
+    console.error('  ❌ Failed to initialize repositories:', error.message);
+    logger.error('Repository initialization failed', { error });
+    return {};
+  }
+}
+
+// Initialize core components
 function initializeCore() {
   // Initialize session manager
   console.log('  ↳ Creating session manager...');
@@ -136,11 +210,115 @@ function initializeCore() {
   };
 }
 
+// Load workflows from database
+async function loadWorkflows() {
+  if (!featureFlags.isEnabled('preloadWorkflows')) {
+    console.log('⚠️ Workflow preloading disabled by feature flag');
+    return { workflows: [], failed: false };
+  }
+
+  console.log('🔄 Loading workflows from database...');
+  try {
+    if (!repositories.workflow) {
+      throw new Error('Workflow repository not available');
+    }
+
+    const workflowLoader = new WorkflowLoader({
+      workflowRepository: repositories.workflow,
+      logger
+    });
+
+    const workflows = await workflowLoader.loadAllWorkflows();
+    const validWorkflows = [];
+    const invalidWorkflows = [];
+
+    // Validate workflows
+    for (const workflow of workflows) {
+      try {
+        // Validate structure
+        if (!workflow.name || !Array.isArray(workflow.inputs)) {
+          throw new Error(`Invalid workflow structure: ${workflow.name || 'unnamed'}`);
+        }
+        
+        // Register with workflow manager
+        workflowManager.registerWorkflowDefinition(workflow.name, workflow);
+        validWorkflows.push(workflow.name);
+      } catch (error) {
+        logger.error(`Failed to validate workflow: ${workflow.name || 'unnamed'}`, { error, workflow });
+        invalidWorkflows.push(workflow.name || 'unnamed');
+      }
+    }
+
+    console.log(`  ✓ Loaded ${validWorkflows.length} workflows successfully`);
+    if (invalidWorkflows.length > 0) {
+      console.warn(`  ⚠️ ${invalidWorkflows.length} workflows failed validation: ${invalidWorkflows.join(', ')}`);
+    }
+
+    return {
+      workflows: validWorkflows,
+      invalidWorkflows,
+      failed: false
+    };
+  } catch (error) {
+    console.error('  ❌ Failed to load workflows:', error.message);
+    logger.error('Workflow loading failed', { error });
+    
+    return {
+      workflows: [],
+      failed: true,
+      error
+    };
+  }
+}
+
+// Preload metadata
+async function preloadMetadata() {
+  if (!featureFlags.isEnabled('preloadMetadata')) {
+    console.log('⚠️ Metadata preloading disabled by feature flag');
+    return { success: false };
+  }
+
+  console.log('📚 Preloading shared metadata...');
+  const metadata = {};
+  const failed = [];
+
+  // Load featured workflows
+  try {
+    if (!repositories.workflow) {
+      throw new Error('Workflow repository not available');
+    }
+    
+    console.log('  ↳ Loading featured workflows...');
+    const featuredWorkflows = await repositories.workflow.findFeatured(10);
+    metadata.featuredWorkflows = featuredWorkflows;
+    
+    console.log(`  ✓ Loaded ${featuredWorkflows.length} featured workflows`);
+  } catch (error) {
+    console.warn('  ⚠️ Failed to load featured workflows:', error.message);
+    logger.warn('Featured workflows loading failed', { error });
+    failed.push('featuredWorkflows');
+  }
+
+  // Add more metadata loading here...
+
+  return {
+    metadata,
+    failed,
+    success: failed.length === 0
+  };
+}
+
 // Main initialization function
 async function initialize() {
   try {
     // Get singleton bot instance
     const bot = initializeBot();
+    
+    // Initialize database first
+    await initializeDatabase();
+    
+    // Initialize repositories
+    await initializeRepositories();
     
     // Initialize core components
     console.log('🧩 Initializing core services...');
@@ -178,6 +356,12 @@ async function initialize() {
       console.log('  ✓ Account points workflow registered');
     }
 
+    // Load workflows from database
+    const workflowResult = await loadWorkflows();
+    
+    // Preload metadata
+    const metadataResult = await preloadMetadata();
+    
     // Initialize Telegram integration
     if (!isWebOnly) {
       console.log('🔌 Initializing Telegram integration...');
@@ -248,7 +432,8 @@ async function initialize() {
       res.json({
         status: 'ok',
         uptime: process.uptime(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        database: dbService?.isConnected() || false
       });
     });
     
@@ -269,8 +454,9 @@ async function initialize() {
         activeSessions: core.sessionManager ? core.sessionManager.countActiveSessions() : 'N/A',
         commandCount: commands.length,
         commands: commands,
-        services: {
-          enabled: featureFlags.isEnabled('useServices'),
+        database: {
+          connected: dbService?.isConnected() || false,
+          repositories: Object.keys(repositories)
         },
         components: {
           bot: !!bot,
@@ -281,6 +467,15 @@ async function initialize() {
           workflowManager: !!core.workflowManager,
           internalAPI: true,
           featureFlags: featureFlags
+        },
+        workflows: {
+          loaded: workflowResult?.workflows?.length || 0,
+          invalid: workflowResult?.invalidWorkflows?.length || 0,
+          loadFailed: workflowResult?.failed || false
+        },
+        metadata: {
+          preloaded: metadataResult?.success || false,
+          failed: metadataResult?.failed || []
         }
       });
     });
@@ -302,6 +497,11 @@ async function initialize() {
     app.use('/interface', express.static(path.join(__dirname, 'user-interface')));
     console.log('  ✓ Web interface mounted at /interface');
 
+    // Ensure fallback UI exists if workflows fail to load
+    app.get('/interface/fallback', (req, res) => {
+      res.sendFile(path.join(__dirname, 'user-interface', 'fallback.html'));
+    });
+
     // Redirect from root to interface
     app.get('/', (req, res) => {
       res.redirect('/interface');
@@ -315,7 +515,49 @@ async function initialize() {
       console.log(`🌎 Web interface available at http://localhost:${PORT}/interface`);
     });
 
-    console.log('✅ StationThis Bot initialization complete');
+    // Initialize ComfyDeploy service
+    console.log('🎨 Initializing ComfyDeploy service...');
+    try {
+      process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+      
+      // Create the ComfyDeploy adapter
+      const comfyDeployAdapter = new ComfyDeployAdapter({
+        config: {
+          apiKey: process.env.COMFY_DEPLOY_API_KEY || 'dev-key',
+          baseUrl: process.env.COMFY_DEPLOY_BASE_URL || 'https://www.comfydeploy.com/api',
+          webhookUrl: process.env.COMFY_DEPLOY_WEBHOOK_URL,
+          workflowRefreshInterval: 3600000 // 1 hour
+        }
+      });
+      
+      // Initialize the adapter
+      await comfyDeployAdapter.init();
+      
+      // Register with the service registry
+      serviceRegistry.register(comfyDeployAdapter);
+      
+      console.log('  ✓ ComfyDeploy service initialized and registered');
+      
+      // Synchronize workflows if workflow manager is available
+      if (core.workflowManager) {
+        console.log('  ↳ Synchronizing workflows with ComfyDeploy service...');
+        try {
+          const result = await core.workflowManager.synchronizeWithWorkflowService();
+          console.log(`  ✓ Workflows synchronized: ${result.serviceToManager} from service, ${result.managerToService} to service`);
+        } catch (syncError) {
+          console.warn('  ⚠️ Workflow synchronization failed:', syncError.message);
+          logger.warn('Workflow synchronization failed', { error: syncError });
+        }
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'production') {
+        console.error('❌ Failed to initialize ComfyDeploy service (required in production):', error);
+        throw error;
+      } else {
+        console.warn('⚠️ ComfyDeploy service initialization failed, but continuing in development mode');
+        console.warn('   Set COMFY_DEPLOY_API_KEY in .env for full functionality');
+      }
+    }
     
     // Set up webhook if needed
     if (useWebhook && !isWebOnly) {
@@ -335,32 +577,37 @@ async function initialize() {
       }
     }
 
-    // Initialize ComfyDeploy service
-    console.log('🎨 Initializing ComfyDeploy service...');
-    try {
-      process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-      const comfyDeployService = new ComfyDeployService({
-        apiKey: process.env.COMFY_DEPLOY_API_KEY || 'dev-key',
-        baseUrl: process.env.COMFY_DEPLOY_BASE_URL || 'https://www.comfydeploy.com/api',
-        webhookUrl: process.env.COMFY_DEPLOY_WEBHOOK_URL,
-        workflowRefreshInterval: 3600000 // 1 hour
-      });
-      await comfyDeployService.initialize();
-      console.log('  ✓ ComfyDeploy service initialized');
-    } catch (error) {
-      if (process.env.NODE_ENV === 'production') {
-        console.error('❌ Failed to initialize ComfyDeploy service (required in production):', error);
-        throw error;
-      } else {
-        console.warn('⚠️ ComfyDeploy service initialization failed, but continuing in development mode');
-        console.warn('   Set COMFY_DEPLOY_API_KEY in .env for full functionality');
+    // Check if system is ready
+    const isSystemReady = (
+      !!core.sessionManager && 
+      !!core.commandRegistry && 
+      !!core.workflowManager && 
+      (!dbService || dbService.isConnected() || process.env.NODE_ENV !== 'production')
+    );
+
+    if (isSystemReady) {
+      logger.info('System initialization complete and ready');
+      console.log('✅ System ready - All required components are available');
+    } else {
+      const missingComponents = [];
+      if (!core.sessionManager) missingComponents.push('SessionManager');
+      if (!core.commandRegistry) missingComponents.push('CommandRegistry');
+      if (!core.workflowManager) missingComponents.push('WorkflowManager');
+      if (dbService && !dbService.isConnected() && process.env.NODE_ENV === 'production') {
+        missingComponents.push('Database');
       }
+      
+      logger.warn('System initialized with missing components', { missingComponents });
+      console.warn(`⚠️ System initialized with limitations - Missing: ${missingComponents.join(', ')}`);
     }
     
     return {
       bot,
       app,
-      core
+      core,
+      dbService,
+      repositories,
+      isSystemReady
     };
   } catch (error) {
     console.error('❌ Error initializing StationThis Bot:', error);
@@ -388,5 +635,8 @@ module.exports = {
   getSessionManager: () => sessionManager,
   getCommandRegistry: () => commandRegistry,
   getWorkflowManager: () => workflowManager,
+  getDatabaseService: () => dbService,
+  getRepositories: () => repositories,
+  isSystemReady: () => appComponents?.isSystemReady || false,
   featureFlags
 };

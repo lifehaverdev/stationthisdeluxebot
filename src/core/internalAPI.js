@@ -14,6 +14,13 @@ const { ServiceRegistry } = require('../services/registry');
 const { getWorkflowService } = require('../services/comfydeploy/WorkflowService');
 const { comfyDeployService } = require('../services/comfydeploy/service');
 const express = require('express');
+const { 
+  GuestAccessService,
+  isGuestUser 
+} = require('../api/guestAccess');
+
+// Import routes
+const sessionRoutes = require('./internalAPI/routes/sessionRoutes');
 
 // Initialize logger
 const logger = new Logger({
@@ -27,6 +34,8 @@ const serviceRegistry = ServiceRegistry.getInstance();
 
 // Module-level sessionManager instance (will be initialized in setup)
 let sessionManager = null;
+let workflowManager = null;
+let guestAccessService = null;
 
 // Create the Express router for API endpoints
 const api = express.Router();
@@ -35,6 +44,7 @@ const api = express.Router();
  * Setup the internal API with the required dependencies
  * @param {Object} options - Setup options
  * @param {SessionManager} options.sessionManager - Session manager instance
+ * @param {WorkflowManager} options.workflowManager - Workflow manager instance
  * @returns {express.Router} - The configured API router
  */
 function setup(options = {}) {
@@ -43,7 +53,40 @@ function setup(options = {}) {
   }
   
   sessionManager = options.sessionManager;
+  workflowManager = options.workflowManager; // Store the workflow manager reference
   logger.info('Internal API initialized', { system: 'internalAPI' });
+
+  // Synchronize workflows if workflowManager is available
+  if (workflowManager) {
+    // Use setTimeout to not block the initialization
+    setTimeout(async () => {
+      try {
+        const workflowService = getWorkflowService();
+        if (workflowService) {
+          logger.info('Synchronizing workflows between manager and service', { 
+            system: 'internalAPI' 
+          });
+          
+          const result = await workflowManager.synchronizeWithWorkflowService();
+          
+          logger.info('Workflow synchronization completed', { 
+            system: 'internalAPI',
+            success: result.success,
+            managerToService: result.managerToService,
+            serviceToManager: result.serviceToManager
+          });
+        }
+      } catch (error) {
+        logger.error('Error synchronizing workflows at startup', {
+          system: 'internalAPI',
+          error
+        });
+      }
+    }, 1000);
+  }
+
+  // Mount session routes
+  api.use('/session', sessionRoutes);
 
   // Add generic API endpoints
   api.get('/status', (req, res) => {
@@ -53,6 +96,236 @@ function setup(options = {}) {
       timestamp: Date.now(),
       services: serviceRegistry.getServiceNames() || []
     });
+  });
+
+  // Add workflows endpoint
+  api.get('/workflows', async (req, res) => {
+    logger.debug('Workflows endpoint called', { system: 'internalAPI' });
+    const result = await getWorkflows();
+    
+    // Add detailed logging about the workflows being returned
+    if (result.status === 'ok' && result.workflows) {
+      logger.info('Returning workflows to client', { 
+        system: 'internalAPI', 
+        count: result.workflows.length,
+        workflowNames: result.workflows.map(w => w.name).join(', ') 
+      });
+    } else {
+      logger.warn('No workflows or error returning workflows', { 
+        system: 'internalAPI',
+        status: result.status,
+        error: result.error
+      });
+    }
+    
+    res.json(result);
+  });
+
+  // Add workflow details endpoint
+  api.get('/workflows/:name', async (req, res) => {
+    const result = await getWorkflowByName(req.params.name);
+    res.json(result);
+  });
+
+  // Add workflow diagnostics endpoint
+  api.get('/diagnostics/workflows', async (req, res) => {
+    if (!workflowManager) {
+      return res.json({
+        status: 'error',
+        error: 'Workflow manager not initialized'
+      });
+    }
+    
+    try {
+      const diagnostics = await workflowManager.getDiagnostics();
+      res.json({
+        status: 'ok',
+        diagnostics
+      });
+    } catch (error) {
+      logger.error('Error retrieving workflow diagnostics', {
+        system: 'internalAPI',
+        error
+      });
+      
+      res.json({
+        status: 'error',
+        error: error.message || 'Failed to retrieve workflow diagnostics'
+      });
+    }
+  });
+
+  // Add enhanced workflow diagnostics endpoint using new utility
+  api.get('/diagnostics/workflows/detailed', async (req, res) => {
+    try {
+      // Import the workflow diagnostics utility
+      const { getWorkflowDiagnostics } = require('../utils/workflowDiagnostics');
+      
+      // Get detailed diagnostics
+      const diagnostics = await getWorkflowDiagnostics({ workflowManager });
+      
+      res.json({
+        status: 'ok',
+        diagnostics
+      });
+    } catch (error) {
+      logger.error('Error retrieving detailed workflow diagnostics', {
+        system: 'internalAPI',
+        error
+      });
+      
+      res.json({
+        status: 'error',
+        error: error.message || 'Failed to retrieve detailed workflow diagnostics'
+      });
+    }
+  });
+
+  // Add workflow synchronization endpoint (original version for backwards compatibility)
+  api.post('/workflows/synchronize', async (req, res) => {
+    if (!workflowManager) {
+      return res.json({
+        status: 'error',
+        error: 'Workflow manager not initialized'
+      });
+    }
+    
+    try {
+      const bidirectional = req.body.bidirectional !== false; // Default to true
+      const result = await workflowManager.synchronizeWithWorkflowService(bidirectional);
+      
+      logger.info('Manual workflow synchronization completed', { 
+        system: 'internalAPI',
+        success: result.success,
+        bidirectional
+      });
+      
+      res.json({
+        status: result.success ? 'ok' : 'error',
+        result
+      });
+    } catch (error) {
+      logger.error('Error synchronizing workflows', {
+        system: 'internalAPI',
+        error
+      });
+      
+      res.json({
+        status: 'error',
+        error: error.message || 'Failed to synchronize workflows'
+      });
+    }
+  });
+
+  // Add workflow synchronization endpoint with detailed report
+  api.post('/workflows/synchronize/detailed', async (req, res) => {
+    if (!workflowManager) {
+      return res.json({
+        status: 'error',
+        error: 'Workflow manager not initialized'
+      });
+    }
+    
+    try {
+      // Import the workflow diagnostics utility
+      const { syncAllWorkflows } = require('../utils/workflowDiagnostics');
+      
+      // Force param - defaults to false
+      const force = req.body.force === true;
+      
+      // Run the sync operation
+      const result = await syncAllWorkflows({ 
+        workflowManager,
+        force
+      });
+      
+      logger.info('Detailed workflow synchronization completed', { 
+        system: 'internalAPI',
+        success: result.success,
+        force
+      });
+      
+      res.json({
+        status: result.success ? 'ok' : 'error',
+        result
+      });
+    } catch (error) {
+      logger.error('Error in detailed workflow synchronization', {
+        system: 'internalAPI',
+        error
+      });
+      
+      res.json({
+        status: 'error',
+        error: error.message || 'Failed to synchronize workflows'
+      });
+    }
+  });
+
+  // Add workflow execution endpoint
+  api.post('/workflows/execute/:name', async (req, res) => {
+    const workflowName = req.params.name;
+    const inputs = req.body.inputs || {};
+    
+    // Create a proper session context
+    const sessionContext = {
+      // Use provided userId if available, otherwise will be set in executeWorkflow
+      userId: req.body.userId,
+      // Define platform as web for proper userId generation if needed
+      platform: { type: 'web' },
+      // Add any user info that might be provided
+      userInfo: {
+        ...(req.body.userInfo || {}),
+        // Support wallet address specifically
+        walletAddress: req.body.walletAddress || req.body.userInfo?.walletAddress,
+        // Support API key specifically
+        apiKey: req.body.apiKey || req.body.userInfo?.apiKey
+      }
+    };
+    
+    logger.debug('Preparing to execute workflow', {
+      system: 'internalAPI',
+      workflow: workflowName,
+      providedUserId: req.body.userId ? 'yes' : 'no',
+      hasWallet: sessionContext.userInfo.walletAddress ? 'yes' : 'no',
+      hasApiKey: sessionContext.userInfo.apiKey ? 'yes' : 'no'
+    });
+    
+    const result = await executeWorkflow(workflowName, inputs, sessionContext);
+    res.json(result);
+  });
+
+  // File upload endpoint for workflow inputs
+  api.post('/upload', (req, res) => {
+    // This would typically handle file uploads
+    // For now, just return a success response
+    res.json({
+      status: 'ok',
+      files: {}
+    });
+  });
+
+  // Initialize guest access service if session manager is available
+  if (sessionManager) {
+    guestAccessService = new GuestAccessService({
+      sessionManager,
+      workflowManager
+    });
+    
+    logger.info('Guest access service initialized');
+  }
+
+  // After the validateApiKey endpoint and before the router is returned
+  api.post('/session/validate-api-key', async (req, res) => {
+    const { apiKey } = req.body;
+    const result = await validateApiKey(apiKey);
+    res.json(result);
+  });
+
+  // Add the guest session endpoint
+  api.post('/session/guest', async (req, res) => {
+    const result = await createGuestSession();
+    res.json(result);
   });
 
   // Return the configured router
@@ -188,6 +461,26 @@ async function getSession(userId) {
         error: 'Session not found',
         code: 'SESSION_NOT_FOUND'
       };
+    }
+
+    // Check if it's a guest user ID
+    if (isGuestUser(userId)) {
+      const guestSession = guestAccessService ? 
+        await guestAccessService.getGuestSession(userId) : null;
+      
+      if (guestSession) {
+        return {
+          status: 'ok',
+          session: {
+            userId: userId,
+            isGuest: true,
+            requestsRemaining: guestSession.requestsRemaining,
+            requestsLimit: guestSession.requestsLimit || 3,
+            requestsUsed: guestSession.requestsUsed || 0,
+            expiresAt: guestSession.expiresAt
+          }
+        };
+      }
     }
 
     // Log the session success
@@ -739,7 +1032,7 @@ async function executeService(serviceName, params = {}, sessionContext = {}) {
   logger.info('Execute service request received', { 
     system: 'internalAPI',
     service: serviceName, 
-    userId: sessionContext.userId 
+    userId: sessionContext.userId || (sessionContext.user && sessionContext.user.id)
   });
 
   try {
@@ -747,6 +1040,37 @@ async function executeService(serviceName, params = {}, sessionContext = {}) {
     if (!serviceName) {
       throw new AppError('serviceName is required', {
         code: 'MISSING_SERVICE_NAME'
+      });
+    }
+    
+    // Log detailed context for debugging
+    logger.debug('Execute service context details', {
+      system: 'internalAPI',
+      service: serviceName,
+      hasDirectUserId: !!sessionContext.userId,
+      hasUserObject: !!sessionContext.user,
+      hasUserObjectId: !!(sessionContext.user && sessionContext.user.id),
+      paramsHasUserId: !!params.userId,
+      contextKeys: Object.keys(sessionContext)
+    });
+
+    // Handle case where userId might be nested in user object instead of at top level
+    if (!sessionContext.userId && sessionContext.user && sessionContext.user.id) {
+      sessionContext.userId = sessionContext.user.id;
+      logger.debug('Using userId from user.id', {
+        system: 'internalAPI',
+        service: serviceName,
+        userId: sessionContext.userId
+      });
+    }
+
+    // Also check if userId is in the params
+    if (!sessionContext.userId && params.userId) {
+      sessionContext.userId = params.userId;
+      logger.debug('Using userId from params', {
+        system: 'internalAPI',
+        service: serviceName,
+        userId: sessionContext.userId
       });
     }
 
@@ -759,63 +1083,33 @@ async function executeService(serviceName, params = {}, sessionContext = {}) {
 
     // Check if service exists
     if (!serviceRegistry.has(serviceName)) {
-      return {
-        status: 'error',
-        error: `Service '${serviceName}' not found`,
+      const availableServices = serviceRegistry.getServiceNames();
+      logger.error(`Service '${serviceName}' not found`, {
+        system: 'internalAPI',
+        availableServices
+      });
+      
+      throw new AppError(`Service '${serviceName}' not found`, {
         code: 'SERVICE_NOT_FOUND'
-      };
+      });
     }
 
-    // Get the cost of the service
-    const cost = await serviceRegistry.getServiceCost(serviceName, params);
-
-    // Get user credit
-    const creditResult = await getUserCredit(sessionContext.userId);
-    if (creditResult.status !== 'ok') {
-      return creditResult; // Return the error from getUserCredit
-    }
-
-    // Check if user has enough credit
-    if (creditResult.credits.points < cost) {
-      return {
-        status: 'error',
-        error: 'Insufficient credit',
-        code: 'INSUFFICIENT_CREDIT',
-        details: {
-          required: cost,
-          available: creditResult.credits.points
-        }
-      };
-    }
-
-    // Prepare execution context
-    const context = {
-      user: {
-        id: sessionContext.userId,
-        ...sessionContext.userInfo
-      },
-      platform: sessionContext.platform || { type: 'api' }
-    };
-
-    // Execute the service
-    const result = await serviceRegistry.executeService(serviceName, params, context);
-
-    // Deduct points
-    await addUserCredit(sessionContext.userId, -cost, `service:${serviceName}`);
-
-    logger.info('Service executed successfully', {
+    // Execute the service through the registry
+    const result = await serviceRegistry.executeService(serviceName, params, sessionContext);
+    
+    // Log success
+    logger.info('Service execution successful', {
       system: 'internalAPI',
       service: serviceName,
-      userId: sessionContext.userId,
-      cost
+      userId: sessionContext.userId
     });
 
     return {
       status: 'ok',
-      result,
-      cost
+      result
     };
   } catch (error) {
+    // Log failure
     logger.error('Service execution failed', {
       system: 'internalAPI',
       service: serviceName,
@@ -832,17 +1126,12 @@ async function executeService(serviceName, params = {}, sessionContext = {}) {
 }
 
 /**
- * Get the cost of executing a service
- * @param {string} serviceName - Name of the service
+ * Get the cost of a service with the given parameters
+ * @param {string} serviceName - Service name
  * @param {Object} params - Service parameters
- * @returns {Promise<Object>} - Result object with status and cost
+ * @returns {Promise<Object>} - Result object with status and cost data
  */
 async function getServiceCost(serviceName, params = {}) {
-  logger.info('Get service cost request received', { 
-    system: 'internalAPI',
-    service: serviceName
-  });
-
   try {
     // Validate service name
     if (!serviceName) {
@@ -853,19 +1142,17 @@ async function getServiceCost(serviceName, params = {}) {
 
     // Check if service exists
     if (!serviceRegistry.has(serviceName)) {
-      return {
-        status: 'error',
-        error: `Service '${serviceName}' not found`,
+      throw new AppError(`Service '${serviceName}' not found`, {
         code: 'SERVICE_NOT_FOUND'
-      };
+      });
     }
 
-    // Get the cost
+    // Get cost from the registry
     const cost = await serviceRegistry.getServiceCost(serviceName, params);
-
-    logger.info('Service cost retrieved successfully', {
+    
+    logger.info('Service cost retrieved', { 
       system: 'internalAPI',
-      service: serviceName,
+      service: serviceName, 
       cost
     });
 
@@ -889,19 +1176,16 @@ async function getServiceCost(serviceName, params = {}) {
 }
 
 /**
- * Get information about available services
- * @returns {Promise<Object>} - Result object with status and services info
+ * Get available services
+ * @returns {Promise<Object>} - Result object with status and services data
  */
 async function getServices() {
-  logger.info('Get services request received', { 
-    system: 'internalAPI'
-  });
-
   try {
-    // Get all service metadata
+    // Get services from the registry
+    const serviceNames = serviceRegistry.getServiceNames();
     const servicesMetadata = serviceRegistry.getServicesMetadata();
-
-    logger.info('Services retrieved successfully', {
+    
+    logger.info('Services list retrieved', { 
       system: 'internalAPI',
       count: servicesMetadata.length
     });
@@ -930,18 +1214,135 @@ async function getServices() {
  */
 async function getWorkflows() {
   try {
-    // Get workflow service
+    // Get workflows from both sources
+    const workflowsMap = new Map();
+    
+    // First, get workflows from the workflow manager
+    if (workflowManager) {
+      const managerWorkflows = workflowManager.getWorkflowDefinitions();
+      
+      // Log details of manager workflows
+      logger.debug('Raw manager workflows:', { 
+        system: 'internalAPI',
+        workflowCount: Object.keys(managerWorkflows).length,
+        firstWorkflow: Object.values(managerWorkflows)[0] ? 
+          { 
+            name: Object.values(managerWorkflows)[0].name,
+            hasInputs: !!Object.values(managerWorkflows)[0].inputs,
+            inputsType: Object.values(managerWorkflows)[0].inputs ? 
+              typeof Object.values(managerWorkflows)[0].inputs : 'undefined',
+            inputsLength: Object.values(managerWorkflows)[0].inputs && 
+              Array.isArray(Object.values(managerWorkflows)[0].inputs) ? 
+              Object.values(managerWorkflows)[0].inputs.length : 'not an array'
+          } : 'none'
+      });
+      
+      // Add each workflow to the map
+      Object.entries(managerWorkflows).forEach(([name, workflow]) => {
+        // Log the structure of each workflow's inputs
+        logger.debug(`Workflow ${name} inputs:`, {
+          system: 'internalAPI',
+          hasInputs: !!workflow.inputs,
+          inputsType: typeof workflow.inputs,
+          isArray: Array.isArray(workflow.inputs),
+          inputsValue: workflow.inputs
+        });
+        
+        workflowsMap.set(name, {
+          name: workflow.name || name,
+          inputs: workflow.inputs || [],
+          active: workflow.active !== false,
+          source: 'manager'
+        });
+      });
+      
+      logger.debug('Got workflows from manager', { 
+        system: 'internalAPI',
+        count: workflowsMap.size
+      });
+    } else {
+      logger.warn('Workflow manager not initialized', { system: 'internalAPI' });
+    }
+    
+    // Next, get workflows from the workflow service
     const workflowService = getWorkflowService();
+    if (workflowService) {
+      const serviceWorkflows = workflowService.getAllWorkflows() || [];
+      
+      // Log details of service workflows
+      logger.debug('Raw service workflows:', { 
+        system: 'internalAPI',
+        workflowCount: serviceWorkflows.length,
+        firstWorkflow: serviceWorkflows[0] ? 
+          { 
+            name: serviceWorkflows[0].name,
+            hasInputs: !!serviceWorkflows[0].inputs,
+            inputsType: serviceWorkflows[0].inputs ? 
+              typeof serviceWorkflows[0].inputs : 'undefined',
+            inputsIsArray: Array.isArray(serviceWorkflows[0].inputs),
+            inputsIsObject: serviceWorkflows[0].inputs && 
+              typeof serviceWorkflows[0].inputs === 'object' &&
+              !Array.isArray(serviceWorkflows[0].inputs)
+          } : 'none'
+      });
+      
+      // Add each workflow to the map, possibly overwriting manager workflows
+      serviceWorkflows.forEach(workflow => {
+        const name = workflow.name;
+        
+        // If inputs is an object but not an array, convert object keys to array
+        let inputs = workflow.inputs || [];
+        if (inputs && typeof inputs === 'object' && !Array.isArray(inputs)) {
+          // Convert object keys to array of input names
+          inputs = Object.keys(inputs).map(key => key.startsWith('input_') ? key : `input_${key}`);
+          logger.debug(`Converted object inputs to array for ${name}:`, {
+            system: 'internalAPI',
+            originalInputs: workflow.inputs,
+            convertedInputs: inputs
+          });
+        }
+        
+        workflowsMap.set(name, {
+          name,
+          inputs: inputs,
+          active: workflow.active !== false,
+          source: workflowsMap.has(name) ? 'both' : 'service'
+        });
+      });
+      
+      logger.debug('Got workflows from service', { 
+        system: 'internalAPI',
+        count: serviceWorkflows.length
+      });
+    } else {
+      logger.warn('Workflow service not initialized', { system: 'internalAPI' });
+    }
     
-    // Get workflows
-    const workflows = workflowService.getAllWorkflows();
+    // Convert map to array for response
+    const formattedWorkflows = Array.from(workflowsMap.values());
     
-    // Format workflows for API response
-    const formattedWorkflows = workflows.map(workflow => ({
-      name: workflow.name,
-      inputs: Object.keys(workflow.inputs || {}),
-      active: workflow.active !== false
-    }));
+    // Log the final formatted workflows with input details
+    formattedWorkflows.forEach(workflow => {
+      logger.debug(`Formatted workflow ${workflow.name}:`, {
+        system: 'internalAPI',
+        inputsType: typeof workflow.inputs,
+        isArray: Array.isArray(workflow.inputs),
+        inputCount: Array.isArray(workflow.inputs) ? workflow.inputs.length : 'not an array',
+        sampleInputs: Array.isArray(workflow.inputs) && workflow.inputs.length > 0 ? 
+          workflow.inputs.slice(0, 3) : workflow.inputs
+      });
+    });
+    
+    // If no workflows were found in either source, try to synchronize
+    if (formattedWorkflows.length === 0 && workflowManager && workflowService) {
+      logger.info('No workflows found, attempting synchronization', { system: 'internalAPI' });
+      
+      // Try to synchronize and then fetch workflows again
+      await workflowManager.synchronizeWithWorkflowService();
+      
+      // Retry getting workflows from both sources
+      return await getWorkflows();
+    }
     
     logger.info('Workflow list retrieved', { 
       system: 'internalAPI',
@@ -980,11 +1381,23 @@ async function getWorkflowByName(name) {
       });
     }
     
-    // Get workflow service
+    // First try to get workflow from the workflow service
     const workflowService = getWorkflowService();
+    let workflow = null;
     
-    // Get workflow
-    const workflow = workflowService.getWorkflowByName(name);
+    if (workflowService) {
+      workflow = workflowService.getWorkflowByName(name);
+    }
+    
+    // If not found in service, try to get it from the workflow manager
+    if (!workflow && workflowManager) {
+      workflow = workflowManager.getWorkflowDefinition(name);
+      if (workflow) {
+        logger.info(`Using workflow '${name}' from workflow manager`, {
+          system: 'internalAPI'
+        });
+      }
+    }
     
     if (!workflow) {
       return {
@@ -1038,6 +1451,41 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
     };
   }
   
+  // Ensure userId is properly set for web users
+  if (!sessionContext.userId) {
+    // For web interface, create a standardized userId format
+    if (sessionContext.platform && sessionContext.platform.type === 'web') {
+      if (sessionContext.userInfo && sessionContext.userInfo.walletAddress) {
+        // Logged in with wallet
+        sessionContext.userId = `webuser_${sessionContext.userInfo.walletAddress}`;
+        logger.info('Set userId for web wallet user', { 
+          system: 'internalAPI',
+          walletAddress: sessionContext.userInfo.walletAddress 
+        });
+      } else if (sessionContext.userInfo && sessionContext.userInfo.apiKey) {
+        // Logged in with API key
+        sessionContext.userId = `webuser_apikey_${sessionContext.userInfo.apiKey.substring(0, 8)}`;
+        logger.info('Set userId for web API key user', { 
+          system: 'internalAPI',
+          apiKeyPrefix: sessionContext.userInfo.apiKey.substring(0, 8)
+        });
+      } else {
+        // Guest user
+        sessionContext.userId = `webuser_guest_${Date.now()}`;
+        logger.info('Set userId for web guest user', { 
+          system: 'internalAPI'
+        });
+      }
+    } else {
+      // Default userId if none provided and not web
+      sessionContext.userId = `unknown_${Date.now()}`;
+      logger.warn('No userId provided, using generated ID', {
+        system: 'internalAPI',
+        generatedId: sessionContext.userId
+      });
+    }
+  }
+  
   logger.info('Workflow execution request received', { 
     system: 'internalAPI',
     workflow: workflowName, 
@@ -1052,9 +1500,9 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
       });
     }
     
-    // Ensure userId is provided in sessionContext
+    // Ensure userId is provided in sessionContext (double check after our fixes above)
     if (!sessionContext.userId) {
-      throw new AppError('userId is required in sessionContext', {
+      throw new AppError('userId is required in sessionContext and could not be generated', {
         code: 'MISSING_USER_ID'
       });
     }
@@ -1062,9 +1510,40 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
     // Get user data from session
     const userData = await sessionManager.getUserData(sessionContext.userId);
     
-    // Get workflow service to validate workflow
+    // First try to get workflow from the workflow service
     const workflowService = getWorkflowService();
-    const workflow = workflowService.getWorkflowByName(workflowName);
+    let workflow = null;
+    
+    if (workflowService) {
+      workflow = workflowService.getWorkflowByName(workflowName);
+    }
+    
+    // If not found in service, try to get it from the workflow manager
+    if (!workflow && workflowManager) {
+      workflow = workflowManager.getWorkflowDefinition(workflowName);
+      if (workflow) {
+        logger.info(`Using workflow '${workflowName}' from workflow manager`, {
+          system: 'internalAPI',
+          workflow: workflowName
+        });
+      }
+    }
+    
+    // If still not found, try to synchronize services and try again
+    if (!workflow && workflowManager && workflowService) {
+      // Try to synchronize workflow definitions between manager and service
+      logger.info(`Workflow '${workflowName}' not found, attempting synchronization`, {
+        system: 'internalAPI'
+      });
+      
+      await workflowManager.synchronizeWithWorkflowService();
+      
+      // Try again after synchronization
+      workflow = workflowService.getWorkflowByName(workflowName);
+      if (!workflow) {
+        workflow = workflowManager.getWorkflowDefinition(workflowName);
+      }
+    }
     
     if (!workflow) {
       throw new AppError(`Workflow '${workflowName}' not found`, {
@@ -1078,6 +1557,29 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
       });
     }
     
+    // If user is a guest, check and track their workflow access
+    if (isGuestUser(sessionContext.userId) && guestAccessService) {
+      // Check if guest can access workflow
+      const canAccess = await guestAccessService.canAccessWorkflow(
+        sessionContext.userId, 
+        workflowName
+      );
+      
+      if (!canAccess) {
+        return {
+          status: 'error',
+          error: 'Guest request limit exceeded',
+          code: 'GUEST_LIMIT_EXCEEDED'
+        };
+      }
+      
+      // Track this workflow request
+      await guestAccessService.trackWorkflowRequest(
+        sessionContext.userId, 
+        workflowName
+      );
+    }
+    
     // Prepare execution context
     const context = {
       user: {
@@ -1085,23 +1587,126 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
         ...userData,
         ...sessionContext.userInfo
       },
-      platform: sessionContext.platform || { type: 'api' }
+      platform: sessionContext.platform || { type: 'api' },
+      userId: sessionContext.userId
     };
+    
+    // Add debugging logs for userId tracking
+    logger.debug('Execution context prepared for service call', {
+      system: 'internalAPI',
+      workflow: workflowName,
+      contextUserId: context.userId,
+      userObjectId: context.user.id,
+      originalUserId: sessionContext.userId
+    });
+    
+    console.log('PROCESSING WORKFLOW INPUTS:', {
+      workflow: workflowName,
+      originalParams: params,
+      numericKeys: Object.keys(params).filter(k => !isNaN(parseInt(k))),
+      inputPrefixedKeys: Object.keys(params).filter(k => k.startsWith('input_'))
+    });
     
     // Execute workflow via ComfyDeploy service
     const executeParams = {
       type: workflowName,
       prompt: params.prompt || params.positive_prompt || '',
       negativePrompt: params.negative_prompt || '',
-      settings: {
-        seed: params.seed,
-        ...(params.settings || {})
+      settings: params.settings || {},
+      inputImages: params.inputImages || {},
+      // Include userId directly in executeParams as well
+      userId: sessionContext.userId
+    };
+    
+    // Process numeric keys (indexed inputs)
+    Object.entries(params).forEach(([key, value]) => {
+      if (!isNaN(parseInt(key))) {
+        const inputName = value;
+        
+        let inputValue = params[inputName];
+        if (inputValue === undefined) {
+          const shortName = inputName.replace('input_', '');
+          inputValue = params[shortName];
+        }
+        
+        if (inputValue !== undefined) {
+          executeParams.settings[inputName] = inputValue;
+          console.log(`Mapped indexed input ${key}: ${inputName} -> ${inputValue}`);
+        }
+      }
+    });
+    
+    // Process direct input parameters (keys that already have input_ prefix)
+    Object.entries(params).forEach(([key, value]) => {
+      if (key.startsWith('input_') && value !== undefined && value !== null) {
+        executeParams.settings[key] = value;
+        console.log(`Using direct input parameter: ${key} = ${value}`);
+      }
+    });
+    
+    // Process other meaningful parameters (no prefix)
+    Object.entries(params).forEach(([key, value]) => {
+      if (!isNaN(parseInt(key)) || key.startsWith('input_') || executeParams.settings[`input_${key}`]) {
+        return;
+      }
+      
+      if (typeof value !== 'object' && value !== undefined && value !== null) {
+        executeParams.settings[`input_${key}`] = value;
+        console.log(`Converting standard parameter: ${key} -> input_${key} = ${value}`);
+      }
+    });
+    
+    // Special handling for required parameters
+    if (!executeParams.settings.input_prompt && params.prompt) {
+      executeParams.settings.input_prompt = params.prompt;
+    }
+    
+    if (!executeParams.settings.input_negative && params.negative_prompt) {
+      executeParams.settings.input_negative = params.negative_prompt;
+    }
+    
+    // Log what we're sending in great detail
+    console.log('DETAILED WORKFLOW EXECUTION PARAMETERS:', { 
+      system: 'internalAPI',
+      workflow: workflowName,
+      originalParams: params,
+      executeParamsFull: executeParams
+    });
+    
+    // AUDIT TRAIL: Log all the decision points that led to these params
+    console.log('WORKFLOW EXECUTION AUDIT TRAIL:', {
+      workflow_type: workflowName,
+      input_sources: {
+        direct_params: Object.keys(params),
+        numeric_inputs: Object.keys(params).filter(k => !isNaN(parseInt(k))),
+        non_numeric_inputs: Object.keys(params).filter(k => isNaN(parseInt(k))),
+        has_prompt: !!params.prompt || !!params.positive_prompt,
+        has_negative: !!params.negative_prompt,
+        input_prefixed_keys: Object.keys(params).filter(k => k.startsWith('input_')),
       },
-      inputImages: params.inputImages || {}
+      transformation_decisions: {
+        numeric_keys_mapped: Object.entries(params)
+          .filter(([k]) => !isNaN(parseInt(k)))
+          .map(([k, v]) => ({ index: k, input_name: v, value_found: params[v] !== undefined || params[v.replace('input_', '')] !== undefined })),
+        negative_prompt_handling: {
+          provided_directly: !!params.negative_prompt,
+          found_in_processed: !!executeParams.settings.input_negative,
+          using_default: !params.negative_prompt && !executeParams.settings.input_negative
+        }
+      }
+    });
+    
+    // Use the service registry to execute the service
+    // Create a sessionContext object that matches what executeService expects
+    const serviceContext = {
+      ...sessionContext, // Keep original properties
+      user: context.user, // Include the user object
+      userId: sessionContext.userId, // Ensure userId is at top level
+      platform: context.platform
     };
     
     // Use the service registry to execute the service
-    const result = await executeService('comfydeploy', executeParams, context);
+    const result = await executeService('comfydeploy', executeParams, serviceContext);
     
     if (result.status === 'error') {
       throw new AppError(result.error, {
@@ -1136,6 +1741,61 @@ async function executeWorkflow(workflowName, params = {}, sessionContext = {}) {
   }
 }
 
+/**
+ * Create a guest session
+ * @returns {Promise<Object>} - Result object with status and session data
+ */
+async function createGuestSession() {
+  if (!sessionManager) {
+    logger.error('Session manager not initialized', { system: 'internalAPI' });
+    return {
+      status: 'error',
+      error: 'Internal API not properly initialized'
+    };
+  }
+  
+  if (!guestAccessService) {
+    logger.error('Guest access service not initialized', { system: 'internalAPI' });
+    return {
+      status: 'error',
+      error: 'Guest access service not available'
+    };
+  }
+  
+  try {
+    // Create guest session using the guest access service
+    const guestSession = await guestAccessService.createGuestSession();
+    
+    logger.info('Guest session created', { 
+      system: 'internalAPI',
+      guestId: guestSession.userId
+    });
+    
+    return {
+      status: 'ok',
+      session: {
+        apiKey: guestSession.apiKey,
+        userId: guestSession.userId,
+        isGuest: true,
+        requestsRemaining: guestSession.session.requestsRemaining,
+        requestsLimit: guestSession.session.requestsLimit || 3,
+        expiresAt: guestSession.session.expiresAt
+      }
+    };
+  } catch (error) {
+    logger.error('Failed to create guest session', { 
+      system: 'internalAPI',
+      error
+    });
+    
+    return {
+      status: 'error',
+      error: error.message || 'Failed to create guest session',
+      code: error.code || 'GUEST_SESSION_CREATION_FAILED'
+    };
+  }
+}
+
 // Export all API functions
 module.exports = {
   setup,
@@ -1153,5 +1813,6 @@ module.exports = {
   // Workflow-related functions
   getWorkflows,
   getWorkflowByName,
-  executeWorkflow
+  executeWorkflow,
+  createGuestSession
 }; 
