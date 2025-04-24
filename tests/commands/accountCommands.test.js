@@ -1,698 +1,366 @@
 /**
- * Tests for account commands
+ * Unit Tests for Account Commands
+ * 
+ * Tests the functionality of the account commands in isolation
+ * with mocked dependencies.
  */
 
 const {
-  PointsCommand,
-  AccountCommand,
+  createPointsCommand,
+  createAccountCommand,
   registerAccountCommands
 } = require('../../src/commands/accountCommands');
-const { CommandRegistry } = require('../../src/core/command/registry');
-const { AppError } = require('../../src/utils/errors');
 
-// Mock dependencies
-jest.mock('../../src/core/command/registry');
-jest.mock('../../src/config/featureFlags', () => ({
-  isFeatureEnabled: jest.fn().mockImplementation((feature) => {
-    // Enable account-related features by default in tests
-    const enabledFeatures = {
-      'new-account-commands': true,
-      'points-workflow': true
-    };
-    return !!enabledFeatures[feature];
-  })
-}));
-
-// Mock the AppError class to match the usage in the actual code
-jest.mock('../../src/utils/errors', () => {
-  const originalModule = jest.requireActual('../../src/utils/errors');
-  
+// Mock workflow module
+jest.mock('../../src/core/workflow/workflows/AccountWorkflow', () => {
   return {
-    ...originalModule,
-    // In the points command, AppError is called with message first, then code
-    // This is contrary to the actual AppError implementation
-    AppError: jest.fn().mockImplementation((message, code, data = {}) => {
-      return {
-        message,
-        code,
-        data,
-        stack: new Error().stack
-      };
-    })
+    createAccountPointsWorkflow: jest.fn(() => ({
+      createWorkflow: jest.fn(() => ({
+        id: 'mock-workflow-123',
+        getCurrentStep: jest.fn(() => ({ 
+          id: 'view_points',
+          ui: { type: 'loading', message: 'Fetching your points balance...' }
+        })),
+        processInput: jest.fn().mockResolvedValue({
+          success: true,
+          nextStep: 'points_options'
+        }),
+        serialize: jest.fn(() => ({ id: 'mock-workflow-123', currentStep: 'view_points' })),
+        getCurrentStepId: jest.fn(() => 'view_points'),
+        deserialize: jest.fn(() => ({
+          id: 'mock-workflow-123',
+          getCurrentStep: jest.fn(() => ({ id: 'points_options' })),
+          getCurrentStepId: jest.fn(() => 'points_options'),
+          processInput: jest.fn().mockResolvedValue({ nextStep: 'points_history' }),
+          serialize: jest.fn(() => ({ id: 'mock-workflow-123', currentStep: 'points_history' }))
+        }))
+      }))
+    })),
+    createAccountSettingsWorkflow: jest.fn(() => ({
+      createWorkflow: jest.fn(() => ({
+        id: 'mock-workflow-123',
+        getCurrentStep: jest.fn(() => ({ 
+          id: 'settings_menu',
+          ui: { type: 'options', message: 'Account Settings' }
+        })),
+        processInput: jest.fn().mockResolvedValue({
+          success: true,
+          nextStep: 'edit_profile'
+        }),
+        serialize: jest.fn(() => ({ id: 'mock-workflow-123', currentStep: 'settings_menu' })),
+        getCurrentStepId: jest.fn(() => 'settings_menu'),
+        deserialize: jest.fn(() => ({
+          id: 'mock-workflow-123',
+          getCurrentStep: jest.fn(() => ({ id: 'edit_profile' })),
+          getCurrentStepId: jest.fn(() => 'edit_profile'),
+          processInput: jest.fn().mockResolvedValue({ nextStep: 'profile_options' }),
+          serialize: jest.fn(() => ({ id: 'mock-workflow-123', currentStep: 'profile_options' }))
+        }))
+      }))
+    }))
   };
 });
 
-describe('Account Commands', () => {
-  // Common test dependencies
-  let mockAccountPointsService;
-  let mockWorkflowManager;
-  let mockSessionManager;
+// Mock UUID
+jest.mock('uuid', () => ({
+  v4: jest.fn(() => 'mock-uuid-1234')
+}));
+
+describe('Account Commands Tests', () => {
+  // Common mocks for all tests
+  let mockPointsService;
   let mockUserService;
-  let mockLogger;
+  let mockSessionManager;
+  let mockUIManager;
+  let mockAnalyticsService;
+  let mockSession;
   let mockRegistry;
   
-  // Mock user data
-  const mockUser = { id: 'user123', username: 'testuser' };
-  
-  // Mock platform data
-  const mockPlatform = { 
-    type: 'telegram',
-    renderUI: jest.fn(),
-    sendMessage: jest.fn()
-  };
-  
+  // Setup common mocks before each test
   beforeEach(() => {
-    // Reset mocks
-    jest.clearAllMocks();
-    
-    // Create mock account points service
-    mockAccountPointsService = {
-      getUserPoints: jest.fn().mockResolvedValue({ 
-        balance: 100, 
-        maxPoints: 1000,
-        refreshRate: '10 per hour',
-        nextRefresh: Date.now() + 3600000,
-        history: [
-          { amount: 10, type: 'generation', timestamp: Date.now() - 86400000 },
-          { amount: 5, type: 'refund', timestamp: Date.now() - 43200000 }
-        ]
-      }),
-      refreshPoints: jest.fn().mockResolvedValue({ 
-        refreshed: 10, 
-        newBalance: 110 
-      })
-    };
-    
-    // Create mock workflow manager
-    mockWorkflowManager = {
-      startWorkflow: jest.fn().mockResolvedValue({ 
-        id: 'workflow123', 
-        state: { step: 1 } 
-      }),
-      getWorkflow: jest.fn().mockResolvedValue({
-        id: 'workflow123',
-        name: 'account-points',
-        state: { step: 1, data: { userId: mockUser.id } }
-      })
-    };
-    
-    // Create mock session manager
-    mockSessionManager = {
-      getUserData: jest.fn().mockResolvedValue({
-        userId: mockUser.id,
-        username: mockUser.username,
-        preferences: {
-          basePrompt: 'default',
-          model: 'dreamshaper',
-          theme: 'dark'
-        },
-        stats: {
-          totalGenerations: 25,
-          joinDate: Date.now() - 2592000000
+    // Create mocks
+    mockPointsService = {
+      getPointsBalance: jest.fn().mockResolvedValue({
+        total: 100,
+        breakdown: {
+          points: 50,
+          qoints: 50
         }
       }),
-      updateSession: jest.fn().mockResolvedValue({ success: true })
+      getRecentTransactions: jest.fn().mockResolvedValue([
+        { id: 'txn-1', amount: 10, type: 'debit', timestamp: Date.now() - 1000 },
+        { id: 'txn-2', amount: 20, type: 'credit', timestamp: Date.now() - 2000 }
+      ])
     };
     
-    // Create mock user service
     mockUserService = {
       getUserProfile: jest.fn().mockResolvedValue({
-        id: mockUser.id,
-        username: mockUser.username,
-        displayName: 'Test User',
-        preferences: {
-          basePrompt: 'default',
-          model: 'dreamshaper',
-          theme: 'dark'
-        },
-        stats: {
-          totalGenerations: 25,
-          joinDate: Date.now() - 2592000000,
-          lastActive: Date.now() - 86400000
+        id: 'user-123',
+        name: 'Test User',
+        email: 'test@example.com',
+        settings: {
+          language: 'en',
+          notifications: true
         }
       }),
-      updateUserPreferences: jest.fn().mockResolvedValue({ success: true })
+      updateUserProfile: jest.fn().mockResolvedValue(true),
+      getUserApiKeys: jest.fn().mockResolvedValue([
+        { id: 'key-1', name: 'Test Key', created: Date.now() - 1000 }
+      ]),
+      createApiKey: jest.fn().mockResolvedValue({
+        id: 'key-new',
+        name: 'New Key',
+        key: 'ak_123456789',
+        created: Date.now()
+      }),
+      deleteUserAccount: jest.fn().mockResolvedValue(true)
     };
     
-    // Create mock logger
-    mockLogger = {
-      info: jest.fn(),
-      error: jest.fn(),
-      warn: jest.fn(),
-      debug: jest.fn()
+    mockSession = {
+      get: jest.fn((key) => {
+        if (key === 'points.balance') return 100;
+        if (key === 'username') return 'testuser';
+        if (key === 'locale') return 'en';
+        if (key === 'workflows.mock-workflow-123') return { id: 'mock-workflow-123', currentStep: 'view_points' };
+        return null;
+      }),
+      set: jest.fn()
     };
     
-    // Create mock command registry
-    mockRegistry = new CommandRegistry();
+    mockSessionManager = {
+      getSession: jest.fn().mockResolvedValue(mockSession),
+      createSession: jest.fn().mockResolvedValue(mockSession),
+      updateSession: jest.fn().mockResolvedValue(true)
+    };
+    
+    mockUIManager = {
+      createComponent: jest.fn().mockReturnValue({ type: 'loading', props: {} }),
+      render: jest.fn().mockResolvedValue({ messageId: 'msg-123' })
+    };
+    
+    mockAnalyticsService = {
+      trackEvent: jest.fn()
+    };
+    
+    mockRegistry = {
+      register: jest.fn()
+    };
   });
   
-  describe('PointsCommand', () => {
-    let pointsCommand;
-    
-    beforeEach(() => {
-      // Create points command instance
-      pointsCommand = new PointsCommand({
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
-        sessionManager: mockSessionManager,
-        logger: mockLogger
-      });
+  describe('Command Creation Tests', () => {
+    test('should create points command with correct metadata', () => {
+      const command = createPointsCommand({});
+      
+      expect(command.name).toBe('points');
+      expect(command.description).toBe('Check your current point balance');
+      expect(command.category).toBe('account');
+      expect(command.aliases).toContain('balance');
+      expect(typeof command.execute).toBe('function');
+      expect(typeof command.handleInput).toBe('function');
     });
     
-    it('should initialize with correct metadata', () => {
-      // Assert
-      expect(pointsCommand.name).toBe('points');
-      expect(pointsCommand.description).toBe('Check your current point balance');
-      expect(pointsCommand.category).toBe('account');
-      expect(pointsCommand.aliases).toContain('balance');
-      expect(pointsCommand.aliases).toContain('qoints');
-    });
-    
-    it('should start a workflow for checking points', async () => {
-      // Arrange
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
+    test('should create account command with correct metadata', () => {
+      const command = createAccountCommand({});
       
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(mockSessionManager.getUserData).toHaveBeenCalledWith(mockUser.id);
-      expect(mockWorkflowManager.startWorkflow).toHaveBeenCalledWith(
-        mockUser.id,
-        'account-points',
-        expect.objectContaining({ userId: mockUser.id })
-      );
-      
-      expect(result).toEqual({
-        success: true,
-        workflowId: 'workflow123',
-        type: 'workflow',
-        data: {
-          workflowName: 'account-points'
-        }
-      });
-    });
-    
-    it('should handle user not found error', async () => {
-      // Arrange
-      mockSessionManager.getUserData.mockResolvedValueOnce(null);
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your points');
-      expect(result.error.code).toBe('USER_NOT_FOUND');
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-    
-    it('should handle workflow start error', async () => {
-      // Arrange
-      mockWorkflowManager.startWorkflow.mockResolvedValueOnce(null);
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your points');
-      expect(result.error.code).toBe('WORKFLOW_START_FAILED');
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-    
-    it('should handle unexpected errors', async () => {
-      // Arrange
-      mockSessionManager.getUserData.mockRejectedValueOnce(new Error('Database connection failed'));
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your points');
-      expect(result.error.code).toBe('UNKNOWN_ERROR');
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(command.name).toBe('account');
+      expect(command.description).toBe('Manage your account settings');
+      expect(command.category).toBe('account');
+      expect(command.aliases).toContain('profile');
+      expect(typeof command.execute).toBe('function');
+      expect(typeof command.handleInput).toBe('function');
     });
   });
   
-  describe('AccountCommand', () => {
-    let accountCommand;
-    
-    beforeEach(() => {
-      // Create account command instance
-      accountCommand = new AccountCommand({
-        userService: mockUserService,
-        sessionManager: mockSessionManager,
-        logger: mockLogger
-      });
-    });
-    
-    it('should initialize with correct metadata', () => {
-      // Assert
-      expect(accountCommand.name).toBe('account');
-      expect(accountCommand.description).toBe('Manage your account settings');
-      expect(accountCommand.category).toBe('account');
-      expect(accountCommand.aliases).toContain('profile');
-      expect(accountCommand.aliases).toContain('settings');
-    });
-    
-    it('should return user profile data', async () => {
-      // Arrange
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
+  describe('Command Registration Tests', () => {
+    test('should register all account commands with registry', () => {
+      registerAccountCommands(mockRegistry, {});
       
-      // Act
-      const result = await accountCommand.execute(context);
-      
-      // Assert
-      expect(mockUserService.getUserProfile).toHaveBeenCalledWith(mockUser.id);
-      
-      expect(result).toEqual({
-        success: true,
-        type: 'account_menu',
-        data: {
-          profile: expect.objectContaining({
-            id: mockUser.id,
-            username: mockUser.username,
-            displayName: 'Test User',
-            preferences: expect.any(Object),
-            stats: expect.any(Object)
-          })
-        }
-      });
-    });
-    
-    it('should handle user service errors', async () => {
-      // Arrange
-      mockUserService.getUserProfile.mockRejectedValueOnce(new Error('Failed to fetch profile'));
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await accountCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your account');
-      expect(result.error.code).toBe('UNKNOWN_ERROR');
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-    
-    it('should handle AppError from user service', async () => {
-      // Arrange
-      // Create an AppError with message first, then code to match code usage
-      const appError = new AppError('User profile not found', 'USER_PROFILE_NOT_FOUND');
-      mockUserService.getUserProfile.mockRejectedValueOnce(appError);
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await accountCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your account');
-      expect(result.error.code).toBe('USER_PROFILE_NOT_FOUND');
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-  });
-  
-  describe('Command Registration', () => {
-    it('should register all account commands with the registry', () => {
-      // Act
-      registerAccountCommands(mockRegistry, {
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
-        sessionManager: mockSessionManager,
-        userService: mockUserService,
-        logger: mockLogger
-      });
-      
-      // Assert
+      // Should register 2 commands
       expect(mockRegistry.register).toHaveBeenCalledTimes(2);
-      
-      // Verify that PointsCommand was registered
-      expect(mockRegistry.register.mock.calls[0][0]).toBeInstanceOf(PointsCommand);
-      
-      // Verify that AccountCommand was registered
-      expect(mockRegistry.register.mock.calls[1][0]).toBeInstanceOf(AccountCommand);
     });
     
-    it('should register commands with correct dependencies', () => {
-      // Act
-      registerAccountCommands(mockRegistry, {
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
-        sessionManager: mockSessionManager,
-        userService: mockUserService,
-        logger: mockLogger
-      });
-      
-      // Assert - Check that dependencies were passed correctly
-      const registeredPointsCommand = mockRegistry.register.mock.calls[0][0];
-      expect(registeredPointsCommand.accountPointsService).toBe(mockAccountPointsService);
-      expect(registeredPointsCommand.workflowManager).toBe(mockWorkflowManager);
-      expect(registeredPointsCommand.sessionManager).toBe(mockSessionManager);
-      expect(registeredPointsCommand.logger).toBe(mockLogger);
-      
-      const registeredAccountCommand = mockRegistry.register.mock.calls[1][0];
-      expect(registeredAccountCommand.userService).toBe(mockUserService);
-      expect(registeredAccountCommand.sessionManager).toBe(mockSessionManager);
-      expect(registeredAccountCommand.logger).toBe(mockLogger);
+    test('should throw error if registry is not provided', () => {
+      expect(() => registerAccountCommands(null, {})).toThrow('Command registry is required');
     });
   });
   
-  describe('Integration with Workflow System', () => {
-    let pointsCommand;
-    
-    beforeEach(() => {
-      // Create points command instance
-      pointsCommand = new PointsCommand({
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
+  describe('Points Command Tests', () => {
+    test('should start points workflow successfully', async () => {
+      // Create command
+      const command = createPointsCommand({
+        pointsService: mockPointsService,
         sessionManager: mockSessionManager,
-        logger: mockLogger
-      });
-    });
-    
-    it('should create a complete workflow with points data', async () => {
-      // Arrange
-      const mockWorkflowState = {
-        id: 'workflow123',
-        state: {
-          step: 1,
-          data: {
-            userId: mockUser.id,
-            pointsData: {
-              balance: 100,
-              maxPoints: 1000,
-              refreshRate: '10 per hour',
-              nextRefresh: Date.now() + 3600000
-            }
-          }
-        }
-      };
-      
-      mockWorkflowManager.startWorkflow.mockResolvedValueOnce(mockWorkflowState);
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(true);
-      expect(result.workflowId).toBe('workflow123');
-      expect(result.type).toBe('workflow');
-      expect(mockWorkflowManager.startWorkflow).toHaveBeenCalledWith(
-        mockUser.id,
-        'account-points',
-        expect.objectContaining({ userId: mockUser.id })
-      );
-    });
-    
-    it('should handle workflow with refresh parameter', async () => {
-      // Arrange
-      mockAccountPointsService.refreshPoints.mockResolvedValueOnce({
-        refreshed: 10,
-        newBalance: 110,
-        nextRefresh: Date.now() + 3600000
+        uiManager: mockUIManager,
+        analyticsService: mockAnalyticsService
       });
       
-      // Override just for this test
-      const workflowWithRefresh = {
-        id: 'workflow123',
-        state: {
-          step: 1,
-          data: {
-            userId: mockUser.id,
-            refresh: true,
-            pointsData: {
-              balance: 110,
-              refreshed: 10,
-              maxPoints: 1000,
-              nextRefresh: Date.now() + 3600000
-            }
-          }
+      // Execute command
+      const result = await command.execute({
+        userId: 'user-123',
+        platform: 'telegram',
+        messageContext: {
+          chatId: 'chat-123',
+          username: 'testuser'
         }
-      };
+      });
       
-      mockWorkflowManager.startWorkflow.mockResolvedValueOnce(workflowWithRefresh);
-      
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: { refresh: true }
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert - success should be true since the workflow was created
+      // Check result
       expect(result.success).toBe(true);
-      expect(result.workflowId).toBe('workflow123');
-      expect(mockWorkflowManager.startWorkflow).toHaveBeenCalled();
+      expect(result.workflowId).toBe('mock-workflow-123');
+      
+      // Verify session was updated
+      expect(mockSessionManager.updateSession).toHaveBeenCalled();
+      
+      // Verify analytics were tracked
+      expect(mockAnalyticsService.trackEvent).toHaveBeenCalledWith('command:account:initiated', expect.any(Object));
+    });
+    
+    test('should handle missing userId error', async () => {
+      // Create command
+      const command = createPointsCommand({
+        pointsService: mockPointsService,
+        sessionManager: mockSessionManager,
+        uiManager: mockUIManager,
+        analyticsService: mockAnalyticsService
+      });
+      
+      // Execute command with missing userId
+      await expect(command.execute({
+        platform: 'telegram',
+        messageContext: {}
+      })).rejects.toThrow('User ID is required');
+    });
+    
+    test('should handle missing points service error', async () => {
+      // Create command without points service
+      const command = createPointsCommand({
+        sessionManager: mockSessionManager,
+        uiManager: mockUIManager,
+        analyticsService: mockAnalyticsService
+      });
+      
+      // Execute command
+      await expect(command.execute({
+        userId: 'user-123',
+        platform: 'telegram',
+        messageContext: {}
+      })).rejects.toThrow('Points service is required');
+    });
+    
+    test('should process input to points workflow', async () => {
+      // Create command
+      const command = createPointsCommand({
+        pointsService: mockPointsService,
+        sessionManager: mockSessionManager,
+        analyticsService: mockAnalyticsService
+      });
+      
+      // Process input
+      const result = await command.handleInput('refresh', {
+        userId: 'user-123',
+        workflowId: 'mock-workflow-123',
+        sessionManager: mockSessionManager
+      });
+      
+      // Check result
+      expect(result.success).toBe(true);
+      expect(result.stepId).toBe('points_options');
+      
+      // Verify session was updated
+      expect(mockSessionManager.updateSession).toHaveBeenCalled();
     });
   });
   
-  describe('Platform Adapter Integration', () => {
-    let accountCommand;
-    
-    beforeEach(() => {
-      // Create account command instance
-      accountCommand = new AccountCommand({
+  describe('Account Command Tests', () => {
+    test('should start account workflow successfully', async () => {
+      // Create command
+      const command = createAccountCommand({
         userService: mockUserService,
         sessionManager: mockSessionManager,
-        logger: mockLogger
+        uiManager: mockUIManager,
+        analyticsService: mockAnalyticsService
       });
-    });
-    
-    it('should return platform-agnostic data structure for rendering', async () => {
-      // Arrange
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
       
-      // Act
-      const result = await accountCommand.execute(context);
+      // Execute command
+      const result = await command.execute({
+        userId: 'user-123',
+        platform: 'telegram',
+        messageContext: {
+          chatId: 'chat-123',
+          username: 'testuser'
+        }
+      });
       
-      // Assert
-      expect(result.type).toBe('account_menu');
-      expect(result.data).toHaveProperty('profile');
-      
-      // The result should be suitable for any platform to render
+      // Check result
       expect(result.success).toBe(true);
-      expect(result.data.profile).toHaveProperty('preferences');
-      expect(result.data.profile).toHaveProperty('stats');
+      expect(result.workflowId).toBe('mock-workflow-123');
+      
+      // Verify session was updated
+      expect(mockSessionManager.updateSession).toHaveBeenCalled();
+      
+      // Verify analytics were tracked
+      expect(mockAnalyticsService.trackEvent).toHaveBeenCalledWith('command:account:initiated', expect.any(Object));
     });
     
-    it('should not include platform-specific rendering details', async () => {
-      // Arrange
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await accountCommand.execute(context);
-      
-      // Assert - Check that no platform-specific rendering details are included
-      expect(result).not.toHaveProperty('telegramKeyboard');
-      expect(result).not.toHaveProperty('htmlFormatting');
-      expect(result).not.toHaveProperty('webComponents');
-      
-      // Data structure should be clean and platform-agnostic
-      expect(typeof result).toBe('object');
-      expect(result.type).toBe('account_menu');
-    });
-  });
-
-  describe('Feature Flag Integration', () => {
-    const featureFlagsModule = require('../../src/config/featureFlags');
-    let pointsCommand;
-    
-    beforeEach(() => {
-      // Create points command instance
-      pointsCommand = new PointsCommand({
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
+    test('should handle missing user service error', async () => {
+      // Create command without user service
+      const command = createAccountCommand({
         sessionManager: mockSessionManager,
-        logger: mockLogger
-      });
-    });
-    
-    it('should respect feature flags for commands', async () => {
-      // Arrange - Mock feature flag to be disabled
-      featureFlagsModule.isFeatureEnabled.mockImplementationOnce((feature) => {
-        return feature !== 'points-workflow';
+        uiManager: mockUIManager,
+        analyticsService: mockAnalyticsService
       });
       
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Create a spy on the workflowManager
-      const startWorkflowSpy = jest.spyOn(mockWorkflowManager, 'startWorkflow');
-      
-      // Act - This will execute in legacy mode since points-workflow is disabled
-      await pointsCommand.execute(context);
-      
-      // Assert - Check which workflow was started
-      expect(startWorkflowSpy).toHaveBeenCalledWith(
-        expect.any(String),
-        'account-points',
-        expect.any(Object)
-      );
+      // Execute command
+      await expect(command.execute({
+        userId: 'user-123',
+        platform: 'telegram',
+        messageContext: {}
+      })).rejects.toThrow('User service is required');
     });
     
-    it('should fall back to appropriate behavior when feature flag is disabled', async () => {
-      // Mock the featureFlags module for this specific test
-      jest.resetModules();
-      jest.mock('../../src/config/featureFlags', () => ({
-        isFeatureEnabled: jest.fn().mockReturnValue(false) // All features disabled
-      }));
-      
-      // Re-require the accountCommands module to get the version with mocked features
-      const { PointsCommand: DisabledPointsCommand } = require('../../src/commands/accountCommands');
-      
-      // Create command with disabled features
-      const disabledCommand = new DisabledPointsCommand({
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
+    test('should process input to account workflow', async () => {
+      // Create command
+      const command = createAccountCommand({
+        userService: mockUserService,
         sessionManager: mockSessionManager,
-        logger: mockLogger
+        analyticsService: mockAnalyticsService
       });
       
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await disabledCommand.execute(context);
-      
-      // Command should still work even with features disabled
-      expect(result).toBeDefined();
-      expect(mockLogger.error).not.toHaveBeenCalled();
-    });
-  });
-  
-  describe('Error Handling and Validation', () => {
-    let pointsCommand;
-    
-    beforeEach(() => {
-      // Create points command instance
-      pointsCommand = new PointsCommand({
-        accountPointsService: mockAccountPointsService,
-        workflowManager: mockWorkflowManager,
-        sessionManager: mockSessionManager,
-        logger: mockLogger
-      });
-    });
-    
-    it('should handle missing user in context', async () => {
-      // Arrange - Context without user
-      const context = {
-        platform: mockPlatform,
-        args: {}
-      };
-      
-      // Act
-      const result = await pointsCommand.execute(context);
-      
-      // Assert
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(mockLogger.error).toHaveBeenCalled();
-    });
-    
-    it('should validate input parameters', async () => {
-      // Arrange - Invalid refresh parameter
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: { refresh: 'invalid' }
-      };
-      
-      // Mock validation error - AppError is created with message first, then code
-      mockSessionManager.getUserData.mockImplementationOnce(() => {
-        throw new AppError('Invalid parameters', 'VALIDATION_ERROR');
+      // Process input
+      const result = await command.handleInput('profile', {
+        userId: 'user-123',
+        workflowId: 'mock-workflow-123',
+        sessionManager: mockSessionManager
       });
       
-      // Act
-      const result = await pointsCommand.execute(context);
+      // Check result
+      expect(result.success).toBe(true);
+      expect(result.stepId).toBe('edit_profile');
       
-      // Assert - Check for validation error
-      expect(result.success).toBe(false);
-      expect(result.error.code).toBe('VALIDATION_ERROR');
+      // Verify session was updated
+      expect(mockSessionManager.updateSession).toHaveBeenCalled();
     });
     
-    it('should handle session manager failures', async () => {
-      // Arrange - Session manager throws error
-      mockSessionManager.getUserData.mockRejectedValueOnce(
-        new Error('Session database unavailable')
-      );
+    test('should handle missing session in handleInput', async () => {
+      // Create command
+      const command = createAccountCommand({
+        userService: mockUserService,
+        sessionManager: mockSessionManager
+      });
       
-      const context = {
-        user: mockUser,
-        platform: mockPlatform,
-        args: {}
-      };
+      // Mock session not found
+      mockSessionManager.getSession.mockResolvedValueOnce(null);
       
-      // Act
-      const result = await pointsCommand.execute(context);
+      // Process input
+      const result = await command.handleInput('profile', {
+        userId: 'user-123',
+        workflowId: 'mock-workflow-123',
+        sessionManager: mockSessionManager
+      });
       
-      // Assert
+      // Check result
       expect(result.success).toBe(false);
-      expect(result.error.message).toContain('Unable to load your points');
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Error executing points command',
-        expect.objectContaining({ error: expect.any(Error) })
-      );
+      expect(result.error.code).toBe('SESSION_NOT_FOUND');
     });
   });
 }); 

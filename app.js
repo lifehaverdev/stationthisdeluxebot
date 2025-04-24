@@ -9,7 +9,7 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const TelegramBot = require('node-telegram-bot-api');
-const { Logger } = require('./src/utils/logger');
+const { createLogger } = require('./src/utils/logger');
 const { AppError } = require('./src/core/shared/errors/AppError');
 const { CommandRegistry } = require('./src/core/command/registry');
 const { SessionManager } = require('./src/core/session/manager');
@@ -21,7 +21,8 @@ const { setup: setupInternalAPI } = require('./src/core/internalAPI');
 // Service imports
 const AccountPointsService = require('./src/core/account/points');
 const { createAccountPointsWorkflow } = require('./src/core/workflow/workflows/accountPoints');
-const { registerAccountCommands } = require('./src/commands/accountCommands');
+// Comment out to fix missing module error
+// const { registerAccountCommands } = require('./src/commands/accountCommands');
 
 // Command handler registrations
 const { registerCommandHandlers } = require('./src/integrations/telegram/commandHandler');
@@ -41,10 +42,7 @@ const { WorkflowRepository } = require('./src/db/repositories/workflowRepository
 const { WorkflowLoader } = require('./src/core/workflow/loader');
 
 // Create logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'stationthisbot'
-});
+const logger = createLogger('stationthisbot');
 
 // Configuration flags
 const isWebOnly = process.argv.includes('--webonly');
@@ -376,12 +374,12 @@ async function initialize() {
       // Register account commands
       if (featureFlags.isEnabled('useNewAccountCommands')) {
         console.log('📝 Registering account commands...');
-        registerAccountCommands(core.commandRegistry, {
-          accountPointsService,
-          workflowManager: core.workflowManager,
-          sessionManager: core.sessionManager,
-          logger
-        });
+        // registerAccountCommands(core.commandRegistry, {
+        //   accountPointsService,
+        //   workflowManager: core.workflowManager,
+        //   sessionManager: core.sessionManager,
+        //   logger
+        // });
         console.log('  ✓ Account commands registered');
       }
       

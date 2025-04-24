@@ -6,7 +6,7 @@
  */
 
 const { AppError } = require('../core/shared/errors/AppError');
-const { Logger } = require('../utils/logger');
+const { createLogger } = require('../utils/logger');
 const { ServiceAdapter } = require('./baseAdapter');
 
 // Singleton instance
@@ -32,10 +32,7 @@ class ServiceRegistry {
    */
   constructor() {
     this.services = new Map();
-    this.logger = new Logger({
-      level: process.env.LOG_LEVEL || 'info',
-      name: 'serviceRegistry'
-    });
+    this.logger = createLogger('serviceRegistry');
   }
 
   /**

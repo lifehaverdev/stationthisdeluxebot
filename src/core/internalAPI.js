@@ -9,7 +9,7 @@
 const { CommandRegistry } = require('./command/registry');
 const { SessionManager } = require('./session/manager');
 const { AppError } = require('./shared/errors/AppError');
-const { Logger } = require('../utils/logger');
+const { createLogger } = require('../utils/logger');
 const { ServiceRegistry } = require('../services/registry');
 const { getWorkflowService } = require('../services/comfydeploy/WorkflowService');
 const { comfyDeployService } = require('../services/comfydeploy/service');
@@ -23,10 +23,7 @@ const {
 const sessionRoutes = require('./internalAPI/routes/sessionRoutes');
 
 // Initialize logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'internalAPI'
-});
+const logger = createLogger('internalAPI');
 
 // Get registry instances
 const commandRegistry = CommandRegistry.getInstance();

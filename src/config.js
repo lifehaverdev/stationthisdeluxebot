@@ -1,22 +1,43 @@
-const { Logger } = require('./utils/logger');
-const { MongoDbRepository } = require('./db/repositories/mongoDbRepository');
+/**
+ * Application Configuration
+ * 
+ * Central configuration for the application
+ * Environment variables take precedence over defaults
+ */
 
-// Set up logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'config'
-});
+const path = require('path');
 
-// Configure MongoDB
-const mongoConfig = {
-  uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/station-this-deluxe-bot',
-  options: {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    connectTimeoutMS: 5000,
-    serverSelectionTimeoutMS: 5000,
-  },
-  logger: logger,
-};
+// Load environment variables from .env file in development
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
 
-const mongoRepository = new MongoDbRepository(mongoConfig); 
+module.exports = {
+  // Bot configuration
+  BOT_TOKEN: process.env.BOT_TOKEN || '',
+  ADMIN_USERS: (process.env.ADMIN_USERS || '').split(',').filter(Boolean),
+  
+  // Database configuration
+  DB_URI: process.env.DB_URI || 'mongodb://localhost:27017/stationthisdeluxebot',
+  
+  // Storage configuration
+  STORAGE_PATH: process.env.STORAGE_PATH || path.join(process.cwd(), 'storage'),
+  
+  // Media configuration
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE || '52428800', 10), // 50MB
+  ALLOWED_IMAGE_TYPES: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  ALLOWED_AUDIO_TYPES: ['audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav'],
+  ALLOWED_VIDEO_TYPES: ['video/mp4', 'video/quicktime', 'video/mpeg', 'video/webm'],
+  
+  // Pagination
+  DEFAULT_PAGE_SIZE: parseInt(process.env.DEFAULT_PAGE_SIZE || '10', 10),
+  
+  // Logging
+  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  
+  // Environment
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  IS_PRODUCTION: process.env.NODE_ENV === 'production',
+  IS_DEVELOPMENT: process.env.NODE_ENV !== 'production',
+  IS_TEST: process.env.NODE_ENV === 'test'
+}; 

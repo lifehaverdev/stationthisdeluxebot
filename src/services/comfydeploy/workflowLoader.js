@@ -6,13 +6,10 @@
  */
 
 const WorkflowRepository = require('../../db/models/workflows');
-const { Logger } = require('../../utils/logger');
+const { createLogger } = require('../../utils/logger');
 
 // Initialize logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'workflowLoader'
-});
+const logger = createLogger('workflowLoader');
 
 /**
  * Parse a workflow's JSON layout to extract input parameters
@@ -93,6 +90,8 @@ async function loadWorkflows() {
       logger.warn('No workflows found in database');
       return workflows;
     }
+
+    console.log('======= WORKFLOW DEPLOYMENT IDS =======');
     
     // Map database workflows to adapter-compatible format
     document.flows.forEach(flow => {
@@ -111,6 +110,9 @@ async function loadWorkflows() {
           active: flow.active !== false // Default to active if not specified
         });
         
+        console.log(`Workflow: ${flow.name}`);
+        console.log(`  IDs: ${JSON.stringify(flow.ids || [])}`);
+        
         logger.debug(`Processed workflow ${flow.name}:`, {
           inputCount: parsedInputs.length,
           sampleInputs: parsedInputs.slice(0, 3),
@@ -123,6 +125,8 @@ async function loadWorkflows() {
         });
       }
     });
+    
+    console.log('=======================================');
     
     logger.info(`Loaded ${workflows.length} workflows from database`);
     

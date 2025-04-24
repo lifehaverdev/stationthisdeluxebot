@@ -8,7 +8,7 @@
 
 const WorkflowRepository = require('../../db/models/workflows');
 const { loadWorkflows } = require('./workflowLoader');
-const { Logger } = require('../../utils/logger');
+const { createLogger } = require('../../utils/logger');
 const eventBus = require('../../core/shared/events').default;
 
 /**
@@ -19,7 +19,7 @@ class WorkflowService {
    * Create a new WorkflowService
    * @param {Object} options - Service options
    * @param {number} [options.cacheRefreshInterval=3600000] - Cache refresh interval in ms (default: 1 hour)
-   * @param {Logger} [options.logger] - Logger instance
+   * @param {Object} [options.logger] - Logger instance
    */
   constructor(options = {}) {
     this.workflows = [];
@@ -27,10 +27,7 @@ class WorkflowService {
     this.lastRefresh = 0;
     this.refreshInterval = options.cacheRefreshInterval || 3600000; // 1 hour
     this.isRefreshing = false;
-    this.logger = options.logger || new Logger({
-      level: process.env.LOG_LEVEL || 'info',
-      name: 'workflowService'
-    });
+    this.logger = options.logger || createLogger('workflowService');
   }
 
   /**

@@ -5,16 +5,13 @@
  */
 
 const { runCommand } = require('../../core/internalAPI');
-const { Logger } = require('../../utils/logger');
+const { createLogger } = require('../../utils/logger');
 const TelegramSessionAdapter = require('./adapters/sessionAdapter');
 const { CommandRegistry } = require('../../core/command/registry');
 const { WorkflowManager } = require('../../core/workflow/manager');
 
 // Initialize logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'telegram-command'
-});
+const logger = createLogger('telegram-command');
 
 // Get singleton instances of required components
 const commandRegistry = CommandRegistry.getInstance();

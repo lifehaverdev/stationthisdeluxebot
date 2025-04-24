@@ -1,127 +1,63 @@
 /**
- * Application Logger
+ * Logger Utility
  * 
- * A simple logging utility for consistent logging throughout the application.
- * Eventually this could be replaced with a more robust logging solution.
+ * Provides consistent logging throughout the application
  */
 
+const winston = require('winston');
+const config = require('../config');
+
 /**
- * Logger class for application-wide logging
+ * Create a configured logger instance for a specific module
+ * @param {string} module - Module name for the logger
+ * @returns {object} Configured winston logger instance
  */
-class Logger {
-  /**
-   * Create a new logger
-   * @param {Object} options - Logger options
-   * @param {string} options.level - Log level (debug, info, warn, error)
-   * @param {string} options.name - Logger name for prefixing logs
-   */
-  constructor(options = {}) {
-    this.level = options.level || 'info';
-    this.name = options.name || 'app';
-    
-    // Log level priorities
-    this.levels = {
-      debug: 0,
-      info: 1,
-      warn: 2,
-      error: 3
-    };
+function createLogger(module) {
+  // Define log format
+  const logFormat = winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.errors({ stack: true }),
+    winston.format.printf(({ level, message, module, timestamp, ...meta }) => {
+      const metaString = Object.keys(meta).length ? 
+        ` | ${JSON.stringify(meta)}` : '';
+      return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}${metaString}`;
+    })
+  );
+  
+  // Create logger instance
+  const logger = winston.createLogger({
+    level: config.LOG_LEVEL,
+    format: logFormat,
+    defaultMeta: { module },
+    transports: [
+      // Write logs to console in non-production environments
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          logFormat
+        )
+      })
+    ]
+  });
+  
+  // Add file transport in production
+  if (config.IS_PRODUCTION) {
+    logger.add(
+      new winston.transports.File({ 
+        filename: 'logs/error.log', 
+        level: 'error' 
+      })
+    );
+    logger.add(
+      new winston.transports.File({ 
+        filename: 'logs/combined.log' 
+      })
+    );
   }
   
-  /**
-   * Format a log message
-   * @param {string} level - Log level
-   * @param {string} message - Log message
-   * @param {Object} [data] - Additional data to log
-   * @returns {string} Formatted log message
-   * @private
-   */
-  _format(level, message, data) {
-    const timestamp = new Date().toISOString();
-    let formatted = `[${timestamp}] [${level.toUpperCase()}] [${this.name}] ${message}`;
-    
-    if (data) {
-      if (data instanceof Error) {
-        formatted += `\n  ${data.stack || data.message}`;
-      } else if (typeof data === 'object') {
-        try {
-          // Try to stringify the object, but handle circular references
-          const serialized = JSON.stringify(data, (key, value) => {
-            if (key === 'error' && value instanceof Error) {
-              return {
-                message: value.message,
-                stack: value.stack
-              };
-            }
-            return value;
-          }, 2);
-          formatted += `\n  ${serialized}`;
-        } catch (err) {
-          formatted += '\n  [Object cannot be stringified]';
-        }
-      } else {
-        formatted += `\n  ${data}`;
-      }
-    }
-    
-    return formatted;
-  }
-  
-  /**
-   * Check if a log level should be logged
-   * @param {string} level - Log level to check
-   * @returns {boolean} Whether the level should be logged
-   * @private
-   */
-  _shouldLog(level) {
-    return this.levels[level] >= this.levels[this.level];
-  }
-  
-  /**
-   * Log a debug message
-   * @param {string} message - Message to log
-   * @param {Object} [data] - Additional data to log
-   */
-  debug(message, data) {
-    if (this._shouldLog('debug')) {
-      console.debug(this._format('debug', message, data));
-    }
-  }
-  
-  /**
-   * Log an info message
-   * @param {string} message - Message to log
-   * @param {Object} [data] - Additional data to log
-   */
-  info(message, data) {
-    if (this._shouldLog('info')) {
-      console.info(this._format('info', message, data));
-    }
-  }
-  
-  /**
-   * Log a warning message
-   * @param {string} message - Message to log
-   * @param {Object} [data] - Additional data to log
-   */
-  warn(message, data) {
-    if (this._shouldLog('warn')) {
-      console.warn(this._format('warn', message, data));
-    }
-  }
-  
-  /**
-   * Log an error message
-   * @param {string} message - Message to log
-   * @param {Object} [data] - Additional data to log
-   */
-  error(message, data) {
-    if (this._shouldLog('error')) {
-      console.error(this._format('error', message, data));
-    }
-  }
+  return logger;
 }
 
 module.exports = {
-  Logger
+  createLogger
 }; 

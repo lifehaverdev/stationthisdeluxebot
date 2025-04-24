@@ -6,13 +6,10 @@
  */
 
 const { v4: uuidv4 } = require('uuid');
-const { Logger } = require('../utils/logger');
+const { createLogger } = require('../utils/logger');
 const { AppError } = require('../core/shared/errors/AppError');
 
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'guestAccess'
-});
+const logger = createLogger('guestAccess');
 
 // Constants
 const GUEST_REQUEST_LIMIT = 3;

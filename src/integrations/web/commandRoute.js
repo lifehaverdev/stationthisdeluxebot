@@ -6,13 +6,10 @@
 
 const express = require('express');
 const { runCommand, getSession } = require('../../core/internalAPI');
-const { Logger } = require('../../utils/logger');
+const { createLogger } = require('../../utils/logger');
 
 // Initialize logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'web-command'
-});
+const logger = createLogger('web-command');
 
 // Create router
 const router = express.Router();

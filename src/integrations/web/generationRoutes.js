@@ -8,12 +8,10 @@ const express = require('express');
 const router = express.Router();
 const { comfyDeployService } = require('../../services/comfydeploy/service');
 const { AppError } = require('../../core/shared/errors/AppError');
-const { Logger } = require('../../utils/logger');
+const { createLogger } = require('../../utils/logger');
+const { filterPrimitiveParameters } = require('../../services/comfydeploy/utils/normalizeParameters');
 
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'generationRoutes'
-});
+const logger = createLogger('generationRoutes');
 
 // Get available workflows
 router.get('/workflows', async (req, res) => {
@@ -37,6 +35,18 @@ router.post('/execute', async (req, res) => {
   try {
     const { workflowId, parameters, userId } = req.body;
     
+    // PARAMETER TRACING: Log the initial web request parameters
+    console.log('PARAMETER TRACE [0. Web Request]:', {
+      workflowId,
+      parameterCount: parameters ? Object.keys(parameters).length : 0,
+      parameterKeys: parameters ? Object.keys(parameters) : [],
+      hasPromptKey: parameters?.prompt ? true : false,
+      hasInputsKey: parameters?.inputs ? true : false,
+      nestedInputsCount: parameters?.inputs ? Object.keys(parameters.inputs).length : 0,
+      nestedInputKeys: parameters?.inputs ? Object.keys(parameters.inputs) : [],
+      userId
+    });
+    
     if (!workflowId) {
       return res.status(400).json({
         success: false,
@@ -44,11 +54,58 @@ router.post('/execute', async (req, res) => {
       });
     }
     
+    // Simple parameter prefixing at the API boundary
+    const simplifiedParameters = {};
+    
+    // Process all parameters and ensure they have input_ prefix
+    if (parameters) {
+      Object.entries(parameters).forEach(([key, value]) => {
+        // Skip specific keys (like 'prompt', 'inputs', etc.) that are handled separately
+        if (['prompt', 'inputs', 'userId', 'type'].includes(key)) return;
+        
+        // Add input_ prefix if not already present
+        const prefixedKey = key.startsWith('input_') ? key : `input_${key}`;
+        simplifiedParameters[prefixedKey] = value;
+      });
+      
+      // Handle nested inputs if they exist
+      if (parameters.inputs) {
+        Object.entries(parameters.inputs).forEach(([key, value]) => {
+          // Skip numeric keys which are often UI mappings
+          if (!isNaN(parseInt(key))) return;
+          
+          // Add input_ prefix if not already present
+          const prefixedKey = key.startsWith('input_') ? key : `input_${key}`;
+          simplifiedParameters[prefixedKey] = value;
+        });
+      }
+    }
+    
+    // Log simplified parameters
+    console.log('PARAMETER TRACE [0.1 Parameter Simplification]:', {
+      originalParameterCount: parameters ? Object.keys(parameters).length : 0,
+      simplifiedParameterCount: Object.keys(simplifiedParameters).length,
+      allParamsHavePrefix: Object.keys(simplifiedParameters).every(k => 
+        k.startsWith('input_') || k === '_originalInputs' || !isNaN(parseInt(k))
+      ),
+      simplifiedKeys: Object.keys(simplifiedParameters)
+    });
+    
+    // Preserve the original prompt if available
+    if (parameters?.prompt) {
+      simplifiedParameters.input_prompt = parameters.prompt;
+    }
+    
+    // Prepare settings with simplified parameters
+    const settings = {
+      inputs: simplifiedParameters
+    };
+    
     // Add to queue and return job ID
     const result = await comfyDeployService.generate({
       type: workflowId,
-      prompt: parameters.prompt || '',
-      settings: parameters || {},
+      prompt: parameters?.prompt || '',
+      settings: settings,
       userId: userId || 'web-user',
     }, {
       source: 'web-interface'

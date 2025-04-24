@@ -203,18 +203,24 @@ src/
 - Finalize UI component integration with workflows
 - Implement consistent error handling across commands
 
-### Phase 4: Legacy Command Migration (NEW) 🔄 PLANNED
+### Phase 4: Legacy Command Migration (NEW) 🔄 IN PROGRESS
 - Migrate remaining legacy commands to new architecture
 - Implement workflow-based implementations of complex interactions
 - Create comprehensive integration tests for command flows
 - Deploy with feature flags for gradual rollout
 
+**Completed Tasks:**
+1. ✅ Created migration plan for high-value legacy commands
+2. ✅ Implemented account workflow with platform-agnostic core
+3. ✅ Created comprehensive test suite for core commands
+4. ✅ Implemented parameter normalization for ComfyDeploy integration
+5. ✅ Added detailed parameter tracing for debugging and API validation
+
 **Key Tasks:**
-1. Create migration plan for high-value legacy commands
-2. Implement workflow-based versions of complex interactions
-3. Create platform-specific adapters for all commands
-4. Add comprehensive test coverage
-5. Deploy with feature flags for controlled rollout
+1. Continue migrating complex workflows to new architecture
+2. Create platform-specific adapters for all commands
+3. Add comprehensive test coverage for remaining commands
+4. Deploy with feature flags for controlled rollout
 
 ### Phase 5: Platform Adapter Completion 🔄 PLANNED
 - Complete Telegram-specific adapters

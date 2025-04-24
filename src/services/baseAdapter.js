@@ -7,7 +7,7 @@
  */
 
 const { AppError } = require('../core/shared/errors/AppError');
-const { Logger } = require('../utils/logger');
+const { createLogger } = require('../utils/logger');
 
 /**
  * Base class for all service adapters
@@ -26,10 +26,7 @@ class ServiceAdapter {
 
     this.serviceName = options.serviceName;
     this.config = options.config || {};
-    this.logger = new Logger({
-      level: process.env.LOG_LEVEL || 'info',
-      name: `service:${this.serviceName}`
-    });
+    this.logger = createLogger(`service:${this.serviceName}`);
 
     this.initialized = false;
   }

@@ -7,13 +7,10 @@
 const express = require('express');
 const { SessionAgent, generateApiKey, signNonce } = require('../../session/sessionAgent');
 const { SessionService } = require('../../session/service');
-const { Logger } = require('../../../utils/logger');
+const { createLogger } = require('../../../utils/logger');
 
 // Initialize logger
-const logger = new Logger({
-  level: process.env.LOG_LEVEL || 'info',
-  name: 'session-routes'
-});
+const logger = createLogger('session-routes');
 
 // Create router
 const router = express.Router();

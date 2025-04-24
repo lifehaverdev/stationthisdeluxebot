@@ -219,6 +219,60 @@ class ComfyDeployService extends EventEmitter {
    */
   async generate(promptObj, userContext, options = {}) {
     try {
+      // Import the filtering utility
+      const { filterPrimitiveParameters } = require('./utils/normalizeParameters');
+
+      // PARAMETER TRACING: Log initial user input
+      console.log('PARAMETER TRACE [1. Service Entry]:', {
+        type: promptObj.type,
+        prompt: promptObj.prompt?.substring(0, 30) + '...',
+        paramKeys: promptObj.settings ? Object.keys(promptObj.settings) : [],
+        hasNestedInputs: promptObj.settings?.inputs ? true : false,
+        inputKeys: promptObj.settings?.inputs ? Object.keys(promptObj.settings.inputs) : []
+      });
+
+      // Simple prefix handling for parameters early in the process
+      if (promptObj.settings) {
+        // Simply ensure all keys have input_ prefix
+        const simplifiedParams = {};
+        
+        // Process all settings parameters
+        Object.entries(promptObj.settings).forEach(([key, value]) => {
+          // Skip the inputs object itself for separate handling
+          if (key === 'inputs') return;
+          
+          // Add input_ prefix if not already present
+          const prefixedKey = key.startsWith('input_') ? key : `input_${key}`;
+          simplifiedParams[prefixedKey] = value;
+        });
+        
+        // Handle nested inputs if they exist
+        if (promptObj.settings.inputs) {
+          // Store the original inputs for reference/debugging
+          promptObj.settings._originalInputs = { ...promptObj.settings.inputs };
+          
+          // Process the inputs object
+          Object.entries(promptObj.settings.inputs).forEach(([key, value]) => {
+            // Skip numeric keys which are often UI mappings
+            if (!isNaN(parseInt(key))) return;
+            
+            // Add input_ prefix if not already present
+            const prefixedKey = key.startsWith('input_') ? key : `input_${key}`;
+            simplifiedParams[prefixedKey] = value;
+          });
+        }
+        
+        // Replace with simplified parameters
+        promptObj.settings.inputs = simplifiedParams;
+        
+        // PARAMETER TRACING: Log simplified parameters
+        console.log('PARAMETER TRACE [2. Parameter Simplification]:', {
+          paramCount: Object.keys(simplifiedParams).length,
+          allParamsHavePrefix: Object.keys(simplifiedParams).every(k => k.startsWith('input_')),
+          paramKeys: Object.keys(simplifiedParams)
+        });
+      }
+
       // Handle different formats of userId in userContext
       const userId = userContext.userId || 
                     (userContext.user && userContext.user.id) || 
@@ -246,6 +300,14 @@ class ComfyDeployService extends EventEmitter {
         request.userId = userId;
       }
       
+      // PARAMETER TRACING: Log structured request after normalization
+      console.log('PARAMETER TRACE [2. Normalized Request]:', {
+        type: request.type,
+        parameterKeys: Object.keys(request.settings || {}),
+        hasInputImagesArray: request.inputImages ? true : false,
+        inputImageCount: request.inputImages ? request.inputImages.length : 0
+      });
+      
       // Log generation request information
       console.log('Generation request prepared:', {
         userId: request.userId,
@@ -269,12 +331,30 @@ class ComfyDeployService extends EventEmitter {
       // Get deployment information for this type
       const deploymentInfo = await this.getDeploymentInfo(request.type);
       
+      // PARAMETER TRACING: Log deployment info with template parameters
+      console.log('PARAMETER TRACE [3. Deployment Info]:', {
+        deploymentIds: deploymentInfo.ids,
+        hasInputTemplate: deploymentInfo.inputs ? true : false,
+        templateInputKeys: deploymentInfo.inputs ? Object.keys(deploymentInfo.inputs) : [],
+        templateRequiresInputPrefix: Object.keys(deploymentInfo.inputs || {}).some(key => key.startsWith('input_'))
+      });
+      
       // Build prompt object for ComfyDeploy
       const comfyRequest = await this.promptBuilder.build(
         request,
         userContext,
         deploymentInfo
       );
+      
+      // PARAMETER TRACING: Log final ComfyDeploy request structure
+      console.log('PARAMETER TRACE [4. Final API Request]:', {
+        deployment_id: comfyRequest.deployment_id,
+        inputCount: Object.keys(comfyRequest.inputs || {}).length,
+        inputKeys: Object.keys(comfyRequest.inputs || {}),
+        inputPrefixCount: Object.keys(comfyRequest.inputs || {}).filter(k => k.startsWith('input_')).length,
+        nonPrefixedCount: Object.keys(comfyRequest.inputs || {}).filter(k => !k.startsWith('input_')).length,
+        nonPrefixedKeys: Object.keys(comfyRequest.inputs || {}).filter(k => !k.startsWith('input_'))
+      });
       
       // Prepare webhook data
       const webhookData = {
@@ -419,34 +499,229 @@ class ComfyDeployService extends EventEmitter {
   }
 
   /**
-   * Get deployment information by type
+   * Default implementation of getDeploymentInfo to use when custom one is not provided
    * @private
-   * @param {string} type - Generation type
-   * @returns {Object} - Deployment information (ids and inputs)
+   * @param {string} type - Generation type (MAKE, I2I, etc.)
+   * @returns {Object} - Deployment IDs and inputs for the type
    */
   _defaultGetDeploymentInfo(type) {
-    // Find workflow matching the type
-    const workflow = this.workflows.find(flow => flow.name === type);
+    console.log(`======= DEFAULT GET DEPLOYMENT INFO =======`);
+    console.log(`Looking up deployment info for type: ${type}`);
     
-    if (!workflow) {
-      // Get list of available workflow names for better error reporting
-      const availableWorkflows = this.workflows.map(w => w.name).join(', ');
-      
-      throw new AppError(`Deployment info not found for type: ${type}. Available workflows: ${availableWorkflows || 'none'}`, {
-        severity: ERROR_SEVERITY.ERROR,
-        code: 'DEPLOYMENT_INFO_NOT_FOUND',
-        details: {
-          requestedType: type,
-          availableWorkflows: this.workflows.map(w => w.name),
-          workflowCount: this.workflows.length
+    // Map of generation types to deployment IDs
+    const typeToDeployment = this.GENERATION_TYPES || this._initGenerationTypes();
+    
+    // Get type info
+    const typeInfo = typeToDeployment[type] || typeToDeployment['MAKE'];
+    console.log(`Type info found: ${JSON.stringify(typeInfo)}`);
+    
+    // Return deployment IDs and inputs
+    const result = {
+      ids: [typeInfo.deploymentId || 'default_deployment_id'],
+      inputs: typeInfo.inputTemplate || {}
+    };
+    
+    console.log(`Returning deployment info: ${JSON.stringify(result)}`);
+    console.log(`==========================================`);
+    
+    return result;
+  }
+  
+  /**
+   * Initialize and return generation types mapping
+   * @private
+   * @returns {Object} - Generation types mapping
+   */
+  _initGenerationTypes() {
+    // Store the generation types mapping
+    this.GENERATION_TYPES = {
+      // Basic types
+      MAKE: {
+        deploymentId: process.env.COMFY_DEPLOY_SDXL_ID || 'sdxl_default',
+        requiresPrompt: true,
+        supportsControlNet: false,
+        inputTemplate: {
+          prompt: '',
+          negative_prompt: '',
+          width: 1024,
+          height: 1024,
+          steps: 30,
+          cfg_scale: 7,
+          sampler_name: 'DPM++ 2M Karras',
+          checkpoint_name: 'stabilityAI/sdxl',
+          batch_size: 1
         }
+      },
+      QUICKMAKE: {
+        deploymentId: process.env.COMFY_DEPLOY_SDXL_ID || 'sdxl_default', // Using same deployment as MAKE
+        requiresPrompt: true,
+        supportsControlNet: false,
+        inputTemplate: {
+          prompt: '',
+          negative_prompt: '',
+          width: 1024,
+          height: 1024,
+          steps: 30,
+          cfg_scale: 7,
+          sampler_name: 'DPM++ 2M Karras',
+          checkpoint_name: 'stabilityAI/sdxl',
+          batch_size: 1
+        }
+      },
+      I2I: {
+        deploymentId: process.env.COMFY_DEPLOY_IMG2IMG_ID || 'img2img_default',
+        requiresPrompt: true,
+        requiresImage: true,
+        inputTemplate: {
+          prompt: '',
+          negative_prompt: '',
+          width: 1024,
+          height: 1024,
+          steps: 30,
+          cfg_scale: 7,
+          sampler_name: 'DPM++ 2M Karras',
+          checkpoint_name: 'stabilityAI/sdxl',
+          denoising_strength: 0.75,
+          input_image: null
+        }
+      },
+      MAKE_PLUS: {
+        deploymentId: process.env.COMFY_DEPLOY_SDXL_PLUS_ID || 'sdxl_plus_default',
+        requiresPrompt: true,
+        supportsControlNet: true,
+        supportsStyleTransfer: true,
+        inputTemplate: {
+          prompt: '',
+          negative_prompt: '',
+          width: 1024,
+          height: 1024,
+          steps: 30,
+          cfg_scale: 7,
+          sampler_name: 'DPM++ 2M Karras',
+          checkpoint_name: 'dreamshaper/dreamshaper_8',
+          enhance_prompt: true,
+          high_quality: true,
+          style_preset: 'enhance'
+        }
+      },
+      INPAINT: {
+        deploymentId: process.env.COMFY_DEPLOY_INPAINT_ID || 'inpaint_default',
+        requiresPrompt: true,
+        requiresImage: true,
+        requiresMask: true,
+        inputTemplate: {
+          prompt: '',
+          negative_prompt: '',
+          steps: 30,
+          cfg_scale: 7,
+          sampler_name: 'DPM++ 2M Karras',
+          checkpoint_name: 'stabilityAI/sdxl',
+          input_image: null,
+          mask_image: null,
+          inpaint_fill: 'fill',
+          mask_blur: 4,
+          inpaint_full_res: true,
+          inpaint_padding: 32
+        }
+      },
+      UPSCALE: {
+        deploymentId: process.env.COMFY_DEPLOY_UPSCALE_ID || 'upscale_default',
+        requiresPrompt: false,
+        requiresImage: true,
+        inputTemplate: {
+          input_image: null,
+          upscaler: 'RealESRGAN_x4plus',
+          scale: 2,
+          tile_size: 512,
+          tile_padding: 10
+        }
+      }
+    };
+    
+    return this.GENERATION_TYPES;
+  }
+
+  /**
+   * Validates if a generation type is supported and has required inputs
+   * @param {string} type - Generation type
+   * @param {Object} inputs - Generation inputs
+   * @returns {boolean} - True if valid, throws error if not
+   */
+  validateGenerationType(type, inputs = {}) {
+    // Get type info
+    const typeInfo = (this.GENERATION_TYPES || this._initGenerationTypes())[type];
+    
+    // Check if type exists
+    if (!typeInfo) {
+      throw new AppError(`Unsupported generation type: ${type}`, {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'UNSUPPORTED_GENERATION_TYPE'
       });
     }
     
+    // Check if required prompt is present
+    if (typeInfo.requiresPrompt && (!inputs.prompt || inputs.prompt.trim() === '')) {
+      throw new AppError('Prompt is required for this generation type', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'MISSING_REQUIRED_PROMPT'
+      });
+    }
+    
+    // Check if required image is present
+    if (typeInfo.requiresImage && !inputs.input_image) {
+      throw new AppError('Input image is required for this generation type', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'MISSING_REQUIRED_IMAGE'
+      });
+    }
+    
+    // Check if required mask is present
+    if (typeInfo.requiresMask && !inputs.mask_image) {
+      throw new AppError('Mask image is required for this generation type', {
+        severity: ERROR_SEVERITY.ERROR,
+        code: 'MISSING_REQUIRED_MASK'
+      });
+    }
+    
+    return true;
+  }
+
+  /**
+   * Get capabilities for a generation type
+   * @param {string} type - Generation type
+   * @returns {Object} - Type capabilities
+   */
+  getTypeCapabilities(type) {
+    // Get type info
+    const typeInfo = (this.GENERATION_TYPES || this._initGenerationTypes())[type];
+    
+    if (!typeInfo) {
+      return {
+        supported: false,
+        capabilities: {}
+      };
+    }
+    
     return {
-      ids: workflow.ids || [],
-      inputs: workflow.inputs || {}
+      supported: true,
+      capabilities: {
+        requiresPrompt: typeInfo.requiresPrompt || false,
+        requiresImage: typeInfo.requiresImage || false,
+        requiresMask: typeInfo.requiresMask || false,
+        supportsControlNet: typeInfo.supportsControlNet || false,
+        supportsStyleTransfer: typeInfo.supportsStyleTransfer || false,
+        deploymentId: typeInfo.deploymentId,
+        inputTemplate: typeInfo.inputTemplate || {}
+      }
     };
+  }
+  
+  /**
+   * Get all supported generation types
+   * @returns {Array<string>} - List of supported generation types
+   */
+  getSupportedGenerationTypes() {
+    return Object.keys(this.GENERATION_TYPES || this._initGenerationTypes());
   }
 
   /**

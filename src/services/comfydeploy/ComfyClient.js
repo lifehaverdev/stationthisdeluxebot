@@ -83,10 +83,22 @@ class ComfyClient extends EventEmitter {
       });
     }
     
-    // Prepare the request payload
+    // Create a filtered copy of the inputs with only primitive values
+    const filteredInputs = {};
+    Object.entries(requestData.inputs).forEach(([key, value]) => {
+      // Only keep strings and numbers
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        filteredInputs[key] = value;
+      } else {
+        // Log objects that are being filtered out
+        console.log(`Filtering out non-primitive parameter: ${key} (${typeof value})`);
+      }
+    });
+    
+    // Prepare the request payload with filtered inputs
     const payload = {
       deployment_id: requestData.deployment_id,
-      inputs: requestData.inputs,
+      inputs: filteredInputs,
       webhook_url: options.webhookUrl || this.webhookUrl
     };
     
@@ -96,6 +108,12 @@ class ComfyClient extends EventEmitter {
     }
     
     // Add detailed logging for debugging
+    console.log('======= COMFY API REQUEST =======');
+    console.log(`Deployment ID: ${payload.deployment_id}`);
+    console.log(`Deployment ID Type: ${typeof payload.deployment_id}`);
+    console.log(`Is Valid UUID? ${/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.deployment_id)}`);
+    console.log('=================================');
+    
     console.log('FINAL REQUEST TO COMFYDEPLOY API:', {
       deployment_id: payload.deployment_id,
       inputs: payload.inputs,
@@ -116,6 +134,18 @@ class ComfyClient extends EventEmitter {
         .map(([k, v]) => `${k}: ${typeof v}${Array.isArray(v) ? ' (array)' : ''}`)
     });
     
+    // PARAMETER TRACING: Log the actual API request being sent with focus on parameter structure
+    console.log('PARAMETER TRACE [11. API Request]:', {
+      endpoint: `${this.baseUrl}/run`,
+      deployment_id: payload.deployment_id,
+      inputCount: Object.keys(payload.inputs || {}).length,
+      inputPrefixCount: Object.keys(payload.inputs || {}).filter(k => k.startsWith('input_')).length,
+      nonPrefixedCount: Object.keys(payload.inputs || {}).filter(k => !k.startsWith('input_')).length,
+      apiExpectsInputPrefix: true, // Set based on ComfyDeploy API requirements
+      sampleInputs: Object.keys(payload.inputs || {}).slice(0, 5),
+      filteredOutCount: Object.keys(requestData.inputs).length - Object.keys(filteredInputs).length
+    });
+    
     try {
       // Emit request event
       this.emit('request:start', {
@@ -128,7 +158,7 @@ class ComfyClient extends EventEmitter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`
+          Authorization: this.apiKey ? `Bearer ${this.apiKey}` : undefined
         },
         body: JSON.stringify(payload)
       });
@@ -143,8 +173,22 @@ class ComfyClient extends EventEmitter {
         timestamp: Date.now()
       });
       
+      // PARAMETER TRACING: Log the response
+      console.log('PARAMETER TRACE [12. API Response]:', {
+        status: 'success',
+        run_id: data.run_id,
+        estimated_completion: data.estimated_completion
+      });
+      
       return data;
     } catch (error) {
+      // PARAMETER TRACING: Log the error
+      console.log('PARAMETER TRACE [12. API Error]:', {
+        status: 'error',
+        message: error.message,
+        response: error.response?.data || error.responseText
+      });
+      
       // Emit error event
       this.emit('request:error', {
         error: error.message,
@@ -166,7 +210,7 @@ class ComfyClient extends EventEmitter {
    * @param {string} runId - Run ID
    * @returns {Promise<Object>} - Status and output information
    */
-  async getStatus(runId) {
+  async getRunStatus(runId) {
     if (!runId) {
       throw new AppError('Run ID is required', {
         severity: ERROR_SEVERITY.ERROR,
@@ -193,18 +237,21 @@ class ComfyClient extends EventEmitter {
       // Parse the response
       const data = await response.json();
       
-      // Extract outputs
-      const outputs = this._extractOutputs(data);
+      // Extract outputs if available
+      let outputs = null;
+      if (data.status === 'success' && data.outputs) {
+        outputs = this._extractOutputs(data);
+      }
       
-      // Emit status events
+      // Emit status events based on run state
       this._emitStatusEvents(runId, data, outputs);
       
       return {
         run_id: runId,
         status: data.status,
-        progress: data.progress,
+        progress: data.progress || 0,
         outputs,
-        data // Include the full response data
+        raw: data // Include the full response data for debugging/advanced usage
       };
     } catch (error) {
       // Emit error event
@@ -214,11 +261,12 @@ class ComfyClient extends EventEmitter {
         timestamp: Date.now()
       });
       
-      // Rethrow as AppError
-      throw new AppError('Failed to check ComfyDeploy status', {
+      // Transform to AppError with detailed information
+      throw new AppError(`Failed to check status for run ${runId}`, {
         severity: ERROR_SEVERITY.ERROR,
         code: 'COMFY_STATUS_CHECK_FAILED',
-        cause: error
+        cause: error,
+        context: { runId }
       });
     }
   }
@@ -256,26 +304,32 @@ class ComfyClient extends EventEmitter {
       // Parse the response
       const data = await response.json();
       
-      // Emit cancel success event
+      // Emit success event
       this.emit('run:cancelled', {
         run_id: runId,
         timestamp: Date.now()
       });
       
-      return data;
+      return {
+        run_id: runId,
+        status: 'cancelled',
+        message: data.message || 'Generation cancelled successfully',
+        timestamp: Date.now()
+      };
     } catch (error) {
       // Emit error event
-      this.emit('run:cancel:error', {
+      this.emit('cancel:error', {
         run_id: runId,
         error: error.message,
         timestamp: Date.now()
       });
       
-      // Rethrow as AppError
-      throw new AppError('Failed to cancel ComfyDeploy run', {
+      // Transform to AppError with detailed information
+      throw new AppError(`Failed to cancel run ${runId}`, {
         severity: ERROR_SEVERITY.ERROR,
         code: 'COMFY_CANCEL_FAILED',
-        cause: error
+        cause: error,
+        context: { runId }
       });
     }
   }
