@@ -966,6 +966,36 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
         const loraName = loraData.name;
 
         switch (decision) {
+            case 'tags':
+                // Show tag management menu
+                const currentTags = workspace[userId][loraId].tags || [];
+                const tagKeyboard = Object.entries(LORA_TAGS).map(([tag, emoji]) => [{
+                    text: `${currentTags.includes(tag) ? '✅' : '⬜'} ${emoji} ${tag}`,
+                    callback_data: `loraTag_${loraId}_${userId}_${tag}`
+                }]);
+                
+                // Add control buttons
+                tagKeyboard.push([
+                    { text: '↩️ Back', callback_data: `trainDiscern_back_${loraId}_${userId}` }
+                ]);
+                
+                await editMessage({
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    text: `🏷️ Tag Management for "${loraName}"\n\nCurrent tags: ${
+                        currentTags.length > 0 
+                            ? currentTags.map(tag => `${LORA_TAGS[tag]}${tag}`).join(', ')
+                            : 'None'
+                    }`,
+                    reply_markup: {
+                        inline_keyboard: tagKeyboard
+                    }
+                });
+                break;
+            case 'back':
+                // Return to main review menu
+                await showReviewMenu(message, userId, loraId);
+                break;
             case 'approve':
             case 'approveStyle':
             case 'approveSubject':
@@ -982,12 +1012,17 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                     { chat: { id: userId } },
                     `✨ Good news! Your ${decision === 'approveStyle' ? 'style' : 'subject'} LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.`
                 );
+
+                // Include tags in notifications
+                const tagInfo = workspace[userId][loraId].tags?.length > 0
+                ? `\nTags: ${workspace[userId][loraId].tags.map(tag => `${LORA_TAGS[tag]}${tag}`).join(', ')}`
+                : '';
                 
                 // Update dev message
                 await editMessage({
                     chat_id: message.chat.id,
                     message_id: message.message_id,
-                    text: `✅ Approved ${decision === 'approveStyle' ? 'Style' : 'Subject'} LoRA "${loraName}" for training\nUser: ${userId}`
+                    text: `✅ Approved ${decision === 'approveStyle' ? 'Style' : 'Subject'} LoRA "${loraName}" for training\nUser: ${userId}${tagInfo}`
                 });
                 break;
 
@@ -1024,10 +1059,9 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                 const multiplier = (100 - discount) / 100;
                 const discountedPrice = Math.floor(loraPrice * multiplier);
                 
-                // Check user's qoints
-                const userEco = new Economy();
-                const userEconomy = await userEco.findOne({userId});
-                const hasQoints = userEconomy && userEconomy.qoints > 0;
+                // Check user's qoints - Fix the Economy initialization
+                const userEconomy = await userEconomy.findOne({ userId: userId }); // Use userId consistently
+                const hasQoints = userEconomy && userEconomy.qoints >= 0; // Changed to check if qoints exists
                 
                 // Build keyboard based on qoint status
                 const keyboard = [
@@ -1086,6 +1120,8 @@ prefixHandlers['premiumTrain_'] = async (action, message, user) => {
     await handlePremiumTrainChoice(choice, loraId, parseInt(price), message, user);
 }
 
+
+
 async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
     try {
         // Load LoRA data and ensure workspace is initialized
@@ -1099,9 +1135,9 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
 
         switch (choice) {
             case 'pay':
-                // Check if user has enough qoints
-                const userEco = await userEconomy.findOne({userId: user});
-                if (!userEco || userEco.qoints < price) {
+                // Check if user has enough qoints - Fixed userEconomy usage
+                const userEco = await userEconomy.findOne({ userId: user });
+                if (!userEco || !userEco.qoints || userEco.qoints < price) {
                     await editMessage({
                         chat_id: message.chat.id,
                         message_id: message.message_id,
@@ -1115,9 +1151,10 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
                     });
                     return;
                 }
-                userEco.qoints -= price;
-                // Deduct qoints
-                const success = await userEconomy.writeQoints(user, userEco.qoints);
+
+                // Deduct qoints - Fixed to use qoints directly
+                const newBalance = userEco.qoints - price;
+                const success = await userEconomy.writeQoints(user, newBalance);
                 if (!success) {
                     await sendMessage(message, "Failed to process payment. Please try again later.");
                     return;
@@ -1135,7 +1172,7 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
                     message_id: message.message_id,
                     text: `✨ Payment successful! Your LoRA "${loraData.name}" has been approved for training.\n\n` +
                           `Paid: ${price} qoints\n` +
-                          `Remaining balance: ${userEco.qoints - price} qoints`
+                          `Remaining balance: ${newBalance} qoints`
                 });
 
                 // Notify dev
@@ -1171,6 +1208,77 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
     }
 }
 
+// Add new prefix handler for tag toggling
+prefixHandlers['loraTag_'] = async (action, message, user) => {
+    const [_, loraId, userId, tag] = action.split('_');
+    await toggleLoraTag(loraId, userId, tag, message);
+};
+
+
+async function toggleLoraTag(loraId, userId, tag, message) {
+    try {
+        if (!workspace[userId][loraId].tags) {
+            workspace[userId][loraId].tags = [];
+        }
+        
+        const tagIndex = workspace[userId][loraId].tags.indexOf(tag);
+        if (tagIndex === -1) {
+            workspace[userId][loraId].tags.push(tag);
+        } else {
+            workspace[userId][loraId].tags.splice(tagIndex, 1);
+        }
+        
+        await loraDB.saveWorkspace(workspace[userId][loraId]);
+        
+        // Refresh tag menu
+        await handleDevDiscernment('tags', loraId, userId, message);
+    } catch (error) {
+        console.error('Error toggling tag:', error);
+        await sendMessage(message, 'Failed to update tags. Please try again.');
+    }
+}
+
+// Add this near the top with other constants
+const LORA_TAGS = {
+    'meme': '😂',
+    'illustration': '🎨',
+    'retro': '📺',
+    'arthurts_picks': '⭐',
+    'anime': '🌸',
+    'photo': '📸',
+    'landscape': '🌄',
+    'experimental': '🧪'
+};
+
+async function showReviewMenu(message, userId, loraId) {
+    const loraData = workspace[userId][loraId];
+    const currentTags = loraData.tags || [];
+    
+    const tagDisplay = currentTags.length > 0 
+        ? '\n🏷️ Tags: ' + currentTags.map(tag => `${LORA_TAGS[tag]}${tag}`).join(', ')
+        : '';
+
+    await editMessage({
+        chat_id: message.chat.id,
+        message_id: message.message_id,
+        text: `Review LoRA: "${loraData.name}"${tagDisplay}`,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '✅ Style', callback_data: `trainDiscern_approveStyle_${loraId}_${userId}` },
+                    { text: '✅ Subject', callback_data: `trainDiscern_approveSubject_${loraId}_${userId}` }
+                ],
+                [
+                    { text: '🏷️ Manage Tags', callback_data: `trainDiscern_tags_${loraId}_${userId}` }
+                ],
+                [
+                    { text: '💰 Premium', callback_data: `trainDiscern_demand_${loraId}_${userId}` },
+                    { text: '❌ Reject', callback_data: `trainDiscern_reject_${loraId}_${userId}` }
+                ]
+            ]
+        }
+    });
+}
 
 module.exports = {
     handleTrainingMenu,

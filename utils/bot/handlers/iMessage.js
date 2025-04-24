@@ -732,6 +732,19 @@ commandRegistry['/tripo'] = {
         iMedia.handleTRIPO(message)
     }
 },
+commandRegistry['/viduthat'] = {
+    handler: async (message) => {
+        console.log('made it into /viduthat command');
+        iMedia.handleVIDU(message);
+    },
+};
+
+commandRegistry['/vidupscale'] = {
+    handler: async (message) => {
+        console.log('made it into /vidupscale command');
+        iMedia.handleVIDUUpscale(message);
+    }
+};
 
     // Modified '/stationthis' command to include group check and onboarding
 commandRegistry['/stationthis'] = {
