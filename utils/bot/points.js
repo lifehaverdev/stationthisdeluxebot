@@ -32,16 +32,42 @@ async function addPoints(task) {
     ({ promptObj, message } = task);
     const userId = parseInt(promptObj.userId);
     
-    let rate = 2;
+    let rate = 3;
     const doublePointTypes = ['MS3.2']; // You can add more types here if needed
     if (doublePointTypes.includes(promptObj.type)) {
-        rate = 6;
+        rate = 9;
     }
     const pointsToAdd = ((task.runningStop - task.runningStart) / 1000) * rate;
     
     // Add these values to task for studio tracking
     task.rate = rate;
     task.pointsSpent = pointsToAdd;
+
+    // Special handling for media tasks like TRIPO or VIDU
+    if (['TRIPO', 'VIDU_I2V', 'VIDU_UPSCALE'].includes(promptObj.type)) {
+        const mediaCost = 50;
+
+        // Use lobby qoints if available
+        if (lobby[userId]?.qoints !== undefined) {
+            console.log(`Charging ${mediaCost} qoints from lobby for ${promptObj.type}`);
+            lobby[userId].qoints = Math.max(0, (lobby[userId].qoints || 0) - mediaCost);
+        } else {
+            // Otherwise use DB fallback
+            const userEconomy = new UserEconomyDB();
+            const userEco = await userEconomy.findOne({ userId });
+
+            if (userEco) {
+                userEco.qoints = Math.max(0, (userEco.qoints || 0) - mediaCost);
+                await userEconomy.writeQoints(userId, userEco.qoints);
+                console.log(`Charged ${mediaCost} qoints from DB for ${promptObj.type}. Remaining: ${userEco.qoints}`);
+            } else {
+                console.error('No user economy found for media task:', userId);
+                return;
+            }
+        }
+
+        return; // ✅ Early return after handling
+    }
 
     // Special handling for API requests - always use qoints from DB
     if (task.isAPI) {
