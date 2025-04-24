@@ -4,6 +4,7 @@ db/data/*
 src/db/data/*
 
 temp/*
+tmp/*
 output/*
 
 # Logs

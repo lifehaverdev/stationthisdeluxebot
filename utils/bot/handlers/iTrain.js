@@ -1007,10 +1007,17 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                 workspace[userId][loraId].name = workspace[userId][loraId].name.replace(/\s+/g, '');
                 await loraDB.saveWorkspace(workspace[userId][loraId]);
 
-                // Notify user
+                // Add qoints reward
+                const APPROVAL_REWARD = 1000;
+                const userEco = await userEconomy.findOne({ userId });
+                const newBalance = (userEco?.qoints || 0) + APPROVAL_REWARD;
+                await userEconomy.writeQoints(userId, newBalance);
+
+                // Notify user with reward info
                 await sendMessage(
                     { chat: { id: userId } },
-                    `✨ Good news! Your ${decision === 'approveStyle' ? 'style' : 'subject'} LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.`
+                    `✨ Good news! Your ${decision === 'approveStyle' ? 'style' : 'subject'} LoRA training request "${loraName}" has been approved! We'll begin processing it shortly.\n\n` +
+                    `🎁 You've earned ${APPROVAL_REWARD} qoints for your submission!`
                 );
 
                 // Include tags in notifications
