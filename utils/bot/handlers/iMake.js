@@ -364,6 +364,10 @@ async function handleInpaintTarget(message) {
     setUserState(message,STATES.INPAINTPROMPT);
 }
 
+async function handleMakeVideo(message) {
+    await handleTask(message, 'MAKEVIDEO', STATES.MAKEVIDEO, false, 600000)
+}
+
 module.exports = { 
     // startMake, 
     // startMake3, 
@@ -374,7 +378,7 @@ module.exports = {
     handleRegen, 
     handleHipFire,
     handleAgain,
-    handleMake, 
+    handleMake, handleMakeVideo,
     handleMake3, 
     handleMs2Prompt,
     handleSD3ImgPrompt,
