@@ -432,9 +432,10 @@ commandRegistry['/vidthat'] = {
             }
             const target = message.reply_to_message;
             if(target && (target.photo || target.document)) {
+                lobby[message.from.id].prompt = message.text.replace('/vidthat', '').trim()
                 target.from.id = message.from.id;
                 target.message_id = message.message_id
-                iMedia.handleMs3V2ImgFile(target)
+                iMedia.handleMs3V3ImgFile(target)
             } else {
                 react(message,"🤔")
             }
@@ -451,8 +452,8 @@ commandRegistry['/vidthat2'] = {
             }
             const target = message.reply_to_message;
             if(target && (target.photo || target.document)) {
-                lobby[message.from.id].prompt = message.text.replace('/vidthat2', '').trim()
-                iMedia.handleMs3V3ImgFile(
+                //lobby[message.from.id].prompt = message.text.replace('/vidthat', '').trim()
+                iMedia.handleMs3V2ImgFile(
                     {
                         ...target, 
                         from: {id: message.from.id},
@@ -738,7 +739,12 @@ commandRegistry['/viduthat'] = {
         iMedia.handleVIDU(message);
     },
 };
-
+commandRegistry['/makevideo'] = {
+    handler: async (message) => {
+        console.log('made it into /makevideo command');
+        iMake.handleMakeVideo(message);
+    }
+};
 commandRegistry['/vidupscale'] = {
     handler: async (message) => {
         console.log('made it into /vidupscale command');

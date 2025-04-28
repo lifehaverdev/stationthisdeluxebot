@@ -608,6 +608,10 @@ async function handleMs3V3ImgFile(message, user = null) {
     await handleImageTask(message, user, 'MS3.3', STATES.MS3V3,  false, 600000)
 }
 
+async function handleMs3V4ImgFile(message, user = null) {
+    await handleImageTask(message, user, 'MS3.4', STATES.MS3V4, false, 600000)
+}
+
 module.exports = 
 {
     handleImageTask, handleTRIPO, handleVIDU, handleVIDUUpscale,

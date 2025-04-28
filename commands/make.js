@@ -157,7 +157,7 @@ async function fetchOutput(run_id) {
 
 async function promptPreProc(promptObj) {
     const censoredWords = ["topless", "lingerie", "stripper", "boobs", "titties", "boobies", "breasts", "nude", "naked", "cock", "dick", "penis", "sex", "fuck", "cum", "semen", "rape"];
-    const basepromptlessTypes = ['MAKE','I2I','MAKE_PLUS','INPAINT','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3','MS3.3'];
+    const basepromptlessTypes = ['MAKE','I2I','MAKE_PLUS','INPAINT','MILADY','CHUD','RADBRO','LOSER','I2I_3','MAKE3','MS3.3', 'MAKEVIDEO'];
 
     // Log the initial state of promptObj
     //console.log('Initial prompt first 10 chars:', promptObj.prompt?.substring(0, 10));

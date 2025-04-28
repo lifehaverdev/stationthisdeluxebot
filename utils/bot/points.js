@@ -33,7 +33,7 @@ async function addPoints(task) {
     const userId = parseInt(promptObj.userId);
     
     let rate = 3;
-    const doublePointTypes = ['MS3.2']; // You can add more types here if needed
+    const doublePointTypes = ['MS3.2','MAKEVIDEO','MS3.3']; // You can add more types here if needed
     if (doublePointTypes.includes(promptObj.type)) {
         rate = 9;
     }
