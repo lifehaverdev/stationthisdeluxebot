@@ -494,10 +494,10 @@ async function handleTaskCompletion(task) {
             
             // Extract URLs from run outputs (similar to existing logic)
             if (run?.outputs && run.outputs.length > 0) {
-                run.outputs.forEach(outputItem => {
+                run.outputs.forEach(output => {
                     ["images", "gifs", "videos"].forEach(type => {
-                        if (outputItem.data?.[type]?.length > 0) {
-                            outputItem.data[type].forEach(dataItem => {
+                        if (output.data?.[type]?.length > 0) {
+                            output.data[type].forEach(dataItem => {
                                 const url = dataItem.url;
                                 const fileType = extractType(url);
                                 urls.push({ type: fileType, url });
@@ -596,6 +596,18 @@ async function handleTaskCompletion(task) {
                                 urls.push({ 
                                     type: extractType(image.url), 
                                     url: image.url 
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Add handling for video files
+                    if (output.data?.files?.length > 0) {
+                        output.data.files.forEach(file => {
+                            if (file.url && file.format?.includes('video')) {
+                                urls.push({
+                                    type: 'video',
+                                    url: file.url
                                 });
                             }
                         });
