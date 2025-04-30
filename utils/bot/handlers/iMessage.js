@@ -19,6 +19,7 @@ const {
 } = require('../../utils')
 require('./iLora.js')
 require('./iStats.js')
+require('../../../commands/ffmpeg')
 const { AnalyticsEvents } = require('../../../db/models/analyticsEvents');
 const analytics = new AnalyticsEvents();
 
