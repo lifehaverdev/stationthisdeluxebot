@@ -43,3 +43,16 @@ web interface:
 
 instead of typing a /command into a telegram chat to interact with our tools, the user clicks them from a menu, where the default values are visible and they request like that, as long as their account agrees with our business logic.
 
+## Interface Vision
+
+StationThis is an interactive canvas-based workspace.
+Users land in a dynamic water-themed canvas where all workflows, actions, and tools manifest as draggable, resizable tiles.
+Persistent heads-up displays show EXP, charges, and settings.
+
+Workflows are initiated through interaction, not commands.
+
+## Demonstration Commitment
+
+All features must work visibly and interactively at every milestone.
+Demonstrations are prioritized over written code submissions.
+The system will evolve visibly, not just in text.

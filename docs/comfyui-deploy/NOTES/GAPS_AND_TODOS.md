@@ -1,6 +1,50 @@
-# Gaps and TODOs
+# ComfyUI Deploy Integration - Gaps & TODOs
 
-This document lists identified gaps, missing documentation, and areas for future improvement in the ComfyUI Deploy codebase.
+This document tracks known gaps, issues, and TODOs in our ComfyUI Deploy integration.
+
+## Recent Updates
+
+- **2023-07-15**: Updated API endpoints based on official OpenAPI specification
+- **2023-07-15**: Fixed run submission, status checking, and cancellation endpoints
+- **2023-07-15**: Updated deployment and machine listing endpoints
+
+## Open Issues
+
+### API Endpoint Gaps
+
+- [ ] Need to implement workflow listing endpoints (`/workflows`)
+- [ ] Need to implement asset management endpoints (`/assets/*`)
+- [ ] Need to implement file operations endpoints (`/file/{file_id}/rename`)
+- [ ] Stream progress endpoint not yet implemented (`/stream-progress`)
+
+### Missing Features
+
+- [ ] Add support for synchronous run execution using the `/run/deployment/sync` endpoint
+- [ ] Add support for run streaming using the `/run/deployment/stream` endpoint
+- [ ] Implement machine management beyond simple listing
+- [ ] Add workflow version management
+
+### Testing Needs
+
+- [ ] Test all updated endpoints against live API
+- [ ] Create integration tests for run submission and monitoring
+- [ ] Test error handling for different API response codes
+
+## Implementation Plan
+
+1. Verify core functionality (run submission, status checking) works with updated endpoints
+2. Implement additional API endpoints based on priority:
+   - Workflow management
+   - Asset management
+   - Streaming APIs
+3. Create more robust error handling
+4. Update and expand tests
+
+## Reference
+
+For latest API details, refer to:
+- [Official OpenAPI Endpoints List](../API/OPENAPI_ENDPOINTS_LIST.md)
+- [Updated Internal Documentation](../API/ENDPOINTS_LIST.md)
 
 ## Documentation Gaps
 

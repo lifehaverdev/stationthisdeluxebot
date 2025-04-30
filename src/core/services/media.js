@@ -16,11 +16,15 @@ const writeFileAsync = promisify(fs.writeFile);
 const readFileAsync = promisify(fs.readFile);
 const unlinkAsync = promisify(fs.unlink);
 const statAsync = promisify(fs.stat);
+const existsAsync = promisify(fs.exists);
+const execAsync = promisify(require('child_process').exec);
 const Jimp = require('jimp');
+const crypto = require('crypto');
 
 // Default media paths
 const DEFAULT_TEMP_DIR = path.join(process.cwd(), 'tmp');
 const DEFAULT_STORAGE_DIR = path.join(process.cwd(), 'storage', 'media');
+const DEFAULT_CACHE_DIR = path.join(process.cwd(), 'storage', 'cache', 'thumbnails');
 
 class MediaService {
   /**
@@ -295,6 +299,179 @@ class MediaService {
     
     if (handlers.discord && handlers.discord.getFileUrl) {
       this.getDiscordFileUrl = handlers.discord.getFileUrl;
+    }
+  }
+
+  /**
+   * Resize an image to create a thumbnail
+   * @param {string} imageUrl - URL or path of the image
+   * @param {number} width - Target width
+   * @param {number} height - Target height
+   * @returns {Promise<Object>} - Thumbnail info (url, path, dimensions)
+   */
+  async resizeImage(imageUrl, width = 128, height = 128) {
+    try {
+      // Generate a unique ID for this thumbnail
+      const thumbnailId = `thumb_${Date.now()}`;
+      
+      // First, we need to get the image
+      let localPath;
+      if (imageUrl.startsWith('http')) {
+        // Download the image if it's a URL
+        localPath = await this.downloadFromUrl(imageUrl, 'thumbnails');
+      } else {
+        // If it's already a local path, use it directly
+        localPath = imageUrl;
+      }
+      
+      // Process the image to create a thumbnail
+      const image = await Jimp.read(localPath);
+      
+      // Resize to fit within the dimensions while maintaining aspect ratio
+      image.scaleToFit(width, height);
+      
+      // Save thumbnail to temporary directory
+      const thumbFilename = `${thumbnailId}.jpg`;
+      const thumbPath = path.join(this.tempDir, thumbFilename);
+      await image.quality(80).writeAsync(thumbPath);
+      
+      // If we downloaded the image, clean up the original
+      if (imageUrl.startsWith('http') && localPath !== imageUrl) {
+        await this.deleteMedia(localPath).catch(() => {});
+      }
+      
+      // Convert path to URL format
+      const thumbUrl = `/media/thumbnails/${thumbFilename}`;
+      
+      return {
+        url: thumbUrl,
+        path: thumbPath,
+        width: image.bitmap.width,
+        height: image.bitmap.height
+      };
+    } catch (error) {
+      this.logger.error('Error creating image thumbnail:', error);
+      // Return a placeholder on error
+      return {
+        url: '/assets/image-placeholder.png',
+        error: 'Failed to create thumbnail'
+      };
+    }
+  }
+
+  /**
+   * Extract a frame from a video to use as thumbnail
+   * @param {string} videoUrl - URL or path of the video
+   * @param {Object} options - Options for extracting the frame
+   * @param {number} options.timeOffset - Time offset in seconds (default: 1)
+   * @param {number} options.width - Width of thumbnail (default: 320)
+   * @param {number} options.height - Height of thumbnail (default: 180)
+   * @param {boolean} options.useCache - Whether to use cached thumbnails (default: true)
+   * @returns {Promise<Object>} - Thumbnail info (url, path)
+   */
+  async extractVideoFrame(videoUrl, options = {}) {
+    const {
+      timeOffset = 1,
+      width = 320,
+      height = 180,
+      useCache = true
+    } = options;
+    
+    try {
+      // Generate a unique hash based on videoUrl and options for caching
+      const cacheKey = crypto
+        .createHash('md5')
+        .update(`${videoUrl}-${timeOffset}-${width}-${height}`)
+        .digest('hex');
+      
+      // Ensure cache directory exists
+      const cacheDir = path.join(DEFAULT_CACHE_DIR, 'video');
+      await mkdirAsync(cacheDir, { recursive: true });
+      
+      // Check if a cached thumbnail exists
+      const cachedThumbnailPath = path.join(cacheDir, `${cacheKey}.jpg`);
+      const cachedThumbnailExists = await existsAsync(cachedThumbnailPath);
+      
+      // If cache is enabled and a cached thumbnail exists, use it
+      if (useCache && cachedThumbnailExists) {
+        this.logger.info(`Using cached video thumbnail: ${cachedThumbnailPath}`);
+        return {
+          url: `/media/cache/thumbnails/video/${cacheKey}.jpg`,
+          path: cachedThumbnailPath,
+          width,
+          height,
+          cached: true
+        };
+      }
+      
+      // Generate a unique ID for this thumbnail
+      const thumbnailId = `video_thumb_${Date.now()}`;
+      
+      // First, download the video if it's a URL
+      let localVideoPath;
+      if (videoUrl.startsWith('http')) {
+        localVideoPath = await this.downloadFromUrl(videoUrl, 'thumbnails', {
+          temporary: true,
+          extension: this._getExtensionFromUrl(videoUrl)
+        });
+      } else {
+        // If it's already a local path, use it directly
+        localVideoPath = videoUrl;
+      }
+      
+      // Check if ffmpeg is available
+      try {
+        await execAsync('ffmpeg -version');
+      } catch (ffmpegError) {
+        this.logger.error('ffmpeg not available:', ffmpegError);
+        throw new Error('ffmpeg is required for video thumbnail extraction');
+      }
+      
+      // Extract a frame from the video using ffmpeg
+      const thumbFilename = `${thumbnailId}.jpg`;
+      const thumbPath = path.join(this.tempDir, thumbFilename);
+      
+      // Use ffmpeg to extract a frame at the specified time offset and resize it
+      const ffmpegCommand = `ffmpeg -y -i "${localVideoPath}" -ss ${timeOffset} -vframes 1 -vf scale=${width}:${height} -q:v 2 "${thumbPath}"`;
+      
+      await execAsync(ffmpegCommand);
+      
+      // Check if the thumbnail was successfully created
+      const thumbExists = await existsAsync(thumbPath);
+      if (!thumbExists) {
+        throw new Error('Failed to extract video frame');
+      }
+      
+      // Save to cache if caching is enabled
+      if (useCache) {
+        await fs.promises.copyFile(thumbPath, cachedThumbnailPath);
+      }
+      
+      // If we downloaded the video, clean up the original
+      if (videoUrl.startsWith('http') && localVideoPath !== videoUrl) {
+        await this.deleteMedia(localVideoPath).catch(() => {});
+      }
+      
+      // Convert path to URL format
+      const thumbUrl = `/media/thumbnails/${thumbFilename}`;
+      
+      return {
+        url: thumbUrl,
+        path: thumbPath,
+        cachedPath: useCache ? cachedThumbnailPath : null,
+        width,
+        height,
+        cached: false
+      };
+    } catch (error) {
+      this.logger.error('Error extracting video thumbnail:', error);
+      
+      // Return a placeholder on error
+      return {
+        url: '/assets/video-placeholder.png',
+        error: 'Failed to extract video thumbnail',
+        errorDetails: error.message
+      };
     }
   }
 }

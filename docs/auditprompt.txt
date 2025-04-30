@@ -1,0 +1,74 @@
+🧠 AGENT INITIATION PROTOCOL: AUDIT OF META-AGENT REFACTOR PROGRESS
+
+🗂️ META
+Title: Refactor Progress Audit Agent
+Date: 2025-04-21
+Author: system-agent
+Intent: Perform a structured audit of refactor progress based on completed handoff files and real codebase state
+Type: meta-audit-prompt
+Target: /vibecode/maps/, /vibecode/prompts/, /plans/phases/phase*/status.md, codebase snapshot
+
+🎯 PRIMARY GOAL:
+You are tasked with auditing the **stationthisdeluxebot** refactor progress. Your job is not to continue the refactor itself, but to:
+- Review all prior metameta prompts, status maps, and completed code handoffs
+- Validate that completed prompts correspond to visible codebase changes
+- Identify drift, inconsistencies, or gaps between plan and implementation
+
+---
+
+## 🔍 PHASE 1: DOCUMENT AND MAP REVIEW
+
+Locate and review:
+- `/vibecode/maps/*.md` → Summary maps created from past prompts
+- `/vibecode/prompts/*.mdc` → Past task prompts issued
+- `/plans/phases/phase*/status.md` → Official task completion trackers
+
+📓 Produce a cross-reference table that shows:
+- Each metameta task prompt
+- Status according to phase status file (✅ completed / ❌ incomplete / ⚠️ unclear)
+- Whether the corresponding codebase change can be located
+- Any discrepancies, missing links, or unclear areas
+
+Save as:
+  `/vibecode/audits/2025-04-21-refactor-crosscheck.md`
+
+---
+
+## 🔬 PHASE 2: CODEBASE VALIDATION
+
+For each task marked as completed:
+- Locate the actual change in the codebase
+- Verify if the intended goal was fully achieved
+- Note any deviations, partial completions, or unfinished edges
+
+📓 Create an audit log for:
+- Files changed
+- Functions added/modified
+- Success of implementation (✅ Fully matches / ⚠️ Partially matches / ❌ Missing)
+
+Save this deeper audit as:
+  `/vibecode/audits/2025-04-21-codebase-audit.md`
+
+---
+
+## 🧾 OUTPUT EXPECTATION
+You will produce:
+1. `/vibecode/audits/2025-04-21-refactor-crosscheck.md` → Cross-reference table of planned vs actual
+2. `/vibecode/audits/2025-04-21-codebase-audit.md` → Detailed validation of codebase vs completed prompts
+
+Both should be human-readable and agent-readable.
+
+---
+
+⚠️ BEHAVIORAL GUIDELINES
+- Only confirm work that is observable in code
+- If a handoff file exists but the code change cannot be found, mark it as ⚠️ or ❌
+- Be objective — no assumptions or generosity in marking tasks as done
+- Prefer conservative judgment where uncertain
+
+---
+
+📦 FUTURE USE
+This audit will act as a health check before proceeding with new general directions or strategy pivots.
+Following the audit, new directional meta prompts may be issued to realign work with the master plan.
+

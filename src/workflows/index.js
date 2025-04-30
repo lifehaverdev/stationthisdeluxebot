@@ -11,6 +11,9 @@ const {
 } = require('./mediaProcessing');
 
 const { makeImageWorkflow } = require('./makeImage');
+const trainModelWorkflow = require('./trainModel');
+const { CollectionsWorkflow } = require('./collections');
+const settingsWorkflow = require('./settings');
 
 module.exports = {
   // Media Processing Workflows
@@ -19,5 +22,14 @@ module.exports = {
   upscaleImageWorkflow,
   
   // Image Generation Workflows
-  makeImageWorkflow
+  makeImageWorkflow,
+  
+  // Model Training Workflows
+  trainModelWorkflow,
+  
+  // Collection Management Workflows
+  CollectionsWorkflow,
+  
+  // Settings Management Workflow
+  settingsWorkflow
 }; 

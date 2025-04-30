@@ -54,3 +54,26 @@ node src/examples/featureFlagsExample.js
 ```
 
 Each example demonstrates a different use case for the SessionAdapter, showing how to track and manage user sessions in various scenarios.
+
+## Testing
+
+### End-to-End Testing with Playwright
+
+We've implemented a demonstration-first testing strategy using Playwright for all UI components and workflows.
+
+Features include:
+- Full browser automation across multiple browsers
+- Visual verification via screenshots and video recording
+- Simulation of real user interactions (clicks, drags, typing)
+- Headless and visible test modes
+
+To run E2E tests:
+```bash
+npm run test:e2e         # Run all tests
+npm run test:e2e:ui      # Run with visual UI for debugging
+npm run test:e2e:debug   # Run in debug mode
+```
+
+See our [Testing Protocol](/plans/web/testing_protocol.md) for detailed information about the testing approach.
+
+Check the [E2E Testing README](/tests/e2e/README.md) for implementation details and examples.

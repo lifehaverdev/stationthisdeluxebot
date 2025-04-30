@@ -19,15 +19,31 @@ function createUpscaleCommandHandler(dependencies) {
     logger = console
   } = dependencies;
   
+  // Check if mediaService is provided
+  if (!mediaService) {
+    logger.error('MediaService is missing in dependencies for upscaleCommand');
+    return async function handleUpscaleCommandError(message) {
+      await bot.sendMessage(
+        message.chat.id,
+        'Sorry, the upscale feature is not available right now.',
+        { reply_to_message_id: message.message_id }
+      );
+    };
+  }
+  
   // Create Telegram adapter for media operations
   const telegramMediaAdapter = createTelegramMediaAdapter(bot);
   
   // Register the Telegram adapter with the MediaService
-  mediaService.registerPlatformHandlers({
-    telegram: {
-      getFileUrl: telegramMediaAdapter.getFileUrl
-    }
-  });
+  if (typeof mediaService.registerPlatformHandlers === 'function') {
+    mediaService.registerPlatformHandlers({
+      telegram: {
+        getFileUrl: telegramMediaAdapter.getFileUrl
+      }
+    });
+  } else {
+    logger.error('MediaService does not have registerPlatformHandlers method');
+  }
   
   /**
    * Handle the upscale command

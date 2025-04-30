@@ -540,6 +540,109 @@ class SessionService {
       });
     }, this.cleanInterval);
   }
+
+  /**
+   * Get user data from database or session
+   * @param {string|number} userId The user ID
+   * @returns {Promise<Object|null>} The user data or null if not found
+   */
+  async getUserData(userId) {
+    userId = String(userId);
+    
+    // Check if data is in memory
+    if (this.sessions[userId]) {
+      return this.sessions[userId];
+    }
+    
+    // Try to load from database
+    if (this.db) {
+      try {
+        const userData = await this.db.readUserData(userId);
+        if (userData) {
+          // Store in session for future access
+          this.sessions[userId] = userData;
+          return userData;
+        }
+      } catch (error) {
+        console.error(`Error loading user data for ${userId}:`, error);
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Get user data by wallet address
+   * @param {string} walletAddress The wallet address
+   * @returns {Promise<Object|null>} User data or null if not found
+   */
+  async getUserDataByWallet(walletAddress) {
+    walletAddress = String(walletAddress).toLowerCase();
+    
+    // First check if we have a session with this wallet
+    for (const [userId, session] of Object.entries(this.sessions)) {
+      if (session.walletAddress && session.walletAddress.toLowerCase() === walletAddress) {
+        return session;
+      }
+    }
+    
+    // Try to load from database
+    if (this.db) {
+      try {
+        const userData = await this.db.findUserByWallet(walletAddress);
+        if (userData) {
+          // Store in session for future access
+          this.sessions[userData.id || walletAddress] = userData;
+          return userData;
+        }
+      } catch (error) {
+        console.error(`Error loading user data for wallet ${walletAddress}:`, error);
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Create a new user
+   * @param {Object} userData User data with optional wallet address
+   * @returns {Promise<Object>} Created user data
+   */
+  async createUser(userData) {
+    // Generate unique ID if not provided
+    if (!userData.id) {
+      userData.id = userData.walletAddress || `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    }
+    
+    const userId = String(userData.id);
+    
+    // Merge with default user data
+    const defaultData = this.createDefaultUserData();
+    const mergedData = {
+      ...defaultData,
+      ...userData.userData,
+      id: userId,
+      created: Date.now(),
+      lastTouch: Date.now()
+    };
+    
+    // Save to session
+    this.sessions[userId] = mergedData;
+    
+    // Persist to database if available
+    if (this.db) {
+      try {
+        await this.db.writeUserData(userId, mergedData);
+      } catch (error) {
+        console.error(`Error saving new user ${userId}:`, error);
+      }
+    }
+    
+    // Trigger session created event
+    this._triggerEvent('sessionCreated', { userId, session: mergedData });
+    
+    return mergedData;
+  }
 }
 
 module.exports = SessionService; 

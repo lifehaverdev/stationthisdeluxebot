@@ -65,6 +65,41 @@
    - Created a sample output file showing expected results format
    - The script is ready to be run on the live codebase
 
+## OpenAPI Specification Integration - [Date: Current]
+
+1. **Created OpenAPI Specification Fetcher Script**:
+   - Developed a Node.js script to automatically fetch and parse the official OpenAPI spec
+   - Located at `/scripts/fetchOpenApiEndpoints.js`
+   - Script fetches the latest spec from https://api.comfydeploy.com/internal/openapi.json
+
+2. **Script Features**:
+   - Fetches the OpenAPI specification from the official API endpoint
+   - Parses all API endpoints, methods, parameters, and schemas
+   - Extracts comprehensive details about each endpoint:
+     - HTTP Method (GET, POST, PUT, DELETE, etc.)
+     - Path
+     - Summary and Description
+     - Parameters (path, query, header)
+     - Request body schemas
+     - Security requirements
+   - Organizes endpoints by tag (resource type)
+
+3. **Script Output**:
+   - Generates a human-readable Markdown document at `/docs/comfyui-deploy/API/OPENAPI_ENDPOINTS_LIST.md`
+   - Creates a structured JSON document at `/docs/comfyui-deploy/API/OPENAPI_ENDPOINTS_LIST.json`
+   - Produces a schema summary document at `/docs/comfyui-deploy/API/SCHEMAS_SUMMARY.md`
+
+4. **Benefits of OpenAPI Integration**:
+   - Provides a single source of truth for all API endpoints
+   - Ensures documentation accurately reflects the actual API implementation
+   - Includes complete parameter details and request/response schemas
+   - Can be re-run periodically to keep documentation in sync with API changes
+
+5. **Next Steps**:
+   - Use the OpenAPI-based endpoint list as the canonical reference for all API integrations
+   - Periodically re-fetch the specification to keep documentation current
+   - Extend the script to generate client code or additional documentation formats if needed
+
 ## Next Steps
 
 1. **Complete Module Documentation**:

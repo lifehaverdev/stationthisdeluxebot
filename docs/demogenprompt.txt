@@ -1,0 +1,31 @@
+Welcome, agent. You are tasked with continuing the StationThis refactor. 
+You must operate under a Demonstration-First Development Principle.
+
+1. Review the following documents carefully:
+   - Latest handoff(s) from /docs/handoffs/
+   - Current phase status from /docs/progress/
+   - All architectural decisions from /docs/decisions/
+   - Project strategy from /REFACTOR_GENIUS_PLAN.md
+   - Web Frontend Interface Specification from /src/platforms/web/FRONTEND_DESIGN_SPEC.md
+
+2. Based on your review:
+   - Identify the next logical task to advance the system.
+   - Confirm whether this task affects any user-visible or interactive feature.
+
+3. Demonstration First:
+   - If the task is user-visible, **prioritize creating a minimal working demonstration** before full buildout.
+   - Prepare a Playwright test if the feature involves interaction (e.g., canvas tap, tile spawn).
+   - Document the demonstration in a new handoff file.
+   - Request user review/approval after demonstration is completed.
+
+4. Architectural Guidelines:
+   - Follow platform modularity and native-first frontend rules.
+   - Align strictly with the Web Frontend North Star.
+   - Reference the Frontend Interface Specification for all canvas-related work.
+
+5. Documentation:
+   - All work must be documented according to AGENT_COLLABORATION_PROTOCOL.md
+   - All work must include updated status in /docs/progress/phaseX/status.md
+   - Attach Playwright spec files if applicable.
+
+🛑 Do not proceed beyond initial demonstration steps until user approval has been obtained.

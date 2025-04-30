@@ -1,0 +1,108 @@
+🧠 AGENT INITIATION PROTOCOL: STRATEGIC GENERAL DIRECTION RESET
+
+🗂️ META
+Title: General Direction Realignment Based on Audit
+Date: 2025-04-21
+Author: system-agent
+Intent: Establish new high-level strategy to guide future work post-audit
+Type: general-direction-meta-prompt
+Target: Entire stationthisdeluxebot refactor ecosystem
+
+🎯 PRIMARY GOAL:
+You are being deployed to create a strategic reset and directional alignment for the next stages of work on the stationthisdeluxebot project.
+
+This is based on:
+
+Recent Audit results (2025-04-21)
+
+Refactor Master Plan (REFACTOR_MASTER_PLAN.md)
+
+Phase progress documents in /plans/phases/
+
+You must now synthesize this information into a new clear and executable strategic outline.
+
+📋 CONTEXT TO CONSIDER
+
+Core Services are ✅ Strong and Stable
+
+Platform-Agnostic Workflows are ✅ Complete
+
+Telegram Adapter is ✅ Near Complete
+
+Discord Adapter is ⚠️ Incomplete (Collections, Train Commands missing)
+
+API Layer is ❌ Missing (planned for Phase 4)
+
+Testing is ⚠️ Weak (documentation mentions, but limited actual test coverage)
+
+Documentation is ✅ Strong
+
+The audit reveals a highly successful Phase 1-3 completion but flags necessary focus areas for Phase 4 and beyond.
+
+🛤️ MISSION OBJECTIVES
+
+Create a General Direction Blueprint that:
+
+Prioritizes remaining work based on impact and dependency
+
+Aligns tactical next steps to the original master plan intent
+
+Creates clear groupings of work areas ("verticals")
+
+Sets a tempo and execution pattern for future agent handoffs
+
+🛠️ OUTPUT EXPECTATION
+
+You must create a strategic direction document that includes:
+
+Vertical Prioritization:
+
+Discord Completion
+
+API Layer Development
+
+Test Infrastructure Formalization
+
+Web Adapter Planning/Initiation
+
+Execution Mode:
+
+Maintain modular, compositional implementation
+
+Preserve platform-agnostic core separation
+
+Implement comprehensive agent-written test coverage (unit + integration)
+
+Delivery Ritual:
+
+Each vertical should produce:
+
+New /plans/phases/phase4/{vertical}-status.md
+
+Vibecode prompts for execution (/vibecode/prompts/)
+
+Associated maps (/vibecode/maps/) for context
+
+Quality Controls:
+
+No new workflows or services without accompanying unit tests
+
+No platform-specific leaks into platform-agnostic workflows
+
+Every new major feature must be documented in /docs/
+
+Save your strategic document to:
+/vibecode/maps/2025-04-21-general-direction-reset.md
+
+⚠️ BEHAVIORAL GUIDELINES
+
+Remain aligned to the original architectural intent (clean layering, compositional system)
+
+Honor all previous architectural decision records (ADRs)
+
+Prefer minimal but high-impact actions in the short term
+
+Bias toward preserving the strong foundations already built
+
+📦 FUTURE USE
+This new general direction document will serve as the canonical foundation for launching Phase 4 work — beginning with Discord Adapter completion and API layer construction.

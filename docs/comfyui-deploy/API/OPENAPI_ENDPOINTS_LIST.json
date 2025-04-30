@@ -1,0 +1,6569 @@
+[
+  {
+    "method": "GET",
+    "path": "/run/{run_id}",
+    "summary": "Get Run",
+    "description": "",
+    "operationId": "get_run_run__run_id__get",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Run Id"
+        }
+      },
+      {
+        "name": "queue_position",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Queue Position"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowRunModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/deployment/queue",
+    "summary": "Queue Run",
+    "description": "Create a new deployment run with the given parameters.",
+    "operationId": "queue_deployment_run_run_deployment_queue_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DeploymentRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CreateRunResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/deployment/sync",
+    "summary": "Deployment - Sync",
+    "description": "Create a new deployment run with the given parameters.",
+    "operationId": "sync_deployment_run_run_deployment_sync_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DeploymentRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunOutputModel"
+              },
+              "type": "array",
+              "title": "Response Sync Deployment Run Run Deployment Sync Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/deployment/stream",
+    "summary": "Deployment - Stream",
+    "description": "Create a new deployment run with the given parameters. This function sets up the run and initiates the execution process. For callback information, see [Callbacks](#tag/callbacks/POST/\\{callback_url\\}).",
+    "operationId": "create_run_deployment_stream_run_deployment_stream_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DeploymentRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Stream of workflow run events",
+        "content": {
+          "text/event-stream": {
+            "schema": {
+              "$ref": "#/components/schemas/RunStream"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/workflow/queue",
+    "summary": "Workflow - Queue",
+    "description": "Create a new workflow run with the given parameters.",
+    "operationId": "queue_workflow_run_run_workflow_queue_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CreateRunResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/workflow/sync",
+    "summary": "Workflow - Sync",
+    "description": "Create a new workflow run with the given parameters.",
+    "operationId": "sync_workflow_run_run_workflow_sync_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunOutputModel"
+              },
+              "type": "array",
+              "title": "Response Sync Workflow Run Run Workflow Sync Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/workflow/stream",
+    "summary": "Workflow - Stream",
+    "description": "Create a new workflow run with the given parameters. This function sets up the run and initiates the execution process. For callback information, see [Callbacks](#tag/callbacks/POST/\\{callback_url\\}).",
+    "operationId": "create_run_workflow_stream_run_workflow_stream_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowRunRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Stream of workflow run events",
+        "content": {
+          "text/event-stream": {
+            "schema": {
+              "$ref": "#/components/schemas/RunStream"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/run/{run_id}/cancel",
+    "summary": "Cancel Run",
+    "description": "",
+    "operationId": "cancel_run_run__run_id__cancel_post",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Run Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Run"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflows",
+    "summary": "Get Workflows",
+    "description": "",
+    "operationId": "get_workflows_workflows_get",
+    "parameters": [
+      {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Search"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowModel"
+              },
+              "title": "Response Get Workflows Workflows Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflows/all",
+    "summary": "Get All Workflows",
+    "description": "",
+    "operationId": "get_all_workflows_workflows_all_get",
+    "parameters": [
+      {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Search"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowModel"
+              },
+              "title": "Response Get All Workflows Workflows All Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/workflow/{workflow_id}",
+    "summary": "Update Workflow",
+    "description": "",
+    "operationId": "update_workflow_workflow__workflow_id__patch",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowUpdateModel"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/workflow/{workflow_id}",
+    "summary": "Delete Workflow",
+    "description": "",
+    "operationId": "delete_workflow_workflow__workflow_id__delete",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}",
+    "summary": "Get Workflow",
+    "description": "",
+    "operationId": "get_workflow_workflow__workflow_id__get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 1,
+          "title": "Limit"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/workflow/{workflow_id}/clone",
+    "summary": "Clone Workflow",
+    "description": "",
+    "operationId": "clone_workflow_workflow__workflow_id__clone_post",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/v2/workflow/{workflow_id}/runs",
+    "summary": "Get All Runs",
+    "description": "",
+    "operationId": "get_all_runs_v2_workflow__workflow_id__runs_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        }
+      },
+      {
+        "name": "deployment_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deployment Id"
+        }
+      },
+      {
+        "name": "rf",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rf"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunModel"
+              },
+              "title": "Response Get All Runs V2 Workflow  Workflow Id  Runs Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/runs/day",
+    "summary": "Get Runs Day",
+    "description": "",
+    "operationId": "get_runs_day_workflow__workflow_id__runs_day_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "deployment_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunModel"
+              },
+              "title": "Response Get Runs Day Workflow  Workflow Id  Runs Day Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/runs",
+    "summary": "Get All Runs V1",
+    "description": "",
+    "operationId": "get_all_runs_v1_workflow__workflow_id__runs_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      },
+      {
+        "name": "with_outputs",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": true,
+          "title": "With Outputs"
+        }
+      },
+      {
+        "name": "with_inputs",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": true,
+          "title": "With Inputs"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunModel"
+              },
+              "title": "Response Get All Runs V1 Workflow  Workflow Id  Runs Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/run/latest",
+    "summary": "Get Latest Run",
+    "description": "",
+    "operationId": "get_latest_run_workflow__workflow_id__run_latest_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 1,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunModel"
+              },
+              "title": "Response Get Latest Run Workflow  Workflow Id  Run Latest Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/versions",
+    "summary": "Get Versions",
+    "description": "",
+    "operationId": "get_versions_workflow__workflow_id__versions_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Search"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowVersionModel"
+              },
+              "title": "Response Get Versions Workflow  Workflow Id  Versions Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/version/{version}",
+    "summary": "Get Workflow Version",
+    "description": "",
+    "operationId": "get_workflow_version_workflow__workflow_id__version__version__get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "version",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "title": "Version"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow-version/{version}",
+    "summary": "Get Workflow Version By Id",
+    "description": "",
+    "operationId": "get_workflow_version_by_id_workflow_version__version__get",
+    "parameters": [
+      {
+        "name": "version",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Version"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/gallery",
+    "summary": "Get Workflows Gallery",
+    "description": "",
+    "operationId": "get_workflows_gallery_workflow__workflow_id__gallery_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/deployments",
+    "summary": "Get Deployments",
+    "description": "",
+    "operationId": "get_deployments_workflow__workflow_id__deployments_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/DeploymentModel"
+              },
+              "title": "Response Get Deployments Workflow  Workflow Id  Deployments Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/workflow",
+    "summary": "Create Workflow",
+    "description": "",
+    "operationId": "create_workflow_workflow_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowCreateRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WorkflowModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/workflow/{workflow_id}/version",
+    "summary": "Create Workflow Version",
+    "description": "",
+    "operationId": "create_workflow_version_workflow__workflow_id__version_post",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/WorkflowVersionCreate"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/workflow/{workflow_id}/export",
+    "summary": "Get Workflow Export",
+    "description": "",
+    "operationId": "get_workflow_export_workflow__workflow_id__export_get",
+    "parameters": [
+      {
+        "name": "workflow_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "version",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Workflow"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/version",
+    "summary": "Read Version",
+    "description": "",
+    "operationId": "read_version_machine_version_get",
+    "parameters": [
+      {
+        "name": "machine_builder_version",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "title": "Machine Builder Version"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/modal/{app_name}/keep-warm",
+    "summary": "Set Machine Always On",
+    "description": "",
+    "operationId": "set_machine_always_on_machine_modal__app_name__keep_warm_post",
+    "parameters": [
+      {
+        "name": "app_name",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "App Name"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/KeepWarmBody"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/modal/cancel-function",
+    "summary": "Cancel Run",
+    "description": "",
+    "operationId": "cancel_run_machine_modal_cancel_function_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CancelFunctionBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/create",
+    "summary": "Create Machine",
+    "description": "",
+    "operationId": "create_machine_machine_create_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/BuildMachineItem"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machines",
+    "summary": "Get Machines",
+    "description": "",
+    "operationId": "get_machines_machines_get",
+    "parameters": [
+      {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Search"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      },
+      {
+        "name": "is_deleted",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Deleted"
+        }
+      },
+      {
+        "name": "include_has_workflows",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Include Has Workflows"
+        }
+      },
+      {
+        "name": "is_docker",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Is Docker"
+        }
+      },
+      {
+        "name": "is_workspace",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Is Workspace"
+        }
+      },
+      {
+        "name": "is_self_hosted",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Is Self Hosted"
+        }
+      },
+      {
+        "name": "include_docker_command_steps",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Include Docker Command Steps"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/MachineModel"
+              },
+              "title": "Response Get Machines Machines Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machines/all",
+    "summary": "Get All Machines",
+    "description": "",
+    "operationId": "get_all_machines_machines_all_get",
+    "parameters": [
+      {
+        "name": "search",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Search"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Limit"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/MachineModel"
+              },
+              "title": "Response Get All Machines Machines All Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}",
+    "summary": "Get Machine",
+    "description": "",
+    "operationId": "get_machine_machine__machine_id__get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/machine/{machine_id}",
+    "summary": "Delete Machine",
+    "description": "",
+    "operationId": "delete_machine_machine__machine_id__delete",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "force",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Force"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/events",
+    "summary": "Get Machine Events",
+    "description": "",
+    "operationId": "get_machine_events_machine__machine_id__events_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/GPUEventModel"
+              },
+              "title": "Response Get Machine Events Machine  Machine Id  Events Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/workflows",
+    "summary": "Get Machine Workflows",
+    "description": "",
+    "operationId": "get_machine_workflows_machine__machine_id__workflows_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/serverless",
+    "summary": "Create Serverless Machine",
+    "description": "",
+    "operationId": "create_serverless_machine_machine_serverless_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/ServerlessMachineModel"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/secret",
+    "summary": "Create Secret",
+    "description": "",
+    "operationId": "create_secret_machine_secret_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/SecretInput"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/machine/secret",
+    "summary": "Update Machine With Secret",
+    "description": "",
+    "operationId": "update_machine_with_secret_machine_secret_patch",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UpdateMachineWithSecretInput"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/machine/secret/{secret_id}/envs",
+    "summary": "Update Secret Envs",
+    "description": "",
+    "operationId": "update_secret_envs_machine_secret__secret_id__envs_patch",
+    "parameters": [
+      {
+        "name": "secret_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Secret Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/SecretUpdateInput"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/secrets/all",
+    "summary": "Get All Secrets",
+    "description": "",
+    "operationId": "get_all_secrets_machine_secrets_all_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/secrets/linked",
+    "summary": "Get All Linked Machine Secrets",
+    "description": "",
+    "operationId": "get_all_linked_machine_secrets_machine__machine_id__secrets_linked_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/secrets/unlinked",
+    "summary": "Get All Unlinked Machine Secrets",
+    "description": "",
+    "operationId": "get_all_unlinked_machine_secrets_machine__machine_id__secrets_unlinked_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/machine/secret/{secret_id}",
+    "summary": "Delete Secret",
+    "description": "",
+    "operationId": "delete_secret_machine_secret__secret_id__delete",
+    "parameters": [
+      {
+        "name": "secret_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Secret Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/machine/serverless/{machine_id}",
+    "summary": "Update Serverless Machine",
+    "description": "",
+    "operationId": "update_serverless_machine_machine_serverless__machine_id__patch",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "rollback_version_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rollback Version Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UpdateServerlessMachineModel"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/serverless/{machine_id}/versions",
+    "summary": "Get Machine Versions",
+    "description": "",
+    "operationId": "get_machine_versions_machine_serverless__machine_id__versions_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 100,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/serverless/{machine_id}/versions/all",
+    "summary": "Get All Machine Versions",
+    "description": "",
+    "operationId": "get_all_machine_versions_machine_serverless__machine_id__versions_all_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/serverless/{machine_id}/versions/{version_id}",
+    "summary": "Get Machine Version",
+    "description": "",
+    "operationId": "get_machine_version_machine_serverless__machine_id__versions__version_id__get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "version_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Version Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/serverless/{machine_id}/files",
+    "summary": "Get Machine Files",
+    "description": "",
+    "operationId": "get_machine_files_machine_serverless__machine_id__files_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "path",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "/",
+          "title": "Path"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/serverless/{machine_id}/rollback",
+    "summary": "Rollback Serverless Machine",
+    "description": "",
+    "operationId": "rollback_serverless_machine_machine_serverless__machine_id__rollback_post",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/RollbackMachineVersionBody"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/custom",
+    "summary": "Create Custom Machine",
+    "description": "",
+    "operationId": "create_custom_machine_machine_custom_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CustomMachineModel"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/machine/custom/{machine_id}",
+    "summary": "Update Custom Machine",
+    "description": "",
+    "operationId": "update_custom_machine_machine_custom__machine_id__patch",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UpdateCustomMachineModel"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/docker-commands",
+    "summary": "Get Machine Docker Commands",
+    "description": "",
+    "operationId": "get_machine_docker_commands_machine__machine_id__docker_commands_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/machine/{machine_id}/check-custom-nodes",
+    "summary": "Check Custom Nodes Version",
+    "description": "Check if the comfyui-deploy custom nodes are up to date by comparing with the latest commit hash from the main branch.",
+    "operationId": "check_custom_nodes_version_machine__machine_id__check_custom_nodes_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/machine/{machine_id}/update-custom-nodes",
+    "summary": "Update Machine Custom Nodes",
+    "description": "Updates the comfyui-deploy custom nodes to the latest version and creates a new machine version.",
+    "operationId": "update_machine_custom_nodes_machine__machine_id__update_custom_nodes_post",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Machine"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MachineModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/stream-logs",
+    "summary": "Stream Logs Endpoint",
+    "description": "",
+    "operationId": "stream_logs_endpoint_stream_logs_get",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      {
+        "name": "workflow_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "session_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Session Id"
+        }
+      },
+      {
+        "name": "machine_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "log_level",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Level"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Log"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/stream-progress",
+    "summary": "Stream Progress Endpoint",
+    "description": "",
+    "operationId": "stream_progress_endpoint_stream_progress_get",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Run Id"
+        }
+      },
+      {
+        "name": "workflow_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "machine_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "return_run",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Return Run"
+        }
+      },
+      {
+        "name": "from_start",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "From Start"
+        }
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        }
+      },
+      {
+        "name": "deployment_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Log"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/clickhouse-run-logs/{run_id}",
+    "summary": "Get Clickhouse Run Logs",
+    "description": "",
+    "operationId": "get_clickhouse_run_logs_clickhouse_run_logs__run_id__get",
+    "parameters": [
+      {
+        "name": "run_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "uuid",
+          "title": "Run Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Log"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/volume/private-models",
+    "summary": "Private Models",
+    "description": "",
+    "operationId": "private_models_volume_private_models_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/ModalVolFile"
+              },
+              "type": "array",
+              "title": "Response Private Models Volume Private Models Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/volume/public-models",
+    "summary": "Public Models",
+    "description": "",
+    "operationId": "public_models_volume_public_models_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/ModalVolFile"
+              },
+              "type": "array",
+              "title": "Response Public Models Volume Public Models Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/volume/downloading-models",
+    "summary": "Downloading Models",
+    "description": "",
+    "operationId": "downloading_models_volume_downloading_models_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/Model-Output"
+              },
+              "type": "array",
+              "title": "Response Downloading Models Volume Downloading Models Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/file",
+    "summary": "Add File Volume",
+    "description": "Handle model file uploads from different sources (Civitai, HuggingFace, or generic URLs)",
+    "operationId": "add_file_volume_volume_file_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/AddFileInputNew"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/file",
+    "summary": "Add File",
+    "description": "Handle model file uploads from different sources (Civitai, HuggingFace, or generic URLs)",
+    "operationId": "add_file_file_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/AddFileInputNew"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/file/{file_id}/rename",
+    "summary": "Rename File",
+    "description": "",
+    "operationId": "rename_file_file__file_id__rename_post",
+    "parameters": [
+      {
+        "name": "file_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "File Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/NewRenameFileBody"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/rm",
+    "summary": "Remove File",
+    "description": "",
+    "operationId": "remove_file_volume_rm_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/RemovePath"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/validate/huggingface",
+    "summary": "Validate Huggingface Repo",
+    "description": "Validate a HuggingFace repository exists and return its metadata",
+    "operationId": "validate_huggingface_repo_volume_validate_huggingface_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/HuggingFaceValidateRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HuggingFaceValidateResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/validate/civitai",
+    "summary": "Validate Civitai Url",
+    "description": "Validate a Civitai URL and return model metadata",
+    "operationId": "validate_civitai_url_volume_validate_civitai_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CivitaiValidateRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CivitaiValidateResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/model",
+    "summary": "Add Model",
+    "description": "",
+    "operationId": "add_model_volume_model_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/AddModelRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/volume/name",
+    "summary": "Get Volume Name Route",
+    "description": "Get the volume name for the current user",
+    "operationId": "get_volume_name_route_volume_name_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/volume/move",
+    "summary": "Move File",
+    "description": "Move a file or directory from one location to another within a volume.\n\nArgs:\n    source_path: The path to the file or directory to be moved\n    destination_path: The destination path where the file or directory will be moved to\n    overwrite: Whether to overwrite existing files at the destination (default: False)\n\nReturns:\n    A dictionary containing the old and new paths",
+    "operationId": "move_file_volume_move_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/MoveFileRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Volumes"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Response Move File Volume Move Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/branch-info",
+    "summary": "Get Branch Info",
+    "description": "",
+    "operationId": "get_branch_info_branch_info_get",
+    "parameters": [
+      {
+        "name": "git_url",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Git Url"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Comfy Node"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Get Branch Info Branch Info Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/comfyui-versions",
+    "summary": "Get Comfyui Versions",
+    "description": "",
+    "operationId": "get_comfyui_versions_comfyui_versions_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Comfy Node"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Get Comfyui Versions Comfyui Versions Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/custom-node-list",
+    "summary": "Get Nodes Json",
+    "description": "",
+    "operationId": "get_nodes_json_custom_node_list_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Comfy Node"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/deployment",
+    "summary": "Create Deployment",
+    "description": "",
+    "operationId": "create_deployment_deployment_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DeploymentCreate"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/deployment/{deployment_id}",
+    "summary": "Update Deployment",
+    "description": "",
+    "operationId": "update_deployment_deployment__deployment_id__patch",
+    "parameters": [
+      {
+        "name": "deployment_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DeploymentUpdate"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/deployment/{deployment_id}",
+    "summary": "Get Deployment",
+    "description": "",
+    "operationId": "get_deployment_deployment__deployment_id__get",
+    "parameters": [
+      {
+        "name": "deployment_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/deployment/{deployment_id}",
+    "summary": "Delete Deployment",
+    "description": "",
+    "operationId": "delete_deployment_deployment__deployment_id__delete",
+    "parameters": [
+      {
+        "name": "deployment_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/deployments",
+    "summary": "Get Deployments",
+    "description": "",
+    "operationId": "get_deployments_deployments_get",
+    "parameters": [
+      {
+        "name": "environment",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/DeploymentEnvironment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Environment"
+        }
+      },
+      {
+        "name": "is_fluid",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Is Fluid"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/DeploymentModel"
+              },
+              "title": "Response Get Deployments Deployments Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/share/{username}/{slug}",
+    "summary": "Get Share Deployment",
+    "description": "",
+    "operationId": "get_share_deployment_share__username___slug__get",
+    "parameters": [
+      {
+        "name": "username",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Username"
+        }
+      },
+      {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Slug"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentShareModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/deployments/featured",
+    "summary": "Get Featured Deployments",
+    "description": "",
+    "operationId": "get_featured_deployments_deployments_featured_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/DeploymentFeaturedModel"
+              },
+              "type": "array",
+              "title": "Response Get Featured Deployments Deployments Featured Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/deployment/{deployment_id}/deactivate",
+    "summary": "Deactivate Deployment",
+    "description": "",
+    "operationId": "deactivate_deployment_deployment__deployment_id__deactivate_post",
+    "parameters": [
+      {
+        "name": "deployment_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Deployments"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeploymentModel"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/session/{session_id}",
+    "summary": "Get Session",
+    "description": "",
+    "operationId": "get_session_session__session_id__get",
+    "parameters": [
+      {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Session Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SessionResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/session/{session_id}",
+    "summary": "Delete Session",
+    "description": "",
+    "operationId": "delete_session_session__session_id__delete",
+    "parameters": [
+      {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Session Id"
+        }
+      },
+      {
+        "name": "wait_for_shutdown",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Wait For Shutdown"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/DeleteSessionResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/sessions",
+    "summary": "Get Machine Sessions",
+    "description": "",
+    "operationId": "get_machine_sessions_sessions_get",
+    "parameters": [
+      {
+        "name": "machine_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/SessionResponse"
+              },
+              "title": "Response Get Machine Sessions Sessions Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/increase-timeout",
+    "summary": "Increase Timeout",
+    "description": "",
+    "operationId": "increase_timeout_session_increase_timeout_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/IncreaseTimeoutBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/{session_id}/increase-timeout",
+    "summary": "Increase Timeout 2",
+    "description": "",
+    "operationId": "increase_timeout_2_session__session_id__increase_timeout_post",
+    "parameters": [
+      {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Session Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/IncreaseTimeoutBody2"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session",
+    "summary": "Create Session",
+    "description": "",
+    "operationId": "create_session_session_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CreateSessionBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CreateSessionResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/{session_id}/snapshot",
+    "summary": "Snapshot Session",
+    "description": "",
+    "operationId": "snapshot_session_session__session_id__snapshot_post",
+    "parameters": [
+      {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Session Id"
+        }
+      }
+    ],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotSessionBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "Session"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/deps",
+    "summary": "Convert To Docker Steps",
+    "description": "",
+    "operationId": "convert_to_docker_steps_deps_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/DepsBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/session/dynamic/docker-commands",
+    "summary": "Get Docker Commands From Dynamic Session Body",
+    "description": "",
+    "operationId": "get_docker_commands_from_dynamic_session_body_session_dynamic_docker_commands_get",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CreateDynamicSessionBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Get Docker Commands From Dynamic Session Body Session Dynamic Docker Commands Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/callback",
+    "summary": "Update Session Callback",
+    "description": "",
+    "operationId": "update_session_callback_session_callback_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UpdateSessionCallbackBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Update Session Callback Session Callback Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/callback/log",
+    "summary": "Update Session Log",
+    "description": "",
+    "operationId": "update_session_log_session_callback_log_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UpdateSessionLogBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Update Session Log Session Callback Log Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/callback/check-timeout",
+    "summary": "Session Check Timeout",
+    "description": "",
+    "operationId": "session_check_timeout_session_callback_check_timeout_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/SessionCheckTimeoutBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "title": "Response Session Check Timeout Session Callback Check Timeout Post"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/session/dynamic",
+    "summary": "Create Dynamic Session",
+    "description": "",
+    "operationId": "create_dynamic_session_session_dynamic_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CreateDynamicSessionBody"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Beta"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/CreateSessionResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/runs",
+    "summary": "Get Runs",
+    "description": "",
+    "operationId": "get_runs_runs_get",
+    "parameters": [
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 60,
+          "title": "Limit"
+        }
+      },
+      {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "integer",
+          "default": 0,
+          "title": "Offset"
+        }
+      },
+      {
+        "name": "gpu",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gpu"
+        }
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status"
+        }
+      },
+      {
+        "name": "origin",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Origin"
+        }
+      },
+      {
+        "name": "workflow_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "duration",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duration"
+        }
+      },
+      {
+        "name": "created_at",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        }
+      },
+      {
+        "name": "machine_id",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Machine Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Runs"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkflowRunModel"
+              },
+              "title": "Response Get Runs Runs Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/runs/count",
+    "summary": "Count Runs",
+    "description": "REST endpoint to get run counts.\n\nExamples\n--------\n```\n# Get counts within a time range (UTC)\nGET /runs/count?start_time=2024-03-15T10:00:00Z&end_time=2024-03-15T11:00:00Z\n\n# Get counts with status and GPU filters\nGET /runs/count?status=success&gpu=A100\n\n# Get counts for a specific workflow\nGET /runs/count?workflow_id=123e4567-e89b-12d3-a456-426614174000\n\n# Get counts for a specific deployment with status\nGET /runs/count?deployment_id=456e7890-f12d-34e5-b678-426614174000&status=success\n\n# Combine multiple filters\nGET /runs/count?gpu=A100&status=success&origin=api\n```",
+    "operationId": "count_runs_runs_count_get",
+    "parameters": [
+      {
+        "name": "start_time",
+        "in": "query",
+        "required": false,
+        "description": "UTC ISO format datetime string (e.g. '2024-03-15T10:00:00Z')",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "UTC ISO format datetime string (e.g. '2024-03-15T10:00:00Z')",
+          "title": "Start Time"
+        }
+      },
+      {
+        "name": "end_time",
+        "in": "query",
+        "required": false,
+        "description": "UTC ISO format datetime string (e.g. '2024-03-15T10:00:00Z')",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "UTC ISO format datetime string (e.g. '2024-03-15T10:00:00Z')",
+          "title": "End Time"
+        }
+      },
+      {
+        "name": "gpu",
+        "in": "query",
+        "required": false,
+        "description": "GPU type to filter by",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MachineGPU"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "GPU type to filter by",
+          "title": "Gpu"
+        }
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "Run status to filter by (e.g. 'success', 'failed')",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WorkflowRunStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Run status to filter by (e.g. 'success', 'failed')",
+          "title": "Status"
+        }
+      },
+      {
+        "name": "origin",
+        "in": "query",
+        "required": false,
+        "description": "Origin of the run to filter by (e.g. 'api', 'manual')",
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WorkflowRunOrigin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Origin of the run to filter by (e.g. 'api', 'manual')",
+          "title": "Origin"
+        }
+      },
+      {
+        "name": "workflow_id",
+        "in": "query",
+        "required": false,
+        "description": "Workflow identifier to filter by",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Workflow identifier to filter by",
+          "title": "Workflow Id"
+        }
+      },
+      {
+        "name": "machine_id",
+        "in": "query",
+        "required": false,
+        "description": "Machine identifier to filter by",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Machine identifier to filter by",
+          "title": "Machine Id"
+        }
+      },
+      {
+        "name": "deployment_id",
+        "in": "query",
+        "required": false,
+        "description": "Deployment identifier to filter by",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Deployment identifier to filter by",
+          "title": "Deployment Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Runs"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RunCountResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/file/upload",
+    "summary": "Upload File",
+    "description": "",
+    "operationId": "upload_file_file_upload_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "multipart/form-data": {
+          "schema": {
+            "$ref": "#/components/schemas/Body_upload_file_file_upload_post"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/FileUploadResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/assets/folder",
+    "summary": "Create Folder",
+    "description": "",
+    "operationId": "create_folder_assets_folder_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/CreateFolderRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssetResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/assets",
+    "summary": "List Assets",
+    "description": "",
+    "operationId": "list_assets_assets_get",
+    "parameters": [
+      {
+        "name": "path",
+        "in": "query",
+        "required": false,
+        "description": "Folder path to list items from",
+        "schema": {
+          "type": "string",
+          "description": "Folder path to list items from",
+          "default": "/",
+          "title": "Path"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AssetResponse"
+              },
+              "title": "Response List Assets Assets Get"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/assets/{asset_id}",
+    "summary": "Delete Asset",
+    "description": "",
+    "operationId": "delete_asset_assets__asset_id__delete",
+    "parameters": [
+      {
+        "name": "asset_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Asset Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/assets/{asset_id}",
+    "summary": "Get Asset",
+    "description": "",
+    "operationId": "get_asset_assets__asset_id__get",
+    "parameters": [
+      {
+        "name": "asset_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Asset Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssetResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/assets/upload",
+    "summary": "Upload Asset File",
+    "description": "",
+    "operationId": "upload_asset_file_assets_upload_post",
+    "parameters": [
+      {
+        "name": "parent_path",
+        "in": "query",
+        "required": false,
+        "description": "Parent folder path",
+        "schema": {
+          "type": "string",
+          "description": "Parent folder path",
+          "default": "/",
+          "title": "Parent Path"
+        }
+      }
+    ],
+    "requestBody": {
+      "required": true,
+      "content": {
+        "multipart/form-data": {
+          "schema": {
+            "$ref": "#/components/schemas/Body_upload_asset_file_assets_upload_post"
+          }
+        }
+      }
+    },
+    "security": [],
+    "tags": [
+      "File"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AssetResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/models",
+    "summary": "Public Models",
+    "description": "Return a list of available public models with their input/output specifications",
+    "operationId": "public_models_models_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Models"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/ModelWithMetadata"
+              },
+              "type": "array",
+              "title": "Response Public Models Models Get"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/user-settings",
+    "summary": "Get User Settings",
+    "description": "",
+    "operationId": "get_user_settings_platform_user_settings_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PUT",
+    "path": "/platform/user-settings",
+    "summary": "Update User Settings",
+    "description": "",
+    "operationId": "update_user_settings_platform_user_settings_put",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/UserSettingsUpdateRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/user/{user_id}",
+    "summary": "Get User Meta",
+    "description": "",
+    "operationId": "get_user_meta_user__user_id__get",
+    "parameters": [
+      {
+        "name": "user_id",
+        "in": "path",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "User Id"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/api-keys",
+    "summary": "Get Api Keys",
+    "description": "",
+    "operationId": "get_api_keys_platform_api_keys_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/platform/api-keys",
+    "summary": "Create Api Key",
+    "description": "",
+    "operationId": "create_api_key_platform_api_keys_post",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "DELETE",
+    "path": "/platform/api-keys/{key_id}",
+    "summary": "Delete Api Key",
+    "description": "",
+    "operationId": "delete_api_key_platform_api_keys__key_id__delete",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/plan",
+    "summary": "Get Api Plan",
+    "description": "",
+    "operationId": "get_api_plan_platform_plan_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/upgrade-plan",
+    "summary": "Get Upgrade Plan",
+    "description": "Get upgrade or new plan details with proration calculations",
+    "operationId": "get_upgrade_plan_platform_upgrade_plan_get",
+    "parameters": [
+      {
+        "name": "plan",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Plan"
+        }
+      },
+      {
+        "name": "coupon",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Coupon"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/platform/stripe/webhook",
+    "summary": "Stripe Webhook",
+    "description": "Handle Stripe webhook events",
+    "operationId": "stripe_webhook_platform_stripe_webhook_post",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/checkout",
+    "summary": "Stripe Checkout",
+    "description": "Handle Stripe checkout process",
+    "operationId": "stripe_checkout_platform_checkout_get",
+    "parameters": [
+      {
+        "name": "plan",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Plan"
+        }
+      },
+      {
+        "name": "redirect_url",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Redirect Url"
+        }
+      },
+      {
+        "name": "upgrade",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Upgrade"
+        }
+      },
+      {
+        "name": "trial",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Trial"
+        }
+      },
+      {
+        "name": "coupon",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Coupon"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/gpu-pricing",
+    "summary": "Gpu Pricing",
+    "description": "Return the GPU pricing table",
+    "operationId": "gpu_pricing_platform_gpu_pricing_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/usage-details",
+    "summary": "Get Usage Details By Day",
+    "description": "Get GPU usage details grouped by day",
+    "operationId": "get_usage_details_by_day_platform_usage_details_get",
+    "parameters": [
+      {
+        "name": "start_time",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "date-time",
+          "title": "Start Time"
+        }
+      },
+      {
+        "name": "end_time",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "format": "date-time",
+          "title": "End Time"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/usage",
+    "summary": "Get Usage",
+    "description": "Get usage details and total cost for a given time period",
+    "operationId": "get_usage_platform_usage_get",
+    "parameters": [
+      {
+        "name": "start_time",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Time"
+        }
+      },
+      {
+        "name": "end_time",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End Time"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/invoices",
+    "summary": "Get Monthly Invoices",
+    "description": "Get monthly invoices for the current user/org",
+    "operationId": "get_monthly_invoices_platform_invoices_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/platform/stripe/dashboard",
+    "summary": "Get Dashboard Url",
+    "description": "",
+    "operationId": "get_dashboard_url_platform_stripe_dashboard_get",
+    "parameters": [
+      {
+        "name": "redirect_url",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Redirect Url"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Platform"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/search/model",
+    "summary": "Search",
+    "description": "",
+    "operationId": "search_search_model_get",
+    "parameters": [
+      {
+        "name": "query",
+        "in": "query",
+        "required": true,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "title": "Query"
+        }
+      },
+      {
+        "name": "provider",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "string",
+          "default": "all",
+          "title": "Provider"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Search"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SearchModelsResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "GET",
+    "path": "/form/onboarding",
+    "summary": "Check Form Submission",
+    "description": "",
+    "operationId": "check_form_submission_form_onboarding_get",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Form"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/form/onboarding",
+    "summary": "Submit Onboarding Form",
+    "description": "",
+    "operationId": "submit_onboarding_form_form_onboarding_post",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/OnboardingForm"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Form"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "PATCH",
+    "path": "/form/onboarding",
+    "summary": "Set Call Booked",
+    "description": "",
+    "operationId": "set_call_booked_form_onboarding_patch",
+    "parameters": [],
+    "requestBody": {
+      "content": {
+        "application/json": {
+          "schema": {
+            "$ref": "#/components/schemas/FormUpdateRequest"
+          }
+        }
+      },
+      "required": true
+    },
+    "security": [],
+    "tags": [
+      "Form"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {}
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/admin/deployments/scan-ttl",
+    "summary": "Scan Deployment Ttl",
+    "description": "Scan deployments and deactivate those that exceed their TTL based on environment:\n- Preview: 24 hours\n- Staging: 48 hours\n- Public Share: 24 hours\n- Production: Indefinite\n\nParameters:\n    dry_run: If True, only returns what would be deactivated without making changes",
+    "operationId": "scan_deployment_ttl_admin_deployments_scan_ttl_post",
+    "parameters": [
+      {
+        "name": "dry_run",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": true,
+          "title": "Dry Run"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Admin"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/TTLScanResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/admin/deployments/scan-legacy",
+    "summary": "Scan Legacy Deployments",
+    "description": "Scan legacy deployments (those without activated_at timestamps) for inactivity.\nIdentifies deployments in production/staging that haven't had any runs in the last 30 days.\nUses machine_id to correlate with workflow runs since legacy deployments aren't linked directly.\nReturns the last run time for each inactive deployment.",
+    "operationId": "scan_legacy_deployments_admin_deployments_scan_legacy_post",
+    "parameters": [],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Admin"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/LegacyDeploymentScanResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "path": "/admin/process-subscriptions",
+    "summary": "Process Subscriptions Endpoint",
+    "description": "Process all active subscriptions and charge for GPU usage.\nThis endpoint should be called by a cron job.\nOnly accessible by admin organization.\n\nParameters:\n    dry_run: If True, only simulate the process without creating invoices\n    send_email: If True, send email notifications about usage",
+    "operationId": "process_subscriptions_endpoint_admin_process_subscriptions_post",
+    "parameters": [
+      {
+        "name": "dry_run",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Dry Run"
+        }
+      },
+      {
+        "name": "send_email",
+        "in": "query",
+        "required": false,
+        "description": "",
+        "schema": {
+          "type": "boolean",
+          "default": false,
+          "title": "Send Email"
+        }
+      }
+    ],
+    "requestBody": null,
+    "security": [],
+    "tags": [
+      "Admin"
+    ],
+    "responses": {
+      "200": {
+        "description": "Successful Response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ProcessSubscriptionsResponse"
+            }
+          }
+        }
+      },
+      "422": {
+        "description": "Validation Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HTTPValidationError"
+            }
+          }
+        }
+      }
+    }
+  }
+]

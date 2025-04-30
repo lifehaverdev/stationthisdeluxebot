@@ -359,6 +359,23 @@ class PointsService {
       // Additional logic if needed
     });
   }
+
+  /**
+   * Calculate initial points for new users
+   * @returns {number} Initial points amount
+   */
+  calculateInitialPoints() {
+    return this.options.noCoinerStarter || 199800;
+  }
+
+  /**
+   * Calculate points for guest users (limited allocation)
+   * @returns {number} Guest points amount
+   */
+  calculateGuestPoints() {
+    // Guests get a fraction of regular starter points
+    return Math.floor((this.options.noCoinerStarter || 199800) / 5);
+  }
 }
 
 module.exports = PointsService; 

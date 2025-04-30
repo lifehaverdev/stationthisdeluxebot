@@ -1,0 +1,431 @@
+/* Result Viewer Component Styles */
+
+.result-viewer-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(5px);
+}
+
+.result-viewer-modal {
+  background-color: #1c1c1c;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  width: 80%;
+  max-width: 1200px;
+  height: 80%;
+  max-height: 800px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+.result-viewer-header {
+  background-color: #262626;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+.result-viewer-header h2 {
+  color: #fff;
+  margin: 0;
+  font-family: "VT323", monospace;
+  font-size: 24px;
+}
+
+.tab-container {
+  display: flex;
+  gap: 10px;
+}
+
+.tab-button {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 4px;
+  color: #ddd;
+  cursor: pointer;
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  padding: 8px 15px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.tab-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.tab-button.active {
+  background-color: rgba(41, 122, 204, 0.6);
+  color: white;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 24px;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.close-button:hover {
+  color: #fff;
+}
+
+.result-viewer-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.result-viewer-footer {
+  background-color: #262626;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #333;
+}
+
+.no-results {
+  color: #aaa;
+  font-style: italic;
+  text-align: center;
+  margin: 20px 0;
+}
+
+/* Image Viewer */
+.image-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.image-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.image-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.image-metadata {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Text Viewer */
+.text-viewer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-content {
+  flex: 1;
+  padding: 15px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  color: #ddd;
+  font-family: monospace;
+  white-space: pre-wrap;
+  overflow: auto;
+  margin: 0;
+}
+
+/* Audio Viewer */
+.audio-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.audio-viewer audio {
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* Video Viewer */
+.video-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.video-viewer video {
+  max-width: 100%;
+  max-height: 70%;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+/* Model Viewer */
+.model-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.model-info {
+  padding: 15px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.model-info h3 {
+  margin-top: 0;
+  color: #fff;
+}
+
+/* Generic Viewer */
+.generic-viewer {
+  height: 100%;
+}
+
+.result-data {
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  padding: 15px;
+}
+
+.result-data pre {
+  margin: 0;
+  color: #ddd;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+/* Metadata Items */
+.metadata-item {
+  display: flex;
+  margin-bottom: 5px;
+  color: #ddd;
+}
+
+.metadata-label {
+  font-weight: bold;
+  min-width: 100px;
+  color: #aaa;
+}
+
+.metadata-value {
+  flex: 1;
+}
+
+.metadata-value.prompt {
+  font-style: italic;
+}
+
+/* Share Tab */
+.share-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.share-tab h3 {
+  color: #fff;
+  margin-top: 0;
+}
+
+.share-url-container {
+  display: flex;
+  gap: 10px;
+}
+
+.share-url {
+  flex: 1;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font-family: monospace;
+}
+
+.copy-url-button {
+  background-color: rgba(41, 122, 204, 0.6);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  padding: 0 15px;
+  font-family: "VT323", monospace;
+  transition: background-color 0.2s;
+}
+
+.copy-url-button:hover {
+  background-color: rgba(41, 122, 204, 0.8);
+}
+
+.share-options {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.share-twitter, .share-discord {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 4px;
+  color: #ddd;
+  cursor: pointer;
+  font-family: "VT323", monospace;
+  padding: 10px 15px;
+  transition: background-color 0.2s;
+}
+
+.share-twitter {
+  background-color: rgba(29, 161, 242, 0.6);
+  color: white;
+}
+
+.share-twitter:hover {
+  background-color: rgba(29, 161, 242, 0.8);
+}
+
+.share-discord {
+  background-color: rgba(114, 137, 218, 0.6);
+  color: white;
+}
+
+.share-discord:hover {
+  background-color: rgba(114, 137, 218, 0.8);
+}
+
+/* Export Tab */
+.export-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.export-tab h3 {
+  color: #fff;
+  margin-top: 0;
+}
+
+.export-format-container {
+  display: flex;
+  gap: 10px;
+}
+
+.export-format-select {
+  flex: 1;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font-family: "VT323", monospace;
+}
+
+.export-button {
+  background-color: rgba(76, 175, 80, 0.6);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  padding: 0 15px;
+  font-family: "VT323", monospace;
+  transition: background-color 0.2s;
+}
+
+.export-button:hover:not(:disabled) {
+  background-color: rgba(76, 175, 80, 0.8);
+}
+
+.export-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.download-options {
+  margin-top: 20px;
+}
+
+.download-button {
+  width: 100%;
+  padding: 12px;
+  background-color: rgba(41, 122, 204, 0.6);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-family: "VT323", monospace;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.download-button:hover {
+  background-color: rgba(41, 122, 204, 0.8);
+}
+
+/* Footer Elements */
+.save-to-collection {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.collection-select {
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font-family: "VT323", monospace;
+}
+
+.save-button {
+  background-color: rgba(76, 175, 80, 0.6);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  padding: 8px 15px;
+  font-family: "VT323", monospace;
+  transition: background-color 0.2s;
+}
+
+.save-button:hover:not(:disabled) {
+  background-color: rgba(76, 175, 80, 0.8);
+}
+
+.save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #f44336;
+  font-size: 14px;
+  margin-left: auto;
+} 

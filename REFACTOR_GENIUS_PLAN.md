@@ -12,6 +12,8 @@ Transform the StationThis bot from a Telegram-coupled application into a platfor
 - **Feature-First**: Prioritize working features over architectural elegance
 - **Incremental Migration**: Maintain backward compatibility while refactoring
 - **Revenue Focus**: Keep business logic intact throughout the refactor
+- Demonstration-First: Each refactored component must be visibly working before further phases progress.
+- Working demos, not documents, define forward momentum.
 
 ## Simplified Architecture
 
@@ -140,3 +142,4 @@ src/
 3. Ability to add new platforms without touching core code
 4. Continued revenue generation throughout refactor
 5. Improved maintainability and faster feature development 
+6. Demonstrable system behaviors visible in local and staging environments at all times.

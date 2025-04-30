@@ -1,96 +1,96 @@
-# ComfyUI Deploy API Endpoints
+# ComfyUI Deploy API Endpoints (Updated)
 
-This document provides a comprehensive list of all available API endpoints in the ComfyUI Deploy platform, categorized by their source and confidence level.
+This document provides a comprehensive list of all available API endpoints in the ComfyUI Deploy platform, based on the official OpenAPI specification.
 
 ## Authentication
 
-Authentication is handled via JWT tokens. Include the token in the Authorization header:
+Authentication is handled via bearer tokens. Include the token in the Authorization header:
 
 ```
-Authorization: Bearer your_jwt_token
+Authorization: Bearer your_api_key
 ```
 
-JWT tokens can be created in the ComfyUI Deploy dashboard under `/api-keys`.
+API keys can be created in the ComfyUI Deploy dashboard under the API Keys section.
 
-## Endpoints by Category
+## Primary Endpoints
 
-### Statically Confirmed Endpoints
+### Run Management
 
-These endpoints are confirmed through explicit declarations in the codebase:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/run/{run_id}` | Get run status and results |
+| POST   | `/run/deployment/queue` | Queue a run with a deployment |
+| POST   | `/run/deployment/sync` | Run synchronously with a deployment |
+| POST   | `/run/deployment/stream` | Stream run results with a deployment |
+| POST   | `/run/{run_id}/cancel` | Cancel a run |
 
-| Method | Endpoint | Description | Source File |
-|--------|----------|-------------|------------|
-| GET    | `/api/run` | Get workflow run output | registerGetOutputRoute.ts |
-| POST   | `/api/run` | Run a workflow via deployment_id | registerCreateRunRoute.ts |
-| GET    | `/api/upload-url` | Generate a pre-signed URL for file uploads | registerUploadRoute.ts |
-| POST   | `/api/workflow` | Upload a workflow definition | registerWorkflowUploadRoute.ts |
-| GET    | `/api/workflow-version/:id` | Get workflow version by ID | registerGetWorkflow.ts |
-| GET    | `/api/auth-response/:request_id` | Get an API Key with code | registerGetAuthResponse.ts |
+### Workflow Management
 
-### Dynamically Registered Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/workflows` | Get all workflows |
+| GET    | `/workflow/{workflow_id}` | Get a specific workflow |
+| PATCH  | `/workflow/{workflow_id}` | Update a workflow |
+| DELETE | `/workflow/{workflow_id}` | Delete a workflow |
+| POST   | `/workflow` | Create a new workflow |
+| POST   | `/workflow/{workflow_id}/clone` | Clone a workflow |
+| GET    | `/workflow/{workflow_id}/versions` | Get workflow versions |
+| GET    | `/workflow/{workflow_id}/version/{version}` | Get a specific workflow version |
+| GET    | `/workflow-version/{version}` | Get workflow version by ID |
 
-These endpoints are registered dynamically or were detected through more complex patterns:
+### Deployment Management
 
-| Method | Endpoint | Description | Registration |
-|--------|----------|-------------|-------------|
-| OPTIONS | `/api/*` | CORS pre-flight requests for all API routes | App Router |
-| POST   | `/api/update-run` | Update the status of a workflow run | NextJS route handler |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/deployments` | Get all deployments |
+| POST   | `/deployment` | Create a deployment |
+| GET    | `/deployment/{deployment_id}` | Get a specific deployment |
+| PATCH  | `/deployment/{deployment_id}` | Update a deployment |
+| DELETE | `/deployment/{deployment_id}` | Delete a deployment |
+| POST   | `/deployment/{deployment_id}/deactivate` | Deactivate a deployment |
 
-### Manual Additions
+### Machine Management
 
-These endpoints were manually documented or confirmed through additional sources:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET    | `/machines` | Get all machines |
+| GET    | `/machine/{machine_id}` | Get a specific machine |
+| DELETE | `/machine/{machine_id}` | Delete a machine |
+| POST   | `/machine/create` | Create a machine |
+| POST   | `/machine/serverless` | Create a serverless machine |
+| POST   | `/machine/custom` | Create a custom machine |
 
-| Method | Endpoint | Description | Source |
-|--------|----------|-------------|--------|
-| GET    | `/api-key` | List API keys | curdApiKeys.ts |
-| POST   | `/api-key` | Create an API key | curdApiKeys.ts |
-| DELETE | `/api-key/:id` | Delete an API key | curdApiKeys.ts |
-| GET    | `/deployment` | List deployments | curdDeploments.ts |
-| POST   | `/deployment` | Create a deployment | curdDeploments.ts | 
-| DELETE | `/deployment/:id` | Delete a deployment | curdDeploments.ts |
-| PUT    | `/deployment/:id` | Update a deployment | curdDeploments.ts |
-| POST   | `/file` | File upload endpoint | internal_api |
-| GET    | `/internal` | Internal API documentation | internal_api |
-| GET    | `/machine` | List registered machines | curdMachine.ts |
-| POST   | `/machine` | Register a new machine | curdMachine.ts |
-| DELETE | `/machine/:id` | Delete a machine | curdMachine.ts |
-| PUT    | `/machine/:id` | Update a machine | curdMachine.ts |
-| POST   | `/volume/model` | Volume model endpoint | internal_api |
+### File Management
 
-## API Endpoint Details
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST   | `/file/upload` | Get upload URL for a file |
+| POST   | `/file` | Add a file |
+| POST   | `/file/{file_id}/rename` | Rename a file |
+| GET    | `/assets` | List assets |
+| POST   | `/assets/upload` | Upload an asset |
+| GET    | `/assets/{asset_id}` | Get an asset |
+| DELETE | `/assets/{asset_id}` | Delete an asset |
 
-### Workflow Execution
+## Endpoint Details
 
-#### GET /api/run
+### Run Execution
+
+#### GET /run/{run_id}
 
 Gets output from a workflow run.
 
-**Authentication**: Required
-
-**Query Parameters**:
+**Path Parameters**:
 - `run_id`: ID of the run to get output for
 
-**Response (200)**: Workflow run data including status and outputs
-```json
-{
-  "id": "string",
-  "created_at": "string",
-  "updated_at": "string",
-  "status": "string",
-  "workflow_inputs": {
-    "input_text": "some external text input",
-    "input_image": "https://somestatic.png"
-  },
-  "workflow_outputs": {},
-  "error": null
-}
-```
+**Query Parameters**:
+- `queue_position` (Optional): Get queue position information
 
-#### POST /api/run
+**Response**: Workflow run data including status and outputs
 
-Creates a new workflow execution run.
+#### POST /run/deployment/queue
 
-**Authentication**: Required
+Creates a new workflow execution run (asynchronously).
 
 **Request Body**:
 ```json
@@ -99,33 +99,68 @@ Creates a new workflow execution run.
   "inputs": {
     "key1": "value1",
     "key2": "value2"
-  }
+  },
+  "webhook_url": "string (optional)"
 }
 ```
 
-- `deployment_id`: ID of the deployment to run
-- `inputs`: (Optional) Key-value pairs of inputs to the workflow
-
-**Response (200)**:
+**Response**:
 ```json
 {
   "run_id": "string"
 }
 ```
 
-### File Management
+#### POST /run/{run_id}/cancel
 
-#### GET /api/upload-url
+Cancels a running workflow execution.
 
-Generates a pre-signed URL for file uploads.
+**Path Parameters**:
+- `run_id`: ID of the run to cancel
 
-**Authentication**: Required
+### Deployments
+
+#### GET /deployments
+
+Gets all deployments available to the current user.
 
 **Query Parameters**:
-- `type`: File MIME type (e.g., "image/png", "image/jpeg")
-- `file_size`: Size of file in bytes
+- `environment` (Optional): Filter by environment
+- `is_fluid` (Optional): Filter by fluid status
 
-**Response (200)**:
+**Response**: Array of deployment objects
+
+#### POST /deployment
+
+Creates a new deployment.
+
+**Request Body**:
+```json
+{
+  "workflow_id": "string",
+  "version_id": "string",
+  "name": "string",
+  "machine_id": "string"
+}
+```
+
+**Response**: Created deployment object
+
+### File Management
+
+#### POST /file/upload
+
+Get a pre-signed URL for file uploads.
+
+**Request Body**:
+```json
+{
+  "type": "string",
+  "file_size": number
+}
+```
+
+**Response**:
 ```json
 {
   "upload_url": "string",
@@ -133,42 +168,6 @@ Generates a pre-signed URL for file uploads.
   "download_url": "string"
 }
 ```
-
-### Workflow Management
-
-#### POST /api/workflow
-
-Uploads a workflow definition.
-
-**Authentication**: Required
-
-**Request Body**:
-```json
-{
-  "workflow_id": "string (optional)",
-  "workflow_name": "string (optional)",
-  "workflow": "object",
-  "workflow_api": "object",
-  "snapshot": "object"
-}
-```
-
-**Response (200)**:
-```json
-{
-  "workflow_id": "string",
-  "version": "string"
-}
-```
-
-#### GET /api/workflow-version/:id
-
-Gets a specific version of a workflow.
-
-**Authentication**: Required
-
-**Path Parameters**:
-- `id`: ID of the workflow version to retrieve
 
 ## Additional API Documentation
 

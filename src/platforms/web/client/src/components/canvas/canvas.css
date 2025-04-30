@@ -1,0 +1,437 @@
+/* Canvas Component Styles */
+@import url('./workflow-tiles.css');
+
+/* Canvas Container */
+.canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.main-canvas {
+  display: block;
+  cursor: grab;
+}
+
+.main-canvas:active {
+  cursor: grabbing;
+}
+
+/* Canvas Authentication Overlay */
+.canvas-auth-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.auth-message {
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  color: white;
+  max-width: 400px;
+  padding: 24px;
+  text-align: center;
+}
+
+.auth-message h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.auth-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.auth-buttons button {
+  background-color: #297ACC;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px 16px;
+  transition: background-color 0.2s;
+}
+
+.auth-buttons button:hover {
+  background-color: #1d5fa3;
+}
+
+.btn-wallet {
+  background-color: #F7931A !important;
+}
+
+.btn-wallet:hover {
+  background-color: #E27B0E !important;
+}
+
+.btn-guest {
+  background-color: #555 !important;
+}
+
+.btn-guest:hover {
+  background-color: #666 !important;
+}
+
+/* Workflow Tiles */
+.workflow-tile {
+  position: absolute;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  background-color: #297ACC;
+  color: white;
+  user-select: none;
+  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.workflow-tile.selected {
+  box-shadow: 0 0 0 2px #FFFFFF, 0 4px 8px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.workflow-tile[data-status="running"] {
+  box-shadow: 0 0 0 2px #FFD700, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.workflow-tile[data-status="complete"] {
+  box-shadow: 0 0 0 2px #4CAF50, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.workflow-tile[data-status="error"] {
+  box-shadow: 0 0 0 2px #F44336, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+}
+
+.tile-content {
+  padding: 12px;
+  height: calc(100% - 40px);
+  overflow: auto;
+}
+
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border-radius: 50%;
+}
+
+.resize-handle.top-left {
+  top: 4px;
+  left: 4px;
+  cursor: nw-resize;
+}
+
+.resize-handle.top-right {
+  top: 4px;
+  right: 4px;
+  cursor: ne-resize;
+}
+
+.resize-handle.bottom-left {
+  bottom: 4px;
+  left: 4px;
+  cursor: sw-resize;
+}
+
+.resize-handle.bottom-right {
+  bottom: 4px;
+  right: 4px;
+  cursor: se-resize;
+}
+
+/* HUD Component */
+.canvas-hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 1000;
+  transition: opacity 0.3s ease;
+}
+
+.canvas-hud.visible {
+  opacity: 1;
+}
+
+.canvas-hud.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud-content {
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: width 0.3s ease;
+}
+
+.hud-content.expanded {
+  min-width: 200px;
+}
+
+.user-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.username {
+  font-weight: bold;
+}
+
+.username.guest {
+  color: #FFD700;
+}
+
+.points {
+  margin-left: 16px;
+  color: #4CAF50;
+}
+
+.hud-buttons {
+  display: none;
+}
+
+.hud-content.expanded .hud-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hud-btn {
+  background-color: #297ACC;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.hud-btn:hover {
+  background-color: #1d5fa3;
+}
+
+/* Workflow Category Menu */
+.workflow-menu {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 1000;
+  transition: opacity 0.3s ease;
+}
+
+.workflow-menu-content {
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+}
+
+.workflow-category {
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  height: 70px;
+  justify-content: center;
+  padding: 8px;
+  transition: background-color 0.2s;
+  width: 70px;
+}
+
+.workflow-category:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.workflow-category.makeImage {
+  color: #297ACC;
+}
+
+.workflow-category.textToImage {
+  color: #2C974B;
+}
+
+.workflow-category.trainModel {
+  color: #8250DF;
+}
+
+.workflow-category.upscale {
+  color: #A475F9;
+}
+
+.workflow-category.inpaint {
+  color: #F778BA;
+}
+
+.workflow-category.collections {
+  color: #F85149;
+}
+
+.workflow-category-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+/* Auth Modal */
+.auth-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  transition: opacity 0.3s ease;
+}
+
+.auth-modal.visible {
+  opacity: 1;
+}
+
+.auth-modal.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.auth-modal-content {
+  background-color: #1a1a1a;
+  color: white;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+}
+
+.auth-modal-header {
+  padding: 16px;
+  background-color: #121212;
+  text-align: center;
+}
+
+.auth-modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid #333;
+}
+
+.auth-tab {
+  flex: 1;
+  text-align: center;
+  padding: 12px;
+  cursor: pointer;
+  color: #999;
+  background-color: #1a1a1a;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.auth-tab:hover {
+  color: white;
+}
+
+.auth-tab.active {
+  color: white;
+  border-bottom-color: #297ACC;
+  background-color: #222;
+}
+
+.auth-tab-content {
+  padding: 20px;
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  background-color: #333;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: white;
+  font-size: 16px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 16px;
+  background-color: #297ACC;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  width: 100%;
+  text-align: center;
+}
+
+.btn:hover {
+  background-color: #1d5fa3;
+}
+
+.wallet-options p,
+.wallet-connect {
+  margin-bottom: 16px;
+}
+
+.guest-message {
+  text-align: center;
+  margin-bottom: 16px;
+  color: #ccc;
+} 

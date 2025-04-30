@@ -89,6 +89,14 @@ docs/
      - List of changes/improvements
      - Test plan
 
+### Demonstration Verification
+- All deliverables must include a visual, functional demonstration where applicable
+- Backend services must have tested API calls
+- Frontend features must have working UI states
+- Playwright or equivalent test must accompany user-visible features
+- Incomplete demonstrations must block phase progress
+
+
 ## File Templates
 
 ### ADR Template
