@@ -1007,10 +1007,10 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                 workspace[userId][loraId].name = workspace[userId][loraId].name.replace(/\s+/g, '');
                 await loraDB.saveWorkspace(workspace[userId][loraId]);
 
-                // Add qoints reward
+                // Add qoints reward - Using existing userEconomy instance
                 const APPROVAL_REWARD = 1000;
-                const userEco = await userEconomy.findOne({ userId });
-                const newBalance = (userEco?.qoints || 0) + APPROVAL_REWARD;
+                const currentEco = await userEconomy.findOne({ userId });
+                const newBalance = (currentEco?.qoints || 0) + APPROVAL_REWARD;
                 await userEconomy.writeQoints(userId, newBalance);
 
                 // Notify user with reward info
@@ -1161,7 +1161,7 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
 
                 // Deduct qoints - Fixed to use qoints directly
                 const newBalance = userEco.qoints - price;
-                const success = await userEconomy.writeQoints(user, newBalance);
+                const success = await userEco.writeQoints(user, newBalance);
                 if (!success) {
                     await sendMessage(message, "Failed to process payment. Please try again later.");
                     return;
