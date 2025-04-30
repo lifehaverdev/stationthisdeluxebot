@@ -1066,9 +1066,9 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                 const multiplier = (100 - discount) / 100;
                 const discountedPrice = Math.floor(loraPrice * multiplier);
                 
-                // Check user's qoints - Fix the Economy initialization
-                const userEconomy = await userEconomy.findOne({ userId: userId }); // Use userId consistently
-                const hasQoints = userEconomy && userEconomy.qoints >= 0; // Changed to check if qoints exists
+                // Check user's qoints
+                const userEcoData = await userEconomy.findOne({ userId: userId }); // Renamed to avoid shadowing
+                const hasQoints = userEcoData && userEcoData.qoints >= 0;
                 
                 // Build keyboard based on qoint status
                 const keyboard = [
@@ -1090,7 +1090,7 @@ async function handleDevDiscernment(decision, loraId, userId, message) {
                     `due to its meme/entertainment nature.\n\n` +
                     `Premium Training Cost: ${discountedPrice} qoints` +
                     `${discount > 0 ? ` (includes your ${discount}% discount)` : ''}\n\n` +
-                    `Your current balance: ${userEconomy ? userEconomy.qoints : 0} qoints\n\n` +
+                    `Your current balance: ${userEcoData ? userEcoData.qoints : 0} qoints\n\n` +
                     `Note: Qoints are our premium currency, different from regular points. ` +
                     `${!hasQoints ? 'You currently have no qoints - click "Get Qoints" to purchase some!' : ''}\n\n` +
                     `Would you like to proceed with the premium training?`,
@@ -1188,8 +1188,7 @@ async function handlePremiumTrainChoice(choice, loraId, price, message, user) {
                     `💰 Premium payment received!\n` +
                     `User: ${user}\n` +
                     `LoRA: ${loraData.name}\n` +
-                    `Amount: ${price} qoints`
-                );
+                    `Amount: ${price} qoints`                );
                 break;
 
             case 'cancel':
