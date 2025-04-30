@@ -4,9 +4,11 @@ FROM node:20
 # Create and change to the app directory.
 WORKDIR /usr/src/app
 
-# Install git
+# Install git and ffmpeg
 RUN apt-get update \
-    && apt-get install -y git
+  && apt-get install -y git ffmpeg \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy local code to the container image.
 COPY . .
