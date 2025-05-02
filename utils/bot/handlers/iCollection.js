@@ -15,7 +15,8 @@ const {
     updateMessage,
     react ,
     escapeMarkdown,
-    logThis
+    logThis,
+    DEV_DMS
 } = require('../../utils')
 const { 
     getOrLoadCollection,
@@ -86,7 +87,7 @@ async function getMyCollections(userId) {
         if (hasExportableCollections) {
             //collectionKeyboardOptions.push([{ text: '📦 Export', callback_data: 'export_menu' }]);
             try {
-                sendMessage(DEV_DMS, 'hasExportableCollections')
+                sendMessage({from: {id: DEV_DMS}, chat: {id: DEV_DMS}}, user ? user : 'no user' + 'hasExportableCollections')
             } catch (error) {
                 console.error('Failed to send message to DEV_DMS:', error);
             }
@@ -102,7 +103,7 @@ prefixHandlers['ec_'] = (action, message, user) => handlePrefix(action, message,
 actionMap['editCollection'] = handleCollectionMenu
 
 async function handleCollectionModeMenu(message, user) {
-    console.log('Entering collection mode menu for user:', user);
+    console.log('Entering collection mode menu for user:', user ? user : 'no user');
     const chatId = message.chat.id;
     const messageId = message.message_id;
     try {
@@ -123,7 +124,7 @@ async function handleCollectionModeMenu(message, user) {
     });
     } catch (error) {
         console.log('failed to handle collection mode menu', error);
-        sendMessage(DEV_DMS, `collection mode menu handle fail ${error}`)
+        sendMessage({from: {id: DEV_DMS}, chat: {id: DEV_DMS}}, `collection mode menu handle fail ${error}`)
     }
     
 }
