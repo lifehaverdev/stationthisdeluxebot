@@ -15,6 +15,78 @@ STATES.FFMPEG = 'FFMPEG';
 // Register the state handler
 stateHandlers[STATES.FFMPEG] = (message) => safeExecute(message, handleFFMPEGState);
 
+// Shared queue system at the top of the file
+const processingQueue = [];
+let isProcessing = false;
+const MAX_VIDEO_DURATION = 60; // maximum video length in seconds
+const MAX_PROCESSING_TIME = 60000; // timeout after 60 seconds (in milliseconds)
+
+// Add to the top with other constants
+const ACCEPTED_TYPES = ['video', 'animation']; // animation is Telegram's type for GIF
+
+// Helper function to process the queue
+async function processQueue() {
+    if (isProcessing || processingQueue.length === 0) return;
+    
+    isProcessing = true;
+    const task = processingQueue.shift();
+    
+    try {
+        await task();
+    } catch (error) {
+        console.error('Queue processing error:', error);
+    } finally {
+        isProcessing = false;
+        processQueue(); // Process next item in queue
+    }
+}
+
+// Helper function to add task to queue and send queue position message
+async function addToVideoQueue(msg, processingPromise) {
+    const queuePosition = processingQueue.length + (isProcessing ? 1 : 0);
+    const queueMessage = queuePosition > 0 
+        ? `\n⏳ You are #${queuePosition} in the queue.`
+        : '';
+    
+    await sendMessage(msg, '🎬 Video received!' + queueMessage);
+    processingQueue.push(processingPromise);
+    processQueue();
+}
+
+// Helper function to get the media file from the message
+function getMediaFile(msg) {
+    // Check reply first
+    if (msg.reply_to_message) {
+        for (const type of ACCEPTED_TYPES) {
+            if (msg.reply_to_message[type]) {
+                return {
+                    file: msg.reply_to_message[type],
+                    type: type
+                };
+            }
+        }
+    }
+    
+    // Check original message
+    for (const type of ACCEPTED_TYPES) {
+        if (msg[type]) {
+            return {
+                file: msg[type],
+                type: type
+            };
+        }
+    }
+    
+    return null;
+}
+
+// Update the duration check function
+function isMediaTooLong(media) {
+    // GIFs don't always have duration, use a default if missing
+    const duration = media.duration || 0;
+    return duration > MAX_VIDEO_DURATION;
+}
+
 /**
  * Inspect the resolution of a video or image file.
  */
@@ -118,20 +190,32 @@ function convertToGif(inputMp4Path, outputGifPath) {
     });
   }
 
+// Helper function to send the processed media
+async function sendProcessedMedia(msg, filePath, originalType) {
+    if (originalType === 'animation') {
+        return await sendAnimation(msg, fs.createReadStream(filePath));
+    }
+    return await sendVideo(msg, fs.createReadStream(filePath));
+}
+
 /**
  * Handles the brandcast command and its workflow
  */
 async function handleBrandcast(msg) {
-    // Check if command is in reply to a video or contains a video
-    const video = msg.reply_to_message?.video || msg.video;
+    const mediaFile = getMediaFile(msg);
     
-    if (!video) {
+    if (!mediaFile) {
         return await react(msg, '🤔');
+    }
+
+    if (isMediaTooLong(mediaFile.file)) {
+        return await sendMessage(msg, `❌ Media is too long! Please send content shorter than ${MAX_VIDEO_DURATION} seconds.`);
     }
 
     // Initialize state for this user
     ffmpegState[msg.from.id] = {
-        videoFileId: video.file_id,
+        mediaFileId: mediaFile.file.file_id,
+        inputType: mediaFile.type,  // Track if it's 'video' or 'animation'
         awaitingImage: false
     };
 
@@ -220,54 +304,62 @@ async function handleFFMPEGState(msg) {
 
     try {
         // Get file paths
-        const videoInfo = await bot.getFile(state.videoFileId);
+        const mediaInfo = await bot.getFile(state.mediaFileId);
         const imageInfo = await bot.getFile(image.file_id);
         
-        const videoUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${videoInfo.file_path}`;
+        const mediaUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${mediaInfo.file_path}`;
         const imageUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${imageInfo.file_path}`;
 
         // Process status message
-        const statusMsg = await sendMessage(msg, '🎬 Processing your video...');
+        const statusMsg = await sendMessage(msg, '🎬 Processing your media...');
 
         // Generate output paths
         const outputVideoPath = `/tmp/output_${Date.now()}.mp4`;
         const outputGifPath = `/tmp/output_${Date.now()}.gif`;
 
-        // Process the video
-        await addWatermark({
-            inputVideo: videoUrl,
-            watermarkImage: imageUrl,
-            outputVideo: outputVideoPath,
-            mode: state.mode
-        });
+        // Add to processing queue
+        const processingPromise = async () => {
+            try {
+                // Process the media
+                await addWatermark({
+                    inputVideo: mediaUrl,
+                    watermarkImage: imageUrl,
+                    outputVideo: outputVideoPath,
+                    mode: state.mode
+                });
 
-        // Convert to GIF if requested
-        if (state.format === 'gif') {
-            await convertToGif(outputVideoPath, outputGifPath);
-            // Send the processed GIF
-            await sendAnimation(msg, fs.createReadStream(outputGifPath));
-            // Cleanup
-            fs.unlinkSync(outputGifPath);
-        } else {
-            // Send the processed video
-            await sendVideo(msg, fs.createReadStream(outputVideoPath));
-        }
+                // Handle output format
+                if (state.format === 'gif' || state.inputType === 'animation') {
+                    await convertToGif(outputVideoPath, outputGifPath);
+                    await sendAnimation(msg, fs.createReadStream(outputGifPath));
+                    fs.unlinkSync(outputGifPath);
+                } else {
+                    await sendVideo(msg, fs.createReadStream(outputVideoPath));
+                }
 
-        // Cleanup
-        fs.unlinkSync(outputVideoPath);
-        delete ffmpegState[userId];
-        setUserState(msg, 'IDLE');
+                // Cleanup
+                fs.unlinkSync(outputVideoPath);
+                delete ffmpegState[userId];
+                setUserState(msg, 'IDLE');
 
-        // Update status message
-        await editMessage({
-            chat_id: statusMsg.chat.id,
-            message_id: statusMsg.message_id,
-            text: '✅ Processing complete!'
-        });
+                await editMessage({
+                    chat_id: statusMsg.chat.id,
+                    message_id: statusMsg.message_id,
+                    text: '✅ Processing complete!'
+                });
+            } catch (error) {
+                console.error('Error processing media:', error);
+                await sendMessage(msg, '❌ Sorry, there was an error processing your media.');
+                delete ffmpegState[userId];
+                setUserState(msg, 'IDLE');
+            }
+        };
+
+        await addToVideoQueue(msg, processingPromise);
 
     } catch (error) {
-        console.error('Error processing video:', error);
-        await sendMessage(msg, '❌ Sorry, there was an error processing your video.');
+        console.error('Error setting up processing:', error);
+        await sendMessage(msg, '❌ Sorry, there was an error processing your media.');
         delete ffmpegState[userId];
         setUserState(msg, 'IDLE');
     }
@@ -276,6 +368,186 @@ async function handleFFMPEGState(msg) {
 // Register command and handlers
 commandRegistry['/brandcast'] = {
     handler: handleBrandcast,
+};
+
+commandRegistry['/cultthat'] = {
+    handler: async (msg) => {
+        const mediaFile = getMediaFile(msg);
+        
+        if (!mediaFile) {
+            return await react(msg, '🤔');
+        }
+
+        if (isMediaTooLong(mediaFile.file)) {
+            return await sendMessage(msg, `❌ Media is too long! Please send content shorter than ${MAX_VIDEO_DURATION} seconds.`);
+        }
+
+        const processingPromise = async () => {
+            const statusMsg = await sendMessage(msg, '🔥 Deep frying and culting your media...');
+            
+            try {
+                await Promise.race([
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Processing timeout')), MAX_PROCESSING_TIME)),
+                    (async () => {
+                        const fileInfo = await bot.getFile(mediaFile.file.file_id);
+                        const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                        const watermarkPath = path.join(__dirname, '..', 'watermarks', 'cultoverlay.png');
+                        const friedPath = `/tmp/fried_${Date.now()}.mp4`;
+                        const outputPath = `/tmp/output_${Date.now()}.mp4`;
+
+                        // Fry the media
+                        await new Promise((resolve, reject) => {
+                            ffmpeg(fileUrl)
+                                .videoFilters([
+                                    'eq=saturation=1.5',
+                                    'eq=contrast=1.5',
+                                    'noise=alls=20:allf=t',
+                                    'unsharp=5:5:1.5:5:5:0.0',
+                                    {
+                                        filter: 'scale',
+                                        options: {
+                                            w: 'iw/2',
+                                            h: 'ih/2'
+                                        }
+                                    },
+                                    {
+                                        filter: 'scale',
+                                        options: {
+                                            w: 'iw*2',
+                                            h: 'ih*2'
+                                        }
+                                    }
+                                ])
+                                .videoBitrate('500k')
+                                .fps(24)
+                                // Force format to mp4 for consistency
+                                .format('mp4')
+                                .save(friedPath)
+                                .on('end', resolve)
+                                .on('error', reject);
+                        });
+
+                        // Add the cult overlay
+                        await addWatermark({
+                            inputVideo: friedPath,
+                            watermarkImage: watermarkPath,
+                            outputVideo: outputPath,
+                            mode: 'overlay'
+                        });
+
+                        // Send as the original type
+                        await sendProcessedMedia(msg, outputPath, mediaFile.type);
+
+                        // Cleanup
+                        fs.unlinkSync(friedPath);
+                        fs.unlinkSync(outputPath);
+                        
+                        await editMessage({
+                            chat_id: statusMsg.chat.id,
+                            message_id: statusMsg.message_id,
+                            text: '✅ Your media has been fried and culted! 🔥'
+                        });
+                    })()
+                ]);
+
+            } catch (error) {
+                console.error('Error processing media:', error);
+                const errorMessage = error.message === 'Processing timeout'
+                    ? '⏱️ Processing took too long. Please try with shorter media.'
+                    : '❌ Sorry, there was an error processing your media.';
+                
+                await editMessage({
+                    chat_id: statusMsg.chat.id,
+                    message_id: statusMsg.message_id,
+                    text: errorMessage
+                });
+            }
+        };
+
+        await addToVideoQueue(msg, processingPromise);
+    }
+};
+
+commandRegistry['/frythat'] = {
+    handler: async (msg) => {
+        const mediaFile = getMediaFile(msg);
+        
+        if (!mediaFile) {
+            return await react(msg, '🤔');
+        }
+
+        if (isMediaTooLong(mediaFile.file)) {
+            return await sendMessage(msg, `❌ Media is too long! Please send content shorter than ${MAX_VIDEO_DURATION} seconds.`);
+        }
+
+        const processingPromise = async () => {
+            const statusMsg = await sendMessage(msg, '🔥 Deep frying your media...');
+            
+            try {
+                await Promise.race([
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Processing timeout')), MAX_PROCESSING_TIME)),
+                    (async () => {
+                        const fileInfo = await bot.getFile(mediaFile.file.file_id);
+                        const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                        const outputPath = `/tmp/fried_${Date.now()}.mp4`;
+
+                        await new Promise((resolve, reject) => {
+                            ffmpeg(fileUrl)
+                                .videoFilters([
+                                    'eq=saturation=1.5',
+                                    'eq=contrast=1.5',
+                                    'noise=alls=20:allf=t',
+                                    'unsharp=5:5:1.5:5:5:0.0',
+                                    {
+                                        filter: 'scale',
+                                        options: {
+                                            w: 'iw/2',
+                                            h: 'ih/2'
+                                        }
+                                    },
+                                    {
+                                        filter: 'scale',
+                                        options: {
+                                            w: 'iw*2',
+                                            h: 'ih*2'
+                                        }
+                                    }
+                                ])
+                                .videoBitrate('500k')
+                                .fps(24)
+                                .format('mp4')
+                                .save(outputPath)
+                                .on('end', resolve)
+                                .on('error', reject);
+                        });
+
+                        await sendProcessedMedia(msg, outputPath, mediaFile.type);
+                        fs.unlinkSync(outputPath);
+                        
+                        await editMessage({
+                            chat_id: statusMsg.chat.id,
+                            message_id: statusMsg.message_id,
+                            text: '✅ Your media has been thoroughly fried! 🔥'
+                        });
+                    })()
+                ]);
+
+            } catch (error) {
+                console.error('Error processing media:', error);
+                const errorMessage = error.message === 'Processing timeout'
+                    ? '⏱️ Processing took too long. Please try with shorter media.'
+                    : '❌ Sorry, there was an error processing your media.';
+                
+                await editMessage({
+                    chat_id: statusMsg.chat.id,
+                    message_id: statusMsg.message_id,
+                    text: errorMessage
+                });
+            }
+        };
+
+        await addToVideoQueue(msg, processingPromise);
+    }
 };
 
 // Add action handlers for overlay and watermark callbacks
