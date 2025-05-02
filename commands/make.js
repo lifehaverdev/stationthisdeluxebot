@@ -257,7 +257,8 @@ function imgPreProc(promptObj) {
 function chooseIdByMachine(ids, promptObj) {
     if(ids.length > 1) {
         if(promptObj.isCookMode) {
-            return ids[0]  // Use first machine for cook mode
+            // Use first machine for MAKE, second machine for QUICKMAKE
+            return promptObj.type === 'QUICKMAKE' ? ids[1] : ids[0];
         }
         if(promptObj.isAPI) {
             return ids[2]  // Use third machine for API mode
