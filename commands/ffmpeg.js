@@ -550,6 +550,81 @@ commandRegistry['/frythat'] = {
     }
 };
 
+commandRegistry['/gifthat'] = {
+    handler: async (msg) => {
+        const mediaFile = getMediaFile(msg);
+        
+        if (!mediaFile) {
+            return await react(msg, '🤔');
+        }
+
+        // If it's already a GIF, no need to convert
+        if (mediaFile.type === 'animation') {
+            return await sendMessage(msg, '🎯 This is already a GIF!');
+        }
+
+        if (isMediaTooLong(mediaFile.file)) {
+            return await sendMessage(msg, `❌ Video is too long! Please send content shorter than ${MAX_VIDEO_DURATION} seconds.`);
+        }
+
+        const processingPromise = async () => {
+            const statusMsg = await sendMessage(msg, '🎬 Converting your video to GIF...');
+            
+            try {
+                await Promise.race([
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Processing timeout')), MAX_PROCESSING_TIME)),
+                    (async () => {
+                        const fileInfo = await bot.getFile(mediaFile.file.file_id);
+                        const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                        const tempVideoPath = `/tmp/temp_${Date.now()}.mp4`;
+                        const outputGifPath = `/tmp/output_${Date.now()}.gif`;
+
+                        // First ensure we have a clean mp4 to work with
+                        await new Promise((resolve, reject) => {
+                            ffmpeg(fileUrl)
+                                .fps(24)
+                                .format('mp4')
+                                .save(tempVideoPath)
+                                .on('end', resolve)
+                                .on('error', reject);
+                        });
+
+                        // Convert to GIF
+                        await convertToGif(tempVideoPath, outputGifPath);
+
+                        // Send the GIF
+                        await sendAnimation(msg, fs.createReadStream(outputGifPath));
+
+                        // Cleanup
+                        fs.unlinkSync(tempVideoPath);
+                        fs.unlinkSync(outputGifPath);
+                        
+                        await editMessage({
+                            chat_id: statusMsg.chat.id,
+                            message_id: statusMsg.message_id,
+                            text: '✅ Conversion complete! Here\'s your GIF 🎯'
+                        });
+                    })()
+                ]);
+
+            } catch (error) {
+                console.error('Error converting to GIF:', error);
+                const errorMessage = error.message === 'Processing timeout'
+                    ? '⏱️ Processing took too long. Please try with a shorter video.'
+                    : '❌ Sorry, there was an error converting your video.';
+                
+                await editMessage({
+                    chat_id: statusMsg.chat.id,
+                    message_id: statusMsg.message_id,
+                    text: errorMessage
+                });
+            }
+        };
+
+        await addToVideoQueue(msg, processingPromise);
+    }
+};
+
 // Add action handlers for overlay and watermark callbacks
 actionMap['ffmpeg_overlay'] = async (message, user) => {
     return await handleBrandcastCallback('ffmpeg_overlay', {
