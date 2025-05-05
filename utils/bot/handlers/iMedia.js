@@ -52,7 +52,8 @@ async function handleTRIPO(message) {
         console.log('Fetching image');
         const response = await fetch(imageFile);
         console.log('Converting to buffer');
-        const buffer = await response.buffer();
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
         console.log('Writing file to disk');
         await fs.promises.writeFile(localPath, buffer);
         
@@ -93,6 +94,91 @@ async function handleTRIPO(message) {
         setUserState(message, STATES.IDLE);
     }
 }
+
+
+async function handleVIDU(message) {
+    const userId = message.from.id;
+
+    if (!lobby[userId]?.qoints || lobby[userId].qoints < 50) {
+        await chargeGated(message);
+        return;
+    }
+
+    const imageFile = await getPhotoUrl(message.reply_to_message || message);
+    if (!imageFile) {
+        await sendMessage(message, "Please send me an image to animate.");
+        setUserState(message, STATES.VIDU);
+        return;
+    }
+
+    try {
+        const tmpDir = path.join(__dirname, '../../../tmp');
+        await fs.promises.mkdir(tmpDir, { recursive: true });
+
+        const localPath = path.join(tmpDir, `${userId}_${Date.now()}.jpg`);
+        const response = await fetch(imageFile);
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        await fs.promises.writeFile(localPath, buffer);
+
+        const promptObj = {
+            userId,
+            balance: lobby[userId].balance,
+            username: message.from.first_name,
+            type: 'VIDU_I2V',
+            imageFile: localPath,
+            prompt: (message.text || '').replace('/viduthat', '').trim(),
+            status: 'uploading',
+            timeRequested: Date.now()
+        };
+
+        const task = {
+            message,
+            promptObj,
+            timestamp: Date.now(),
+            status: 'thinking'
+        };
+
+        await react(message, "🏆");
+        enqueueTask(task);
+        setUserState(message, STATES.IDLE);
+    } catch (error) {
+        console.error('Error in handleVIDU:', error);
+        await sendMessage(message, "Sorry, there was an error processing your image.");
+        setUserState(message, STATES.IDLE);
+    }
+}
+
+async function handleVIDUUpscale(message) {
+    const userId = message.from.id;
+    const text = message.text?.replace('/vidupscale', '').trim();
+    const creationId = text || null;
+
+    if (!creationId) {
+        await sendMessage(message, "Please provide a `creation_id` to upscale.");
+        return;
+    }
+
+    const promptObj = {
+        userId,
+        type: 'VIDU_UPSCALE',
+        creationId,
+        status: 'uploading',
+        timeRequested: Date.now()
+    };
+
+    const task = {
+        message,
+        promptObj,
+        timestamp: Date.now(),
+        status: 'thinking'
+    };
+
+    await react(message, "📈");
+    enqueueTask(task);
+    setUserState(message, STATES.IDLE);
+}
+
 
 async function handleMs2ImgFile(message, imageUrl = null, prompt = null) {
     const chatId = message.chat.id;
@@ -522,9 +608,13 @@ async function handleMs3V3ImgFile(message, user = null) {
     await handleImageTask(message, user, 'MS3.3', STATES.MS3V3,  false, 600000)
 }
 
+async function handleMs3V4ImgFile(message, user = null) {
+    await handleImageTask(message, user, 'MS3.4', STATES.MS3V4, false, 600000)
+}
+
 module.exports = 
 {
-    handleImageTask, handleTRIPO,
+    handleImageTask, handleTRIPO, handleVIDU, handleVIDUUpscale,
     handleMs2ImgFile,
     handleSD3ImgFile,
     handleFluxImgFile,

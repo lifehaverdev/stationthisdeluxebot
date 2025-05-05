@@ -15,6 +15,7 @@ const { addWaterMark } = require('../../commands/waterMark')
 const fs = require('fs');
 //const { saveGen } = require('../../db/mongodb');
 const { generateTripo } = require('../../commands/tripo');
+const { startViduGeneration, pollViduUntilSuccess } = require('../../commands/vidu');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const path = require('path');
 const { UserStats } = require('../../db/index');
@@ -133,6 +134,12 @@ async function waitlist(task){
     let run_id;
     if (promptObj.type === 'TRIPO') {
         run_id = await generateTripo(promptObj,processWaitlist);
+    } else if (promptObj.type === 'VIDU_I2V') {
+        run_id = await startViduGeneration(promptObj);   // just get the task_id
+        if (run_id) pollViduUntilSuccess(run_id, processWaitlist); // run in background
+    } else if (promptObj.type === 'VIDU_UPSCALE') {
+        run_id = await startViduUpscale(promptObj);
+        if (run_id) pollViduUntilSuccess(run_id, processWaitlist);
     } else {
         run_id = await generate(promptObj);
     }
@@ -144,7 +151,7 @@ async function waitlist(task){
             timestamp: Date.now(),
         };
         waiting.push(task);
-        console.log(`⭐️${message.from.first_name} asked for ${run_id}`);
+        console.log(`⭐️${message.from.first_name} asked for ${JSON.stringify(run_id)}`);
     } else {
         console.log('no run id',promptObj);
         react(message,"😨")
@@ -487,10 +494,10 @@ async function handleTaskCompletion(task) {
             
             // Extract URLs from run outputs (similar to existing logic)
             if (run?.outputs && run.outputs.length > 0) {
-                run.outputs.forEach(outputItem => {
+                run.outputs.forEach(output => {
                     ["images", "gifs", "videos"].forEach(type => {
-                        if (outputItem.data?.[type]?.length > 0) {
-                            outputItem.data[type].forEach(dataItem => {
+                        if (output.data?.[type]?.length > 0) {
+                            output.data[type].forEach(dataItem => {
                                 const url = dataItem.url;
                                 const fileType = extractType(url);
                                 urls.push({ type: fileType, url });
@@ -546,6 +553,29 @@ async function handleTaskCompletion(task) {
                 console.error('Full error object:', err);
                 sent = false;
             }
+        } else if (promptObj.type === 'VIDU_I2V' && run?.outputs?.[0]?.url) {
+            try {
+                const videoUrl = run.outputs[0].url;
+                const tmpDir = path.join(__dirname, '../../tmp');
+                const localPath = path.join(tmpDir, `${promptObj.username}_${Date.now()}.mp4`);
+        
+                const response = await fetch(videoUrl);
+                if (!response.ok) throw new Error(`Failed to fetch Vidu video`);
+        
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                await fs.promises.writeFile(localPath, buffer);
+        
+                console.log('Sending Vidu video:', localPath);
+                const videoSent = await sendVideo(message, localPath);
+        
+                if (!videoSent) sent = false;
+        
+                await fs.promises.unlink(localPath);
+            } catch (err) {
+                console.error('Error sending Vidu video:', err.message || err);
+                sent = false;
+            }
         } else {
             // Existing handling for other types of tasks
             const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
@@ -566,6 +596,18 @@ async function handleTaskCompletion(task) {
                                 urls.push({ 
                                     type: extractType(image.url), 
                                     url: image.url 
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Add handling for video files
+                    if (output.data?.files?.length > 0) {
+                        output.data.files.forEach(file => {
+                            if (file.url && file.format?.includes('video')) {
+                                urls.push({
+                                    type: 'video',
+                                    url: file.url
                                 });
                             }
                         });

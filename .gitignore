@@ -4,6 +4,7 @@ db/data/*
 src/db/data/*
 
 temp/*
+tmp/*
 output/*
 
 # Logs
@@ -111,3 +112,5 @@ dist
 # TernJS port file
 .tern-port
 db/data/generations_*.json
+.DS_Store
+.DS_Store
