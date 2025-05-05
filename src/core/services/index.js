@@ -4,11 +4,13 @@
  * Exports all core services for easy importing
  */
 
-const ComfyUIService = require('./comfyui');
+const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
-const WorkflowsService = require('./workflows');
+const WorkflowsService = require('./comfydeploy/workflows');
 const MediaService = require('./media');
 const SessionService = require('./session');
+const dbService = require('./db');
+const { initializeAPI } = require('../../api');
 
 /**
  * Initialize all core services
@@ -17,6 +19,7 @@ const SessionService = require('./session');
  */
 async function initializeServices(options = {}) {
   const logger = options.logger || console;
+  const appStartTime = new Date();
   
   try {
     logger.info('Initializing core services...');
@@ -43,6 +46,13 @@ async function initializeServices(options = {}) {
       logger: workflowsLogger
     });
     
+    // Initialize API services
+    const apiServices = initializeAPI({
+      logger,
+      appStartTime,
+      version: options.version
+    });
+    
     logger.info('Core services created successfully');
     
     // Return instantiated services
@@ -52,7 +62,10 @@ async function initializeServices(options = {}) {
       points: pointsService,
       comfyUI: comfyUIService,
       workflows: workflowsService,
-      logger
+      db: dbService,
+      internal: apiServices.internal,
+      logger,
+      appStartTime
     };
   } catch (error) {
     logger.error('Failed to initialize services:', error);

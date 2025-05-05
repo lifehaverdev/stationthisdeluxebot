@@ -4,7 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { ObjectId,  GridFSBucket } = require('mongodb');
 const axios = require('axios');
-const { getBotInstance } = require('../../utils/bot/bot');
+// COMMENTED OUT: Remove bot dependency to avoid conflicts
+// const { getBotInstance } = require('../../utils/bot/bot');
+// Stub implementation if needed
+const getBotInstance = () => ({
+    sendMessage: (chatId, message, options) => console.log(`[STUB] Bot.sendMessage called: ${chatId}, ${message}`)
+});
 
 class LoraDB extends BaseDB {
     constructor() {

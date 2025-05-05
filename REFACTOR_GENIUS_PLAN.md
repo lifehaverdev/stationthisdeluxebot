@@ -1,11 +1,11 @@
 # REFACTOR GENIUS PLAN
 
+## Purpose
+
+This document defines the guiding principles, architecture, and collaboration process for continuing the StationThis refactor. Version 2 reflects a critical directional shift: from foundational infrastructure focus to demonstration-first, user-visible, human-reviewed iteration.
+
 ## Vision
-Transform the StationThis bot from a Telegram-coupled application into a platform-agnostic service that:
-- Works seamlessly across Telegram, Discord, and Web interfaces
-- Maintains all current functionality and business logic
-- Simplifies the architecture for maintainability
-- Focuses on revenue generation through AI services
+We are building a real-time, creative, cross-platform AI assistant — not just code infrastructure. It must work for people, in front of people. The user experience is now the primary driver of system evolution.
 
 ## Core Principles
 - **Practical over Perfect**: Prefer working solutions over perfect abstractions
@@ -102,30 +102,16 @@ src/
    renderer formats as Telegram message with inline buttons
    ```
 
+
 ## Migration Strategy
 
-1. **Phase 1**: Extract Core Services
-   - Move business logic to services layer
-   - Maintain existing command structure temporarily
-   - Implement simple session management
+While Phase 1–4 laid the architectural groundwork, we are now in:
 
-2. **Phase 2**: Build Workflows
-   - Create platform-agnostic workflows
-   - Connect workflows to services
-   - Implement state management
+Phase 5: Human-Centered Assembly
 
-3. **Phase 3**: Add Platform Adapters
-   - Create Telegram adapter using existing bot
-   - Build Discord adapter
-   - Develop web interface
+This phase is about building the real experience. The user (you) is now QA, UX, PM, and founder.
 
-4. **Phase 4**: API Development
-   - Expose internal and external APIs
-   - Connect platforms to APIs
-
-5. **Phase 5**: Legacy Removal
-   - Deprecate old command structure
-   - Complete migration to new architecture
+Only what’s reviewed and verified survives.
 
 ## Development Guidelines
 
@@ -137,9 +123,12 @@ src/
 
 ## Success Metrics
 
-1. All existing commands working across platforms
-2. Clean separation between platform logic and business logic
-3. Ability to add new platforms without touching core code
-4. Continued revenue generation throughout refactor
-5. Improved maintainability and faster feature development 
-6. Demonstrable system behaviors visible in local and staging environments at all times.
+New features work in the interface (not just in theory)
+
+User has seen and signed off on each major feature
+
+Handoff documents match reality
+
+Playwright or live testing proves behavior
+
+Features don’t drift — they snap into place via human eyes

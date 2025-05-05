@@ -1,6 +1,15 @@
-const { MongoClient } = require('mongodb');
-const { logThis } = require('../../utils/utils');
+/**
+ * Database Queue Utility
+ * 
+ * Manages database operation queuing and client caching
+ */
 
+const { MongoClient } = require('mongodb');
+//const { logThis } = require('../../utils/utils');
+require('dotenv').config();
+function logThis(active, message) {
+    if (active) console.log(message);
+}
 const LOG_DB_QUEUE = 'db_queue';
 const LOG_CLIENT = false;
 const LOG_CONNECTION = 'connection';
@@ -123,6 +132,10 @@ class DatabaseQueue {
     }
 }
 
+/**
+ * Get a cached MongoDB client or create a new one
+ * @returns {Promise<MongoClient>} MongoDB client
+ */
 async function getCachedClient() {
     logThis(LOG_CLIENT, '[getCachedClient] Called');
 
@@ -136,7 +149,10 @@ async function getCachedClient() {
         logThis(LOG_CONNECTION, '[getCachedClient] No cached client found. Initiating new connection...');
         
         connectionInProgress = (async () => {
-            cachedClient = new MongoClient(process.env.MONGO_PASS);
+            // Use MONGO_PASS environment variable instead of MONGODB_URI
+            const uri = process.env.MONGO_PASS || process.env.MONGODB_URI || 'mongodb://localhost:27017';
+            console.log('[getCachedClient] Connecting to MongoDB with URI:', uri.replace(/mongodb\+srv:\/\/[^:]+:[^@]+@/, 'mongodb+srv://[hidden]:[hidden]@'));
+            cachedClient = new MongoClient(uri);
             logThis(LOG_CLIENT, '[getCachedClient] New MongoClient instance created.');
 
             try {

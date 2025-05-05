@@ -1,7 +1,10 @@
 const sdk = require('api')('@alchemy-docs/v1.0#1qz7y1elt7gubvr');
 const sdk2 = require('api')('@alchemy-docs/v1.0#eyr736lt7gueji');
 const { sendMessage, DEV_DMS } = require('../utils')
-const { burns } = require('../bot/bot');
+// COMMENTED OUT: Remove bot dependency to avoid conflicts
+// const { burns } = require('../bot/bot');
+// Stub implementation
+const burns = [];
 
 const blessings = {
     //FU STUDIOS PROMO

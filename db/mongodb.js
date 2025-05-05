@@ -5,7 +5,22 @@ const stream = require('stream');
 require('./mongoWatch.js')
 const fs = require('fs')
 
-const { lobby, workspace } = require('../utils/bot/bot')
+// COMMENTED OUT: Remove bot dependency to avoid conflicts
+// const { lobby, workspace } = require('../utils/bot/bot')
+// Stub implementation for bot functionality
+const lobby = {
+    getUserDataPointRaw: (userId, key) => console.log(`[STUB] getUserDataPointRaw called for ${userId}, key: ${key}`),
+    getUserDataPoint: (userId, key) => console.log(`[STUB] getUserDataPoint called for ${userId}, key: ${key}`),
+    setUserDataPoint: (userId, key, value) => console.log(`[STUB] setUserDataPoint called for ${userId}, key: ${key}, value: ${value}`),
+    setUserData: (userId, data) => console.log(`[STUB] setUserData called for ${userId}`),
+    msgUser: (userId, message) => console.log(`[STUB] msgUser called for ${userId}, message: ${message}`)
+};
+
+const workspace = {
+    notifyLoraModified: (userId, loraId) => console.log(`[STUB] notifyLoraModified called for user ${userId}, lora: ${loraId}`),
+    notifyLoraDeleted: (userId, loraId) => console.log(`[STUB] notifyLoraDeleted called for user ${userId}, lora: ${loraId}`) 
+};
+
 const { getBalance } = require('../utils/users/checkBalance.js')
 
 const defaultUserData = require("../utils/users/defaultUserData.js");

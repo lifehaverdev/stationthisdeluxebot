@@ -19,6 +19,11 @@ function initializePlatforms(services, options = {}) {
   const platforms = {};
   const logger = services.logger || console;
   
+  // Debug log for internal services
+  logger.info('DEBUG: Platforms - Internal services:', 
+    services.internal ? 'exists' : 'missing',
+    services.internal?.status ? 'status service exists' : 'status service missing');
+  
   // Initialize platforms based on configuration
   if (options.enableTelegram !== false) {
     try {

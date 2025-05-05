@@ -99,12 +99,25 @@ function showAPIClientConfig() {
 }
 
 // Create service instances with custom API URL and enhanced logging
+const workflowsLogger = {
+  info: (message) => log('workflows', message),
+  warn: (message, details = null) => log('workflows-warn', message, details),
+  error: (message, details = null) => log('workflows-error', message, details)
+};
+
 const workflows = new WorkflowsService({
-  logger: (msg) => log('workflows', msg),
+  logger: workflowsLogger,
   apiUrl: API_URL
 });
 
+const comfyuiLogger = {
+  info: (message) => log('comfyui', message),
+  warn: (message, details = null) => log('comfyui-warn', message, details),
+  error: (message, details = null) => log('comfyui-error', message, details)
+};
+
 const comfyui = new ComfyUIService({
+  logger: comfyuiLogger,
   apiUrl: API_URL
 });
 

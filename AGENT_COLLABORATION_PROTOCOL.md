@@ -1,67 +1,62 @@
 # AGENT COLLABORATION PROTOCOL
 
 ## Purpose
-To establish strict rules and standards for documentation and communication between AI agents working on the StationThis refactor, ensuring continuity, coherence, and preventing architectural drift.
+To define a new mode of interaction for agents working on the StationThis project: one centered on user-supervised iteration, live demonstrations, and conversational handoff rather than document-driven silos.
 
 ## Documentation Structure
 
-### 1. Progress Tracking
+### All collaboration artifacts should be placed in:
 ```
-docs/
-  progress/
-    phase1/
-      services_status.md       # Status of each core service
-      completed_tasks.md       # Completed migration tasks
-      blockers.md              # Current blockers and issues
-    phase2/
+/vibecode/
+  prompts/           # User-issued or meta prompts
+  handoffs/          # Conversational or implementation summaries
+  demos/             # Playwright tests or scripts
+  maps/              # State summaries or visual audits
+  reports/           # Health checks, audits, balance reviews
+  decisions/         # High-level architectural or process decisions
+  interface_specs/   # Frontend interaction specifications
       ...
 ```
 
-### 2. Architecture Decision Records (ADRs)
-```
-docs/
-  decisions/
-    ADR-001-session-management.md
-    ADR-002-workflow-design.md
-    ...
-```
 
-### 3. Agent Handoff Documents
-```
-docs/
-  handoffs/
-    HANDOFF-2023-12-01.md      # State of the system at handoff
-```
-
-## Communication Rules
+## Collaboration Flow
 
 ### Before Starting Work
-1. **Review Current State**
-   - Read latest HANDOFF document
-   - Check progress tracking for current phase
-   - Review all ADRs
 
-2. **State Intent**
-   - Explicitly declare which components will be modified
-   - Link to relevant sections of REFACTOR_GENIUS_PLAN.md
+1. **Entry via Generic Prompt**
+
+All agents begin by reading the Generic Entry Prompt.
+This prompt tells them:
+
+   - Review the Genius Plan and North Star
+   - Read all status maps and latest handoffs
+   - Ask the user what to focus on next
+   
+2. **Focus Selection**
+   - The agent must wait for the user to define the current priority.
+   - No action is taken without explicit user input.
 
 ### During Development
-3. **Document Decisions**
-   - Create new ADR for any architectural change
-   - Format: `ADR-XXX-brief-description.md`
-   - Must include: Context, Decision, Consequences, Alternatives Considered
+3. **Review + Build**
+   - Agent re-reads structural files to align with the chosen focus.
+   - Agent builds or modifies code.
+   - Agent immediately attempts to create a working demonstration (UI, Playwright, visual asset).
 
-4. **Update Progress**
-   - Update relevant progress tracking documents
-   - Mark completed tasks
-   - Document any deviations from the plan
+4. **User Checkpoint**
+   - Agent stops.
+   - Agent asks: “Can you see this working?”
+   - If the answer is no, agent iterates again with the user until the feature works.
 
 ### Before Handoff
 5. **Create Handoff Document**
-   - Summarize work completed
-   - List current state of all components
-   - Highlight next tasks
-   - Note any changes to the original plan
+   - Agent creates a /vibecode/handoffs/HANDOFF-YYYY-MM-DD.md
+   - Includes: what was done, what works, what remains.
+   - Links to the demo or Playwright test proving success.
+
+### Completion ###
+
+6. **Phase advancement**
+- only after a demonstration is signed off by the user may th ephase document in /plans/phases/ be updated
 
 ## Architecture Protection Mechanisms
 
@@ -137,6 +132,16 @@ docs/
 ```
 
 ## Implementation Guidelines
+
+Communication Guidelines
+
+Be conversational and pause often
+
+Always ask for direction before assuming task sequence
+
+Ask for user confirmation when a feature is ready for review
+
+Avoid overwhelming the user with multi-step changes
 
 1. **Start Each Session With**:
    ```

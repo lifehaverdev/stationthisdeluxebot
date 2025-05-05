@@ -1,0 +1,903 @@
+{
+  "extra": {
+    "ds": {
+      "scale": 0.6934334949442649,
+      "offset": [
+        418.05714409574404,
+        250.24429146869716
+      ]
+    },
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0
+  },
+  "links": [
+    [
+      71,
+      43,
+      0,
+      48,
+      0,
+      "PYRAMIDFLOWVAE"
+    ],
+    [
+      74,
+      40,
+      0,
+      50,
+      0,
+      "PYRAMIDFLOWMODEL"
+    ],
+    [
+      76,
+      50,
+      0,
+      48,
+      1,
+      "LATENT"
+    ],
+    [
+      77,
+      48,
+      0,
+      51,
+      0,
+      "IMAGE"
+    ],
+    [
+      80,
+      37,
+      0,
+      53,
+      0,
+      "CLIP"
+    ],
+    [
+      81,
+      53,
+      0,
+      50,
+      1,
+      "PYRAMIDFLOWPROMPT"
+    ],
+    [
+      82,
+      43,
+      0,
+      54,
+      0,
+      "PYRAMIDFLOWVAE"
+    ],
+    [
+      83,
+      54,
+      0,
+      50,
+      2,
+      "LATENT"
+    ],
+    [
+      89,
+      57,
+      0,
+      54,
+      1,
+      "IMAGE"
+    ],
+    [
+      91,
+      58,
+      0,
+      57,
+      1,
+      "INT"
+    ],
+    [
+      93,
+      59,
+      0,
+      57,
+      2,
+      "INT"
+    ],
+    [
+      94,
+      58,
+      0,
+      50,
+      3,
+      "INT"
+    ],
+    [
+      95,
+      59,
+      0,
+      50,
+      4,
+      "INT"
+    ],
+    [
+      96,
+      61,
+      0,
+      53,
+      1,
+      "STRING"
+    ],
+    [
+      97,
+      62,
+      0,
+      53,
+      2,
+      "STRING"
+    ],
+    [
+      98,
+      63,
+      0,
+      57,
+      0,
+      "IMAGE"
+    ],
+    [
+      99,
+      64,
+      0,
+      50,
+      5,
+      "INT"
+    ]
+  ],
+  "nodes": [
+    {
+      "id": 39,
+      "pos": [
+        30,
+        650
+      ],
+      "mode": 0,
+      "size": [
+        318.25567626953125,
+        66.4825210571289
+      ],
+      "type": "Note",
+      "color": "#432",
+      "flags": {},
+      "order": 0,
+      "inputs": [],
+      "bgcolor": "#653",
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "fp8 text encoder results are different from fp16!"
+      ]
+    },
+    {
+      "id": 57,
+      "pos": [
+        635,
+        833
+      ],
+      "mode": 0,
+      "size": [
+        315,
+        130
+      ],
+      "type": "ImageScale",
+      "flags": {},
+      "order": 12,
+      "inputs": [
+        {
+          "link": 98,
+          "name": "image",
+          "type": "IMAGE"
+        },
+        {
+          "link": 91,
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "link": 93,
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            89
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageScale"
+      },
+      "widgets_values": [
+        "lanczos",
+        1024,
+        1024,
+        "center"
+      ]
+    },
+    {
+      "id": 54,
+      "pos": [
+        993,
+        786
+      ],
+      "mode": 0,
+      "size": [
+        315,
+        102
+      ],
+      "type": "PyramidFlowVAEEncode",
+      "flags": {},
+      "order": 13,
+      "inputs": [
+        {
+          "link": 82,
+          "name": "vae",
+          "type": "PYRAMIDFLOWVAE"
+        },
+        {
+          "link": 89,
+          "name": "image",
+          "type": "IMAGE"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            83
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowVAEEncode"
+      },
+      "widgets_values": [
+        false,
+        0.25
+      ]
+    },
+    {
+      "id": 53,
+      "pos": [
+        444,
+        476
+      ],
+      "mode": 0,
+      "size": [
+        245.1999969482422,
+        98
+      ],
+      "type": "PyramidFlowTextEncode",
+      "flags": {},
+      "order": 11,
+      "inputs": [
+        {
+          "link": 80,
+          "name": "clip",
+          "type": "CLIP"
+        },
+        {
+          "link": 96,
+          "name": "positive_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "positive_prompt"
+          }
+        },
+        {
+          "link": 97,
+          "name": "negative_prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "negative_prompt"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_embeds",
+          "type": "PYRAMIDFLOWPROMPT",
+          "links": [
+            81
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowTextEncode"
+      },
+      "widgets_values": [
+        "FPV flying over seaside cliffs while the sun is setting, hyper quality, Ultra HD, 8K",
+        "cartoon style, worst quality, low quality, blurry, absolute black, absolute white, low res, extra limbs, extra digits, misplaced objects, mutated anatomy, monochrome, horror",
+        true
+      ]
+    },
+    {
+      "id": 48,
+      "pos": [
+        1032,
+        571
+      ],
+      "mode": 0,
+      "size": [
+        315,
+        150
+      ],
+      "type": "PyramidFlowVAEDecode",
+      "flags": {},
+      "order": 15,
+      "inputs": [
+        {
+          "link": 71,
+          "name": "vae",
+          "type": "PYRAMIDFLOWVAE"
+        },
+        {
+          "link": 76,
+          "name": "samples",
+          "type": "LATENT"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            77
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowVAEDecode"
+      },
+      "widgets_values": [
+        256,
+        0.25,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 50,
+      "pos": [
+        1028,
+        -15
+      ],
+      "mode": 0,
+      "size": [
+        210,
+        278
+      ],
+      "type": "PyramidFlowSampler",
+      "flags": {},
+      "order": 14,
+      "inputs": [
+        {
+          "link": 74,
+          "name": "model",
+          "type": "PYRAMIDFLOWMODEL"
+        },
+        {
+          "link": 81,
+          "name": "prompt_embeds",
+          "type": "PYRAMIDFLOWPROMPT"
+        },
+        {
+          "link": 83,
+          "name": "input_latent",
+          "type": "LATENT",
+          "shape": 7
+        },
+        {
+          "link": 94,
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "link": 95,
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "link": 99,
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            76
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowSampler"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        "20, 20, 20",
+        "10, 10, 10",
+        16,
+        7,
+        5,
+        44664248661402,
+        "fixed",
+        false
+      ]
+    },
+    {
+      "id": 60,
+      "pos": [
+        0,
+        0
+      ],
+      "mode": 0,
+      "size": [
+        210,
+        96
+      ],
+      "type": "ComfyDeploy",
+      "color": "#432",
+      "flags": {},
+      "order": 1,
+      "inputs": [],
+      "bgcolor": "#653",
+      "outputs": [],
+      "properties": {
+        "version": "",
+        "workflow_id": "",
+        "workflow_name": ""
+      },
+      "widgets_values": [
+        "",
+        "",
+        "1"
+      ]
+    },
+    {
+      "id": 62,
+      "pos": [
+        -589,
+        497
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "ComfyUIDeployExternalText",
+      "flags": {},
+      "order": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            97
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyUIDeployExternalText"
+      },
+      "widgets_values": [
+        "input_negative",
+        "cartoon style, worst quality, low quality, blurry, absolute black, absolute white, low res, extra limbs, extra digits, misplaced objects, mutated anatomy, monochrome, horror",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 63,
+      "pos": [
+        -212,
+        868
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "ComfyUIDeployExternalImage",
+      "flags": {},
+      "order": 3,
+      "inputs": [
+        {
+          "link": null,
+          "name": "default_value",
+          "type": "IMAGE",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            98
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyUIDeployExternalImage"
+      },
+      "widgets_values": [
+        "input_image",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 61,
+      "pos": [
+        -629,
+        228
+      ],
+      "mode": 0,
+      "size": [
+        400,
+        200
+      ],
+      "type": "ComfyUIDeployExternalText",
+      "flags": {},
+      "order": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            96
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyUIDeployExternalText"
+      },
+      "widgets_values": [
+        "input_prompt",
+        "FPV flying over seaside cliffs while the sun is setting, hyper quality, Ultra HD, 8K",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 43,
+      "pos": [
+        250,
+        282
+      ],
+      "mode": 0,
+      "size": [
+        411.12652587890625,
+        82
+      ],
+      "type": "PyramidFlowVAELoader",
+      "flags": {},
+      "order": 5,
+      "inputs": [
+        {
+          "link": null,
+          "name": "compile_args",
+          "type": "PYRAMIDFLOW_COMPILEARGS",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pyramidflow_vae",
+          "type": "PYRAMIDFLOWVAE",
+          "links": [
+            71,
+            82
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowVAELoader"
+      },
+      "widgets_values": [
+        "pyramid_flow_vae_bf16.safetensors",
+        "bf16"
+      ]
+    },
+    {
+      "id": 40,
+      "pos": [
+        226,
+        92
+      ],
+      "mode": 0,
+      "size": [
+        444.05462646484375,
+        106
+      ],
+      "type": "PyramidFlowTransformerLoader",
+      "flags": {},
+      "order": 6,
+      "inputs": [
+        {
+          "link": null,
+          "name": "compile_args",
+          "type": "PYRAMIDFLOW_COMPILEARGS",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pyramidflow_model",
+          "type": "PYRAMIDFLOWMODEL",
+          "links": [
+            74
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PyramidFlowTransformerLoader"
+      },
+      "widgets_values": [
+        "pyramid_flow_miniflux_768_bf16.safetensors",
+        "bf16",
+        false
+      ]
+    },
+    {
+      "id": 37,
+      "pos": [
+        -40,
+        480
+      ],
+      "mode": 0,
+      "size": [
+        407.1675720214844,
+        106
+      ],
+      "type": "DualCLIPLoader",
+      "flags": {},
+      "order": 7,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            80
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DualCLIPLoader"
+      },
+      "widgets_values": [
+        "clip_l.safetensors",
+        "t5xxl_fp16.safetensors",
+        "flux"
+      ]
+    },
+    {
+      "id": 58,
+      "pos": [
+        347,
+        817
+      ],
+      "mode": 0,
+      "size": [
+        256.92181396484375,
+        82
+      ],
+      "type": "PrimitiveNode",
+      "flags": {},
+      "order": 8,
+      "title": "width",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            91,
+            94
+          ],
+          "widget": {
+            "name": "width"
+          },
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Run widget replace on values": false
+      },
+      "widgets_values": [
+        1024,
+        "fixed"
+      ]
+    },
+    {
+      "id": 59,
+      "pos": [
+        350,
+        945
+      ],
+      "mode": 0,
+      "size": [
+        251.2918701171875,
+        82
+      ],
+      "type": "PrimitiveNode",
+      "flags": {},
+      "order": 9,
+      "title": "height",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            93,
+            95
+          ],
+          "widget": {
+            "name": "height"
+          },
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Run widget replace on values": false
+      },
+      "widgets_values": [
+        1024,
+        "fixed"
+      ]
+    },
+    {
+      "id": 51,
+      "pos": [
+        1420,
+        113
+      ],
+      "mode": 0,
+      "size": [
+        1018.2306518554688,
+        334
+      ],
+      "type": "VHS_VideoCombine",
+      "flags": {},
+      "order": 16,
+      "inputs": [
+        {
+          "link": 77,
+          "name": "images",
+          "type": "IMAGE"
+        },
+        {
+          "link": null,
+          "name": "audio",
+          "type": "AUDIO",
+          "shape": 7
+        },
+        {
+          "link": null,
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "shape": 7
+        },
+        {
+          "link": null,
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "crf": 19,
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "pingpong": false,
+        "frame_rate": 24,
+        "loop_count": 0,
+        "save_output": true,
+        "videopreview": {
+          "muted": false,
+          "hidden": false,
+          "params": {
+            "type": "output",
+            "format": "video/h264-mp4",
+            "filename": "PyramidFlow_00131.mp4",
+            "subfolder": "",
+            "frame_rate": 24
+          },
+          "paused": false
+        },
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "filename_prefix": "ms3_3"
+      }
+    },
+    {
+      "id": 64,
+      "pos": [
+        266,
+        -171
+      ],
+      "mode": 0,
+      "size": [
+        453.5999755859375,
+        200
+      ],
+      "type": "ComfyUIDeployExternalNumberInt",
+      "flags": {},
+      "order": 10,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "links": [
+            99
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfyUIDeployExternalNumberInt"
+      },
+      "widgets_values": [
+        "input_seed",
+        44664248661402,
+        "",
+        ""
+      ]
+    }
+  ],
+  "config": {},
+  "groups": [],
+  "version": 0.4,
+  "last_link_id": 99,
+  "last_node_id": 64
+}

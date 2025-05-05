@@ -45,7 +45,7 @@ instead of typing a /command into a telegram chat to interact with our tools, th
 
 ## Interface Vision
 
-StationThis is an interactive canvas-based workspace.
+StationThis web interface is an interactive canvas-based workspace.
 Users land in a dynamic water-themed canvas where all workflows, actions, and tools manifest as draggable, resizable tiles.
 Persistent heads-up displays show EXP, charges, and settings.
 

@@ -85,5 +85,6 @@ function optionalAuth(req, res, next) {
 
 module.exports = {
   authenticateUser,
-  optionalAuth
+  optionalAuth,
+  authenticateToken: authenticateUser // Alias for backward compatibility
 }; 

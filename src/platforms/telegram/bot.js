@@ -11,6 +11,7 @@ const createMakeImageCommandHandler = require('./commands/makeImageCommand');
 const createSettingsCommandHandler = require('./commands/settingsCommand');
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');
 const createTrainModelCommandHandler = require('./commands/trainModelCommand');
+const createStatusCommandHandler = require('./commands/statusCommand');
 
 /**
  * Create and configure the Telegram bot
@@ -27,7 +28,8 @@ function createTelegramBot(dependencies, token, options = {}) {
     workflowsService,
     mediaService,
     db,
-    logger = console
+    logger = console,
+    appStartTime
   } = dependencies;
   
   // Create the Telegram bot instance
@@ -79,6 +81,14 @@ function createTelegramBot(dependencies, token, options = {}) {
     logger
   });
   
+  const handleStatusCommand = createStatusCommandHandler({
+    bot,
+    logger,
+    services: {
+      internal: dependencies.internal
+    }
+  });
+  
   // Register command handlers
   
   // /make command - Generate images
@@ -108,6 +118,11 @@ function createTelegramBot(dependencies, token, options = {}) {
   bot.onText(/^\/train(?:@\w+)?\s*(.*)/i, (message, match) => {
     const args = match[1] || '';
     handleTrainModelCommand(message, args);
+  });
+  
+  // /status command - Show application runtime information
+  bot.onText(/^\/status(?:@\w+)?/i, (message) => {
+    handleStatusCommand(message);
   });
   
   // Handle callback queries for inline buttons

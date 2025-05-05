@@ -4,10 +4,10 @@ const TelegramBot = require("node-telegram-bot-api");
 //const globalStatusDB = new GlobalStatusDB();
 
 const botToken = process.env.TELEGRAM_TOKEN;
-const bot = new TelegramBot(botToken,
-    {
-        polling: true
-    });
+// const bot = new TelegramBot(botToken,
+//     {
+//         polling: true
+//     });
 const startup = Date.now();
 const lobby = {};
 const stateHandlers = {};//from imessage

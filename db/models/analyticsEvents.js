@@ -1,6 +1,11 @@
 const { BaseDB } = require('./BaseDB');
 const { PRIORITY } = require('../utils/queue');
-const { lobby, waiting, taskQueue } = require('../../utils/bot/bot')
+// COMMENTED OUT: Remove bot dependency to avoid conflicts
+// const { lobby, waiting, taskQueue } = require('../../utils/bot/bot')
+// Stub implementations
+const lobby = {};
+const waiting = [];
+const taskQueue = [];
 
 const EVENT_TYPES = {
     GENERATION: 'generation',

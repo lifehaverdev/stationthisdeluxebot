@@ -78,7 +78,7 @@ export class CanvasComponent extends Component {
   template() {
     return `
       <div class="canvas-component">
-        <canvas id="main-canvas"></canvas>
+        <canvas id="main-canvas" width="1000" height="700"></canvas>
         
         <div class="hud-overlay">
           <button class="btn-save-workspace" title="Save Workspace">
@@ -135,14 +135,41 @@ export class CanvasComponent extends Component {
   }
   
   init() {
-    this.appendToParent();
+    // Check if parentElement exists before appending
+    if (this.parentElement && this.parentElement.appendChild) {
+      this.appendToParent();
+    } else {
+      console.error('Invalid parent element for CanvasComponent');
+      
+      // Create and append to body as fallback
+      if (!this.element) {
+        this.render();
+      }
+      
+      if (this.element && document.body) {
+        document.body.appendChild(this.element);
+        console.log('Canvas component appended to document.body as fallback');
+      }
+    }
     
     // Get canvas reference
-    this.canvasRef = this.element.querySelector('.main-canvas');
-    this.ctx = this.canvasRef.getContext('2d');
+    this.canvasRef = document.getElementById('main-canvas');
     
-    // Set canvas size to full viewport
-    this.resizeCanvas();
+    // Check if canvas exists before getting context
+    if (this.canvasRef) {
+      this.ctx = this.canvasRef.getContext('2d');
+      
+      // Set canvas size to full viewport
+      this.resizeCanvas();
+      
+      // Add canvas-specific event listeners
+      this.canvasRef.addEventListener('mousedown', this.handleMouseDown);
+      this.canvasRef.addEventListener('wheel', this.handleWheel);
+    } else {
+      console.error('Canvas element not found, will try to initialize later');
+      // Try again on next frame
+      setTimeout(() => this.initCanvas(), 100);
+    }
     
     // Try to import AuthService
     import('../../services/AuthService.js').then(module => {
@@ -167,10 +194,8 @@ export class CanvasComponent extends Component {
     
     // Add event listeners
     window.addEventListener('resize', () => this.resizeCanvas());
-    this.canvasRef.addEventListener('mousedown', this.handleMouseDown);
     document.addEventListener('mousemove', this.handleMouseMove);
     document.addEventListener('mouseup', this.handleMouseUp);
-    this.canvasRef.addEventListener('wheel', this.handleWheel);
     document.addEventListener('click', (e) => {
       // Close context menus when clicking elsewhere
       if (this.state.selectedConnection || this.state.showingTileContextMenu) {
@@ -257,6 +282,20 @@ export class CanvasComponent extends Component {
         // Toggle template list
         EventBus.publish('template:toggle');
       });
+    }
+  }
+  
+  // Helper method to initialize canvas after a delay
+  initCanvas() {
+    this.canvasRef = document.getElementById('main-canvas');
+    if (this.canvasRef) {
+      this.ctx = this.canvasRef.getContext('2d');
+      this.resizeCanvas();
+      this.canvasRef.addEventListener('mousedown', this.handleMouseDown);
+      this.canvasRef.addEventListener('wheel', this.handleWheel);
+      console.log('Canvas initialized successfully');
+    } else {
+      console.error('Canvas element still not found after retry');
     }
   }
   
@@ -432,8 +471,12 @@ export class CanvasComponent extends Component {
   }
   
   resizeCanvas() {
+    if (!this.canvasRef) return;
+    
     this.canvasRef.width = window.innerWidth;
     this.canvasRef.height = window.innerHeight;
+    
+    // Re-render after resize
     this.render();
   }
   
@@ -644,13 +687,28 @@ export class CanvasComponent extends Component {
   }
   
   render() {
-    // Clear canvas
+    // Don't try to render if we don't have a context
+    if (!this.ctx || !this.canvasRef) {
+      console.warn('Attempted to render without canvas context');
+      return;
+    }
+    
+    // Clear the canvas
     this.ctx.clearRect(0, 0, this.canvasRef.width, this.canvasRef.height);
     
-    // Draw background, grid, and tiles
+    // Draw the background (water animation)
     this.drawBackground();
+    
+    // Draw the grid
     this.drawGrid();
+    
+    // Draw the tiles
     this.drawTiles();
+    
+    // Draw the connections
+    if (this.connectionSystem) {
+      this.connectionSystem.render(this.ctx, this.state.offsetX, this.state.offsetY, this.state.zoom);
+    }
     
     // Update tile positions based on canvas offset and zoom
     this.state.tiles.forEach(tile => {

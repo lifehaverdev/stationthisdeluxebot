@@ -12,6 +12,7 @@ const createUpscaleCommandHandler = require('./commands/upscaleCommand');
 const createSettingsCommandHandler = require('./commands/settingsCommand');
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');
 const createTrainModelCommandHandler = require('./commands/trainModelCommand');
+const createStatusCommandHandler = require('./commands/statusCommand');
 
 /**
  * Create and configure the Discord bot
@@ -30,6 +31,9 @@ function createDiscordBot(dependencies, token, options = {}) {
     db,
     logger = console
   } = dependencies;
+  
+  // Store app start time for the status command
+  const appStartTime = new Date();
   
   // Create Discord client with necessary intents
   const client = new Client({
@@ -84,12 +88,21 @@ function createDiscordBot(dependencies, token, options = {}) {
     logger
   });
   
+  const handleStatusCommand = createStatusCommandHandler({
+    client,
+    services: {
+      internal: dependencies.internal
+    },
+    logger
+  });
+  
   // Register commands with the client
   client.commands.set('make', handleMakeImageCommand);
   client.commands.set('upscale', handleUpscaleCommand);
   client.commands.set('settings', handleSettingsCommand);
   // client.commands.set('collections', handleCollectionsCommand);
   client.commands.set('train', handleTrainModelCommand);
+  client.commands.set('status', handleStatusCommand);
   
   // Command data for Discord API
   // This defines the slash commands and their options
@@ -213,12 +226,21 @@ function createDiscordBot(dependencies, token, options = {}) {
           required: false
         }
       ]
+    },
+    {
+      name: 'status',
+      description: 'Display bot status and runtime information'
     }
   ];
   
   // Register event handlers
   client.on('ready', async () => {
     logger.info(`Discord bot logged in as ${client.user.tag}`);
+    
+    // Log registered commands for debugging
+    logger.info(`Registering ${commands.length} slash commands with Discord API`);
+    logger.info(`Command names: ${commands.map(cmd => cmd.name).join(', ')}`);
+    logger.info(`Internal handlers: ${Array.from(client.commands.keys()).join(', ')}`);
     
     // Register slash commands
     try {
@@ -232,6 +254,15 @@ function createDiscordBot(dependencies, token, options = {}) {
       );
       
       logger.info('Successfully registered application commands');
+      
+      // Force sync client.commands with registered commands
+      // This ensures our internal collection matches what we registered
+      commands.forEach(cmd => {
+        if (!client.commands.has(cmd.name)) {
+          logger.warn(`Command ${cmd.name} is registered with Discord but missing a handler!`);
+        }
+      });
+      
     } catch (error) {
       logger.error('Error registering slash commands:', error);
     }
@@ -243,14 +274,24 @@ function createDiscordBot(dependencies, token, options = {}) {
     
     const { commandName } = interaction;
     
+    // Add logging for received command
+    logger.info(`Received command: ${commandName}`);
+    
     // Get the command handler
     const command = client.commands.get(commandName);
     
-    if (!command) return;
+    // Add better debug logging
+    if (!command) {
+      logger.error(`No handler registered for command: ${commandName}`);
+      logger.info(`Available commands: ${Array.from(client.commands.keys()).join(', ')}`);
+      return;
+    }
     
     try {
       // Execute the command
+      logger.info(`Executing command: ${commandName}`);
       await command(interaction);
+      logger.info(`Command ${commandName} executed successfully`);
     } catch (error) {
       logger.error(`Error executing command ${commandName}:`, error);
       

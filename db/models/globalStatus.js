@@ -1,4 +1,13 @@
-const { globalStatus } = require('../../utils/bot/bot');
+// COMMENTED OUT: Remove bot dependency to avoid conflicts
+// const { globalStatus } = require('../../utils/bot/bot');
+// Stub implementation for globalStatus
+const globalStatus = {
+    cooking: [],
+    training: [],
+    chargePurchases: [],
+    updatedAt: new Date()
+};
+
 const { BaseDB } = require('./BaseDB');
 const { UserEconomy } = require('../../db');
 

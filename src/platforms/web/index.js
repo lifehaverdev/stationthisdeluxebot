@@ -8,6 +8,7 @@ const express = require('express');
 const path = require('path');
 const { initializeRoutes } = require('./routes');
 const { setupMiddleware } = require('./middleware');
+const fs = require('fs');
 
 /**
  * Initialize the web platform
@@ -21,10 +22,20 @@ function initializeWebPlatform(services, options = {}) {
   // Set up middleware
   setupMiddleware(app);
   
-  // Initialize API routes
-  initializeRoutes(app, services);
+  // Initialize API routes (now async)
+  // We need to wrap the rest of the setup in an async IIFE or make initializeWebPlatform async
+  // Making initializeWebPlatform async seems cleaner
   
-  // Serve static files
+  // Return an async function that completes the setup
+  return {
+    app,
+    initializeRoutes: async () => { // Introduce an async method to handle route initialization
+      await initializeRoutes(app, services); // Await the async route initializer
+  
+  // Serve static files from the client/dist directory first (for the canvas UI)
+  app.use(express.static(path.join(__dirname, 'client', 'dist')));
+  
+  // Then serve from the regular static path if specified
   if (options.staticPath) {
     app.use(express.static(options.staticPath));
   }
@@ -32,20 +43,22 @@ function initializeWebPlatform(services, options = {}) {
   // Handle SPA routing - return index.html for all unmatched routes
   app.get('*', (req, res) => {
     if (req.accepts('html')) {
-      // Use just the static path directly, don't append 'public'
-      if (options.staticPath) {
+      // Prioritize the client/dist/index.html for the canvas UI
+      const clientIndexPath = path.join(__dirname, 'client', 'dist', 'index.html');
+      if (fs.existsSync(clientIndexPath)) {
+        res.sendFile(clientIndexPath);
+      } else if (options.staticPath) {
+        // Fallback to the static path if the client index doesn't exist
         res.sendFile(path.join(options.staticPath, 'index.html'));
       } else {
-        // Fallback to a path relative to this file
+        // Default fallback
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
       }
     } else {
       res.status(404).json({ error: 'Not found' });
     }
   });
-  
-  return {
-    app,
+    },
     start: (port = 3000) => {
       return new Promise((resolve) => {
         const server = app.listen(port, () => {

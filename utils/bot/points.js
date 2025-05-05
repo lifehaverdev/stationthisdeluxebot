@@ -9,11 +9,7 @@ const { NOCOINERSTARTER, POINTMULTI, checkIn } = require('./gatekeep')
 
 const floorplanDB = new FloorplanDB();
 
-// Helper function to get the user's max balance
-function getMaxBalance(userObject) {
-    const max = Math.floor((userObject.balance + NOCOINERSTARTER) / POINTMULTI)
-    return max; // Adjust this as needed if balance calculations are more complex
-}
+
 
 // Helper function to update group points in DB
 async function updateGroupPoints(group, pointsDeducted) {
@@ -26,6 +22,12 @@ async function updateGroupPoints(group, pointsDeducted) {
         console.error(`Failed to update group points in DB for group ${group.chat.id}:`, error);
         throw error; // Or handle as needed
     }
+}
+
+// Helper function to get the user's max balance
+function getMaxBalance(userObject) {
+    const max = Math.floor((userObject.balance + NOCOINERSTARTER) / POINTMULTI)
+    return max; // Adjust this as needed if balance calculations are more complex
 }
 
 async function addPoints(task) {

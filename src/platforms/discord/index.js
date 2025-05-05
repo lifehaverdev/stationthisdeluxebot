@@ -20,6 +20,7 @@ function initializeDiscordPlatform(services, options = {}) {
     sessionService,
     workflowsService,
     mediaService,
+    internal, // Internal API services
     logger = console
   } = services;
   
@@ -37,6 +38,7 @@ function initializeDiscordPlatform(services, options = {}) {
       sessionService,
       workflowsService,
       mediaService,
+      internal, // Pass internal API services
       logger
     },
     token,
