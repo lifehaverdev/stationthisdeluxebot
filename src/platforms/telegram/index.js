@@ -40,7 +40,8 @@ function initializeTelegramPlatform(services, options = {}) {
       workflowsService,
       mediaService,
       internal,
-      logger
+      logger,
+      appStartTime: services.appStartTime
     },
     token,
     { polling: true, ...options } // Enable polling by default
@@ -53,15 +54,16 @@ function initializeTelegramPlatform(services, options = {}) {
     bot,
     async setupCommands() {
       try {
-        // Get workflows from the ComfyUI service instead
-        const workflows = await services.comfyui.getWorkflows();
+        // Pass the 'services' object directly.
+        // setupDynamicCommands will use services.workflows.getWorkflows() internally.
+        await setupDynamicCommands(bot, services);
         
-        // Setup dynamic commands with the workflows
-        await setupDynamicCommands(bot, workflows);
-        
-        console.log('Telegram bot dynamic commands configured');
+        // Use logger for consistency if available, otherwise console.log
+        const logger = services.logger || console;
+        logger.info('Telegram bot dynamic commands configured (via setupCommands method).');
       } catch (error) {
-        console.error('Failed to setup dynamic commands:', error);
+        const logger = services.logger || console;
+        logger.error('Failed to setup dynamic commands (via setupCommands method):', error);
       }
     }
   };

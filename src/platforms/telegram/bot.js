@@ -125,6 +125,28 @@ function createTelegramBot(dependencies, token, options = {}) {
     handleStatusCommand(message);
   });
   
+  // TEMPORARY COMMAND to clear user-specific chat commands
+  bot.onText(/^\/clear_my_chat_commands(?:@\w+)?/i, async (message) => {
+    const chatId = message.chat.id;
+    const userId = message.from.id;
+
+    // Only allow the specific user to run this, or make it admin-only in a real scenario
+    // For now, let's assume this is for your specific debugging.
+    // if (userId.toString() !== 'YOUR_TELEGRAM_USER_ID') { 
+    //   return bot.sendMessage(chatId, "This command is not for you.");
+    // }
+
+    try {
+      logger.info(`[Admin] Attempting to clear commands for chat_id: ${chatId}`);
+      await bot.setMyCommands([], { scope: { type: 'chat', chat_id: chatId } });
+      logger.info(`[Admin] Successfully cleared commands for chat_id: ${chatId}`);
+      bot.sendMessage(chatId, "Your chat-specific command list has been cleared. Please restart Telegram or wait a few moments for the global command list to appear.", { reply_to_message_id: message.message_id });
+    } catch (error) {
+      logger.error(`[Admin] Failed to clear commands for chat_id: ${chatId}`, error);
+      bot.sendMessage(chatId, `Failed to clear your chat-specific commands: ${error.message}`, { reply_to_message_id: message.message_id });
+    }
+  });
+  
   // Handle callback queries for inline buttons
   bot.on('callback_query', async (query) => {
     const { data, message } = query;
