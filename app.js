@@ -132,13 +132,14 @@ async function startApp() {
     // Initialize web server routes BEFORE setting up Telegram commands
     if (platforms.web) {
       try {
-        // Ensure the web platform exposes its app instance and the setup function exists
-        if (platforms.web.app && typeof setupWebRoutes === 'function') {
-          console.log('Initializing Web platform routes...');
-          await setupWebRoutes(platforms.web.app, platformServices);
-          console.log('Web platform routes initialized.');
+        // Ensure the web platform exposes its app instance and its own initializeRoutes method
+        if (platforms.web.app && typeof platforms.web.initializeRoutes === 'function') {
+          console.log('Initializing Web platform routes (API, static, SPA)...');
+          // This single call will handle API routes, static files, and SPA fallback internally.
+          await platforms.web.initializeRoutes(); 
+          console.log('Web platform routes (API, static, SPA) initialized.');
         } else {
-          console.warn('Web platform app instance or setupWebRoutes function not available.');
+          console.warn('Web platform app instance or its initializeRoutes method not available.');
         }
 
         const port = process.env.WEB_PORT || 4000;
