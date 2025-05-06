@@ -6,6 +6,7 @@
  */
 
 const createTelegramBot = require('./bot');
+const { setupDynamicCommands } = require('./dynamicCommands');
 
 /**
  * Initialize the Telegram platform
@@ -20,7 +21,7 @@ function initializeTelegramPlatform(services, options = {}) {
     sessionService,
     workflowsService,
     mediaService,
-    internal, // Internal API services
+    internal,
     logger = console
   } = services;
   
@@ -38,16 +39,32 @@ function initializeTelegramPlatform(services, options = {}) {
       sessionService,
       workflowsService,
       mediaService,
-      internal, // Pass internal API services
+      internal,
       logger
     },
     token,
-    options
+    { polling: true, ...options } // Enable polling by default
   );
   
   logger.info('Telegram platform initialized');
   
-  return bot;
+  // Return an object with the bot and a setup function for dynamic commands
+  return {
+    bot,
+    async setupCommands() {
+      try {
+        // Get workflows from the ComfyUI service instead
+        const workflows = await services.comfyui.getWorkflows();
+        
+        // Setup dynamic commands with the workflows
+        await setupDynamicCommands(bot, workflows);
+        
+        console.log('Telegram bot dynamic commands configured');
+      } catch (error) {
+        console.error('Failed to setup dynamic commands:', error);
+      }
+    }
+  };
 }
 
 module.exports = {

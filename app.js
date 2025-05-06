@@ -129,50 +129,36 @@ async function startApp() {
     });
     console.log('Platform adapters initialized');
     
-    // First start the Telegram bot
-    if (platforms.telegram) {
-      try {
-        console.log('Starting Telegram bot...');
-        await platforms.telegram.start();
-        console.log('Telegram bot is running!');
-      } catch (telegramError) {
-        console.error('Failed to start Telegram bot:', telegramError.message);
-      }
-    } else {
-      console.warn('Telegram platform not configured or disabled');
-    }
-    
-    // Then start the Discord bot
-    if (platforms.discord) {
-      try {
-        console.log('Starting Discord bot...');
-        await platforms.discord.start();
-        console.log('Discord bot is running!');
-      } catch (discordError) {
-        console.error('Failed to start Discord bot:', discordError.message);
-      }
-    } else {
-      console.warn('Discord platform not configured or disabled');
-    }
-    
-    // Initialize web server routes BEFORE starting the server
+    // Initialize web server routes BEFORE setting up Telegram commands
     if (platforms.web) {
       try {
         // Ensure the web platform exposes its app instance and the setup function exists
         if (platforms.web.app && typeof setupWebRoutes === 'function') {
           console.log('Initializing Web platform routes...');
-          await setupWebRoutes(platforms.web.app, platformServices); // Pass app and services
+          await setupWebRoutes(platforms.web.app, platformServices);
           console.log('Web platform routes initialized.');
         } else {
-          console.warn('Web platform app instance or setupWebRoutes function not available. Routes might not be fully set up.');
+          console.warn('Web platform app instance or setupWebRoutes function not available.');
         }
 
-        const port = process.env.WEB_PORT || 4000; // Use different port than server.js
+        const port = process.env.WEB_PORT || 4000;
         console.log(`Starting Web platform on port ${port}...`);
-        
-        // Now start the server (assuming start just begins listening)
         await platforms.web.start(port);
         console.log(`Web platform running on port ${port}`);
+        
+        // Now setup Telegram commands AFTER web routes are initialized
+        if (platforms.telegram) {
+          try {
+            console.log('Setting up Telegram dynamic commands...');
+            await platforms.telegram.setupCommands();
+            console.log('Telegram dynamic commands configured');
+          } catch (telegramError) {
+            console.error('Failed to setup Telegram commands:', telegramError.message);
+          }
+        }
+        
+        // Then start Discord...
+        
       } catch (webError) {
         console.error('Failed to start Web platform:', webError.message);
       }
