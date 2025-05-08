@@ -114,3 +114,9 @@ dist
 db/data/generations_*.json
 .DS_Store
 .DS_Store
+
+reports/user_sessions_output.json
+
+reports/enriched_user_sessions.json
+
+reports/user_aggregated_features.json
