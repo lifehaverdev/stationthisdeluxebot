@@ -586,9 +586,11 @@ async function handleTaskCompletion(task) {
             // If outputs are present, process them
             if (run?.outputs && run.outputs.length > 0) {
                 console.log(`Processing ${run.outputs.length} outputs for run_id:`, task.run_id);
-                
-                // Process all outputs, not just SaveImage
+                console.log('Full outputs:', JSON.stringify(run.outputs, null, 2)); // Log the entire outputs
+
                 run.outputs.forEach(output => {
+                    console.log('Processing output:', JSON.stringify(output, null, 2)); // Log each output
+
                     if (output.data?.images?.length > 0) {
                         //console.log(`Found images in output:`, JSON.stringify(output.data.images, null, 2));
                         output.data.images.forEach(image => {
@@ -611,6 +613,12 @@ async function handleTaskCompletion(task) {
                                 });
                             }
                         });
+                    }
+
+                    // Log tags if they exist in the output
+                    if (output.data?.tags?.length > 0) {
+                        console.log('Found tags in output:', JSON.stringify(output.data.tags, null, 2));
+                        tags.push(...output.data.tags);
                     }
                 });
 
@@ -656,14 +664,16 @@ async function handleTaskCompletion(task) {
                     }
                 }
 
-                for (const text of tags) {
-                    try {
-                        const mediaResponse = await sendMessage(message, text);
-                        if (!mediaResponse) sent = false;
-                    } catch (err) {
-                        console.error('Error sending text:', err.message || err);
+                console.log('Processing tags:', JSON.stringify(tags, (key, value) => {
+                    if (typeof value === 'object' && value !== null) {
+                        if (seen.has(value)) {
+                            return '[Circular]';
+                        }
+                        seen.add(value);
                     }
-                }
+                    return value;
+                }, 2));
+
             } else {
                 console.log(`No outputs to process for run_id: ${task.run_id}, status: ${run.status}`);
             }
