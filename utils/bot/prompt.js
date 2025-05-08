@@ -71,7 +71,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
     if (!userContext.styleTransfer) delete promptObj.input_style_image;
     if (!userContext.openPose) delete promptObj.input_pose_image;
     // if (!userContext.type != 'MAKE','FLUX') 
-    const text2images = ['QUICKMAKE','MAKE','MAKE_PLUS','MILADY','DEGOD','LOSER']
+    const text2images = ['QUICKMAKE','MAKE','CHROMAKE','MAKE_PLUS','MILADY','DEGOD','LOSER']
     if (
         text2images.some(type => userContext.type.startsWith(type)) &&
         userContext.type !== 'I2I'
