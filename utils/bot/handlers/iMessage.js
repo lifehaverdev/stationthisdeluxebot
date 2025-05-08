@@ -70,6 +70,9 @@ commandRegistry['/quickmake'] = {
 commandRegistry['/make'] = {
     handler: iMake.handleFlux,
 };
+commandRegistry['/chromake'] = {
+    handler: iMake.handleChromake
+}
 
 commandRegistry['/make3'] = {
     handler: iMake.handleMake3,

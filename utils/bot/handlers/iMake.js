@@ -203,33 +203,16 @@ async function handleMake3(message) {
     await handleTask(message, 'MAKE3', STATES.MAKE3, false, 400000)
 }
 
-async function handleMog(message) {
-    lobby[message.from.id].createSwitch = 'MAKE'
-    await handleTask(message, 'MOG', STATES.MOG, false, 0)
-}
-
-async function handleDegod(message) {
-    console.log('DEGODDING SOMETHING')
-    lobby[message.from.id].createSwitch = 'MAKE'
-    await handleTask(message, 'DEGOD', STATES.DEGOD, false, 0)
-}
-
-async function handleMilady(message) {
-    console.log('milady')
-    lobby[message.from.id].createSwitch = 'MAKE'
-    await handleTask(message, 'MILADY', STATES.MILADY, false, 0)
-}
-
-async function handleLoser(message) {
-    console.log('loser')
-    lobby[message.from.id].createSwitch = 'MAKE'
-    await handleTask(message, 'LOSER', STATES.LOSER, false, 0)
-}
-
 async function handleFlux(message) {
     console.log('flux')
     lobby[message.from.id].createSwitch = 'MAKE'
     handleTask(message,'MAKE',STATES.MAKE,false,0)
+}
+
+async function handleChromake(message) {
+    console.log('chromake')
+    lobby[message.from.id].createSwitch = 'MAKE'
+    await handleTask(message, 'CHROMAKE', STATES.CHROMAKE, false, 0)
 }
 
 async function handleRegen(message, user = null) {
@@ -368,6 +351,8 @@ async function handleMakeVideo(message) {
     await handleTask(message, 'MAKEVIDEO', STATES.MAKEVIDEO, false, 600000)
 }
 
+
+
 module.exports = { 
     // startMake, 
     // startMake3, 
@@ -379,13 +364,13 @@ module.exports = {
     handleHipFire,
     handleAgain,
     handleMake, handleMakeVideo,
+    handleChromake,
     handleMake3, 
     handleMs2Prompt,
     handleSD3ImgPrompt,
     handleFluxPrompt,
     handleInpaintPrompt,
     handleInpaintTarget,
-    handleMog, 
-    handleDegod, handleMilady, handleLoser,
-    handleFlux
+    handleFlux,
+    handleChromake
 }

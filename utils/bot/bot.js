@@ -39,6 +39,7 @@ const STATES = {
 
     MAKE: 'MAKE',
     MAKE3: 'MAKE3',
+    CHROMAKE: 'CHROMAKE',
     MOG: 'MOG',
     MILADY: 'MILADY',
     CHUDJAK: 'CHUDJAK',
