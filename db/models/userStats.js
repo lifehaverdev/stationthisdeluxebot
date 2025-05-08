@@ -58,6 +58,34 @@ class UserStats extends BaseDB {
             }
         }
 
+        // 2. Sanitize run.outputs (which becomes out.urls)
+        let sanitizedRunOutputs = [];
+        // Ensure run and run.outputs are valid before trying to sanitize
+        if (run && Array.isArray(run.outputs)) {
+            try {
+                sanitizedRunOutputs = structuredClone(run.outputs);
+            } catch (e) {
+                console.warn('structuredClone failed for run.outputs, using JSON.parse(JSON.stringify) fallback. Error:', e);
+                try {
+                    sanitizedRunOutputs = JSON.parse(JSON.stringify(run.outputs));
+                } catch (jsonError) {
+                    console.error('Failed to sanitize run.outputs even with JSON fallback:', jsonError);
+                    sanitizedRunOutputs = [{ _error: "Failed to serialize run.outputs. Original data may be lost." }];
+                }
+            }
+        } else if (run && run.outputs) {
+            // If run.outputs is not an array but exists, log a warning and keep it empty or as an error marker.
+            console.warn('run.outputs was expected to be an array, but was not. Storing empty for outputs.urls.', run.outputs);
+            sanitizedRunOutputs = [{ _error: "run.outputs was not an array. Original data may be lost." }];
+        }
+
+        // 3. Construct the final 'out' object with sanitized urls and cloned tags/texts
+        const finalOut = {
+            urls: sanitizedRunOutputs,
+            tags: (Array.isArray(out.tags) ? structuredClone(out.tags) : []) || [],
+            texts: (Array.isArray(out.texts) ? structuredClone(out.texts) : []) || []
+        };
+
         const genData = {
             userId: task.promptObj.userId, // Original userId is fine
             username: task.promptObj.username || 'unknown', // Original username
@@ -65,7 +93,7 @@ class UserStats extends BaseDB {
             timestamp: new Date(),
             promptObj: sanitizedPromptObj, // Use the sanitized version
             runId: run.run_id,
-            outputs: out,
+            outputs: finalOut, // Use the fully sanitized 'finalOut'
             status: run.status,
             duration: task.runningStop - task.runningStart,
             type: task.promptObj.type // Original type
