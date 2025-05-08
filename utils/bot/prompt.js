@@ -23,7 +23,7 @@ function buildPromptObjFromWorkflow(workflow, userContext, message) {
         }
     });
     if(promptObj.input_checkpoint) promptObj.input_checkpoint += '.safetensors'
-    const fluxTypes = ['MAKE','MAKE_PLUS','I2I','LOSER','MILADY','MOG','CHUDJAK','INPAINT']
+    const fluxTypes = ['MAKE','CHROMAKE','MAKE_PLUS','I2I','LOSER','MILADY','MOG','CHUDJAK','INPAINT']
     if (fluxTypes.includes(userContext.type)) {
         promptObj.input_checkpoint = 'flux-schnell'
         delete promptObj.basePrompt;
