@@ -14,7 +14,7 @@ function aggregateUserFeatures() {
 
     const sessionsData = fs.readFileSync(INPUT_FILE, 'utf-8');
     const sessions = JSON.parse(sessionsData);
-    console.log(`Loaded ${sessions.length} enriched sessions.`);
+    console.log(`Successfully loaded ${sessions.length} enriched sessions from ${INPUT_FILE}. Starting aggregation.`);
 
     const userAggregates = {};
 
@@ -33,7 +33,9 @@ function aggregateUserFeatures() {
                 total_generation_events: 0,
                 total_error_events: 0,
                 total_generation_duration_ms: 0,
+                total_menu_interactions: 0,
                 command_frequencies: {},
+                menu_interaction_frequencies: {},
                 // Initialize specific command totals
                 total_make_commands: 0,
                 total_again_commands: 0,
@@ -59,10 +61,16 @@ function aggregateUserFeatures() {
         user.total_generation_events += session.num_generation_events || 0;
         user.total_error_events += session.num_error_events || 0;
         user.total_generation_duration_ms += session.total_generation_duration_ms || 0;
+        user.total_menu_interactions += session.num_menu_interactions || 0;
         
         // Aggregate command_counts
         for (const [command, count] of Object.entries(session.command_counts || {})) {
             user.command_frequencies[command] = (user.command_frequencies[command] || 0) + count;
+        }
+        
+        // Aggregate menu_interaction_counts
+        for (const [interaction, count] of Object.entries(session.menu_interaction_counts || {})) {
+            user.menu_interaction_frequencies[interaction] = (user.menu_interaction_frequencies[interaction] || 0) + count;
         }
         
         // Aggregate specific command counters
@@ -93,50 +101,99 @@ function aggregateUserFeatures() {
         user.avg_generation_events_per_session = user.total_sessions > 0 ? user.total_generation_events / user.total_sessions : 0;
         user.avg_error_events_per_session = user.total_sessions > 0 ? user.total_error_events / user.total_sessions : 0;
         user.avg_generation_duration_ms_per_session = user.total_sessions > 0 ? user.total_generation_duration_ms / user.total_sessions : 0;
+        user.avg_menu_interactions_per_session = user.total_sessions > 0 ? user.total_menu_interactions / user.total_sessions : 0;
         
         // Sort command_frequencies for easier reading in summaries
         const sortedCommandFrequencies = Object.entries(user.command_frequencies)
             .sort(([,a],[,b]) => b-a)
             .reduce((r, [k, v]) => ({ ...r, [k]: v }), {});
         user.command_frequencies = sortedCommandFrequencies;
+
+        // Sort user's own command frequencies
+        user.command_counts_sorted = Object.entries(user.command_frequencies)
+            .sort(([,a],[,b]) => b-a)
+            .reduce((r, [k, v]) => ({ ...r, [k]: v }), {});
+
+        // Sort user's own menu interaction frequencies
+        user.menu_interaction_counts_sorted = Object.entries(user.menu_interaction_frequencies)
+            .sort(([,a],[,b]) => b-a)
+            .reduce((r, [k, v]) => ({ ...r, [k]: v }), {});
+
         return user;
     });
 
-    console.log(`Finished aggregating features for ${aggregatedFeaturesArray.length} unique users.`);
+    console.log(`\nAttempting to write ${aggregatedFeaturesArray.length} aggregated user profiles to ${OUTPUT_FILE}. This may take a while...`);
+    fs.writeFileSync(OUTPUT_FILE, JSON.stringify(aggregatedFeaturesArray, null, 2));
+    console.log(`User aggregated features saved to ${OUTPUT_FILE}`);
 
-    // --- Save the full aggregated data ---
-    try {
-        fs.writeFileSync(OUTPUT_FILE, JSON.stringify(aggregatedFeaturesArray, null, 2));
-        console.log(`Successfully saved aggregated user features to ${OUTPUT_FILE}`);
-    } catch (error) {
-        console.error(`Error writing output file ${OUTPUT_FILE}:`, error);
-    }
-    // --- End save --- 
+    // --- CHURN ANALYSIS ---
+    console.log('\n--- Churn Analysis (Users with 1 or 2 Sessions Lifetime) ---');
+    const churnedUsersOneSession = [];
+    const churnedUsersTwoSessions = [];
 
-    // --- ADDED: Print Summaries and Top N Users ---
-    console.log('\n--- Top User Summaries ---');
+    aggregatedFeaturesArray.forEach(user => {
+        if (user.total_sessions === 1) {
+            churnedUsersOneSession.push(user);
+        } else if (user.total_sessions === 2) {
+            churnedUsersTwoSessions.push(user);
+        }
+    });
 
-    const printTopNUsers = (metricName, dataArray, N = 5) => {
+    console.log(`\nFound ${churnedUsersOneSession.length} users with exactly 1 session:`);
+    churnedUsersOneSession.forEach(user => {
+        console.log(`  User: ${user.username} (ID: ${user.userId}), Sessions: 1`);
+        console.log(`    Total Duration: ${(user.total_duration_ms / 60000).toFixed(2)} mins, Commands: ${user.total_commands}, Menu Interactions: ${user.total_menu_interactions}`);
+        console.log(`    Gen Events: ${user.total_generation_events}, Gen Time: ${(user.total_generation_duration_ms / 1000).toFixed(2)}s, Errors: ${user.total_error_events}`);
+        console.log(`    Top Commands: ${Object.entries(user.command_counts_sorted).slice(0,3).map(([c,n]) => `${c}(${n})`).join(', ') || 'None'}`);
+        console.log(`    Top Menu Interactions: ${Object.entries(user.menu_interaction_counts_sorted || {}).slice(0,3).map(([i,n]) => `${i}(${n})`).join(', ') || 'None'}`);
+        console.log(`    Start Reasons: ${JSON.stringify(user.session_start_reasons)}`);
+    });
+
+    console.log(`\nFound ${churnedUsersTwoSessions.length} users with exactly 2 sessions:`);
+    churnedUsersTwoSessions.forEach(user => {
+        console.log(`  User: ${user.username} (ID: ${user.userId}), Sessions: 2`);
+        console.log(`    Total Duration: ${(user.total_duration_ms / 60000).toFixed(2)} mins, Commands: ${user.total_commands}, Menu Interactions: ${user.total_menu_interactions}`);
+        console.log(`    Gen Events: ${user.total_generation_events}, Gen Time: ${(user.total_generation_duration_ms / 1000).toFixed(2)}s, Errors: ${user.total_error_events}`);
+        console.log(`    Top Commands: ${Object.entries(user.command_counts_sorted).slice(0,3).map(([c,n]) => `${c}(${n})`).join(', ') || 'None'}`);
+        console.log(`    Top Menu Interactions: ${Object.entries(user.menu_interaction_counts_sorted || {}).slice(0,3).map(([i,n]) => `${i}(${n})`).join(', ') || 'None'}`);
+        console.log(`    Start Reasons: ${JSON.stringify(user.session_start_reasons)}`);
+    });
+    console.log('--- End Churn Analysis ---');
+
+    // --- Existing Top N Analysis (will now use full history data) ---
+    console.log('\n--- Top User Summaries (Full History) ---');
+    const N_TOP_USERS = 10; // Number of top users to display for each metric
+
+    const printTopUsers = (metricName, dataArray, N = 5, valueFormatter = null) => {
         console.log(`\nTop ${N} Users by ${metricName}:`);
-        const sortedUsers = [...dataArray].sort((a, b) => b[metricName] - a[metricName]);
+        const sortedUsers = [...dataArray].sort((a, b) => (b[metricName] || 0) - (a[metricName] || 0)); // Handle undefined/null for sorting
+
         sortedUsers.slice(0, N).forEach(user => {
-            console.log(
-                `  User: ${user.username || user.userId}, ${metricName}: ${user[metricName].toLocaleString()}` + 
-                ` (Sessions: ${user.total_sessions}, GenTime: ${(user.total_generation_duration_ms/1000).toFixed(1)}s, ` + 
-                `TotalCmds: ${user.total_commands})`
-            );
-            // Print top 3 commands for these users
-            const topCommands = Object.entries(user.command_frequencies).slice(0,3).map(([cmd,count]) => `${cmd} (${count})`).join(', ');
-            console.log(`    Top Commands: ${topCommands || 'N/A'}`); 
+            const metricValue = user[metricName];
+            const displayValue = (metricValue !== null && typeof metricValue !== 'undefined') ? metricValue.toLocaleString() : 'N/A'; // MODIFIED: Check for null/undefined
+            let logMessage = `  User: ${user.username || user.userId}, ${metricName}: ${displayValue}`;
+            if (valueFormatter) {
+                logMessage += ` (${valueFormatter(user)})`;
+            }
+            console.log(logMessage);
+            // Log top 3 commands for these users
+            const topCommands = Object.entries(user.command_counts_sorted || {}).slice(0,3).map(([c,n]) => `${c}(${n})`).join(', ') || 'None';
+            console.log(`    Top Commands: ${topCommands}`);
+            // Log top 3 menu interactions for these users
+            const topMenuInteractions = Object.entries(user.menu_interaction_counts_sorted || {}).slice(0,3).map(([i,n]) => `${i}(${n})`).join(', ') || 'None';
+            console.log(`    Top Menu Interactions: ${topMenuInteractions}`);
         });
     };
 
-    printTopNUsers('total_generation_duration_ms', aggregatedFeaturesArray);
-    printTopNUsers('total_sessions', aggregatedFeaturesArray);
-    printTopNUsers('total_commands', aggregatedFeaturesArray);
-    printTopNUsers('avg_commands_per_session', aggregatedFeaturesArray);
-    // --- End Print Summaries ---
+    printTopUsers('total_generation_duration_ms', aggregatedFeaturesArray);
+    printTopUsers('total_sessions', aggregatedFeaturesArray);
+    printTopUsers('total_commands', aggregatedFeaturesArray);
+    printTopUsers('total_menu_interactions', aggregatedFeaturesArray, N_TOP_USERS);
+    printTopUsers('avg_commands_per_session', aggregatedFeaturesArray);
+    printTopUsers('avg_menu_interactions_per_session', aggregatedFeaturesArray, N_TOP_USERS);
+    printTopUsers('Avg Generation Duration MS per Session', aggregatedFeaturesArray, N_TOP_USERS, user => `${(user.avg_generation_duration_ms_per_session / 1000).toFixed(2)}s`);
 
+    console.log('\n--- User Aggregator Finished ---');
 }
 
 aggregateUserFeatures(); 

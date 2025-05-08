@@ -22,6 +22,7 @@ function initializeTelegramPlatform(services, options = {}) {
     workflowsService,
     mediaService,
     internal,
+    db,
     logger = console
   } = services;
   
@@ -40,6 +41,7 @@ function initializeTelegramPlatform(services, options = {}) {
       workflowsService,
       mediaService,
       internal,
+      db,
       logger,
       appStartTime: services.appStartTime
     },

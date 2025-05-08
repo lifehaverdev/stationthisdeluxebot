@@ -21,6 +21,8 @@ async function initializeServices(options = {}) {
   const logger = options.logger || console;
   const appStartTime = new Date();
   
+  // DIAGNOSTIC LOGGING REMOVED
+  
   try {
     logger.info('Initializing core services...');
     
@@ -55,8 +57,7 @@ async function initializeServices(options = {}) {
     
     logger.info('Core services created successfully');
     
-    // Return instantiated services
-    return {
+    const returnedServices = {
       session: sessionService,
       media: mediaService,
       points: pointsService,
@@ -67,6 +68,11 @@ async function initializeServices(options = {}) {
       logger,
       appStartTime
     };
+
+    // DIAGNOSTIC LOGGING REMOVED
+
+    // Return instantiated services
+    return returnedServices;
   } catch (error) {
     logger.error('Failed to initialize services:', error);
     throw error;

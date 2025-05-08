@@ -13,6 +13,12 @@ const crypto = require('crypto'); // For generating session IDs
 const fs = require('fs'); // ADDED: For file system operations
 const path = require('path'); // ADDED: For path manipulation
 
+const OUTPUT_FILE = path.join(__dirname, '../../reports/user_sessions_output.json');
+
+// const DAYS_TO_SCAN = 30; // Removed for full history analysis
+const INACTIVITY_TIMEOUT_MINUTES = parseInt(process.env.SESSION_TIMEOUT_MINUTES) || 30;
+const SPECIFIC_USER_ID = process.env.SPECIFIC_USER_ID_TO_ANALYZE || null;
+
 // --- Helper function to generate a simple session ID (copied from routes) ---
 function generateSessionId(userId, startTime) {
     const hash = crypto.createHash('sha256');
@@ -111,7 +117,7 @@ function startNewSession(event, userId, username, db) {
 
 
 // --- Main analysis function (adapted from /api/admin/stats/user-sessions) ---
-async function analyzeUserSessions(daysToScan, specificUserId, inactivityTimeoutMinutes) {
+async function analyzeUserSessions(specificUserId, inactivityTimeoutMinutes) {
     const MONGO_URI = process.env.MONGO_PASS || process.env.MONGODB_URI || 'mongodb://localhost:27017';
     const DB_NAME = process.env.BOT_NAME;
     const HISTORY_COLLECTION_NAME = 'history';
@@ -137,61 +143,56 @@ async function analyzeUserSessions(daysToScan, specificUserId, inactivityTimeout
 
         const inactivityTimeoutMs = inactivityTimeoutMinutes * 60 * 1000;
 
-        const NDaysAgo = new Date();
-        NDaysAgo.setDate(NDaysAgo.getDate() - daysToScan);
-        console.log(`Fetching history for ${daysToScan} days (since ${NDaysAgo.toISOString()}) for session analysis.`);
-        console.log(`User ID filter: ${specificUserId || 'all users'}`);
-        console.log(`Inactivity timeout: ${inactivityTimeoutMinutes} minutes`);
-
-        const matchQuery = {
-            timestamp: { $gte: NDaysAgo } // Ensure timestamp is Date object for query if needed, or string if stored as string
-        };
-        if (specificUserId) {
-            // Ensure specificUserId is the correct type (e.g., integer or string) as stored in DB
-            matchQuery.userId = typeof specificUserId === 'string' ? parseInt(specificUserId) : specificUserId;
+        let matchQuery = {};
+        if (SPECIFIC_USER_ID) {
+            matchQuery.userId = SPECIFIC_USER_ID;
+            console.log(`Fetching ALL history for user ${SPECIFIC_USER_ID} for session analysis.`);
+        } else {
+            console.log(`Fetching ALL history for ALL users for session analysis (will sort in Node.js).`);
         }
-        
-        // Convert history timestamp to Date objects if they are stored as ISO strings
-        // This might be needed if your history collection stores timestamps as strings
-        // For this script, we assume event.timestamp will be a JS Date compatible string or a Date object
-        // The original route code implies event.timestamp is an ISO string that new Date() can parse.
 
-        console.log('Fetching history events. This might take a while for large datasets...');
-        const userEvents = await historyCollection.find(matchQuery)
-            .sort({ userId: 1, timestamp: 1 }) // Sort by user, then time
-            .toArray();
+        console.log('Fetching all history events with a cursor to process and sort in Node.js...');
+        const cursor = historyCollection.find(matchQuery); // No DB sort
 
-        if (userEvents.length === 0) {
+        const userEventsMap = new Map(); // To group events by userId
+        let eventCount = 0;
+
+        await cursor.forEach(event => {
+            eventCount++;
+            const eventUserId = typeof event.userId === 'string' ? parseInt(event.userId) : event.userId;
+            if (!userEventsMap.has(eventUserId)) {
+                userEventsMap.set(eventUserId, []);
+            }
+            userEventsMap.get(eventUserId).push(event);
+
+            if (eventCount % 20000 === 0) {
+                console.log(`Fetched ${eventCount} events so far...`);
+            }
+        });
+        console.log(`Finished fetching ${eventCount} total events. Now processing per user.`);
+
+        if (eventCount === 0) {
             console.log('No history events found for the specified criteria.');
             return { sessions: [] };
         }
-        console.log(`Fetched ${userEvents.length} events for processing.`);
 
         const allUserSessions = [];
-        let currentUserEvents = [];
-        let currentProcessingUserId = null;
+        const sortedUserIds = Array.from(userEventsMap.keys()).sort((a, b) => {
+            // Ensure consistent sorting of user IDs if they are mixed types or need specific numeric/alpha sort
+            const valA = typeof a === 'string' ? parseInt(a) : a;
+            const valB = typeof b === 'string' ? parseInt(b) : b;
+            return valA - valB;
+        });
 
-        for (const event of userEvents) {
-            // Ensure event.userId is of a consistent type for comparison
-            const eventUserId = typeof event.userId === 'string' ? parseInt(event.userId) : event.userId;
-            if (currentProcessingUserId !== eventUserId) {
-                if (currentUserEvents.length > 0 && currentProcessingUserId !== null) {
-                    // Pass db to processEventsForUser for potential use by helpers (e.g. fetching user details)
-                    processEventsForUser(currentProcessingUserId, currentUserEvents, allUserSessions, inactivityTimeoutMs, db);
-                }
-                currentProcessingUserId = eventUserId;
-                currentUserEvents = [event];
-            } else {
-                currentUserEvents.push(event);
-            }
+        for (const userId of sortedUserIds) {
+            const eventsForUser = userEventsMap.get(userId);
+            // Sort events for this specific user by timestamp
+            eventsForUser.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+            processEventsForUser(userId, eventsForUser, allUserSessions, inactivityTimeoutMs, db);
         }
         
-        if (currentUserEvents.length > 0 && currentProcessingUserId !== null) {
-            processEventsForUser(currentProcessingUserId, currentUserEvents, allUserSessions, inactivityTimeoutMs, db);
-        }
-
         const distinctUserIdsInSessions = new Set(allUserSessions.map(session => session.userId));
-        console.log(`Reconstructed ${allUserSessions.length} sessions for ${distinctUserIdsInSessions.size} unique users.`);
+        console.log(`Reconstructed ${allUserSessions.length} sessions for ${distinctUserIdsInSessions.size} unique users across the entire history.`); // MODIFIED
         
         /*
         // --- Print a sample of sessions to console ---
@@ -206,21 +207,21 @@ async function analyzeUserSessions(daysToScan, specificUserId, inactivityTimeout
 
         // --- Save sessions to a file ---
         if (allUserSessions.length > 0) {
+            console.log(`\nAttempting to write ${allUserSessions.length} sessions to ${OUTPUT_FILE}. This might take a while for full history...`); // ADDED
             // Ensure the reports directory exists
             const reportsDir = path.join(__dirname, '../../reports'); // Assuming script is in scripts/analysis
             if (!fs.existsSync(reportsDir)){
                 fs.mkdirSync(reportsDir, { recursive: true });
             }
-            const outputFilePath = path.join(reportsDir, 'user_sessions_output.json');
-            fs.writeFileSync(outputFilePath, JSON.stringify(allUserSessions, null, 2));
-            console.log(`\nSuccessfully saved ${allUserSessions.length} sessions to ${outputFilePath}`);
+            fs.writeFileSync(OUTPUT_FILE, JSON.stringify(allUserSessions, null, 2));
+            console.log(`\nSuccessfully saved ${allUserSessions.length} sessions to ${OUTPUT_FILE}`);
         } else {
             console.log('\nNo sessions reconstructed, nothing to save.');
         }
         // --- End save sessions to a file ---
         
         return {
-            parameters: { daysToScan, specificUserId, inactivityTimeoutMinutes },
+            parameters: { specificUserId, inactivityTimeoutMinutes },
             sessions: allUserSessions
         };
 
@@ -236,18 +237,27 @@ async function analyzeUserSessions(daysToScan, specificUserId, inactivityTimeout
 
 // --- Command-line argument parsing and execution ---
 async function main() {
-    const args = process.argv.slice(2);
-    const daysArg = args.find(arg => arg.startsWith('--days='));
-    const userIdArg = args.find(arg => arg.startsWith('--userId='));
-    const timeoutArg = args.find(arg => arg.startsWith('--timeout='));
+    console.log('--- User Session Analyzer (Full History) ---'); // MODIFIED
+    const inactivityTimeoutMs = INACTIVITY_TIMEOUT_MINUTES * 60 * 1000;
 
-    const daysToScan = daysArg ? parseInt(daysArg.split('=')[1]) : 30; // Default to 30 days
-    const specificUserId = userIdArg ? userIdArg.split('=')[1] : null; // Default to all users
-    const inactivityTimeoutMinutes = timeoutArg ? parseInt(timeoutArg.split('=')[1]) : 30; // Default to 30 minutes
+    // MODIFIED: these were defined inside analyzeUserSessions, moved here for clarity or if needed by main directly
+    const MONGO_URI = process.env.MONGO_PASS || process.env.MONGODB_URI || 'mongodb://localhost:27017';
+    const DB_NAME = process.env.BOT_NAME;
 
-    console.log('--- User Session Analyzer ---');
-    await analyzeUserSessions(daysToScan, specificUserId, inactivityTimeoutMinutes);
-    console.log('--- Analysis Complete ---');
+    if (!MONGO_URI || !DB_NAME) {
+        console.error('Error: MONGO_PASS or MONGODB_URI or BOT_NAME environment variable is not set.');
+        return;
+    }
+
+    try {
+        // Call analyzeUserSessions without daysToScan, as it's now handled by SPECIFIC_USER_ID and no date filtering
+        await analyzeUserSessions(SPECIFIC_USER_ID, INACTIVITY_TIMEOUT_MINUTES);
+        console.log('User session analysis complete.');
+        console.log(`Output saved to ${OUTPUT_FILE}`);
+        console.log('--- User Session Analyzer Finished ---'); // MODIFIED
+    } catch (error) {
+        console.error('An error occurred during session analysis:', error);
+    }
 }
 
 main();

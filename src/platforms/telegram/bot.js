@@ -85,22 +85,12 @@ function createTelegramBot(dependencies, token, options = {}) {
     bot,
     logger,
     services: {
-      internal: dependencies.internal
+      internal: dependencies.internal,
+      db: dependencies.db
     }
   });
   
   // Register command handlers
-  
-  // /make command - Generate images
-  bot.onText(/^\/make(?:@\w+)?\s*(.*)/i, (message, match) => {
-    const prompt = match[1];
-    handleMakeImageCommand(message, prompt);
-  });
-  
-  // /upscale command - Upscale images
-  bot.onText(/^\/upscale(?:@\w+)?/i, (message) => {
-    handleUpscaleCommand(message);
-  });
   
   // /settings command - Manage user settings
   bot.onText(/^\/settings(?:@\w+)?\s*(.*)/i, (message, match) => {

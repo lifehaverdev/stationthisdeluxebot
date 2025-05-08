@@ -13,6 +13,7 @@ require('dotenv').config();
 const APP_START_TIME = new Date();
 
 // Import refactored components
+const { initializeDatabase } = require('./src/core/initDB');
 const { initializeServices } = require('./src/core/services');
 const { initializePlatforms } = require('./src/platforms');
 const { initialize } = require('./src/core/initialization');
@@ -27,6 +28,10 @@ async function startApp() {
     console.log('===================================================');
     console.log('| Initializing StationThis refactored application |');
     console.log('===================================================');
+    
+    // Initialize Database Connection FIRST
+    await initializeDatabase();
+    console.log('Database connection initialized (or initialization process started).');
     
     // Initialize core services
     const services = await initializeServices({ 

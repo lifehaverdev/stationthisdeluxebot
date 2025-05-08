@@ -1,9 +1,11 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
+// const UserCoreDB = require('../../core/services/db/userCoreDb'); // Removed direct import
 
 async function setupDynamicCommands(bot, services) {
   const workflowsService = services.workflows;
   const comfyuiService = services.comfyui;
   const logger = services.logger || console;
+  const UserCoreDB = services.db && services.db.noema && services.db.noema.userCore; // Added service access
 
   logger.info('[Telegram] Setting up dynamic commands...');
 
@@ -175,6 +177,57 @@ async function setupDynamicCommands(bot, services) {
     logger.error('[Telegram] Critical error during dynamic commands setup:', error);
     // Do not re-throw here if you want the bot to attempt to continue running with static commands
   }
+
+  // ---- Add /noemainfome command ----
+  try {
+    if (!UserCoreDB) { // Added check for service availability
+      logger.error('[Telegram] UserCoreDB service not available for /noemainfome command. Skipping registration.');
+      throw new Error('UserCoreDB service missing'); // Or just return to skip only this command
+    }
+    logger.info('[Telegram] Registering command: /noemainfome');
+    bot.onText(new RegExp(`^/noemainfome(?:@\w+)?(?:\s+([\w-]+))?`, 'i'), async (msg, match) => {
+      const chatId = msg.chat.id;
+      const requesterTelegramId = msg.from.id.toString();
+      const targetTelegramId = match && match[1] ? match[1].trim() : requesterTelegramId;
+
+      logger.info(`[Telegram EXEC /noemainfome] Handler triggered. Requester: ${requesterTelegramId}, Target: ${targetTelegramId}`);
+
+      try {
+        const userCoreDoc = await UserCoreDB.findUserCoreByPlatformId('telegram', targetTelegramId);
+
+        if (userCoreDoc) {
+          logger.info(`[Telegram EXEC /noemainfome] UserCore Document Found for ${targetTelegramId}`);
+          // Sanitize and pretty print the JSON to avoid Telegram markdown issues
+          let messageText = 'UserCore Document Found:\n```json\n' +
+                           JSON.stringify(userCoreDoc, (key, value) => {
+                             // Convert ObjectId to string for display
+                             if (value && value._bsontype === 'ObjectId') {
+                               return value.toString();
+                             }
+                             return value;
+                           }, 2) +
+                           '\n```';
+          if (messageText.length > 4096) { // Telegram message limit
+            messageText = messageText.substring(0, 4090) + '\n... (truncated)';
+          }
+          bot.sendMessage(chatId, messageText, { parse_mode: 'MarkdownV2' });
+        } else {
+          logger.info(`[Telegram EXEC /noemainfome] No UserCore document found for Telegram User ID: ${targetTelegramId}`);
+          bot.sendMessage(chatId, `No Noema userCore data found for Telegram ID: ${targetTelegramId}. Ensure user is migrated/created in 'noema' DB.`, { reply_to_message_id: msg.message_id });
+        }
+      } catch (dbError) {
+        logger.error(`[Telegram EXEC /noemainfome] Error accessing database for ${targetTelegramId}:`, dbError);
+        bot.sendMessage(chatId, `Sorry, an error occurred while fetching user data for ${targetTelegramId}.`, { reply_to_message_id: msg.message_id });
+      }
+    });
+    // Add to the list of commands for /help
+    const commandToAdd = { command: 'noemainfome', description: 'Fetches your Noema user core data. Admins can specify another Telegram ID.' };
+    // We'll add this to the bot's command list later along with other dynamic commands
+
+  } catch (error) {
+    logger.error('[Telegram] Error setting up /noemainfome command:', error);
+  }
+  // ---- End of /noemainfome command ----
 }
 
 module.exports = { setupDynamicCommands };
