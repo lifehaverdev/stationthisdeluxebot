@@ -666,10 +666,10 @@ async function handleTaskCompletion(task) {
 
                 console.log('Processing tags:', JSON.stringify(tags, (key, value) => {
                     if (typeof value === 'object' && value !== null) {
-                        if (seen.has(value)) {
+                        if (key.has(value)) {
                             return '[Circular]';
                         }
-                        seen.add(value);
+                        key.add(value);
                     }
                     return value;
                 }, 2));
@@ -711,14 +711,72 @@ async function handleTaskCompletion(task) {
             await addPoints(task);
             const out = {
                 urls: run.outputs || [],
-                tags: [],
-                texts: []
+                tags: tags,
+                texts: texts
             };
             if (lobby[task.promptObj.userId]?.progress?.currentStep) {  // This checks if user is in tutorial
                 const { TutorialManager, CHECKPOINTS } = require('./handlers/iStart')
                 await TutorialManager.checkpointReached(task.promptObj.userId, CHECKPOINTS.BOT_RESULT_SENT, { message });
             }
-            await userStats.saveGen({task, run, out});
+
+            // Create minimal objects for saving to prevent passing full complex objects
+            const minimalTaskForSave = {
+                message: { 
+                    chat: {
+                        id: task.message?.chat?.id 
+                    }
+                },
+                promptObj: { 
+                    userId: task.promptObj?.userId,
+                    username: task.promptObj?.username,
+                    type: task.promptObj?.type,
+                    // Include all fields that promptObj sanitization in userStats.js expects/handles
+                    prompt: task.promptObj?.prompt,
+                    finalPrompt: task.promptObj?.finalPrompt,
+                    negative_prompt: task.promptObj?.negative_prompt,
+                    model: task.promptObj?.model,
+                    seed: task.promptObj?.seed,
+                    width: task.promptObj?.width,
+                    height: task.promptObj?.height,
+                    steps: task.promptObj?.steps,
+                    cfg_scale: task.promptObj?.cfg_scale,
+                    sampler: task.promptObj?.sampler,
+                    scheduler: task.promptObj?.scheduler,
+                    denoise: task.promptObj?.denoise,
+                    tiling: task.promptObj?.tiling,
+                    restore_faces: task.promptObj?.restore_faces,
+                    isRegen: task.promptObj?.isRegen,
+                    isApiRequest: task.promptObj?.isApiRequest,
+                    isCookMode: task.promptObj?.isCookMode,
+                    forceLogo: task.promptObj?.forceLogo,
+                    advancedUser: task.promptObj?.advancedUser,
+                    dointsAdded: task.promptObj?.dointsAdded,
+                    waterMark: task.promptObj?.waterMark,
+                    lastSeed: task.promptObj?.lastSeed,
+                    collectionId: task.promptObj?.collectionId,
+                    enable_hr: task.promptObj?.enable_hr,
+                    hr_scale: task.promptObj?.hr_scale,
+                    hr_upscaler: task.promptObj?.hr_upscaler,
+                    hr_second_pass_steps: task.promptObj?.hr_second_pass_steps,
+                    hr_resize_x: task.promptObj?.hr_resize_x,
+                    hr_resize_y: task.promptObj?.hr_resize_y,
+                    hr_denoise: task.promptObj?.hr_denoise,
+                    styles: task.promptObj?.styles,
+                    override_settings_restore_afterwards: task.promptObj?.override_settings_restore_afterwards,
+                    controlnet_units: task.promptObj?.controlnet_units, // Sanitized in saveGen
+                    loras: task.promptObj?.loras 
+                },
+                runningStop: task.runningStop,
+                runningStart: task.runningStart
+            };
+
+            const minimalRunForSave = {
+                run_id: run?.run_id,
+                outputs: run?.outputs, // This will be sanitized in saveGen
+                status: run?.status
+            };
+            
+            await userStats.saveGen({ task: minimalTaskForSave, run: minimalRunForSave, out });
             return 'success';
         } else {
             console.error(`Failed to send media for run_id: ${task.run_id}`);
