@@ -281,7 +281,8 @@ async function deliver() {
                 return
             }
             if (result === 'success') {
-                console.log(`👍 ${task.promptObj.username} ${run_id}`);
+                const username = task.promptObj?.username || 'UnknownUser'; // Safe access
+                console.log(`👍 ${username} ${run_id}`);
             } else if (result === 'not sent') {
                 handleDeliveryFailure(task, run_id);
             }
@@ -501,10 +502,12 @@ async function handleTaskCompletion(task) {
         } else {
             if (run?.outputs && run.outputs.length > 0) {
                 console.log(`Processing ${run.outputs.length} outputs for run_id:`, task.run_id);
-                console.log('Full outputs:', JSON.stringify(run.outputs, null, 2));
+                // Verbose log, can be commented out for normal operation
+                // console.log('Full outputs:', JSON.stringify(run.outputs, null, 2));
 
                 run.outputs.forEach(output => {
-                    console.log('Processing output:', JSON.stringify(output, null, 2));
+                    // Verbose log, can be commented out for normal operation
+                    // console.log('Processing output:', JSON.stringify(output, null, 2));
 
                     if (output.data?.images?.length > 0) {
                         output.data.images.forEach(image => {

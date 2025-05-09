@@ -122,7 +122,8 @@ app.post('/api/webhook', async (req, res) => {
     console.log(`${logPrefix} Run ID: ${run_id} Status: ${status}`);
 
     if (status === 'success') {
-        console.log(`Webhook SUCCESS for ${run_id}: Entire req.body:`, JSON.stringify(req.body, null, 2));
+        // Verbose log, can be commented out for normal operation
+        // console.log(`Webhook SUCCESS for ${run_id}: Entire req.body:`, JSON.stringify(req.body, null, 2));
 
         const liveStatus = req.body.live_status;
         const outputsIsEmpty = !outputs || (Array.isArray(outputs) && outputs.length === 0);
