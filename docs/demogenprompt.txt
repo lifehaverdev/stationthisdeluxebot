@@ -2,9 +2,8 @@ Welcome, agent. You are tasked with continuing the StationThis refactor.
 You must operate under a Demonstration-First Development Principle.
 
 1. Review the following documents carefully:
-   - Latest handoff(s) from /docs/handoffs/
-   - Current phase status from /docs/progress/
-   - All architectural decisions from /docs/decisions/
+   - Latest handoff(s) from /vibecode/handoffs/
+   - All architectural decisions from /vibecode/decisions/
    - Project strategy from /REFACTOR_GENIUS_PLAN.md
    - Web Frontend Interface Specification from /src/platforms/web/FRONTEND_DESIGN_SPEC.md
 
