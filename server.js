@@ -47,7 +47,16 @@ app.post('/api/webhook', async (req, res) => {
     // Detailed log for successful outputs and the entire body
     if (status === 'success') {
         console.log(`Webhook SUCCESS for ${run_id}: Entire req.body:`, JSON.stringify(req.body, null, 2));
-        // console.log(`Webhook SUCCESS for ${run_id}: Full outputs payload:`, JSON.stringify(outputs, null, 2)); // We already know outputs is often empty
+
+        // Check for the specific condition: success, empty outputs, and live_status indicating ongoing save
+        const liveStatus = req.body.live_status; // Get live_status from the full body
+        const outputsIsEmpty = !outputs || (Array.isArray(outputs) && outputs.length === 0);
+
+        if (outputsIsEmpty && liveStatus && liveStatus.toLowerCase().includes('saveimage')) {
+            console.log(`POLLING CONDITION MET for ${run_id}: Status is success, outputs are empty, and live_status is '${liveStatus}'. Future: Implement polling here.`);
+            // For now, we will still proceed with current logic (which leads to "No outputs to process")
+            // In the future, we would NOT call processWaitlist immediately here and instead start polling.
+        }
     } else {
         // Optional: Log entire body for other statuses if helpful
         // console.log(`Webhook ${status} for ${run_id}: Entire req.body:`, JSON.stringify(req.body, null, 2));
