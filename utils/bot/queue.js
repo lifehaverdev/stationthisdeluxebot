@@ -451,6 +451,10 @@ async function handleTaskCompletion(task) {
     const run = task.final;
     let sent = true;
 
+    // Define tags and texts at a higher scope
+    let tags = [];
+    let texts = [];
+
     console.log('Starting handleTaskCompletion for run_id:', task.run_id);
     //console.log('Full run object:', JSON.stringify(run, null, 2));
 
@@ -578,10 +582,7 @@ async function handleTaskCompletion(task) {
             }
         } else {
             // Existing handling for other types of tasks
-            const possibleTypes = ["images", "gifs", "videos", "text", "tags"];
             let urls = [];
-            let texts = [];
-            let tags = [];
 
             // If outputs are present, process them
             if (run?.outputs && run.outputs.length > 0) {
@@ -654,25 +655,6 @@ async function handleTaskCompletion(task) {
                         break;
                     }
                 }
-
-                for (const text of texts) {
-                    try {
-                        const mediaResponse = await sendMessage(message, text);
-                        if (!mediaResponse) sent = false;
-                    } catch (err) {
-                        console.error('Error sending text:', err.message || err);
-                    }
-                }
-
-                console.log('Processing tags:', JSON.stringify(tags, (key, value) => {
-                    if (typeof value === 'object' && value !== null) {
-                        if (key.has(value)) {
-                            return '[Circular]';
-                        }
-                        key.add(value);
-                    }
-                    return value;
-                }, 2));
 
             } else {
                 console.log(`No outputs to process for run_id: ${task.run_id}, status: ${run.status}`);
