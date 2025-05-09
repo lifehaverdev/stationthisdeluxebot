@@ -44,7 +44,13 @@ app.post('/api/webhook', async (req, res) => {
 
     console.log(`${logPrefix} Run ID: ${run_id} Status: ${status} `);
 
-    //console.log(' Outputs:', JSON.stringify(outputs));
+    // Detailed log for successful outputs
+    if (status === 'success') {
+        console.log(`Webhook SUCCESS for ${run_id}: Full outputs payload:`, JSON.stringify(outputs, null, 2));
+    } else {
+        // Optional: Log outputs for other statuses if helpful for general debugging
+        // console.log(`Webhook ${status} for ${run_id}: Outputs:`, JSON.stringify(outputs, null, 2));
+    }
     
     // Process the waitlist with the webhook data
     await processWaitlist(status, run_id, outputs);

@@ -45,7 +45,7 @@ async function addPoints(task) {
 
     // Special handling for media tasks like TRIPO or VIDU
     if (['TRIPO', 'VIDU_I2V', 'VIDU_UPSCALE'].includes(promptObj.type)) {
-        const mediaCost = 50;
+        const mediaCost = 200;
 
         // Use lobby qoints if available
         if (lobby[userId]?.qoints !== undefined) {
