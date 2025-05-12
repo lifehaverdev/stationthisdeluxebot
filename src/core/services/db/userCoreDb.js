@@ -8,8 +8,16 @@ const { PRIORITY } = require('./utils/queue');
 const COLLECTION_NAME = 'userCore';
 
 class UserCoreDB extends BaseDB {
-  constructor() {
+  constructor(logger) {
     super(COLLECTION_NAME);
+    if (!logger) {
+      // Fallback to console logging if no logger is provided, with a warning.
+      // This maintains basic functionality but signals a configuration issue.
+      console.warn('[UserCoreDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -41,9 +49,9 @@ class UserCoreDB extends BaseDB {
    * @returns {Promise<Object|null>} The userCore document.
    */
   async findOrCreateByPlatformId(platformName, platformId, additionalData = {}) {
-    let user = await this.findUserCoreByPlatformId(platformName, platformId);
-    if (user) {
-      return user;
+    let userDoc = await this.findUserCoreByPlatformId(platformName, platformId);
+    if (userDoc) {
+      return { user: userDoc, isNew: false };
     }
 
     // User not found, create a new one
@@ -73,15 +81,16 @@ class UserCoreDB extends BaseDB {
     }
 
     try {
-      user = await this.createUserCore(newUserDocumentData);
+      userDoc = await this.createUserCore(newUserDocumentData);
       // createUserCore in the current implementation returns { _id: result.insertedId, ...newUserDocument }
       // which is what we want.
-      if (!user || !user._id) { // Defensive check
+      if (!userDoc || !userDoc._id) { // Defensive check
         // Log error or throw, as createUserCore should ideally always return a user or throw
         console.error(`[UserCoreDB] Failed to create user for ${platformName}:${platformId} but createUserCore did not throw or return valid user.`);
-        return null;
+        // To maintain a consistent return type, though this state indicates a deeper issue.
+        return { user: null, isNew: false }; 
       }
-      return user;
+      return { user: userDoc, isNew: true };
     } catch (error) {
       console.error(`[UserCoreDB] Error creating user for ${platformName}:${platformId}:`, error);
       // Depending on desired error handling, re-throw or return null
@@ -126,12 +135,13 @@ class UserCoreDB extends BaseDB {
 
   /**
    * Updates an existing userCore document.
-   * Automatically sets the updatedAt timestamp.
+   * Automatically sets the updatedAt timestamp for the main document.
    * @param {ObjectId | string} masterAccountId - The masterAccountId of the user to update.
    * @param {Object} updateOperations - MongoDB update operators (e.g., { $set: { field: value } }).
+   * @param {Object} [options={}] - MongoDB options for the updateOne operation (e.g., arrayFilters).
    * @returns {Promise<Object|null>} The updated userCore document or null if not found.
    */
-  async updateUserCore(masterAccountId, updateOperations) {
+  async updateUserCore(masterAccountId, updateOperations, options = {}) {
     const id = typeof masterAccountId === 'string' ? new ObjectId(masterAccountId) : masterAccountId;
     const updateDoc = {
       ...updateOperations,
@@ -144,8 +154,8 @@ class UserCoreDB extends BaseDB {
     // To get the updated document, we'd typically findOneAndUpdate or findOne after update.
     // Modifying BaseDB.updateOne to return document or doing a subsequent find is an option.
     // For now, let's assume we need to fetch it if BaseDB.updateOne doesn't return it.
-    const updateResult = await super.updateOne({ _id: id }, updateDoc, {}, false, PRIORITY.HIGH);
-    if (updateResult.matchedCount > 0 || updateResult.upsertedId) {
+    const updateResult = await super.updateOne({ _id: id }, updateDoc, options, false, PRIORITY.HIGH);
+    if (updateResult.matchedCount > 0) {
         return this.findUserCoreById(id); // Fetch the updated document
     }
     return null;
@@ -240,6 +250,145 @@ class UserCoreDB extends BaseDB {
     return this.updateUserCore(masterAccountId, { $set: { status: status } });
   }
 
+  /**
+   * Deletes a wallet from a user's wallets array by its address.
+   * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
+   * @param {string} walletAddress - The address of the wallet to delete.
+   * @returns {Promise<Object|null>} Updated userCore document, or null if user not found or wallet not found/not deleted.
+   */
+  async deleteWallet(masterAccountId, walletAddress) {
+    if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
+      // Basic validation for walletAddress, though more robust checks might be in API layer
+      console.error('[UserCoreDB] deleteWallet: walletAddress is required and must be a non-empty string.');
+      throw new Error('walletAddress is required and must be a non-empty string for deletion.');
+    }
+
+    const updateOperation = {
+      $pull: {
+        wallets: { address: walletAddress }
+      }
+    };
+    // updateUserCore will set the main document's updatedAt timestamp.
+    // It returns the updated document if matchedCount > 0.
+    // If the wallet address didn't exist, matchedCount would still be >0 if the user exists,
+    // but the wallets array wouldn't change. The caller (API layer) might need to verify
+    // that the wallet is actually gone or check modifiedCount if that was available.
+    return this.updateUserCore(masterAccountId, updateOperation);
+  }
+
+  /**
+   * Adds an API key to a user's apiKeys array.
+   * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
+   * @param {Object} apiKeyDocument - The API key object to add (should include keyPrefix, keyHash, name, permissions, createdAt, updatedAt, lastUsedAt, status).
+   * @returns {Promise<Object|null>} Updated userCore document, or null if user not found.
+   */
+  async addApiKey(masterAccountId, apiKeyDocument) {
+    // Basic validation for the apiKeyDocument structure can be done here if desired,
+    // but more comprehensive validation should be in the API layer before this call.
+    if (!apiKeyDocument || typeof apiKeyDocument !== 'object' || !apiKeyDocument.keyHash) {
+      console.error('[UserCoreDB] addApiKey: apiKeyDocument is invalid or missing keyHash.');
+      throw new Error('Invalid apiKeyDocument provided to addApiKey.');
+    }
+
+    const updateOperation = {
+      $push: {
+        apiKeys: apiKeyDocument
+      }
+    };
+    // updateUserCore will set the main document's updatedAt timestamp.
+    return this.updateUserCore(masterAccountId, updateOperation);
+  }
+
+  /**
+   * Updates specific fields of an API key for a user.
+   * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
+   * @param {string} keyPrefix - The prefix of the API key to update.
+   * @param {Object} updates - An object containing the fields to update (e.g., { name, permissions, status }). Includes an updatedAt field for the sub-document.
+   * @returns {Promise<Object|null>} Updated userCore document, or null if user or key not found/not updated.
+   */
+  async updateApiKey(masterAccountId, keyPrefix, updates) {
+    if (!masterAccountId) {
+      throw new Error('masterAccountId is required for updating API key');
+    }
+    if (!keyPrefix) {
+      throw new Error('keyPrefix is required for updating API key');
+    }
+    if (!updates || Object.keys(updates).length === 0) {
+      throw new Error('updates object is required and cannot be empty for updating API key');
+    }
+
+    const filter = { _id: new ObjectId(masterAccountId) };
+    // updates should be pre-formatted like: { 'apiKeys.$[elem].name': 'new name', 'apiKeys.$[elem].status': 'inactive' }
+    const updateOperation = { $set: updates }; 
+    const options = { 
+      arrayFilters: [{ 'elem.keyPrefix': keyPrefix }],
+      returnDocument: 'after' 
+    };
+
+    this.logger.debug(`[UserCoreDB] updateApiKey: masterAccountId=${masterAccountId}, keyPrefix=${keyPrefix}, updates=${JSON.stringify(updates)}`);
+    const result = await this.updateOne(filter, updateOperation, options, PRIORITY.HIGH);
+    if (result && result.value) {
+        this.logger.info(`[UserCoreDB] updateApiKey: Successfully updated API key for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
+        return result.value;
+    } else {
+        // This case should ideally be caught by a pre-check in the API layer
+        // to see if the user and keyPrefix combination exists.
+        this.logger.warn(`[UserCoreDB] updateApiKey: API key with prefix ${keyPrefix} not found for masterAccountId ${masterAccountId}, or user not found.`);
+        return null; 
+    }
+  }
+
+  async deleteApiKey(masterAccountId, keyPrefix) {
+    if (!masterAccountId) {
+      throw new Error('masterAccountId is required for deleting API key');
+    }
+    if (!keyPrefix) {
+      throw new Error('keyPrefix is required for deleting API key');
+    }
+
+    const filter = { _id: new ObjectId(masterAccountId) };
+    const updateOperation = { 
+      $pull: { 
+        apiKeys: { keyPrefix: keyPrefix } 
+      } 
+    };
+    // Remove the returnDocument option as it's not standard for updateOne
+    const options = {}; 
+
+    this.logger.debug(`[UserCoreDB] deleteApiKey: Attempting to delete API key with prefix ${keyPrefix} for masterAccountId ${masterAccountId}`);
+    
+    // First, check if the user and specific API key exist to ensure we don't return a modified user doc if the key wasn't there.
+    // This also helps in the API layer to return a 404 if the key doesn't exist.
+    const userExistsWithKey = await this.findOne(
+      { _id: new ObjectId(masterAccountId), 'apiKeys.keyPrefix': keyPrefix },
+      PRIORITY.MEDIUM // No need for projection here, just existence check
+    );
+
+    if (!userExistsWithKey) {
+      this.logger.warn(`[UserCoreDB] deleteApiKey: API key with prefix ${keyPrefix} not found for masterAccountId ${masterAccountId}. No deletion performed.`);
+      return null; // Or indicate specifically that the key was not found
+    }
+
+    // Perform the $pull operation
+    const updateResult = await this.updateOne(filter, updateOperation, options, false, PRIORITY.HIGH);
+    
+    // Check the result of updateOne based on counts
+    if (updateResult && updateResult.matchedCount > 0) {
+      // User found, proceed to fetch the document
+      if (updateResult.modifiedCount > 0) {
+         this.logger.info(`[UserCoreDB] deleteApiKey: Successfully removed API key entry with prefix ${keyPrefix} for masterAccountId ${masterAccountId}. Fetching updated user doc.`);
+      } else {
+          this.logger.warn(`[UserCoreDB] deleteApiKey: User ${masterAccountId} found, but key ${keyPrefix} was likely already removed. Fetching current user doc.`);
+      }
+      // Fetch and return the document AFTER the update attempt
+      return this.findUserCoreById(masterAccountId); 
+    } else {
+      // User not found by updateOne
+      this.logger.warn(`[UserCoreDB] deleteApiKey: User ${masterAccountId} not found during $pull operation for keyPrefix ${keyPrefix}.`);
+      return null; 
+    }
+  }
+
 }
 
-module.exports = new UserCoreDB(); 
+module.exports = UserCoreDB; // Export the class, not an instance 

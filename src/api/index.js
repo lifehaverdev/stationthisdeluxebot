@@ -22,7 +22,8 @@ function initializeAPI(options = {}) {
   const internalServices = initializeInternalServices({
     logger,
     appStartTime,
-    version
+    version,
+    db: options.db
   });
   
   return {

@@ -2,8 +2,14 @@ const { BaseDB, ObjectId: BaseDBObjectId } = require('./BaseDB');
 const { ObjectId: MongoObjectId, Decimal128 } = require('mongodb');
 
 class TransactionsDB extends BaseDB {
-  constructor() {
+  constructor(logger) {
     super('transactions');
+    if (!logger) {
+      console.warn('[TransactionsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -23,7 +29,7 @@ class TransactionsDB extends BaseDB {
    * @param {Object} [txData.metadata] - Other relevant metadata.
    * @returns {Promise<Object>} The created transaction document.
    */
-  async logTransaction(txData) {
+  async logTransaction(txData, session = null) {
     if (txData.amountUsd === undefined || txData.balanceBeforeUsd === undefined || txData.balanceAfterUsd === undefined) {
       throw new Error('amountUsd, balanceBeforeUsd, and balanceAfterUsd are required for logging a transaction.');
     }
@@ -46,7 +52,7 @@ class TransactionsDB extends BaseDB {
         }
     }
 
-    const result = await this.insertOne(dataToInsert);
+    const result = await this.insertOne(dataToInsert, false, undefined, session);
     if (result.insertedId) {
         return { _id: result.insertedId, ...dataToInsert };
     }
@@ -58,8 +64,8 @@ class TransactionsDB extends BaseDB {
    * @param {ObjectId} transactionId - The ID of the transaction.
    * @returns {Promise<Object|null>} The transaction document, or null if not found.
    */
-  async findTransactionById(transactionId) {
-    return this.findOne({ _id: new MongoObjectId(transactionId) });
+  async findTransactionById(transactionId, session = null) {
+    return this.findOne({ _id: new MongoObjectId(transactionId) }, undefined, session);
   }
 
   /**
@@ -68,10 +74,10 @@ class TransactionsDB extends BaseDB {
    * @param {Object} [options] - Query options (e.g., limit, sort: { timestamp: -1 }).
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
-  async findTransactionsByMasterAccount(masterAccountId, options = {}) {
+  async findTransactionsByMasterAccount(masterAccountId, options = {}, session = null) {
     const defaultSort = { timestamp: -1 }; // Default to newest first
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId) }, queryOptions);
+    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId) }, undefined, session);
   }
 
   /**
@@ -81,10 +87,10 @@ class TransactionsDB extends BaseDB {
    * @param {Object} [options] - Query options.
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
-  async findTransactionsByType(masterAccountId, type, options = {}) {
+  async findTransactionsByType(masterAccountId, type, options = {}, session = null) {
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId), type }, queryOptions);
+    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId), type }, undefined, session);
   }
 
   /**
@@ -95,11 +101,11 @@ class TransactionsDB extends BaseDB {
    * @param {Object} [options] - Query options.
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
-  async findTransactionsByRelatedItem(relatedItemPath, itemId, options = {}) {
+  async findTransactionsByRelatedItem(relatedItemPath, itemId, options = {}, session = null) {
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ [relatedItemPath]: new MongoObjectId(itemId) }, queryOptions);
+    return this.findMany({ [relatedItemPath]: new MongoObjectId(itemId) }, undefined, session);
   }
 }
 
-module.exports = new TransactionsDB(); 
+module.exports = TransactionsDB; 

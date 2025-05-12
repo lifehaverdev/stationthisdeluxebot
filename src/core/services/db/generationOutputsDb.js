@@ -2,8 +2,14 @@ const { BaseDB, ObjectId } = require('./BaseDB');
 // const { getCachedClient } = require('./utils/queue'); // Not needed here anymore
 
 class GenerationOutputsDB extends BaseDB {
-  constructor() { // Removed client parameter
-    super('generationOutputs'); // Call super with only the collection name
+  constructor(logger) { 
+    super('generationOutputs');
+    if (!logger) {
+      console.warn('[GenerationOutputsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -74,33 +80,30 @@ class GenerationOutputsDB extends BaseDB {
   /**
    * Finds generation outputs by masterAccountId.
    * @param {ObjectId} masterAccountId - The master account ID.
-   * @param {Object} [options] - Query options (e.g., limit, sort).
    * @returns {Promise<Array<Object>>} A list of documents.
    */
   async findGenerationsByMasterAccount(masterAccountId, options = {}) {
-    return this.findMany({ masterAccountId }, options);
+    return this.findMany({ masterAccountId });
   }
 
   /**
    * Finds generation outputs by sessionId.
    * @param {ObjectId} sessionId - The session ID.
-   * @param {Object} [options] - Query options (e.g., limit, sort).
    * @returns {Promise<Array<Object>>} A list of documents.
    */
   async findGenerationsBySession(sessionId, options = {}) {
-    return this.findMany({ sessionId }, options);
+    return this.findMany({ sessionId });
   }
 
     /**
    * Finds generation outputs by their status.
    * @param {string} status - The status to filter by (e.g., 'pending', 'success', 'failed').
-   * @param {Object} [options] - Query options (e.g., limit, sort).
    * @returns {Promise<Array<Object>>} A list of documents.
    */
   async findGenerationsByStatus(status, options = {}) {
-    return this.findMany({ status }, options);
+    return this.findMany({ status });
   }
 }
 
 // const client = getCachedClient(); // Not needed here anymore
-module.exports = new GenerationOutputsDB(); // Instantiate without client 
+module.exports = GenerationOutputsDB; // Export the class 

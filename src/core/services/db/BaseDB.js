@@ -112,27 +112,28 @@ class BaseDB {
     }
 
     // Basic Operations
-    async findOne(filter, priority = PRIORITY.HIGH) {
+    async findOne(filter, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
             const collection = client.db(this.dbName).collection(this.collectionName);
-            return collection.findOne(filter);
+            return collection.findOne(filter, { session });
         }, priority);
     }
 
-    async findMany(filter = {}, priority = PRIORITY.HIGH) {
+    async findMany(filter = {}, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
             const collection = client.db(this.dbName).collection(this.collectionName);
-            return collection.find(filter).toArray();
+            const cursor = collection.find(filter, { session });
+            return cursor.toArray();
         }, priority);
     }
 
-    async insertOne(document, batch = false, priority = PRIORITY.HIGH) {
+    async insertOne(document, batch = false, priority = PRIORITY.HIGH, session = null) {
         const validatedDoc = this.validateData(document);
         
         const operation = async (collection) => 
-            collection.insertOne(validatedDoc);
+            collection.insertOne(validatedDoc, { session });
 
         if (batch) {
             this.batchOperations.push(operation);
@@ -149,21 +150,19 @@ class BaseDB {
         );
     }
 
-    async updateOne(filter, update, options = {}, batch = false, priority = PRIORITY.HIGH) {
-        // Note: Original BaseDB used $set directly. If more complex updates are needed ($push, $inc),
-        // the caller should provide the full update document (e.g., { $set: validatedUpdate } or { $inc: ... }).
-        // For simplicity, this version assumes `update` is the document to be set, or a full update operator doc.
+    async updateOne(filter, update, options = {}, batch = false, priority = PRIORITY.HIGH, session = null) {
         let updateDoc = update;
         if (!Object.keys(update).some(key => key.startsWith('$'))) {
-            updateDoc = { $set: this.validateData(update) }; // Wrap in $set if not an operator doc
+            updateDoc = { $set: this.validateData(update) };
         } else {
             // If it is an operator doc, validate the parts that are not operators themselves if necessary
             // For example, if update is { $set: { field: value }, $push: { arrField: item } }, validate `value` and `item`
             // This part can be complex, for now, we assume operators are used correctly by the caller.
         }
         
+        const operationOptions = { ...options, session };
         const operation = async (collection) => 
-            collection.updateOne(filter, updateDoc, options);
+            collection.updateOne(filter, updateDoc, operationOptions);
 
         if (batch) {
             this.batchOperations.push(operation);
@@ -180,28 +179,28 @@ class BaseDB {
         );
     }
 
-    async deleteOne(filter, priority = PRIORITY.HIGH) {
+    async deleteOne(filter, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
             const collection = client.db(this.dbName).collection(this.collectionName);
-            return collection.deleteOne(filter);
+            return collection.deleteOne(filter, { session });
         }, priority);
     }
 
     // Common Operations using $operators - ensure these are passed to updateOne correctly
-    async increment(filter, field, amount = 1, priority = PRIORITY.HIGH) {
+    async increment(filter, field, amount = 1, priority = PRIORITY.HIGH, session = null) {
         const updateDoc = { $inc: { [field]: amount } };
-        return this.updateOne(filter, updateDoc, {}, false, priority);
+        return this.updateOne(filter, updateDoc, {}, false, priority, session);
     }
 
-    async push(filter, field, value, priority = PRIORITY.HIGH) {
+    async push(filter, field, value, priority = PRIORITY.HIGH, session = null) {
         const updateDoc = { $push: { [field]: value } };
-        return this.updateOne(filter, updateDoc, {}, false, priority);
+        return this.updateOne(filter, updateDoc, {}, false, priority, session);
     }
 
-    async pull(filter, field, value, priority = PRIORITY.HIGH) {
+    async pull(filter, field, value, priority = PRIORITY.HIGH, session = null) {
         const updateDoc = { $pull: { [field]: value } };
-        return this.updateOne(filter, updateDoc, {}, false, priority);
+        return this.updateOne(filter, updateDoc, {}, false, priority, session);
     }
 
     // GridFS Operations

@@ -48,11 +48,20 @@ async function initializeServices(options = {}) {
       logger: workflowsLogger
     });
     
+    // Initialize Database Services with Logger
+    if (!dbService || typeof dbService.initializeDbServices !== 'function') {
+      logger.error('Failed to initialize DB services: initializeDbServices function not found in db module.');
+      throw new Error('DB service initialization function not found.');
+    }
+    const initializedDbServices = dbService.initializeDbServices(logger);
+    logger.info('Database services initialized.');
+
     // Initialize API services
     const apiServices = initializeAPI({
       logger,
       appStartTime,
-      version: options.version
+      version: options.version,
+      db: initializedDbServices // Pass the INSTANTIATED services
     });
     
     logger.info('Core services created successfully');
@@ -63,7 +72,7 @@ async function initializeServices(options = {}) {
       points: pointsService,
       comfyUI: comfyUIService,
       workflows: workflowsService,
-      db: dbService,
+      db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal,
       logger,
       appStartTime

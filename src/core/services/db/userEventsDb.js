@@ -2,8 +2,14 @@ const { BaseDB, ObjectId } = require('./BaseDB');
 // const { getCachedClient } = require('./utils/queue'); // Not needed here anymore
 
 class UserEventsDB extends BaseDB {
-  constructor() { // Removed client parameter
-    super('userEvents'); // Call super with only the collection name
+  constructor(logger) { 
+    super('userEvents');
+    if (!logger) {
+      console.warn('[UserEventsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -58,7 +64,8 @@ class UserEventsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of event documents.
    */
   async findEventsByMasterAccount(masterAccountId, options = {}) {
-    return this.findMany({ masterAccountId }, options);
+    // Corrected call: BaseDB.findMany only takes filter and priority. Options are not supported directly yet.
+    return this.findMany({ masterAccountId });
   }
 
   /**
@@ -68,7 +75,8 @@ class UserEventsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of event documents.
    */
   async findEventsBySession(sessionId, options = {}) {
-    return this.findMany({ sessionId }, options);
+    // Corrected call: BaseDB.findMany only takes filter and priority. Options are not supported directly yet.
+    return this.findMany({ sessionId });
   }
 
   /**
@@ -78,9 +86,10 @@ class UserEventsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of event documents.
    */
   async findEventsByType(eventType, options = {}) {
-    return this.findMany({ eventType }, options);
+    // Corrected call: BaseDB.findMany only takes filter and priority. Options are not supported directly yet.
+    return this.findMany({ eventType });
   }
 }
 
 // const client = getCachedClient(); // Not needed here anymore
-module.exports = new UserEventsDB(); // Instantiate without client 
+module.exports = UserEventsDB; // Export the class 

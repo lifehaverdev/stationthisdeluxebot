@@ -2,8 +2,14 @@ const { BaseDB, ObjectId } = require('./BaseDB');
 // const { getCachedClient } = require('./utils/queue'); // Not needed here anymore
 
 class UserSessionsDB extends BaseDB {
-  constructor() { // Removed client parameter
-    super('userSessions'); // Call super with only the collection name
+  constructor(logger) { 
+    super('userSessions');
+    if (!logger) {
+      console.warn('[UserSessionsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -91,4 +97,4 @@ class UserSessionsDB extends BaseDB {
 }
 
 // const client = getCachedClient(); // Not needed here anymore
-module.exports = new UserSessionsDB(); // Instantiate without client 
+module.exports = UserSessionsDB; // Export the class 

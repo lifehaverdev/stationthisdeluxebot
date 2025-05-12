@@ -2,8 +2,14 @@ const { BaseDB, ObjectId: BaseDBObjectId } = require('./BaseDB');
 const { ObjectId } = require('mongodb');
 
 class UserPreferencesDB extends BaseDB {
-  constructor() {
+  constructor(logger) {
     super('userPreferences');
+    if (!logger) {
+      console.warn('[UserPreferencesDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = console; 
+    } else {
+      this.logger = logger;
+    }
   }
 
   /**
@@ -121,4 +127,4 @@ class UserPreferencesDB extends BaseDB {
   }
 }
 
-module.exports = new UserPreferencesDB(); 
+module.exports = UserPreferencesDB; 

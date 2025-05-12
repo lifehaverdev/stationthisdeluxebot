@@ -133,6 +133,14 @@ async function startApp() {
       }
     });
     console.log('Platform adapters initialized');
+
+    // Mount the internal API router
+    if (services.internal && services.internal.router && platforms.web && platforms.web.app) {
+      platforms.web.app.use('/internal', services.internal.router);
+      console.log('Internal API router mounted at /internal');
+    } else {
+      console.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible.');
+    }
     
     // Initialize web server routes BEFORE setting up Telegram commands
     if (platforms.web) {
