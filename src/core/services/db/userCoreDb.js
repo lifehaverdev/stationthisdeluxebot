@@ -303,38 +303,46 @@ class UserCoreDB extends BaseDB {
    * Updates specific fields of an API key for a user.
    * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
    * @param {string} keyPrefix - The prefix of the API key to update.
-   * @param {Object} updates - An object containing the fields to update (e.g., { name, permissions, status }). Includes an updatedAt field for the sub-document.
+   * @param {Object} updatesForSubDoc - An object containing the fields to update within the matching apiKey element (e.g., { name: 'new name', status: 'inactive' }). MUST include `updatedAt` for the sub-document.
    * @returns {Promise<Object|null>} Updated userCore document, or null if user or key not found/not updated.
    */
-  async updateApiKey(masterAccountId, keyPrefix, updates) {
+  async updateApiKey(masterAccountId, keyPrefix, updatesForSubDoc) {
     if (!masterAccountId) {
       throw new Error('masterAccountId is required for updating API key');
     }
     if (!keyPrefix) {
       throw new Error('keyPrefix is required for updating API key');
     }
-    if (!updates || Object.keys(updates).length === 0) {
-      throw new Error('updates object is required and cannot be empty for updating API key');
+    if (!updatesForSubDoc || Object.keys(updatesForSubDoc).length === 0 || !updatesForSubDoc.updatedAt) {
+      // Ensure updatedAt is included for the sub-document update
+      throw new Error('updatesForSubDoc object is required, cannot be empty, and must include updatedAt field for updating API key');
     }
 
-    const filter = { _id: new ObjectId(masterAccountId) };
-    // updates should be pre-formatted like: { 'apiKeys.$[elem].name': 'new name', 'apiKeys.$[elem].status': 'inactive' }
-    const updateOperation = { $set: updates }; 
-    const options = { 
-      arrayFilters: [{ 'elem.keyPrefix': keyPrefix }],
-      returnDocument: 'after' 
-    };
+    // Construct the $set operations for the sub-document using the positional operator
+    const setOperations = {};
+    for (const key in updatesForSubDoc) {
+        setOperations[`apiKeys.$[elem].${key}`] = updatesForSubDoc[key];
+    }
 
-    this.logger.debug(`[UserCoreDB] updateApiKey: masterAccountId=${masterAccountId}, keyPrefix=${keyPrefix}, updates=${JSON.stringify(updates)}`);
-    const result = await this.updateOne(filter, updateOperation, options, PRIORITY.HIGH);
-    if (result && result.value) {
-        this.logger.info(`[UserCoreDB] updateApiKey: Successfully updated API key for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
-        return result.value;
+    // Prepare the options object with arrayFilters for updateUserCore
+    const options = { 
+      arrayFilters: [{ 'elem.keyPrefix': keyPrefix }]
+    }; 
+
+    this.logger.debug(`[UserCoreDB] updateApiKey: Calling updateUserCore for masterAccountId=${masterAccountId}, keyPrefix=${keyPrefix}, updates=${JSON.stringify(setOperations)}`);
+    
+    // Call updateUserCore, which handles the update and fetches the updated document
+    // updateUserCore expects the full update operation object ({ $set: ... }) and options
+    const updatedUserDoc = await this.updateUserCore(masterAccountId, { $set: setOperations }, options);
+
+    if (updatedUserDoc) {
+      // Check if the specific key was actually modified if needed (e.g., by comparing updatedAt)
+      // For now, assume success if updateUserCore returned a document.
+      this.logger.info(`[UserCoreDB] updateApiKey: Successfully updated API key subdocument for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
+      return updatedUserDoc;
     } else {
-        // This case should ideally be caught by a pre-check in the API layer
-        // to see if the user and keyPrefix combination exists.
-        this.logger.warn(`[UserCoreDB] updateApiKey: API key with prefix ${keyPrefix} not found for masterAccountId ${masterAccountId}, or user not found.`);
-        return null; 
+      this.logger.warn(`[UserCoreDB] updateApiKey: Failed to update API key (user or key not found) for masterAccountId ${masterAccountId}, keyPrefix ${keyPrefix}.`);
+      return null; // updateUserCore returns null if match count is 0
     }
   }
 

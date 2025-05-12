@@ -8,6 +8,7 @@
 const express = require('express');
 const path = require('path');
 require('dotenv').config();
+const { v4: uuidv4 } = require('uuid'); // For request IDs in errors
 
 // Store application start time
 const APP_START_TIME = new Date();
@@ -134,12 +135,52 @@ async function startApp() {
     });
     console.log('Platform adapters initialized');
 
+    // --- Internal API Auth Middleware (defined within startApp to access logger if needed, and be close to its usage) ---
+    const internalApiAuthMiddleware = (req, res, next) => {
+      const requestId = uuidv4(); // Generate request ID for error logging
+      // Ensure logger is available, fallback to console if services.logger is not yet initialized or passed
+      const currentLogger = services && services.logger ? services.logger : console;
+      const clientKey = req.headers['x-internal-client-key'];
+
+      if (!clientKey) {
+        currentLogger.warn(`[AuthMiddleware] Internal API request denied: Missing X-Internal-Client-Key header. Path: ${req.originalUrl}, IP: ${req.ip}, RequestId: ${requestId}`);
+        return res.status(401).json({
+          error: {
+            code: 'MISSING_AUTH_HEADER',
+            message: 'Missing X-Internal-Client-Key header.',
+            requestId: requestId
+          }
+        });
+      }
+
+      const validKeys = [
+        process.env.INTERNAL_API_KEY_TELEGRAM,
+        process.env.INTERNAL_API_KEY_DISCORD,
+        process.env.INTERNAL_API_KEY_WEB,
+      ].filter(key => key);
+
+      if (!validKeys.includes(clientKey)) {
+        currentLogger.warn(`[AuthMiddleware] Internal API request denied: Invalid X-Internal-Client-Key provided. Path: ${req.originalUrl}, IP: ${req.ip}, KeyProvided: ${clientKey}, RequestId: ${requestId}`);
+        return res.status(403).json({
+          error: {
+            code: 'INVALID_API_KEY',
+            message: 'Invalid API key provided.',
+            requestId: requestId
+          }
+        });
+      }
+      currentLogger.debug(`[AuthMiddleware] Internal API request authorized. Path: ${req.originalUrl}, RequestId: ${requestId}`);
+      next();
+    };
+
     // Mount the internal API router
     if (services.internal && services.internal.router && platforms.web && platforms.web.app) {
+      // Apply the auth middleware specifically to the /internal path of the web app
+      platforms.web.app.use('/internal', internalApiAuthMiddleware);
       platforms.web.app.use('/internal', services.internal.router);
-      console.log('Internal API router mounted at /internal');
+      console.log('Internal API authentication middleware and router mounted at /internal');
     } else {
-      console.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible.');
+      console.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible or secured.');
     }
     
     // Initialize web server routes BEFORE setting up Telegram commands

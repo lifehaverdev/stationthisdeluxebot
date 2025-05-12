@@ -62,22 +62,25 @@ class TransactionsDB extends BaseDB {
   /**
    * Finds a transaction by its ID.
    * @param {ObjectId} transactionId - The ID of the transaction.
+   * @param {object} options - Optional MongoDB find options (e.g., projection).
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object|null>} The transaction document, or null if not found.
    */
-  async findTransactionById(transactionId, session = null) {
-    return this.findOne({ _id: new MongoObjectId(transactionId) }, undefined, session);
+  async findTransactionById(transactionId, options = {}, session = null) {
+    return this.findOne({ _id: new MongoObjectId(transactionId) }, options, undefined, session);
   }
 
   /**
    * Finds transactions by masterAccountId.
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {Object} [options] - Query options (e.g., limit, sort: { timestamp: -1 }).
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByMasterAccount(masterAccountId, options = {}, session = null) {
     const defaultSort = { timestamp: -1 }; // Default to newest first
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId) }, undefined, session);
+    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId) }, queryOptions, undefined, session);
   }
 
   /**
@@ -85,12 +88,13 @@ class TransactionsDB extends BaseDB {
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {string} type - The transaction type.
    * @param {Object} [options] - Query options.
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByType(masterAccountId, type, options = {}, session = null) {
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId), type }, undefined, session);
+    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId), type }, queryOptions, undefined, session);
   }
 
   /**
@@ -99,12 +103,13 @@ class TransactionsDB extends BaseDB {
    * @param {string} relatedItemPath - The path to the item ID (e.g., 'relatedItems.generationId').
    * @param {ObjectId} itemId - The ID of the related item.
    * @param {Object} [options] - Query options.
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByRelatedItem(relatedItemPath, itemId, options = {}, session = null) {
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ [relatedItemPath]: new MongoObjectId(itemId) }, undefined, session);
+    return this.findMany({ [relatedItemPath]: new MongoObjectId(itemId) }, queryOptions, undefined, session);
   }
 }
 

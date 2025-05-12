@@ -39,10 +39,12 @@ class UserEconomyDB extends BaseDB {
   /**
    * Finds the economy record for a user by their masterAccountId.
    * @param {ObjectId} masterAccountId - The master account ID of the user.
+   * @param {object} options - Optional MongoDB find options (e.g., projection).
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object|null>} The user economy document, or null if not found.
    */
-  async findByMasterAccountId(masterAccountId, session = null) {
-    return this.findOne({ masterAccountId: new ObjectId(masterAccountId) }, undefined, session);
+  async findByMasterAccountId(masterAccountId, options = {}, session = null) {
+    return this.findOne({ masterAccountId: new ObjectId(masterAccountId) }, options, undefined, session);
   }
 
   /**
@@ -50,6 +52,7 @@ class UserEconomyDB extends BaseDB {
    * Can be used to add or subtract credits.
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {number|string} amountChange - The amount to change credits by (positive to add, negative to subtract).
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object>} The update result.
    */
   async updateUsdCredit(masterAccountId, amountChange, session = null) {
@@ -71,6 +74,7 @@ class UserEconomyDB extends BaseDB {
    * Sets the USD credit for a user to a specific value.
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {number|string} newCreditAmount - The new total credit amount.
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object>} The update result.
    */
   async setUsdCredit(masterAccountId, newCreditAmount, session = null) {
@@ -93,6 +97,7 @@ class UserEconomyDB extends BaseDB {
    * Updates the experience points (EXP) for a user.
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {number} expChange - The amount of EXP to add (can be negative to subtract, though less common).
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object>} The update result.
    */
   async updateExperience(masterAccountId, expChange, session = null) {
@@ -113,6 +118,7 @@ class UserEconomyDB extends BaseDB {
    * Sets the experience points (EXP) for a user to a specific value.
    * @param {ObjectId} masterAccountId - The master account ID.
    * @param {number} newExpAmount - The new total EXP.
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<Object>} The update result.
    */
   async setExperience(masterAccountId, newExpAmount, session = null) {
@@ -134,10 +140,11 @@ class UserEconomyDB extends BaseDB {
   /**
    * Gets the current balance (USD credit and EXP) for a user.
    * @param {ObjectId} masterAccountId - The master account ID.
+   * @param {ClientSession} session - Optional MongoDB session.
    * @returns {Promise<{usdCredit: Decimal128, exp: BigInt}|null>} Economy details or null.
    */
   async getBalance(masterAccountId, session = null) {
-    const economyRecord = await this.findByMasterAccountId(masterAccountId, session);
+    const economyRecord = await this.findByMasterAccountId(masterAccountId, {}, session);
     if (economyRecord) {
       return {
         usdCredit: economyRecord.usdCredit,

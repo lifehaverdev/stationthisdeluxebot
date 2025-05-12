@@ -112,19 +112,21 @@ class BaseDB {
     }
 
     // Basic Operations
-    async findOne(filter, priority = PRIORITY.HIGH, session = null) {
+    async findOne(filter, options = {}, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
             const collection = client.db(this.dbName).collection(this.collectionName);
-            return collection.findOne(filter, { session });
+            const findOptions = session ? { ...options, session } : options;
+            return collection.findOne(filter, findOptions);
         }, priority);
     }
 
-    async findMany(filter = {}, priority = PRIORITY.HIGH, session = null) {
+    async findMany(filter = {}, options = {}, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
             const collection = client.db(this.dbName).collection(this.collectionName);
-            const cursor = collection.find(filter, { session });
+            const findOptions = session ? { ...options, session } : options;
+            const cursor = collection.find(filter, findOptions);
             return cursor.toArray();
         }, priority);
     }
