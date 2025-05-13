@@ -262,7 +262,14 @@ class ComfyUIService {
         WorkflowsService: WorkflowsService, // Pass the class constructor
         getMachineForWorkflow: getMachineForWorkflow // Pass the function
     };
-    return submitRequestAction(instanceData, options);
+
+    // Prepare the options for runManager, ensuring our service's webhookUrl is included
+    const runManagerOptions = {
+      ...options, // Spread the original options (deploymentId, inputs, workflowName)
+      webhookUrl: this.webhookUrl // Add/override with the service-configured webhookUrl
+    };
+
+    return submitRequestAction(instanceData, runManagerOptions);
   }
 
   /**
