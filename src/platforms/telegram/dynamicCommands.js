@@ -168,8 +168,6 @@ async function setupDynamicCommands(bot, services) {
             costRateInfo = await comfyuiService.getCostRateForDeployment(deploymentId);
             if (!costRateInfo) {
               logger.warn(`[Telegram EXEC /${commandName}] Could not determine cost rate for deployment ${deploymentId}. Proceeding without cost info.`);
-              // Decide if we should block execution or proceed without cost info
-              // For now, proceeding but cost calculation will fail later.
               costRateInfo = { error: 'Rate unknown' }; // Indicate missing rate in metadata
             } else {
               logger.info(`[Telegram EXEC /${commandName}] Determined cost rate: ${JSON.stringify(costRateInfo)}`);
@@ -186,14 +184,23 @@ async function setupDynamicCommands(bot, services) {
             initiatingEventId: eventId, // Link to the command event
             serviceName: workflow.name,
             requestPayload: { input_prompt: prompt },
+            // Fields for decoupled notification system (ADR-001)
+            notificationPlatform: 'telegram',
+            deliveryStatus: 'pending',
             metadata: { 
               deploymentId: deploymentId, 
               costRate: costRateInfo, // Store ACTUAL cost rate (or error indicator)
-              telegramChatId: chatId, // Store chat ID for potential webhook responses
-              telegramUserId: platformIdStr
+              // telegramChatId: chatId, // Consolidated into notificationContext
+              // telegramUserId: platformIdStr, // Consolidated into notificationContext
+              notificationContext: {
+                chatId: chatId,
+                userId: platformIdStr,
+                messageId: msg.message_id // For potential threaded replies or context
+              }
+              // run_id will be added later via a PUT update to avoid potential race conditions
             }
           };
-          logger.debug(`[Telegram EXEC /${commandName}] Logging generation start...`);
+          logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationPayload)}`);
           const generationResponse = await internalApiClient.post('/generations', generationPayload);
           generationId = generationResponse.data._id;
           logger.info(`[Telegram EXEC /${commandName}] Generation logged: ${generationId}`);
@@ -214,11 +221,9 @@ async function setupDynamicCommands(bot, services) {
             logger.info(`[Telegram EXEC /${commandName}] ComfyUI submission successful. Run ID: ${run_id}. Linking to GenID: ${generationId}...`);
             // 7. Link run_id to Generation Record
             try {
-              // Attempt to merge run_id into existing metadata
-              // NOTE: Assumes PUT /generations supports partial metadata updates or merging.
-              // If it overwrites, we'd need to GET generation, merge metadata, then PUT.
+              // Attempt to merge run_id into existing metadata using dot notation for partial update
               await internalApiClient.put(`/generations/${generationId}`, { 
-                metadata: { run_id: run_id } 
+                "metadata.run_id": run_id 
               });
                logger.info(`[Telegram EXEC /${commandName}] Successfully linked RunID ${run_id} to Generation ${generationId}`);
             } catch (linkError) {

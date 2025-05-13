@@ -20,9 +20,12 @@ class GenerationOutputsDB extends BaseDB {
    * @param {ObjectId} outputData.initiatingEventId - FK to userEvents.eventId.
    * @param {string} outputData.serviceName - Identifier for the generation service.
    * @param {string} outputData.status - Initial status (e.g., 'pending', 'processing').
+   * @param {string} outputData.notificationPlatform - Platform for notifications (e.g., 'telegram', 'discord', 'none').
+   * @param {string} outputData.deliveryStatus - Initial delivery status (e.g., 'pending', 'skipped', 'none').
    * @param {Object} [outputData.requestPayload] - Payload sent to the service.
    * @param {string} [outputData.platformSpecificRunId] - Optional ID from the external platform.
    * @param {Object} [outputData.metadata] - Additional metadata.
+   * @param {Object} [outputData.metadata.notificationContext] - Context for the notification (e.g., { chatId, userId, messageId }).
    * @param {Date} [outputData.requestTimestamp] - Timestamp of request, defaults to now.
    * @returns {Promise<Object>} The created generation output document.
    */
@@ -56,6 +59,10 @@ class GenerationOutputsDB extends BaseDB {
    * @param {ObjectId} generationId - The ID of the generation output to update.
    * @param {Object} updateData - The data to update.
    * @param {string} [updateData.status] - New status.
+   * @param {string} [updateData.deliveryStatus] - Updated delivery status (e.g., 'sent', 'failed').
+   * @param {Date} [updateData.deliveryTimestamp] - Timestamp of successful delivery.
+   * @param {string} [updateData.deliveryError] - Error message if delivery failed.
+   * @param {number} [updateData.deliveryAttempts] - Number of delivery attempts.
    * @param {Date} [updateData.responseTimestamp] - Timestamp of response.
    * @param {number} [updateData.durationMs] - Duration in milliseconds.
    * @param {Object} [updateData.responsePayload] - Response received from the service.

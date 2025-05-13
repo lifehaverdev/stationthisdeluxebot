@@ -720,11 +720,11 @@ async function initializeRoutes(app, services) {
       // console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook/comfydeploy');
       // The new processor function handles its own logging of the hit and payload.
 
-      // Dependencies for the processor (mocked for now where necessary)
+      // Dependencies for the processor
       const dependencies = {
-        internalApiClient: null, // TODO: Pass the actual internal API client instance
-        telegramNotifier: null,  // TODO: Pass the actual Telegram notifier instance/functions
-        logger: console          // Use console for now, or a proper logger instance
+        internalApiClient: services.internalApiClient,
+        telegramNotifier: services.telegramNotifier,
+        logger: services.logger || console // Use services.logger, fallback to console
       };
 
       const result = await processComfyDeployWebhook(req.body, dependencies);

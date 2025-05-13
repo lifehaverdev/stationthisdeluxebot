@@ -40,10 +40,10 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
-    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, metadata, requestTimestamp } = req.body;
-    const requiredFields = { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload };
+    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus } = req.body;
+    const requiredFields = { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
-      if (!requiredFields[field]) {
+      if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `Missing required field: ${field}.`, details: { field } } });
       }
     }
@@ -51,10 +51,24 @@ module.exports = function generationOutputsApi(dependencies) {
     if (!ObjectId.isValid(masterAccountId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format.', details: { field: 'masterAccountId' } } });
     if (!ObjectId.isValid(sessionId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid sessionId format.', details: { field: 'sessionId' } } });
     if (!ObjectId.isValid(initiatingEventId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid initiatingEventId format.', details: { field: 'initiatingEventId' } } });
-    // Validate types
+    
+    // Validate types for core fields
     if (typeof serviceName !== 'string' || serviceName.trim() === '') return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'serviceName must be a non-empty string.', details: { field: 'serviceName' } } });
     if (typeof requestPayload !== 'object') return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'requestPayload must be an object.', details: { field: 'requestPayload' } } });
     if (metadata && typeof metadata !== 'object') return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'metadata must be an object if provided.', details: { field: 'metadata' } } });
+    
+    // Validate new notification fields
+    if (typeof notificationPlatform !== 'string' || notificationPlatform.trim() === '') {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'notificationPlatform must be a non-empty string.', details: { field: 'notificationPlatform' } } });
+    }
+    const validDeliveryStatuses = ['pending', 'skipped', 'none']; // Define valid initial statuses for creation
+    if (typeof deliveryStatus !== 'string' || !validDeliveryStatuses.includes(deliveryStatus)) {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `deliveryStatus must be one of: ${validDeliveryStatuses.join(', ')}.`, details: { field: 'deliveryStatus' } } });
+    }
+    // Validate metadata.notificationContext if metadata is provided
+    if (metadata && metadata.notificationContext && typeof metadata.notificationContext !== 'object'){
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'metadata.notificationContext must be an object if provided.', details: { field: 'metadata.notificationContext' } } });
+    }
 
     let parsedTimestamp = null;
     if (requestTimestamp) {
@@ -71,9 +85,11 @@ module.exports = function generationOutputsApi(dependencies) {
         initiatingEventId: new ObjectId(initiatingEventId),
         serviceName: serviceName.trim(),
         requestPayload: requestPayload,
-        status: 'pending', // Default initial status
-        ...(metadata && { metadata }), // Include if provided
-        ...(parsedTimestamp && { requestTimestamp: parsedTimestamp }), // Include if provided and valid
+        status: 'pending', // Default initial job status
+        notificationPlatform: notificationPlatform.trim(),
+        deliveryStatus: deliveryStatus,        
+        ...(metadata && { metadata }), // metadata now contains notificationContext
+        ...(parsedTimestamp && { requestTimestamp: parsedTimestamp }),
       };
 
       const newGeneration = await db.generationOutputs.createGenerationOutput(dataToCreate);

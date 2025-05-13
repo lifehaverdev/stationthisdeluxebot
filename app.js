@@ -21,6 +21,10 @@ const { initialize } = require('./src/core/initialization');
 // Import the route initializer function directly
 const { initializeRoutes: setupWebRoutes } = require('./src/platforms/web/routes');
 
+// Import new services for notification dispatching
+const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
+const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
+
 /**
  * Initialize and start the refactored application
  */
@@ -134,6 +138,38 @@ async function startApp() {
       }
     });
     console.log('Platform adapters initialized');
+
+    // --- Initialize and Start Notification Dispatcher ---
+    if (services.internalApiClient && services.logger && platforms.telegram && platforms.telegram.bot) {
+      try {
+        console.log('[App] Initializing TelegramNotifier...');
+        const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
+        
+        const platformNotifiersMap = {
+          telegram: telegramNotifierInstance,
+          // Add other notifiers here, e.g.:
+          // discord: new DiscordNotifier(platforms.discord.bot, services.logger),
+        };
+
+        console.log('[App] Initializing NotificationDispatcher...');
+        const notificationDispatcher = new NotificationDispatcher(
+          {
+            internalApiClient: services.internalApiClient,
+            logger: services.logger,
+            platformNotifiers: platformNotifiersMap,
+          },
+          { /* Optional: pollingIntervalMs, etc. */ }
+        );
+        await notificationDispatcher.start();
+        console.log('[App] NotificationDispatcher started.');
+      } catch (dispatcherError) {
+        console.error('[App] Failed to initialize or start NotificationDispatcher:', dispatcherError.message, dispatcherError.stack);
+        // Decide if this is a fatal error or if the app can run without it
+      }
+    } else {
+      console.warn('[App] Could not initialize NotificationDispatcher: Missing dependencies (internalApiClient, logger, or Telegram platform/bot). Dispatcher will not run.');
+    }
+    // --- End Notification Dispatcher Initialization ---
 
     // --- Internal API Auth Middleware (defined within startApp to access logger if needed, and be close to its usage) ---
     const internalApiAuthMiddleware = (req, res, next) => {
