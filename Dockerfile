@@ -18,10 +18,10 @@ RUN npm install -g pm2 \
     && npm install
 
 # Set environment variable for the port the app should listen on internally
-ENV WEB_PORT=3000
+ENV WEB_PORT=4000
 
 # Expose the port the app runs on (matches WEB_PORT)
-EXPOSE 3000
+EXPOSE 4000
 
 # Run the web service on container startup using PM2.
 CMD ["pm2-runtime", "start", "app.js", "--name", "hyperbot"]

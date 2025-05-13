@@ -53,7 +53,7 @@ fi
 
 # Run the new container
 echo "Starting new container..."
-docker run -d -p 81:3000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+docker run -d -p 81:4000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
