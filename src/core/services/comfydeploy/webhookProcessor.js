@@ -5,6 +5,22 @@ const activeJobProgress = new Map();
 
 // Dependencies: internalApiClient and logger. telegramNotifier is removed.
 async function processComfyDeployWebhook(payload, { internalApiClient, logger }) {
+  // Initial check of received dependencies
+  // Use a temporary console.log if logger itself might be an issue, but logs show it works.
+  if (logger && typeof logger.info === 'function') {
+    logger.info('[Webhook Processor] Initial check of received dependencies:', {
+      isInternalApiClientPresent: !!internalApiClient,
+      isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
+      isLoggerPresent: !!logger
+    });
+  } else {
+    console.log('[Webhook Processor - Fallback Log] Initial check of received dependencies:', {
+      isInternalApiClientPresent: !!internalApiClient,
+      isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
+      isLoggerPresent: !!logger
+    });
+  }
+
   logger.info('~~⚡~~ [Webhook Processor] Processing Body:', JSON.stringify(payload, null, 2));
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
@@ -46,6 +62,12 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
     let telegramChatId; // Still extract, as it's part of record metadata for the dispatcher
 
     try {
+      logger.info(`[Webhook Processor] Attempting to fetch generation record for run_id: ${run_id}. internalApiClient defined: ${!!internalApiClient}, is function: ${typeof internalApiClient?.get === 'function'}`);
+      if (!internalApiClient || typeof internalApiClient.get !== 'function') {
+        logger.error(`[Webhook Processor] CRITICAL ERROR for run_id ${run_id}: internalApiClient is undefined or not a valid client before GET call. This should not happen. internalApiClient:`, internalApiClient);
+        activeJobProgress.delete(run_id); // Clean up job progress
+        return { success: false, statusCode: 500, error: "Internal server error: Core API client not configured or invalid for webhook processing." };
+      }
       const response = await internalApiClient.get(`/generations?metadata.run_id=${run_id}`);
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];

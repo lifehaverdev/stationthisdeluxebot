@@ -720,12 +720,27 @@ async function initializeRoutes(app, services) {
       // console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook/comfydeploy');
       // The new processor function handles its own logging of the hit and payload.
 
+      // Log the services object to check for internalApiClient
+      const routeLogger = services.logger || console; // Use existing logger or fallback
+      routeLogger.info('[Routes/Index] Checking services object before creating dependencies for webhookProcessor:', {
+        hasInternalApiClient: !!services.internalApiClient,
+        isInternalApiClientFunction: typeof services.internalApiClient?.get === 'function', // Check if .get exists
+        hasLogger: !!services.logger,
+        serviceKeys: services ? Object.keys(services) : 'services_is_undefined_or_null' // List keys for more context if needed
+      });
+
       // Dependencies for the processor
       const dependencies = {
         internalApiClient: services.internalApiClient,
-        telegramNotifier: services.telegramNotifier,
+        telegramNotifier: services.telegramNotifier, // This is passed but not used by current webhookProcessor
         logger: services.logger || console // Use services.logger, fallback to console
       };
+
+      routeLogger.info('[Routes/Index] Dependencies object created for webhookProcessor:', {
+        hasInternalApiClientInDeps: !!dependencies.internalApiClient,
+        isInternalApiClientInDepsFunction: typeof dependencies.internalApiClient?.get === 'function',
+        hasLoggerInDeps: !!dependencies.logger
+      });
 
       const result = await processComfyDeployWebhook(req.body, dependencies);
 
