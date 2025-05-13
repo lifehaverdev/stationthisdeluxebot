@@ -275,6 +275,11 @@ class ComfyUIService {
       } else {
         finalWebhookUrl = baseWebhookUrl; // Already correct
       }
+
+      // Addend http:// if not already present
+      if (!finalWebhookUrl.startsWith('http://') && !finalWebhookUrl.startsWith('https://')) {
+        finalWebhookUrl = `http://${finalWebhookUrl}`;
+      }
     }
 
     const runManagerOptions = {
