@@ -23,11 +23,21 @@ async function processComfyDeployWebhook(payload, { internalApiClient, telegramN
 
   // --- Handle Intermediate Status Updates ---
   if (status === 'running' || status === 'queued' || status === 'started' || status === 'uploading') {
+    const now = new Date().toISOString();
+    const jobState = activeJobProgress.get(run_id) || {};
+
+    // Capture the timestamp of the first "running" event as startTime for duration calculation
+    if (status === 'running' && !jobState.startTime) {
+      jobState.startTime = now; 
+      logger.info(`[Webhook Processor] Captured startTime for RunID ${run_id}: ${jobState.startTime}`);
+    }
+
     activeJobProgress.set(run_id, { 
+      ...jobState, // Preserve existing state like startTime
       status, 
       live_status, 
       progress, 
-      last_updated: new Date().toISOString() 
+      last_updated: now 
     });
     // TODO: Optionally, emit an event here if other parts of your system need real-time progress
   }
@@ -35,6 +45,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, telegramN
   // --- Handle Final Status Updates (Success or Failed) ---
   if (status === 'success' || status === 'failed') {
     logger.info(`[Webhook Processor Final State] RunID: ${run_id} finished with status: ${status}.`);
+    const finalEventTimestamp = new Date().toISOString(); // Timestamp of this final event
+    const jobStartDetails = activeJobProgress.get(run_id);
     activeJobProgress.delete(run_id); // Clean up from progress cache
 
     let generationRecord;
@@ -60,26 +72,31 @@ async function processComfyDeployWebhook(payload, { internalApiClient, telegramN
     }
 
     let costUsd = null;
-    // TODO: Implement run duration calculation logic here using timestamps from payload or cache.
-    // Example:
-    // const jobStartTime = activeJobProgress.get(run_id)?.initialTimestamp; // Assuming you stored this
-    // const jobEndTime = new Date(payload.updated_at || payload.outputs?.[0]?.created_at || Date.now());
-    // if (jobStartTime && costRate) {
-    //    const runDurationSeconds = (jobEndTime.getTime() - new Date(jobStartTime).getTime()) / 1000;
-    //    if (costRate.unit === 'second' && costRate.amount) {
-    //       costUsd = runDurationSeconds * costRate.amount;
-    //       logger.info(`[Webhook Processor] Calculated costUsd: ${costUsd} for run_id ${run_id}`);
-    //    }
-    // }
+    let runDurationSeconds = 0;
+
+    if (jobStartDetails && jobStartDetails.startTime && costRate && costRate.unit === 'second' && costRate.amount && status === 'success') {
+      const startTime = new Date(jobStartDetails.startTime);
+      const endTime = new Date(finalEventTimestamp);
+      runDurationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
+      
+      if (runDurationSeconds < 0) runDurationSeconds = 0; // Safety check
+
+      costUsd = runDurationSeconds * costRate.amount;
+      logger.info(`[Webhook Processor] Calculated costUsd: ${costUsd} for run_id ${run_id} (Duration: ${runDurationSeconds.toFixed(2)}s)`);
+    } else if (status === 'success') {
+      logger.warn(`[Webhook Processor] Could not calculate cost for successful run_id ${run_id}: Missing startTime, costRate, or costRate details. jobStartDetails: ${JSON.stringify(jobStartDetails)}, costRate: ${JSON.stringify(costRate)}`);
+    } else {
+      logger.info(`[Webhook Processor] Job ${run_id} ended with status ${status}. Cost calculation skipped.`);
+    }
 
     const updatePayload = {
       status: status === 'success' ? 'completed' : 'failed',
       statusReason: status === 'failed' ? (payload.error_details || payload.error || 'Unknown error from ComfyDeploy') : null,
-      responseTimestamp: new Date().toISOString(),
+      responseTimestamp: finalEventTimestamp, // Use the timestamp of the final event
       responsePayload: status === 'success' ? (outputs || null) : (payload.error_details || payload.error || null),
-      // costUsd: costUsd, // Uncomment when calculation is ready
+      costUsd: costUsd, // Add the calculated cost
     };
-    logger.info(`[Webhook Processor] SIMULATING: Would update generation ${generationId} with payload:`, updatePayload);
+    logger.info(`[Webhook Processor] SIMULATING: Would update generation ${generationId} with payload:`, JSON.stringify(updatePayload, null, 2));
     // try {
     //    await internalApiClient.put(`/generations/${generationId}`, updatePayload);
     // } catch (err) {
