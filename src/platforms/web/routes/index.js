@@ -714,10 +714,11 @@ async function initializeRoutes(app, services) {
   // --- NEW ComfyDeploy Webhook Handler ---
   app.post('/api/webhook', (req, res) => {
     console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook');
-    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Headers:', JSON.stringify(req.headers, null, 2)); // Optional: Log headers
-    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Body:', JSON.stringify(req.body, null, 2)); // Temporarily disable body logging
+    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Headers:', JSON.stringify(req.headers, null, 2)); 
+    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Body:', JSON.stringify(req.body, null, 2));
     
-    res.status(200).json({ message: "Webhook acknowledged by StationThis" }); 
+    // Mimic the old system's exact success response
+    res.status(200).json({ message: "success" }); 
   });
   // --- END NEW Webhook Handler ---
 }
