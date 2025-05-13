@@ -5,6 +5,7 @@
  */
 
 const express = require('express');
+const axios = require('axios');
 const createStatusService = require('./status');
 const userCoreApi = require('./userCoreApi');
 const userSessionsApi = require('./userSessionsApi');
@@ -19,13 +20,52 @@ const createGenerationOutputsApiService = require('./generationOutputsApi');
 /**
  * Initialize and export all internal API services and their router
  * @param {Object} dependencies - Shared dependencies for services (logger, appStartTime, version, db)
- * @returns {Object} - Object containing initialized services (like status) and the main internal API router
+ * @returns {Object} - Object containing initialized services (like status), the main internal API router, and an API client
  */
 function initializeInternalServices(dependencies = {}) {
   const mainInternalRouter = express.Router();
 
   const logger = dependencies.logger || console;
   const dbDataServices = dependencies.db?.data;
+
+  // Determine the base URL for the internal API client
+  // This should ideally come from environment variables or a central config
+  const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.PORT || 4000}/internal`;
+  logger.info(`[InternalAPIClient] Base URL configured to: ${internalApiBaseUrl}`);
+
+  // Create an Axios instance for the internal API
+  const apiClient = axios.create({
+    baseURL: internalApiBaseUrl,
+    timeout: process.env.INTERNAL_API_TIMEOUT_MS || 10000, // Default 10 seconds
+    headers: {
+      // The X-Internal-Client-Key will be set by the CALLER of this client,
+      // as the key depends on which service is making the call (e.g., Telegram backend, Web backend)
+      'Content-Type': 'application/json'
+    }
+  });
+
+  // Optional: Add request/response interceptors for logging or error handling
+  apiClient.interceptors.request.use(request => {
+    // logger.debug(`[InternalAPIClient] Sending request to: ${request.method?.toUpperCase()} ${request.url}`, { headers: request.headers, data: request.data });
+    return request;
+  }, error => {
+    logger.error('[InternalAPIClient] Request Error:', error.message);
+    return Promise.reject(error);
+  });
+
+  apiClient.interceptors.response.use(response => {
+    // logger.debug(`[InternalAPIClient] Received response from: ${response.config.method?.toUpperCase()} ${response.config.url}`, { status: response.status, data: response.data });
+    return response;
+  }, error => {
+    if (error.response) {
+      logger.error(`[InternalAPIClient] Response Error Status: ${error.response.status} from ${error.config.method?.toUpperCase()} ${error.config.url}`, { data: error.response.data, headers: error.response.headers });
+    } else if (error.request) {
+      logger.error(`[InternalAPIClient] No response received for request to ${error.config.method?.toUpperCase()} ${error.config.url}:`, error.message);
+    } else {
+      logger.error('[InternalAPIClient] Error setting up request:', error.message);
+    }
+    return Promise.reject(error);
+  });
 
   if (!dbDataServices) {
     logger.error('[InternalAPI] Database services (dependencies.db.data) not found. API services requiring DB will likely fail.');
@@ -176,7 +216,8 @@ function initializeInternalServices(dependencies = {}) {
 
   return {
     status: statusService, 
-    router: mainInternalRouter 
+    router: mainInternalRouter,
+    client: apiClient
   };
 }
 
