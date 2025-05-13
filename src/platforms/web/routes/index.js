@@ -723,15 +723,16 @@ async function initializeRoutes(app, services) {
       // Log the services object to check for internalApiClient
       const routeLogger = services.logger || console; // Use existing logger or fallback
       routeLogger.info('[Routes/Index] Checking services object before creating dependencies for webhookProcessor:', {
-        hasInternalApiClient: !!services.internalApiClient,
-        isInternalApiClientFunction: typeof services.internalApiClient?.get === 'function', // Check if .get exists
+        hasInternalApiClientProperty: !!services.internalApiClient, // This will still be false
+        hasInternalProperty: !!services.internal, // This should be true
+        isInternalGetFunction: typeof services.internal?.get === 'function', // Check if services.internal has .get
         hasLogger: !!services.logger,
-        serviceKeys: services ? Object.keys(services) : 'services_is_undefined_or_null' // List keys for more context if needed
+        serviceKeys: services ? Object.keys(services) : 'services_is_undefined_or_null'
       });
 
       // Dependencies for the processor
       const dependencies = {
-        internalApiClient: services.internalApiClient,
+        internalApiClient: services.internal, // Corrected to use services.internal
         telegramNotifier: services.telegramNotifier, // This is passed but not used by current webhookProcessor
         logger: services.logger || console // Use services.logger, fallback to console
       };
