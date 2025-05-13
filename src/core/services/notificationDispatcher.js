@@ -56,13 +56,25 @@ class NotificationDispatcher {
     }
     this.logger.debug('[NotificationDispatcher] Checking for pending notifications via internalApiClient...');
     try {
-      const queryParams = new URLSearchParams({
-        deliveryStatus: 'pending',
-        status_in: 'completed,failed',
-        notificationPlatform_ne: 'none'
-      }).toString();
+      const params = new URLSearchParams();
+      params.append('deliveryStatus', 'pending');
+      params.append('status_in', 'completed'); 
+      params.append('status_in', 'failed'); 
+      params.append('notificationPlatform_ne', 'none');
+
+      const queryString = params.toString();
+      this.logger.debug(`[NotificationDispatcher] Querying internal API: /generations?${queryString}`);
       
-      const response = await this.internalApiClient.get('/generations?' + queryParams);
+      const requestOptions = {
+        headers: {
+          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
+        }
+      };
+      if (!process.env.INTERNAL_API_KEY_WEB) {
+        this.logger.warn(`[NotificationDispatcher] INTERNAL_API_KEY_WEB (used as system key) is not set. Internal API calls may fail authentication.`);
+      }
+
+      const response = await this.internalApiClient.get(`/generations?${queryString}`, requestOptions);
 
       let pendingRecords = [];
       if (response && response.data && Array.isArray(response.data.generations)) {
@@ -153,7 +165,12 @@ class NotificationDispatcher {
         updatePayload.deliveryStatus = 'failed';
       }
       try {
-        await this.internalApiClient.put(`/generations/${recordId}`, updatePayload);
+        const requestOptions = {
+          headers: {
+            'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
+          }
+        };
+        await this.internalApiClient.put(`/generations/${recordId}`, updatePayload, requestOptions);
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} after dispatch error:`, updateError.message);
       }

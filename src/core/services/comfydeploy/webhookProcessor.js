@@ -68,7 +68,18 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
         activeJobProgress.delete(run_id); // Clean up job progress
         return { success: false, statusCode: 500, error: "Internal server error: Core API client not configured or invalid for webhook processing." };
       }
-      const response = await internalApiClient.get(`/generations?metadata.run_id=${run_id}`);
+      
+      // Add the X-Internal-Client-Key header for this request
+      const requestOptions = {
+        headers: {
+          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
+        }
+      };
+      if (!process.env.INTERNAL_API_KEY_WEB) {
+        logger.warn(`[Webhook Processor] INTERNAL_API_KEY_WEB is not set in environment variables. Internal API calls may fail authentication.`);
+      }
+
+      const response = await internalApiClient.get(`/generations?metadata.run_id=${run_id}`, requestOptions);
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];
         generationId = generationRecord.id;
@@ -143,7 +154,13 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
     };
     logger.info(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
     try {
-       await internalApiClient.put(`/generations/${generationId}`, updatePayload);
+       // Add the X-Internal-Client-Key header for this request
+       const putRequestOptions = {
+        headers: {
+          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
+        }
+      };
+       await internalApiClient.put(`/generations/${generationId}`, updatePayload, putRequestOptions);
        logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
