@@ -714,10 +714,20 @@ async function initializeRoutes(app, services) {
   // --- NEW ComfyDeploy Webhook Handler ---
   app.post('/api/webhook', (req, res) => {
     console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook');
-    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Headers:', JSON.stringify(req.headers, null, 2)); 
-    // console.log('~~⚡~~ [ComfyDeploy Webhook Received] Body:', JSON.stringify(req.body, null, 2));
+    console.log('~~⚡~~ Headers:', JSON.stringify(req.headers, null, 2)); // Good for seeing content-type, user-agent from ComfyDeploy
+    console.log('~~⚡~~ Body:', JSON.stringify(req.body, null, 2)); // ESSENTIAL to see the payload
+
+    // Placeholder for actual logic
+    const { run_id, status, progress, live_status, outputs, event_type } = req.body;
+    console.log(`[Webhook Parsed] Event: ${event_type}, RunID: ${run_id}, Status: ${status}, Progress: ${progress ? (progress * 100).toFixed(1) + '%' : 'N/A'}, Live: ${live_status || 'N/A'}`);
+
+    if (status === 'success' || status === 'failed') {
+      console.log(`[Webhook Final State] RunID: ${run_id} finished with status: ${status}. Outputs: ${outputs ? outputs.length : 0}`);
+      // TODO: Trigger full processing for final states
+    } else {
+      // TODO: Update in-memory cache for intermediate states
+    }
     
-    // Mimic the old system's exact success response
     res.status(200).json({ message: "success" }); 
   });
   // --- END NEW Webhook Handler ---
