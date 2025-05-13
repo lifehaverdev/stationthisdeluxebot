@@ -275,16 +275,25 @@ class ComfyUIService {
       const baseWebhookUrl = finalWebhookUrl.endsWith('/') ? finalWebhookUrl.slice(0, -1) : finalWebhookUrl;
       this.logger.info(`[ComfyUIService] baseWebhookUrl (no trailing slash): "${baseWebhookUrl}"`);
 
-      // Append /api/webhook if not already present
-      if (!baseWebhookUrl.endsWith('/api/webhook')) {
-        finalWebhookUrl = `${baseWebhookUrl}/api/webhook`;
-        this.logger.info(`[ComfyUIService] Appended /api/webhook: "${finalWebhookUrl}"`);
+      // Ensure it ends with the correct, new path
+      const correctPath = '/api/webhook/comfydeploy';
+      if (!baseWebhookUrl.endsWith(correctPath)) {
+        // Check if it ends with the OLD path and remove it if so, to avoid duplication if .env is not updated yet
+        const oldPath = '/api/webhook';
+        let urlToAppendTo = baseWebhookUrl;
+        if (baseWebhookUrl.endsWith(oldPath)) {
+          urlToAppendTo = baseWebhookUrl.substring(0, baseWebhookUrl.length - oldPath.length);
+          // Remove trailing slash again if any resulted from substring
+          if (urlToAppendTo.endsWith('/')) {
+            urlToAppendTo = urlToAppendTo.slice(0, -1);
+          }
+        }
+        finalWebhookUrl = urlToAppendTo + correctPath;
+        this.logger.info(`[ComfyUIService] Appended ${correctPath}: "${finalWebhookUrl}"`);
       } else {
-        finalWebhookUrl = baseWebhookUrl; // Already correct path
-        this.logger.info(`[ComfyUIService] /api/webhook was already present: "${finalWebhookUrl}"`);
+        this.logger.info(`[ComfyUIService] Webhook URL already ends with ${correctPath}. No change: "${finalWebhookUrl}"`);
       }
 
-      // User's addition: Addend http:// if not already present
       this.logger.info(`[ComfyUIService] Before http check, finalWebhookUrl: "${finalWebhookUrl}"`);
       const startsWithHttp = finalWebhookUrl.startsWith('http://');
       const startsWithHttps = finalWebhookUrl.startsWith('https://');
