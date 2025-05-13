@@ -264,9 +264,22 @@ class ComfyUIService {
     };
 
     // Prepare the options for runManager, ensuring our service's webhookUrl is included
+    // and has the correct path.
+    let finalWebhookUrl = this.webhookUrl;
+    if (finalWebhookUrl && typeof finalWebhookUrl === 'string') {
+      // Normalize: remove trailing slash if present
+      const baseWebhookUrl = finalWebhookUrl.endsWith('/') ? finalWebhookUrl.slice(0, -1) : finalWebhookUrl;
+      // Append /api/webhook if not already present
+      if (!baseWebhookUrl.endsWith('/api/webhook')) {
+        finalWebhookUrl = `${baseWebhookUrl}/api/webhook`;
+      } else {
+        finalWebhookUrl = baseWebhookUrl; // Already correct
+      }
+    }
+
     const runManagerOptions = {
       ...options, // Spread the original options (deploymentId, inputs, workflowName)
-      webhook: this.webhookUrl // Corrected key from webhookUrl to webhook
+      webhook: finalWebhookUrl // Use the potentially modified URL
     };
 
     return submitRequestAction(instanceData, runManagerOptions);
