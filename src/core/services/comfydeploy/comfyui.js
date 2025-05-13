@@ -266,7 +266,7 @@ class ComfyUIService {
     // Prepare the options for runManager, ensuring our service's webhookUrl is included
     const runManagerOptions = {
       ...options, // Spread the original options (deploymentId, inputs, workflowName)
-      webhookUrl: this.webhookUrl // Add/override with the service-configured webhookUrl
+      webhook: this.webhookUrl // Corrected key from webhookUrl to webhook
     };
 
     return submitRequestAction(instanceData, runManagerOptions);

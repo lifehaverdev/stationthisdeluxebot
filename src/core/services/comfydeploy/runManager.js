@@ -157,7 +157,7 @@ async function submitRequest(instanceData, options = {}) {
       inputs: options.inputs || {}
     };
     if (machineId) payload.machine_id = machineId;
-    if (options.webhookUrl) payload.webhook_url = options.webhookUrl;
+    if (options.webhook) payload.webhook = options.webhook;
 
     const url = `${apiUrl}${API_ENDPOINTS.RUN_QUEUE}`;
     if (DEBUG_LOGGING_ENABLED) logger.info(`[runManager.submitRequest] Submitting to ${url} for deployment ${options.deploymentId}${machineId ? ` on machine ${machineId}` : ''}`);
