@@ -30,6 +30,8 @@ function initializeInternalServices(dependencies = {}) {
 
   // Determine the base URL for the internal API client
   // This should ideally come from environment variables or a central config
+  logger.info(`[InternalAPIClientConfig] Current process.env.PORT: ${process.env.PORT}`);
+  logger.info(`[InternalAPIClientConfig] Current process.env.INTERNAL_API_BASE_URL: ${process.env.INTERNAL_API_BASE_URL}`);
   const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.PORT || 4000}/internal`;
   logger.info(`[InternalAPIClient] Base URL configured to: ${internalApiBaseUrl}`);
 

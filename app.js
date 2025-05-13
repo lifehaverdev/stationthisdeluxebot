@@ -104,6 +104,7 @@ async function startApp() {
       appStartTime: APP_START_TIME,
       db: services.db,
       internal: services.internal,
+      internalApiClient: services.internalApiClient,
       // Keep the stubbed collections structure separate if needed by other platforms,
       // but don't overwrite the main workflows service instance.
       // If platforms *specifically* need the stubbed collections, they should access
