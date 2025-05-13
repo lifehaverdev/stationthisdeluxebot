@@ -21,4 +21,4 @@ RUN npm install -g pm2 \
 EXPOSE 3000
 
 # Run the web service on container startup using PM2.
-CMD ["pm2-runtime", "start", "app.js", "--name", "deluxebot"]
+CMD ["pm2-runtime", "start", "app.js", "--name", "hyperbot"]

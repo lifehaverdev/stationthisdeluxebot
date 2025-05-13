@@ -711,9 +711,6 @@ async function initializeRoutes(app, services) {
     `);
   });
 
-  // Add route for the status page
-  setupStatusRoutes(app, services);
-
   // --- NEW ComfyDeploy Webhook Handler ---
   app.post('/api/webhook', (req, res) => {
     // Log the entire incoming request body for inspection
@@ -728,9 +725,6 @@ async function initializeRoutes(app, services) {
     // Example: queueWebhookProcessing(req.body); 
   });
   // --- END NEW Webhook Handler ---
-
-  // Add route for the admin panel
-  setupAdminRoutes(app, services);
 }
 
 module.exports = {
