@@ -18,6 +18,9 @@ const crypto = require('crypto'); // For generating session IDs
 // Import getCachedClient for direct DB access in admin routes
 const { getCachedClient } = require('../../../../db/utils/queue');
 
+// Import the new webhook processor
+const { processComfyDeployWebhook } = require('../../../core/services/comfydeploy/webhookProcessor');
+
 /**
  * Initialize all routes for the web platform
  * @param {Express} app - Express application instance
@@ -712,23 +715,30 @@ async function initializeRoutes(app, services) {
   });
 
   // --- NEW ComfyDeploy Webhook Handler ---
-  app.post('/api/webhook', (req, res) => {
-    console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook');
-    console.log('~~⚡~~ Headers:', JSON.stringify(req.headers, null, 2)); // Good for seeing content-type, user-agent from ComfyDeploy
-    console.log('~~⚡~~ Body:', JSON.stringify(req.body, null, 2)); // ESSENTIAL to see the payload
+  app.post('/api/webhook/comfydeploy', async (req, res) => {
+    try {
+      // console.log('~~⚡~~ [ComfyDeploy Webhook Received] POST request hit /api/webhook/comfydeploy');
+      // The new processor function handles its own logging of the hit and payload.
 
-    // Placeholder for actual logic
-    const { run_id, status, progress, live_status, outputs, event_type } = req.body;
-    console.log(`[Webhook Parsed] Event: ${event_type}, RunID: ${run_id}, Status: ${status}, Progress: ${progress ? (progress * 100).toFixed(1) + '%' : 'N/A'}, Live: ${live_status || 'N/A'}`);
+      // Dependencies for the processor (mocked for now where necessary)
+      const dependencies = {
+        internalApiClient: null, // TODO: Pass the actual internal API client instance
+        telegramNotifier: null,  // TODO: Pass the actual Telegram notifier instance/functions
+        logger: console          // Use console for now, or a proper logger instance
+      };
 
-    if (status === 'success' || status === 'failed') {
-      console.log(`[Webhook Final State] RunID: ${run_id} finished with status: ${status}. Outputs: ${outputs ? outputs.length : 0}`);
-      // TODO: Trigger full processing for final states
-    } else {
-      // TODO: Update in-memory cache for intermediate states
+      const result = await processComfyDeployWebhook(req.body, dependencies);
+
+      if (result.success) {
+        res.status(result.statusCode || 200).json(result.data || { message: "Webhook processed" });
+      } else {
+        res.status(result.statusCode || 500).json({ message: "error", error: result.error || "Webhook processing failed." });
+      }
+
+    } catch (error) {
+      console.error('[Webhook Route Handler] Unhandled exception:', error);
+      res.status(500).json({ message: "error", error: "Internal server error in webhook route handler." });
     }
-    
-    res.status(200).json({ message: "success" }); 
   });
   // --- END NEW Webhook Handler ---
 }
