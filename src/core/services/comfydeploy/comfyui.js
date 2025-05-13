@@ -263,24 +263,45 @@ class ComfyUIService {
         getMachineForWorkflow: getMachineForWorkflow // Pass the function
     };
 
-    // Prepare the options for runManager, ensuring our service's webhookUrl is included
-    // and has the correct path.
     let finalWebhookUrl = this.webhookUrl;
+    this.logger.info(`[ComfyUIService] Initial this.webhookUrl: "${this.webhookUrl}"`);
+
     if (finalWebhookUrl && typeof finalWebhookUrl === 'string') {
+      // Trim leading/trailing whitespace as a defensive measure
+      finalWebhookUrl = finalWebhookUrl.trim();
+      this.logger.info(`[ComfyUIService] After trim: "${finalWebhookUrl}"`);
+
       // Normalize: remove trailing slash if present
       const baseWebhookUrl = finalWebhookUrl.endsWith('/') ? finalWebhookUrl.slice(0, -1) : finalWebhookUrl;
+      this.logger.info(`[ComfyUIService] baseWebhookUrl (no trailing slash): "${baseWebhookUrl}"`);
+
       // Append /api/webhook if not already present
       if (!baseWebhookUrl.endsWith('/api/webhook')) {
         finalWebhookUrl = `${baseWebhookUrl}/api/webhook`;
+        this.logger.info(`[ComfyUIService] Appended /api/webhook: "${finalWebhookUrl}"`);
       } else {
-        finalWebhookUrl = baseWebhookUrl; // Already correct
+        finalWebhookUrl = baseWebhookUrl; // Already correct path
+        this.logger.info(`[ComfyUIService] /api/webhook was already present: "${finalWebhookUrl}"`);
       }
 
-      // Addend http:// if not already present
-      if (!finalWebhookUrl.startsWith('http://') && !finalWebhookUrl.startsWith('https://')) {
+      // User's addition: Addend http:// if not already present
+      this.logger.info(`[ComfyUIService] Before http check, finalWebhookUrl: "${finalWebhookUrl}"`);
+      const startsWithHttp = finalWebhookUrl.startsWith('http://');
+      const startsWithHttps = finalWebhookUrl.startsWith('https://');
+      this.logger.info(`[ComfyUIService] Current finalWebhookUrl startsWithHttp: ${startsWithHttp}, startsWithHttps: ${startsWithHttps}`);
+
+      if (!startsWithHttp && !startsWithHttps) {
+        this.logger.info(`[ComfyUIService] Prepending http:// to "${finalWebhookUrl}"`);
         finalWebhookUrl = `http://${finalWebhookUrl}`;
+        this.logger.info(`[ComfyUIService] After prepending http://: "${finalWebhookUrl}"`);
+      } else {
+        this.logger.info(`[ComfyUIService] Scheme (http/https) already present, not prepending.`);
       }
+    } else {
+      this.logger.warn(`[ComfyUIService] this.webhookUrl is not a valid string or is empty: "${this.webhookUrl}"`);
     }
+    
+    this.logger.info(`[ComfyUIService] FINAL finalWebhookUrl for runManagerOptions: "${finalWebhookUrl}"`);
 
     const runManagerOptions = {
       ...options, // Spread the original options (deploymentId, inputs, workflowName)
