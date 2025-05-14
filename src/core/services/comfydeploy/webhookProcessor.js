@@ -82,7 +82,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
       const response = await internalApiClient.get(`/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];
-        generationId = generationRecord.id;
+        generationId = generationRecord._id;
         if (generationRecord.metadata) {
             costRate = generationRecord.metadata.costRate;
             telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
@@ -93,7 +93,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
 
         // Basic check for generationId; costRate and telegramChatId might be optional depending on job type or if notification is disabled
         if (!generationId) {
-            logger.error(`[Webhook Processor] Essential data (generationId) missing from generation record ${generationRecord.id} for run_id ${run_id}.`);
+            logger.error(`[Webhook Processor] Essential data (generationId) missing from generation record (ID: ${generationRecord._id}) for run_id ${run_id}.`);
             return { success: false, statusCode: 500, error: "Essential data missing from fetched generation record." };
         }
         logger.info(`[Webhook Processor] Successfully fetched generation record ${generationId} for run_id ${run_id}. ChatID (metadata): ${telegramChatId}`);
