@@ -160,7 +160,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
           'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
         }
       };
-       await internalApiClient.put(`/generations/${generationId}`, updatePayload, putRequestOptions);
+       await internalApiClient.put(`/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
        logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
