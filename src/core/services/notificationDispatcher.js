@@ -63,7 +63,7 @@ class NotificationDispatcher {
       params.append('notificationPlatform_ne', 'none');
 
       const queryString = params.toString();
-      this.logger.debug(`[NotificationDispatcher] Querying internal API: /generations?${queryString}`);
+      this.logger.debug(`[NotificationDispatcher] Querying internal API: /v1/data/generations?${queryString}`);
       
       const requestOptions = {
         headers: {
@@ -74,7 +74,7 @@ class NotificationDispatcher {
         this.logger.warn(`[NotificationDispatcher] INTERNAL_API_KEY_WEB (used as system key) is not set. Internal API calls may fail authentication.`);
       }
 
-      const response = await this.internalApiClient.get(`/generations?${queryString}`, requestOptions);
+      const response = await this.internalApiClient.get(`/v1/data/generations?${queryString}`, requestOptions);
 
       let pendingRecords = [];
       if (response && response.data && Array.isArray(response.data.generations)) {
@@ -89,7 +89,7 @@ class NotificationDispatcher {
           record.notificationPlatform !== 'none'
         );
       } else {
-        this.logger.warn('[NotificationDispatcher] Received unexpected response structure from GET /generations. Expected an array of generations.', response.data);
+        this.logger.warn('[NotificationDispatcher] Received unexpected response structure from GET /v1/data/generations. Expected an array of generations.', response.data);
       }
 
       if (pendingRecords.length > 0) {
