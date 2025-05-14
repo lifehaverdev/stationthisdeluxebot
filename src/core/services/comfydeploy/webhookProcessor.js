@@ -79,7 +79,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
         logger.warn(`[Webhook Processor] INTERNAL_API_KEY_WEB is not set in environment variables. Internal API calls may fail authentication.`);
       }
 
-      const response = await internalApiClient.get(`/generations?metadata.run_id=${run_id}`, requestOptions);
+      const response = await internalApiClient.get(`/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];
         generationId = generationRecord.id;
