@@ -35,6 +35,62 @@ module.exports = function generationOutputsApi(dependencies) {
   // Mounted at /internal/v1/data/generations
   //-------------------------------------------------------------------------
 
+  // GET / - Retrieves multiple generation outputs based on query filters
+  router.get('/', async (req, res, next) => {
+    logger.info('[generationOutputsApi] GET / - Received request with query:', req.query);
+    try {
+      const filter = {};
+      const { deliveryStatus, status_in, notificationPlatform_ne, "metadata.run_id": metadataRunId } = req.query;
+
+      if (deliveryStatus) {
+        filter.deliveryStatus = deliveryStatus;
+      }
+
+      if (status_in) {
+        // If status_in is a string, make it an array. If it's already an array, use it directly.
+        filter.status = { $in: Array.isArray(status_in) ? status_in : [status_in] };
+      }
+
+      if (notificationPlatform_ne) {
+        filter.notificationPlatform = { $ne: notificationPlatform_ne };
+      }
+
+      if (metadataRunId) {
+        filter['metadata.run_id'] = metadataRunId;
+      }
+
+      // Add more query parameters as needed, e.g., for pagination
+      // const { page = 1, limit = 20 } = req.query; // Example pagination
+      // const options = {
+      //   skip: (parseInt(page, 10) - 1) * parseInt(limit, 10),
+      //   limit: parseInt(limit, 10),
+      //   sort: { createdAt: -1 } // Example sort
+      // };
+
+      logger.debug('[generationOutputsApi] GET / - Constructed filter:', filter);
+
+      // Assuming db.generationOutputs has a method like findGenerations that accepts a filter object
+      // and potentially options for pagination/sorting.
+      // For now, we'll just pass the filter.
+      const generations = await db.generationOutputs.findGenerations(filter /*, options */);
+
+      if (!generations) {
+        // This case might mean an error in the DB method or it could simply return an empty array for no matches.
+        // Assuming findGenerations returns an array, even if empty.
+        logger.info('[generationOutputsApi] GET / - No generations found matching criteria or db method returned null/undefined.');
+        return res.status(200).json({ generations: [] }); // Return empty array for consistency
+      }
+      
+      logger.info(`[generationOutputsApi] GET / - Found ${generations.length} generation(s).`);
+      // The API contract usually expects an object with a key (e.g., "generations") holding the array.
+      res.status(200).json({ generations });
+
+    } catch (error) {
+      logger.error(`[generationOutputsApi] GET /: Error processing request - ${error.message}`, error);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error retrieving generation outputs.' } });
+    }
+  });
+
   // POST / - Logs a new generation task
   router.post('/', async (req, res, next) => {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });

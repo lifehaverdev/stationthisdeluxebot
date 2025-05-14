@@ -110,6 +110,17 @@ class GenerationOutputsDB extends BaseDB {
   async findGenerationsByStatus(status, options = {}) {
     return this.findMany({ status });
   }
+
+  /**
+   * Finds generation outputs based on a flexible query filter.
+   * @param {Object} filter - MongoDB query filter object.
+   * @param {Object} [options] - MongoDB query options (e.g., sort, limit, skip).
+   * @returns {Promise<Array<Object>>} A list of documents matching the filter.
+   */
+  async findGenerations(filter, options = {}) {
+    this.logger.debug(`[GenerationOutputsDB] findGenerations called with filter: ${JSON.stringify(filter)}, options: ${JSON.stringify(options)}`);
+    return this.findMany(filter, options);
+  }
 }
 
 // const client = getCachedClient(); // Not needed here anymore
