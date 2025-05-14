@@ -118,10 +118,11 @@ class NotificationDispatcher {
     if (!notifier || typeof notifier.sendNotification !== 'function') {
       this.logger.warn(`[NotificationDispatcher] No notifier found or 'sendNotification' method missing for platform: '${record.notificationPlatform}' for generationId: ${recordId}. Setting deliveryStatus to 'skipped'.`);
       try {
-        await this.internalApiClient.put(`/generations/${recordId}`, { 
+        const updateSkippedOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, { 
           deliveryStatus: 'skipped', 
           deliveryError: `No notifier for platform ${record.notificationPlatform}` 
-        });
+        }, updateSkippedOptions);
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} to 'skipped' status:`, updateError.message);
       }
@@ -131,7 +132,7 @@ class NotificationDispatcher {
     try {
       let messageContent;
       if (record.status === 'completed') {
-        const imageUrl = record.responsePayload?.outputs?.[0]?.data?.images?.[0]?.url || 'Output details processing.';
+        const imageUrl = record.responsePayload?.[0]?.data?.images?.[0]?.url || 'Output details processing.';
         messageContent = `Your job for workflow '${record.serviceName}' (ID: ${recordId}) completed successfully! Image URL: ${imageUrl}`;
       } else { 
         const reason = record.statusReason || 'Unknown error';
@@ -145,11 +146,12 @@ class NotificationDispatcher {
       await notifier.sendNotification(record.metadata.notificationContext, messageContent, record);
       
       this.logger.info(`[NotificationDispatcher] Successfully sent notification for generationId: ${recordId} via ${record.notificationPlatform}.`);
-      await this.internalApiClient.put(`/generations/${recordId}`, {
+      const updateSentOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+      await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
         deliveryStatus: 'sent',
         deliveryTimestamp: new Date(),
         deliveryAttempts: (record.deliveryAttempts || 0) + 1
-      });
+      }, updateSentOptions);
 
     } catch (dispatchError) {
       const attempts = (record.deliveryAttempts || 0) + 1;
@@ -170,7 +172,7 @@ class NotificationDispatcher {
             'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
           }
         };
-        await this.internalApiClient.put(`/generations/${recordId}`, updatePayload, requestOptions);
+        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, updatePayload, requestOptions);
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} after dispatch error:`, updateError.message);
       }
