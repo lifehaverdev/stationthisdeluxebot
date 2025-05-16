@@ -1,12 +1,15 @@
-const { BaseDB, ObjectId: BaseDBObjectId } = require('./BaseDB');
-const { ObjectId, Decimal128 } = require('mongodb');
+const { BaseDB, ObjectId } = require('./BaseDB');
+const { Decimal128 } = require('mongodb');
+
+const COLLECTION_NAME = 'userEconomy';
 
 class UserEconomyDB extends BaseDB {
   constructor(logger) {
-    super('userEconomy');
+    super(COLLECTION_NAME);
     if (!logger) {
-      console.warn('[UserEconomyDB] Logger instance was not provided during construction. Falling back to console.');
-      this.logger = console; 
+      const tempLogger = console;
+      tempLogger.warn('[UserEconomyDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = tempLogger;
     } else {
       this.logger = logger;
     }
@@ -144,6 +147,10 @@ class UserEconomyDB extends BaseDB {
    * @returns {Promise<{usdCredit: Decimal128, exp: BigInt}|null>} Economy details or null.
    */
   async getBalance(masterAccountId, session = null) {
+    if (!masterAccountId) {
+        this.logger.error('[UserEconomyDB] masterAccountId is required to get balance.');
+        return null;
+    }
     const economyRecord = await this.findByMasterAccountId(masterAccountId, {}, session);
     if (economyRecord) {
       return {
@@ -153,6 +160,47 @@ class UserEconomyDB extends BaseDB {
     }
     return null;
   }
+
+  async updateBalance(masterAccountId, amountUsdChange, transactionDetails, session) {
+    if (!masterAccountId || typeof amountUsdChange !== 'number') {
+        this.logger.error('[UserEconomyDB] masterAccountId and a numeric amountUsdChange are required.');
+        // Consider throwing an error or returning a more specific error object
+        return { success: false, message: "masterAccountId and a numeric amountUsdChange are required." };
+    }
+
+    const masterObjectId = new ObjectId(masterAccountId);
+    const changeAsDecimal = Decimal128.fromString(amountUsdChange.toString());
+
+    const economyRecord = await this.findOne({ masterAccountId: masterObjectId }, {}, session);
+    const currentBalance = economyRecord ? economyRecord.balanceUsd : Decimal128.fromString("0.00");
+    const newBalance = Decimal128.fromString((parseFloat(currentBalance.toString()) + amountUsdChange).toFixed(10)); // Perform decimal arithmetic carefully
+
+    if (!economyRecord) {
+      // Create new economy record if it doesn't exist
+      await this.insertOne({
+        masterAccountId: masterObjectId,
+        balanceUsd: newBalance,
+        lastTransactionTimestamp: new Date(),
+        transactionHistory: [transactionDetails] // Ensure transactionDetails is well-defined
+      }, true, undefined, session); // Note: BaseDB insertOne doesn't directly use priority here
+    } else {
+      // Update existing record
+      await this.updateOne(
+        { masterAccountId: masterObjectId },
+        {
+          $set: { balanceUsd: newBalance, lastTransactionTimestamp: new Date() },
+          $push: { transactionHistory: transactionDetails }
+        },
+        { upsert: false }, // Should not upsert if record was found
+        true, // skipUpdatedAt
+        undefined, // priority - BaseDB updateOne doesn't use it directly
+        session
+      );
+    }
+    return { success: true, newBalance: parseFloat(newBalance.toString()) };
+  }
+
+  // Additional methods for history, etc.
 }
 
 module.exports = UserEconomyDB; 

@@ -15,8 +15,12 @@ const fileRoutes = require('./fileRoutes');
 const express = require('express'); // Ensure express is required if not already
 const crypto = require('crypto'); // For generating session IDs
 
+// Import our custom logger
+const { createLogger } = require('../../../utils/logger');
+const logger = createLogger('web-routes');
+
 // Import getCachedClient for direct DB access in admin routes
-const { getCachedClient } = require('../../../../db/utils/queue');
+const { getCachedClient } = require('../../../core/services/db/utils/queue'); //require('../../../../db/utils/queue');
 
 // Import the new webhook processor
 const { processComfyDeployWebhook } = require('../../../core/services/comfydeploy/webhookProcessor');
@@ -44,80 +48,94 @@ async function initializeRoutes(app, services) {
     const workflowsService = services.workflows; // Assuming service name is 'workflows'
     const comfyuiService = services.comfyui; // Assuming service name is 'comfyui'
     
+    // Helper to sanitize display names for URL paths
+    const sanitizeForPath = (name) => {
+      if (!name) return 'unknown-workflow';
+      return name.toLowerCase().replace(/\\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    };
+
     if (workflowsService && comfyuiService && typeof workflowsService.getWorkflows === 'function') {
       const internalWorkflowRouter = express.Router();
-      const workflows = await workflowsService.getWorkflows(); // Use getWorkflows
+      const tools = await workflowsService.getWorkflows(); // Now returns ToolDefinition[]
 
-      workflows.forEach(workflow => {
-        // Ensure workflow.name exists before creating route
-        if (workflow && workflow.name) {
-          const routePath = `/${workflow.name}/run`;
-          console.log(`[Web Routes] Registering internal workflow route: POST /api/internal/run${routePath}`);
+      tools.forEach(tool => {
+        // Use tool.displayName for the route path, sanitized
+        // Ensure tool and tool.displayName exist
+        if (tool && tool.displayName) {
+          const cleanDisplayName = sanitizeForPath(tool.displayName);
+          const routePath = `/${cleanDisplayName}/run`; // Example: /flux-general/run
+          
+          logger.info(`[Web Routes] Registering internal tool route: POST /api/internal/run${routePath} for toolId: ${tool.toolId}`);
           
           internalWorkflowRouter.post(routePath, async (req, res, next) => {
-            // Define workflowName here, using the workflow object from the outer scope
-            const workflowName = workflow.name; 
-            
+            const currentToolId = tool.toolId; // Capture toolId for this handler
+            const currentDisplayName = tool.displayName;
+
             try {
-              // Remove the definition from inside the try block
-              // const workflowName = workflow.name; 
-              
               const userInput = req.body || {};
   
-              // Log expected inputs for debugging
-              const expectedInputs = await workflowsService.getWorkflowRequiredInputs(workflowName);
-              console.log(`[Web Routes] Validating inputs for '${workflowName}'. Expected inputs:`, JSON.stringify(expectedInputs, null, 2));
-              console.log(`[Web Routes] Received inputs:`, JSON.stringify(userInput, null, 2));
+              // geniusoverhaul: Use prepareToolRunPayload from WorkflowsService
+              const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, userInput);
 
-              // 1. Validate and merge inputs (use workflowName)
-              const validationResult = await workflowsService.validateInputPayload(workflowName, userInput);
-              if (!validationResult.isValid) {
-                // Log the detailed validation result for debugging
-                console.error(`[Web Routes] Input validation failed for '${workflowName}'. Details:`, JSON.stringify(validationResult, null, 2));
-                return res.status(400).json({ 
-                  status: 'error', 
-                  message: 'Input validation failed', 
-                  errors: validationResult // Include full validation result in response
+              if (!preparedResult) {
+                // prepareToolRunPayload logs errors internally, but we should respond to client
+                // It could be a validation error (400) or a tool not found/config error (500)
+                // For simplicity, sending 500; can be refined if prepareToolRunPayload returns error details.
+                logger.error(`[Web Routes] prepareToolRunPayload failed for tool '${currentDisplayName}' (ID: ${currentToolId}).`);
+                return res.status(500).json({
+                  status: 'error',
+                  message: `Failed to prepare payload for tool '${currentDisplayName}'. Check server logs for details.`
                 });
               }
               
-              // Use workflowName
-              const finalPayload = await workflowsService.mergeWithDefaultInputs(workflowName, userInput);
+              // The `preparedResult` is the final payload, validated and with defaults.
+              const finalPayload = preparedResult;
   
-              // 2. Get Deployment ID (use workflowName)
-              const deploymentIds = await workflowsService.getDeploymentIdsByName(workflowName);
-              if (!deploymentIds || deploymentIds.length === 0) {
-                 return res.status(404).json({ 
+              // 2. Get ComfyUI Deployment ID
+              // The ToolDefinition should store the actual ComfyUI deployment_id in its metadata
+              const deploymentId = tool.metadata && tool.metadata.deploymentId 
+                                   ? tool.metadata.deploymentId.startsWith('comfy-') 
+                                     ? tool.metadata.deploymentId.substring(6) // Remove 'comfy-' prefix
+                                     : tool.metadata.deploymentId
+                                   : null;
+
+              if (!deploymentId) {
+                 logger.error(`[Web Routes] ComfyUI deployment_id not found in metadata for tool '${currentDisplayName}' (ID: ${currentToolId})`);
+                 return res.status(500).json({ 
                    status: 'error', 
-                   message: `Deployment ID not found for workflow '${workflowName}'`
+                   message: `Configuration error: Deployment ID not found for tool '${currentDisplayName}'`
                  });
               }
-              // Use the first deployment ID found for this workflow name
-              const deploymentId = deploymentIds[0]; 
   
-              // 3. Submit request via ComfyUI Service (use workflowName)
+              // 3. Submit request via ComfyUI Service
               const runId = await comfyuiService.submitRequest({ 
-                deploymentId: deploymentId,
+                deploymentId: deploymentId, // Use the actual ComfyUI deployment_id
                 inputs: finalPayload,
-                workflowName: workflowName // Pass name for machine routing
+                // Pass tool.displayName for machine routing if comfyuiService still uses it.
+                // Otherwise, this might be tool.toolId or removed if routing logic changed.
+                workflowName: currentDisplayName 
               }); 
   
               // 4. Respond to client
-              res.status(202).json({ // 202 Accepted is appropriate for async job submission
+              res.status(202).json({ 
                 status: 'success',
-                message: `Workflow '${workflowName}' queued successfully.`,
-                job: { run_id: runId } // Return the run ID
+                message: `Tool '${currentDisplayName}' (ID: ${currentToolId}) queued successfully.`,
+                job: { run_id: runId } 
               });
 
             } catch (error) {
-              // workflowName is now guaranteed to be defined in this scope
-              console.error(`Error processing internal workflow request for '${workflowName}':`, error);
-              // Pass error to the default Express error handler
+              logger.error(`Error processing internal tool request for '${currentDisplayName}' (ID: ${currentToolId}):`, error);
               next(error); 
             }
           });
         } else {
-           console.warn(`[Web Routes] Skipping route generation for invalid workflow object: ${JSON.stringify(workflow)}`);
+           const toolIdentifier = (tool && tool.toolId) 
+                                  ? tool.toolId 
+                                  : ((tool && tool.displayName) 
+                                     ? tool.displayName 
+                                     : 'unknown tool (missing toolId and displayName)');
+           // Log concisely, as per previous fix.
+           logger.warn(`[Web Routes] Skipping route generation for invalid tool object: ${toolIdentifier}`);
         }
       });
 
@@ -125,10 +143,10 @@ async function initializeRoutes(app, services) {
       app.use('/api/internal/run', internalWorkflowRouter);
       
     } else {
-       console.warn('[Web Routes] WorkflowsService or ComfyUIService not available or getWorkflows method missing. Skipping dynamic route generation.');
+       logger.warn('[Web Routes] WorkflowsService or ComfyUIService not available or getWorkflows method missing. Skipping dynamic route generation.');
     }
   } catch (error) {
-    console.error('[Web Routes] Error setting up dynamic workflow routes:', error);
+    logger.error('[Web Routes] Error setting up dynamic workflow routes:', error);
     // Decide if this should prevent startup or just log
   }
   // --- END DYNAMIC WORKFLOW ROUTES ---
@@ -162,45 +180,45 @@ async function initializeRoutes(app, services) {
       // Get the MongoDB client using getCachedClient
       const mongoClient = await getCachedClient();
       if (!mongoClient) {
-        console.error('[Admin DAU] Could not obtain MongoDB client from getCachedClient()');
+        logger.error('[Admin DAU] Could not obtain MongoDB client from getCachedClient()');
         return res.status(500).json({ error: 'Database client acquisition failed.' });
       }
 
       // Get the specific database for BOT_NAME
       const db = mongoClient.db(process.env.BOT_NAME);
       if (!db) {
-        console.error('[Admin DAU] Failed to get Db object for BOT_NAME from mongoClient.');
+        logger.error('[Admin DAU] Failed to get Db object for BOT_NAME from mongoClient.');
         return res.status(500).json({ error: 'Database connection failed for DAU count (db object).'});
       }
-      console.log(`[Admin DAU] Successfully connected to DB: ${db.databaseName}`);
+      logger.info(`[Admin DAU] Successfully connected to DB: ${db.databaseName}`);
 
       const userCoreCollection = db.collection('users_core');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      console.log(`[Admin DAU] Querying for records with lastTouch >= ${twentyFourHoursAgo.toISOString()}`);
+      logger.info(`[Admin DAU] Querying for records with lastTouch >= ${twentyFourHoursAgo.toISOString()}`);
       
       const dauCount = await userCoreCollection.countDocuments({
         lastTouch: { $gte: twentyFourHoursAgo }
       });
-      console.log(`[Admin DAU] Found ${dauCount} active users.`);
+      logger.info(`[Admin DAU] Found ${dauCount} active users.`);
 
       // Optional: Log a sample document to inspect its structure, especially 'lastTouch'
       const sampleUser = await userCoreCollection.findOne({ lastTouch: { $gte: twentyFourHoursAgo } });
       if (sampleUser) {
-        console.log(`[Admin DAU] Sample active user (inspect lastTouch):`, JSON.stringify(sampleUser, null, 2));
+        logger.info(`[Admin DAU] Sample active user (inspect lastTouch):`, { user: sampleUser });
       } else {
         // If count is > 0 but no sample found with that criteria, it implies an issue, but usually, if count > 0, findOne should also work.
         // More likely, if count is 0, this will also be null.
         const anyUser = await userCoreCollection.findOne({});
         if (anyUser) {
-          console.log(`[Admin DAU] No users active in last 24h. Sample user from collection (inspect lastTouch):`, JSON.stringify(anyUser, null, 2));
+          logger.info(`[Admin DAU] No users active in last 24h. Sample user from collection (inspect lastTouch):`, { user: anyUser });
         } else {
-          console.log(`[Admin DAU] users_core collection appears to be empty or no documents found.`);
+          logger.info(`[Admin DAU] users_core collection appears to be empty or no documents found.`);
         }
       }
 
       res.json({ dau: dauCount });
     } catch (error) {
-      console.error('[Admin DAU] Error fetching DAU:', error);
+      logger.error('[Admin DAU] Error fetching DAU:', error);
       next(error); // Pass to default error handler
     }
   });
@@ -209,25 +227,25 @@ async function initializeRoutes(app, services) {
     try {
       const mongoClient = await getCachedClient();
       if (!mongoClient) {
-        console.error('[Admin RecentGens] Could not obtain MongoDB client');
+        logger.error('[Admin RecentGens] Could not obtain MongoDB client');
         return res.status(500).json({ error: 'Database client acquisition failed.' });
       }
       const db = mongoClient.db(process.env.BOT_NAME);
       if (!db) {
-        console.error('[Admin RecentGens] Failed to get Db object for BOT_NAME');
+        logger.error('[Admin RecentGens] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      console.log(`[Admin RecentGens] Successfully connected to DB: ${db.databaseName}`);
+      logger.info(`[Admin RecentGens] Successfully connected to DB: ${db.databaseName}`);
 
       const gensCollection = db.collection('gens');
       const twentyFourHoursAgoDateObj = new Date(Date.now() - 24 * 60 * 60 * 1000);
       // The 'timestamp' field in 'gens' is a BSON Date object, so compare with a JS Date object.
-      console.log(`[Admin RecentGens] Querying for records with timestamp (BSON Date) >= ${twentyFourHoursAgoDateObj.toISOString()}`);
+      logger.info(`[Admin RecentGens] Querying for records with timestamp (BSON Date) >= ${twentyFourHoursAgoDateObj.toISOString()}`);
 
       const countLast24h = await gensCollection.countDocuments({
         timestamp: { $gte: twentyFourHoursAgoDateObj } // Compare BSON Date with JS Date object
       });
-      console.log(`[Admin RecentGens] Found ${countLast24h} records in the last 24 hours using BSON Date 'timestamp' field.`);
+      logger.info(`[Admin RecentGens] Found ${countLast24h} records in the last 24 hours using BSON Date 'timestamp' field.`);
 
       const recentRecords = await gensCollection.find({
         timestamp: { $gte: twentyFourHoursAgoDateObj } // Compare BSON Date with JS Date object
@@ -235,21 +253,21 @@ async function initializeRoutes(app, services) {
       .sort({ timestamp: -1 }) // Sort by BSON Date timestamp
       .limit(20)
       .toArray();
-      console.log(`[Admin RecentGens] Fetched ${recentRecords.length} sample records using BSON Date 'timestamp'.`);
+      logger.info(`[Admin RecentGens] Fetched ${recentRecords.length} sample records using BSON Date 'timestamp'.`);
       if (recentRecords.length > 0) {
-        console.log('[Admin RecentGens] Sample recent record (inspect timestamp):', JSON.stringify(recentRecords[0], null, 2));
+        logger.info('[Admin RecentGens] Sample recent record (inspect timestamp):', { record: recentRecords[0] });
       } else {
         const anyRecord = await gensCollection.findOne({}, { sort: { timestamp: -1 } }); 
         if (anyRecord) {
-          console.log('[Admin RecentGens] No records in last 24h. Sample record from collection (inspect BSON Date timestamp):', JSON.stringify(anyRecord, null, 2));
+          logger.info('[Admin RecentGens] No records in last 24h. Sample record from collection (inspect BSON Date timestamp):', { record: anyRecord });
         } else {
-          console.log('[Admin RecentGens] gens collection appears to be empty.');
+          logger.info('[Admin RecentGens] gens collection appears to be empty.');
         }
       }
 
       res.json({ countLast24h, recentRecords });
     } catch (error) {
-      console.error('[Admin RecentGens] Error fetching recent gens:', error);
+      logger.error('[Admin RecentGens] Error fetching recent gens:', error);
       next(error); // Pass to default error handler
     }
   });
@@ -258,26 +276,26 @@ async function initializeRoutes(app, services) {
     try {
       const mongoClient = await getCachedClient();
       if (!mongoClient) {
-        console.error('[Admin RecentHistory] Could not obtain MongoDB client');
+        logger.error('[Admin RecentHistory] Could not obtain MongoDB client');
         return res.status(500).json({ error: 'Database client acquisition failed.' });
       }
       const db = mongoClient.db(process.env.BOT_NAME);
       if (!db) {
-        console.error('[Admin RecentHistory] Failed to get Db object for BOT_NAME');
+        logger.error('[Admin RecentHistory] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      console.log(`[Admin RecentHistory] Successfully connected to DB: ${db.databaseName}`);
+      logger.info(`[Admin RecentHistory] Successfully connected to DB: ${db.databaseName}`);
 
       const historyCollection = db.collection('history');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       // Query will use the 'timestamp' field which is an ISO date string in this collection
-      console.log(`[Admin RecentHistory] Querying for records with timestamp >= ${twentyFourHoursAgo.toISOString()}`);
+      logger.info(`[Admin RecentHistory] Querying for records with timestamp >= ${twentyFourHoursAgo.toISOString()}`);
 
       // Use 'timestamp' field (ISO date string) instead of 'createdAt'
       const countLast24h = await historyCollection.countDocuments({
         timestamp: { $gte: twentyFourHoursAgo } 
       });
-      console.log(`[Admin RecentHistory] Found ${countLast24h} records in the last 24 hours using 'timestamp' field.`);
+      logger.info(`[Admin RecentHistory] Found ${countLast24h} records in the last 24 hours using 'timestamp' field.`);
 
       const recentRecords = await historyCollection.find({
         timestamp: { $gte: twentyFourHoursAgo } 
@@ -285,22 +303,22 @@ async function initializeRoutes(app, services) {
       .sort({ timestamp: -1 }) // Sort by newest first using the ISO date string timestamp
       .limit(20) 
       .toArray();
-      console.log(`[Admin RecentHistory] Fetched ${recentRecords.length} sample records using 'timestamp'.`);
+      logger.info(`[Admin RecentHistory] Fetched ${recentRecords.length} sample records using 'timestamp'.`);
       if (recentRecords.length > 0) {
-        console.log('[Admin RecentHistory] Sample recent record (inspect timestamp):', JSON.stringify(recentRecords[0], null, 2));
+        logger.info('[Admin RecentHistory] Sample recent record (inspect timestamp):', { record: recentRecords[0] });
       } else {
         // Updated fallback to sort by the ISO date string timestamp field
         const anyRecord = await historyCollection.findOne({}, { sort: { timestamp: -1 } }); 
         if (anyRecord) {
-          console.log('[Admin RecentHistory] No records in last 24h. Sample record from collection (inspect timestamp):', JSON.stringify(anyRecord, null, 2));
+          logger.info('[Admin RecentHistory] No records in last 24h. Sample record from collection (inspect timestamp):', { record: anyRecord });
         } else {
-          console.log('[Admin RecentHistory] history collection appears to be empty.');
+          logger.info('[Admin RecentHistory] history collection appears to be empty.');
         }
       }
 
       res.json({ countLast24h, recentRecords });
     } catch (error) {
-      console.error('[Admin RecentHistory] Error fetching recent history:', error);
+      logger.error('[Admin RecentHistory] Error fetching recent history:', error);
       next(error); // Pass to default error handler
     }
   });
@@ -309,15 +327,15 @@ async function initializeRoutes(app, services) {
     try {
       const mongoClient = await getCachedClient();
       if (!mongoClient) {
-        console.error('[Admin GensDuration] Could not obtain MongoDB client');
+        logger.error('[Admin GensDuration] Could not obtain MongoDB client');
         return res.status(500).json({ error: 'Database client acquisition failed.' });
       }
       const db = mongoClient.db(process.env.BOT_NAME);
       if (!db) {
-        console.error('[Admin GensDuration] Failed to get Db object for BOT_NAME');
+        logger.error('[Admin GensDuration] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      console.log(`[Admin GensDuration] Successfully connected to DB: ${db.databaseName}`);
+      logger.info(`[Admin GensDuration] Successfully connected to DB: ${db.databaseName}`);
 
       const gensCollection = db.collection('gens');
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -390,9 +408,9 @@ async function initializeRoutes(app, services) {
 
       // --- BEGIN DEBUG LOGGING ---
       if (aggregationResult && aggregationResult.length > 0 && aggregationResult[0].overallStats && aggregationResult[0].overallStats.length > 0) {
-        console.log('[Admin GensDuration DEBUG] Raw overallStats from aggregation:', JSON.stringify(aggregationResult[0].overallStats[0], null, 2));
+        logger.info('[Admin GensDuration DEBUG] Raw overallStats from aggregation:', { aggregationResult: aggregationResult[0].overallStats[0] });
       } else {
-        console.log('[Admin GensDuration DEBUG] aggregationResult[0].overallStats[0] is not available. Full aggregationResult:', JSON.stringify(aggregationResult, null, 2));
+        logger.info('[Admin GensDuration DEBUG] aggregationResult[0].overallStats[0] is not available. Full aggregationResult:', { aggregationResult });
       }
       // --- END DEBUG LOGGING ---
 
@@ -401,13 +419,13 @@ async function initializeRoutes(app, services) {
       const durationPerUserData = aggregationResult[0]?.durationPerUser || [];
 
       // --- BEGIN DEBUG LOGGING ---
-      console.log(`[Admin GensDuration DEBUG] Extracted overallStatsData:`, JSON.stringify(overallStatsData, null, 2));
-      console.log(`[Admin GensDuration DEBUG] totalGenerations from overallStatsData: ${overallStatsData.totalGenerations}`);
-      console.log(`[Admin GensDuration DEBUG] totalDurationMs from overallStatsData: ${overallStatsData.totalDurationMs}`);
-      console.log(`[Admin GensDuration DEBUG] averageDurationMs from overallStatsData (before toFixed): ${overallStatsData.averageDurationMs}`);
+      logger.info(`[Admin GensDuration DEBUG] Extracted overallStatsData:`, { overallStatsData });
+      logger.info(`[Admin GensDuration DEBUG] totalGenerations from overallStatsData: ${overallStatsData.totalGenerations}`);
+      logger.info(`[Admin GensDuration DEBUG] totalDurationMs from overallStatsData: ${overallStatsData.totalDurationMs}`);
+      logger.info(`[Admin GensDuration DEBUG] averageDurationMs from overallStatsData (before toFixed): ${overallStatsData.averageDurationMs}`);
       // --- END DEBUG LOGGING ---
 
-      console.log(`[Admin GensDuration] Processed ${overallStatsData.totalGenerations} gens, total duration ${overallStatsData.totalDurationMs}ms`);
+      logger.info(`[Admin GensDuration] Processed ${overallStatsData.totalGenerations} gens, total duration ${overallStatsData.totalDurationMs}ms`);
 
       res.json({
         timeRange: {
@@ -421,7 +439,7 @@ async function initializeRoutes(app, services) {
       });
 
     } catch (error) {
-      console.error('[Admin GensDuration] Error fetching generation duration stats:', error);
+      logger.error('[Admin GensDuration] Error fetching generation duration stats:', error);
       next(error);
     }
   });
@@ -430,15 +448,15 @@ async function initializeRoutes(app, services) {
     try {
       const mongoClient = await getCachedClient();
       if (!mongoClient) {
-        console.error('[Admin UserSessions] Could not obtain MongoDB client');
+        logger.error('[Admin UserSessions] Could not obtain MongoDB client');
         return res.status(500).json({ error: 'Database client acquisition failed.' });
       }
       const db = mongoClient.db(process.env.BOT_NAME);
       if (!db) {
-        console.error('[Admin UserSessions] Failed to get Db object for BOT_NAME');
+        logger.error('[Admin UserSessions] Failed to get Db object for BOT_NAME');
         return res.status(500).json({ error: 'Database connection failed (db object).' });
       }
-      console.log(`[Admin UserSessions] Successfully connected to DB: ${db.databaseName}`);
+      logger.info(`[Admin UserSessions] Successfully connected to DB: ${db.databaseName}`);
 
       const historyCollection = db.collection('history');
 
@@ -450,7 +468,7 @@ async function initializeRoutes(app, services) {
 
       const NDaysAgo = new Date();
       NDaysAgo.setDate(NDaysAgo.getDate() - daysToScan);
-      console.log(`[Admin UserSessions] Fetching history since ${NDaysAgo.toISOString()} for session analysis.`);
+      logger.info(`[Admin UserSessions] Fetching history since ${NDaysAgo.toISOString()} for session analysis.`);
 
       const matchQuery = {
         timestamp: { $gte: NDaysAgo }
@@ -468,7 +486,7 @@ async function initializeRoutes(app, services) {
         return res.json({ sessions: [], message: 'No history events found for the specified criteria.' });
       }
       
-      console.log(`[Admin UserSessions] Fetched ${userEvents.length} events for processing.`);
+      logger.info(`[Admin UserSessions] Fetched ${userEvents.length} events for processing.`);
 
       // --- Session Reconstruction Logic --- 
       const allUserSessions = [];
@@ -495,7 +513,7 @@ async function initializeRoutes(app, services) {
 
       // Get unique user IDs from the reconstructed sessions
       const distinctUserIdsInSessions = new Set(allUserSessions.map(session => session.userId));
-      console.log(`[Admin UserSessions] Reconstructed ${allUserSessions.length} sessions for ${distinctUserIdsInSessions.size} unique users.`);
+      logger.info(`[Admin UserSessions] Reconstructed ${allUserSessions.length} sessions for ${distinctUserIdsInSessions.size} unique users.`);
 
       res.json({ 
         message: "Session reconstruction in progress.", // Updated message
@@ -504,7 +522,7 @@ async function initializeRoutes(app, services) {
       });
 
     } catch (error) {
-      console.error('[Admin UserSessions] Error fetching user session data:', error);
+      logger.error('[Admin UserSessions] Error fetching user session data:', error);
       next(error);
     }
   });
@@ -752,7 +770,8 @@ async function initializeRoutes(app, services) {
       }
 
     } catch (error) {
-      console.error('[Webhook Route Handler] Unhandled exception:', error);
+      const routeLogger = services.logger || console; // Ensure routeLogger is defined in this scope too or use the one from above
+      routeLogger.error('[Webhook Route Handler] Unhandled exception:', error);
       res.status(500).json({ message: "error", error: "Internal server error in webhook route handler." });
     }
   });

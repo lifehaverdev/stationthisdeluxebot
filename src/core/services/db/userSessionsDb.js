@@ -1,12 +1,15 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
 // const { getCachedClient } = require('./utils/queue'); // Not needed here anymore
 
+const COLLECTION_NAME = 'userSessions';
+
 class UserSessionsDB extends BaseDB {
-  constructor(logger) { 
-    super('userSessions');
+  constructor(logger) {
+    super(COLLECTION_NAME);
     if (!logger) {
-      console.warn('[UserSessionsDB] Logger instance was not provided during construction. Falling back to console.');
-      this.logger = console; 
+      const tempLogger = console;
+      tempLogger.warn('[UserSessionsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = tempLogger;
     } else {
       this.logger = logger;
     }
@@ -25,17 +28,18 @@ class UserSessionsDB extends BaseDB {
    * @returns {Promise<Object>} The created session document.
    */
   async createSession(sessionData) {
+    if (!sessionData || !sessionData.masterAccountId) {
+        this.logger.error('[UserSessionsDB] masterAccountId is required to create a session.');
+        return null;
+    }
     const dataToInsert = {
+      // sessionId will be handled by BaseDB as _id
+      sessionStartTimestamp: new Date(),
       ...sessionData,
-      startTime: sessionData.startTime || new Date(),
-      isActive: sessionData.isActive !== undefined ? sessionData.isActive : true,
-      lastUserActivityTimestamp: sessionData.lastUserActivityTimestamp || new Date(),
+      status: sessionData.status || 'active',
     };
     const result = await this.insertOne(dataToInsert);
-    if (result.insertedId) {
-        return { _id: result.insertedId, ...dataToInsert };
-    }
-    return null;
+    return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
 
   /**
@@ -44,7 +48,11 @@ class UserSessionsDB extends BaseDB {
    * @returns {Promise<Object|null>} The session document, or null if not found.
    */
   async findSessionById(sessionId) {
-    return this.findOne({ _id: sessionId });
+    if (!sessionId) {
+        this.logger.error('[UserSessionsDB] sessionId is required to find a session.');
+        return null;
+    }
+    return this.findOne({ _id: new ObjectId(sessionId) });
   }
 
   /**
@@ -59,7 +67,14 @@ class UserSessionsDB extends BaseDB {
    * @returns {Promise<Object>} The update result.
    */
   async updateSession(sessionId, updateData) {
-    return this.updateOne({ _id: sessionId }, updateData);
+    if (!sessionId) {
+        this.logger.error('[UserSessionsDB] sessionId is required to update a session.');
+        return null;
+    }
+    if (updateData.status === 'ended' && !updateData.sessionEndTimestamp) {
+      updateData.sessionEndTimestamp = new Date();
+    }
+    return this.updateOne({ _id: new ObjectId(sessionId) }, { $set: updateData });
   }
 
   /**
@@ -93,6 +108,22 @@ class UserSessionsDB extends BaseDB {
    */
   async updateLastActivity(sessionId) {
     return this.updateSession(sessionId, { lastUserActivityTimestamp: new Date() });
+  }
+
+  async findSessionsByMasterAccount(masterAccountId, options = {}) {
+    if (!masterAccountId) {
+        this.logger.error('[UserSessionsDB] masterAccountId is required to find sessions.');
+        return [];
+    }
+    return this.findMany({ masterAccountId }, options);
+  }
+
+  async findActiveSessionsByMasterAccount(masterAccountId, options = {}) {
+    if (!masterAccountId) {
+        this.logger.error('[UserSessionsDB] masterAccountId is required to find active sessions.');
+        return [];
+    }
+    return this.findMany({ masterAccountId, status: 'active' }, options);
   }
 }
 

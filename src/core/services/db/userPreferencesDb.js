@@ -1,12 +1,18 @@
-const { BaseDB, ObjectId: BaseDBObjectId } = require('./BaseDB');
-const { ObjectId } = require('mongodb');
+const { BaseDB, ObjectId } = require('./BaseDB');
+
+const COLLECTION_NAME = 'userPreferences';
 
 class UserPreferencesDB extends BaseDB {
   constructor(logger) {
-    super('userPreferences');
+    super(COLLECTION_NAME);
     if (!logger) {
-      console.warn('[UserPreferencesDB] Logger instance was not provided during construction. Falling back to console.');
-      this.logger = console; 
+      // This console.warn will be replaced by the logger behavior if logger is undefined.
+      // However, the logger should be passed. If it isn't, this log is a fallback.
+      // For consistency, we can use a temporary console.warn here if truly no logger, 
+      // but the aim is that 'logger' is always provided.
+      const tempLogger = console;
+      tempLogger.warn('[UserPreferencesDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = tempLogger; 
     } else {
       this.logger = logger;
     }
@@ -124,6 +130,50 @@ class UserPreferencesDB extends BaseDB {
       { masterAccountId: new ObjectId(masterAccountId) },
       { $set: setUpdates }
     );
+  }
+
+  async getPreferences(masterAccountId) {
+    if (!masterAccountId) {
+      this.logger.error('[UserPreferencesDB] masterAccountId is required to get preferences.');
+      return null;
+    }
+    return this.findOne({ masterAccountId });
+  }
+
+  async updatePreferences(masterAccountId, preferencesData) {
+    if (!masterAccountId) {
+      this.logger.error('[UserPreferencesDB] masterAccountId is required to update preferences.');
+      return null;
+    }
+    // Ensure preferencesData is not null or undefined to prevent errors with $set
+    if (preferencesData === null || typeof preferencesData === 'undefined') {
+        this.logger.warn('[UserPreferencesDB] preferencesData is null or undefined, cannot update.');
+        return null; 
+    }
+    return this.updateOne({ masterAccountId }, { $set: preferencesData }, { upsert: true });
+  }
+
+  async getPreference(masterAccountId, key) {
+    if (!masterAccountId || !key) {
+      this.logger.error('[UserPreferencesDB] masterAccountId and key are required to get a specific preference.');
+      return undefined;
+    }
+    const preferences = await this.findOne({ masterAccountId });
+    return preferences ? preferences[key] : undefined;
+  }
+
+  async setPreference(masterAccountId, key, value) {
+    if (!masterAccountId || !key) {
+      this.logger.error('[UserPreferencesDB] masterAccountId and key are required to set a specific preference.');
+      return null;
+    }
+    // To prevent setting undefined values, though MongoDB handles it.
+    if (typeof value === 'undefined') {
+        this.logger.warn(`[UserPreferencesDB] Value for key '${key}' is undefined. Not setting.`);
+        // Fetch current state to return if needed, or decide behavior.
+        return this.findOne({ masterAccountId }); 
+    }
+    return this.updateOne({ masterAccountId }, { $set: { [key]: value } }, { upsert: true });
   }
 }
 

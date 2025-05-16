@@ -18,9 +18,10 @@ const fs = require('fs');
  */
 function initializeWebPlatform(services, options = {}) {
   const app = express();
+  const logger = services.logger || console; // Get logger from services, fallback to console
   
   // Set up middleware
-  setupMiddleware(app);
+  setupMiddleware(app, logger); // Pass the logger
   
   // Initialize API routes (now async)
   // We need to wrap the rest of the setup in an async IIFE or make initializeWebPlatform async
@@ -62,7 +63,7 @@ function initializeWebPlatform(services, options = {}) {
     start: (port = 3000) => {
       return new Promise((resolve) => {
         const server = app.listen(port, () => {
-          console.log(`Web platform running on port ${port}`);
+          logger.info(`Web platform running on port ${port}`); // Use logger here
           resolve(server);
         });
       });

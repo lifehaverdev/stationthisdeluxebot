@@ -5,6 +5,7 @@ async function setupDynamicCommands(bot, services) {
   const workflowsService = services.workflows;
   const comfyuiService = services.comfyui;
   const logger = services.logger || console;
+  const toolRegistry = services.toolRegistry; // Assuming toolRegistry is added to services
 
   logger.info('[Telegram] Setting up dynamic commands...');
 
@@ -17,78 +18,85 @@ async function setupDynamicCommands(bot, services) {
       logger.warn('[Telegram] ComfyUIService not available or submitRequest method is missing. Skipping dynamic command generation.');
       return;
     }
-
-    const allWorkflows = await workflowsService.getWorkflows();
-    
-    if (!allWorkflows || allWorkflows.length === 0) {
-      logger.warn('[Telegram] No workflows found to process for dynamic commands.');
+    if (!toolRegistry) {
+      logger.warn('[Telegram] ToolRegistry not available in services. Skipping dynamic command generation.');
       return;
     }
-    logger.info(`[Telegram] Found ${allWorkflows.length} total workflows.`);
 
-    // Filter for text-only workflows (must have input_prompt, no input_image)
-    // Also ensure workflow.name and workflow.id exist.
-    const textOnlyWorkflows = allWorkflows.filter(workflow => {
-      if (!workflow || !workflow.name || !workflow.id) {
-        // logger.warn(`[Telegram Filter] Skipping workflow due to missing name or id: ${JSON.stringify(workflow)}`); // Keep if still useful, or remove for cleaner logs
+    const allTools = await workflowsService.getWorkflows();
+    
+    if (!allTools || allTools.length === 0) {
+      logger.warn('[Telegram] No tools found to process for dynamic commands.');
+      return;
+    }
+    logger.info(`[Telegram] Found ${allTools.length} total tools from WorkflowsService.`);
+
+    const textOnlyTools = allTools.filter(tool => {
+      if (!tool || !tool.toolId || !tool.displayName) {
         return false;
       }
-      const inputs = workflow.inputs || {};
-      // Removed: logger.info(`[Telegram Filter] Evaluating workflow: '${workflow.name}', Inputs: ${JSON.stringify(inputs, null, 2)}`);
+      if (tool.service !== 'comfyui') return false; 
+
+      if (!tool.inputSchema || typeof tool.inputSchema !== 'object') {
+        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) has no valid inputSchema.`);
+        return false;
+      }
 
       let hasTextPrompt = false;
       let hasImageInput = false;
+      let promptInputKey = null;
 
-      if (Array.isArray(inputs)) {
-        // Handle cases where inputs is an array of strings (input names)
-        hasTextPrompt = inputs.includes('input_prompt') || inputs.includes('prompt');
-        hasImageInput = inputs.includes('input_image') || inputs.includes('image');
-      } else if (typeof inputs === 'object' && inputs !== null) {
-        // Handle cases where inputs is an object (as originally assumed)
-        hasTextPrompt = Object.values(inputs).some(input => input && typeof input.type === 'string' && input.type.toUpperCase() === 'STRING' && (input.name === 'input_prompt' || input.name === 'prompt'));
-        hasImageInput = Object.values(inputs).some(input => input && typeof input.type === 'string' && input.type.toUpperCase() === 'IMAGE' && (input.name === 'input_image' || input.name === 'image'));
-      } else {
-        logger.warn(`[Telegram Filter] Workflow '${workflow.name}' has unexpected inputs format: ${typeof inputs}`);
+      for (const inputName in tool.inputSchema) {
+        const inputField = tool.inputSchema[inputName];
+        if (inputField && typeof inputField.type === 'string') {
+          if ((inputName === 'input_prompt' || inputName === 'prompt') && inputField.type.toLowerCase() === 'string') {
+            hasTextPrompt = true;
+            promptInputKey = inputName;
+          }
+          if ((inputName === 'input_image' || inputName === 'image') && inputField.type.toLowerCase() === 'image') {
+            hasImageInput = true;
+          }
+        }
       }
-
-      // Removed: logger.info(`[Telegram Filter] Workflow: '${workflow.name}', HasTextPrompt: ${hasTextPrompt}, HasImageInput: ${hasImageInput}`);
       
-      return hasTextPrompt && !hasImageInput;
+      if (hasTextPrompt && !hasImageInput && promptInputKey) {
+        tool.metadata = tool.metadata || {};
+        tool.metadata.telegramPromptInputKey = promptInputKey;
+        return true;
+      }
+      return false;
     });
 
-    logger.info(`[Telegram] Found ${textOnlyWorkflows.length} text-only workflows to register as commands.`);
+    logger.info(`[Telegram] Found ${textOnlyTools.length} text-only tools to register as commands.`);
 
-    if (textOnlyWorkflows.length === 0) {
-      logger.info('[Telegram] No suitable text-only workflows found to register as dynamic commands.');
+    if (textOnlyTools.length === 0) {
+      logger.info('[Telegram] No suitable text-only tools found to register as dynamic commands.');
       return;
     }
 
     const registeredCommands = [];
 
-    for (const workflow of textOnlyWorkflows) {
-      const commandName = sanitizeCommandName(workflow.name);
+    for (const tool of textOnlyTools) {
+      const commandName = sanitizeCommandName(tool.displayName);
       if (!commandName) {
-        logger.warn(`[Telegram] Skipping workflow with invalid or empty sanitized name: ${workflow.name}`);
+        logger.warn(`[Telegram] Skipping tool with invalid or empty sanitized name: ${tool.displayName} (ID: ${tool.toolId})`);
         continue;
       }
 
-      logger.info(`[Telegram] Registering command: /${commandName} for workflow ID: ${workflow.id}`);
+      logger.info(`[Telegram] Registering command: /${commandName} for tool ID: ${tool.toolId}`);
 
       bot.onText(new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i'), async (msg, match) => {
-        // --- Add extra debugging --- 
-        logger.debug(`[Telegram EXEC /${commandName}] Handler triggered! msg.text: "${msg.text}"`);
-        // ---------------------------
         const chatId = msg.chat.id;
         const telegramUserId = msg.from.id;
         const platformIdStr = telegramUserId.toString();
         const platform = 'telegram';
-        const prompt = match && match[1] ? match[1].trim() : ''; 
+        const promptText = match && match[1] ? match[1].trim() : '';
         
-        // --- Add extra debugging --- 
-        logger.debug(`[Telegram EXEC /${commandName}] Parsed - User: ${platformIdStr}, Prompt: "${prompt}"`);
-        // ---------------------------
+        const currentToolId = tool.toolId;
+        const currentDisplayName = tool.displayName;
+        const currentPromptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
 
-        if (!prompt) {
+        if (!promptText) {
           logger.info(`[Telegram EXEC /${commandName}] No prompt provided. Replying to user.`);
           bot.sendMessage(chatId, `Please provide a prompt after the command. Usage: /${commandName} your prompt here`, { reply_to_message_id: msg.message_id });
           return;
@@ -100,33 +108,24 @@ async function setupDynamicCommands(bot, services) {
         let generationId;
 
         try {
-          // --- Start: User/Session/Event Handling --- 
-          // --- Add extra debugging --- 
           logger.debug(`[Telegram EXEC /${commandName}] Entering User/Session/Event Handling block...`);
-          // ---------------------------
-          // 1. Get Master Account ID
           const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
             platform: platform,
             platformId: platformIdStr,
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
           });
           masterAccountId = findOrCreateResponse.data.masterAccountId;
-          logger.debug(`[Telegram EXEC /${commandName}] Got MAID: ${masterAccountId}`); // More specific log
 
-          // 2. Get/Create Session
           const activeSessionsResponse = await internalApiClient.get(`/users/${masterAccountId}/sessions/active?platform=${platform}`);
           if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
             sessionId = activeSessionsResponse.data[0]._id;
           } else {
             const newSessionResponse = await internalApiClient.post('/sessions', { masterAccountId, platform, userAgent: 'Telegram Bot Command' });
             sessionId = newSessionResponse.data._id;
-            // Log session_started event (fire and forget, don't block command)
             internalApiClient.post('/events', { masterAccountId, sessionId, eventType: 'session_started', sourcePlatform: platform, eventData: { platform, startMethod: 'command_interaction' } })
               .catch(err => logger.error(`[Telegram EXEC /${commandName}] Failed to log session_started event: ${err.message}`));
           }
-          logger.debug(`[Telegram EXEC /${commandName}] Got/Created SID: ${sessionId}`); // More specific log
           
-          // 3. Log Command Triggered Event
           const eventPayload = {
               masterAccountId: masterAccountId,
               sessionId: sessionId,
@@ -136,68 +135,73 @@ async function setupDynamicCommands(bot, services) {
                 command: `/${commandName}`,
                 chatId: chatId,
                 userId: platformIdStr,
-                prompt: prompt // Log the prompt within the event
+                prompt: promptText,
+                toolId: currentToolId
               }
           };
           const eventResponse = await internalApiClient.post('/events', eventPayload);
-          eventId = eventResponse.data._id; // Capture eventId to link generation
-          logger.debug(`[Telegram EXEC /${commandName}] Logged Event: ${eventId}`); // More specific log
-
-          // 4. Update Session Activity (Fire and forget)
+          eventId = eventResponse.data._id;
           internalApiClient.put(`/sessions/${sessionId}/activity`, {}).catch(err => logger.error(`[Telegram EXEC /${commandName}] Failed to update activity: ${err.message}`));
-          logger.debug(`[Telegram EXEC /${commandName}] Activity update requested (async).`); // More specific log
-          // --- End: User/Session/Event Handling ---
+          logger.debug(`[Telegram EXEC /${commandName}] Activity update requested (async).`);
+          logger.debug(`[Telegram EXEC /${commandName}] Got/Created SID: ${sessionId}`);
+          logger.debug(`[Telegram EXEC /${commandName}] Logged Event: ${eventId}`);
 
-          // --- Start: Workflow Submission --- 
-          logger.info(`[Telegram EXEC /${commandName}] Getting deployment info for workflow: ${workflow.name}...`);
-          const deploymentIds = await workflowsService.getDeploymentIdsByName(workflow.name);
-          // TODO: Fetch cost rate info here as well - DONE
-          // const costRateInfo = { amount: 0.01, currency: "USD", unit: "minute" }; // Placeholder REMOVED
-
-          if (!deploymentIds || deploymentIds.length === 0) {
-             logger.error(`[Telegram EXEC /${commandName}] No deployment ID found for workflow: ${workflow.name}`);
-             throw new Error(`No deployment ID found for workflow: ${workflow.name}`);
+          logger.info(`[Telegram EXEC /${commandName}] Preparing to run tool: ${currentDisplayName} (ID: ${currentToolId})...`);
+          
+          let deploymentId = tool.metadata?.deploymentId;
+          if (deploymentId && deploymentId.startsWith('comfy-')) {
+            deploymentId = deploymentId.substring(6);
           }
-          const deploymentId = deploymentIds[0]; // Use the first deployment ID
+
+          if (!deploymentId) {
+             logger.error(`[Telegram EXEC /${commandName}] No ComfyUI deployment_id found in metadata for tool: ${currentDisplayName} (ID: ${currentToolId})`);
+             throw new Error(`Configuration error: Deployment ID not found for tool: ${currentDisplayName}`);
+          }
           logger.info(`[Telegram EXEC /${commandName}] Using Deployment ID: ${deploymentId}`);
 
-          // Fetch the actual cost rate using the new service method
           let costRateInfo = null;
           try {
             logger.debug(`[Telegram EXEC /${commandName}] Fetching cost rate for deployment ${deploymentId}...`);
             costRateInfo = await comfyuiService.getCostRateForDeployment(deploymentId);
             if (!costRateInfo) {
               logger.warn(`[Telegram EXEC /${commandName}] Could not determine cost rate for deployment ${deploymentId}. Proceeding without cost info.`);
-              costRateInfo = { error: 'Rate unknown' }; // Indicate missing rate in metadata
+              costRateInfo = { error: 'Rate unknown' };
             } else {
               logger.info(`[Telegram EXEC /${commandName}] Determined cost rate: ${JSON.stringify(costRateInfo)}`);
             }
           } catch (costError) {
             logger.error(`[Telegram EXEC /${commandName}] Error fetching cost rate for deployment ${deploymentId}: ${costError.message}. Proceeding without cost info.`);
-            costRateInfo = { error: 'Rate lookup failed' }; // Indicate error in metadata
+            costRateInfo = { error: 'Rate lookup failed' };
           }
 
-          // 5. Log Generation Start
+          const userInputsForTool = { [currentPromptInputKey]: promptText };
+          logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool: ${JSON.stringify(userInputsForTool)}`);
+
+          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, userInputsForTool);
+          if (!preparedResult) {
+            logger.error(`[Telegram EXEC /${commandName}] prepareToolRunPayload failed for tool ${currentToolId}. Check WorkflowsService logs.`);
+            throw new Error(`Failed to prepare payload for tool '${currentDisplayName}'.`);
+          }
+          const finalInputs = preparedResult;
+          logger.debug(`[Telegram EXEC /${commandName}] Final inputs for ComfyUI: ${JSON.stringify(finalInputs)}`);
+
           const generationPayload = {
             masterAccountId: masterAccountId,
             sessionId: sessionId,
-            initiatingEventId: eventId, // Link to the command event
-            serviceName: workflow.name,
-            requestPayload: { input_prompt: prompt },
-            // Fields for decoupled notification system (ADR-001)
+            initiatingEventId: eventId,
+            serviceName: currentDisplayName,
+            toolId: currentToolId,
+            requestPayload: finalInputs,
             notificationPlatform: 'telegram',
             deliveryStatus: 'pending',
             metadata: { 
               deploymentId: deploymentId, 
-              costRate: costRateInfo, // Store ACTUAL cost rate (or error indicator)
-              // telegramChatId: chatId, // Consolidated into notificationContext
-              // telegramUserId: platformIdStr, // Consolidated into notificationContext
+              costRate: costRateInfo,
               notificationContext: {
                 chatId: chatId,
                 userId: platformIdStr,
-                messageId: msg.message_id // For potential threaded replies or context
+                messageId: msg.message_id 
               }
-              // run_id will be added later via a PUT update to avoid potential race conditions
             }
           };
           logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationPayload)}`);
@@ -205,52 +209,33 @@ async function setupDynamicCommands(bot, services) {
           generationId = generationResponse.data._id;
           logger.info(`[Telegram EXEC /${commandName}] Generation logged: ${generationId}`);
 
-          // 6. Submit to ComfyUI
-          const inputs = { input_prompt: prompt }; 
           logger.info(`[Telegram EXEC /${commandName}] Submitting to ComfyUI: DeploymentID=${deploymentId}, GenID=${generationId}...`);
           const submissionResult = await comfyuiService.submitRequest({
             deploymentId: deploymentId,
-            inputs: inputs,
-            workflowName: workflow.name
+            inputs: finalInputs,
           });
 
-          // Handle potential string or object response for run_id
           const run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
 
           if (run_id) {
             logger.info(`[Telegram EXEC /${commandName}] ComfyUI submission successful. Run ID: ${run_id}. Linking to GenID: ${generationId}...`);
-            // 7. Link run_id to Generation Record
-            try {
-              // Attempt to merge run_id into existing metadata using dot notation for partial update
-              await internalApiClient.put(`/generations/${generationId}`, { 
-                "metadata.run_id": run_id 
-              });
-               logger.info(`[Telegram EXEC /${commandName}] Successfully linked RunID ${run_id} to Generation ${generationId}`);
-            } catch (linkError) {
-              logger.error(`[Telegram EXEC /${commandName}] Failed to link RunID ${run_id} to Generation ${generationId}: ${linkError.message}`);
-              // Continue to notify user, but log the linking failure
-            }
-            await bot.sendMessage(chatId, `Your request for '${workflow.name}' is running! Ref: ${generationId}`, { reply_to_message_id: msg.message_id }); // Inform user with Generation ID
-
-          } else { // Handle ComfyUI submission error
+            await internalApiClient.put(`/generations/${generationId}`, { "metadata.run_id": run_id });
+            await bot.sendMessage(chatId, `Your request for '${currentDisplayName}' is running! Ref: ${generationId}`, { reply_to_message_id: msg.message_id });
+          } else { 
             const errorMessage = submissionResult?.error ? (typeof submissionResult.error === 'string' ? submissionResult.error : submissionResult.error.message) : 'Unknown error during ComfyUI submission';
             logger.error(`[Telegram EXEC /${commandName}] ComfyUI submission failed for GenID ${generationId}: ${errorMessage}`);
-            // Optionally update Generation record status to failed here via PUT /generations
             await internalApiClient.put(`/generations/${generationId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` }).catch(e => logger.error("Failed to update generation status to failed", e));
-            throw new Error(`ComfyUI submission failed: ${errorMessage}`); // Throw to trigger generic error message to user
+            throw new Error(`ComfyUI submission failed: ${errorMessage}`);
           }
-          // --- End: Workflow Submission --- 
 
         } catch (error) {
           logger.error(`[Telegram EXEC /${commandName}] Error during execution (MAID: ${masterAccountId}, SID: ${sessionId}, GenID: ${generationId}):`, error.response ? error.response.data : error.message, error.stack);
-          // Send generic error message
           await bot.sendMessage(chatId, `Sorry, an unexpected error occurred while processing '/${commandName}'. Ref: ${generationId || 'N/A'}`, { reply_to_message_id: msg.message_id });
         }
-        registeredCommands.push({ command: commandName, description: `Run ${workflow.name}` });
+        registeredCommands.push({ command: commandName, description: `Run ${tool.displayName}` });
       });
     }
 
-    // Update Telegram bot commands list if any commands were registered
     if (registeredCommands.length > 0) {
       try {
         logger.info(`[Telegram Commands] Attempting to get existing bot commands.`);
@@ -283,63 +268,50 @@ async function setupDynamicCommands(bot, services) {
 
   } catch (error) {
     logger.error('[Telegram] Critical error during dynamic commands setup:', error);
-    // Do not re-throw here if you want the bot to attempt to continue running with static commands
   }
 
-  // ---- Add /noemainfome command ----
   try {
     logger.info('[Telegram] Registering command: /noemainfome');
     bot.onText(new RegExp(`^/noemainfome(?:@\w+)?(?:\s+([\w-]+))?`, 'i'), async (msg, match) => {
       const chatId = msg.chat.id;
       const requesterTelegramId = msg.from.id.toString();
-      // Use provided ID if present and valid, otherwise default to requester's ID
       const targetTelegramId = match && match[1] && /^[\d]+$/.test(match[1].trim()) ? match[1].trim() : requesterTelegramId;
 
       logger.info(`[Telegram EXEC /noemainfome] Handler triggered. Requester: ${requesterTelegramId}, Target Platform ID: ${targetTelegramId}`);
 
       try {
-        // Replace DB call with Internal API call
         logger.debug(`[Telegram EXEC /noemainfome] Fetching user core data via API for platform ID: ${targetTelegramId}...`);
         const response = await internalApiClient.get(`/users/by-platform/telegram/${targetTelegramId}`);
-        const userCoreDoc = response.data; // API returns the document directly on success
+        const userCoreDoc = response.data;
 
-        // No need to check if userCoreDoc exists here, as a 404 error would be thrown by axios if not found
         logger.info(`[Telegram EXEC /noemainfome] UserCore Document Found via API for ${targetTelegramId}`);
         
-        // Sanitize and pretty print the JSON
         let messageText = 'UserCore Document Found:\n```json\n' +
                          JSON.stringify(userCoreDoc, (key, value) => {
                            if (value && value._bsontype === 'ObjectId') return value.toString();
-                           if (value && value.$numberDecimal) return parseFloat(value.$numberDecimal); // Nicer display for decimals
+                           if (value && value.$numberDecimal) return parseFloat(value.$numberDecimal);
                            return value;
                          }, 2) +
                          '\n```';
         if (messageText.length > 4096) {
           messageText = messageText.substring(0, 4090) + '\n... (truncated)';
         }
-        // Use MarkdownV2 carefully, ensure no reserved characters are unescaped in the JSON string itself
-        // For simplicity, consider removing parse_mode or using HTML if MarkdownV2 causes issues with JSON content.
-        await bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' }); // Changed to Markdown for less strict parsing
+        await bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
 
       } catch (apiError) {
         if (apiError.response && apiError.response.status === 404) {
           logger.info(`[Telegram EXEC /noemainfome] No UserCore document found via API for Telegram User ID: ${targetTelegramId}`);
           await bot.sendMessage(chatId, `No Noema userCore data found for Telegram ID: ${targetTelegramId}.`, { reply_to_message_id: msg.message_id });
         } else {
-          // Log the more detailed axios error
           logger.error(`[Telegram EXEC /noemainfome] Error fetching user data via API for ${targetTelegramId}:`, apiError.response ? apiError.response.data : apiError.message);
           await bot.sendMessage(chatId, `Sorry, an API error occurred while fetching user data for ${targetTelegramId}.`, { reply_to_message_id: msg.message_id });
         }
       }
     });
-    // Add to the list of commands for /help
-    const commandToAdd = { command: 'noemainfome', description: 'Fetches your Noema user core data. Admins can specify another Telegram ID.' };
-    // We'll add this to the bot's command list later along with other dynamic commands
 
   } catch (error) {
     logger.error('[Telegram] Error setting up /noemainfome command:', error);
   }
-  // ---- End of /noemainfome command ----
 }
 
 module.exports = { setupDynamicCommands };

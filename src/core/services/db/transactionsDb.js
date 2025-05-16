@@ -1,12 +1,15 @@
-const { BaseDB, ObjectId: BaseDBObjectId } = require('./BaseDB');
-const { ObjectId: MongoObjectId, Decimal128 } = require('mongodb');
+const { BaseDB, ObjectId } = require('./BaseDB');
+const { Decimal128 } = require('mongodb');
+
+const COLLECTION_NAME = 'transactions';
 
 class TransactionsDB extends BaseDB {
   constructor(logger) {
-    super('transactions');
+    super(COLLECTION_NAME);
     if (!logger) {
-      console.warn('[TransactionsDB] Logger instance was not provided during construction. Falling back to console.');
-      this.logger = console; 
+      const tempLogger = console;
+      tempLogger.warn('[TransactionsDB] Logger instance was not provided during construction. Falling back to console.');
+      this.logger = tempLogger;
     } else {
       this.logger = logger;
     }
@@ -31,12 +34,13 @@ class TransactionsDB extends BaseDB {
    */
   async logTransaction(txData, session = null) {
     if (txData.amountUsd === undefined || txData.balanceBeforeUsd === undefined || txData.balanceAfterUsd === undefined) {
-      throw new Error('amountUsd, balanceBeforeUsd, and balanceAfterUsd are required for logging a transaction.');
+      this.logger.error('[TransactionsDB] amountUsd, balanceBeforeUsd, and balanceAfterUsd are required for logging a transaction.');
+      return null;
     }
 
     const dataToInsert = {
       ...txData,
-      masterAccountId: new MongoObjectId(txData.masterAccountId),
+      masterAccountId: new ObjectId(txData.masterAccountId),
       timestamp: txData.timestamp || new Date(),
       amountUsd: Decimal128.fromString(txData.amountUsd.toString()),
       balanceBeforeUsd: Decimal128.fromString(txData.balanceBeforeUsd.toString()),
@@ -45,10 +49,10 @@ class TransactionsDB extends BaseDB {
     // Ensure relatedItems fields are ObjectIds if present
     if (dataToInsert.relatedItems) {
         if (dataToInsert.relatedItems.eventId) {
-            dataToInsert.relatedItems.eventId = new MongoObjectId(dataToInsert.relatedItems.eventId);
+            dataToInsert.relatedItems.eventId = new ObjectId(dataToInsert.relatedItems.eventId);
         }
         if (dataToInsert.relatedItems.generationId) {
-            dataToInsert.relatedItems.generationId = new MongoObjectId(dataToInsert.relatedItems.generationId);
+            dataToInsert.relatedItems.generationId = new ObjectId(dataToInsert.relatedItems.generationId);
         }
     }
 
@@ -67,7 +71,11 @@ class TransactionsDB extends BaseDB {
    * @returns {Promise<Object|null>} The transaction document, or null if not found.
    */
   async findTransactionById(transactionId, options = {}, session = null) {
-    return this.findOne({ _id: new MongoObjectId(transactionId) }, options, undefined, session);
+    if (!transactionId) {
+        this.logger.error('[TransactionsDB] transactionId is required to find a transaction.');
+        return null;
+    }
+    return this.findOne({ _id: new ObjectId(transactionId) }, options, undefined, session);
   }
 
   /**
@@ -78,9 +86,13 @@ class TransactionsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByMasterAccount(masterAccountId, options = {}, session = null) {
+    if (!masterAccountId) {
+        this.logger.error('[TransactionsDB] masterAccountId is required to find transactions.');
+        return [];
+    }
     const defaultSort = { timestamp: -1 }; // Default to newest first
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId) }, queryOptions, undefined, session);
+    return this.findMany({ masterAccountId: new ObjectId(masterAccountId) }, queryOptions, undefined, session);
   }
 
   /**
@@ -92,9 +104,13 @@ class TransactionsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByType(masterAccountId, type, options = {}, session = null) {
+    if (!masterAccountId) {
+        this.logger.error('[TransactionsDB] masterAccountId is required to find transactions.');
+        return [];
+    }
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ masterAccountId: new MongoObjectId(masterAccountId), type }, queryOptions, undefined, session);
+    return this.findMany({ masterAccountId: new ObjectId(masterAccountId), type }, queryOptions, undefined, session);
   }
 
   /**
@@ -107,9 +123,21 @@ class TransactionsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of transaction documents.
    */
   async findTransactionsByRelatedItem(relatedItemPath, itemId, options = {}, session = null) {
+    if (!relatedItemPath || !itemId) {
+        this.logger.error('[TransactionsDB] relatedItemPath and itemId are required.');
+        return [];
+    }
     const defaultSort = { timestamp: -1 };
     const queryOptions = { ...options, sort: options.sort || defaultSort };
-    return this.findMany({ [relatedItemPath]: new MongoObjectId(itemId) }, queryOptions, undefined, session);
+    return this.findMany({ [relatedItemPath]: new ObjectId(itemId) }, queryOptions, undefined, session);
+  }
+
+  async findTransactionsByRelatedEntity(entityType, entityId, options = {}) {
+    if (!entityType || !entityId) {
+        this.logger.error('[TransactionsDB] entityType and entityId are required.');
+        return [];
+    }
+    return this.findMany({ relatedEntityType: entityType, relatedEntityId: new ObjectId(entityId) }, options);
   }
 }
 

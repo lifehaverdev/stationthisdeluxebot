@@ -86,13 +86,13 @@ class UserCoreDB extends BaseDB {
       // which is what we want.
       if (!userDoc || !userDoc._id) { // Defensive check
         // Log error or throw, as createUserCore should ideally always return a user or throw
-        console.error(`[UserCoreDB] Failed to create user for ${platformName}:${platformId} but createUserCore did not throw or return valid user.`);
+        this.logger.error(`[UserCoreDB] Failed to create user for ${platformName}:${platformId} but createUserCore did not throw or return valid user.`);
         // To maintain a consistent return type, though this state indicates a deeper issue.
         return { user: null, isNew: false }; 
       }
       return { user: userDoc, isNew: true };
     } catch (error) {
-      console.error(`[UserCoreDB] Error creating user for ${platformName}:${platformId}:`, error);
+      this.logger.error(`[UserCoreDB] Error creating user for ${platformName}:${platformId}:`, error);
       // Depending on desired error handling, re-throw or return null
       throw error; // Or return null if preferred that callers handle it
     }
@@ -257,10 +257,9 @@ class UserCoreDB extends BaseDB {
    * @returns {Promise<Object|null>} Updated userCore document, or null if user not found or wallet not found/not deleted.
    */
   async deleteWallet(masterAccountId, walletAddress) {
-    if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
-      // Basic validation for walletAddress, though more robust checks might be in API layer
-      console.error('[UserCoreDB] deleteWallet: walletAddress is required and must be a non-empty string.');
-      throw new Error('walletAddress is required and must be a non-empty string for deletion.');
+    if (!walletAddress || typeof walletAddress !== 'string') {
+        this.logger.error('[UserCoreDB] deleteWallet: walletAddress is required and must be a non-empty string.');
+        return { success: false, message: 'Wallet address is required.' };
     }
 
     const updateOperation = {
@@ -283,13 +282,11 @@ class UserCoreDB extends BaseDB {
    * @returns {Promise<Object|null>} Updated userCore document, or null if user not found.
    */
   async addApiKey(masterAccountId, apiKeyDocument) {
-    // Basic validation for the apiKeyDocument structure can be done here if desired,
-    // but more comprehensive validation should be in the API layer before this call.
-    if (!apiKeyDocument || typeof apiKeyDocument !== 'object' || !apiKeyDocument.keyHash) {
-      console.error('[UserCoreDB] addApiKey: apiKeyDocument is invalid or missing keyHash.');
-      throw new Error('Invalid apiKeyDocument provided to addApiKey.');
+    if (!apiKeyDocument || !apiKeyDocument.keyHash) {
+        this.logger.error('[UserCoreDB] addApiKey: apiKeyDocument is invalid or missing keyHash.');
+        return { success: false, message: 'API key document with keyHash is required.' };
     }
-
+    const timestamp = new Date();
     const updateOperation = {
       $push: {
         apiKeys: apiKeyDocument

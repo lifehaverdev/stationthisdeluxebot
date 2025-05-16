@@ -13,8 +13,12 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 // Import utilities needed for parsing
 const { 
   standardizeWorkflowName, 
-  parseWorkflowStructure 
+  parseWorkflowStructure,
+  extractNotes // geniusoverhaul: Added extractNotes
 } = require('./workflowUtils');
+
+// geniusoverhaul: Added ToolRegistry import and changed to .js
+const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 
 // Import ComfyUIService needed temporarily for detail fetching
 // We might refactor this later to avoid circular dependencies or pass methods directly
@@ -31,6 +35,22 @@ const GPU_COST_PER_SECOND = {
   'H100': 0.002338,
   'CPU': 0.000042 // Default/fallback cost
 };
+
+function mapComfyTypeToToolType(comfyType) {
+  // TODO: Implement actual mapping
+  if (!comfyType) return 'string';
+  const lowerType = comfyType.toLowerCase();
+  if (lowerType.includes('image')) return 'image';
+  if (lowerType.includes('int') || lowerType.includes('float') || lowerType.includes('number')) return 'number';
+  if (lowerType.includes('boolean')) return 'boolean';
+  return 'string';
+}
+
+function generateCommandName(displayName) {
+  // TODO: Implement robust command name generation (sanitize, ensure uniqueness etc.)
+  if (!displayName) return 'unknown_command';
+  return '/' + displayName.replace(/\s+/g, '').toLowerCase();
+}
 
 class WorkflowCacheManager {
   /**
@@ -50,6 +70,8 @@ class WorkflowCacheManager {
     this.apiKey = options.apiKey; // Store for potential use in fetch methods
     this.timeout = options.timeout; // Store for potential use in fetch methods
     this.logger = options.logger;
+    // geniusoverhaul: Get ToolRegistry instance
+    this.toolRegistry = ToolRegistry.getInstance();
     
     // Caching configuration and state
     this.cache = {
@@ -251,44 +273,49 @@ class WorkflowCacheManager {
         workflowsList = await response.json();
         if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Fetched ${workflowsList.length} workflow summaries.`);
 
-    } catch (listError) {
-        this.logger.error(`[WorkflowCacheManager] Error fetching workflow list from API: ${listError.message}`);
-        // If we can't get the list, we can't proceed with fetching details.
-        throw listError; // Re-throw to halt initialization if the list fails
+    } catch (error) {
+      this.logger.error(`[WorkflowCacheManager] Error fetching workflow list: ${error.message}`);
+      // If fetching list fails, we might not want to proceed or use cached if available and not stale
+      throw error; // Re-throw for initialize to handle
     }
-    
+
     const processedWorkflows = [];
-    const fetchPromises = [];
+    if (workflowsList && workflowsList.length > 0) {
+      // Before processing, ensure deployments and machines are fetched for context (especially for costing and IDs)
+      if (!this.cache.deployments || this.cache.deployments.length === 0) {
+        this.logger.warn('[WorkflowCacheManager] Deployments cache is empty. Fetching before processing workflows.');
+        await this._fetchAndProcessDeployments(); // Ensure deployments are loaded
+      }
+      if (!this.cache.machines || this.cache.machines.length === 0) {
+         this.logger.warn('[WorkflowCacheManager] Machines cache is empty. Fetching before processing workflows for costing.');
+         await this._fetchMachines(); // Ensure machines are loaded for costing
+      }
 
-    for (const workflowSummary of workflowsList) {
-        // Call the helper function (now part of this class) for each summary
-        fetchPromises.push(
-            this._fetchAndProcessWorkflowDetails(workflowSummary) 
-                .then(processedWorkflow => {
-                    if (processedWorkflow) {
-                        processedWorkflows.push(processedWorkflow);
-                    } else {
-                         this.logger.warn(`[WorkflowCacheManager:_fetchWorkflows] Failed to process details for workflow summary: ${JSON.stringify(workflowSummary.name || workflowSummary.id)}`);
-                    }
-                })
-        );
+      for (const workflowSummary of workflowsList) {
+        // workflowSummary here is an item from the /workflows API endpoint.
+        // It might contain { id, name, deployment_id, workflow_json (sometimes), inputs }
+        // We need to ensure it has enough data, or fetch more.
+        // The `_fetchAndProcessWorkflowDetails` will now create and register the ToolDefinition.
+        const processedWorkflowOrToolDef = await this._fetchAndProcessWorkflowDetails(workflowSummary);
+        if (processedWorkflowOrToolDef) {
+          // If `_fetchAndProcessWorkflowDetails` now returns the ToolDefinition,
+          // we might store that or a derivative in `this.cache.workflows`.
+          // For now, let's assume we just add it.
+          processedWorkflows.push(processedWorkflowOrToolDef); 
+        }
+      }
     }
+    
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Processed ${processedWorkflows.length} workflows.`);
+    
+    // This function originally updated `this.cache.workflows`.
+    // We should maintain that if other parts of the class rely on it.
+    // The content of `this.cache.workflows` might now be ToolDefinitions or objects compatible with old structure.
+    // For now, let's assume `processedWorkflows` contains the ToolDefinitions.
+    this.cache.workflows = processedWorkflows; 
+    this.cache.lastUpdated = Date.now(); // Also update timestamp here as we've processed new data
 
-    // Wait for all detail fetching and processing to complete
-    const results = await Promise.allSettled(fetchPromises); 
-    
-    const fulfilledCount = results.filter(r => r.status === 'fulfilled').length;
-    const rejectedCount = results.filter(r => r.status === 'rejected').length;
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchWorkflows] Detail processing settled. Fulfilled: ${fulfilledCount}, Rejected: ${rejectedCount}, Total Processed Objects: ${processedWorkflows.length}`);
-
-    // Update the cache managed by this instance
-    this.cache.workflows = processedWorkflows;
-    this.cache.lastUpdated = Date.now(); // Update timestamp after successful fetch & process
-    
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchWorkflows] Finished processing workflow details. Stored ${this.cache.workflows.length} workflows in cache.`);
-    
-    // Return the processed workflows (caller might use it, e.g., initialize)
-    return this.cache.workflows; 
+    return this.cache.workflows;
   }
 
   /**
@@ -300,66 +327,119 @@ class WorkflowCacheManager {
    * @private
    */
   async _fetchAndProcessWorkflowDetails(workflowSummary) {
-    const workflowId = workflowSummary.id;
-    const originalName = workflowSummary.name;
-    const standardName = standardizeWorkflowName(originalName); // Use imported utility
-    
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Starting for: ${originalName} (ID: ${workflowId}, Standard: ${standardName})`);
+    // workflowSummary is expected to be an item from the list fetched by _fetchWorkflows
+    // It should have at least an 'id' (workflow_id) and 'name'
+    const isFluxGeneral = workflowSummary.name === 'fluxgeneral'; // Flag for targeted logging
 
-    if (!workflowId || !originalName) {
-        this.logger.warn(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Skipping due to missing ID or name in summary: ${JSON.stringify(workflowSummary)}`);
-        return null;
+    if (DEBUG_LOGGING_ENABLED) {
+      // This log will now only show if DEBUG_LOGGING_ENABLED is true, 
+      // but will still include -FLUXGENERAL if relevant
+      this.logger.info(`[WorkflowCacheManager${isFluxGeneral ? "-FLUXGENERAL" : ""}] Processing details for workflow: ${workflowSummary.name} (WorkflowAPI_ID: ${workflowSummary.id})`);
+      if (isFluxGeneral) { // JSON.stringify logs already conditional on DEBUG_LOGGING_ENABLED from previous step
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Full workflowSummary: ${JSON.stringify(workflowSummary)}`);
+      }
+    } else if (isFluxGeneral) {
+      // If not debug logging, but it IS flux general, we might still want a very brief, non-JSON log or nothing.
+      // For now, let's silence it completely if not DEBUG_LOGGING_ENABLED to minimize logs.
+      // If you need to know it's processing fluxgeneral even when debug is off, we can add a minimal log here.
     }
 
     try {
-        const processedWorkflow = {
-            id: workflowId,
-            name: originalName, 
-            standardName: standardName,
-            displayName: workflowSummary.display_name || originalName,
-            description: workflowSummary.description || '',
-            inputs: [],
-            deploymentIds: [], // Populated later by _buildIndexes
-            versions: [],
-            createdAt: workflowSummary.created_at,
-            updatedAt: workflowSummary.updated_at,
-            workflow_json: {},
-            requiredInputs: [],
-            outputType: 'unknown',
-            hasLoraLoader: false,
-            rawSummary: workflowSummary
-        };
-      
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Calling _getWorkflowJsonStructure for ID: ${workflowId}`);
-      const { workflowJson, versions } = await this._getWorkflowJsonStructure(workflowId);
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Received from _getWorkflowJsonStructure for ID: ${workflowId}. Has JSON: ${!!(workflowJson && workflowJson.nodes)}, Versions: ${versions.length}`);
+      const deploymentIdFromSummary = workflowSummary.deployment_id;
+      const workflowApiId = workflowSummary.id;
 
-      processedWorkflow.versions = versions || [];
+      let deploymentData = null;
 
-      if (workflowJson && workflowJson.nodes) {
-            if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Parsing workflow structure for ${standardName} (ID: ${workflowId})`);
-            try {
-              const structureInfo = parseWorkflowStructure(workflowJson); // Use imported utility
-                processedWorkflow.requiredInputs = structureInfo.externalInputNodes;
-                processedWorkflow.outputType = structureInfo.outputType;
-                processedWorkflow.hasLoraLoader = structureInfo.hasLoraLoader;
-                processedWorkflow.inputs = processedWorkflow.requiredInputs.map(i => i.inputName); 
-                if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Successfully parsed structure for ${standardName}. Inputs: ${processedWorkflow.requiredInputs.length}, Output: ${processedWorkflow.outputType}, LoRA: ${processedWorkflow.hasLoraLoader}`);
-            } catch(parseError) {
-                this.logger.error(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Error parsing workflow structure for ${standardName} (ID: ${workflowId}): ${parseError.message}`);
-                processedWorkflow.inputs = [];
-            }
-        } else {
-            this.logger.warn(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Workflow details fetched for ${standardName}, but no usable workflow_json found. Cannot parse structure. ID: ${workflowId}`);
-             processedWorkflow.inputs = [];
+      if (deploymentIdFromSummary) {
+        if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Attempting to find deploymentData using workflowSummary.deployment_id: '${deploymentIdFromSummary}'`);
+        deploymentData = this.cache.deployments.find(d => d.id === deploymentIdFromSummary);
+        if (deploymentData && isFluxGeneral) {
+          this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Found deploymentData via workflowSummary.deployment_id. Deployment ID: ${deploymentData.id}`);
+        } else if (!deploymentData && isFluxGeneral) {
+          this.logger.warn(`[WorkflowCacheManager-FLUXGENERAL] Did NOT find deploymentData using workflowSummary.deployment_id: '${deploymentIdFromSummary}'`);
         }
+      } else if (isFluxGeneral) {
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowSummary.deployment_id is not present.`);
+      }
 
-        if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Finished processing for: ${originalName} (ID: ${workflowId})`);
-        return processedWorkflow;
+      if (!deploymentData) {
+        if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Attempting to find deploymentData by linking workflowApiId ('${workflowApiId}') to deployment.workflow_id or deployment.versions[...].workflow_id`);
+        deploymentData = this.cache.deployments.find(d => {
+          const topLevelMatch = d.workflow_id === workflowApiId;
+          const versionMatch = d.versions && d.versions.some(v => v.workflow_id === workflowApiId);
+          if (isFluxGeneral && (topLevelMatch || versionMatch)) {
+            this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Potential match in find: Deployment ID: ${d.id}, topLevelMatch: ${topLevelMatch}, versionMatch: ${versionMatch}. Deployment workflow_id: ${d.workflow_id}, Versions: ${JSON.stringify(d.versions?.map(v=>v.workflow_id))}`);
+          }
+          return topLevelMatch || versionMatch;
+        });
+        if (deploymentData && isFluxGeneral) {
+          this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Found deploymentData via workflowApiId link. Deployment ID: ${deploymentData.id}`);
+        } else if (!deploymentData && isFluxGeneral) {
+          this.logger.warn(`[WorkflowCacheManager-FLUXGENERAL] Did NOT find deploymentData via workflowApiId link ('${workflowApiId}').`);
+        }
+      }
+      
+      // If no deploymentData found, tool creation might be partial.
+      // For fluxgeneral, we expect deploymentData to be found.
+      const effectiveDeploymentIdForTool = deploymentData ? deploymentData.id : (workflowSummary.deployment_id || workflowSummary.id);
+
+      if (!deploymentData) {
+          this.logger.warn(`[WorkflowCacheManager${isFluxGeneral ? "-FLUXGENERAL" : ""}] Could not find matching deployment data for workflow ${workflowSummary.name} (WorkflowAPI_ID: ${workflowApiId}). ToolDefinition will be based on workflow summary, and costing may be inaccurate or missing. Using ID '${effectiveDeploymentIdForTool}' for tool construction.`);
+          if (isFluxGeneral) {
+            const sampleDeploymentWorkflowIds = this.cache.deployments.slice(0, 5).map(d => ({ id: d.id, wfId: d.workflow_id, versionsWfIds: d.versions?.map(v=>v.workflow_id) }));
+            this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Sample of deployment linking IDs from cache: ${JSON.stringify(sampleDeploymentWorkflowIds)}`);
+          }
+      }
+
+      // Fetch workflowJson using workflowApiId (workflowSummary.id)
+      let actualWorkflowGraph = workflowSummary.workflow_json || workflowSummary.workflow; // Prefer workflow_json if available on summary
+
+      if (!actualWorkflowGraph || typeof actualWorkflowGraph !== 'object' || !actualWorkflowGraph.nodes) {
+        if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Workflow JSON not on summary or invalid for ${workflowSummary.name}. Fetching...`);
+        const workflowDetailsContainer = await this._getWorkflowJsonStructure(workflowApiId); // This returns { workflowJson: GRAPH, versions: V }
+        actualWorkflowGraph = workflowDetailsContainer ? workflowDetailsContainer.workflowJson : null; // Extract the GRAPH
+
+         if (!actualWorkflowGraph || !actualWorkflowGraph.nodes) { // Check again after fetching
+            this.logger.error(`[WorkflowCacheManager${isFluxGeneral ? "-FLUXGENERAL" : ""}] Critical: Could not retrieve workflow JSON graph for ${workflowSummary.name} (WorkflowAPI_ID: ${workflowApiId}). Cannot create ToolDefinition.`);
+            return null; // Cannot proceed without workflow JSON
+        }
+        if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Successfully fetched workflow graph for ${workflowSummary.name}.`);
+      } else {
+        if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Using workflow JSON from summary for ${workflowSummary.name}.`);
+      }
+      
+      // Pass the actual deploymentData (can be null if not found) and the actualWorkflowGraph.
+      // createToolDefinitionFromWorkflow needs to handle potentially null deploymentData gracefully for some fields.
+      const toolDef = await this.createToolDefinitionFromWorkflow(deploymentData, actualWorkflowGraph, workflowSummary);
+      
+      if (toolDef) {
+        this.toolRegistry.registerTool(toolDef);
+        if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager] Registered tool: ${toolDef.toolId}`);
+      }
+
+      // The original function might have returned a processed workflow object.
+      // We need to ensure this function still fulfills its original contract if it had one,
+      // or adapt the calling code (e.g., in _fetchWorkflows or initialize).
+      // For now, let's assume it's okay to just create and register the tool.
+      // If it was building up `this.cache.workflows`, we might need to return `toolDef` or a related object.
+      // Based on the plan, this function is primarily for creating ToolDefinition.
+      // Let's assume it should return the processed data that would normally be cached.
+      // For now, just return the toolDef or null.
+      
+      // Original function was likely building a "processed workflow" object for the cache.
+      // We can return the toolDef itself, or a structure compatible with the old cache if needed.
+      // Let's assume for now we are adapting this function to primarily create and register tools.
+      // The result of this function is used in `_fetchWorkflows` to populate `processedWorkflows`.
+      // So, we should return something, perhaps the `toolDef` itself or a modified version of `workflowSummary`.
+
+      // For now, let's return the toolDef if created, or the original workflowSummary if not,
+      // or null if critical error. This part needs careful integration with how `_fetchWorkflows` uses the result.
+      return toolDef; // Or adapt as needed for `this.cache.workflows`
 
     } catch (error) {
-      this.logger.error(`[WorkflowCacheManager:_fetchAndProcessWorkflowDetails] Unexpected error processing workflow ${originalName} (ID: ${workflowId}): ${error.message}`, { stack: error.stack });
-      return null;
+      this.logger.error(`[WorkflowCacheManager${isFluxGeneral ? "-FLUXGENERAL" : ""}] Error processing workflow details for ${workflowSummary.name} (ID: ${workflowSummary.id}): ${error.message}`);
+      this.logger.error(error.stack); // Log stack for more details
+      return null; // Return null or throw, depending on desired error handling
     }
   }
 
@@ -521,9 +601,9 @@ class WorkflowCacheManager {
   _buildIndexes() {
     if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Building workflow indexes...');
     this.cache.byName.clear();
-    this.cache.byDeploymentId.clear(); // Clear deployment ID index too
+    this.cache.byDeploymentId.clear();
     
-    // Index raw deployments by ID first
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Populating byDeploymentId index from ${this.cache.deployments.length} deployments.`); // Added log
     this.cache.deployments.forEach(deployment => {
       if (deployment && deployment.id) {
         this.cache.byDeploymentId.set(deployment.id, deployment);
@@ -533,55 +613,48 @@ class WorkflowCacheManager {
     });
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byDeploymentId.size} deployments by ID.`);
 
-    // Reset deployment IDs on all cached workflows before linking
-    this.cache.workflows.forEach(workflow => {
-        workflow.deploymentIds = []; 
-    });
-
-    // Index workflows by standardized name
-    this.cache.workflows.forEach(workflow => {
-      if (workflow && workflow.standardName) { 
-        const standardName = workflow.standardName; 
+    // this.cache.workflows now contains ToolDefinition objects.
+    // These objects don't have a standardName property directly.
+    // We need to generate it from displayName.
+    this.cache.workflows.forEach(tool => { // tool is a ToolDefinition
+        // Ensure deploymentIds array exists on the tool object if it will be used by this linking logic
+        if (!tool.metadata) tool.metadata = {}; // Ensure metadata exists
+        if (!tool.metadata.deploymentIds) tool.metadata.deploymentIds = []; // Store linked deployment IDs in metadata
         
-        if (this.cache.byName.has(standardName)) {
-            const existingWorkflow = this.cache.byName.get(standardName);
-            this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Workflow name collision detected for standardized name "${standardName}". Original names: "${existingWorkflow.name}" (ID: ${existingWorkflow.id}) and "${workflow.name}" (ID: ${workflow.id}). Overwriting with the latter.`);
+        if (tool && tool.displayName) { 
+            const standardName = standardizeWorkflowName(tool.displayName);
+            if (this.cache.byName.has(standardName)) {
+                const existingTool = this.cache.byName.get(standardName);
+                this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Workflow name collision for standardized name "${standardName}". Original displayNames: "${existingTool.displayName}" (ToolID: ${existingTool.toolId}) and "${tool.displayName}" (ToolID: ${tool.toolId}). Overwriting with the latter.`);
+            }
+            this.cache.byName.set(standardName, tool);
+        } else {
+            this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing due to missing displayName or object: ${JSON.stringify(tool)}`);
         }
-        this.cache.byName.set(standardName, workflow);
-      } else {
-         this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping workflow indexing due to missing standardName or object: ${JSON.stringify(workflow)}`);
-      }
     });
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byName.size} workflows by standardized name.`);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byName.size} tools by standardized name.`);
 
-    // Link Deployments (already indexed by ID) to Workflows (indexed by name)
-    if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager:_buildIndexes] Linking deployments to workflows...');
+    if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager:_buildIndexes] Linking deployments to tools (ToolDefinition objects)...');
     let linkedCount = 0;
     this.cache.deployments.forEach(deployment => {
         if (!deployment || !deployment.workflow_id || !deployment.id) {
-            return; // Skip if essential info is missing
+            return;
         }
 
-        // Find the corresponding workflow in the cache.workflows array
-        const targetWorkflow = this.cache.workflows.find(wf => wf.id === deployment.workflow_id);
+        // Find the corresponding tool (ToolDefinition) in this.cache.workflows
+        // The tool.metadata.workflowId should match deployment.workflow_id
+        const targetTool = this.cache.workflows.find(t => t.metadata && t.metadata.workflowId === deployment.workflow_id);
 
-        if (targetWorkflow) {
-            // Ensure deploymentIds array exists (should be initialized in _fetchAndProcessWorkflowDetails)
-            if (!targetWorkflow.deploymentIds) {
-                this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Initializing missing deploymentIds array for workflow "${targetWorkflow.name}" (ID: ${targetWorkflow.id}) during linking.`);
-                targetWorkflow.deploymentIds = [];
-            }
-            
-            if (!targetWorkflow.deploymentIds.includes(deployment.id)) {
-              targetWorkflow.deploymentIds.push(deployment.id);
+        if (targetTool) {
+            if (!targetTool.metadata.deploymentIds.includes(deployment.id)) {
+              targetTool.metadata.deploymentIds.push(deployment.id);
               linkedCount++;
             }
         } else {
-             // This might happen if a deployment points to a workflow not returned by the /workflows endpoint
-             this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Could not find workflow with ID "${deployment.workflow_id}" in cache to link deployment "${deployment.id}" (Name: ${deployment.name || 'N/A'}).`);
+             this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Could not find tool with metadata.workflowId "${deployment.workflow_id}" in cache to link deployment "${deployment.id}".`);
         }
     });
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Successfully linked ${linkedCount} deployment IDs to workflows.`);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Successfully linked ${linkedCount} deployment IDs to tools.`);
   }
 
   // --- Initialization --- (Placeholder for initialize, _ensureInitialized)
@@ -617,17 +690,32 @@ class WorkflowCacheManager {
       // Perform fetch operations (now methods of this class)
       await this._fetchAndProcessDeployments(); 
       await this._fetchMachines(); 
-      await this._fetchWorkflows(); // Fetches list and processes details
       
-      // Build indexes using the fetched data in the cache
+      // geniusoverhaul: Moved _buildIndexes to be called after deployments are fetched and before workflows are processed,
+      // as workflow processing might rely on the byDeploymentId index (e.g., for costing).
       this._buildIndexes(); 
+      
+      await this._fetchWorkflows(); // Fetches list and processes details for ToolDefinitions
+      
+      // Re-run _buildIndexes if ToolDefinitions in this.cache.workflows were modified in _fetchWorkflows
+      // and indexing byName or other properties of ToolDefinitions is needed.
+      // For now, the primary concern was byDeploymentId for costing.
+      // If _fetchWorkflows modifies this.cache.workflows with ToolDefinitions and byName index needs to be on ToolDefinition.displayName,
+      // then _buildIndexes (or a part of it) might need to run again or be adapted.
+      // The current _buildIndexes also indexes this.cache.workflows byName based on tool.displayName.
+      // So, it should run after this.cache.workflows is populated with ToolDefinitions.
+      // Let's call it again to ensure byName index for tools is also up-to-date.
+      this._buildIndexes();
       
       // Mark as initialized *after* all steps succeed
       this.isInitialized = true;
       this._hasInitializedOnce = true; 
       this.cache.lastUpdated = Date.now(); // Ensure timestamp is set after full successful init
 
-      this.logger.info(`[WorkflowCacheManager] Cache initialized successfully. Found ${this.cache.workflows.length} workflows, ${this.cache.deployments.length} deployments, ${this.cache.machines.length} machines.`);
+      this.logger.info(`[WorkflowCacheManager] Cache initialized successfully. Found ${this.cache.workflows.length} tools (ToolDefinitions), ${this.cache.deployments.length} deployments, ${this.cache.machines.length} machines.`);
+      // Summary Log Added:
+      this.logger.info(`[WorkflowCacheManager-SUMMARY] Initialization complete. Tools registered: ${this.toolRegistry.getAllTools().filter(t => t.service === 'comfyui').length} (ComfyUI). Total tools in registry: ${this.toolRegistry.getAllTools().length}. Deployments: ${this.cache.deployments.length}. Machines: ${this.cache.machines.length}.`);
+
       return this.cache.workflows; // Return the populated cache data
     } catch (error) {
       this.logger.error(`[WorkflowCacheManager] Error during cache initialization: ${error.message}`);
@@ -672,6 +760,244 @@ class WorkflowCacheManager {
     // If never initialized, or if it's stale, or if previous load failed, initialize.
     // The initialize method itself handles the isLoading flag.
     await this.initialize();
+  }
+
+  // geniusoverhaul: Added helper to get cost rate for a deployment
+  async getCostRateForDeployment(deploymentId) {
+    const isFluxGeneralDeployment = deploymentId === '0d129bba-1d74-4f79-8808-a4e8a8a79fcf'; // fluxgeneral's actual deployment ID
+    if (DEBUG_LOGGING_ENABLED) {
+      this.logger.info(`[WorkflowCacheManager${isFluxGeneralDeployment ? "-FLUXGENERAL" : ""}] getCostRateForDeployment called for Deployment ID: ${deploymentId}`);
+    } else if (isFluxGeneralDeployment) {
+      // Silenced if not DEBUG_LOGGING_ENABLED
+    }
+
+    const deployment = this.cache.byDeploymentId.get(deploymentId);
+    
+    if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+      if (deployment) {
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Found deployment in byDeploymentId cache: ${JSON.stringify(deployment)}`);
+      } else {
+        this.logger.warn(`[WorkflowCacheManager-FLUXGENERAL] Deployment NOT FOUND in byDeploymentId cache for ID: ${deploymentId}`);
+      }
+    }
+
+    if (!deployment) { 
+        this.logger.warn(`[WorkflowCacheManager] Deployment ${deploymentId} not found in byDeploymentId cache. Cannot calculate cost.`);
+        return null;
+    }
+    
+    // Check for version_id directly on deployment, which was the original expectation from the log message
+    if (!deployment.version_id) {
+        const deploymentDetailsLog = DEBUG_LOGGING_ENABLED ? ` Full deployment object: ${JSON.stringify(deployment)}` : '';
+        this.logger.warn(`[WorkflowCacheManager] Deployment ${deploymentId} (Name: ${deployment.name || 'N/A'}) is missing 'version_id' field. This field is often used to link to machine configurations for costing.${deploymentDetailsLog}`);
+        // Continue to machine_id logic as a fallback, but log this absence.
+    }
+
+    let machineId = deployment.machine_id; // Ideal case
+    
+    if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Attempting to use machine_id from deployment: '${machineId}'`);
+    }
+
+    if (!machineId && deployment.versions && deployment.versions.length > 0) {
+        const latestVersion = deployment.versions[0];
+        machineId = latestVersion.machine_id || latestVersion.build_config?.machine_id;
+        if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+            this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Fell back to machine_id from latest version: '${machineId}'`);
+        }
+    }
+
+    if (machineId) {
+        const machine = this.cache.machines.find(m => m.id === machineId);
+        if (machine) {
+            if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+                this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Found machine for ID '${machineId}': ${JSON.stringify(machine)}`);
+            }
+            const gpuType = machine.gpu_type || machine.gpu; // Check both gpu_type and gpu
+            if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+                this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Machine GPU type: '${gpuType}'`);
+            }
+            if (gpuType && GPU_COST_PER_SECOND.hasOwnProperty(gpuType)) {
+                const cost = GPU_COST_PER_SECOND[gpuType];
+                if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+                    this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Found cost for GPU type '${gpuType}': ${cost}`);
+                }
+                return cost;
+            } else {
+                this.logger.warn(`[WorkflowCacheManager] GPU type "${gpuType}" for machine ${machineId} (linked to deployment ${deploymentId}) not found in GPU_COST_PER_SECOND map or GPU type is missing. Defaulting to CPU cost. Machine details: ${JSON.stringify(machine)}`);
+            }
+        } else {
+            this.logger.warn(`[WorkflowCacheManager] Machine ${machineId} (linked to deployment ${deploymentId}) not found in cache. Defaulting to CPU cost.`);
+        }
+    } else {
+         this.logger.warn(`[WorkflowCacheManager] No machine_id could be determined for deployment ${deploymentId}. Defaulting to CPU cost.`);
+    }
+    
+    // Fallback to CPU cost if other lookups fail
+    if (isFluxGeneralDeployment && DEBUG_LOGGING_ENABLED) {
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Defaulting to CPU cost for deployment ${deploymentId}.`);
+    }
+    return GPU_COST_PER_SECOND['CPU'];
+  }
+
+  // geniusoverhaul: Added method to create ToolDefinition from workflow
+  async createToolDefinitionFromWorkflow(workflowData, workflowJson, workflowSummaryIfNoDeployment) {
+    const toolDefinition = {};
+    // Use workflowData.id if it's the actual deployment object, otherwise fallback for summary
+    // workflowData is the deploymentData object. workflowSummaryIfNoDeployment is the original summary from /workflows endpoint.
+    const actualDeploymentId = workflowData ? workflowData.id : (workflowSummaryIfNoDeployment ? workflowSummaryIfNoDeployment.deployment_id || workflowSummaryIfNoDeployment.id : 'unknown-deployment');
+    const baseNameForLog = (workflowData && workflowData.workflow && workflowData.workflow.name) || (workflowData && workflowData.name) || (workflowSummaryIfNoDeployment && workflowSummaryIfNoDeployment.name);
+    const isFluxGeneralTool = baseNameForLog === 'fluxgeneral';
+
+    if (DEBUG_LOGGING_ENABLED) {
+      this.logger.info(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] createToolDefinitionFromWorkflow. BaseName: ${baseNameForLog}, Actual Deployment ID for toolId: ${actualDeploymentId}`);
+      if (workflowData && isFluxGeneralTool) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Full workflowData (deploymentData) in createToolDefinitionFromWorkflow: ${JSON.stringify(workflowData)}`);
+      } else if (!workflowData && isFluxGeneralTool) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowData (deploymentData) is null/undefined in createToolDefinitionFromWorkflow. Falling back to workflowSummaryIfNoDeployment: ${JSON.stringify(workflowSummaryIfNoDeployment)}`);
+      }
+      if (isFluxGeneralTool) { 
+         this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowJson (actual graph) received in createToolDefinitionFromWorkflow: ${workflowJson ? JSON.stringify(workflowJson).substring(0, 500) + "..." : "null or undefined"}`);
+      }
+    } else if (isFluxGeneralTool) {
+      // This initial log is now silenced if DEBUG_LOGGING_ENABLED is false and it's a FLUXGENERAL tool
+    }
+
+    toolDefinition.toolId = `comfy-${actualDeploymentId}`;
+    toolDefinition.service = 'comfyui';
+    
+    // Prioritize names: friendly_name from deployment, then workflow.name from deployment, then top-level name from deployment, 
+    // then name from workflow summary, then fallback.
+    let displayName = (workflowData && workflowData.friendly_name) 
+                      || (workflowData && workflowData.workflow && workflowData.workflow.name)
+                      || (workflowData && workflowData.name) 
+                      || (workflowSummaryIfNoDeployment && workflowSummaryIfNoDeployment.name) 
+                      || `Comfy Workflow ${actualDeploymentId}`;
+    toolDefinition.displayName = displayName;
+
+    toolDefinition.commandName = generateCommandName(toolDefinition.displayName);
+    toolDefinition.apiPath = `/api/internal/comfy/run/${actualDeploymentId}`;
+
+    const notes = extractNotes(workflowJson); // workflowJson here is the actual graph
+    toolDefinition.description = notes.join('\n') || `Runs the ${toolDefinition.displayName} workflow.`;
+
+    // Input Schema
+    toolDefinition.inputSchema = {};
+    let schemaPopulatedBy = 'none'; // For logging
+
+    if (workflowJson && typeof workflowJson === 'object' && Object.keys(workflowJson).length > 0) {
+      const structureInfo = parseWorkflowStructure(workflowJson); // workflowJson is the actual graph here
+      if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] parseWorkflowStructure result for ${toolDefinition.displayName}: ${JSON.stringify(structureInfo)}`);
+      }
+      if (structureInfo && structureInfo.externalInputNodes && Array.isArray(structureInfo.externalInputNodes) && structureInfo.externalInputNodes.length > 0) {
+        structureInfo.externalInputNodes.forEach(extInput => {
+          const isRequired = extInput.required !== undefined ? extInput.required : true;
+          toolDefinition.inputSchema[extInput.inputName] = {
+            name: extInput.inputName,
+            type: mapComfyTypeToToolType(extInput.inputType),
+            required: isRequired,
+            default: extInput.defaultValue,
+            description: extInput.description || `Input: ${extInput.inputName}`,
+            advanced: extInput.advanced || false
+          };
+        });
+        schemaPopulatedBy = 'parseWorkflowStructure';
+      } else if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] parseWorkflowStructure did not yield externalInputNodes.`);
+      }
+    }
+    
+    // Fallback to workflowData.version.input_types if schema is still empty and workflowData (deploymentData) is available
+    if (Object.keys(toolDefinition.inputSchema).length === 0 && workflowData && workflowData.version && workflowData.version.input_types && Array.isArray(workflowData.version.input_types)) {
+      if (DEBUG_LOGGING_ENABLED) {
+        this.logger.info(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] inputSchema from parseWorkflowStructure was empty for ${toolDefinition.toolId}. Falling back to workflowData.version.input_types.`);
+      } else if (isFluxGeneralTool) {
+        // Silenced
+      }
+      workflowData.version.input_types.forEach(item => {
+        if (item && item.input_id) {
+          toolDefinition.inputSchema[item.input_id] = {
+            name: item.input_id,
+            type: mapComfyTypeToToolType(item.type), // item.type is e.g., 'integer', 'string'
+            required: item.required !== undefined ? item.required : true, // Assume required if not specified
+            default: item.default_value,
+            description: item.description || `Input: ${item.input_id}`,
+            advanced: item.advanced || false
+          };
+        } else if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) {
+            this.logger.warn(`[WorkflowCacheManager-FLUXGENERAL] Malformed item in workflowData.version.input_types: ${JSON.stringify(item)}`);
+        }
+      });
+      if (Object.keys(toolDefinition.inputSchema).length > 0) {
+        schemaPopulatedBy = 'workflowData.version.input_types';
+      }
+    } else if (Object.keys(toolDefinition.inputSchema).length === 0 && DEBUG_LOGGING_ENABLED) { 
+        let reason = "parseWorkflowStructure yielded no inputs";
+        if (!(workflowData && workflowData.version && workflowData.version.input_types && Array.isArray(workflowData.version.input_types))) {
+            reason += " AND workflowData.version.input_types was not available/valid";
+        }
+        this.logger.warn(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] inputSchema remains empty for ${toolDefinition.toolId}. Reason: ${reason}.`);
+    } else if (Object.keys(toolDefinition.inputSchema).length === 0 && isFluxGeneralTool) {
+      // Silenced if not DEBUG_LOGGING_ENABLED
+    }
+
+    if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Input schema for ${toolDefinition.toolId} populated by: ${schemaPopulatedBy}. Result: ${JSON.stringify(toolDefinition.inputSchema)}`);
+    }
+
+    // Costing Model
+    try {
+      const deploymentIdForCosting = actualDeploymentId; 
+      if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Calling getCostRateForDeployment with ID: ${deploymentIdForCosting}`);
+      }
+      const costRate = await this.getCostRateForDeployment(deploymentIdForCosting);
+      if (costRate) {
+          toolDefinition.costingModel = {
+              rate: costRate,
+              unit: 'second',
+              rateSource: 'machine', 
+          };
+      } else {
+        this.logger.warn(`[WorkflowCacheManager] No cost rate found for deployment ${deploymentIdForCosting}. CostingModel will be undefined.`);
+      }
+    } catch (error) {
+      this.logger.warn(`[WorkflowCacheManager] Could not determine cost for ${toolDefinition.toolId}:`, error);
+    }
+
+    toolDefinition.webhookStrategy = {
+        expectedStatusField: 'status.status_str', // As per plan
+        successValue: 'success', // As per plan
+        durationTracking: true, // As per plan
+        resultPath: ['output.files'] // As per plan
+    };
+    
+    // PlatformHints - Placeholder, derive from inputs later
+    const hasImageInput = Object.values(toolDefinition.inputSchema).some(inp => inp.type === 'image');
+    toolDefinition.platformHints = {
+        primaryInput: hasImageInput ? 'image' : 'text', // Basic heuristic
+        supportsFileCaption: true, // Default assumption
+        supportsReplyWithCommand: true // Default assumption
+    };
+    
+    // New fields from plan
+    toolDefinition.category = 'text-to-image'; // Placeholder - inferCategoryFromNameOrNodes
+    toolDefinition.humanDefaults = {}; // Placeholder - generateHumanDefaults
+    toolDefinition.visibility = 'public'; // Placeholder - inferVisibility
+    
+    toolDefinition.metadata = { 
+      deploymentId: toolDefinition.toolId, // Consistent with toolId
+      workflowApiId: workflowSummaryIfNoDeployment ? workflowSummaryIfNoDeployment.id : (workflowData ? workflowData.workflow_id : null),
+      // Potentially add other relevant ComfyUI specific data here
+      // rawWorkflowVersion: workflowData.version_id // if available
+    };
+
+    if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Final ToolDefinition for ${toolDefinition.displayName}: ${JSON.stringify(toolDefinition)}`);
+    }
+
+    return toolDefinition;
   }
 
 }

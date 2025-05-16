@@ -8,7 +8,7 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const fs = require('fs'); // Needed for debugging output in getWorkflowContent
 
-const DEBUG_LOGGING_ENABLED = false; // Set to true for detailed resource fetching logs
+// const DEBUG_LOGGING_ENABLED = false; // Removed: We will use logger.debug
 
 // === Internal Helper Functions ===
 
@@ -24,19 +24,19 @@ function _tryParseWorkflowJson(data, endpoint, logger) {
     if (!data) return null;
 
     if (data.workflow_json && data.workflow_json.nodes) {
-      if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Found workflow_json in response');
+      logger.debug('[_tryParseWorkflowJson] Found workflow_json in response');
       workflowJson = data.workflow_json;
     } else if (data.workflow_data && data.workflow_data.nodes) {
-      if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Found workflow_data in response');
+      logger.debug('[_tryParseWorkflowJson] Found workflow_data in response');
       workflowJson = data.workflow_data;
     } else if (data.workflow && typeof data.workflow === 'object' && data.workflow.nodes) {
-      if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Found workflow object with nodes in response');
+      logger.debug('[_tryParseWorkflowJson] Found workflow object with nodes in response');
       workflowJson = data.workflow;
     } else if (data.nodes) {
-      if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Found nodes directly in response root');
+      logger.debug('[_tryParseWorkflowJson] Found nodes directly in response root');
       workflowJson = data; 
     } else if (data.content) {
-      if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Found content field in response');
+      logger.debug('[_tryParseWorkflowJson] Found content field in response');
       try {
         if (typeof data.content === 'string' && data.content.trim().startsWith('{')) {
           workflowJson = JSON.parse(data.content);
@@ -44,21 +44,20 @@ function _tryParseWorkflowJson(data, endpoint, logger) {
           workflowJson = data.content;
         }
         if (!workflowJson || !workflowJson.nodes) {
-          if (DEBUG_LOGGING_ENABLED) console.log('[_tryParseWorkflowJson] Parsed/assigned content field does not contain nodes.');
+          logger.debug('[_tryParseWorkflowJson] Parsed/assigned content field does not contain nodes.');
           workflowJson = null;
         }
       } catch (error) {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseWorkflowJson] Failed to parse content field as JSON: ${error.message}`);
+        logger.debug(`[_tryParseWorkflowJson] Failed to parse content field as JSON: ${error.message}`);
         workflowJson = null;
       }
     }
 
     if (workflowJson && workflowJson.nodes) {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseWorkflowJson] Found workflow JSON with ${Object.keys(workflowJson.nodes).length} nodes via _tryParseWorkflowJson from endpoint ${endpoint}`);
-        if (DEBUG_LOGGING_ENABLED) logger.info(`[_tryParseWorkflowJson] Found workflow JSON with ${Object.keys(workflowJson.nodes).length} nodes via _tryParseWorkflowJson from endpoint ${endpoint}`);
+        logger.debug(`[_tryParseWorkflowJson] Found workflow JSON with ${Object.keys(workflowJson.nodes).length} nodes via _tryParseWorkflowJson from endpoint ${endpoint}`);
         return workflowJson;
     } else {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseWorkflowJson] Response from ${endpoint} did not contain workflow nodes structure in common locations.`);
+        logger.debug(`[_tryParseWorkflowJson] Response from ${endpoint} did not contain workflow nodes structure in common locations.`);
         return null;
     }
 }
@@ -73,8 +72,8 @@ function _tryParseVersionData(version, logger) {
     if (!version || !version.workflow || typeof version.workflow !== 'object') {
         return null;
     }
-    if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseVersionData] Examining version ${version.id}`);
-    if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseVersionData] Found workflow object in version, checking for nodes. Keys: ${Object.keys(version.workflow).join(', ')}`);
+    logger.debug(`[_tryParseVersionData] Examining version ${version.id}`);
+    logger.debug(`[_tryParseVersionData] Found workflow object in version, checking for nodes. Keys: ${Object.keys(version.workflow).join(', ')}`);
               
     let versionWorkflowJson = null;
     if (version.workflow.workflow_json && version.workflow.workflow_json.nodes) {
@@ -88,28 +87,28 @@ function _tryParseVersionData(version, logger) {
     }
               
     if (versionWorkflowJson && versionWorkflowJson.nodes) {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(versionWorkflowJson.nodes).length} nodes directly in version data (version ${version.id})`);
+        logger.debug(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(versionWorkflowJson.nodes).length} nodes directly in version data (version ${version.id})`);
         return versionWorkflowJson;
     }
               
     if (version.workflow.data) {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseVersionData] Examining version.workflow.data for version ${version.id}`);
+        logger.debug(`[_tryParseVersionData] Examining version.workflow.data for version ${version.id}`);
         let dataField = version.workflow.data;
         let parsedDataField = null;
 
         if (typeof dataField === 'string' && dataField.trim().startsWith('{')) {
             try {
                 parsedDataField = JSON.parse(dataField);
-                if (DEBUG_LOGGING_ENABLED) logger.info('[_tryParseVersionData] Successfully parsed workflow.data as JSON');
+                logger.debug('[_tryParseVersionData] Successfully parsed workflow.data as JSON');
             } catch (error) {
-                logger.warn(`[_tryParseVersionData] Failed to parse workflow.data as JSON: ${error.message}`);
+                logger.debug(`[_tryParseVersionData] Failed to parse workflow.data as JSON: ${error.message}`);
             }
         } else if (typeof dataField === 'object') {
              parsedDataField = dataField; 
         }
 
         if (parsedDataField && parsedDataField.nodes) {
-            if (DEBUG_LOGGING_ENABLED) logger.info(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(parsedDataField.nodes).length} nodes in workflow.data`);
+            logger.debug(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(parsedDataField.nodes).length} nodes in workflow.data`);
             return parsedDataField;
         }
     }
@@ -121,10 +120,10 @@ function _tryParseVersionData(version, logger) {
     for (const location of potentialLocations) {
         if (version.workflow[location]) {
             const locationData = version.workflow[location];
-            if (DEBUG_LOGGING_ENABLED) console.log(`[_tryParseVersionData] Examining version.workflow.${location} for version ${version.id}`);
+            logger.debug(`[_tryParseVersionData] Examining version.workflow.${location} for version ${version.id}`);
                           
             if (typeof locationData === 'object' && locationData.nodes) {
-                if (DEBUG_LOGGING_ENABLED) logger.info(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(locationData.nodes).length} nodes in workflow.${location}`);
+                logger.debug(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(locationData.nodes).length} nodes in workflow.${location}`);
                 return locationData;
             }
                           
@@ -132,11 +131,11 @@ function _tryParseVersionData(version, logger) {
                  try {
                     const parsed = JSON.parse(locationData);
                     if (parsed && parsed.nodes) {
-                        if (DEBUG_LOGGING_ENABLED) logger.info(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(parsed.nodes).length} nodes in parsed workflow.${location}`);
+                        logger.debug(`[_tryParseVersionData] Found workflow JSON with ${Object.keys(parsed.nodes).length} nodes in parsed workflow.${location}`);
                         return parsed;
                     }
                 } catch (error) {
-                    logger.warn(`[_tryParseVersionData] Failed to parse workflow.${location} as JSON`);
+                    logger.debug(`[_tryParseVersionData] Failed to parse workflow.${location} as JSON`);
                 }
             }
         }
@@ -157,7 +156,7 @@ function _tryParseVersionData(version, logger) {
  */
 async function getDeployments(instanceData) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
-    if (DEBUG_LOGGING_ENABLED) logger.debug('[resourceFetcher.getDeployments] Fetching deployments...');
+    logger.debug('[resourceFetcher.getDeployments] Fetching deployments...');
     try {
       const response = await _makeApiRequest(API_ENDPOINTS.DEPLOYMENTS, {
         headers: { 'Accept': 'application/json' } // Authorization handled by _makeApiRequest
@@ -188,7 +187,7 @@ async function getDeployments(instanceData) {
  */
 async function getWorkflows(instanceData) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
-    if (DEBUG_LOGGING_ENABLED) logger.debug('[resourceFetcher.getWorkflows] Fetching workflows list...');
+    logger.debug('[resourceFetcher.getWorkflows] Fetching workflows list...');
     try {
       const response = await _makeApiRequest(API_ENDPOINTS.WORKFLOWS, {
         headers: { 'Accept': 'application/json' } 
@@ -219,7 +218,7 @@ async function getWorkflows(instanceData) {
  */
 async function getMachines(instanceData) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
-    if (DEBUG_LOGGING_ENABLED) logger.debug('[resourceFetcher.getMachines] Fetching machines...');
+    logger.debug('[resourceFetcher.getMachines] Fetching machines...');
     try {
       const response = await _makeApiRequest(API_ENDPOINTS.MACHINES, {
         headers: { 'Accept': 'application/json' } 
@@ -251,11 +250,11 @@ async function getMachines(instanceData) {
  */
 async function getWorkflowVersion(instanceData, versionId) {
     const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
+    logger.debug(`[resourceFetcher.getWorkflowVersion] Fetching version: ${versionId}`);
     if (!versionId) {
       throw new Error('Version ID is required for getWorkflowVersion');
     }
     
-    if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowVersion] Fetching version: ${versionId}`);
     try {
       const response = await _makeApiRequest(API_ENDPOINTS.WORKFLOW_VERSION(versionId), {
         headers: { 'Accept': 'application/json' } 
@@ -268,15 +267,15 @@ async function getWorkflowVersion(instanceData, versionId) {
       }
       
       const data = await response.json();
-      if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowVersion] Fetched version ${versionId}. Keys: ${Object.keys(data).join(', ')}`);
+      logger.debug(`[resourceFetcher.getWorkflowVersion] Fetched version ${versionId}. Keys: ${Object.keys(data).join(', ')}`);
       
       // Ensure we have the complete workflow JSON (copied logic from comfyui.js)
       if (!data.workflow_json && data.workflow_data) {
-        if (DEBUG_LOGGING_ENABLED) console.log('[resourceFetcher.getWorkflowVersion] Using workflow_data as workflow_json');
+        logger.debug('[resourceFetcher.getWorkflowVersion] Using workflow_data as workflow_json');
         data.workflow_json = data.workflow_data;
       }
       if (!data.workflow_json && data.workflow) {
-        if (DEBUG_LOGGING_ENABLED) console.log('[resourceFetcher.getWorkflowVersion] Using workflow as workflow_json');
+        logger.debug('[resourceFetcher.getWorkflowVersion] Using workflow as workflow_json');
         data.workflow_json = data.workflow;
       }
       
@@ -299,11 +298,11 @@ async function getWorkflowVersion(instanceData, versionId) {
  */
 async function getWorkflowDetails(instanceData, workflowId) {
      const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
+    logger.debug(`[resourceFetcher.getWorkflowDetails] Fetching details for ID: ${workflowId}`);
     if (!workflowId) {
       throw new Error('Workflow ID is required for getWorkflowDetails');
     }
     
-    if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowDetails] Fetching details for ID: ${workflowId}`);
     try {
       const response = await _makeApiRequest(API_ENDPOINTS.WORKFLOW_BY_ID(workflowId), {
         headers: { 'Accept': 'application/json' }
@@ -315,42 +314,42 @@ async function getWorkflowDetails(instanceData, workflowId) {
       }
       
       const workflowData = await response.json();
-      if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowDetails] Fetched base details for ${workflowId}. Has versions: ${workflowData.workflow_versions ? 'Yes' : 'No'}`);
+      logger.debug(`[resourceFetcher.getWorkflowDetails] Fetched base details for ${workflowId}. Has versions: ${workflowData.workflow_versions ? 'Yes' : 'No'}`);
       
       // If we have versions, get the latest version details to get the full workflow JSON
       if (workflowData.workflow_versions && workflowData.workflow_versions.length > 0) {
         const sortedVersions = [...workflowData.workflow_versions].sort((a, b) => b.version_number - a.version_number);
         const latestVersion = sortedVersions[0];
-        if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowDetails] Getting details for latest version ${latestVersion.id} (v${latestVersion.version_number}) of workflow ${workflowId}`);
+        logger.debug(`[resourceFetcher.getWorkflowDetails] Getting details for latest version ${latestVersion.id} (v${latestVersion.version_number}) of workflow ${workflowId}`);
         
         // Call the exported getWorkflowVersion function
         const versionDetails = await getWorkflowVersion(instanceData, latestVersion.id);
         
         if (versionDetails) {
-          if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowDetails] Version details fetched. Has workflow_json: ${!!versionDetails.workflow_json}, Has workflow_data: ${!!versionDetails.workflow_data}`);
+          logger.debug(`[resourceFetcher.getWorkflowDetails] Version details fetched. Has workflow_json: ${!!versionDetails.workflow_json}, Has workflow_data: ${!!versionDetails.workflow_data}`);
           workflowData.workflow_json = versionDetails.workflow_json || versionDetails.workflow_data || {}; // Prefer workflow_json
           
           if (workflowData.workflow_json && workflowData.workflow_json.nodes) {
-            if (DEBUG_LOGGING_ENABLED) logger.debug(`[resourceFetcher.getWorkflowDetails] Workflow JSON contains ${Object.keys(workflowData.workflow_json.nodes).length} nodes`);
+            logger.debug(`[resourceFetcher.getWorkflowDetails] Workflow JSON contains ${Object.keys(workflowData.workflow_json.nodes).length} nodes`);
           } else {
-            logger.warn('[resourceFetcher.getWorkflowDetails] Workflow JSON structure does not contain nodes after fetching version details.');
+            logger.debug('[resourceFetcher.getWorkflowDetails] Workflow JSON structure does not contain nodes after fetching version details.');
             // Fallback logic copied from comfyui.js - check version.workflow or workflowData.workflow
              if (versionDetails.workflow && typeof versionDetails.workflow === 'object') {
                workflowData.workflow_json = versionDetails.workflow;
-               if (DEBUG_LOGGING_ENABLED) console.log('[resourceFetcher.getWorkflowDetails] Using version.workflow as fallback for workflow_json');
+               logger.debug('[resourceFetcher.getWorkflowDetails] Using version.workflow as fallback for workflow_json');
              } else if (workflowData.workflow && typeof workflowData.workflow === 'object') {
                workflowData.workflow_json = workflowData.workflow;
-               if (DEBUG_LOGGING_ENABLED) console.log('[resourceFetcher.getWorkflowDetails] Using workflowData.workflow as fallback for workflow_json');
+               logger.debug('[resourceFetcher.getWorkflowDetails] Using workflowData.workflow as fallback for workflow_json');
              }
           }
         } else {
-          logger.warn(`[resourceFetcher.getWorkflowDetails] Failed to fetch version details for ${latestVersion.id}`);
+          logger.debug(`[resourceFetcher.getWorkflowDetails] Failed to fetch version details for ${latestVersion.id}`);
         }
       } else {
-        if (DEBUG_LOGGING_ENABLED) logger.debug('[resourceFetcher.getWorkflowDetails] No workflow versions available in base details.');
+        logger.debug('[resourceFetcher.getWorkflowDetails] No workflow versions available in base details.');
         // Try to find workflow JSON directly in the workflow data
         if (workflowData.workflow && typeof workflowData.workflow === 'object') {
-          if (DEBUG_LOGGING_ENABLED) logger.debug('[resourceFetcher.getWorkflowDetails] Found workflow object directly in workflowData');
+          logger.debug('[resourceFetcher.getWorkflowDetails] Found workflow object directly in workflowData');
           workflowData.workflow_json = workflowData.workflow;
         }
       }
@@ -375,12 +374,12 @@ async function getWorkflowDetails(instanceData, workflowId) {
  * @returns {Promise<Object|null>} - Returns workflow JSON structure or null if not found
  */
 async function getWorkflowContent(instanceData, workflowId) {
-    const { logger, _makeApiRequest } = instanceData;
+    const { logger, API_ENDPOINTS, _makeApiRequest } = instanceData;
+    logger.debug(`[resourceFetcher.getWorkflowContent] Fetching full content for workflow: ${workflowId}`);
+    
     if (!workflowId) {
       throw new Error('Workflow ID is required for getWorkflowContent');
     }
-    
-    if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Attempting to fetch workflow content for ID: ${workflowId}`);
     
     const potentialEndpoints = [
       `/api/workflow/${workflowId}/content`,
@@ -400,22 +399,22 @@ async function getWorkflowContent(instanceData, workflowId) {
     
     for (const endpoint of potentialEndpoints) {
       try {
-        if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Trying endpoint: ${endpoint}`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Trying endpoint: ${endpoint}`);
         const response = await _makeApiRequest(endpoint, {
           headers: { 'Accept': 'application/json' }
         });
         
         if (!response.ok) {
-          if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Endpoint ${endpoint} returned status ${response.status}`);
+          logger.debug(`[resourceFetcher.getWorkflowContent] Endpoint ${endpoint} returned status ${response.status}`);
           continue;
         }
         
-        if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Got OK response from endpoint: ${endpoint}`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Got OK response from endpoint: ${endpoint}`);
         const data = await response.json();
         workflowData = data; 
         fullRawResponse = JSON.stringify(data); 
 
-        if (DEBUG_LOGGING_ENABLED) console.log(`[resourceFetcher.getWorkflowContent] Response data keys from ${endpoint}: ${Object.keys(data).join(', ')}`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Response data keys from ${endpoint}: ${Object.keys(data).join(', ')}`);
         
         // Attempt 1: Try parsing common locations using helper
         let workflowJson = _tryParseWorkflowJson(data, endpoint, logger);
@@ -426,34 +425,34 @@ async function getWorkflowContent(instanceData, workflowId) {
         // Attempt 2: Check versions using helper
         if (data.versions && Array.isArray(data.versions) && data.versions.length > 0) {
             versionIds = data.versions.map(v => v.id);
-            if (DEBUG_LOGGING_ENABLED) console.log(`[resourceFetcher.getWorkflowContent] Found ${versionIds.length} version IDs from ${endpoint}: ${versionIds.join(', ')}`);
+            logger.debug(`[resourceFetcher.getWorkflowContent] Found ${versionIds.length} version IDs from ${endpoint}: ${versionIds.join(', ')}`);
             
             for (const version of data.versions) {
                workflowJson = _tryParseVersionData(version, logger);
                if (workflowJson) {
-                  if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Found valid workflow JSON in version ${version.id} data from endpoint ${endpoint}`);
+                  logger.debug(`[resourceFetcher.getWorkflowContent] Found valid workflow JSON in version ${version.id} data from endpoint ${endpoint}`);
                   return workflowJson; 
                }
             }
-            if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] Checked ${data.versions.length} versions from ${endpoint}, no direct workflow JSON found.`);
+            logger.debug(`[resourceFetcher.getWorkflowContent] Checked ${data.versions.length} versions from ${endpoint}, no direct workflow JSON found.`);
         } else {
-            if (DEBUG_LOGGING_ENABLED) logger.info(`[resourceFetcher.getWorkflowContent] No versions array found in response from ${endpoint}.`);
+            logger.debug(`[resourceFetcher.getWorkflowContent] No versions array found in response from ${endpoint}.`);
         }
-
+ 
       } catch (error) {
-        logger.warn(`[resourceFetcher.getWorkflowContent] Error trying endpoint ${endpoint}: ${error.message}`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Error trying endpoint ${endpoint}: ${error.message}`);
       }
     }
     
     // Fallback: If no direct content found, try getting details (which fetches latest version)
-    logger.warn(`[resourceFetcher.getWorkflowContent] Failed to find direct content for ${workflowId}, trying getWorkflowDetails as fallback.`);
+    logger.debug(`[resourceFetcher.getWorkflowContent] Failed to find direct content for ${workflowId}, trying getWorkflowDetails as fallback.`);
     try {
       // We need getWorkflowVersion available here for the details fallback
       const detailsInstanceData = { ...instanceData, getWorkflowVersion: (id) => getWorkflowVersion(instanceData, id) };
       const workflowDetails = await getWorkflowDetails(detailsInstanceData, workflowId);
       
       if (workflowDetails.workflow_json && workflowDetails.workflow_json.nodes) {
-        if (DEBUG_LOGGING_ENABLED) logger.info('[resourceFetcher.getWorkflowContent] Found workflow JSON via getWorkflowDetails fallback.');
+        logger.debug('[resourceFetcher.getWorkflowContent] Found workflow JSON via getWorkflowDetails fallback.');
         return workflowDetails.workflow_json;
       }
     } catch (error) {
@@ -465,9 +464,9 @@ async function getWorkflowContent(instanceData, workflowId) {
       try {
         const debugFile = `./debug-workflow-${workflowId}.json`;
         fs.writeFileSync(debugFile, fullRawResponse);
-        if (DEBUG_LOGGING_ENABLED) console.log(`[resourceFetcher.getWorkflowContent] Saved full raw response to ${debugFile} for debugging`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Saved full raw response to ${debugFile} for debugging`);
       } catch (error) {
-        if (DEBUG_LOGGING_ENABLED) console.log(`[resourceFetcher.getWorkflowContent] Error saving debug file: ${error.message}`);
+        logger.debug(`[resourceFetcher.getWorkflowContent] Error saving debug file: ${error.message}`);
       }
     } 
     

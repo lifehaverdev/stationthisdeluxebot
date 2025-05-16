@@ -12,8 +12,9 @@ const session = require('express-session');
 /**
  * Set up middleware for the Express app
  * @param {Express} app - Express application instance
+ * @param {Object} logger - Logger instance
  */
-function setupMiddleware(app) {
+function setupMiddleware(app, logger) {
   // Parse JSON request body
   app.use(express.json());
   
@@ -42,7 +43,20 @@ function setupMiddleware(app) {
   
   // Add request logging
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    const logOutput = {
+      method: req.method,
+      url: req.url,
+      status: res.statusCode, // This might be more useful on response, but here for request time
+      ip: req.ip,
+      userAgent: req.get('User-Agent')
+    };
+    // Use logger.info for request logging
+    if (logger && typeof logger.info === 'function') {
+      logger.info('Incoming HTTP request', logOutput);
+    } else {
+      // Fallback if logger is not properly passed (should not happen)
+      console.log(`[REQUEST] ${new Date().toISOString()} ${req.method} ${req.url}`);
+    }
     next();
   });
 }

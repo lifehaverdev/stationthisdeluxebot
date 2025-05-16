@@ -4,6 +4,8 @@
  * Exports all core services for easy importing
  */
 
+const { ToolRegistry } = require('../tools/ToolRegistry.js');
+
 const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
 const WorkflowsService = require('./comfydeploy/workflows');
@@ -20,6 +22,10 @@ const { initializeAPI } = require('../../api');
 async function initializeServices(options = {}) {
   const logger = options.logger || console;
   const appStartTime = new Date();
+  
+  // Initialize ToolRegistry Singleton
+  const toolRegistry = ToolRegistry.getInstance();
+  logger.info('ToolRegistry initialized.');
   
   // DIAGNOSTIC LOGGING REMOVED
   
@@ -41,7 +47,8 @@ async function initializeServices(options = {}) {
     const workflowsLogger = {
       info: (message) => logger.info(message),
       warn: (message) => logger.warn ? logger.warn(message) : logger.info(`WARN: ${message}`),
-      error: (message) => logger.error ? logger.error(message) : logger.info(`ERROR: ${message}`)
+      error: (message) => logger.error ? logger.error(message) : logger.info(`ERROR: ${message}`),
+      debug: (message, ...args) => logger.debug ? logger.debug(message, ...args) : logger.info(`DEBUG: ${message}`, ...args)
     };
     
     const workflowsService = new WorkflowsService({ 
@@ -76,7 +83,8 @@ async function initializeServices(options = {}) {
       internal: apiServices.internal, // This contains router, status
       internalApiClient: apiServices.internal?.client, // Expose the client directly
       logger,
-      appStartTime
+      appStartTime,
+      toolRegistry // geniusoverhaul: Added toolRegistry to returned services
     };
 
     // DIAGNOSTIC LOGGING REMOVED
@@ -95,5 +103,6 @@ module.exports = {
   WorkflowsService,
   MediaService,
   SessionService,
-  initializeServices
+  initializeServices,
+  ToolRegistry // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
 }; 

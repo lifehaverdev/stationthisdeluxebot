@@ -247,257 +247,35 @@ function parseWorkflowStructure(workflowJson) {
 }
 
 /**
- * Create a default input payload for a workflow using the default values from ComfyUIDeployExternal nodes
- * 
- * @param {WorkflowsService} serviceInstance - The instance of the WorkflowsService
- * @param {string} name - Name of the workflow
- * @returns {Promise<Object>} - Default input payload with all required inputs pre-populated
+ * Extracts text content from all "Note" nodes in a workflow.
+ * @param {object} workflowJson The workflow JSON object.
+ * @returns {string[]} An array of strings, where each string is the content of a Note node.
  */
-async function createDefaultInputPayload(serviceInstance, name) {
-  // First try to get the cached inputs
-  let requiredInputs = await serviceInstance.getWorkflowRequiredInputs(name);
-  
-  // If we don't have any inputs yet, try to get them from the workflow JSON directly
-  if (!requiredInputs || requiredInputs.length === 0) {
-    // Get detailed workflow information
-    const workflowWithDetails = await serviceInstance.getWorkflowWithDetails(name);
-    
-    if (workflowWithDetails && workflowWithDetails.workflow_json && workflowWithDetails.workflow_json.nodes) {
-      // Parse the workflow structure to find external input nodes
-      const workflowStructure = parseWorkflowStructure(workflowWithDetails.workflow_json);
-      requiredInputs = workflowStructure.externalInputNodes;
-      
-      // Store the input nodes for future use (Modify the instance cache directly - careful!)
-      if (workflowWithDetails && !workflowWithDetails.requiredInputs) {
-        workflowWithDetails.requiredInputs = requiredInputs;
-        workflowWithDetails.outputType = workflowStructure.outputType;
-        workflowWithDetails.hasLoraLoader = workflowStructure.hasLoraLoader;
+function extractNotes(workflowJson) {
+  if (!workflowJson || !workflowJson.nodes || typeof workflowJson.nodes !== 'object') {
+    return [];
+  }
+
+  const notes = [];
+  for (const nodeId in workflowJson.nodes) {
+    const node = workflowJson.nodes[nodeId];
+    if (node.type === 'Note' || node.class_type === 'Note') {
+      // Notes often store their text in widget_values or a similar property
+      // This might need adjustment based on the exact structure of Note nodes
+      if (node.widgets_values && Array.isArray(node.widgets_values) && node.widgets_values.length > 0) {
+        if (typeof node.widgets_values[0] === 'string') {
+          notes.push(node.widgets_values[0].trim());
+        }
+      } else if (node.properties && typeof node.properties.text === 'string') { // Another common pattern
+        notes.push(node.properties.text.trim());
+      } else if (typeof node.title === 'string' && (node.type === 'Note' || node.class_type === 'Note')){
+        // Sometimes the note content is in the title if it's a simple note node.
+        // Check type again to be sure it's a note node and not some other node with a title. 
+        notes.push(node.title.trim());
       }
     }
   }
-  
-  if (!requiredInputs || requiredInputs.length === 0) {
-    return {};
-  }
-  
-  // Build the input payload using default values
-  const payload = {};
-  
-  requiredInputs.forEach(input => {
-    // Use the input name as the key
-    const inputName = input.inputName;
-    
-    // Use the default value if available, otherwise provide type-appropriate defaults
-    if (input.defaultValue !== null && input.defaultValue !== undefined) {
-      payload[inputName] = input.defaultValue;
-    } else {
-      // Provide sensible defaults based on input type
-      switch (input.inputType.toLowerCase()) {
-        case 'text':
-          payload[inputName] = '';
-          break;
-        case 'number':
-          payload[inputName] = 1.0;
-          break;
-        case 'numberint':
-          payload[inputName] = 1;
-          break;
-        case 'boolean':
-          payload[inputName] = false;
-          break;
-        case 'image':
-          payload[inputName] = null; // No default for images
-          break;
-        default:
-          payload[inputName] = null;
-      }
-    }
-  });
-  
-  return payload;
-}
-
-/**
- * Validates if an input payload has all required inputs for a workflow
- * 
- * @param {WorkflowsService} serviceInstance - The instance of the WorkflowsService
- * @param {string} name - Name of the workflow
- * @param {Object} inputPayload - The input payload to validate
- * @returns {Promise<Object>} - Object with isValid flag and any missing or invalid inputs
- */
-async function validateInputPayload(serviceInstance, name, inputPayload) {
-  const requiredInputs = await serviceInstance.getWorkflowRequiredInputs(name);
-  const requiredInputMap = new Map((requiredInputs || []).map(i => [i.inputName, i])); // Handle case where requiredInputs might be null/undefined initially
-
-  if (!requiredInputs) {
-    // Should ideally not happen if getWorkflowRequiredInputs works, but handle defensively
-    serviceInstance.logger.warn(`[validateInputPayload] Could not get required inputs for workflow: ${name}. Assuming valid.`);
-    return { isValid: true, missingRequiredInputs: [], invalidTypeInputs: [], unknownInputs: [] };
-  }
-  
-  const missingRequiredInputs = [];
-  const invalidTypeInputs = [];
-  const unknownInputs = [];
-  
-  // 1. Check inputs provided by the user
-  for (const inputName in inputPayload) {
-    const value = inputPayload[inputName];
-    
-    // Check if the provided input is actually defined in the workflow
-    if (!requiredInputMap.has(inputName)) {
-      unknownInputs.push(inputName);
-      continue; // Skip type validation for unknown inputs
-    }
-    
-    // Input is known, proceed with type validation
-    const inputDefinition = requiredInputMap.get(inputName);
-    let typeValid = true;
-    let reason = '';
-
-    switch (inputDefinition.inputType.toLowerCase()) {
-      case 'text':
-        // Text is generally always valid unless we add constraints
-        break;
-      case 'number':
-        if (typeof value !== 'number' && (value === null || value === undefined || isNaN(parseFloat(value)))) {
-          typeValid = false;
-          reason = 'Must be a valid number';
-        }
-        break;
-      case 'numberint':
-        if (typeof value !== 'number' && (value === null || value === undefined || isNaN(parseInt(value)))) {
-          typeValid = false;
-          reason = 'Must be a valid integer';
-        } else if (typeof value === 'number' && !Number.isInteger(value)) {
-          typeValid = false;
-          reason = 'Must be an integer, not a decimal number';
-        }
-        break;
-      case 'boolean':
-        if (typeof value !== 'boolean') {
-          typeValid = false;
-          reason = 'Must be a boolean (true/false)';
-        }
-        break;
-      case 'image':
-        // Add specific image validation if needed (e.g., URL format)
-        break;
-      // Add other types as needed
-    }
-    
-    if (!typeValid) {
-      invalidTypeInputs.push({ name: inputName, reason });
-    }
-  }
-
-  // 2. Check if any truly required inputs (those without defaults) are missing
-  for (const input of requiredInputs) {
-    const inputName = input.inputName;
-    const hasDefault = input.defaultValue !== null && input.defaultValue !== undefined;
-    
-    // If the input has NO default AND it wasn't provided by the user...
-    if (!hasDefault && !(inputName in inputPayload)) {
-      missingRequiredInputs.push(inputName);
-    }
-  }
-  
-  return {
-    isValid: missingRequiredInputs.length === 0 && invalidTypeInputs.length === 0 && unknownInputs.length === 0,
-    missingRequiredInputs, // Inputs required by workflow (no default) but not provided
-    invalidTypeInputs,   // Inputs provided but with wrong type
-    unknownInputs        // Inputs provided but not defined in workflow
-  };
-}
-
-/**
- * Merges user-provided inputs with defaults for any missing required inputs
- * 
- * @param {WorkflowsService} serviceInstance - The instance of the WorkflowsService
- * @param {string} name - Name of the workflow
- * @param {Object} userInputs - User-provided input values
- * @returns {Promise<Object>} - Complete input payload with defaults for missing values
- */
-async function mergeWithDefaultInputs(serviceInstance, name, userInputs = {}) {
-  // Use the utility function (passing the instance)
-  const defaultPayload = await createDefaultInputPayload(serviceInstance, name); 
-  
-  // Start with the default payload
-  const mergedPayload = { ...defaultPayload };
-  
-  // Override with user inputs where provided
-  if (userInputs && typeof userInputs === 'object') {
-    Object.keys(userInputs).forEach(key => {
-      // Only override if the user provided a non-null/undefined value, 
-      // AND if the key exists in the default payload (meaning it's a known input)
-      if (userInputs[key] !== undefined && userInputs[key] !== null && key in defaultPayload) { 
-        mergedPayload[key] = userInputs[key];
-      }
-    });
-  }
-  
-  return mergedPayload;
-}
-
-/**
- * Prepare a complete payload for workflow execution with validation
- * 
- * @param {WorkflowsService} serviceInstance - The instance of the WorkflowsService
- * @param {string} name - Name of the workflow
- * @param {Object} userInputs - Optional user-provided inputs
- * @returns {Promise<Object>} - Object with payload, validation info, and workflow info
- */
-async function prepareWorkflowPayload(serviceInstance, name, userInputs = {}) {
-  // Get workflow details using the instance method
-  const workflow = await serviceInstance.getWorkflowByName(name);
-  
-  if (!workflow) {
-    return {
-      success: false,
-      error: `Workflow "${name}" not found`,
-      payload: null,
-      validation: null,
-      workflow: null
-    };
-  }
-  
-  // Get the output type and lora support using instance methods
-  const outputType = await serviceInstance.getWorkflowOutputType(name);
-  const hasLoraSupport = await serviceInstance.hasLoraLoaderSupport(name);
-  
-  // Merge with default values using the utility function
-  const payload = await mergeWithDefaultInputs(serviceInstance, name, userInputs);
-  
-  // Validate the payload using the utility function
-  const validation = await validateInputPayload(serviceInstance, name, payload);
-  
-  // Prepare result object
-  const result = {
-    success: validation.isValid,
-    error: validation.isValid ? null : 'Invalid payload',
-    payload,
-    validation,
-    workflow: {
-      id: workflow.id,
-      name: workflow.name,
-      displayName: workflow.displayName,
-      deploymentIds: workflow.deploymentIds,
-      outputType,
-      hasLoraSupport
-    }
-  };
-  
-  // If the workflow has deploymentIds, include the recommended deployment
-  if (workflow.deploymentIds && workflow.deploymentIds.length > 0) {
-    result.workflow.recommendedDeploymentId = workflow.deploymentIds[0];
-  }
-  
-  // Include a recommended machine if available using the *utility* function
-  const machineId = await getMachineForWorkflow(serviceInstance, name);
-  if (machineId) {
-    result.workflow.recommendedMachineId = machineId;
-  }
-  
-  return result;
+  return notes;
 }
 
 /**
@@ -551,9 +329,6 @@ async function getMachineForWorkflow(serviceInstance, workflowName) {
 module.exports = {
   standardizeWorkflowName,
   parseWorkflowStructure,
-  createDefaultInputPayload,
-  validateInputPayload,
-  mergeWithDefaultInputs,
-  prepareWorkflowPayload,
+  extractNotes,
   getMachineForWorkflow
 }; 

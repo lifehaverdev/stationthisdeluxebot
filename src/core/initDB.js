@@ -18,7 +18,7 @@ async function initializeDatabase() {
     connectionPromise = getCachedClient()
       .then((client) => {
         if (client) {
-          console.log('Database connection successfully established via getCachedClient.');
+          console.log('[initDB] Database connection successfully established via getCachedClient.');
           // The client is cached by queue.js, no need to store it here again.
           // The main purpose here is to ensure the connection is attempted at startup.
         } else {

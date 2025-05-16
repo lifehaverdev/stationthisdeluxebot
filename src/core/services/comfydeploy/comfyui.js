@@ -16,6 +16,7 @@ const path = require('path');
 const fs = require('fs');
 const resourceFetcher = require('./resourceFetcher'); // Import resource fetcher
 const { APIError } = require('../../../utils/errors'); // Assuming errors utility
+const crypto = require('crypto'); // Import crypto module for generating unique IDs
 
 // Import configuration
 const { 
@@ -45,6 +46,13 @@ const {
  * ComfyUI Service Class
  */
 class ComfyUIService {
+  // Static properties for shared cache and initialization state
+  static S_MACHINES_CACHE = null;
+  static S_DEPLOYMENTS_CACHE = null;
+  static S_IS_INITIALIZED = false;
+  static S_INITIALIZATION_IN_PROGRESS = false;
+  static S_ACTIVE_INITIALIZE_PROMISE = null;
+
   // Define machine cost rates here. Keys should be the GPU identifier (e.g., 'A10G').
   // Values are { amount: number, currency: string, unit: string (e.g., 'second') }
   // These keys MUST match the expected value from the machine object's gpu_type (or similar) field.
@@ -73,6 +81,9 @@ class ComfyUIService {
    * @param {Function} options.logger - Logger function (optional)
    */
   constructor(options = {}) {
+    this.instanceId = crypto.randomBytes(4).toString('hex'); // Add a unique ID
+    //this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId}] CREATED`); // Moved down
+
     this.apiUrl = options.apiUrl || COMFY_DEPLOY_API_URL;
     this.apiKey = options.apiKey || process.env.COMFY_DEPLOY_API_KEY;
     this.timeout = options.timeout || DEFAULT_TIMEOUT;
@@ -93,87 +104,101 @@ class ComfyUIService {
                   ? options.logger 
                   : defaultLogger;
     
+    //this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId}] CREATED`); // Moved here
+
     // Validate API key (use logger.warn)
     if (!this.apiKey) {
-      this.logger.warn('ComfyUI Deploy API key not configured. Service will be inoperable.');
+      this.logger.warn(`[ComfyUIService INSTANCE ${this.instanceId}] ComfyUI Deploy API key not configured. Service will be inoperable.`);
     }
 
-    this.machinesCache = null; // Initialize cache
-    this.deploymentsCache = null; // Cache for deployment details (deploymentId -> deploymentObject)
-    this.isInitialized = false;
-    this.initializePromise = this.initialize(); // Start initialization
+    // Call the static initialize method.
+    // It's "fire-and-forget" from constructor, but promise is stored statically.
+    // _ensureInitialized will await this promise if needed.
+    ComfyUIService.initialize(this.logger, this._getInstanceData.bind(this));
   }
 
   /**
-   * Initializes the service, e.g., by fetching and caching machines.
+   * Initializes the service statically, e.g., by fetching and caching machines.
+   * @param {Object} loggerInstance - Logger from the calling instance
+   * @param {Function} getInstanceDataFn - Function to get instance-specific data (apiKey, etc.)
    */
-  async initialize() {
-    if (this.isInitialized) {
+  static async initialize(loggerInstance, getInstanceDataFn) {
+    //loggerInstance.info(`[ComfyUIService STATIC .initialize_ENTRY] Current state - S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED}, S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}, S_ACTIVE_INITIALIZE_PROMISE exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE}`);
+
+    if (ComfyUIService.S_IS_INITIALIZED) {
       return;
     }
-    if (this.initializePromise && typeof this.initializePromise.then === 'function') {
-        // Initialization is already in progress
-        return this.initializePromise;
+
+    if (ComfyUIService.S_INITIALIZATION_IN_PROGRESS) {
+      return ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE;
     }
 
-    this.logger.info('[ComfyUIService] Initializing...');
-    try {
-      const instanceData = this._getInstanceData();
-      // Fetch machines
-      const machines = await resourceFetcher.getMachines(instanceData);
-      this.machinesCache = machines.reduce((acc, machine) => {
-        if (machine && machine.id) {
-          acc[machine.id] = machine;
-          // Check for the primary field 'gpu' used for costing
-          if (!machine.gpu) { 
-            this.logger.warn(`[ComfyUIService Cache] Machine ID ${machine.id} ('${machine.name}') fetched from API is missing expected 'gpu' field used for costing. Full object: ${JSON.stringify(machine)}`);
+    //loggerInstance.info(`[ComfyUIService STATIC .initialize_PROCEEDING] Starting new static initialization logic...`);
+    ComfyUIService.S_INITIALIZATION_IN_PROGRESS = true;
+    //loggerInstance.info(`[ComfyUIService STATIC .initialize_STATUS_UPDATE] Set S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}`);
+    
+    ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE = (async () => {
+      //loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_START]`);
+      try {
+        const instanceData = getInstanceDataFn(); // Get data (apiKey, etc.) from the triggering instance
+        
+        // Fetch machines
+        const machines = await resourceFetcher.getMachines(instanceData);
+        ComfyUIService.S_MACHINES_CACHE = machines.reduce((acc, machine) => {
+          if (machine && machine.id) {
+            acc[machine.id] = machine;
+            if (!machine.gpu) { 
+              loggerInstance.warn(`[ComfyUIService STATIC Cache] Machine ID ${machine.id} ('${machine.name}') fetched from API is missing expected 'gpu' field used for costing. Full object: ${JSON.stringify(machine)}`);
+            }
+          } else {
+            loggerInstance.warn(`[ComfyUIService STATIC Cache] Machine fetched from API is missing 'id'. Full object: ${JSON.stringify(machine)}`);
           }
-        } else {
-          this.logger.warn(`[ComfyUIService Cache] Machine fetched from API is missing 'id'. Full object: ${JSON.stringify(machine)}`);
-        }
-        return acc;
-      }, {});
-      this.logger.info(`[ComfyUIService] Cached ${Object.keys(this.machinesCache).length} machines.`);
+          return acc;
+        }, {});
+        loggerInstance.info(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_MACHINES_CACHE).length} machines.`);
 
-      // Fetch deployments
-      const deployments = await resourceFetcher.getDeployments(instanceData);
-      this.deploymentsCache = deployments.reduce((acc, deployment) => {
-        if (deployment.id) {
-          // Store deployment, ensuring machine_id is present
-          acc[deployment.id] = deployment;
-           if (!deployment.machine_id) {
-               this.logger.warn(`[ComfyUIService Cache] Deployment ID ${deployment.id} ('${deployment.name}') is missing 'machine_id'. Full object: ${JSON.stringify(deployment)}`);
-           }
-        } else {
-          this.logger.warn('[ComfyUIService Cache] Deployment found without an ID during caching.', deployment);
-        }
-        return acc;
-      }, {});
-      this.logger.info(`[ComfyUIService] Cached ${Object.keys(this.deploymentsCache).length} deployments.`);
+        // Fetch deployments
+        const deployments = await resourceFetcher.getDeployments(instanceData);
+        ComfyUIService.S_DEPLOYMENTS_CACHE = deployments.reduce((acc, deployment) => {
+          if (deployment.id) {
+            acc[deployment.id] = deployment;
+            if (!deployment.machine_id) {
+              loggerInstance.warn(`[ComfyUIService STATIC Cache] Deployment ID ${deployment.id} ('${deployment.name}') is missing 'machine_id'. Full object: ${JSON.stringify(deployment)}`);
+            }
+          } else {
+            loggerInstance.warn('[ComfyUIService STATIC Cache] Deployment found without an ID during caching.', deployment);
+          }
+          return acc;
+        }, {});
+        loggerInstance.info(`[ComfyUIService STATIC Cache] Cached ${Object.keys(ComfyUIService.S_DEPLOYMENTS_CACHE).length} deployments.`);
 
-      this.isInitialized = true;
-      this.logger.info('[ComfyUIService] Initialization complete.');
-    } catch (error) {
-      this.logger.error('[ComfyUIService] Failed to initialize (fetch machines): ', error.message);
-      // Depending on policy, could re-throw or allow service to run in a degraded state
-      // For now, we'll allow it but log the error. Cost fetching might fail.
-      this.machinesCache = {}; // Ensure it's an object even on failure
-      this.deploymentsCache = {}; // Ensure deployments cache is empty on failure
-    }
-    this.initializePromise = null; // Clear the promise once settled
+        ComfyUIService.S_IS_INITIALIZED = true;
+        //loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_SUCCESS] Set S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED}. Static Initialization complete.`);
+      } catch (error) {
+        loggerInstance.error(`[ComfyUIService STATIC .initialize_IIFE_ERROR] Failed to initialize statically: `, error.message);
+        ComfyUIService.S_IS_INITIALIZED = false; // Explicitly set to false on error
+        loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_ERROR_STATUS] Set S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED} due to error.`);
+      } finally {
+        ComfyUIService.S_INITIALIZATION_IN_PROGRESS = false;
+        loggerInstance.info(`[ComfyUIService STATIC .initialize_IIFE_FINALLY] Set S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}. Active static promise exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE}`);
+      }
+    })();
+    
+    loggerInstance.info(`[ComfyUIService STATIC .initialize_EXIT] Returning S_ACTIVE_INITIALIZE_PROMISE (exists: ${!!ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE})`);
+    return ComfyUIService.S_ACTIVE_INITIALIZE_PROMISE;
   }
 
   /**
-   * Ensures the service is initialized before proceeding.
+   * Ensures the service is statically initialized before proceeding.
    */
   async _ensureInitialized() {
-    if (!this.isInitialized) {
-      if (this.initializePromise) {
-        await this.initializePromise;
-      } else {
-        // Should not happen if constructor calls initialize(), but as a fallback:
-        await this.initialize();
-      }
+    //this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} ._ensureInitialized_ENTRY] Current static state - S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED}`);
+    if (!ComfyUIService.S_IS_INITIALIZED) {
+      //this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} ._ensureInitialized_NEEDS_STATIC_INIT] Calling static ComfyUIService.initialize(). Current static state - S_INITIALIZATION_IN_PROGRESS: ${ComfyUIService.S_INITIALIZATION_IN_PROGRESS}`);
+      await ComfyUIService.initialize(this.logger, this._getInstanceData.bind(this)); 
+      //this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} ._ensureInitialized_POST_AWAIT_STATIC_INIT] Finished awaiting static initialize(). Current static state - S_IS_INITIALIZED: ${ComfyUIService.S_IS_INITIALIZED}`);
+    } else {
+      // No log needed here if already initialized
     }
   }
 
@@ -184,60 +209,60 @@ class ComfyUIService {
    * @returns {Promise<Object|string>} - Cost rate object { amount, currency, unit } or an error string.
    */
   async getCostRateForDeployment(deploymentId) {
-    await this._ensureInitialized(); // Ensure caches are populated
+    await this._ensureInitialized(); // Ensure static caches are populated
 
-    if (!this.deploymentsCache || !this.machinesCache) {
-      this.logger.error('[ComfyUIService.getCostRateForDeployment] Service caches not initialized.');
-      return "error: service caches not initialized";
+    if (!ComfyUIService.S_DEPLOYMENTS_CACHE || !ComfyUIService.S_MACHINES_CACHE) {
+      this.logger.error(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Service static caches not initialized.`);
+      return "error: service static caches not initialized";
     }
 
-    this.logger.info(`[ComfyUIService.getCostRateForDeployment] Getting cost rate for deployment ID: ${deploymentId}`);
+    this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Getting cost rate for deployment ID: ${deploymentId}`);
 
     try {
-      // 1. Find the deployment object in the cache
-      const deployment = this.deploymentsCache[deploymentId];
+      // 1. Find the deployment object in the static cache
+      const deployment = ComfyUIService.S_DEPLOYMENTS_CACHE[deploymentId];
       if (!deployment) {
-        this.logger.warn(`[ComfyUIService.getCostRateForDeployment] Deployment ID ${deploymentId} not found in cache.`);
+        this.logger.warn(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Deployment ID ${deploymentId} not found in static cache.`);
         return `error: deployment ${deploymentId} not found`;
       }
 
       // 2. Extract the machine_id
       const machineId = deployment.machine_id;
       if (!machineId) {
-        this.logger.error(`[ComfyUIService.getCostRateForDeployment] 'machine_id' not found in cached deployment object for deployment ID ${deploymentId}. Deployment data: ${JSON.stringify(deployment)}`);
+        this.logger.error(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] 'machine_id' not found in cached deployment object for deployment ID ${deploymentId}. Deployment data: ${JSON.stringify(deployment)}`);
         return `error: machine_id not found for deployment ${deploymentId}`;
       }
-      this.logger.debug(`[ComfyUIService.getCostRateForDeployment] Found machine_id ${machineId} for deployment ${deploymentId}`);
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Found machine_id ${machineId} for deployment ${deploymentId}`);
 
-      // 3. Find the machine details in the machines cache
-      const machine = this.machinesCache[machineId];
+      // 3. Find the machine details in the static machines cache
+      const machine = ComfyUIService.S_MACHINES_CACHE[machineId];
       if (!machine) {
-        this.logger.warn(`[ComfyUIService.getCostRateForDeployment] Machine details for ID ${machineId} (from deployment ${deploymentId}) not found in machine cache.`);
+        this.logger.warn(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Machine details for ID ${machineId} (from deployment ${deploymentId}) not found in static machine cache.`);
         return `error: machine details not found for machine ID ${machineId}`;
       }
-      this.logger.debug(`[ComfyUIService.getCostRateForDeployment] Found machine details for machine ID ${machineId}: ${JSON.stringify(machine)}`); // Log the whole machine object for inspection
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Found machine details for machine ID ${machineId}: ${JSON.stringify(machine)}`);
 
       // 4. Extract the GPU identifier from the machine object
       //    Prioritize the 'gpu' field. Convert to uppercase for matching.
       const gpuIdentifier = machine.gpu?.toUpperCase(); 
       if (!gpuIdentifier) {
-        this.logger.error(`[ComfyUIService.getCostRateForDeployment] Could not determine GPU identifier (checked 'gpu' field) for machine ID ${machineId}. Machine Name: '${machine.name}'. Machine Data: ${JSON.stringify(machine)}`);
+        this.logger.error(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Could not determine GPU identifier (checked 'gpu' field) for machine ID ${machineId}. Machine Name: '${machine.name}'. Machine Data: ${JSON.stringify(machine)}`);
         return `error: gpu identifier not found for machine ${machineId}`;
       }
-      this.logger.debug(`[ComfyUIService.getCostRateForDeployment] Determined GPU identifier for machine ${machineId} ('${machine.name}') from 'gpu' field: ${gpuIdentifier}`);
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Determined GPU identifier for machine ${machineId} ('${machine.name}') from 'gpu' field: ${gpuIdentifier}`);
 
       // 5. Look up the cost rate using the GPU identifier
       const costRate = ComfyUIService.MACHINE_COST_RATES[gpuIdentifier];
       if (costRate === undefined) {
-        this.logger.warn(`[ComfyUIService.getCostRateForDeployment] Cost rate not defined in MACHINE_COST_RATES for GPU identifier: '${gpuIdentifier}' (Machine ID: ${machineId}, Deployment ID: ${deploymentId})`);
+        this.logger.warn(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Cost rate not defined in MACHINE_COST_RATES for GPU identifier: '${gpuIdentifier}' (Machine ID: ${machineId}, Deployment ID: ${deploymentId})`);
         return `error: cost rate unknown for GPU ${gpuIdentifier}`;
       }
 
-      this.logger.info(`[ComfyUIService.getCostRateForDeployment] Determined cost rate for deployment ${deploymentId} (Machine: ${machine.name}, GPU: ${gpuIdentifier}): ${JSON.stringify(costRate)}`);
+      this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Determined cost rate for deployment ${deploymentId} (Machine: ${machine.name}, GPU: ${gpuIdentifier}): ${JSON.stringify(costRate)}`);
       return costRate; // Return the rate object { amount, currency, unit }
 
     } catch (error) {
-      this.logger.error(`[ComfyUIService.getCostRateForDeployment] Unexpected error getting cost rate for deployment ${deploymentId}: ${error.message}`, error);
+      this.logger.error(`[ComfyUIService INSTANCE ${this.instanceId} .getCostRateForDeployment] Unexpected error getting cost rate for deployment ${deploymentId}: ${error.message}`, error);
       return "error: unexpected error during cost rate calculation";
     }
   }
@@ -370,13 +395,22 @@ class ComfyUIService {
    * @returns {Promise<Array>} - Returns array of deployments
    */
   async getDeployments() {
-    // Call the extracted action
-    const instanceData = {
-        logger: this.logger,
-        API_ENDPOINTS: API_ENDPOINTS,
-        _makeApiRequest: this._makeApiRequest.bind(this) // Pass bound method
-    };
-    return resourceFetcher.getDeployments(instanceData);
+    await this._ensureInitialized();
+    // Use static cache
+    if (ComfyUIService.S_DEPLOYMENTS_CACHE && Object.keys(ComfyUIService.S_DEPLOYMENTS_CACHE).length > 0) {
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getDeployments] Returning statically cached deployments.`);
+      return Object.values(ComfyUIService.S_DEPLOYMENTS_CACHE);
+    }
+    // Fallback: This should ideally not be reached if _ensureInitialized works correctly and populates the cache.
+    // If static init failed, this might be hit.
+    this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getDeployments] Static cache empty or not populated, fetching fresh deployments (fallback).`);
+    const deployments = await resourceFetcher.getDeployments(this._getInstanceData());
+    // Attempt to populate static cache if it was empty, indicating a potential issue in initial static load
+    if (!ComfyUIService.S_DEPLOYMENTS_CACHE || Object.keys(ComfyUIService.S_DEPLOYMENTS_CACHE).length === 0 && deployments.length > 0) {
+        ComfyUIService.S_DEPLOYMENTS_CACHE = deployments.reduce((acc, dep) => { if (dep.id) acc[dep.id] = dep; return acc; }, {});
+        this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getDeployments] Populated static deployments cache via fallback.`);
+    }
+    return deployments;
   }
 
   /**
@@ -384,13 +418,8 @@ class ComfyUIService {
    * @returns {Promise<Array>} - List of workflows
    */
   async getWorkflows() {
-    // Call the extracted action
-    const instanceData = {
-        logger: this.logger,
-        API_ENDPOINTS: API_ENDPOINTS,
-        _makeApiRequest: this._makeApiRequest.bind(this) // Pass bound method
-    };
-    return resourceFetcher.getWorkflows(instanceData);
+    await this._ensureInitialized();
+    return resourceFetcher.getWorkflows(this._getInstanceData());
   }
 
   /**
@@ -398,13 +427,20 @@ class ComfyUIService {
    * @returns {Promise<Array>} - List of machines
    */
   async getMachines() {
-    // Call the extracted action
-    const instanceData = {
-        logger: this.logger,
-        API_ENDPOINTS: API_ENDPOINTS,
-        _makeApiRequest: this._makeApiRequest.bind(this) // Pass bound method
-    };
-    return resourceFetcher.getMachines(instanceData);
+    await this._ensureInitialized();
+    // Use static cache
+    if (ComfyUIService.S_MACHINES_CACHE && Object.keys(ComfyUIService.S_MACHINES_CACHE).length > 0) {
+      this.logger.debug(`[ComfyUIService INSTANCE ${this.instanceId} .getMachines] Returning statically cached machines.`);
+      return Object.values(ComfyUIService.S_MACHINES_CACHE);
+    }
+    // Fallback, similar to getDeployments
+    this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getMachines] Static cache empty or not populated, fetching fresh machines (fallback).`);
+    const machines = await resourceFetcher.getMachines(this._getInstanceData());
+    if (!ComfyUIService.S_MACHINES_CACHE || Object.keys(ComfyUIService.S_MACHINES_CACHE).length === 0 && machines.length > 0) {
+        ComfyUIService.S_MACHINES_CACHE = machines.reduce((acc, m) => { if (m.id) acc[m.id] = m; return acc; }, {});
+        this.logger.info(`[ComfyUIService INSTANCE ${this.instanceId} .getMachines] Populated static machines cache via fallback.`);
+    }
+    return machines;
   }
 
   /**
@@ -446,6 +482,11 @@ class ComfyUIService {
    * @returns {Promise<Object>} - Returns workflow version
    */
   async getWorkflowVersion(versionId) {
+    await this._ensureInitialized();
+    if (!versionId) {
+      this.logger.error('[ComfyUIService.getWorkflowVersion] Version ID is required.');
+      throw new APIError('Version ID is required for getWorkflowVersion', 400);
+    }
     // Call the extracted action
     const instanceData = {
         logger: this.logger,
@@ -461,33 +502,21 @@ class ComfyUIService {
    * @returns {Promise<Object>} - Returns workflow details with complete JSON structure
    */
   async getWorkflowDetails(workflowId) {
-    if (!this.isInitialized) { // Check initialization if needed for context, maybe not strictly required here
-      this.logger.warn('[ComfyUIService.getWorkflowDetails] Called before initialization, proceeding but cache might be unavailable.');
-      // Consider if initialization is a hard requirement for this method too
+    await this._ensureInitialized(); // Ensures caches are populated if needed by resourceFetcher or subsequent logic
+    this.logger.debug(`[ComfyUIService.getWorkflowDetails] Fetching details for workflow ID: ${workflowId}`);
+    if (!workflowId) {
+      this.logger.error('[ComfyUIService.getWorkflowDetails] Workflow ID is required.');
+      throw new APIError('Workflow ID is required for getWorkflowDetails', 400);
     }
-    this.logger.info(`[ComfyUIService.getWorkflowDetails] Fetching details for workflow ID: ${workflowId}`);
-    try {
-      const instanceData = this._getInstanceData();
-      // Use the specific resourceFetcher function
-      const workflowDetails = await resourceFetcher.getWorkflowDetails(instanceData, workflowId);
-      // The resourceFetcher function should handle parsing the response JSON
-      // Check if resourceFetcher returns null or throws on error/not found
-      if (!workflowDetails) { // Adjust check based on how resourceFetcher signals 'not found'
-        this.logger.warn(`[ComfyUIService.getWorkflowDetails] Workflow ${workflowId} not found or fetcher returned null.`);
-        return null;
-      }
-      this.logger.info(`[ComfyUIService.getWorkflowDetails] Successfully fetched details for workflow ${workflowId}.`);
-      return workflowDetails; // Return the detailed object
-    } catch (error) {
-      // Log the error but maybe return null instead of throwing, depending on expected usage
-      this.logger.error(`[ComfyUIService.getWorkflowDetails] Error fetching details for workflow ${workflowId}: ${error.message}`, error);
-      // Decide whether to return null or re-throw based on how callers handle errors
-      // If 404 is common/expected, returning null might be better.
-      if (error instanceof APIError && error.statusCode === 404) {
-        return null; // Gracefully handle 'Not Found'
-      }
-      throw error; // Re-throw other errors
-    }
+    // Pass this service's getWorkflowVersion method to resourceFetcher.getWorkflowDetails
+    // so it can use the already initialized ComfyUIService instance for recursive calls if necessary.
+    const instanceData = {
+      ...this._getInstanceData(),
+      // This is a bit circular, but resourceFetcher.getWorkflowDetails might call getWorkflowVersion
+      // and we want it to call *this* instance's getWorkflowVersion.
+      getWorkflowVersion: (vId) => this.getWorkflowVersion(vId) 
+    };
+    return resourceFetcher.getWorkflowDetails(instanceData, workflowId);
   }
 
   /**
@@ -497,18 +526,17 @@ class ComfyUIService {
    * @returns {Promise<Object|null>} - Returns workflow JSON structure or null if not found
    */
   async getWorkflowContent(workflowId) {
-    // Call the extracted action
+    await this._ensureInitialized();
+    this.logger.debug(`[ComfyUIService.getWorkflowContent] Fetching content for workflow ID: ${workflowId}`);
+    if (!workflowId) {
+      this.logger.error('[ComfyUIService.getWorkflowContent] Workflow ID is required.');
+      throw new APIError('Workflow ID is required for getWorkflowContent', 400);
+    }
     const instanceData = {
-        logger: this.logger,
-        API_ENDPOINTS: API_ENDPOINTS,
-        _makeApiRequest: this._makeApiRequest.bind(this)
-        // Pass getWorkflowDetails and getWorkflowVersion for fallback logic within resourceFetcher
-        // We need to ensure these wrappers call the *actions* correctly
-        // getWorkflowDetails: this.getWorkflowDetails.bind(this),
-        // getWorkflowVersion: this.getWorkflowVersion.bind(this)
+      ...this._getInstanceData(),
+      getWorkflowVersion: (vId) => this.getWorkflowVersion(vId),
+      getWorkflowDetails: (wId) => this.getWorkflowDetails(wId) // Pass getWorkflowDetails as well
     };
-    // Re-check how resourceFetcher uses these fallbacks. It passes instanceData recursively.
-    // So we only need to pass _makeApiRequest primarily.
     return resourceFetcher.getWorkflowContent(instanceData, workflowId);
   }
 

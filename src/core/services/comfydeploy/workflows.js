@@ -21,10 +21,7 @@ const {
 const {
   standardizeWorkflowName,
   parseWorkflowStructure,
-  createDefaultInputPayload,
-  validateInputPayload,
-  mergeWithDefaultInputs,
-  prepareWorkflowPayload
+  extractNotes
 } = require('./workflowUtils');
 
 // Import actions
@@ -37,6 +34,9 @@ const {
 
 // Import the new Cache Manager
 const WorkflowCacheManager = require('./workflowCacheManager');
+
+// geniusoverhaul: Import ToolRegistry
+const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 
 const DEBUG_LOGGING_ENABLED = false; // Set to true to enable detailed logging
 
@@ -58,6 +58,9 @@ class WorkflowsService {
     this.timeout = options.timeout || DEFAULT_TIMEOUT;
     this.logger = options.logger || console.log;
     
+    // geniusoverhaul: Get ToolRegistry instance
+    this.toolRegistry = ToolRegistry.getInstance();
+
     // Instantiate the Cache Manager, passing relevant options
     this.cacheManager = new WorkflowCacheManager({
       apiUrl: this.apiUrl,
@@ -67,18 +70,19 @@ class WorkflowsService {
       cacheConfig: options.cache // Pass the cache config sub-object
     });
     
+    //DEPRECATED / HALLUCINATED
     // Load machine routing configuration
-    try {
-      const configPath = path.resolve(process.cwd(), 'config/workflow-machine-routing.js');
-      this.routingConfig = require(configPath);
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`Loaded machine routing configuration with ${Object.keys(this.routingConfig.routingRules).length} rules`);
-    } catch (error) {
-      this.logger.warn(`Could not load machine routing configuration: ${error.message}`);
-      this.routingConfig = {
-        routingRules: {},
-        defaultMachine: null
-      };
-    }
+    // try {
+    //   const configPath = path.resolve(process.cwd(), 'config/workflow-machine-routing.js');
+    //   this.routingConfig = require(configPath);
+    //   if (DEBUG_LOGGING_ENABLED) this.logger.info(`Loaded machine routing configuration with ${Object.keys(this.routingConfig.routingRules).length} rules`);
+    // } catch (error) {
+    //   this.logger.warn(`Could not load machine routing configuration: ${error.message}`);
+    //   this.routingConfig = {
+    //     routingRules: {},
+    //     defaultMachine: null
+    //   };
+    // }
     
     // Validate API key
     if (!this.apiKey) {
@@ -107,68 +111,82 @@ class WorkflowsService {
     // Ensure cache manager is initialized before accessing data
     await this.cacheManager.ensureInitialized(); 
     
-    // Access cache via manager
+    // Access cache via manager - this now returns ToolDefinition[]
     return this.cacheManager.cache.workflows; 
   }
 
   /**
-   * Get a workflow by its name
-   * 
-   * @param {string} name - Name of the workflow
-   * @returns {Promise<Object|null>} - Workflow object or null if not found
+   * Get a tool by its display name (standardized).
+   * @param {string} displayName - Display name of the tool.
+   * @returns {Promise<ToolDefinition|null>} - ToolDefinition object or null if not found.
    */
-  async getWorkflowByName(name) {
+  async getToolByDisplayName(displayName) { // Renamed from getWorkflowByName for clarity
     await this.cacheManager.ensureInitialized();
     
-    // Standardize the workflow name using the utility function
-    const standardName = standardizeWorkflowName(name);
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[getWorkflowByName] Looking up standard name: "${standardName}" (from original: "${name}")`);
+    const standardName = standardizeWorkflowName(displayName);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[getToolByDisplayName] Looking up standard display name: "${standardName}" (from original: "${displayName}")`);
     
-    // Try to find by standardized name first using the manager's cache
-    let workflow = this.cacheManager.cache.byName.get(standardName);
+    let tool = this.cacheManager.cache.byName.get(standardName); // byName is keyed by sanitized displayName
     
-    // Log cache keys for comparison if not found initially
-    if (!workflow) {
+    if (!tool && displayName !== standardName) {
+      tool = this.cacheManager.cache.byName.get(displayName); 
+      if (tool && DEBUG_LOGGING_ENABLED) this.logger.info(`Found tool using original displayName "${displayName}"`);
+    }
+    
+    if (!tool && DEBUG_LOGGING_ENABLED) {
         const availableKeys = Array.from(this.cacheManager.cache.byName.keys());
-        if (DEBUG_LOGGING_ENABLED) this.logger.warn(`[getWorkflowByName] Workflow with standard name "${standardName}" not found directly in byName cache. Available keys: ${availableKeys.join(", ")}`);
+        this.logger.warn(`[getToolByDisplayName] Tool with display name "${standardName}" not found. Available byName keys: ${availableKeys.join(", ")}`);
     }
-    
-    // If not found by standardized name, try original name as fallback
-    if (!workflow && name !== standardName) {
-      // Access cache via manager
-      workflow = this.cacheManager.cache.byName.get(name); 
-      
-      if (workflow) {
-        if (DEBUG_LOGGING_ENABLED) this.logger.info(`Found workflow using original name "${name}" instead of standardized name "${standardName}"`);
-      }
-    }
-    
-    return workflow || null;
+    return tool || null;
   }
 
   /**
-   * Get required inputs for a specific workflow (retrieved from cached data)
-   * 
-   * @param {string} name - Name of the workflow 
-   * @returns {Promise<Array>} - Array of required inputs with their types and default values
+   * Get a tool by its ID.
+   * @param {string} toolId - The ID of the tool.
+   * @returns {Promise<ToolDefinition|null>} - ToolDefinition object or null if not found.
    */
-  async getWorkflowRequiredInputs(name) {
-    const workflow = await this.getWorkflowByName(name);
-    
-    if (!workflow) {
-      this.logger.warn(`[getWorkflowRequiredInputs] Workflow "${name}" not found in cache.`);
+  async getToolById(toolId) {
+    await this.cacheManager.ensureInitialized(); // Ensure registry is populated
+    const tool = this.toolRegistry.getToolById(toolId);
+    if (!tool && DEBUG_LOGGING_ENABLED) {
+        this.logger.warn(`[getToolById] Tool with ID "${toolId}" not found in ToolRegistry.`);
+    }
+    return tool || null;
+  }
+  
+  /**
+   * Get required inputs for a specific tool.
+   * @param {string} toolId - The ID of the tool.
+   * @returns {Promise<Array>} - Array of required input objects { name, type, default, required, description, advanced }.
+   */
+  async getToolRequiredInputs(toolId) {
+    const tool = await this.getToolById(toolId);
+
+    if (!tool) {
+      this.logger.warn(`[getToolRequiredInputs] Tool with ID "${toolId}" not found.`);
       return [];
     }
-    
-    // The initialize() method should have already populated this.
-    if (workflow.requiredInputs && Array.isArray(workflow.requiredInputs)) {
-      // this.logger.info(`[getWorkflowRequiredInputs] Returning cached inputs for "${name}".`); // Optionally keep for debugging
-      return workflow.requiredInputs;
-    } else {
-      // This case should ideally not happen if initialization is successful.
-      this.logger.warn(`[getWorkflowRequiredInputs] Required inputs not found in cache for "${name}". Initialization might have failed or workflow structure is missing.`);
+
+    if (!tool.inputSchema) {
+      this.logger.warn(`[getToolRequiredInputs] Tool "${toolId}" has no inputSchema defined.`);
       return [];
     }
+
+    const requiredInputs = [];
+    for (const inputName in tool.inputSchema) {
+      const fieldSchema = tool.inputSchema[inputName];
+      if (fieldSchema.required) {
+        requiredInputs.push({
+          name: inputName, // fieldSchema.name is already the key
+          type: fieldSchema.type,
+          default: fieldSchema.default,
+          required: fieldSchema.required,
+          description: fieldSchema.description || '',
+          advanced: fieldSchema.advanced || false,
+        });
+      }
+    }
+    return requiredInputs;
   }
 
   /**
@@ -177,44 +195,62 @@ class WorkflowsService {
    * @param {string} name - Name of the workflow
    * @returns {Promise<string>} - Type of output (image, video, animation, unknown)
    */
-  async getWorkflowOutputType(name) {
-    const workflow = await this.getWorkflowByName(name);
+  async getWorkflowOutputType(name) { // name here is displayName
+    const tool = await this.getToolByDisplayName(name); // Changed to use getToolByDisplayName
     
-    // The initialize() method should have already populated this.
-    return workflow?.outputType || 'unknown';
+    // Output type isn't directly on ToolDefinition yet.
+    // This might need to be inferred or added to ToolDefinition.metadata if still needed.
+    // For now, return unknown or a placeholder based on category if possible.
+    if (tool && tool.category) {
+        if (tool.category.includes('image')) return 'image';
+        if (tool.category.includes('video')) return 'video';
+    }
+    return tool?.metadata?.outputType || 'unknown'; // Assuming it might be in metadata
   }
 
   /**
-   * Check if a workflow supports LoRA loading (retrieved from cached data)
-   * 
-   * @param {string} name - Name of the workflow
-   * @returns {Promise<boolean>} - True if workflow supports LoRA, false otherwise
+   * Check if a tool supports LoRA loading (retrieved from cached data)
+   * @param {string} name - Display name of the tool
+   * @returns {Promise<boolean>} - True if tool supports LoRA, false otherwise
    */
-  async hasLoraLoaderSupport(name) {
-    const workflow = await this.getWorkflowByName(name);
+  async hasLoraLoaderSupport(name) { // name here is displayName
+    const tool = await this.getToolByDisplayName(name); // Changed to use getToolByDisplayName
     
-    // The initialize() method should have already populated this.
-    return workflow?.hasLoraLoader || false;
+    // LoRA support isn't directly on ToolDefinition.
+    // This might be inferred from inputSchema (e.g., has a 'lora_name' input)
+    // or stored in tool.metadata.
+    // For now, default to false or check metadata.
+    return tool?.metadata?.hasLoraLoader || false; 
   }
 
   /**
-   * Get deployment IDs associated with a specific workflow (retrieved from cached data)
-   * 
-   * @param {string} name - Name of the workflow
-   * @returns {Promise<Array|null>} - Array of deployment IDs or null if none found
+   * Get deployment IDs associated with a specific tool (by display name).
+   * @param {string} displayName - Display name of the tool.
+   * @returns {Promise<Array|null>} - Array of deployment IDs or null if tool not found.
    */
-  async getDeploymentIdsByName(name) {
-    const workflow = await this.getWorkflowByName(name);
+  async getDeploymentIdsByToolDisplayName(displayName) { // Renamed for clarity
+    const tool = await this.getToolByDisplayName(displayName); 
     
-    if (!workflow) {
-      this.logger.warn(`[getDeploymentIdsByName] Workflow "${name}" not found in cache.`);
-      return null;
+    if (!tool) {
+      this.logger.warn(`[getDeploymentIdsByToolDisplayName] Tool with displayName "${displayName}" not found.`);
+      return null; // Keep null if tool itself not found, as per original logic for getDeploymentIdsByName
     }
 
-    // The initialize() and _buildIndexes() methods should have populated this.
-    // We expect an array (possibly empty) if the workflow exists.
-    // Return null only if the workflow itself wasn't found.
-    return workflow.deploymentIds || []; 
+    if (tool.metadata) {
+        if (Array.isArray(tool.metadata.deploymentIds) && tool.metadata.deploymentIds.length > 0) {
+            return tool.metadata.deploymentIds;
+        }
+        if (tool.metadata.deploymentId) {
+            // Ensure it's the raw deployment_id, not the toolId like "comfy-..."
+            const rawDeploymentId = tool.metadata.deploymentId.startsWith('comfy-') 
+                ? tool.metadata.deploymentId.substring(6) 
+                : tool.metadata.deploymentId;
+            return [rawDeploymentId];
+        }
+    }
+    
+    this.logger.warn(`[getDeploymentIdsByToolDisplayName] No deploymentId(s) found in metadata for tool "${tool.toolId}".`);
+    return []; // Return empty array if tool exists but no IDs, consistent with old logic
   }
 
   /**
@@ -266,9 +302,21 @@ class WorkflowsService {
    * @param {string} name - Name of the workflow
    * @returns {Promise<Array|null>} - Array of required input names or null if not found
    */
-  async getWorkflowInputs(name) {
-    const workflow = await this.getWorkflowByName(name);
-    return workflow ? workflow.inputs : null;
+  async getWorkflowInputs(name) { // name is displayName
+    const tool = await this.getToolByDisplayName(name); // Changed to use getToolByDisplayName
+    if (!tool || !tool.inputSchema) {
+        this.logger.warn(`[getWorkflowInputs] Tool "${name}" not found or no inputSchema.`);
+        return [];
+    }
+    // Convert inputSchema object to an array of { name, type, default, required, ... }
+    return Object.entries(tool.inputSchema).map(([inputName, fieldSchema]) => ({
+        name: inputName,
+        type: fieldSchema.type,
+        default: fieldSchema.default,
+        required: fieldSchema.required,
+        description: fieldSchema.description,
+        advanced: fieldSchema.advanced
+    }));
   }
 
   /**
@@ -277,8 +325,9 @@ class WorkflowsService {
    * @param {string} name - Name of the workflow
    * @returns {Promise<boolean>} - True if workflow exists
    */
-  async hasWorkflow(name) {
-    return await this.getWorkflowByName(name) !== null;
+  async hasWorkflow(name) { // name is displayName
+    const tool = await this.getToolByDisplayName(name); // Changed to use getToolByDisplayName
+    return !!tool;
   }
 
   /**
@@ -433,50 +482,172 @@ class WorkflowsService {
   }
 
   /**
-   * Create a default input payload for a workflow using the default values from ComfyUIDeployExternal nodes
-   * 
-   * @param {string} name - Name of the workflow
-   * @returns {Promise<Object>} - Default input payload with all required inputs pre-populated
+   * Creates a default input payload for a given tool ID or display name.
+   * @param {string} toolIdentifier - The tool's ID or display name.
+   * @returns {Promise<Object>} - Default input payload.
    */
-  async createDefaultInputPayload(name) {
-    // Call the utility function, passing the instance (this)
-    return createDefaultInputPayload(this, name);
+  async createDefaultToolInputPayload(toolIdentifier) {
+    let tool = await this.getToolById(toolIdentifier);
+    if (!tool) {
+      tool = await this.getToolByDisplayName(toolIdentifier);
+    }
+
+    if (!tool || !tool.inputSchema) {
+      this.logger.warn(`[createDefaultToolInputPayload] Tool "${toolIdentifier}" not found or has no inputSchema.`);
+      return {};
+    }
+
+    const payload = {};
+    for (const inputName in tool.inputSchema) {
+      const fieldSchema = tool.inputSchema[inputName];
+      if (fieldSchema.default !== undefined) {
+        payload[inputName] = fieldSchema.default;
+      }
+      // No warning for required fields without defaults here, as per previous createDefaultInputPayload structure
+    }
+    return payload;
   }
 
   /**
-   * Validates if an input payload has all required inputs for a workflow
-   * 
-   * @param {string} name - Name of the workflow
-   * @param {Object} inputPayload - The input payload to validate
-   * @returns {Promise<Object>} - Object with isValid flag and any missing or invalid inputs
+   * Validates an input payload against a tool's inputSchema.
+   * @param {string} toolIdentifier - The tool's ID or display name.
+   * @param {Object} inputPayload - The user-provided inputs.
+   * @returns {Promise<{isValid: boolean, errors: string[], validatedPayload: Object}>}
    */
-  async validateInputPayload(name, inputPayload) {
-     // Call the utility function, passing the instance (this)
-    return validateInputPayload(this, name, inputPayload);
+  async validateToolInputPayload(toolIdentifier, inputPayload) {
+    let tool = await this.getToolById(toolIdentifier);
+    if (!tool) {
+      tool = await this.getToolByDisplayName(toolIdentifier);
+    }
+
+    if (!tool) {
+      return { isValid: false, errors: [`Tool "${toolIdentifier}" not found.`], validatedPayload: inputPayload };
+    }
+    if (!tool.inputSchema) {
+      return { isValid: false, errors: [`Tool "${tool.toolId}" has no inputSchema.`], validatedPayload: inputPayload };
+    }
+
+    const errors = [];
+    const validatedPayload = { ...inputPayload }; 
+
+    for (const inputName in tool.inputSchema) {
+      const fieldSchema = tool.inputSchema[inputName];
+
+      if (fieldSchema.required && !(inputName in validatedPayload) && fieldSchema.default === undefined) {
+        errors.push(`Missing required input: "${inputName}" for tool "${tool.toolId}".`);
+      }
+      
+      if (!(inputName in validatedPayload) && fieldSchema.default !== undefined) {
+        validatedPayload[inputName] = fieldSchema.default; // Apply default if missing
+      }
+      
+      // Simple Type Checking (can be expanded)
+      if (inputName in validatedPayload) {
+        const value = validatedPayload[inputName];
+        if (fieldSchema.type === 'number' && typeof value !== 'number') {
+          // Attempt coercion for strings that are numbers
+          const numValue = Number(value);
+          if (isNaN(numValue)) {
+            errors.push(`Input "${inputName}" for tool "${tool.toolId}" must be a number. Received: ${typeof value}`);
+          } else {
+            validatedPayload[inputName] = numValue; // Use coerced value
+          }
+        } else if (fieldSchema.type === 'string' && typeof value !== 'string') {
+          errors.push(`Input "${inputName}" for tool "${tool.toolId}" must be a string. Received: ${typeof value}`);
+        } else if (fieldSchema.type === 'boolean' && typeof value !== 'boolean') {
+          errors.push(`Input "${inputName}" for tool "${tool.toolId}" must be a boolean. Received: ${typeof value}`);
+        }
+        // Add more type checks as needed (image, video, file might need different validation)
+      }
+    }
+    
+    // Optional: Check for extraneous inputs
+    // for (const keyInPayload in validatedPayload) {
+    //   if (!(keyInPayload in tool.inputSchema)) {
+    //     errors.push(`Unknown input field "${keyInPayload}" provided for tool "${tool.toolId}".`);
+    //   }
+    // }
+
+    return { isValid: errors.length === 0, errors, validatedPayload };
   }
 
   /**
-   * Merges user-provided inputs with defaults for any missing required inputs
-   * 
-   * @param {string} name - Name of the workflow
-   * @param {Object} userInputs - User-provided input values
-   * @returns {Promise<Object>} - Complete input payload with defaults for missing values
+   * Merges user inputs with the default values from a tool's inputSchema.
+   * @param {string} toolIdentifier - The tool's ID or display name.
+   * @param {Object} userInputs - The user-provided inputs.
+   * @returns {Promise<Object>} - The merged payload.
    */
-  async mergeWithDefaultInputs(name, userInputs = {}) {
-    // Call the utility function, passing the instance (this)
-    return mergeWithDefaultInputs(this, name, userInputs);
+  async mergeToolWithDefaultInputs(toolIdentifier, userInputs = {}) {
+    let tool = await this.getToolById(toolIdentifier);
+    if (!tool) {
+      tool = await this.getToolByDisplayName(toolIdentifier);
+    }
+
+    if (!tool || !tool.inputSchema) {
+      this.logger.warn(`[mergeToolWithDefaultInputs] Tool "${toolIdentifier}" not found or has no inputSchema. Returning user inputs as is.`);
+      return { ...userInputs };
+    }
+
+    const finalPayload = { ...userInputs }; // Start with user inputs
+
+    for (const inputName in tool.inputSchema) {
+      const fieldSchema = tool.inputSchema[inputName];
+      // Apply default only if the input is NOT provided by the user
+      if (!(inputName in finalPayload) && fieldSchema.default !== undefined) {
+        finalPayload[inputName] = fieldSchema.default;
+      }
+    }
+    return finalPayload;
   }
 
   /**
-   * Prepare a complete payload for workflow execution with validation
-   * 
-   * @param {string} name - Name of the workflow
-   * @param {Object} userInputs - Optional user-provided inputs
-   * @returns {Promise<Object>} - Object with payload, validation info, and workflow info
+   * Prepares the final payload for running a ComfyUI workflow using a tool.
+   * This now uses toolId primarily and relies on the refactored methods.
+   * @param {string} toolId - The ID of the tool.
+   * @param {Object} userInputs - User-provided input values.
+   * @returns {Promise<Object|null>} - Prepared payload or null if error.
    */
-  async prepareWorkflowPayload(name, userInputs = {}) {
-    // Call the utility function, passing the instance (this)
-    return prepareWorkflowPayload(this, name, userInputs);
+  async prepareToolRunPayload(toolId, userInputs = {}) { // Renamed from prepareWorkflowPayload
+    const tool = await this.getToolById(toolId);
+    if (!tool) {
+        this.logger.error(`[prepareToolRunPayload] Tool with ID "${toolId}" not found.`);
+        return null;
+    }
+    if (tool.service !== 'comfyui') {
+        this.logger.error(`[prepareToolRunPayload] Tool "${toolId}" is not a comfyui service tool. Service: ${tool.service}`);
+        return null;
+    }
+
+    const { isValid, errors, validatedPayload } = await this.validateToolInputPayload(toolId, userInputs);
+
+    if (!isValid) {
+      this.logger.error(`[prepareToolRunPayload] Invalid input payload for tool "${toolId}": ${errors.join(', ')}`);
+      // Consider throwing an error or returning a more structured error response
+      return null; 
+    }
+    
+    // validatedPayload already has defaults applied if they were missing and required wasn't an issue.
+    // If mergeToolWithDefaultInputs is called after validation, it would ensure all defaults are there,
+    // even for non-required fields if user didn't provide them.
+    // For now, validatedPayload from validateToolInputPayload should be sufficient if its logic is robust.
+    const finalPayloadWithDefaults = await this.mergeToolWithDefaultInputs(toolId, validatedPayload);
+
+
+    // The original prepareWorkflowPayload from workflowUtils might still be useful
+    // if it does ComfyUI-specific transformations beyond basic input mapping.
+    // For now, let's assume finalPayloadWithDefaults is what we need for the API.
+    // If `prepareWorkflowPayload` in `workflowUtils` is essential for ComfyUI structure,
+    // it would need to be adapted to take `tool.inputSchema` and `finalPayloadWithDefaults`.
+
+    // Example: If workflowUtils.prepareWorkflowPayload needs to be called:
+    // return prepareWorkflowPayload(this, tool.displayName, finalPayloadWithDefaults); 
+    // BUT, prepareWorkflowPayload in utils would need to be refactored to use tool.inputSchema
+    // or accept the schema directly.
+
+    // For now, returning the processed payload.
+    // The actual ComfyUI execution service (e.g., comfyui.js) will take this payload
+    // and the deploymentId from tool.metadata.deploymentId to run the workflow.
+    return finalPayloadWithDefaults;
   }
 }
 

@@ -13,6 +13,10 @@ const { v4: uuidv4 } = require('uuid'); // For request IDs in errors
 // Store application start time
 const APP_START_TIME = new Date();
 
+// Import our custom logger
+const { createLogger } = require('./src/utils/logger');
+const logger = createLogger('app'); // Create a logger for app.js
+
 // Import refactored components
 const { initializeDatabase } = require('./src/core/initDB');
 const { initializeServices } = require('./src/core/services');
@@ -25,71 +29,75 @@ const { initializeRoutes: setupWebRoutes } = require('./src/platforms/web/routes
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
 const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
 
+// geniusoverhaul: Import ToolRegistry
+const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
+
 /**
  * Initialize and start the refactored application
  */
 async function startApp() {
   try {
-    console.log('===================================================');
-    console.log('| Initializing StationThis refactored application |');
-    console.log('===================================================');
+    logger.info('===================================================');
+    logger.info('| Initializing StationThis refactored application |');
+    logger.info('===================================================');
     
     // Initialize Database Connection FIRST
     await initializeDatabase();
-    console.log('Database connection initialized (or initialization process started).');
+    logger.info('Database connection initialized (or initialization process started).');
     
     // Initialize core services
     const services = await initializeServices({ 
-      logger: console
+      logger: logger // Pass the app logger or a child logger
     });
-    console.log('Core services initialized');
+    logger.info('Core services initialized');
     
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
-      console.log('Initializing WorkflowsService cache...');
+      logger.info('Initializing WorkflowsService cache...');
       await services.workflows.initialize();
-      console.log('WorkflowsService cache initialized.');
+      logger.info('WorkflowsService cache initialized.');
     } else {
-      console.warn('WorkflowsService not found or does not have an initialize method.');
+      logger.warn('WorkflowsService not found or does not have an initialize method.');
     }
     
     // Debug log to verify internal services are available
-    console.log('DEBUG: Internal API services available:', 
-      services.internal ? 'Yes' : 'No',
-      services.internal?.status ? 'Status service OK' : 'Status service missing');
+    logger.debug('DEBUG: Internal API services available:', {
+      internalAvailable: services.internal ? 'Yes' : 'No',
+      statusService: services.internal?.status ? 'Status service OK' : 'Status service missing'
+    });
     
     // Run system initialization
-    console.log('\nStarting system initialization sequence...');
-    const initResults = await initialize(services, console);
+    logger.info('\nStarting system initialization sequence...');
+    const initResults = await initialize(services, logger); // Pass logger here too
     
     // Log initialization results
     if (initResults.status === 'success') {
-      console.log('\nInitialization Results: SUCCESS');
+      logger.info('\nInitialization Results: SUCCESS');
     } else if (initResults.status === 'partial') {
-      console.warn('\nInitialization Results: PARTIAL - Some components failed to initialize');
-      console.warn('Error:', initResults.error);
-      console.log('Continuing with available components...');
+      logger.warn('\nInitialization Results: PARTIAL - Some components failed to initialize');
+      logger.warn('Error:', initResults.error);
+      logger.info('Continuing with available components...');
     } else {
-      console.error('\nInitialization Results: FAILED');
-      console.error('Error:', initResults.error);
-      console.log('Attempting to continue with critical services only...');
+      logger.error('\nInitialization Results: FAILED');
+      logger.error('Error:', initResults.error);
+      logger.info('Attempting to continue with critical services only...');
     }
     
     // Log data availability regardless of status
-    console.log('- Burns data records:', initResults.data.burns);
-    console.log('- Rooms/Groups:', initResults.data.rooms);
-    console.log('- Workflows:', initResults.data.workflows);
-    console.log('- Lora Triggers:', initResults.data.loras);
-    console.log('- ComfyUI API:', initResults.data.comfyUI.connected ? 'Connected' : 'Failed');
+    logger.info('- Burns data records:', initResults.data.burns);
+    logger.info('- Rooms/Groups:', initResults.data.rooms);
+    logger.info('- Workflows:', initResults.data.workflows);
+    logger.info('- Lora Triggers:', initResults.data.loras);
+    logger.info('- ComfyUI API:', initResults.data.comfyUI.connected ? 'Connected' : 'Failed');
     
     if (initResults.data.comfyUI.connected) {
-      console.log('  - Available workflows:', initResults.data.comfyUI.workflows);
-      console.log('  - Available deployments:', initResults.data.comfyUI.deployments);
-      console.log('  - Available machines:', initResults.data.comfyUI.machines);
-      console.log('  - Ready machines:', initResults.data.comfyUI.readyMachines);
+      logger.info('  - Available workflows:', initResults.data.comfyUI.workflows);
+      logger.info('  - Available deployments:', initResults.data.comfyUI.deployments);
+      logger.info('  - Available machines:', initResults.data.comfyUI.machines);
+      logger.info('  - Ready machines:', initResults.data.comfyUI.readyMachines);
     }
     
-    console.log('\nProceeding to platform initialization...\n');
+    logger.info('\nProceeding to platform initialization...\n');
     
     // Map services to the names/structure expected by the platform initializers
     const platformServices = {
@@ -105,6 +113,8 @@ async function startApp() {
       db: services.db,
       internal: services.internal,
       internalApiClient: services.internalApiClient,
+      // geniusoverhaul: Add ToolRegistry to platformServices
+      toolRegistry: ToolRegistry.getInstance(),
       // Keep the stubbed collections structure separate if needed by other platforms,
       // but don't overwrite the main workflows service instance.
       // If platforms *specifically* need the stubbed collections, they should access
@@ -129,7 +139,7 @@ async function startApp() {
     // Add other mappings as required by specific platforms... 
     
     // Initialize platforms with the corrected services object
-    console.log('Initializing platform adapters...');
+    logger.info('Initializing platform adapters...');
     const platforms = initializePlatforms(platformServices, {
       enableTelegram: true,
       enableDiscord: true,
@@ -138,12 +148,12 @@ async function startApp() {
         staticPath: path.join(__dirname, 'public')
       }
     });
-    console.log('Platform adapters initialized');
+    logger.info('Platform adapters initialized');
 
     // --- Initialize and Start Notification Dispatcher ---
     if (services.internalApiClient && services.logger && platforms.telegram && platforms.telegram.bot) {
       try {
-        console.log('[App] Initializing TelegramNotifier...');
+        logger.info('[App] Initializing TelegramNotifier...');
         const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
         
         const platformNotifiersMap = {
@@ -152,7 +162,7 @@ async function startApp() {
           // discord: new DiscordNotifier(platforms.discord.bot, services.logger),
         };
 
-        console.log('[App] Initializing NotificationDispatcher...');
+        logger.info('[App] Initializing NotificationDispatcher...');
         const notificationDispatcher = new NotificationDispatcher(
           {
             internalApiClient: services.internalApiClient,
@@ -162,13 +172,13 @@ async function startApp() {
           { /* Optional: pollingIntervalMs, etc. */ }
         );
         await notificationDispatcher.start();
-        console.log('[App] NotificationDispatcher started.');
+        logger.info('[App] NotificationDispatcher started.');
       } catch (dispatcherError) {
-        console.error('[App] Failed to initialize or start NotificationDispatcher:', dispatcherError.message, dispatcherError.stack);
+        logger.error('[App] Failed to initialize or start NotificationDispatcher:', dispatcherError.message, { stack: dispatcherError.stack });
         // Decide if this is a fatal error or if the app can run without it
       }
     } else {
-      console.warn('[App] Could not initialize NotificationDispatcher: Missing dependencies (internalApiClient, logger, or Telegram platform/bot). Dispatcher will not run.');
+      logger.warn('[App] Could not initialize NotificationDispatcher: Missing dependencies (internalApiClient, logger, or Telegram platform/bot). Dispatcher will not run.');
     }
     // --- End Notification Dispatcher Initialization ---
 
@@ -176,7 +186,7 @@ async function startApp() {
     const internalApiAuthMiddleware = (req, res, next) => {
       const requestId = uuidv4(); // Generate request ID for error logging
       // Ensure logger is available, fallback to console if services.logger is not yet initialized or passed
-      const currentLogger = services && services.logger ? services.logger : console;
+      const currentLogger = services && services.logger ? services.logger : logger; // Use app logger as fallback
       const clientKey = req.headers['x-internal-client-key'];
 
       if (!clientKey) {
@@ -215,9 +225,9 @@ async function startApp() {
       // Apply the auth middleware specifically to the /internal path of the web app
       platforms.web.app.use('/internal', internalApiAuthMiddleware);
       platforms.web.app.use('/internal', services.internal.router);
-      console.log('Internal API authentication middleware and router mounted at /internal');
+      logger.info('Internal API authentication middleware and router mounted at /internal');
     } else {
-      console.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible or secured.');
+      logger.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible or secured.');
     }
     
     // Initialize web server routes BEFORE setting up Telegram commands
@@ -225,42 +235,42 @@ async function startApp() {
       try {
         // Ensure the web platform exposes its app instance and its own initializeRoutes method
         if (platforms.web.app && typeof platforms.web.initializeRoutes === 'function') {
-          console.log('Initializing Web platform routes (API, static, SPA)...');
+          logger.info('Initializing Web platform routes (API, static, SPA)...');
           // This single call will handle API routes, static files, and SPA fallback internally.
           await platforms.web.initializeRoutes(); 
-          console.log('Web platform routes (API, static, SPA) initialized.');
+          logger.info('Web platform routes (API, static, SPA) initialized.');
         } else {
-          console.warn('Web platform app instance or its initializeRoutes method not available.');
+          logger.warn('Web platform app instance or its initializeRoutes method not available.');
         }
 
         const port = process.env.WEB_PORT || 4000;
-        console.log(`Starting Web platform on port ${port}...`);
+        logger.info(`Starting Web platform on port ${port}...`);
         await platforms.web.start(port);
-        console.log(`Web platform running on port ${port}`);
+        logger.info(`Web platform running on port ${port}`);
         
         // Now setup Telegram commands AFTER web routes are initialized
         if (platforms.telegram) {
           try {
-            console.log('Setting up Telegram dynamic commands...');
+            logger.info('Setting up Telegram dynamic commands...');
             await platforms.telegram.setupCommands();
-            console.log('Telegram dynamic commands configured');
+            logger.info('Telegram dynamic commands configured');
           } catch (telegramError) {
-            console.error('Failed to setup Telegram commands:', telegramError.message);
+            logger.error('Failed to setup Telegram commands:', telegramError.message);
           }
         }
         
         // Then start Discord...
         
       } catch (webError) {
-        console.error('Failed to start Web platform:', webError.message);
+        logger.error('Failed to start Web platform:', webError.message);
       }
     } else {
-      console.warn('Web platform not configured or disabled');
+      logger.warn('Web platform not configured or disabled');
     }
     
-    console.log('\n===========================================');
-    console.log('| StationThis application is now running! |');
-    console.log('===========================================\n');
+    logger.info('\n===========================================');
+    logger.info('| StationThis application is now running! |');
+    logger.info('===========================================\n');
     
     // Return components for external access
     return {
@@ -268,7 +278,7 @@ async function startApp() {
       platforms
     };
   } catch (error) {
-    console.error('Failed to start application:', error);
+    logger.error('Failed to start application:', error);
     throw error;
   }
 }
@@ -282,7 +292,7 @@ module.exports = {
 // Start the app if this file is run directly
 if (require.main === module) {
   startApp().catch(error => {
-    console.error('Application startup failed:', error);
+    logger.error('Application startup failed:', error);
     process.exit(1);
   });
 } 

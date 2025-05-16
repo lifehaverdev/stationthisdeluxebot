@@ -7,12 +7,11 @@
 const { MongoClient } = require('mongodb');
 //const { logThis } = require('../../utils/utils');
 require('dotenv').config();
-function logThis(active, message) {
-    if (active) console.log(message);
-}
-const LOG_DB_QUEUE = 'db_queue';
-const LOG_CLIENT = false;
-const LOG_CONNECTION = 'connection';
+
+// Import our custom logger
+const { createLogger } = require('../../../../utils/logger');
+const logger = createLogger('db-queue');
+
 const JOB_TIMEOUT = 300000; // 30 seconds
 
 const PRIORITY = {
@@ -94,7 +93,7 @@ class DatabaseQueue {
                     try {
                         await job();
                     } catch (error) {
-                        console.error('Error processing batch job:', error);
+                        logger.error('Error processing batch job:', error);
                     }
                 }
             };
@@ -137,29 +136,29 @@ class DatabaseQueue {
  * @returns {Promise<MongoClient>} MongoDB client
  */
 async function getCachedClient() {
-    logThis(LOG_CLIENT, '[getCachedClient] Called');
+    logger.debug('[getCachedClient] Called');
 
     if (connectionInProgress) {
-        logThis(LOG_CONNECTION, '[getCachedClient] Connection in progress. Awaiting current connection...');
+        logger.debug('[getCachedClient] Connection in progress. Awaiting current connection...');
         await connectionInProgress;
         return cachedClient;
     }
 
     if (!cachedClient) {
-        logThis(LOG_CONNECTION, '[getCachedClient] No cached client found. Initiating new connection...');
+        logger.info('[getCachedClient] No cached client found. Initiating new connection...');
         
         connectionInProgress = (async () => {
             // Use MONGO_PASS environment variable instead of MONGODB_URI
             const uri = process.env.MONGO_PASS || process.env.MONGODB_URI || 'mongodb://localhost:27017';
-            console.log('[getCachedClient] Connecting to MongoDB with URI:', uri.replace(/mongodb\+srv:\/\/[^:]+:[^@]+@/, 'mongodb+srv://[hidden]:[hidden]@'));
+            //logger.info('[getCachedClient] Connecting to MongoDB with URI:', { uri: uri.replace(/mongodb\+srv:\/\/[^:]+:[^@]+@/, 'mongodb+srv://[hidden]:[hidden]@') });
             cachedClient = new MongoClient(uri);
-            logThis(LOG_CLIENT, '[getCachedClient] New MongoClient instance created.');
+            logger.debug('[getCachedClient] New MongoClient instance created.');
 
             try {
                 await cachedClient.connect();
-                logThis(LOG_CONNECTION, '[getCachedClient] MongoClient connected successfully.');
+                logger.info('[getCachedClient] MongoClient connected successfully.');
             } catch (error) {
-                console.error('[getCachedClient] Error connecting MongoClient:', error);
+                logger.error('[getCachedClient] Error connecting MongoClient:', error);
                 cachedClient = null;
                 throw error;
             } finally {
@@ -169,14 +168,14 @@ async function getCachedClient() {
 
         await connectionInProgress;
     } else if (!cachedClient.topology || !cachedClient.topology.isConnected()) {
-        logThis(LOG_CONNECTION, '[getCachedClient] Cached client found, but not connected. Attempting reconnection...');
+        logger.info('[getCachedClient] Cached client found, but not connected. Attempting reconnection...');
 
         connectionInProgress = (async () => {
             try {
                 await cachedClient.connect();
-                logThis(LOG_CONNECTION, '[getCachedClient] Reconnected MongoClient successfully.');
+                logger.info('[getCachedClient] Reconnected MongoClient successfully.');
             } catch (error) {
-                console.error('[getCachedClient] Error reconnecting MongoClient:', error);
+                logger.error('[getCachedClient] Error reconnecting MongoClient:', error);
                 cachedClient = null;
                 throw error;
             } finally {
@@ -187,7 +186,7 @@ async function getCachedClient() {
         await connectionInProgress;
     }
 
-    logThis(LOG_CLIENT, '[getCachedClient] Returning cached client.');
+    logger.debug('[getCachedClient] Returning cached client.');
     return cachedClient;
 }
 
