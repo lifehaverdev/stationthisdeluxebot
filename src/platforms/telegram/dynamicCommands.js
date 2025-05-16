@@ -1,6 +1,37 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const internalApiClient = require('./utils/internalApiClient'); // Import the API client
 
+async function getTelegramFileUrl(bot, message) {
+  let fileId;
+  const targetMessage = message.reply_to_message || message;
+
+  if (targetMessage.photo) {
+    fileId = targetMessage.photo[targetMessage.photo.length - 1].file_id;
+  } else if (targetMessage.document && targetMessage.document.mime_type && targetMessage.document.mime_type.startsWith('image/')) {
+    // Also allow documents if they are images
+    fileId = targetMessage.document.file_id;
+  } else {
+    return null;
+  }
+
+  try {
+    // Assuming bot.telegram.getFileLink() or equivalent exists and returns a direct URL string
+    // Or, if we need to construct it manually using bot.getFile():
+    const fileInfo = await bot.getFile(fileId);
+    if (fileInfo.file_path) {
+      // Construct the URL. Ensure process.env.TELEGRAM_BOT_TOKEN is accessible here
+      // This might require passing the token or having it in a shared config.
+      // For now, assuming direct access or a pre-configured bot instance.
+      // This is a common way to construct it:
+      return `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+    }
+    return null; // Fallback if file_path isn't available
+  } catch (error) {
+    console.error("[Telegram] Error fetching file URL:", error);
+    return null;
+  }
+}
+
 async function setupDynamicCommands(bot, services) {
   const workflowsService = services.workflows;
   const comfyuiService = services.comfyui;
@@ -191,25 +222,55 @@ async function setupDynamicCommands(bot, services) {
         const handlerType = currentTool.metadata?.telegramHandlerType;
         const currentPromptInputKey = currentTool.metadata?.telegramPromptInputKey;
         const currentImageInputKey = currentTool.metadata?.telegramImageInputKey;
+        const currentVideoInputKey = currentTool.metadata?.telegramVideoInputKey;
 
-        if (handlerType !== 'text_only' && handlerType !== 'text_primary_media_optional') {
-            if ((handlerType === 'image_primary_with_text' || handlerType === 'image_only' || handlerType === 'image_required_with_text')) {
-                if (!msg.reply_to_message || !msg.reply_to_message.photo) {
-                    bot.sendMessage(chatId, `The /${commandName} command requires you to reply to an image. Please send an image and then reply to it with the command.`, { reply_to_message_id: msg.message_id });
-                    return;
-                }
-                logger.info(`[Telegram EXEC /${commandName}] Detected image-based command (${handlerType}). Image reply present. Needs full implementation.`);
-                bot.sendMessage(chatId, `The /${commandName} command looks like an image tool! Handling for this is coming soon. (Type: ${handlerType})`, { reply_to_message_id: msg.message_id });
-                return;
-            }
-            
+        let imageUrl = null;
+        let videoUrl = null; // For future video handling
+
+        // Prepare user inputs, starting with text
+        const userInputsForTool = {};
+        if (currentPromptInputKey && promptText) {
+          userInputsForTool[currentPromptInputKey] = promptText;
+        } else if (currentPromptInputKey && !promptText && !tool.inputSchema[currentPromptInputKey]?.required) {
+          // Optional prompt, not provided.
+        } else if (!currentPromptInputKey && promptText) {
+            logger.warn(`[Telegram EXEC /${commandName}] Prompt text provided but no promptInputKey defined for tool ${currentToolId}. Ignoring prompt text.`);
+        }
+
+        // Handle image inputs
+        if (handlerType === 'image_primary_with_text' || handlerType === 'image_only' || handlerType === 'image_required_with_text') {
+          if (!msg.reply_to_message || (!msg.reply_to_message.photo && !(msg.reply_to_message.document && msg.reply_to_message.document.mime_type && msg.reply_to_message.document.mime_type.startsWith('image/')))) {
+            bot.sendMessage(chatId, `The /${commandName} command requires you to reply to an image. Please send an image and then reply to it with the command.`, { reply_to_message_id: msg.message_id });
+            return;
+          }
+          imageUrl = await getTelegramFileUrl(bot, msg); // msg here, as getTelegramFileUrl checks msg.reply_to_message
+          if (!imageUrl) {
+            logger.warn(`[Telegram EXEC /${commandName}] Could not retrieve image URL for replied message.`);
+            bot.sendMessage(chatId, `Sorry, I couldn't retrieve the image from your replied message. Please try again.`, { reply_to_message_id: msg.message_id });
+            return;
+          }
+          if (currentImageInputKey) {
+            userInputsForTool[currentImageInputKey] = imageUrl;
+            logger.info(`[Telegram EXEC /${commandName}] Using image URL: ${imageUrl} for input key: ${currentImageInputKey}`);
+          } else {
+            logger.warn(`[Telegram EXEC /${commandName}] Image provided but no imageInputKey defined for tool ${currentToolId}. Ignoring image.`);
+          }
+        }
+        
+        // Placeholder for other handler types that aren't text-only or primarily image-based
+        // This ensures that if a tool is classified but doesn't match the image handling above,
+        // and isn't text_only or text_primary_media_optional, it gives a coming soon message.
+        else if (handlerType !== 'text_only' && handlerType !== 'text_primary_media_optional') {
             logger.warn(`[Telegram EXEC /${commandName}] Tool handler type '${handlerType}' not yet fully supported for command interaction. Tool: ${currentDisplayName}`);
             bot.sendMessage(chatId, `The /${commandName} command has a configuration not yet fully supported for direct text interaction (Type: ${handlerType}). Coming soon!`, { reply_to_message_id: msg.message_id });
             return;
         }
 
-        if (currentPromptInputKey && !promptText && tool.inputSchema[currentPromptInputKey]?.required) {
-          logger.info(`[Telegram EXEC /${commandName}] No prompt provided. Replying to user.`);
+        if (currentPromptInputKey && !promptText && tool.inputSchema[currentPromptInputKey]?.required && !userInputsForTool[currentPromptInputKey]) {
+          // Check if prompt is required and not already satisfied (e.g. by an image for an image_only tool if prompt was misconfigured as required)
+          // This condition might need refinement based on how "required" interacts with multi-modal inputs.
+          // For now, if a text prompt key exists and is required, and no text was given, ask for it.
+          logger.info(`[Telegram EXEC /${commandName}] Required prompt not provided for key '${currentPromptInputKey}'. Replying to user.`);
           bot.sendMessage(chatId, `Please provide a prompt after the command. Usage: /${commandName} your prompt here`, { reply_to_message_id: msg.message_id });
           return;
         }
@@ -285,17 +346,6 @@ async function setupDynamicCommands(bot, services) {
             logger.error(`[Telegram EXEC /${commandName}] Error fetching cost rate for deployment ${deploymentId}: ${costError.message}. Proceeding without cost info.`);
             costRateInfo = { error: 'Rate lookup failed' };
           }
-
-          const userInputsForTool = {};
-          if (currentPromptInputKey && promptText) {
-            userInputsForTool[currentPromptInputKey] = promptText;
-          } else if (currentPromptInputKey && !promptText && !tool.inputSchema[currentPromptInputKey]?.required) {
-            // If prompt is optional and not provided, don't include it. Payload prep should use default.
-          } else if (!currentPromptInputKey && promptText) {
-            // This case should ideally not happen if classification is correct and handlerType is text-based
-            logger.warn(`[Telegram EXEC /${commandName}] Prompt text provided but no promptInputKey defined for tool ${currentToolId}. Ignoring prompt text.`);
-          }
-          // Add more input handling here for images/videos later
 
           logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool: ${JSON.stringify(userInputsForTool)}`);
 
