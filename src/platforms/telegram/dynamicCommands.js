@@ -31,52 +31,128 @@ async function setupDynamicCommands(bot, services) {
     }
     logger.info(`[Telegram] Found ${allTools.length} total tools from WorkflowsService.`);
 
-    const textOnlyTools = allTools.filter(tool => {
-      if (!tool || !tool.toolId || !tool.displayName) {
-        return false;
+    // Refactored tool filtering and classification
+    const commandableTools = allTools.reduce((acc, tool) => {
+      if (!tool || !tool.toolId || !tool.displayName || tool.service !== 'comfyui') {
+        return acc;
       }
-      if (tool.service !== 'comfyui') return false; 
-
-      if (!tool.inputSchema || typeof tool.inputSchema !== 'object') {
-        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) has no valid inputSchema.`);
-        return false;
+      if (!tool.inputSchema || typeof tool.inputSchema !== 'object' || Object.keys(tool.inputSchema).length === 0) {
+        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) has no valid or empty inputSchema. Skipping.`);
+        return acc;
       }
 
-      let hasTextPrompt = false;
-      let hasImageInput = false;
-      let promptInputKey = null;
+      let textInputKey = null;
+      let imageInputKey = null;
+      let videoInputKey = null;
+      let hasRequiredImage = false;
+      let hasRequiredVideo = false;
+      let hasRequiredText = false;
 
       for (const inputName in tool.inputSchema) {
         const inputField = tool.inputSchema[inputName];
-        if (inputField && typeof inputField.type === 'string') {
-          if ((inputName === 'input_prompt' || inputName === 'prompt') && inputField.type.toLowerCase() === 'string') {
-            hasTextPrompt = true;
-            promptInputKey = inputName;
-          }
-          if ((inputName === 'input_image' || inputName === 'image') && inputField.type.toLowerCase() === 'image') {
-            hasImageInput = true;
-          }
+        if (!inputField || typeof inputField.type !== 'string') continue;
+
+        const fieldTypeLower = inputField.type.toLowerCase();
+        const isPromptField = (inputName === 'input_prompt' || inputName === 'prompt' || inputName.toLowerCase().includes('text'));
+        const isImageField = (inputName === 'input_image' || inputName === 'image' || inputName.toLowerCase().includes('image'));
+        const isVideoField = (inputName === 'input_video' || inputName === 'video' || inputName.toLowerCase().includes('video'));
+        
+        if (fieldTypeLower === 'string' && isPromptField) {
+          if (!textInputKey) textInputKey = inputName; // Prefer specific names first
+          if (inputField.required) hasRequiredText = true;
+        }
+        if (fieldTypeLower === 'image' && isImageField) {
+          if (!imageInputKey) imageInputKey = inputName;
+          if (inputField.required) hasRequiredImage = true;
+        }
+        if (fieldTypeLower === 'video' && isVideoField) {
+          if (!videoInputKey) videoInputKey = inputName;
+          if (inputField.required) hasRequiredVideo = true;
         }
       }
       
-      if (hasTextPrompt && !hasImageInput && promptInputKey) {
-        tool.metadata = tool.metadata || {};
-        tool.metadata.telegramPromptInputKey = promptInputKey;
-        return true;
+      // Fallback: if no specifically named prompt, take the first string input as potential text input
+      if (!textInputKey) {
+        for (const inputName in tool.inputSchema) {
+          const inputField = tool.inputSchema[inputName];
+          if (inputField && inputField.type && inputField.type.toLowerCase() === 'string') {
+            textInputKey = inputName;
+            if (inputField.required) hasRequiredText = true;
+            break; 
+          }
+        }
       }
-      return false;
-    });
+      // Fallback for image/video if not specifically named
+      if (!imageInputKey) {
+          for (const inputName in tool.inputSchema) {
+              const inputField = tool.inputSchema[inputName];
+              if (inputField && inputField.type && inputField.type.toLowerCase() === 'image') {
+                  imageInputKey = inputName;
+                  if (inputField.required) hasRequiredImage = true;
+                  break;
+              }
+          }
+      }
+      if (!videoInputKey) {
+          for (const inputName in tool.inputSchema) {
+              const inputField = tool.inputSchema[inputName];
+              if (inputField && inputField.type && inputField.type.toLowerCase() === 'video') {
+                  videoInputKey = inputName;
+                  if (inputField.required) hasRequiredVideo = true;
+                  break;
+              }
+          }
+      }
 
-    logger.info(`[Telegram] Found ${textOnlyTools.length} text-only tools to register as commands.`);
 
-    if (textOnlyTools.length === 0) {
-      logger.info('[Telegram] No suitable text-only tools found to register as dynamic commands.');
+      tool.metadata = tool.metadata || {};
+      let handlerType = null;
+      const primaryHint = tool.platformHints?.primaryInput;
+
+      if (primaryHint === 'text' && textInputKey && !imageInputKey && !videoInputKey) {
+        handlerType = 'text_only';
+      } else if (primaryHint === 'text' && textInputKey && (imageInputKey || videoInputKey)) {
+        // Text is primary, but image/video might be optional or also accepted.
+        // For Telegram, if an image/video is *required*, it changes the interaction model.
+        if (hasRequiredImage) handlerType = 'image_required_with_text';
+        else if (hasRequiredVideo) handlerType = 'video_required_with_text';
+        else handlerType = 'text_primary_media_optional'; // User provides text, can optionally reply to media
+      } else if (primaryHint === 'image' && imageInputKey) {
+        handlerType = textInputKey ? 'image_primary_with_text' : 'image_only';
+      } else if (primaryHint === 'video' && videoInputKey) {
+        handlerType = textInputKey ? 'video_primary_with_text' : 'video_only';
+      } else if (textInputKey && !imageInputKey && !videoInputKey) { // Fallback if no clear primaryHint but has text
+         handlerType = 'text_only';
+      } else if (imageInputKey && !textInputKey && !videoInputKey) { // Fallback for image only
+         handlerType = 'image_only';
+      } else if (videoInputKey && !textInputKey && !imageInputKey) { // Fallback for video only
+         handlerType = 'video_only';
+      }
+
+
+      if (handlerType) {
+        tool.metadata.telegramHandlerType = handlerType;
+        tool.metadata.telegramPromptInputKey = textInputKey;
+        tool.metadata.telegramImageInputKey = imageInputKey;
+        tool.metadata.telegramVideoInputKey = videoInputKey;
+        logger.info(`[Telegram Filter] Classified tool '${tool.displayName}' (ID: ${tool.toolId}) as '${handlerType}'. PromptKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}`);
+        acc.push(tool);
+      } else {
+        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) could not be classified for a Telegram handler. Skipping. PrimaryHint: ${primaryHint}, TextKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}, ReqImg: ${hasRequiredImage}, ReqVid: ${hasRequiredVideo}`);
+      }
+      return acc;
+    }, []);
+
+    logger.info(`[Telegram] Found ${commandableTools.length} tools classified for dynamic command registration.`);
+
+    if (commandableTools.length === 0) {
+      logger.info('[Telegram] No suitable tools found to register as dynamic commands after classification.');
       return;
     }
 
     const registeredCommands = [];
 
-    for (const tool of textOnlyTools) {
+    for (const tool of commandableTools) {
       const commandName = sanitizeCommandName(tool.displayName);
       if (!commandName) {
         logger.warn(`[Telegram] Skipping tool with invalid or empty sanitized name: ${tool.displayName} (ID: ${tool.toolId})`);
@@ -92,11 +168,30 @@ async function setupDynamicCommands(bot, services) {
         const platform = 'telegram';
         const promptText = match && match[1] ? match[1].trim() : '';
         
-        const currentToolId = tool.toolId;
-        const currentDisplayName = tool.displayName;
-        const currentPromptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
+        const currentTool = tool;
+        const currentToolId = currentTool.toolId;
+        const currentDisplayName = currentTool.displayName;
+        const handlerType = currentTool.metadata?.telegramHandlerType;
+        const currentPromptInputKey = currentTool.metadata?.telegramPromptInputKey;
+        const currentImageInputKey = currentTool.metadata?.telegramImageInputKey;
 
-        if (!promptText) {
+        if (handlerType !== 'text_only' && handlerType !== 'text_primary_media_optional') {
+            if ((handlerType === 'image_primary_with_text' || handlerType === 'image_only' || handlerType === 'image_required_with_text')) {
+                if (!msg.reply_to_message || !msg.reply_to_message.photo) {
+                    bot.sendMessage(chatId, `The /${commandName} command requires you to reply to an image. Please send an image and then reply to it with the command.`, { reply_to_message_id: msg.message_id });
+                    return;
+                }
+                logger.info(`[Telegram EXEC /${commandName}] Detected image-based command (${handlerType}). Image reply present. Needs full implementation.`);
+                bot.sendMessage(chatId, `The /${commandName} command looks like an image tool! Handling for this is coming soon. (Type: ${handlerType})`, { reply_to_message_id: msg.message_id });
+                return;
+            }
+            
+            logger.warn(`[Telegram EXEC /${commandName}] Tool handler type '${handlerType}' not yet fully supported for command interaction. Tool: ${currentDisplayName}`);
+            bot.sendMessage(chatId, `The /${commandName} command has a configuration not yet fully supported for direct text interaction (Type: ${handlerType}). Coming soon!`, { reply_to_message_id: msg.message_id });
+            return;
+        }
+
+        if (currentPromptInputKey && !promptText && tool.inputSchema[currentPromptInputKey]?.required) {
           logger.info(`[Telegram EXEC /${commandName}] No prompt provided. Replying to user.`);
           bot.sendMessage(chatId, `Please provide a prompt after the command. Usage: /${commandName} your prompt here`, { reply_to_message_id: msg.message_id });
           return;
@@ -174,7 +269,17 @@ async function setupDynamicCommands(bot, services) {
             costRateInfo = { error: 'Rate lookup failed' };
           }
 
-          const userInputsForTool = { [currentPromptInputKey]: promptText };
+          const userInputsForTool = {};
+          if (currentPromptInputKey && promptText) {
+            userInputsForTool[currentPromptInputKey] = promptText;
+          } else if (currentPromptInputKey && !promptText && !tool.inputSchema[currentPromptInputKey]?.required) {
+            // If prompt is optional and not provided, don't include it. Payload prep should use default.
+          } else if (!currentPromptInputKey && promptText) {
+            // This case should ideally not happen if classification is correct and handlerType is text-based
+            logger.warn(`[Telegram EXEC /${commandName}] Prompt text provided but no promptInputKey defined for tool ${currentToolId}. Ignoring prompt text.`);
+          }
+          // Add more input handling here for images/videos later
+
           logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool: ${JSON.stringify(userInputsForTool)}`);
 
           const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, userInputsForTool);
