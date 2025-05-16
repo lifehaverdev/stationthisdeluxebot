@@ -36,8 +36,18 @@ const GPU_COST_PER_SECOND = {
   'CPU': 0.000042 // Default/fallback cost
 };
 
-function mapComfyTypeToToolType(comfyType) {
-  // TODO: Implement actual mapping
+const KNOWN_STRING_SELECTOR_KEYWORDS = ['checkpoint', 'lora', 'vae', 'sampler', 'scheduler', 'model', 'clip_skip', 'hypernetwork'];
+
+function mapComfyTypeToToolType(comfyType, inputName) {
+  if (inputName) {
+    const lowerInputName = inputName.toLowerCase();
+    for (const keyword of KNOWN_STRING_SELECTOR_KEYWORDS) {
+      if (lowerInputName.includes(keyword)) {
+        return 'string';
+      }
+    }
+  }
+
   if (!comfyType) return 'string';
   const lowerType = comfyType.toLowerCase();
   if (lowerType.includes('image')) return 'image';
@@ -278,7 +288,7 @@ class WorkflowCacheManager {
       // If fetching list fails, we might not want to proceed or use cached if available and not stale
       throw error; // Re-throw for initialize to handle
     }
-
+    
     const processedWorkflows = [];
     if (workflowsList && workflowsList.length > 0) {
       // Before processing, ensure deployments and machines are fetched for context (especially for costing and IDs)
@@ -291,7 +301,7 @@ class WorkflowCacheManager {
          await this._fetchMachines(); // Ensure machines are loaded for costing
       }
 
-      for (const workflowSummary of workflowsList) {
+    for (const workflowSummary of workflowsList) {
         // workflowSummary here is an item from the /workflows API endpoint.
         // It might contain { id, name, deployment_id, workflow_json (sometimes), inputs }
         // We need to ensure it has enough data, or fetch more.
@@ -312,10 +322,10 @@ class WorkflowCacheManager {
     // We should maintain that if other parts of the class rely on it.
     // The content of `this.cache.workflows` might now be ToolDefinitions or objects compatible with old structure.
     // For now, let's assume `processedWorkflows` contains the ToolDefinitions.
-    this.cache.workflows = processedWorkflows; 
+    this.cache.workflows = processedWorkflows;
     this.cache.lastUpdated = Date.now(); // Also update timestamp here as we've processed new data
-
-    return this.cache.workflows;
+    
+    return this.cache.workflows; 
   }
 
   /**
@@ -404,7 +414,7 @@ class WorkflowCacheManager {
             return null; // Cannot proceed without workflow JSON
         }
         if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Successfully fetched workflow graph for ${workflowSummary.name}.`);
-      } else {
+        } else {
         if (isFluxGeneral) this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Using workflow JSON from summary for ${workflowSummary.name}.`);
       }
       
@@ -623,14 +633,14 @@ class WorkflowCacheManager {
         
         if (tool && tool.displayName) { 
             const standardName = standardizeWorkflowName(tool.displayName);
-            if (this.cache.byName.has(standardName)) {
+        if (this.cache.byName.has(standardName)) {
                 const existingTool = this.cache.byName.get(standardName);
                 this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Workflow name collision for standardized name "${standardName}". Original displayNames: "${existingTool.displayName}" (ToolID: ${existingTool.toolId}) and "${tool.displayName}" (ToolID: ${tool.toolId}). Overwriting with the latter.`);
-            }
-            this.cache.byName.set(standardName, tool);
-        } else {
-            this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing due to missing displayName or object: ${JSON.stringify(tool)}`);
         }
+            this.cache.byName.set(standardName, tool);
+      } else {
+            this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing due to missing displayName or object: ${JSON.stringify(tool)}`);
+      }
     });
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byName.size} tools by standardized name.`);
 
@@ -705,7 +715,7 @@ class WorkflowCacheManager {
       // The current _buildIndexes also indexes this.cache.workflows byName based on tool.displayName.
       // So, it should run after this.cache.workflows is populated with ToolDefinitions.
       // Let's call it again to ensure byName index for tools is also up-to-date.
-      this._buildIndexes();
+      this._buildIndexes(); 
       
       // Mark as initialized *after* all steps succeed
       this.isInitialized = true;
@@ -893,7 +903,7 @@ class WorkflowCacheManager {
       if (structureInfo && structureInfo.externalInputNodes && Array.isArray(structureInfo.externalInputNodes) && structureInfo.externalInputNodes.length > 0) {
         structureInfo.externalInputNodes.forEach(extInput => {
           const isRequired = extInput.required !== undefined ? extInput.required : true;
-          const fieldType = mapComfyTypeToToolType(extInput.inputType);
+          const fieldType = mapComfyTypeToToolType(extInput.inputType, extInput.inputName);
           let defaultValue = extInput.defaultValue;
 
           if (fieldType === 'number' && typeof defaultValue === 'string') {
@@ -939,7 +949,7 @@ class WorkflowCacheManager {
       }
       workflowData.version.input_types.forEach(item => {
         if (item && item.input_id) {
-          const fieldType = mapComfyTypeToToolType(item.type);
+          const fieldType = mapComfyTypeToToolType(item.type, item.input_id);
           let defaultValue = item.default_value;
 
           if (fieldType === 'number' && typeof defaultValue === 'string') {

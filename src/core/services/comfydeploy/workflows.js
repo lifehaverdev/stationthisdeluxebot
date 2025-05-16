@@ -60,7 +60,7 @@ class WorkflowsService {
     
     // geniusoverhaul: Get ToolRegistry instance
     this.toolRegistry = ToolRegistry.getInstance();
-
+    
     // Instantiate the Cache Manager, passing relevant options
     this.cacheManager = new WorkflowCacheManager({
       apiUrl: this.apiUrl,
@@ -166,7 +166,7 @@ class WorkflowsService {
       this.logger.warn(`[getToolRequiredInputs] Tool with ID "${toolId}" not found.`);
       return [];
     }
-
+    
     if (!tool.inputSchema) {
       this.logger.warn(`[getToolRequiredInputs] Tool "${toolId}" has no inputSchema defined.`);
       return [];

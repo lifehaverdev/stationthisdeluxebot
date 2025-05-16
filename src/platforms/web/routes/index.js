@@ -70,7 +70,7 @@ async function initializeRoutes(app, services) {
           internalWorkflowRouter.post(routePath, async (req, res, next) => {
             const currentToolId = tool.toolId; // Capture toolId for this handler
             const currentDisplayName = tool.displayName;
-
+            
             try {
               const userInput = req.body || {};
   
@@ -83,7 +83,7 @@ async function initializeRoutes(app, services) {
                 // For simplicity, sending 500; can be refined if prepareToolRunPayload returns error details.
                 logger.error(`[Web Routes] prepareToolRunPayload failed for tool '${currentDisplayName}' (ID: ${currentToolId}).`);
                 return res.status(500).json({
-                  status: 'error',
+                  status: 'error', 
                   message: `Failed to prepare payload for tool '${currentDisplayName}'. Check server logs for details.`
                 });
               }
