@@ -1,36 +1,6 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const internalApiClient = require('./utils/internalApiClient'); // Import the API client
-
-async function getTelegramFileUrl(bot, message) {
-  let fileId;
-  const targetMessage = message.reply_to_message || message;
-
-  if (targetMessage.photo) {
-    fileId = targetMessage.photo[targetMessage.photo.length - 1].file_id;
-  } else if (targetMessage.document && targetMessage.document.mime_type && targetMessage.document.mime_type.startsWith('image/')) {
-    // Also allow documents if they are images
-    fileId = targetMessage.document.file_id;
-  } else {
-    return null;
-  }
-
-  try {
-    // Assuming bot.telegram.getFileLink() or equivalent exists and returns a direct URL string
-    // Or, if we need to construct it manually using bot.getFile():
-    const fileInfo = await bot.getFile(fileId);
-    if (fileInfo.file_path) {
-      // Construct the URL. Ensure process.env.TELEGRAM_BOT_TOKEN is accessible here
-      // This might require passing the token or having it in a shared config.
-      // For now, assuming direct access or a pre-configured bot instance.
-      // This is a common way to construct it:
-      return `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
-    }
-    return null; // Fallback if file_path isn't available
-  } catch (error) {
-    console.error("[Telegram] Error fetching file URL:", error);
-    return null;
-  }
-}
+const { getTelegramFileUrl } = require('./utils/telegramUtils'); // Import from new util file
 
 async function setupDynamicCommands(bot, services) {
   const workflowsService = services.workflows;
