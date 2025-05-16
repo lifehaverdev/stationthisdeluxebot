@@ -850,209 +850,127 @@ class WorkflowCacheManager {
     return GPU_COST_PER_SECOND['CPU'];
   }
 
-  // geniusoverhaul: Added method to create ToolDefinition from workflow
   async createToolDefinitionFromWorkflow(workflowData, workflowJson, workflowSummaryIfNoDeployment) {
     const toolDefinition = {};
-    // Use workflowData.id if it's the actual deployment object, otherwise fallback for summary
-    // workflowData is the deploymentData object. workflowSummaryIfNoDeployment is the original summary from /workflows endpoint.
-    const actualDeploymentId = workflowData ? workflowData.id : (workflowSummaryIfNoDeployment ? workflowSummaryIfNoDeployment.deployment_id || workflowSummaryIfNoDeployment.id : 'unknown-deployment');
-    const baseNameForLog = (workflowData && workflowData.workflow && workflowData.workflow.name) || (workflowData && workflowData.name) || (workflowSummaryIfNoDeployment && workflowSummaryIfNoDeployment.name);
+    const actualDeploymentId = workflowData?.id || workflowSummaryIfNoDeployment?.deployment_id || workflowSummaryIfNoDeployment?.id || 'unknown-deployment';
+    const baseNameForLog = workflowData?.workflow?.name || workflowData?.name || workflowSummaryIfNoDeployment?.name || '';
     const isFluxGeneralTool = baseNameForLog === 'fluxgeneral';
-
-    if (DEBUG_LOGGING_ENABLED) {
-      this.logger.info(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] createToolDefinitionFromWorkflow. BaseName: ${baseNameForLog}, Actual Deployment ID for toolId: ${actualDeploymentId}`);
-      if (workflowData && isFluxGeneralTool) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Full workflowData (deploymentData) in createToolDefinitionFromWorkflow: ${JSON.stringify(workflowData)}`);
-      } else if (!workflowData && isFluxGeneralTool) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowData (deploymentData) is null/undefined in createToolDefinitionFromWorkflow. Falling back to workflowSummaryIfNoDeployment: ${JSON.stringify(workflowSummaryIfNoDeployment)}`);
-      }
-      if (isFluxGeneralTool) { 
-         this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowJson (actual graph) received in createToolDefinitionFromWorkflow: ${workflowJson ? JSON.stringify(workflowJson).substring(0, 500) + "..." : "null or undefined"}`);
-      }
-    } else if (isFluxGeneralTool) {
-      // This initial log is now silenced if DEBUG_LOGGING_ENABLED is false and it's a FLUXGENERAL tool
+  
+    if (DEBUG_LOGGING_ENABLED && isFluxGeneralTool) {
+      this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] createToolDefinitionFromWorkflow. BaseName: ${baseNameForLog}, DeploymentID: ${actualDeploymentId}`);
+      this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] workflowJson: ${workflowJson ? JSON.stringify(workflowJson).substring(0, 500) + "..." : "null"}`);
     }
-
+  
+    // Basic tool metadata
     toolDefinition.toolId = `comfy-${actualDeploymentId}`;
     toolDefinition.service = 'comfyui';
-    
-    // Prioritize names: friendly_name from deployment, then workflow.name from deployment, then top-level name from deployment, 
-    // then name from workflow summary, then fallback.
-    let displayName = (workflowData && workflowData.friendly_name) 
-                      || (workflowData && workflowData.workflow && workflowData.workflow.name)
-                      || (workflowData && workflowData.name) 
-                      || (workflowSummaryIfNoDeployment && workflowSummaryIfNoDeployment.name) 
-                      || `Comfy Workflow ${actualDeploymentId}`;
-    toolDefinition.displayName = displayName;
-
+    toolDefinition.displayName = workflowData?.friendly_name || workflowData?.workflow?.name || workflowData?.name || workflowSummaryIfNoDeployment?.name || `Comfy Workflow ${actualDeploymentId}`;
     toolDefinition.commandName = generateCommandName(toolDefinition.displayName);
     toolDefinition.apiPath = `/api/internal/comfy/run/${actualDeploymentId}`;
-
-    const notes = extractNotes(workflowJson); // workflowJson here is the actual graph
+  
+    // Extract Notes
+    const notes = extractNotes(workflowJson);
     toolDefinition.description = notes.join('\n') || `Runs the ${toolDefinition.displayName} workflow.`;
-
-    // Input Schema
-    toolDefinition.inputSchema = {};
-    let schemaPopulatedBy = 'none'; // For logging
-
-    if (workflowJson && typeof workflowJson === 'object' && Object.keys(workflowJson).length > 0) {
-      const structureInfo = parseWorkflowStructure(workflowJson); // workflowJson is the actual graph here
-      if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] parseWorkflowStructure result for ${toolDefinition.displayName}: ${JSON.stringify(structureInfo)}`);
-      }
-      if (structureInfo && structureInfo.externalInputNodes && Array.isArray(structureInfo.externalInputNodes) && structureInfo.externalInputNodes.length > 0) {
-        structureInfo.externalInputNodes.forEach(extInput => {
-          const isRequired = extInput.required !== undefined ? extInput.required : true;
-          const fieldType = mapComfyTypeToToolType(extInput.inputType, extInput.inputName);
-          let defaultValue = extInput.defaultValue;
-
-          if (fieldType === 'number' && typeof defaultValue === 'string') {
-            const parsed = parseFloat(defaultValue);
-            if (!isNaN(parsed)) {
-              defaultValue = parsed;
-            } else {
-              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for numeric input "${extInput.inputName}" in tool "${toolDefinition.toolId}" is not a parseable number. Omitting default.`);
-              defaultValue = undefined;
-            }
-          } else if (fieldType === 'boolean' && typeof defaultValue === 'string') {
-            if (defaultValue.toLowerCase() === 'true') {
-              defaultValue = true;
-            } else if (defaultValue.toLowerCase() === 'false') {
-              defaultValue = false;
-            } else {
-              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for boolean input "${extInput.inputName}" in tool "${toolDefinition.toolId}" is not a parseable boolean ("true" or "false"). Omitting default.`);
-              defaultValue = undefined;
-            }
-          }
-
-          toolDefinition.inputSchema[extInput.inputName] = {
-            name: extInput.inputName,
-            type: fieldType,
-            required: isRequired,
-            default: defaultValue,
-            description: extInput.description || `Input: ${extInput.inputName}`,
-            advanced: extInput.advanced || false
-          };
-        });
-        schemaPopulatedBy = 'parseWorkflowStructure';
-      } else if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] parseWorkflowStructure did not yield externalInputNodes.`);
-      }
-    }
-    
-    // Fallback to workflowData.version.input_types if schema is still empty and workflowData (deploymentData) is available
-    if (Object.keys(toolDefinition.inputSchema).length === 0 && workflowData && workflowData.version && workflowData.version.input_types && Array.isArray(workflowData.version.input_types)) {
-      if (DEBUG_LOGGING_ENABLED) {
-        this.logger.info(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] inputSchema from parseWorkflowStructure was empty for ${toolDefinition.toolId}. Falling back to workflowData.version.input_types.`);
-      } else if (isFluxGeneralTool) {
-        // Silenced
-      }
-      workflowData.version.input_types.forEach(item => {
-        if (item && item.input_id) {
-          const fieldType = mapComfyTypeToToolType(item.type, item.input_id);
-          let defaultValue = item.default_value;
-
-          if (fieldType === 'number' && typeof defaultValue === 'string') {
-            const parsed = parseFloat(defaultValue);
-            if (!isNaN(parsed)) {
-              defaultValue = parsed;
-            } else {
-              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for numeric input "${item.input_id}" in tool "${toolDefinition.toolId}" (from deployment input_types) is not a parseable number. Omitting default.`);
-              defaultValue = undefined;
-            }
-          } else if (fieldType === 'boolean' && typeof defaultValue === 'string') {
-            if (defaultValue.toLowerCase() === 'true') {
-              defaultValue = true;
-            } else if (defaultValue.toLowerCase() === 'false') {
-              defaultValue = false;
-            } else {
-              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for boolean input "${item.input_id}" in tool "${toolDefinition.toolId}" (from deployment input_types) is not a parseable boolean ("true" or "false"). Omitting default.`);
-              defaultValue = undefined;
-            }
-          }
-
-          toolDefinition.inputSchema[item.input_id] = {
-            name: item.input_id,
-            type: fieldType,
-            required: item.required !== undefined ? item.required : true, // Assume required if not specified
-            default: defaultValue,
-            description: item.description || `Input: ${item.input_id}`,
-            advanced: item.advanced || false
-          };
-        } else if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) {
-            this.logger.warn(`[WorkflowCacheManager-FLUXGENERAL] Malformed item in workflowData.version.input_types: ${JSON.stringify(item)}`);
-        }
-      });
-      if (Object.keys(toolDefinition.inputSchema).length > 0) {
-        schemaPopulatedBy = 'workflowData.version.input_types';
-      }
-    } else if (Object.keys(toolDefinition.inputSchema).length === 0 && DEBUG_LOGGING_ENABLED) { 
-        let reason = "parseWorkflowStructure yielded no inputs";
-        if (!(workflowData && workflowData.version && workflowData.version.input_types && Array.isArray(workflowData.version.input_types))) {
-            reason += " AND workflowData.version.input_types was not available/valid";
-        }
-        this.logger.warn(`[WorkflowCacheManager${isFluxGeneralTool ? "-FLUXGENERAL" : ""}] inputSchema remains empty for ${toolDefinition.toolId}. Reason: ${reason}.`);
-    } else if (Object.keys(toolDefinition.inputSchema).length === 0 && isFluxGeneralTool) {
-      // Silenced if not DEBUG_LOGGING_ENABLED
-    }
-
-    if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Input schema for ${toolDefinition.toolId} populated by: ${schemaPopulatedBy}. Result: ${JSON.stringify(toolDefinition.inputSchema)}`);
-    }
-
-    // Costing Model
+  
+    // Parse structure
+    let structureInfo = null;
     try {
-      const deploymentIdForCosting = actualDeploymentId; 
-      if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Calling getCostRateForDeployment with ID: ${deploymentIdForCosting}`);
+      structureInfo = parseWorkflowStructure(workflowJson);
+      if (DEBUG_LOGGING_ENABLED && isFluxGeneralTool) {
+        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Parsed structureInfo: ${JSON.stringify(structureInfo, null, 2)}`);
       }
-      const costRate = await this.getCostRateForDeployment(deploymentIdForCosting);
-      if (costRate) {
-          toolDefinition.costingModel = {
-              rate: costRate,
-              unit: 'second',
-              rateSource: 'machine', 
-          };
-      } else {
-        this.logger.warn(`[WorkflowCacheManager] No cost rate found for deployment ${deploymentIdForCosting}. CostingModel will be undefined.`);
-      }
-    } catch (error) {
-      this.logger.warn(`[WorkflowCacheManager] Could not determine cost for ${toolDefinition.toolId}:`, error);
+    } catch (err) {
+      this.logger.warn(`[WorkflowCacheManager] Failed to parse workflow structure for ${toolDefinition.toolId}:`, err);
     }
-
-    toolDefinition.webhookStrategy = {
-        expectedStatusField: 'status.status_str', // As per plan
-        successValue: 'success', // As per plan
-        durationTracking: true, // As per plan
-        resultPath: ['output.files'] // As per plan
-    };
-    
-    // PlatformHints - Placeholder, derive from inputs later
-    const hasImageInput = Object.values(toolDefinition.inputSchema).some(inp => inp.type === 'image');
+  
+    // === Input Schema ===
+    if (structureInfo?.inputSchema && Object.keys(structureInfo.inputSchema).length > 0) {
+      toolDefinition.inputSchema = structureInfo.inputSchema;
+    } else if (workflowData?.version?.input_types) {
+      toolDefinition.inputSchema = {};
+      for (const item of workflowData.version.input_types) {
+        if (!item?.input_id) continue;
+        const fieldType = mapComfyTypeToToolType(item.type, item.input_id);
+        let defaultValue = item.default_value;
+  
+        // Try to coerce defaults
+        if (fieldType === 'number') {
+          const parsed = parseFloat(defaultValue);
+          defaultValue = isNaN(parsed) ? undefined : parsed;
+        } else if (fieldType === 'boolean') {
+          if (defaultValue?.toLowerCase?.() === 'true') defaultValue = true;
+          else if (defaultValue?.toLowerCase?.() === 'false') defaultValue = false;
+          else defaultValue = undefined;
+        }
+  
+        toolDefinition.inputSchema[item.input_id] = {
+          name: item.input_id,
+          type: fieldType,
+          required: item.required ?? true,
+          default: defaultValue,
+          description: item.description || `Input: ${item.input_id}`,
+          advanced: item.advanced || false
+        };
+      }
+    } else {
+      this.logger.warn(`[WorkflowCacheManager] No input schema could be derived for ${toolDefinition.toolId}.`);
+      toolDefinition.inputSchema = {};
+    }
+  
+    // === Metadata and Hints ===
     toolDefinition.platformHints = {
-        primaryInput: hasImageInput ? 'image' : 'text', // Basic heuristic
-        supportsFileCaption: true, // Default assumption
-        supportsReplyWithCommand: true // Default assumption
+      primaryInput: structureInfo?.primaryInput || 'text',
+      supportsFileCaption: structureInfo?.hasRequiredImageOrVideoInput || false,
+      supportsReplyWithCommand: true
     };
-    
-    // New fields from plan
-    toolDefinition.category = 'text-to-image'; // Placeholder - inferCategoryFromNameOrNodes
-    toolDefinition.humanDefaults = {}; // Placeholder - generateHumanDefaults
-    toolDefinition.visibility = 'public'; // Placeholder - inferVisibility
-    
-    toolDefinition.metadata = { 
-      deploymentId: toolDefinition.toolId, // Consistent with toolId
-      workflowApiId: workflowSummaryIfNoDeployment ? workflowSummaryIfNoDeployment.id : (workflowData ? workflowData.workflow_id : null),
-      // Potentially add other relevant ComfyUI specific data here
-      // rawWorkflowVersion: workflowData.version_id // if available
+  
+    toolDefinition.category = structureInfo?.toolCategory || 'unknown';
+  
+    toolDefinition.metadata = {
+      deploymentId: actualDeploymentId,
+      workflowApiId: workflowSummaryIfNoDeployment?.id || workflowData?.workflow_id || null,
+      outputType: structureInfo?.outputType || 'unknown',
+      hasPromptNode: structureInfo?.hasPromptNode || false,
+      hasKSamplerNode: structureInfo?.hasKSamplerNode || false,
+      hasLoraLoader: structureInfo?.hasLoraLoader || false,
+      nodeTypes: structureInfo?.nodeTypes || []
     };
-
-    if (isFluxGeneralTool && DEBUG_LOGGING_ENABLED) { 
-        this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Final ToolDefinition for ${toolDefinition.displayName}: ${JSON.stringify(toolDefinition)}`);
+  
+    // === Costing Model ===
+    try {
+      const costRate = await this.getCostRateForDeployment(actualDeploymentId);
+      if (costRate) {
+        toolDefinition.costingModel = {
+          rate: costRate,
+          unit: 'second',
+          rateSource: 'machine'
+        };
+      } else {
+        this.logger.warn(`[WorkflowCacheManager] No cost rate found for ${toolDefinition.toolId}.`);
+      }
+    } catch (err) {
+      this.logger.warn(`[WorkflowCacheManager] Failed to get cost rate for ${toolDefinition.toolId}:`, err);
     }
-
+  
+    // === Webhook strategy ===
+    toolDefinition.webhookStrategy = {
+      expectedStatusField: 'status.status_str',
+      successValue: 'success',
+      durationTracking: true,
+      resultPath: ['output.files']
+    };
+  
+    // === Defaults for future extensibility ===
+    toolDefinition.visibility = 'public';
+    toolDefinition.humanDefaults = {}; // You may populate later if needed
+  
+    if (DEBUG_LOGGING_ENABLED && isFluxGeneralTool) {
+      this.logger.info(`[WorkflowCacheManager-FLUXGENERAL] Final ToolDefinition: ${JSON.stringify(toolDefinition, null, 2)}`);
+    }
+  
     return toolDefinition;
   }
+  
 
 }
 

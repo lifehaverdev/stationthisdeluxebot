@@ -24,12 +24,22 @@ async function flashRegistry() {
     // Pass any necessary minimal config. This is highly app-specific.
     // For example, API keys for ComfyDeploy might be needed via process.env
     // Ensure your .env file or environment variables are set up if ComfyUI service needs them.
-    const services = await initializeServices({
+
+    const initializeTimeoutMs = 300000; // 5 minutes, adjust as needed
+
+    const servicesPromise = initializeServices({
       logger,
       // Add other necessary minimal configurations for services to initialize
       // e.g., mediaConfig if MediaService requires it, etc.
       // This might require looking into what initializeServices and its children (like ComfyUIService/WorkflowCacheManager) expect.
     });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Service initialization timed out after ${initializeTimeoutMs / 1000} seconds. The ToolRegistry might be taking too long to populate or a service isn't resolving.`)), initializeTimeoutMs)
+    );
+    
+    console.log(`Initializing services (with a ${initializeTimeoutMs / 1000}s timeout)...`);
+    const services = await Promise.race([servicesPromise, timeoutPromise]);
 
     if (!services || !services.toolRegistry) {
       console.error('Failed to get ToolRegistry from initialized services.');

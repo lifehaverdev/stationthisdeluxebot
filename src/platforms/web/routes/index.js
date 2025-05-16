@@ -25,6 +25,9 @@ const { getCachedClient } = require('../../../core/services/db/utils/queue'); //
 // Import the new webhook processor
 const { processComfyDeployWebhook } = require('../../../core/services/comfydeploy/webhookProcessor');
 
+// geniusoverhaul: Import ToolRegistry
+const { ToolRegistry } = require('../../../core/tools/ToolRegistry.js');
+
 /**
  * Initialize all routes for the web platform
  * @param {Express} app - Express application instance
@@ -151,6 +154,40 @@ async function initializeRoutes(app, services) {
   }
   // --- END DYNAMIC WORKFLOW ROUTES ---
   
+  // --- BEGIN TOOL REGISTRY INSPECTION ROUTES ---
+  const registryRouter = express.Router();
+  
+  registryRouter.get('/tools', (req, res) => {
+    try {
+      const toolRegistry = ToolRegistry.getInstance();
+      const allTools = toolRegistry.getAllTools();
+      res.status(200).json(allTools);
+    } catch (error) {
+      logger.error('[Web Routes] Error fetching all tools from registry:', error);
+      res.status(500).json({ error: 'Failed to retrieve tools from registry' });
+    }
+  });
+  
+  registryRouter.get('/tools/:toolId', (req, res) => {
+    try {
+      const toolRegistry = ToolRegistry.getInstance();
+      const toolId = req.params.toolId;
+      const tool = toolRegistry.getToolById(toolId);
+      if (tool) {
+        res.status(200).json(tool);
+      } else {
+        res.status(404).json({ error: `Tool with ID '${toolId}' not found.` });
+      }
+    } catch (error) {
+      logger.error(`[Web Routes] Error fetching tool '${req.params.toolId}' from registry:`, error);
+      res.status(500).json({ error: 'Failed to retrieve tool from registry' });
+    }
+  });
+  
+  app.use('/api/internal/registry', registryRouter);
+  logger.info('[Web Routes] Registered tool registry inspection routes at /api/internal/registry');
+  // --- END TOOL REGISTRY INSPECTION ROUTES ---
+
   // Health check
   app.get('/api/health', (req, res) => {
     res.status(200).json({ status: 'ok' });

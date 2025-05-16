@@ -6,7 +6,7 @@ src/db/data/*
 temp/*
 tmp/*
 output/*
-
+reports/*
 # Logs
 logs
 *.log

@@ -46,13 +46,6 @@ function standardizeWorkflowName(workflowName) {
     .replace(/[^a-z0-9_]/g, '')  // Remove any non-alphanumeric or underscore characters
     .replace(/_+/g, '_');        // Replace multiple consecutive underscores with a single one
 }
-
-/**
- * Parse workflow JSON structure to extract useful information about nodes
- * 
- * @param {Object} workflowJson - The complete workflow JSON structure
- * @returns {Object} - Parsed workflow structure information
- */
 function parseWorkflowStructure(workflowJson) {
   if (!workflowJson || typeof workflowJson !== 'object' || !workflowJson.nodes) {
     return {
@@ -60,191 +53,151 @@ function parseWorkflowStructure(workflowJson) {
       nodeTypes: [],
       hasPromptNode: false,
       hasKSamplerNode: false,
+      hasLoraLoader: false,
+      outputType: 'unknown',
+      toolCategory: 'unknown',
+      primaryInput: 'none',
+      requiredInputs: [],
+      inputSchema: {},
+      externalInputNodes: [],
       inputNodes: [],
       outputNodes: [],
-      externalInputNodes: [], // Added specifically for ComfyUIDeployExternal nodes
-      hasLoraLoader: false    // Flag for MultiLoraLoader presence
+      hasRequiredImageOrVideoInput: false
     };
   }
-  
+
   const nodeTypes = new Set();
   const inputNodes = [];
   const outputNodes = [];
-  const externalInputNodes = []; // Store ComfyUIDeployExternal nodes
+  const externalInputNodes = [];
+  const inputTypeCount = { text: 0, image: 0, model: 0, integer: 0, float: 0 };
   let hasPromptNode = false;
   let hasKSamplerNode = false;
-  let hasLoraLoader = false;   // Flag for MultiLoraLoader
-  let outputType = 'unknown';  // Default output type
-  
-  // Process all nodes
+  let hasLoraLoader = false;
+  let outputType = 'unknown';
+  const inputSchema = {};
+  const requiredInputs = [];
+  let hasRequiredImageOrVideoInput = false;
+
+  const isEffectivelyEmpty = (val) => val === null || val === undefined || (typeof val === 'string' && val.trim() === '');
+
   Object.entries(workflowJson.nodes).forEach(([nodeId, node]) => {
-    // More robust node type inference
-    let nodeType = node.class_type;
-    
-    // Check if node has a type property directly
-    if (!nodeType && node.type) {
-      nodeType = node.type;
-    }
-    
-    // Check inputs for type information if class_type is missing
-    if (!nodeType && node.inputs) {
-      const inputNames = Object.values(node.inputs)
-        .map(input => typeof input === 'object' ? input.name : null)
-        .filter(Boolean);
-      
-      // Check for common node patterns
-      if (inputNames.includes('noise_seed') && inputNames.includes('steps')) {
-        nodeType = 'KSampler';
-        hasKSamplerNode = true;
-      }
-      else if (inputNames.includes('text') && inputNames.includes('clip')) {
-        nodeType = 'CLIPTextEncode';
-        hasPromptNode = true;
-      }
-      else if (inputNames.includes('samples') && inputNames.includes('vae')) {
-        nodeType = 'VAEDecode';
-      }
-      else if (inputNames.includes('images') && inputNames.includes('filename_prefix')) {
-        nodeType = 'SaveImage';
-      }
-      else if (inputNames.includes('model') && inputNames.includes('clip')) {
-        nodeType = 'CheckpointLoader';
-      }
-      else if (inputNames.includes('width') && inputNames.includes('height') && inputNames.includes('batch_size')) {
-        nodeType = 'EmptyLatentImage';
-      }
-      else if (inputNames.includes('conditioning_1') && inputNames.includes('conditioning_2')) {
-        nodeType = 'ConditioningCombine';
-      }
-      
-      // Create a summary of input types if still no match
-      if (!nodeType) {
-        const inputTypes = Object.values(node.inputs)
-          .map(input => typeof input === 'object' ? input.type : null)
-          .filter(Boolean);
-        
-        if (inputTypes.length > 0) {
-          nodeType = `Node_With_${inputTypes.join('_')}`;
-        }
-      }
-    }
-    
-    // Use node ID as fallback if type is still not determined
-    nodeType = nodeType || `Unknown_${nodeId}`;
-    
-    // Add to node types set
+    let nodeType = node.class_type || node.type || `Unknown_${nodeId}`;
     nodeTypes.add(nodeType);
-    
-    // Detect MultiLoraLoader nodes for loraTrigger system
-    if (nodeType.includes('MultiLoraLoader') || 
-        (node.type && node.type.includes('MultiLoraLoader'))) {
-      hasLoraLoader = true;
-    }
-    
-    // Check for ComfyUIDeployExternal input nodes
-    if (nodeType.startsWith('ComfyUIDeployExternal') || 
-        (node.type && node.type.startsWith('ComfyUIDeployExternal'))) {
-      // Extract the specific input type and details
-      const inputType = nodeType.replace('ComfyUIDeployExternal', '').toLowerCase();
+
+    if (nodeType.includes('MultiLoraLoader')) hasLoraLoader = true;
+
+    if (nodeType.startsWith('ComfyUIDeployExternal')) {
+      let inputType = nodeType.replace('ComfyUIDeployExternal', '').toLowerCase();
       const widgetValues = node.widgets_values || [];
       const inputName = widgetValues[0] || `input_${nodeId}`;
-      const defaultValue = widgetValues[1] || null;
-      
+      const defaultValue = widgetValues.length > 1 ? widgetValues[1] : null;
+      const description = widgetValues.length > 2 ? widgetValues[2] : '';
+
+      // Normalize inputType
+      if (inputType === 'numberint') inputType = 'integer';
+      if (inputType === 'numberfloat') inputType = 'float';
+
+      inputTypeCount[inputType] = (inputTypeCount[inputType] || 0) + 1;
+
+      const isRequired = isEffectivelyEmpty(defaultValue);
+      if (isRequired && ['image', 'video'].includes(inputType)) {
+        hasRequiredImageOrVideoInput = true;
+      }
+
       externalInputNodes.push({
         id: nodeId,
         type: nodeType,
-        inputType, 
+        inputType,
         inputName,
-        defaultValue
+        defaultValue,
+        description
       });
+
+      inputSchema[inputName] = {
+        type: inputType,
+        default: defaultValue,
+        description,
+        required: isRequired
+      };
+
+      if (isRequired) {
+        requiredInputs.push(inputName);
+      }
     }
-    
-    // Check for input nodes based on the determined type
-    if (nodeType === 'CLIPTextEncode' || nodeType.includes('TextEncode')) {
+
+    if (nodeType.includes('TextEncode')) {
       hasPromptNode = true;
-      inputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        inputs: node.inputs || {}
-      });
+      inputNodes.push({ id: nodeId, type: nodeType, inputs: node.inputs || {} });
     }
-    else if (nodeType === 'CheckpointLoader' || nodeType.includes('ModelLoader')) {
-      inputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        inputs: node.inputs || {}
-      });
-    }
-    else if (nodeType === 'EmptyLatentImage') {
-      inputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        inputs: node.inputs || {}
-      });
-    }
-    
-    // Check for sampler nodes
-    if (nodeType === 'KSampler' || nodeType.includes('Sampler')) {
+    if (nodeType.includes('Sampler')) {
       hasKSamplerNode = true;
     }
-    
-    // Identify nodes that likely produce output and determine workflow type
-    if (nodeType === 'SaveImage' || nodeType.includes('SaveImage')) {
+
+    if (nodeType.includes('SaveImage') || nodeType === 'VAEDecode') {
       outputType = 'image';
-      outputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        outputType: 'image',
-        inputs: node.inputs || {}
-      });
-    }
-    else if (nodeType === 'VHS_VideoCombine' || nodeType.includes('VideoCombine')) {
+      outputNodes.push({ id: nodeId, type: nodeType, outputType: 'image' });
+    } else if (nodeType.includes('VideoCombine')) {
       outputType = 'video';
-      outputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        outputType: 'video',
-        inputs: node.inputs || {}
-      });
-    }
-    else if (nodeType.includes('SaveGIF') || nodeType.includes('AnimateDiff')) {
+      outputNodes.push({ id: nodeId, type: nodeType, outputType: 'video' });
+    } else if (nodeType.includes('GIF') || nodeType.includes('AnimateDiff')) {
       outputType = 'animation';
-      outputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        outputType: 'animation',
-        inputs: node.inputs || {}
-      });
-    }
-    else if (
-      nodeType === 'PreviewImage' ||
-      nodeType.includes('Preview') ||
-      nodeType.includes('LoadImage') ||
-      nodeType === 'VAEDecode'
-    ) {
-      outputNodes.push({
-        id: nodeId,
-        type: nodeType,
-        outputType: 'image',
-        inputs: node.inputs || {}
-      });
+      outputNodes.push({ id: nodeId, type: nodeType, outputType: 'animation' });
     }
   });
-  
+
+  // === Tool Category Logic ===
+  let toolCategory = 'unknown';
+  const inputTypes = Object.keys(inputTypeCount).filter(k => inputTypeCount[k] > 0);
+  const hasText = inputTypeCount.text > 0;
+  const hasImage = inputTypeCount.image > 0;
+
+  if (hasText && hasImage && outputType === 'image') {
+    toolCategory = 'image-to-image';
+  } else if (hasText && outputType === 'image') {
+    toolCategory = 'text-to-image';
+  } else if (hasImage && outputType === 'image') {
+    toolCategory = 'image-processing';
+  } else if (outputType === 'video') {
+    toolCategory = 'video';
+  } else if (inputTypes.includes('model')) {
+    toolCategory = 'model-tool';
+  } else if (outputType === 'image' && inputTypes.length === 0) {
+    toolCategory = 'utility';
+  }
+
+  let primaryInput = 'none';
+
+  // Prefer required inputs first
+  const requiredInputTypes = Object.values(inputSchema)
+    .filter(i => i.required)
+    .map(i => i.type);
+
+  if (requiredInputTypes.includes('image')) primaryInput = 'image';
+  else if (requiredInputTypes.includes('video')) primaryInput = 'video';
+  else if (requiredInputTypes.includes('text')) primaryInput = 'text';
+  else if (inputTypeCount.text > 0) primaryInput = 'text';
+  else if (inputTypeCount.image > 0) primaryInput = 'image';
+  else if (inputTypeCount.video > 0) primaryInput = 'video';
+
   return {
-    nodeCount: Object.keys(workflowJson.nodes || {}).length,
+    nodeCount: Object.keys(workflowJson.nodes).length,
     nodeTypes: Array.from(nodeTypes),
     hasPromptNode,
     hasKSamplerNode,
     hasLoraLoader,
     outputType,
+    toolCategory,
+    primaryInput,
+    requiredInputs,
+    inputSchema,
+    externalInputNodes,
     inputNodes,
     outputNodes,
-    externalInputNodes,
-    // Don't store the full workflow json to save memory
-    // workflow: workflowJson  
+    hasRequiredImageOrVideoInput
   };
 }
+
 
 /**
  * Extracts text content from all "Note" nodes in a workflow.
