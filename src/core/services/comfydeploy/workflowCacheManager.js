@@ -893,11 +893,33 @@ class WorkflowCacheManager {
       if (structureInfo && structureInfo.externalInputNodes && Array.isArray(structureInfo.externalInputNodes) && structureInfo.externalInputNodes.length > 0) {
         structureInfo.externalInputNodes.forEach(extInput => {
           const isRequired = extInput.required !== undefined ? extInput.required : true;
+          const fieldType = mapComfyTypeToToolType(extInput.inputType);
+          let defaultValue = extInput.defaultValue;
+
+          if (fieldType === 'number' && typeof defaultValue === 'string') {
+            const parsed = parseFloat(defaultValue);
+            if (!isNaN(parsed)) {
+              defaultValue = parsed;
+            } else {
+              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for numeric input "${extInput.inputName}" in tool "${toolDefinition.toolId}" is not a parseable number. Omitting default.`);
+              defaultValue = undefined;
+            }
+          } else if (fieldType === 'boolean' && typeof defaultValue === 'string') {
+            if (defaultValue.toLowerCase() === 'true') {
+              defaultValue = true;
+            } else if (defaultValue.toLowerCase() === 'false') {
+              defaultValue = false;
+            } else {
+              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for boolean input "${extInput.inputName}" in tool "${toolDefinition.toolId}" is not a parseable boolean ("true" or "false"). Omitting default.`);
+              defaultValue = undefined;
+            }
+          }
+
           toolDefinition.inputSchema[extInput.inputName] = {
             name: extInput.inputName,
-            type: mapComfyTypeToToolType(extInput.inputType),
+            type: fieldType,
             required: isRequired,
-            default: extInput.defaultValue,
+            default: defaultValue,
             description: extInput.description || `Input: ${extInput.inputName}`,
             advanced: extInput.advanced || false
           };
@@ -917,11 +939,33 @@ class WorkflowCacheManager {
       }
       workflowData.version.input_types.forEach(item => {
         if (item && item.input_id) {
+          const fieldType = mapComfyTypeToToolType(item.type);
+          let defaultValue = item.default_value;
+
+          if (fieldType === 'number' && typeof defaultValue === 'string') {
+            const parsed = parseFloat(defaultValue);
+            if (!isNaN(parsed)) {
+              defaultValue = parsed;
+            } else {
+              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for numeric input "${item.input_id}" in tool "${toolDefinition.toolId}" (from deployment input_types) is not a parseable number. Omitting default.`);
+              defaultValue = undefined;
+            }
+          } else if (fieldType === 'boolean' && typeof defaultValue === 'string') {
+            if (defaultValue.toLowerCase() === 'true') {
+              defaultValue = true;
+            } else if (defaultValue.toLowerCase() === 'false') {
+              defaultValue = false;
+            } else {
+              this.logger.warn(`[WorkflowCacheManager] Default value "${defaultValue}" for boolean input "${item.input_id}" in tool "${toolDefinition.toolId}" (from deployment input_types) is not a parseable boolean ("true" or "false"). Omitting default.`);
+              defaultValue = undefined;
+            }
+          }
+
           toolDefinition.inputSchema[item.input_id] = {
             name: item.input_id,
-            type: mapComfyTypeToToolType(item.type), // item.type is e.g., 'integer', 'string'
+            type: fieldType,
             required: item.required !== undefined ? item.required : true, // Assume required if not specified
-            default: item.default_value,
+            default: defaultValue,
             description: item.description || `Input: ${item.input_id}`,
             advanced: item.advanced || false
           };
