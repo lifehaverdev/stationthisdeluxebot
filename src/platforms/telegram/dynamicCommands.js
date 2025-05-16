@@ -48,45 +48,55 @@ async function setupDynamicCommands(bot, services) {
       let hasRequiredVideo = false;
       let hasRequiredText = false;
 
+      const primaryHint = tool.platformHints?.primaryInput;
+
       for (const inputName in tool.inputSchema) {
         const inputField = tool.inputSchema[inputName];
-        if (!inputField || typeof inputField.type !== 'string') continue;
+        if (!inputField) continue;
 
-        const fieldTypeLower = inputField.type.toLowerCase();
-        const isPromptField = (inputName === 'input_prompt' || inputName === 'prompt' || inputName.toLowerCase().includes('text'));
-        const isImageField = (inputName === 'input_image' || inputName === 'image' || inputName.toLowerCase().includes('image'));
-        const isVideoField = (inputName === 'input_video' || inputName === 'video' || inputName.toLowerCase().includes('video'));
+        const fieldType = inputField.type || 'unknown'; // Get type, default to 'unknown'
+        const fieldTypeLower = typeof fieldType === 'string' ? fieldType.toLowerCase() : 'unknown';
         
-        if (fieldTypeLower === 'string' && isPromptField) {
+        const isPromptCandidateByName = (inputName === 'input_prompt' || inputName === 'prompt' || inputName.toLowerCase().includes('text'));
+        const isImageCandidateByName = (inputName === 'input_image' || inputName === 'image' || inputName.toLowerCase().includes('image'));
+        const isVideoCandidateByName = (inputName === 'input_video' || inputName === 'video' || inputName.toLowerCase().includes('video'));
+        
+        if ((fieldTypeLower === 'string' || fieldTypeLower === 'text') && isPromptCandidateByName) {
           if (!textInputKey) textInputKey = inputName; // Prefer specific names first
           if (inputField.required) hasRequiredText = true;
         }
-        if (fieldTypeLower === 'image' && isImageField) {
+        if (fieldTypeLower === 'image' && isImageCandidateByName) {
           if (!imageInputKey) imageInputKey = inputName;
           if (inputField.required) hasRequiredImage = true;
         }
-        if (fieldTypeLower === 'video' && isVideoField) {
+        if (fieldTypeLower === 'video' && isVideoCandidateByName) {
           if (!videoInputKey) videoInputKey = inputName;
           if (inputField.required) hasRequiredVideo = true;
         }
       }
       
-      // Fallback: if no specifically named prompt, take the first string input as potential text input
-      if (!textInputKey) {
+      // Fallback: if no specifically named prompt, and primaryHint is 'text', take the first string input.
+      if (!textInputKey && primaryHint === 'text') {
+        logger.info(`[Telegram Filter Debug] Tool '${tool.displayName}' (ID: ${tool.toolId}) is text-primary but no specific prompt key found yet. Scanning all string inputs...`);
         for (const inputName in tool.inputSchema) {
           const inputField = tool.inputSchema[inputName];
-          if (inputField && inputField.type && inputField.type.toLowerCase() === 'string') {
+          const currentFieldTypeLower = inputField?.type?.toLowerCase?.();
+          if (inputField && (currentFieldTypeLower === 'string' || currentFieldTypeLower === 'text')) {
+            logger.info(`[Telegram Filter Debug]   Found potential string/text input: '${inputName}' (type: ${inputField.type}). Assigning as textInputKey.`);
             textInputKey = inputName;
             if (inputField.required) hasRequiredText = true;
             break; 
+          } else if (inputField) {
+            logger.info(`[Telegram Filter Debug]   Skipping input '${inputName}' (type: ${inputField.type || 'undefined'}) during text fallback.`);
           }
         }
       }
-      // Fallback for image/video if not specifically named
+
+      // Fallback for image/video if not specifically named (less critical if primaryHint guides us)
       if (!imageInputKey) {
           for (const inputName in tool.inputSchema) {
               const inputField = tool.inputSchema[inputName];
-              if (inputField && inputField.type && inputField.type.toLowerCase() === 'image') {
+              if (inputField && inputField.type?.toLowerCase?.() === 'image') {
                   imageInputKey = inputName;
                   if (inputField.required) hasRequiredImage = true;
                   break;
@@ -96,7 +106,7 @@ async function setupDynamicCommands(bot, services) {
       if (!videoInputKey) {
           for (const inputName in tool.inputSchema) {
               const inputField = tool.inputSchema[inputName];
-              if (inputField && inputField.type && inputField.type.toLowerCase() === 'video') {
+              if (inputField && inputField.type?.toLowerCase?.() === 'video') {
                   videoInputKey = inputName;
                   if (inputField.required) hasRequiredVideo = true;
                   break;
@@ -104,10 +114,8 @@ async function setupDynamicCommands(bot, services) {
           }
       }
 
-
       tool.metadata = tool.metadata || {};
       let handlerType = null;
-      const primaryHint = tool.platformHints?.primaryInput;
 
       if (primaryHint === 'text' && textInputKey && !imageInputKey && !videoInputKey) {
         handlerType = 'text_only';
@@ -129,7 +137,6 @@ async function setupDynamicCommands(bot, services) {
          handlerType = 'video_only';
       }
 
-
       if (handlerType) {
         tool.metadata.telegramHandlerType = handlerType;
         tool.metadata.telegramPromptInputKey = textInputKey;
@@ -138,7 +145,16 @@ async function setupDynamicCommands(bot, services) {
         logger.info(`[Telegram Filter] Classified tool '${tool.displayName}' (ID: ${tool.toolId}) as '${handlerType}'. PromptKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}`);
         acc.push(tool);
       } else {
-        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) could not be classified for a Telegram handler. Skipping. PrimaryHint: ${primaryHint}, TextKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}, ReqImg: ${hasRequiredImage}, ReqVid: ${hasRequiredVideo}`);
+        const inputKeys = Object.keys(tool.inputSchema || {}).join(', ');
+        let typeDebug = '';
+        if (primaryHint === 'text' && !textInputKey) {
+            Object.entries(tool.inputSchema || {}).forEach(([key, val]) => {
+                if (key === 'input_prompt' || key === 'prompt' || key.toLowerCase().includes('text')) {
+                    typeDebug += ` Field '${key}' has type: ${val?.type || 'undefined'}.`;
+                }
+            });
+        }
+        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) could not be classified for a Telegram handler. Skipping. PrimaryHint: ${primaryHint}, TextKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}, ReqImg: ${hasRequiredImage}, ReqVid: ${hasRequiredVideo}, InputSchemaKeys: [${inputKeys}].${typeDebug}`);
       }
       return acc;
     }, []);
@@ -160,6 +176,7 @@ async function setupDynamicCommands(bot, services) {
       }
 
       logger.info(`[Telegram] Registering command: /${commandName} for tool ID: ${tool.toolId}`);
+      registeredCommands.push({ command: commandName, description: `Run ${tool.displayName}` });
 
       bot.onText(new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i'), async (msg, match) => {
         const chatId = msg.chat.id;
@@ -337,7 +354,6 @@ async function setupDynamicCommands(bot, services) {
           logger.error(`[Telegram EXEC /${commandName}] Error during execution (MAID: ${masterAccountId}, SID: ${sessionId}, GenID: ${generationId}):`, error.response ? error.response.data : error.message, error.stack);
           await bot.sendMessage(chatId, `Sorry, an unexpected error occurred while processing '/${commandName}'. Ref: ${generationId || 'N/A'}`, { reply_to_message_id: msg.message_id });
         }
-        registeredCommands.push({ command: commandName, description: `Run ${tool.displayName}` });
       });
     }
 
