@@ -749,12 +749,12 @@ commandRegistry['/makevideo'] = {
         iMake.handleMakeVideo(message);
     }
 };
-commandRegistry['/vidupscale'] = {
-    handler: async (message) => {
-        console.log('made it into /vidupscale command');
-        iMedia.handleVIDUUpscale(message);
-    }
-};
+// commandRegistry['/vidupscale'] = {
+//     handler: async (message) => {
+//         console.log('made it into /vidupscale command');
+//         iMedia.handleVIDUUpscale(message);
+//     }
+// };
 
     // Modified '/stationthis' command to include group check and onboarding
 commandRegistry['/stationthis'] = {

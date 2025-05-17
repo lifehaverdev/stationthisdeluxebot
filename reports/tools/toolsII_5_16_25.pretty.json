@@ -1,0 +1,2738 @@
+[
+  {
+    "toolId": "comfy-0d129bba-1d74-4f79-8808-a4e8a8a79fcf",
+    "service": "comfyui",
+    "displayName": "fluxgeneral",
+    "commandName": "/fluxgeneral",
+    "apiPath": "/api/internal/comfy/run/0d129bba-1d74-4f79-8808-a4e8a8a79fcf",
+    "description": "Workflow from markury\n\nhttps://civitai.com/models/618997?modelVersionId=697441\nThe checkpoint goes in ComfyUI/models/unet (not checkpoints)\nDownload the original weights here:\nhttps://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.sft\n\nDownload the fp8 version for <24gb vram systems:\nhttps://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors\n\nText encoders go in ComfyUI/models/clip:\nhttps://huggingface.co/comfyanonymous/flux_text_encoders/tree/main\n\nVAE (ae.sft) goes in ComfyUI/models/vae:\nhttps://huggingface.co/black-forest-labs/FLUX.1-schnell/blob/main/ae.sft\n\nDownload the fp8 t5xxl for degraded quality but less RAM use\nLaunch ComfyUI with \"--lowvram\" arg (in the .bat file) to offload text encoder to CPU.\n\nI can confirm this runs on:\n- RTX 3090 (24gb) 1.29s/it\n- RTX 4070 (12gb) 85s/it\nBoth running the fp8 quantized version. The 4070 is very slow though.",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 2147483647,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 6,
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "This image is a highly detailed digital illustration in an anime art style. It features a young woman with long, flowing silver hair that cascades past her shoulders, with soft, shiny highlights giving it a vibrant, almost metallic appearance. Her hair is styled in loose waves, and she has large, expressive purple eyes that convey a sense of calm and confidence. She has a fair complexion and delicate features, with a slight blush on her cheeks, adding a touch of warmth to her otherwise neutral expression.\n\nShe is wearing a strapless, form-fitting dress made of a shiny silver fabric that reflects light, creating a glossy texture. The dress has a high collar and a bow at the chest, accentuating her slim figure and modest breast size. The neckline is deep, revealing her collarbone and shoulders.\n\nThe background is a plain, light gray, ensuring that the focus remains entirely on the character. In the lower left corner, there is a small, stylized Japanese character, possibly representing her name or a personal symbol. The overall composition is clean and polished, with attention to detail in both the character's attire and her facial expressions, typical of high-quality anime art",
+        "description": "",
+        "required": false
+      },
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stbflux",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "0d129bba-1d74-4f79-8808-a4e8a8a79fcf",
+      "workflowApiId": "da45f65e-d3f6-4142-95ae-facccdd4e884",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "VAEDecode",
+        "Note",
+        "ComfyUIDeployExternalNumberInt",
+        "CLIPTextEncode",
+        "RandomNoise",
+        "EmptyLatentImage",
+        "SamplerCustomAdvanced",
+        "ModelSamplingFlux",
+        "DualCLIPLoader",
+        "BasicGuider",
+        "ComfyUIDeployExternalNumber",
+        "VAELoader",
+        "UNETLoader",
+        "FluxGuidance",
+        "CLIPTextEncodeFlux",
+        "BasicScheduler",
+        "KSamplerSelect",
+        "ComfyUIDeployExternalText",
+        "ComfyDeploy",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "ConditioningCombine",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-386015cd-7f1f-48e3-9b4f-17ee6cc983a1",
+    "service": "comfyui",
+    "displayName": "flux_i2i",
+    "commandName": "/flux_i2i",
+    "apiPath": "/api/internal/comfy/run/386015cd-7f1f-48e3-9b4f-17ee6cc983a1",
+    "description": "Workflow from markury\n\nhttps://civitai.com/models/618997?modelVersionId=697441\nThe checkpoint goes in ComfyUI/models/unet (not checkpoints)\nDownload the original weights here:\nhttps://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.sft\n\nDownload the fp8 version for <24gb vram systems:\nhttps://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors\n\nText encoders go in ComfyUI/models/clip:\nhttps://huggingface.co/comfyanonymous/flux_text_encoders/tree/main\n\nVAE (ae.sft) goes in ComfyUI/models/vae:\nhttps://huggingface.co/black-forest-labs/FLUX.1-schnell/blob/main/ae.sft\n\nDownload the fp8 t5xxl for degraded quality but less RAM use\nLaunch ComfyUI with \"--lowvram\" arg (in the .bat file) to offload text encoder to CPU.\n\nI can confirm this runs on:\n- RTX 3090 (24gb) 1.29s/it\n- RTX 4070 (12gb) 85s/it\nBoth running the fp8 quantized version. The 4070 is very slow though.",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 2147483647,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 6,
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "This image is a highly detailed digital illustration in an anime art style. It features a young woman with long, flowing silver hair that cascades past her shoulders, with soft, shiny highlights giving it a vibrant, almost metallic appearance. Her hair is styled in loose waves, and she has large, expressive purple eyes that convey a sense of calm and confidence. She has a fair complexion and delicate features, with a slight blush on her cheeks, adding a touch of warmth to her otherwise neutral expression.\n\nShe is wearing a strapless, form-fitting dress made of a shiny silver fabric that reflects light, creating a glossy texture. The dress has a high collar and a bow at the chest, accentuating her slim figure and modest breast size. The neckline is deep, revealing her collarbone and shoulders.\n\nThe background is a plain, light gray, ensuring that the focus remains entirely on the character. In the lower left corner, there is a small, stylized Japanese character, possibly representing her name or a personal symbol. The overall composition is clean and polished, with attention to detail in both the character's attire and her facial expressions, typical of high-quality anime art",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.6,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "386015cd-7f1f-48e3-9b4f-17ee6cc983a1",
+      "workflowApiId": "d5fefffc-24e5-4a0c-af11-c7f54d526b17",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "VAEDecode",
+        "Note",
+        "ComfyUIDeployExternalNumberInt",
+        "CLIPTextEncode",
+        "RandomNoise",
+        "SamplerCustomAdvanced",
+        "DualCLIPLoader",
+        "ComfyUIDeployExternalNumber",
+        "VAELoader",
+        "UNETLoader",
+        "FluxGuidance",
+        "ComfyDeploy",
+        "SaveImage",
+        "ConditioningCombine",
+        "KSamplerSelect",
+        "ModelSamplingFlux",
+        "BasicGuider",
+        "ComfyUIDeployExternalText",
+        "BasicScheduler",
+        "ComfyUIDeployExternalImage",
+        "VAEEncode",
+        "MultiLoraLoader-70bf3d77",
+        "CLIPTextEncodeFlux",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-4a8cbddf-4277-4d9e-ae63-575315da06b1",
+    "service": "comfyui",
+    "displayName": "inpaintflux",
+    "commandName": "/inpaintflux",
+    "apiPath": "/api/internal/comfy/run/4a8cbddf-4277-4d9e-ae63-575315da06b1",
+    "description": "Runs the inpaintflux workflow.",
+    "inputSchema": {
+      "input_inpaint_target": {
+        "type": "text",
+        "default": "face",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 12345689,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "The image depicts a scene from the anime series Dragon Ball Z, with the characters Goku, Elon Musk, and a child version of Gohan sharing a meal of ramen noodles. They are all sitting around a dining table, with Goku and Gohan on one side and Naruto on the other. They are all holding chopsticks and eating the noodles. The table is set with bowls of ramen, cups, and bowls of drinks. The arrangement of the characters and the food creates a sense of camaraderie and shared enjoyment of the meal.",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.9,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "4a8cbddf-4277-4d9e-ae63-575315da06b1",
+      "workflowApiId": "31a3e037-1916-462a-935f-66ced13a8c6a",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "Reroute",
+        "DualCLIPLoader",
+        "ComfyDeploy",
+        "CLIPSeg Model Loader",
+        "ComfyUIDeployExternalText",
+        "ComfyUIDeployExternalImage",
+        "VAELoader",
+        "SamplerCustomAdvanced",
+        "VAEDecode",
+        "SaveImage",
+        "ComfyUIDeployExternalNumberInt",
+        "RandomNoise",
+        "ControlNetLoader",
+        "CFGGuider",
+        "KSamplerSelect",
+        "VAEEncode",
+        "EmptySD3LatentImage",
+        "CLIPSeg Masking",
+        "MultiLoraLoader-70bf3d77",
+        "LoraTextExtractor-b1f83aa2",
+        "GrowMaskWithBlur",
+        "CLIPTextEncodeFlux",
+        "BasicScheduler",
+        "ControlNetInpaintingAliMamaApply",
+        "ImageCompositeMasked",
+        "PreviewImage",
+        "MaskToImage",
+        "ComfyUIDeployExternalNumber",
+        "UNETLoader"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-ff5711bd-9512-4bd6-8e4c-95386574cff7",
+    "service": "comfyui",
+    "displayName": "chromake",
+    "commandName": "/chromake",
+    "apiPath": "/api/internal/comfy/run/ff5711bd-9512-4bd6-8e4c-95386574cff7",
+    "description": "Runs the chromake workflow.",
+    "inputSchema": {
+      "input_prompt": {
+        "type": "text",
+        "default": "Extreme close-up photograph of a single tiger eye, direct frontal view. The iris is very detailed and the pupil resembling a dark void. The word \"Chroma\" is across the lower portion of the image in large white stylized letters, with brush strokes resembling those made with Japanese calligraphy. Each strand of the thick fur is highly detailed and distinguishable. Natural lighting to capture authentic eye shine and depth.",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "numberslider",
+        "default": 4,
+        "description": 0,
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 666,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 26,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "ff5711bd-9512-4bd6-8e4c-95386574cff7",
+      "workflowApiId": "3dbad3d6-4c81-4a1d-bf3f-ad1e62530715",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "EmptySD3LatentImage",
+        "CFGGuider",
+        "SamplerCustomAdvanced",
+        "KSamplerSelect",
+        "VAEDecode",
+        "SaveImage",
+        "BasicScheduler",
+        "CLIPTextEncode",
+        "VAELoader",
+        "LoraTextExtractor-b1f83aa2",
+        "CLIPLoader",
+        "MultiLoraLoader-70bf3d77",
+        "ComfyUIDeployExternalText",
+        "ComfyUIDeployExternalNumberSlider",
+        "ComfyUIDeployExternalNumberInt",
+        "RandomNoise",
+        "UNETLoader"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-1be45f3d-1420-4018-843c-2af8cdb006d6",
+    "service": "comfyui",
+    "displayName": "interrogate",
+    "commandName": "/interrogate",
+    "apiPath": "/api/internal/comfy/run/1be45f3d-1420-4018-843c-2af8cdb006d6",
+    "description": "Runs the interrogate workflow.",
+    "inputSchema": {
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "image",
+      "supportsFileCaption": true,
+      "supportsReplyWithCommand": true
+    },
+    "category": "unknown",
+    "metadata": {
+      "deploymentId": "1be45f3d-1420-4018-843c-2af8cdb006d6",
+      "workflowApiId": "17b1b910-18ac-43b6-a712-45ab970a7b6d",
+      "outputType": "unknown",
+      "hasPromptNode": false,
+      "hasKSamplerNode": false,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "ComfyDeploy",
+        "ComfyUIDeployExternalImage",
+        "WD14Tagger|pysssss",
+        "Save Text File"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-42106fbe-e6b5-4bcd-901f-a69554da084a",
+    "service": "comfyui",
+    "displayName": "removebackground",
+    "commandName": "/removebackground",
+    "apiPath": "/api/internal/comfy/run/42106fbe-e6b5-4bcd-901f-a69554da084a",
+    "description": "Runs the removebackground workflow.",
+    "inputSchema": {
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "image",
+      "supportsFileCaption": true,
+      "supportsReplyWithCommand": true
+    },
+    "category": "image-to-image",
+    "metadata": {
+      "deploymentId": "42106fbe-e6b5-4bcd-901f-a69554da084a",
+      "workflowApiId": "9aea1535-88d2-4845-9d98-2a341bd930c8",
+      "outputType": "image",
+      "hasPromptNode": false,
+      "hasKSamplerNode": false,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "ComfyDeploy",
+        "ComfyUIDeployExternalImage",
+        "InspyrenetRembg",
+        "SaveImage"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-b0d89b67-4e01-47fe-8680-405b2d6bd204",
+    "service": "comfyui",
+    "displayName": "upscale",
+    "commandName": "/upscale",
+    "apiPath": "/api/internal/comfy/run/b0d89b67-4e01-47fe-8680-405b2d6bd204",
+    "description": "Runs the upscale workflow.",
+    "inputSchema": {
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "image",
+      "supportsFileCaption": true,
+      "supportsReplyWithCommand": true
+    },
+    "category": "image-to-image",
+    "metadata": {
+      "deploymentId": "b0d89b67-4e01-47fe-8680-405b2d6bd204",
+      "workflowApiId": "b2b96eb6-e644-453a-9141-558903ab2df4",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": false,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "ComfyDeploy",
+        "CLIPTextEncodeFlux",
+        "UpscaleModelLoader",
+        "SaveImage",
+        "CheckpointLoaderSimple",
+        "ComfyUIDeployExternalImage",
+        "UltimateSDUpscale"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-d0783512-ae6f-401d-859a-03cf9570d159",
+    "service": "comfyui",
+    "displayName": "quickinpaint",
+    "commandName": "/quickinpaint",
+    "apiPath": "/api/internal/comfy/run/d0783512-ae6f-401d-859a-03cf9570d159",
+    "description": "Runs the quickinpaint workflow.",
+    "inputSchema": {
+      "input_negative": {
+        "type": "text",
+        "default": "watermark, ugly, deformed, noisy, blurry",
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "1girl, face, ohisee <lora:ohisee:1>",
+        "description": "",
+        "required": false
+      },
+      "input_inpaint_target": {
+        "type": "text",
+        "default": "face",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "d0783512-ae6f-401d-859a-03cf9570d159",
+      "workflowApiId": "cafb1965-087f-4dd8-b71f-31093dfe5c43",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "ComfyDeploy",
+        "DifferentialDiffusion",
+        "CLIPTextEncode",
+        "CLIPSeg Masking",
+        "InpaintModelConditioning",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "CheckpointLoaderSimple",
+        "LoraTextExtractor-b1f83aa2",
+        "MultiLoraLoader-70bf3d77",
+        "ComfyUIDeployExternalText",
+        "ComfyUIDeployExternalNumber",
+        "CLIPSeg Model Loader",
+        "ComfyUIDeployExternalImage"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-38a6c4f8-af1c-433b-9a10-8a888abf6aae",
+    "service": "comfyui",
+    "displayName": "BlackOrChinese",
+    "commandName": "/blackorchinese",
+    "apiPath": "/api/internal/comfy/run/38a6c4f8-af1c-433b-9a10-8a888abf6aae",
+    "description": "Runs the BlackOrChinese workflow.",
+    "inputSchema": {
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "image",
+      "supportsFileCaption": true,
+      "supportsReplyWithCommand": true
+    },
+    "category": "image-to-image",
+    "metadata": {
+      "deploymentId": "38a6c4f8-af1c-433b-9a10-8a888abf6aae",
+      "workflowApiId": "0d0d259c-298a-4ac2-821a-3c668e2bbda1",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "DualCLIPLoader",
+        "ComfyDeploy",
+        "VAELoader",
+        "MaskToImage",
+        "CLIPSeg Model Loader",
+        "CLIPSeg Masking",
+        "ImageCompositeMasked",
+        "UNETLoader",
+        "Text String",
+        "SamplerCustomAdvanced",
+        "VAEDecode",
+        "CFGGuider",
+        "ComfyUIDeployExternalImage",
+        "GrowMaskWithBlur",
+        "SaveImage",
+        "CLIPTextEncodeFlux",
+        "Reroute",
+        "RandomNoise",
+        "KSamplerSelect",
+        "EmptySD3LatentImage",
+        "BasicScheduler",
+        "ControlNetLoader",
+        "ControlNetInpaintingAliMamaApply"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-0a863d4e-1f43-4f56-924f-12a9f8ac1ac8",
+    "service": "comfyui",
+    "displayName": "L4_t2i",
+    "commandName": "/l4_t2i",
+    "apiPath": "/api/internal/comfy/run/0a863d4e-1f43-4f56-924f-12a9f8ac1ac8",
+    "description": "Runs the L4_t2i workflow.",
+    "inputSchema": {
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "beautiful bikini babe smiling laughing on the beach sunset volleyball match playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbotquickmaket2i",
+        "description": "",
+        "required": false
+      },
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "0a863d4e-1f43-4f56-924f-12a9f8ac1ac8",
+      "workflowApiId": "194cc782-b3f1-406c-8269-ad7fdebff995",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalText",
+        "ComfyDeploy",
+        "LoraTextExtractor-b1f83aa2",
+        "MultiLoraLoader-70bf3d77",
+        "EmptyLatentImage",
+        "CLIPTextEncode",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalCheckpoint",
+        "CheckpointLoaderSimple"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-43c74e85-9d25-4b55-80a6-21a85eb4c3be",
+    "service": "comfyui",
+    "displayName": "text2video",
+    "commandName": "/text2video",
+    "apiPath": "/api/internal/comfy/run/43c74e85-9d25-4b55-80a6-21a85eb4c3be",
+    "description": "TIPS:\n\n- hide noodles by pressing the \n  dedicated ComfyUI button in the \n  bottom right \"👁️\"\n\n- Go to SETTINGS, search for:\n  \"Display animated previews when \n  sampling\"\n  Turn it ON to watch the video \n  build directly in the sampler \n  node.\n\n- Fast Lora may works best when \n  combined with other Loras, \n  allowing you to reduce the \n  number of steps.\n\n- Wave Speed can significantly \n  reduce inference time but may \n  introduce artifacts.\n\n- Achieving good results requires \n  testing different settings. \n  Default configurations may not \n  always work, especially when \n  using LORAs, so experiment to \n  find settings that fits best.\n\n- If you're experiencing poor \n  results or glitches, you can \n  also try to switch to different \n  sampler/scheduler, such as \n  LCM, DDPM, DDMPP_2M, Euler or \n  the new \"Gradient_estimation\"\n  (Samplers/schedulers need to be \n  set for each stage and mode; \n  they are not settings found in \n  the console)",
+    "inputSchema": {
+      "input_prompt": {
+        "type": "text",
+        "default": "A sultry zoom pan of a young woman's hourglass figure in a flowing gown in a {sunlit|moonlit|misty} meadow bursting with {vibrant|wilted|delicate} wildflowers. A {white|lavender|blue} flower is tucked behind her ear, adding a touch of elegance to her natural beauty. Her serene expression exudes {peace|melancholy|wonder} and connection with nature. {Sunbeams|soft moonlight|golden rays} filter through the trees, casting a {warm|cool|dreamy} glow on her skin, while soft petals from nearby blossoms gently drift in the breeze. Her {long hair|short curls|braided hair} flows naturally, blending with the {lush|barren|overgrown} surroundings. The scene captures the form of her figure, from the {smooth|textured|freckled} skin to the slight curve of her waist, as the {radiant|ethereal|soft} natural light emphasizes her beauty and the {tranquil|nostalgic|mysterious} atmosphere. {bokeh|soft focus|cinematic blur}. professional photography. Realistic Style.<lora:petravoiceflux2:3>",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "video",
+    "metadata": {
+      "deploymentId": "43c74e85-9d25-4b55-80a6-21a85eb4c3be",
+      "workflowApiId": "c73d40d2-dc80-4aa8-8f1d-f9d291684e6d",
+      "outputType": "video",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "Label (rgthree)",
+        "CM_FloatToInt",
+        "UNETLoader",
+        "FluxGuidance",
+        "Note",
+        "RandomNoise",
+        "RIFE VFI",
+        "ImageSharpen",
+        "HunyuanVideoLoraLoader",
+        "KSamplerSelect",
+        "mxSlider",
+        "BasicScheduler",
+        "MultiFloatNodeAID",
+        "EmptyHunyuanLatentVideo",
+        "BasicGuider",
+        "Float",
+        "ModelSamplingSD3",
+        "SamplerCustomAdvanced",
+        "VAEDecodeTiled",
+        "CLIPTextEncode",
+        "ShowText|pysssss",
+        "VAELoader",
+        "ImageUpscaleWithModel",
+        "DualCLIPLoader",
+        "Reroute",
+        "easy wildcards",
+        "ComfyUIDeployExternalText",
+        "UpscaleModelLoader",
+        "Fast Groups Bypasser (rgthree)",
+        "VHS_VideoCombine",
+        "LatentUpscaleBy"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000596,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-58922755-6e92-4fcc-b9c8-10036672d2d7",
+    "service": "comfyui",
+    "displayName": "stationthisHUN2",
+    "commandName": "/stationthishun2",
+    "apiPath": "/api/internal/comfy/run/58922755-6e92-4fcc-b9c8-10036672d2d7",
+    "description": "The day after the publication of the first official HUN I2V model, an update was released—version v2. It's up to you to decide which one to use; you'll find the links below.\nAll the other nodes and modules present in the setup area, like Wave Speed, TeaCache, Fast LoRA, \nare left there at the user's discretion to use or activate. \nThey are not essential for the functioning of I2V.\n\n\nExperiment with settings!\n\n\n\n\n\n\n\n\n  \nFILES REQUIRED:\n\n_\nhttps://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/resolve/main/split_files/clip_vision/llava_llama3_vision.safetensors?download=true\nin:\nComfyUI\\models\\clip_vision\n_\n\nhttps://huggingface.co/Kijai/HunyuanVideo_comfy/tree/main\nor   \nhttps://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/tree/main/split_files/diffusion_models\n\nin:\nComfyUI\\models\\diffusion_models\n\n_\n\nTIPS:\n\n- Select a fp8 weight_dtype if you \n  are running out of  memory.\n\n\n- hide noodles by pressing the \n  dedicated ComfyUI button in the \n  bottom right \"👁️\"\n\n- Go to SETTINGS, search for:\n  \"Display animated previews when \n  sampling\"\n  Turn it ON to watch the video \n  build directly in the sampler \n  node.\n\n- Fast Lora may works best when \n  combined with other Loras, \n  allowing you to reduce the \n  number of steps.\n\n- Wave Speed can significantly \n  reduce inference time but may \n  introduce artifacts.\n\n- Achieving good results requires \n  testing different settings. \n  Default configurations may not \n  always work, especially when \n  using LORAs, so experiment to \n  find settings that fits best.\n\n- If you're experiencing poor \n  results or glitches, you can \n  also try to switch to different \n  sampler/scheduler, such as \n  LCM, DDPM, DDMPP_2M, Euler or \n  the new \"Gradient_estimation\"\n  (Samplers/schedulers need to be \n  set for each stage and mode; \n  they are not settings found in \n  the console)",
+    "inputSchema": {
+      "input_prompt": {
+        "type": "text",
+        "default": "sexy underwater model posing and swimming, ",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "video",
+    "metadata": {
+      "deploymentId": "58922755-6e92-4fcc-b9c8-10036672d2d7",
+      "workflowApiId": "d1013630-2bc8-46a9-bc8d-7b630bc8a601",
+      "outputType": "video",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "Label (rgthree)",
+        "Reroute",
+        "HunyuanVideoLoraLoader",
+        "CM_FloatToInt",
+        "FloatConstant",
+        "RandomNoise",
+        "BasicScheduler",
+        "SamplerCustomAdvanced",
+        "PathchSageAttentionKJ",
+        "Note",
+        "CLIPVisionLoader",
+        "UNETLoader",
+        "KSamplerSelect",
+        "FluxGuidance",
+        "BasicGuider",
+        "ModelSamplingSD3",
+        "VAELoader",
+        "VAEDecodeTiled",
+        "CLIPVisionEncode",
+        "HunyuanImageToVideo",
+        "ImageSharpen",
+        "DualCLIPLoader",
+        "TextEncodeHunyuanVideo_ImageToVideo",
+        "ComfyUIDeployExternalText",
+        "ComfyUIDeployExternalImage",
+        "LoadImage",
+        "VHS_VideoCombine",
+        "MultiFloatNodeAID"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000596,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-c2920fd2-c0e4-49d8-bd5f-e8bf49e84eaf",
+    "service": "comfyui",
+    "displayName": "ms3.2",
+    "commandName": "/ms3.2",
+    "apiPath": "/api/internal/comfy/run/c2920fd2-c0e4-49d8-bd5f-e8bf49e84eaf",
+    "description": "Runs the ms3.2 workflow.",
+    "inputSchema": {
+      "nothing_can_go_hear": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v70.safetensors",
+        "description": "",
+        "required": false
+      },
+      "nor_hear": {
+        "type": "textany",
+        "default": "SVD/svd.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 0,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "image",
+      "supportsFileCaption": true,
+      "supportsReplyWithCommand": true
+    },
+    "category": "video",
+    "metadata": {
+      "deploymentId": "c2920fd2-c0e4-49d8-bd5f-e8bf49e84eaf",
+      "workflowApiId": "88a9f115-0b2b-4a96-955e-37c4573fca81",
+      "outputType": "video",
+      "hasPromptNode": false,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "KSampler",
+        "SVD_img2vid_Conditioning",
+        "VideoLinearCFGGuidance",
+        "ImageOnlyCheckpointLoader",
+        "ComfyDeploy",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalTextAny",
+        "ComfyUIDeployExternalImage",
+        "ComfyUIDeployExternalNumberInt",
+        "VAEDecode",
+        "VHS_VideoCombine"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.00114,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-cc19b462-b4ce-48a9-8e68-ad5b3bbbd756",
+    "service": "comfyui",
+    "displayName": "L4_i2i_canny_style_pose",
+    "commandName": "/l4_i2i_canny_style_pose",
+    "apiPath": "/api/internal/comfy/run/cc19b462-b4ce-48a9-8e68-ad5b3bbbd756",
+    "description": "Runs the L4_i2i_canny_style_pose workflow.",
+    "inputSchema": {
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_threshold": {
+        "type": "number",
+        "default": 0.35000000000000003,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_character_threshold": {
+        "type": "number",
+        "default": 0.85,
+        "description": "",
+        "required": false
+      },
+      "input_pose_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_pose_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_end_percent": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_canny_high_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_canny_low_threshold": {
+        "type": "number",
+        "default": 0.4,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbot",
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_style_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.66,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_start_percent": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_canny_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_weight": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "cc19b462-b4ce-48a9-8e68-ad5b3bbbd756",
+      "workflowApiId": "c417d9d2-ca1c-4179-a476-d14bdde59640",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "IPAdapterAdvanced",
+        "VHS_DuplicateImages",
+        "CLIPTextEncode",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalText",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "CR Text Concatenate",
+        "WD14Tagger|pysssss",
+        "ControlNetApplyAdvanced",
+        "ComfyDeploy",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "ConditioningConcat",
+        "EmptyLatentImage",
+        "ComfyUIDeployExternalImage",
+        "Any Switch (rgthree)",
+        "Canny",
+        "ControlNetLoader",
+        "IPAdapterUnifiedLoader",
+        "Fast Groups Bypasser (rgthree)",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-b6a4d20a-b45c-4c28-95cc-8bf872a78005",
+    "service": "comfyui",
+    "displayName": "L4_i2i",
+    "commandName": "/l4_i2i",
+    "apiPath": "/api/internal/comfy/run/b6a4d20a-b45c-4c28-95cc-8bf872a78005",
+    "description": "Runs the L4_i2i workflow.",
+    "inputSchema": {
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_threshold": {
+        "type": "number",
+        "default": 0.35000000000000003,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_character_threshold": {
+        "type": "number",
+        "default": 0.85,
+        "description": "",
+        "required": false
+      },
+      "input_pose_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_pose_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_end_percent": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_canny_high_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_canny_low_threshold": {
+        "type": "number",
+        "default": 0.4,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbot",
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_style_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.66,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_start_percent": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_canny_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_weight": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "b6a4d20a-b45c-4c28-95cc-8bf872a78005",
+      "workflowApiId": "6d9705ad-d028-4a4e-929e-f6525d489582",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "IPAdapterAdvanced",
+        "VHS_DuplicateImages",
+        "CLIPTextEncode",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalText",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "CR Text Concatenate",
+        "WD14Tagger|pysssss",
+        "ControlNetApplyAdvanced",
+        "ComfyDeploy",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "ConditioningConcat",
+        "EmptyLatentImage",
+        "ComfyUIDeployExternalImage",
+        "Any Switch (rgthree)",
+        "Canny",
+        "ControlNetLoader",
+        "IPAdapterUnifiedLoader",
+        "Fast Groups Bypasser (rgthree)",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-01c25683-dce0-4e3a-8a1a-4d793044db24",
+    "service": "comfyui",
+    "displayName": "L4_i2i_ap_canny_style_pose",
+    "commandName": "/l4_i2i_ap_canny_style_pose",
+    "apiPath": "/api/internal/comfy/run/01c25683-dce0-4e3a-8a1a-4d793044db24",
+    "description": "Runs the L4_i2i_ap_canny_style_pose workflow.",
+    "inputSchema": {
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_threshold": {
+        "type": "number",
+        "default": 0.35000000000000003,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_character_threshold": {
+        "type": "number",
+        "default": 0.85,
+        "description": "",
+        "required": false
+      },
+      "input_pose_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_pose_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_end_percent": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_canny_high_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_canny_low_threshold": {
+        "type": "number",
+        "default": 0.4,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbot",
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.66,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_start_percent": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_weight": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_control_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_style_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_pose_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "01c25683-dce0-4e3a-8a1a-4d793044db24",
+      "workflowApiId": "483d48d9-9ad2-47b9-87c2-c5b5d8b6a528",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "IPAdapterAdvanced",
+        "CLIPTextEncode",
+        "VHS_DuplicateImages",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalText",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "CR Text Concatenate",
+        "WD14Tagger|pysssss",
+        "ComfyDeploy",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "LoraTextExtractor-b1f83aa2",
+        "Any Switch (rgthree)",
+        "Canny",
+        "ControlNetLoader",
+        "IPAdapterUnifiedLoader",
+        "ControlNetApplyAdvanced",
+        "ComfyUIDeployExternalImage",
+        "EmptyLatentImage"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-7e431e77-6930-4986-8254-b0a928bfd34d",
+    "service": "comfyui",
+    "displayName": "L4_i2i_SD3",
+    "commandName": "/l4_i2i_sd3",
+    "apiPath": "/api/internal/comfy/run/7e431e77-6930-4986-8254-b0a928bfd34d",
+    "description": "Resolution should be around 1 megapixel and width/height must be multiple of 64",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "beautiful girl, sundress, field of flowers, close-up ps1 ps2 playstation gamecube game, radioactive dreams screencapture bryce 3d, PS2-maximized, boundary-pushing, sharp-crisp-graphics, highly-recognizable, visual-style, crunchy-aesthetic, low-res-textures, gritty-grainy-detail, polygonal-models:0.8, sharp-edges, distinct-corners, simplified-3D-forms, saturated-colors, moody-ambiance, high-contrast-lighting, dramatic-shadows, deep-space-perception, graphical-constraints, pronounced-aliasing, jagged-edges, smoothness-in-lower-frame-rates, vibrant-early-2000s-look, low-poly:0.7, Playstation2-style, glitch-art:0.6, playstation game, psx game, gamecube game, radioactive dreams, bryce 3d, playstation1, still, low poly, pixels, low-res, pixelated:0.1",
+        "description": "",
+        "required": false
+      },
+      "input_negative_prompt": {
+        "type": "text",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 28,
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.6,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "7e431e77-6930-4986-8254-b0a928bfd34d",
+      "workflowApiId": "135c2b9c-58f4-4987-ad1e-5d29729b4d3a",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "ConditioningSetTimestepRange",
+        "Note",
+        "ConditioningCombine",
+        "KSampler",
+        "ModelSamplingSD3",
+        "PreviewImage",
+        "ComfyDeploy",
+        "CLIPTextEncode",
+        "ConditioningZeroOut",
+        "VAEDecode",
+        "SaveImage",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalText",
+        "EmptySD3LatentImage",
+        "ComfyUIDeployExternalImage",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "ComfyUIDeployExternalNumber"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-c6a7a028-b30b-4b74-9ffc-dd6dee132ea0",
+    "service": "comfyui",
+    "displayName": "L4_t2i_SD3",
+    "commandName": "/l4_t2i_sd3",
+    "apiPath": "/api/internal/comfy/run/c6a7a028-b30b-4b74-9ffc-dd6dee132ea0",
+    "description": "Resolution should be around 1 megapixel and width/height must be multiple of 64",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "beautiful girl, sundress, field of flowers, close-up ps1 ps2 playstation gamecube game, radioactive dreams screencapture bryce 3d, PS2-maximized, boundary-pushing, sharp-crisp-graphics, highly-recognizable, visual-style, crunchy-aesthetic, low-res-textures, gritty-grainy-detail, polygonal-models:0.8, sharp-edges, distinct-corners, simplified-3D-forms, saturated-colors, moody-ambiance, high-contrast-lighting, dramatic-shadows, deep-space-perception, graphical-constraints, pronounced-aliasing, jagged-edges, smoothness-in-lower-frame-rates, vibrant-early-2000s-look, low-poly:0.7, Playstation2-style, glitch-art:0.6, playstation game, psx game, gamecube game, radioactive dreams, bryce 3d, playstation1, still, low poly, pixels, low-res, pixelated:0.1",
+        "description": "",
+        "required": false
+      },
+      "input_negative_prompt": {
+        "type": "text",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "c6a7a028-b30b-4b74-9ffc-dd6dee132ea0",
+      "workflowApiId": "eceb9e66-10af-48d3-b178-2a8edec7aaf8",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "ConditioningSetTimestepRange",
+        "Note",
+        "ConditioningCombine",
+        "KSampler",
+        "EmptySD3LatentImage",
+        "ModelSamplingSD3",
+        "PreviewImage",
+        "ComfyDeploy",
+        "CLIPTextEncode",
+        "ConditioningZeroOut",
+        "VAEDecode",
+        "SaveImage",
+        "ComfyUIDeployExternalNumberInt",
+        "CheckpointLoaderSimple",
+        "ComfyUIDeployExternalText"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-83f96fe6-737b-4b1b-bf92-6d8eb00b9e95",
+    "service": "comfyui",
+    "displayName": "L4_t2i_canny_style_pose",
+    "commandName": "/l4_t2i_canny_style_pose",
+    "apiPath": "/api/internal/comfy/run/83f96fe6-737b-4b1b-bf92-6d8eb00b9e95",
+    "description": "Runs the L4_t2i_canny_style_pose workflow.",
+    "inputSchema": {
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_threshold": {
+        "type": "number",
+        "default": 0.35000000000000003,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_character_threshold": {
+        "type": "number",
+        "default": 0.85,
+        "description": "",
+        "required": false
+      },
+      "input_pose_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_pose_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_end_percent": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_canny_high_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_canny_low_threshold": {
+        "type": "number",
+        "default": 0.4,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbot",
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_start_percent": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_weight": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_control_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.66,
+        "description": "",
+        "required": false
+      },
+      "input_pose_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_style_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "83f96fe6-737b-4b1b-bf92-6d8eb00b9e95",
+      "workflowApiId": "37371ac7-ebca-474b-845b-fd1bf007ee82",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "IPAdapterAdvanced",
+        "VHS_DuplicateImages",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalText",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "CR Text Concatenate",
+        "WD14Tagger|pysssss",
+        "ComfyDeploy",
+        "VAEDecode",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "EmptyLatentImage",
+        "ComfyUIDeployExternalImage",
+        "Canny",
+        "IPAdapterUnifiedLoader",
+        "LoraTextExtractor-b1f83aa2",
+        "Any Switch (rgthree)",
+        "ControlNetLoader",
+        "ControlNetApplyAdvanced",
+        "KSampler",
+        "CLIPTextEncode",
+        "OpenPose - Get poses"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-f9e045ed-90f5-420b-8253-f2cf1d91f7f9",
+    "service": "comfyui",
+    "displayName": "fluxgeneral API",
+    "commandName": "/fluxgeneralapi",
+    "apiPath": "/api/internal/comfy/run/f9e045ed-90f5-420b-8253-f2cf1d91f7f9",
+    "description": "Workflow from markury\n\nhttps://civitai.com/models/618997?modelVersionId=697441\nThe checkpoint goes in ComfyUI/models/unet (not checkpoints)\nDownload the original weights here:\nhttps://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.sft\n\nDownload the fp8 version for <24gb vram systems:\nhttps://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors\n\nText encoders go in ComfyUI/models/clip:\nhttps://huggingface.co/comfyanonymous/flux_text_encoders/tree/main\n\nVAE (ae.sft) goes in ComfyUI/models/vae:\nhttps://huggingface.co/black-forest-labs/FLUX.1-schnell/blob/main/ae.sft\n\nDownload the fp8 t5xxl for degraded quality but less RAM use\nLaunch ComfyUI with \"--lowvram\" arg (in the .bat file) to offload text encoder to CPU.\n\nI can confirm this runs on:\n- RTX 3090 (24gb) 1.29s/it\n- RTX 4070 (12gb) 85s/it\nBoth running the fp8 quantized version. The 4070 is very slow though.",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 2147483647,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 6,
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "This image is a highly detailed digital illustration in an anime art style. It features a young woman with long, flowing silver hair that cascades past her shoulders, with soft, shiny highlights giving it a vibrant, almost metallic appearance. Her hair is styled in loose waves, and she has large, expressive purple eyes that convey a sense of calm and confidence. She has a fair complexion and delicate features, with a slight blush on her cheeks, adding a touch of warmth to her otherwise neutral expression.\n\nShe is wearing a strapless, form-fitting dress made of a shiny silver fabric that reflects light, creating a glossy texture. The dress has a high collar and a bow at the chest, accentuating her slim figure and modest breast size. The neckline is deep, revealing her collarbone and shoulders.\n\nThe background is a plain, light gray, ensuring that the focus remains entirely on the character. In the lower left corner, there is a small, stylized Japanese character, possibly representing her name or a personal symbol. The overall composition is clean and polished, with attention to detail in both the character's attire and her facial expressions, typical of high-quality anime art",
+        "description": "",
+        "required": false
+      },
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stbapi",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "f9e045ed-90f5-420b-8253-f2cf1d91f7f9",
+      "workflowApiId": "4740bd5c-fac7-497f-abeb-4c283a1c9171",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "VAEDecode",
+        "Note",
+        "ComfyUIDeployExternalNumberInt",
+        "CLIPTextEncode",
+        "RandomNoise",
+        "EmptyLatentImage",
+        "SamplerCustomAdvanced",
+        "ModelSamplingFlux",
+        "DualCLIPLoader",
+        "BasicGuider",
+        "ComfyUIDeployExternalNumber",
+        "VAELoader",
+        "UNETLoader",
+        "FluxGuidance",
+        "CLIPTextEncodeFlux",
+        "BasicScheduler",
+        "KSamplerSelect",
+        "ComfyUIDeployExternalText",
+        "ComfyDeploy",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "ConditioningCombine",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-ee3f58f3-b524-42c3-bbcc-b67b80e1d010",
+    "service": "comfyui",
+    "displayName": "MS3.3",
+    "commandName": "/ms3.3",
+    "apiPath": "/api/internal/comfy/run/ee3f58f3-b524-42c3-bbcc-b67b80e1d010",
+    "description": "fp8 text encoder results are different from fp16!",
+    "inputSchema": {
+      "input_negative": {
+        "type": "text",
+        "default": "cartoon style, worst quality, low quality, blurry, absolute black, absolute white, low res, extra limbs, extra digits, misplaced objects, mutated anatomy, monochrome, horror",
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "FPV flying over seaside cliffs while the sun is setting, hyper quality, Ultra HD, 8K",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 44664248661402,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "video",
+    "metadata": {
+      "deploymentId": "ee3f58f3-b524-42c3-bbcc-b67b80e1d010",
+      "workflowApiId": "40f256ec-4483-48d4-9e99-f3c76aa4343d",
+      "outputType": "video",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": false,
+      "nodeTypes": [
+        "Note",
+        "ImageScale",
+        "PyramidFlowVAEEncode",
+        "PyramidFlowTextEncode",
+        "PyramidFlowVAEDecode",
+        "PyramidFlowSampler",
+        "ComfyDeploy",
+        "ComfyUIDeployExternalText",
+        "ComfyUIDeployExternalImage",
+        "PyramidFlowVAELoader",
+        "PyramidFlowTransformerLoader",
+        "DualCLIPLoader",
+        "PrimitiveNode",
+        "VHS_VideoCombine",
+        "ComfyUIDeployExternalNumberInt"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.00114,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-10f46770-f89c-47ba-8b06-57c82d3b9bfc",
+    "service": "comfyui",
+    "displayName": "fluxgeneral (Cloned)",
+    "commandName": "/fluxgeneral(cloned)",
+    "apiPath": "/api/internal/comfy/run/10f46770-f89c-47ba-8b06-57c82d3b9bfc",
+    "description": "Workflow from markury\n\nhttps://civitai.com/models/618997?modelVersionId=697441\nThe checkpoint goes in ComfyUI/models/unet (not checkpoints)\nDownload the original weights here:\nhttps://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.sft\n\nDownload the fp8 version for <24gb vram systems:\nhttps://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors\n\nText encoders go in ComfyUI/models/clip:\nhttps://huggingface.co/comfyanonymous/flux_text_encoders/tree/main\n\nVAE (ae.sft) goes in ComfyUI/models/vae:\nhttps://huggingface.co/black-forest-labs/FLUX.1-schnell/blob/main/ae.sft\n\nDownload the fp8 t5xxl for degraded quality but less RAM use\nLaunch ComfyUI with \"--lowvram\" arg (in the .bat file) to offload text encoder to CPU.\n\nI can confirm this runs on:\n- RTX 3090 (24gb) 1.29s/it\n- RTX 4070 (12gb) 85s/it\nBoth running the fp8 quantized version. The 4070 is very slow though.",
+    "inputSchema": {
+      "input_seed": {
+        "type": "numberint",
+        "default": 2147483647,
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 6,
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "This image is a highly detailed digital illustration in an anime art style. It features a young woman with long, flowing silver hair that cascades past her shoulders, with soft, shiny highlights giving it a vibrant, almost metallic appearance. Her hair is styled in loose waves, and she has large, expressive purple eyes that convey a sense of calm and confidence. She has a fair complexion and delicate features, with a slight blush on her cheeks, adding a touch of warmth to her otherwise neutral expression.\n\nShe is wearing a strapless, form-fitting dress made of a shiny silver fabric that reflects light, creating a glossy texture. The dress has a high collar and a bow at the chest, accentuating her slim figure and modest breast size. The neckline is deep, revealing her collarbone and shoulders.\n\nThe background is a plain, light gray, ensuring that the focus remains entirely on the character. In the lower left corner, there is a small, stylized Japanese character, possibly representing her name or a personal symbol. The overall composition is clean and polished, with attention to detail in both the character's attire and her facial expressions, typical of high-quality anime art",
+        "description": "",
+        "required": false
+      },
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stbflux",
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "10f46770-f89c-47ba-8b06-57c82d3b9bfc",
+      "workflowApiId": "a581adef-ca55-4683-a1aa-9552d774e7fa",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "VAEDecode",
+        "Note",
+        "ComfyUIDeployExternalNumberInt",
+        "CLIPTextEncode",
+        "RandomNoise",
+        "EmptyLatentImage",
+        "SamplerCustomAdvanced",
+        "ModelSamplingFlux",
+        "DualCLIPLoader",
+        "BasicGuider",
+        "ComfyUIDeployExternalNumber",
+        "VAELoader",
+        "UNETLoader",
+        "FluxGuidance",
+        "CLIPTextEncodeFlux",
+        "BasicScheduler",
+        "KSamplerSelect",
+        "ComfyUIDeployExternalText",
+        "ComfyDeploy",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "ConditioningCombine",
+        "LoraTextExtractor-b1f83aa2"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  },
+  {
+    "toolId": "comfy-cb27bba2-6447-41a3-9976-4bd7bc803ead",
+    "service": "comfyui",
+    "displayName": "L4_i2i_ap",
+    "commandName": "/l4_i2i_ap",
+    "apiPath": "/api/internal/comfy/run/cb27bba2-6447-41a3-9976-4bd7bc803ead",
+    "description": "Runs the L4_i2i_ap workflow.",
+    "inputSchema": {
+      "input_batch": {
+        "type": "numberint",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_checkpoint": {
+        "type": "checkpoint",
+        "default": "zavychromaxl_v60.safetensors",
+        "description": "",
+        "required": false
+      },
+      "input_cfg": {
+        "type": "number",
+        "default": 7,
+        "description": "",
+        "required": false
+      },
+      "input_steps": {
+        "type": "numberint",
+        "default": 30,
+        "description": "",
+        "required": false
+      },
+      "input_prompt": {
+        "type": "text",
+        "default": "playstation 1 still, low poly, <lora:LOW_POLY_PLAYSTATION_1_STILL.safetensors:1.0>",
+        "description": "",
+        "required": false
+      },
+      "input_negative": {
+        "type": "text",
+        "default": "embedding:easynegative, ",
+        "description": "",
+        "required": false
+      },
+      "input_seed": {
+        "type": "numberint",
+        "default": 88888888,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_threshold": {
+        "type": "number",
+        "default": 0.35000000000000003,
+        "description": "",
+        "required": false
+      },
+      "input_wd14_tagger_character_threshold": {
+        "type": "number",
+        "default": 0.85,
+        "description": "",
+        "required": false
+      },
+      "input_pose_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_pose_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_start": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_end": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_end_percent": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_canny_high_threshold": {
+        "type": "number",
+        "default": 0.8,
+        "description": "",
+        "required": false
+      },
+      "input_canny_low_threshold": {
+        "type": "number",
+        "default": 0.4,
+        "description": "",
+        "required": false
+      },
+      "input_height": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_text": {
+        "type": "text",
+        "default": "stationthisbot",
+        "description": "",
+        "required": false
+      },
+      "input_width": {
+        "type": "numberint",
+        "default": 1024,
+        "description": "",
+        "required": false
+      },
+      "input_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_style_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_strength": {
+        "type": "number",
+        "default": 0.66,
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_start_percent": {
+        "type": "number",
+        "default": 0,
+        "description": "",
+        "required": false
+      },
+      "input_canny_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_apply_canny_strength": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      },
+      "input_pose_image": {
+        "type": "image",
+        "default": "",
+        "description": "",
+        "required": false
+      },
+      "input_ipadapter_weight": {
+        "type": "number",
+        "default": 1,
+        "description": "",
+        "required": false
+      }
+    },
+    "platformHints": {
+      "primaryInput": "text",
+      "supportsFileCaption": false,
+      "supportsReplyWithCommand": true
+    },
+    "category": "text-to-image",
+    "metadata": {
+      "deploymentId": "cb27bba2-6447-41a3-9976-4bd7bc803ead",
+      "workflowApiId": "d97ee325-8a0a-421a-a592-4f8e90065f7e",
+      "outputType": "image",
+      "hasPromptNode": true,
+      "hasKSamplerNode": true,
+      "hasLoraLoader": true,
+      "nodeTypes": [
+        "IPAdapterAdvanced",
+        "CLIPTextEncode",
+        "VHS_DuplicateImages",
+        "ComfyUIDeployExternalNumberInt",
+        "ComfyUIDeployExternalCheckpoint",
+        "ComfyUIDeployExternalNumber",
+        "ComfyUIDeployExternalText",
+        "CheckpointLoaderSimple",
+        "VAEEncode",
+        "CR Text Concatenate",
+        "WD14Tagger|pysssss",
+        "ControlNetApplyAdvanced",
+        "ComfyDeploy",
+        "KSampler",
+        "VAEDecode",
+        "SaveImage",
+        "MultiLoraLoader-70bf3d77",
+        "LoraTextExtractor-b1f83aa2",
+        "ConditioningConcat",
+        "EmptyLatentImage",
+        "ComfyUIDeployExternalImage",
+        "Any Switch (rgthree)",
+        "Canny",
+        "ControlNetLoader",
+        "IPAdapterUnifiedLoader",
+        "Fast Groups Bypasser (rgthree)"
+      ],
+      "deploymentIds": []
+    },
+    "costingModel": {
+      "rate": 0.000337,
+      "unit": "second",
+      "rateSource": "machine"
+    },
+    "webhookStrategy": {
+      "expectedStatusField": "status.status_str",
+      "successValue": "success",
+      "durationTracking": true,
+      "resultPath": [
+        "output.files"
+      ]
+    },
+    "visibility": "public",
+    "humanDefaults": {}
+  }
+]
