@@ -327,29 +327,44 @@ async function setupDynamicCommands(bot, services) {
           const finalInputs = preparedResult;
           logger.debug(`[Telegram EXEC /${commandName}] Final inputs for ComfyUI: ${JSON.stringify(finalInputs)}`);
 
-          const generationPayload = {
+          const generationParams = {
             masterAccountId: masterAccountId,
-            sessionId: sessionId,
-            initiatingEventId: eventId,
-            serviceName: currentDisplayName,
-            toolId: currentToolId,
-            requestPayload: finalInputs,
+            platform: platform,
+            platformId: platformIdStr,
+            sessionId: sessionId, 
+            eventId: eventId, 
+            serviceName: 'ComfyUI', // Or currentTool.service if more dynamic
+            workflowId: currentTool.workflowId, // Assuming this comes from the tool object
+            status: 'pending', // Initial status
+            userInputs: userInputsForTool,
+            costRate: costRateInfo, // Pass costRate from tool definition
+            metadata: {
+              telegramChatId: chatId,
+              telegramMessageId: msg.message_id,
+              telegramRepliedToMessageId: msg.reply_to_message?.message_id,
+              telegramUsername: msg.from.username,
+              displayName: currentDisplayName, // Store the display name for logs/UI
+              commandInvoked: `/${commandName}`,
+              toolId: currentToolId, // ADR-005: Ensure toolId is included
+              // Add any other platform-specific or user-specific metadata here
+            },
             notificationPlatform: 'telegram',
-            deliveryStatus: 'pending',
-            metadata: { 
-              deploymentId: deploymentId, 
-              costRate: costRateInfo,
-              notificationContext: {
-                chatId: chatId,
-                userId: platformIdStr,
-                messageId: msg.message_id 
-              }
+            notificationContext: {
+              chatId: chatId,
+              userId: platformIdStr,
+              messageId: msg.message_id 
             }
           };
-          logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationPayload)}`);
-          const generationResponse = await internalApiClient.post('/generations', generationPayload);
+          logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationParams)}`);
+          const generationResponse = await internalApiClient.post('/generations', generationParams);
           generationId = generationResponse.data._id;
           logger.info(`[Telegram EXEC /${commandName}] Generation logged: ${generationId}`);
+          // ADR-005: Verify toolId injection
+          if (generationParams.metadata && generationParams.metadata.toolId) {
+            logger.info(`[Telegram EXEC /${commandName}] [GENERATION RECORD] toolId (${generationParams.metadata.toolId}) correctly prepared for generation ${generationId}`);
+          } else {
+            logger.warn(`[Telegram EXEC /${commandName}] [GENERATION RECORD] toolId was NOT found in generationParams.metadata for generation ${generationId}`);
+          }
 
           logger.info(`[Telegram EXEC /${commandName}] Submitting to ComfyUI: DeploymentID=${deploymentId}, GenID=${generationId}...`);
           const submissionResult = await comfyuiService.submitRequest({
