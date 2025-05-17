@@ -99,7 +99,7 @@ async function handleTRIPO(message) {
 async function handleVIDU(message) {
     const userId = message.from.id;
 
-    if (!lobby[userId]?.qoints || lobby[userId].qoints < 50) {
+    if (!lobby[userId]?.qoints || lobby[userId].qoints < 600) {
         await chargeGated(message);
         return;
     }
@@ -151,6 +151,12 @@ async function handleVIDU(message) {
 
 async function handleVIDUUpscale(message) {
     const userId = message.from.id;
+
+    if (!lobby[userId]?.qoints || lobby[userId].qoints < 600) {
+        await chargeGated(message);
+        return;
+    }
+    
     const text = message.text?.replace('/vidupscale', '').trim();
     const creationId = text || null;
 
