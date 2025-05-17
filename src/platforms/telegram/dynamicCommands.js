@@ -332,7 +332,8 @@ async function setupDynamicCommands(bot, services) {
             platform: platform,
             platformId: platformIdStr,
             sessionId: sessionId, 
-            eventId: eventId, 
+            eventId: eventId,
+            initiatingEventId: eventId,
             serviceName: 'ComfyUI', // Or currentTool.service if more dynamic
             workflowId: currentTool.workflowId, // Assuming this comes from the tool object
             status: 'pending', // Initial status
