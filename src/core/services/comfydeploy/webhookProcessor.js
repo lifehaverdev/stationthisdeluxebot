@@ -171,8 +171,102 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
 
     // Notification logic has been removed as per ADR-001.
     // The Notification Dispatch Service will handle notifications based on generationRecord updates.
+
+    // ADR-005: Debit logic starts here
+    if (generationRecord && updatePayload.status === 'completed' && costUsd != null && costUsd > 0) {
+      const toolId = generationRecord.metadata?.toolId || generationRecord.toolId; // Fallback as per instructions
+      if (!toolId) {
+        logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
+        // Potentially mark as payment_failed or requires_manual_intervention
+      } else {
+        const debitPayload = buildDebitPayload(toolId, generationRecord, costUsd);
+        try {
+          logger.info(`[Webhook Processor] Attempting debit for generation ${generationId}, user ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(debitPayload));
+          await issueDebit(generationRecord.masterAccountId, debitPayload, { internalApiClient, logger });
+          logger.info(`[Webhook Processor] Debit successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
+          // If debit succeeds, the 'completed' status remains, and NotificationDispatcher will pick it up.
+        } catch (debitError) {
+          logger.error(`[Webhook Processor] Debit FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, debitError.message, debitError.stack);
+          // Update generation record to 'payment_failed'
+          const paymentFailedUpdatePayload = {
+            status: 'payment_failed',
+            statusReason: debitError.message || 'Debit failed post-generation.',
+            // Potentially add more context about the debit failure
+          };
+          try {
+            const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+            await internalApiClient.put(`/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
+            logger.info(`[Webhook Processor] Successfully updated generation ${generationId} status to 'payment_failed'.`);
+          } catch (updateError) {
+            logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after debit failure. Error:`, updateError.message, updateError.stack);
+            // This is a critical state. The user was not charged, but the record doesn't reflect payment failure.
+            // Manual intervention might be required.
+          }
+          // Do not proceed to notification dispatch if debit failed.
+          // The function will return, and NotificationDispatcher should not pick up 'payment_failed' jobs.
+        }
+      }
+    } else if (updatePayload.status === 'completed' && (costUsd == null || costUsd <= 0)) {
+      logger.info(`[Webhook Processor] Debit skipped for generation ${generationId}: costUsd is ${costUsd}. Assuming free generation or no cost applicable.`);
+    }
+    // ADR-005: Debit logic ends here
   }
   return { success: true, statusCode: 200, data: { message: "Webhook processed successfully. DB record updated." } };
+}
+
+// Helper function to build the debit payload as per ADR-005
+function buildDebitPayload(toolId, generationRecord, costUsd) {
+  return {
+    amountUsd: costUsd,
+    toolId: toolId,
+    generationId: generationRecord._id, // Assuming generationRecord._id is the generationId
+    metadata: {
+      description: `Debit for generation via ${toolId}`,
+      run_id: generationRecord.metadata?.run_id, // Include run_id for traceability
+      // any other relevant diagnostic tags from generationRecord.metadata could be added here
+    },
+  };
+}
+
+// Helper function to issue the debit request via the internal API
+async function issueDebit(masterAccountId, payload, { internalApiClient, logger }) {
+  if (!masterAccountId) {
+    logger.error('[Webhook Processor - issueDebit] masterAccountId is undefined. Cannot issue debit.');
+    throw new Error('masterAccountId is required for debit.');
+  }
+  if (!internalApiClient || typeof internalApiClient.post !== 'function') {
+    logger.error('[Webhook Processor - issueDebit] internalApiClient is undefined or not a valid client. Cannot issue debit.');
+    throw new Error('Internal API client not configured or invalid for issuing debit.');
+  }
+
+  const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
+  const requestOptions = {
+    headers: {
+      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB,
+      // Add other necessary headers like Content-Type if not automatically handled by internalApiClient
+    },
+  };
+  if (!process.env.INTERNAL_API_KEY_WEB) {
+    logger.warn(`[Webhook Processor - issueDebit] INTERNAL_API_KEY_WEB is not set. Debit call to ${debitEndpoint} may fail authentication.`);
+  }
+
+  logger.info(`[Webhook Processor - issueDebit] Sending POST to ${debitEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));
+  
+  try {
+    const response = await internalApiClient.post(debitEndpoint, payload, requestOptions);
+    // Assuming a successful response is 2xx. The internalApiClient might throw for non-2xx.
+    logger.info(`[Webhook Processor - issueDebit] Debit request successful for user ${masterAccountId}. Response status: ${response.status}`);
+    return response.data; // Or whatever the successful response structure is
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || 'Unknown error during debit';
+    const errorStatus = error.response?.status || 500;
+    logger.error(`[Webhook Processor - issueDebit] Debit request failed for user ${masterAccountId}. Status: ${errorStatus}, Error: ${errorMessage}`, error.stack);
+    // Re-throw a more specific error or a standardized error object
+    const debitError = new Error(`Debit API call failed: ${errorMessage}`);
+    debitError.statusCode = errorStatus;
+    debitError.details = error.response?.data; // Attach more details if available
+    throw debitError;
+  }
 }
 
 module.exports = {

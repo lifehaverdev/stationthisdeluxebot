@@ -80,12 +80,14 @@ class NotificationDispatcher {
       if (response && response.data && Array.isArray(response.data.generations)) {
         pendingRecords = response.data.generations.filter(record => 
           (record.status === 'completed' || record.status === 'failed') && 
+          record.status !== 'payment_failed' &&
           record.notificationPlatform !== 'none'
         );
       } else if (response && response.data && Array.isArray(response.data)) {
         pendingRecords = response.data.filter(record => 
           record.deliveryStatus === 'pending' &&
           (record.status === 'completed' || record.status === 'failed') && 
+          record.status !== 'payment_failed' &&
           record.notificationPlatform !== 'none'
         );
       } else {
