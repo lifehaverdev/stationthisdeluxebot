@@ -337,7 +337,7 @@ async function setupDynamicCommands(bot, services) {
             serviceName: 'ComfyUI', // Or currentTool.service if more dynamic
             workflowId: currentTool.workflowId, // Assuming this comes from the tool object
             status: 'pending', // Initial status
-            userInputs: userInputsForTool,
+            requestPayload: finalInputs, // ADR-005 follow-up: API requires this field
             costRate: costRateInfo, // Pass costRate from tool definition
             metadata: {
               telegramChatId: chatId,
