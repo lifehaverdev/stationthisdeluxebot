@@ -220,8 +220,8 @@ function buildDebitPayload(toolId, generationRecord, costUsd) {
     amountUsd: costUsd,
     toolId: toolId,
     generationId: generationRecord._id, // Assuming generationRecord._id is the generationId
+    description: `Debit for generation via ${toolId}`,
     metadata: {
-      description: `Debit for generation via ${toolId}`,
       run_id: generationRecord.metadata?.run_id, // Include run_id for traceability
       // any other relevant diagnostic tags from generationRecord.metadata could be added here
     },
