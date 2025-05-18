@@ -348,14 +348,13 @@ async function setupDynamicCommands(bot, services) {
               commandInvoked: `/${commandName}`,
               toolId: currentToolId, // ADR-005: Ensure toolId is included
               costRate: costRateInfo, // ADR-005: Ensure costRate is in metadata for webhook processor
-              // Add any other platform-specific or user-specific metadata here
+              notificationContext: {
+                chatId: chatId,
+                userId: platformIdStr,
+                messageId: msg.message_id 
+              }
             },
-            notificationPlatform: 'telegram',
-            notificationContext: {
-              chatId: chatId,
-              userId: platformIdStr,
-              messageId: msg.message_id 
-            }
+            notificationPlatform: 'telegram'
           };
           logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationParams)}`);
           const generationResponse = await internalApiClient.post('/generations', generationParams);
