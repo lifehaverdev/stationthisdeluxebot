@@ -1,4 +1,5 @@
 const { ObjectId } = require('mongodb');
+const { getCachedClient } = require('./utils/queue');
 
 /**
  * @typedef {import('../../teams/Team').Team} Team
@@ -9,18 +10,12 @@ const { ObjectId } = require('mongodb');
 
 /**
  * Creates a team data service for interacting with team-related collections.
- * @param {{db: Db, logger: Logger}} dependencies
+ * @param {{logger: Logger}} dependencies
  * @returns {object} The team data service with methods for CRUD and membership.
  */
 module.exports = (dependencies) => {
-  const { db, logger } = dependencies;
-
-  if (!db) {
-    logger.error('[teamServiceDb] Database dependency (db) is missing!');
-    throw new Error('[teamServiceDb] Database dependency (db) is missing!');
-  }
-  const teamsCollection = db.collection('teams');
-  const teamMembershipsCollection = db.collection('teamMemberships');
+  const { logger } = dependencies;
+  const dbName = 'noema';
 
   return {
     /**
@@ -51,6 +46,11 @@ module.exports = (dependencies) => {
       };
 
       try {
+        const client = await getCachedClient();
+        const dbInstance = client.db(dbName);
+        const teamsCollection = dbInstance.collection('teams');
+        const teamMembershipsCollection = dbInstance.collection('teamMemberships');
+
         const result = await teamsCollection.insertOne(newTeam);
         const createdTeamId = result.insertedId;
 
@@ -87,6 +87,9 @@ module.exports = (dependencies) => {
         return null;
       }
       try {
+        const client = await getCachedClient();
+        const dbInstance = client.db(dbName);
+        const teamsCollection = dbInstance.collection('teams');
         return await teamsCollection.findOne({ _id: new ObjectId(teamId) });
       } catch (error) {
         logger.error(`[teamServiceDb] Error retrieving team ${teamId}:`, error);
@@ -120,6 +123,11 @@ module.exports = (dependencies) => {
       };
 
       try {
+        const client = await getCachedClient();
+        const dbInstance = client.db(dbName);
+        const teamsCollection = dbInstance.collection('teams');
+        const teamMembershipsCollection = dbInstance.collection('teamMemberships');
+
         // Check if user is already a member
         const existingMembership = await teamMembershipsCollection.findOne({
           teamId: new ObjectId(teamId),
@@ -160,6 +168,11 @@ module.exports = (dependencies) => {
         return null;
       }
       try {
+        const client = await getCachedClient();
+        const dbInstance = client.db(dbName);
+        const teamsCollection = dbInstance.collection('teams');
+        const teamMembershipsCollection = dbInstance.collection('teamMemberships');
+
         const userMemberships = await teamMembershipsCollection.find({
           masterAccountId: new ObjectId(masterAccountId)
         }).toArray();
@@ -188,6 +201,9 @@ module.exports = (dependencies) => {
             return null;
         }
         try {
+            const client = await getCachedClient();
+            const dbInstance = client.db(dbName);
+            const teamMembershipsCollection = dbInstance.collection('teamMemberships');
             return await teamMembershipsCollection.find({ teamId: new ObjectId(teamId) }).toArray();
         } catch (error) {
             logger.error(`[teamServiceDb] Error retrieving members for team ${teamId}:`, error);

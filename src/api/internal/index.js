@@ -88,7 +88,7 @@ function initializeInternalServices(dependencies = {}) {
   // Create an instance of teamServiceDb and add it to apiDependencies
   // This ensures that any API service needing teamServiceDb can access it.
   if (dbDataServices) { // only if db is available
-    apiDependencies.teamServiceDb = createTeamServiceDb({ db: dbDataServices, logger });
+    apiDependencies.teamServiceDb = createTeamServiceDb({ logger }); // Pass only logger
   } else {
     logger.warn('[InternalAPI] teamServiceDb not initialized because dbDataServices is not available.');
     // We might want to handle this more gracefully, but for now, teamsApi will get undefined for teamServiceDb
