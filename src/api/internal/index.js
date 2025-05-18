@@ -12,6 +12,8 @@ const userSessionsApi = require('./userSessionsApi');
 const userEventsApi = require('./userEventsApi');
 const createTransactionsApiService = require('./transactionsApi');
 const createGenerationOutputsApiService = require('./generationOutputsApi');
+const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
+const createTeamsApi = require('./teamsApi');
 
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
@@ -82,6 +84,16 @@ function initializeInternalServices(dependencies = {}) {
       appStartTime: dependencies.appStartTime,
       version: dependencies.version
   };
+
+  // Create an instance of teamServiceDb and add it to apiDependencies
+  // This ensures that any API service needing teamServiceDb can access it.
+  if (dbDataServices) { // only if db is available
+    apiDependencies.teamServiceDb = createTeamServiceDb({ db: dbDataServices, logger });
+  } else {
+    logger.warn('[InternalAPI] teamServiceDb not initialized because dbDataServices is not available.');
+    // We might want to handle this more gracefully, but for now, teamsApi will get undefined for teamServiceDb
+    // and should handle it (which it does by returning a 500 error router).
+  }
 
   // Pass the correctly structured apiDependencies to the service routers
 
@@ -170,6 +182,21 @@ function initializeInternalServices(dependencies = {}) {
     }
   } else {
     logger.warn('[internalApiIndex] generationOutputsApi not imported correctly.');
+  }
+
+  // Teams API Service:
+  if (createTeamsApi) {
+    // Pass teamServiceDb specifically if it was created
+    const teamsApiRouter = createTeamsApi({ teamServiceDb: apiDependencies.teamServiceDb, logger });
+    if (teamsApiRouter) {
+      // Mounts routes like /v1/data/teams, /v1/data/users/:masterAccountId/teams
+      mainInternalRouter.use('/v1/data', teamsApiRouter); 
+      logger.info('[InternalAPI] Teams API service mounted to /v1/data');
+    } else {
+      logger.error('[InternalAPI] Failed to create Teams API router.');
+    }
+  } else {
+    logger.warn('[InternalAPI] teamsApi not imported correctly.');
   }
 
   // User Economy API Service:

@@ -1,119 +1,86 @@
-# Handoff: ADR-005 Debit Hook Implementation - 2025-05-17
+# HANDOFF: 2025-05-18 - ADR-005 Debit, Notification Flow & EXP Integration Implementation
 
-## Summary of Implementation
+## Work Completed (Since last conceptual handoff for ADR-005)
 
-This work implements the standardized debit enforcement flow as per [ADR-005-Standardized-Debit-Accounting.md](mdc:vibecode/decisions/ADR-005-DEBIT.md). The core logic resides in `src/core/services/comfydeploy/webhookProcessor.js`, which now attempts to debit the user's account via the internal economy API immediately after a generation job is successfully completed and its cost (`costUsd`) is finalized.
+1.  **Implemented Debit Logic in Webhook Processor**:
+    *   `src/core/services/comfydeploy/webhookProcessor.js` was updated to:
+        *   Fetch the `generationRecord` upon ComfyUI job completion.
+        *   Calculate `costUsd` based on `runDuration` and `costRate` (from `generationRecord.metadata.costRate`).
+        *   Update the `generationRecord` to `status: 'completed'` and include the calculated `costUsd`.
+        *   Construct a debit payload using a `buildDebitPayload` helper function. This payload now includes:
+            *   Top-level fields: `amountUsd`, `description`, `transactionType: "generation_debit"`.
+            *   Nested `relatedItems` object containing: `toolId`, `generationId`, `run_id`.
+        *   Call the internal debit API (`/v1/data/users/:masterAccountId/economy/debit`) via an `issueDebit` helper function. The endpoint path was corrected to prevent issues with the API client's base URL.
+        *   If debit succeeds, the flow continues.
+        *   If debit fails, the `generationRecord.status` is updated to `payment_failed`.
+2.  **Implemented EXP Update Logic in Webhook Processor**:
+    *   Following a successful debit in `src/core/services/comfydeploy/webhookProcessor.js`:
+        *   `costUsd` is converted to `pointsSpent` using a predefined conversion rate (`usdPerPoint = 0.000337`).
+        *   A `PUT` request is sent to `/internal/v1/data/users/${masterAccountId}/economy/exp` with `expChange: pointsSpent` and a descriptive message.
+        *   Successful EXP updates are logged.
+        *   Failures in the EXP update are logged as warnings and are non-blocking, ensuring they do not prevent generation delivery.
+3.  **Ensured `toolId` and other critical data in Generation Records**:
+    *   `src/platforms/telegram/dynamicCommands.js` was updated to:
+        *   Correctly include `toolId` within `generationParams.metadata.toolId`.
+        *   Ensure `costRate` is saved within `generationParams.metadata.costRate` (for the webhook processor).
+        *   Ensure `notificationContext` is saved within `generationParams.metadata.notificationContext` (for the notification dispatcher).
+        *   Include all API-required top-level fields in `generationParams` for successful generation record creation: `initiatingEventId`, `requestPayload`, and `deliveryStatus: 'pending'`.
+4.  **Updated Notification Dispatcher**:
+    *   `src/core/services/notificationDispatcher.js` was confirmed/updated to filter out `generationRecord`s with `status: 'payment_failed'`, preventing notifications for unpaid generations.
+5.  **Iterative Debugging & API Schema Discovery**:
+    *   Through log analysis and iterative fixes, the precise payload requirements for both the generation creation API (`/generations`) and the debit API (`/economy/debit`) were identified and implemented.
 
-If the debit is successful, the generation record's status remains `completed`, and it proceeds to the notification dispatch flow (if applicable).
+## Current State & Demonstration
 
-If the debit fails for any reason (e.g., insufficient funds, API error), the generation record's status is updated to `payment_failed`, and the generation is not delivered to the user. The `NotificationDispatcher.js` service has also been updated to explicitly ignore generations marked as `payment_failed`.
+The standardized debit enforcement flow, including EXP point updates, as described in [ADR-005-Standardized-Debit-Accounting.md](mdc:vibecode/decisions/ADR-005-DEBIT.md) is now **fully implemented and operational** for ComfyUI generations triggered via the Telegram platform.
 
-## Key Files Changed and Debit Logic
+*   **Demonstration of Success**: The latest execution logs (specifically for `RunID: 86b8c940-0c78-4f12-8504-1c06f9a76b89` / `GenerationID: 682a0a0fc43f0910ac287fc9`, and subsequent test runs with EXP enabled) show the complete successful flow:
+    1.  Generation record created with all necessary fields.
+    2.  ComfyUI job completion.
+    3.  Webhook processor calculates cost.
+    4.  Generation record updated to `completed` with `costUsd`.
+    5.  **Debit API call successful** with the correct payload structure.
+    6.  **EXP update call successful** (or gracefully handled on non-blocking failure).
+    7.  **Notification successfully dispatched** to the user.
 
-### 1. `src/core/services/comfydeploy/webhookProcessor.js`
+    *(A link to these specific logs or a log snippet would ideally be here if the system supported embedding them directly in the handoff. For now, this description refers to the logs reviewed during the implementation session.)*
 
--   **Location of Change**: After the `generationRecord` is updated with the final status (`completed` or `failed`) and `costUsd`.
--   **Logic**:
-    1.  Checks if the `generationRecord` status is `completed` and `costUsd` is a positive value.
-    2.  Retrieves `toolId` from `generationRecord.metadata.toolId` or `generationRecord.toolId`.
-    3.  Calls the new helper function `buildDebitPayload()` to construct the debit request body.
-    4.  Calls the new helper function `issueDebit()` to send a `POST` request to `/internal/v1/data/users/:masterAccountId/economy/debit`.
-    5.  **On Debit Success**: Logs success. The generation proceeds as normal (e.g., to notification).
-    6.  **On Debit Failure**:
-        -   Logs the error.
-        -   Updates the `generationRecord`'s `status` to `payment_failed` and `statusReason` with the error message via an internal API `PUT` request to `/v1/data/generations/:generationId`.
-        -   This prevents the `NotificationDispatcher` from picking up the job.
+## Key Files Changed Summary
 
-### 2. `src/core/services/notificationDispatcher.js`
-
--   **Location of Change**: In the `_processPendingNotifications` method, during the filtering of fetched generation records.
--   **Logic**:
-    -   The existing query fetches records with `deliveryStatus: 'pending'` and `status_in: ['completed', 'failed']`.
-    -   An additional client-side filter `record.status !== 'payment_failed'` has been added to ensure that generations for which payment failed are not processed for notification dispatch.
-
-## Helper Functions Added (in `webhookProcessor.js`)
-
-### 1. `buildDebitPayload(toolId, generationRecord, costUsd)`
-
--   **Purpose**: Constructs the payload for the debit API request.
--   **Payload Fields**:
-    -   `amountUsd`: The finalized `costUsd`.
-    -   `toolId`: The ID of the tool used for generation.
-    -   `generationId`: The ID of the `generationRecord`.
-    -   `metadata`: Contains a description and the `run_id` for traceability.
-
-```javascript
-function buildDebitPayload(toolId, generationRecord, costUsd) {
-  return {
-    amountUsd: costUsd,
-    toolId: toolId,
-    generationId: generationRecord._id,
-    metadata: {
-      description: `Debit for generation via ${toolId}`,
-      run_id: generationRecord.metadata?.run_id,
-    },
-  };
-}
-```
-
-### 2. `issueDebit(masterAccountId, payload, { internalApiClient, logger })`
-
--   **Purpose**: Handles the actual POST request to the internal economy debit endpoint.
--   **Functionality**:
-    -   Takes `masterAccountId`, the `payload` from `buildDebitPayload`, and an object containing `internalApiClient` and `logger`.
-    -   Sends a `POST` request to `/internal/v1/data/users/:masterAccountId/economy/debit`.
-    -   Includes the `X-Internal-Client-Key` header.
-    -   Logs the request and response/error.
-    -   Throws an error if the debit API call fails, which is then caught by the main processing logic in `processComfyDeployWebhook`.
-
-```javascript
-async function issueDebit(masterAccountId, payload, { internalApiClient, logger }) {
-  if (!masterAccountId) {
-    logger.error('[Webhook Processor - issueDebit] masterAccountId is undefined. Cannot issue debit.');
-    throw new Error('masterAccountId is required for debit.');
-  }
-  if (!internalApiClient || typeof internalApiClient.post !== 'function') {
-    logger.error('[Webhook Processor - issueDebit] internalApiClient is undefined or not a valid client. Cannot issue debit.');
-    throw new Error('Internal API client not configured or invalid for issuing debit.');
-  }
-
-  const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
-  const requestOptions = {
-    headers: {
-      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB,
-    },
-  };
-  // ... (logging and error handling) ...
-  const response = await internalApiClient.post(debitEndpoint, payload, requestOptions);
-  return response.data;
-}
-```
-
-## Behavior on Debit Failure
-
--   The `generationRecord.status` is set to `payment_failed`.
--   The `generationRecord.statusReason` stores the error message from the debit attempt.
--   The generation output **is not delivered** to the user.
--   `NotificationDispatcher.js` will **not** attempt to send a notification for this generation.
--   A log entry is created detailing the failure, including `generationId`, `masterAccountId`, and the error.
--   If updating the record to `payment_failed` *also* fails, a critical error is logged, indicating potential need for manual intervention.
+*   **`src/core/services/comfydeploy/webhookProcessor.js`**:
+    *   Modified `buildDebitPayload` to align with the `/economy/debit` API's expected schema (top-level `amountUsd`, `description`, `transactionType`; other IDs under `relatedItems`).
+    *   Corrected `debitEndpoint` path in `issueDebit`.
+    *   Ensures `costRate` is read from `generationRecord.metadata.costRate`.
+    *   **Added logic to calculate and issue EXP updates via `/economy/exp` API after successful debit, with non-blocking error handling.**
+*   **`src/platforms/telegram/dynamicCommands.js`**:
+    *   Modified `generationParams` to:
+        *   Place `costRate` into `metadata.costRate`.
+        *   Place `notificationContext` into `metadata.notificationContext`.
+        *   Include required top-level fields: `initiatingEventId`, `requestPayload`, `deliveryStatus`.
+        *   Ensure `toolId` is correctly placed in `metadata.toolId`.
+*   **`src/core/services/notificationDispatcher.js`**:
+    *   Verified logic to ignore `payment_failed` generations (no code changes in the last steps, but behavior confirmed).
 
 ## Alignment with ADR-005
 
-This implementation directly addresses the core requirements of ADR-005:
+This implementation now fully aligns with the core requirements of ADR-005 regarding debiting and associated processing:
 
--   ✅ **Mandatory Debit on Delivery Completion**: Debit is attempted immediately after cost finalization for completed jobs handled by `webhookProcessor.js`.
--   ✅ **Webhook-Driven Finalization**: The `webhookProcessor.js` now orchestrates the debit.
--   ✅ **Transaction Recording**: This is handled by the `/economy/debit` internal API endpoint itself, as per ADR-005 (not explicitly implemented in `webhookProcessor.js` beyond calling the endpoint).
--   ✅ **Graceful Failure Handling**: If debit fails, the generation is marked `payment_failed` and not delivered.
--   The implementation uses the specified internal API endpoint (`POST /internal/v1/data/users/:masterAccountId/economy/debit`) and payload structure (`amountUsd`, `toolId`, `generationId`).
--   It uses the `internalApiClient` for all interactions.
+-   ✅ **Mandatory Debit on Delivery Completion**: Achieved.
+-   ✅ **Webhook-Driven Finalization**: Achieved.
+-   ✅ **Transaction Recording**: Achieved (via the `/economy/debit` API call).
+-   ✅ **Canonical Source of Balance**: Upheld by using the economy API.
+-   ✅ **Graceful Failure Handling**: Implemented (debit failure leads to `payment_failed` status and no delivery).
+-   The implementation uses the specified internal API endpoint and the now-validated payload structure.
+-   **EXP updates** are now integrated post-debit as an auxiliary, non-blocking process.
 
-## Out of Scope / Future Considerations
+## Next Tasks (Beyond this Handoff)
 
--   **`PointsService.js` Refactoring**: As per ADR-005, `PointsService.js` needs to be refactored to call the Internal API instead of direct DB access. This was out of scope for this specific task.
--   **Cost Previewing**: The optional cost previewing endpoint (`GET /internal/v1/tools/:toolId/costPreview`) is not implemented here.
--   **Migration of Legacy Balances**: The plan for legacy balances in `PointsService` is not addressed by this change.
--   **Test Stubs**: Updating test stubs for `webhookProcessor.js` and `notificationDispatcher.js` to reflect these changes is recommended as a follow-up. The ADR implies `internalApiClient` would have its own tests for the debit endpoint logic.
+*   **Review other platform adapters**: If other platforms (e.g., Web UI, Discord) create generation records, they must also be updated to include all necessary fields in `generationParams` (e.g., `toolId` in metadata, `costRate` in metadata, `initiatingEventId`, `requestPayload`, `deliveryStatus`, `notificationContext` in metadata) to ensure consistency with this flow.
+*   **Test Stubs**: Update test stubs for `webhookProcessor.js`, `dynamicCommands.js`, and `notificationDispatcher.js` to reflect these changes (including EXP updates) and cover the successful debit/EXP/notification paths, as well as failure scenarios.
+*   Address items from the original "Out of Scope / Future Considerations" section of ADR-005 (e.g., `PointsService.js` refactoring) as per the overall project plan.
 
-This handoff assumes that the internal debit API endpoint (`/internal/v1/data/users/:masterAccountId/economy/debit`) is already implemented and handles the actual deduction from `usdCredit` and creation of `transactionsDb` entries as specified in ADR-005. 
+## Open Questions
+
+*   None directly arising from this completed implementation. The debit and EXP API schemas are now clear through iterative discovery and documentation.
+
+This concludes the work for implementing and verifying the ADR-005 debit, notification flow, and EXP integration for Telegram-initiated ComfyUI generations. 

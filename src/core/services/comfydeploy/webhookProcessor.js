@@ -185,6 +185,28 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
           await issueDebit(generationRecord.masterAccountId, debitPayload, { internalApiClient, logger });
           logger.info(`[Webhook Processor] Debit successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
           // If debit succeeds, the 'completed' status remains, and NotificationDispatcher will pick it up.
+
+          // << ADR-005 EXP Update Start >>
+          try {
+            const usdPerPoint = 0.000337;
+            const pointsSpent = Math.round(costUsd / usdPerPoint);
+            const expPayload = {
+              expChange: pointsSpent,
+              description: `EXP gained for ${pointsSpent} points spent via tool ${toolId}`
+            };
+            const expUpdateEndpoint = `/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
+            const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+            
+            logger.info(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
+            await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
+            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${pointsSpent} points`);
+
+          } catch (expError) {
+            logger.warn(`[Webhook Processor] EXP update failed for masterAccountId ${generationRecord.masterAccountId}. This is non-blocking. Error:`, expError.message, expError.stack);
+            // Do not re-throw or change generation status.
+          }
+          // << ADR-005 EXP Update End >>
+
         } catch (debitError) {
           logger.error(`[Webhook Processor] Debit FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, debitError.message, debitError.stack);
           // Update generation record to 'payment_failed'
