@@ -217,14 +217,20 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
 // Helper function to build the debit payload as per ADR-005
 function buildDebitPayload(toolId, generationRecord, costUsd) {
   return {
+    // Fields explicitly required by the /debit API at the top level:
     amountUsd: costUsd,
-    toolId: toolId,
-    generationId: generationRecord._id, // Assuming generationRecord._id is the generationId
     description: `Debit for generation via ${toolId}`,
-    metadata: {
-      run_id: generationRecord.metadata?.run_id, // Include run_id for traceability
-      // any other relevant diagnostic tags from generationRecord.metadata could be added here
-    },
+    transactionType: "generation_debit",
+
+    // Place all other identifiers and audit information into 'relatedItems':
+    relatedItems: {
+      toolId: toolId,
+      generationId: generationRecord._id,
+      run_id: generationRecord.metadata?.run_id, // from previous 'metadata' object
+      // We could add other relevant details from generationRecord.metadata here if needed
+    }
+    // Removed top-level toolId, generationId, and the old metadata object as they are not directly used
+    // at the top level by the current /debit API. Their contents are now in relatedItems.
   };
 }
 
