@@ -239,7 +239,9 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
     throw new Error('Internal API client not configured or invalid for issuing debit.');
   }
 
-  const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
+  // const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
+  // ADR-005 hotfix: Path issue with internalApiClient potentially double-prepending /internal
+  const debitEndpoint = `/v1/data/users/${masterAccountId}/economy/debit`;
   const requestOptions = {
     headers: {
       'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB,
