@@ -339,7 +339,6 @@ async function setupDynamicCommands(bot, services) {
             status: 'pending', // Initial status
             deliveryStatus: 'pending', // ADR-005 follow-up: API requires this field
             requestPayload: finalInputs, // ADR-005 follow-up: API requires this field
-            costRate: costRateInfo, // Pass costRate from tool definition
             metadata: {
               telegramChatId: chatId,
               telegramMessageId: msg.message_id,
@@ -348,6 +347,7 @@ async function setupDynamicCommands(bot, services) {
               displayName: currentDisplayName, // Store the display name for logs/UI
               commandInvoked: `/${commandName}`,
               toolId: currentToolId, // ADR-005: Ensure toolId is included
+              costRate: costRateInfo, // ADR-005: Ensure costRate is in metadata for webhook processor
               // Add any other platform-specific or user-specific metadata here
             },
             notificationPlatform: 'telegram',
