@@ -7,6 +7,7 @@ const USD_CREDIT_TO_POINTS_RATE = 0.00037;
 
 // Non-terminal task statuses
 const LIVE_TASK_STATUSES = ['pending', 'processing', 'running', 'queued', 'waiting']; // Added queued, waiting based on common patterns
+const PENDING_TASK_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours for pending tasks
 
 /**
  * Creates and configures an Express router for User Status Report API endpoints.
@@ -60,13 +61,28 @@ function createUserStatusReportApiService(dependencies) {
       const economyRecord = await db.userEconomy.findByMasterAccountId(masterAccountObjId);
       let points = 0;
       let exp = 0;
-      if (economyRecord && economyRecord.usdCredit) {
-        // Convert usdCredit (Decimal128) to number before calculation
-        const usdCreditAsNumber = parseFloat(economyRecord.usdCredit.toString());
-        points = Math.floor(usdCreditAsNumber / USD_CREDIT_TO_POINTS_RATE);
-        exp = economyRecord.exp || 0; // Assuming exp is a direct number field
+
+      if (economyRecord) {
+        if (economyRecord.usdCredit) {
+          const usdCreditAsNumber = parseFloat(economyRecord.usdCredit.toString());
+          points = Math.floor(usdCreditAsNumber / USD_CREDIT_TO_POINTS_RATE);
+        }
+        if (economyRecord.exp) {
+          if (economyRecord.exp instanceof Decimal128) {
+            exp = Math.floor(parseFloat(economyRecord.exp.toString()));
+          } else if (typeof economyRecord.exp === 'number') {
+            exp = Math.floor(economyRecord.exp);
+          } else {
+            const parsedExp = parseFloat(economyRecord.exp);
+            if (!isNaN(parsedExp)) {
+              exp = Math.floor(parsedExp);
+            } else {
+              logger.warn(`[userStatusReportApi] Non-numeric EXP value found: ${economyRecord.exp} for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
+            }
+          }
+        }
       } else {
-        logger.warn(`[userStatusReportApi] Economy record not found or usdCredit missing for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
+        logger.warn(`[userStatusReportApi] Economy record not found for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
       }
 
       // 2. Fetch User Core Data (Wallet Address)
@@ -101,7 +117,25 @@ function createUserStatusReportApiService(dependencies) {
         const generationRecords = await db.generationOutputs.findGenerationsByMasterAccount(masterAccountObjId);
         if (generationRecords && generationRecords.length > 0) {
           liveTasks = generationRecords
-            .filter(task => LIVE_TASK_STATUSES.includes(task.status ? task.status.toLowerCase() : ''))
+            .filter(task => {
+              const taskStatusLower = task.status ? task.status.toLowerCase() : '';
+              const isPotentiallyLive = LIVE_TASK_STATUSES.includes(taskStatusLower);
+
+              if (!isPotentiallyLive) return false;
+
+              if (taskStatusLower === 'pending') {
+                let taskTimestamp = task.requestTimestamp;
+                if (!(taskTimestamp instanceof Date)) {
+                  taskTimestamp = new Date(taskTimestamp); 
+                }
+                if (isNaN(taskTimestamp.getTime())) {
+                  logger.warn(`[userStatusReportApi] Task ${task._id} has invalid requestTimestamp: ${task.requestTimestamp}. Including in pending list by default. requestId: ${requestId}`);
+                  return true; // Default to including if timestamp is bad, or could choose to exclude
+                }
+                return (Date.now() - taskTimestamp.getTime()) < PENDING_TASK_MAX_AGE_MS;
+              }
+              return true; // For other live statuses (processing, running, etc.)
+            })
             .map(task => {
               const idHash = crypto.createHash('sha256').update(task._id.toString()).digest('hex').substring(0, 5);
               const progress = (task.metadata && typeof task.metadata.progressPercent === 'number') ? task.metadata.progressPercent : null;

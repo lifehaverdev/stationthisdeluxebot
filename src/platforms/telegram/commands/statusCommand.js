@@ -117,7 +117,31 @@ function createStatusCommandHandler(dependencies) {
       // 5. Format and Send Response
       let messageText = '🧾 Account Status\n\n';
       messageText += `💰 Points: ${formatNumberWithCommas(statusData.points)}\n`;
-      messageText += `✨ EXP: ${formatNumberWithCommas(statusData.exp)}\n`;
+      
+      // Calculate Level and EXP Bar
+      const currentExp = statusData.exp || 0;
+      const level = Math.floor(Math.cbrt(currentExp));
+      const currentLevelExp = Math.pow(level, 3);
+      const nextLevelExp = Math.pow(level + 1, 3);
+      
+      let expProgressBar = '🟩'; // First segment always green
+      const variableSegments = 6;
+      let progressRatio = 0;
+
+      if (nextLevelExp > currentLevelExp) { // Avoid division by zero if currentLvlExp === nextLvlExp (e.g. level 0)
+        progressRatio = (currentExp - currentLevelExp) / (nextLevelExp - currentLevelExp);
+      }
+      // Ensure progressRatio is between 0 and 1
+      progressRatio = Math.max(0, Math.min(1, progressRatio)); 
+
+      const greenSegments = Math.floor(progressRatio * variableSegments);
+      const whiteSegments = variableSegments - greenSegments;
+
+      for (let i = 0; i < greenSegments; i++) expProgressBar += '🟩';
+      for (let i = 0; i < whiteSegments; i++) expProgressBar += '⬜️';
+
+      messageText += `🌟 Level: ${level}\n`;
+      messageText += `✨ EXP: ${expProgressBar}\n`;
       
       if (statusData.walletAddress) {
         messageText += `🔗 Wallet: ${statusData.walletAddress}\n`;
