@@ -17,6 +17,7 @@ const createTeamsApi = require('./teamsApi');
 
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
+const createUserStatusReportApiService = require('./userStatusReportApi');
 // ... other service imports
 
 /**
@@ -156,6 +157,24 @@ function initializeInternalServices(dependencies = {}) {
     }
   } else {
     logger.warn('[InternalAPI] userEventsApi not imported correctly.');
+  }
+
+  // User Status Report API Service:
+  if (createUserStatusReportApiService) {
+    const userStatusReportApiRouter = createUserStatusReportApiService(apiDependencies);
+    if (userStatusReportApiRouter) {
+      // The service itself handles /users/:masterAccountId/status-report
+      // So we mount it at the base it expects.
+      // Considering userCoreApi is at /v1/data/users, and this is also a user-centric data report.
+      // The router in userStatusReportApi.js is defined as router.get('/users/:masterAccountId/status-report', ... )
+      // So, it should be mounted at /v1/data path for the full URL to be /internal/v1/data/users/:masterAccountId/status-report
+      mainInternalRouter.use('/v1/data', userStatusReportApiRouter); // Mount point
+      logger.info('[InternalAPI] User Status Report API service mounted to /v1/data');
+    } else {
+      logger.error('[InternalAPI] Failed to create User Status Report API router.');
+    }
+  } else {
+    logger.warn('[InternalAPI] createUserStatusReportApiService not imported correctly.');
   }
 
   // Transactions API Service:

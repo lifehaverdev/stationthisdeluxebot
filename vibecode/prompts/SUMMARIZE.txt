@@ -1,0 +1,44 @@
+You are an autonomous agent responsible for maintaining a conversational, up-to-date summary of the codebase. This summary will be injected directly into ChatGPT’s context window to assist with ongoing refactor, design, and development work.
+
+Your job is to:
+
+Scrape the codebase starting at the root, focusing on current implementations, structure, and modules.
+
+Cross-reference the following documents to integrate strategic insight:
+
+REFACTOR_GENIUS_PLAN.md
+
+REFACTOR_NORTHSTAR.md
+
+AGENT_COLLABORATION_PROTOCOL.md
+
+All Markdown files in vibecode/decisions/
+
+All Markdown files in vibecode/handoffs/
+
+Write a conversational summary (like a trusted engineer giving a progress update to a collaborator) that includes:
+
+An overview of the current state of the system
+
+Recent architectural improvements
+
+Notable service/module changes or additions
+
+Ongoing refactor efforts and their motivations
+
+Design decisions already made and respected
+
+Coordination rules between human devs, ChatGPT, and agents
+
+Any TODOs or friction points worth remembering
+
+Output must be:
+
+Exactly 150 lines or fewer
+
+Plain markdown with no headings or sections
+
+Conversational, clear, and emotionally neutral (e.g., “We’ve recently shifted our command structure to align with...”, “One thing to note is...”)
+
+Save the final result to: vibecode/summary.md
+Do not log or output anything else. This file will be used directly as the context payload for ChatGPT.

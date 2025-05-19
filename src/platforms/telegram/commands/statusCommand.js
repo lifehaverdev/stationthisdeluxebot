@@ -8,6 +8,16 @@
 const internalApiClient = require('../utils/internalApiClient'); // Import the new API client
 
 /**
+ * Helper to format numbers with commas.
+ * @param {number} num - The number to format.
+ * @returns {string} Formatted number string.
+ */
+function formatNumberWithCommas(num) {
+  if (num === null || num === undefined) return '0';
+  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/**
  * Create status command handler for Telegram
  * @param {Object} dependencies - Injected dependencies
  * @returns {Function} - Command handler function
@@ -99,29 +109,48 @@ function createStatusCommandHandler(dependencies) {
         }
       }
 
-      // 4. Get Status Info (Using the existing local service method)
-      logger.debug('[statusCommand] Getting application status...');
-      // Check if the internal status service is available
-      if (!services || !services.internal || !services.internal.status || typeof services.internal.status.getStatus !== 'function') {
-          logger.error('[statusCommand] Internal status service (services.internal.status.getStatus) is not available!');
-          throw new Error('Internal status service unavailable.');
-      }
-      const statusInfo = services.internal.status.getStatus();
+      // 4. Get Enhanced Status Info via new Internal API Endpoint
+      logger.debug(`[statusCommand] Getting enhanced status report for masterAccountId: ${masterAccountId}...`);
+      const statusReportResponse = await internalApiClient.get(`/users/${masterAccountId}/status-report`);
+      const statusData = statusReportResponse.data;
+
+      // 5. Format and Send Response
+      let messageText = '🧾 Account Status\n\n';
+      messageText += `💰 Points: ${formatNumberWithCommas(statusData.points)}\n`;
+      messageText += `✨ EXP: ${formatNumberWithCommas(statusData.exp)}\n`;
       
-      // 5. Send Response
-      logger.debug('[statusCommand] Sending status response to user...');
+      if (statusData.walletAddress) {
+        messageText += `🔗 Wallet: ${statusData.walletAddress}\n`;
+      } else {
+        messageText += '🔗 Wallet: Not set\n';
+      }
+
+      messageText += '\n📡 Active Tasks:\n';
+      if (statusData.liveTasks && statusData.liveTasks.length > 0) {
+        statusData.liveTasks.forEach(task => {
+          const progressInfo = task.progress !== null ? ` (${task.progress}%)` : '';
+          // Format costUsd to 2 decimal places, or show N/A if null
+          const costDisplay = task.costUsd !== null ? `$${parseFloat(task.costUsd).toFixed(2)}` : '$N/A';
+          messageText += `• ${task.idHash} – ${task.status}${progressInfo} – ${costDisplay}\n`;
+        });
+      } else {
+        messageText += 'No active tasks at the moment.\n';
+      }
+      
+      // Send the richer status message
+      logger.debug('[statusCommand] Sending enhanced status response to user...');
       await bot.sendMessage(
         message.chat.id,
-        `🟢 StationThis Bot Status\n\n` +
-        `🕒 Uptime: ${statusInfo.uptime.formatted}\n` +
-        `🚀 Started: ${statusInfo.startTime.replace('T', ' ').slice(0, 19)}\n` +
-        `📊 Version: ${statusInfo.version}`,
-        { reply_to_message_id: message.message_id }
+        messageText,
+        { 
+          reply_to_message_id: message.message_id,
+          parse_mode: 'Markdown' // Optional: if you want to use Markdown for formatting (e.g. bolding titles)
+        }
       );
-      logger.info(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}, sessionId: ${sessionId}`);
+      logger.info(`[statusCommand] Successfully processed /status with enhanced report for masterAccountId: ${masterAccountId}, sessionId: ${sessionId}`);
 
     } catch (error) {
-      logger.error(`[statusCommand] Error processing /status for telegramUserId ${platformIdStr}:`, error.response ? error.response.data : error.message);
+      logger.error(`[statusCommand] Error processing /status for telegramUserId ${platformIdStr}:`, error.response ? JSON.stringify(error.response.data) : error.message, error.stack);
       // Send a generic error message to the user
       try {
         await bot.sendMessage(
