@@ -115,8 +115,8 @@ function createStatusCommandHandler(dependencies) {
       const statusData = statusReportResponse.data;
 
       // 5. Format and Send Response
-      let messageText = '🧾 Account Status\n\n';
-      messageText += `💰 Points: ${formatNumberWithCommas(statusData.points)}\n`;
+      let messageText = '\n\n';
+      messageText += `💰 Points: ${formatNumberWithCommas(statusData.points)}\n\n`;
       
       // Calculate Level and EXP Bar
       const currentExp = statusData.exp || 0;
@@ -141,7 +141,7 @@ function createStatusCommandHandler(dependencies) {
       for (let i = 0; i < whiteSegments; i++) expProgressBar += '⬜️';
 
       messageText += `🌟 Level: ${level}\n`;
-      messageText += `✨ EXP: ${expProgressBar}\n`;
+      messageText += `✨ ${expProgressBar}\n\n`;
       
       if (statusData.walletAddress) {
         messageText += `🔗 Wallet: ${statusData.walletAddress}\n`;
