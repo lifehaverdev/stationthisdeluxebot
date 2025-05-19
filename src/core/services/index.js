@@ -80,8 +80,7 @@ async function initializeServices(options = {}) {
       comfyUI: comfyUIService,
       workflows: workflowsService,
       db: initializedDbServices, // Return the INSTANTIATED services
-      internal: apiServices.internal, // This contains router, status, client
-      publicApiRouter: apiServices.publicApiRouter, // Add the public API router here
+      internal: apiServices.internal, // This contains router, status
       internalApiClient: apiServices.internal?.client, // Expose the client directly
       logger,
       appStartTime,
