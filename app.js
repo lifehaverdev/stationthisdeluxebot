@@ -230,6 +230,14 @@ async function startApp() {
       logger.warn('Internal API router or web app instance not available for mounting. Internal API might not be accessible or secured.');
     }
     
+    // --- Mount Public API Router ---
+    if (services.publicApiRouter && platforms.web && platforms.web.app) {
+      platforms.web.app.use('/api', services.publicApiRouter);
+      logger.info('Public API router mounted at /api');
+    } else {
+      logger.warn('Public API router or web app instance not available. Public API endpoints (e.g., /api/me/status-report) may not be accessible.');
+    }
+
     // Initialize web server routes BEFORE setting up Telegram commands
     if (platforms.web) {
       try {
