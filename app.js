@@ -204,6 +204,8 @@ async function startApp() {
         process.env.INTERNAL_API_KEY_TELEGRAM,
         process.env.INTERNAL_API_KEY_DISCORD,
         process.env.INTERNAL_API_KEY_WEB,
+        process.env.INTERNAL_API_KEY_API,
+        process.env.INTERNAL_API_KEY_ADMIN,
       ].filter(key => key);
 
       if (!validKeys.includes(clientKey)) {
