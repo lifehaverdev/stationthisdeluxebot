@@ -344,54 +344,59 @@ class UserCoreDB extends BaseDB {
   }
 
   async deleteApiKey(masterAccountId, keyPrefix) {
-    if (!masterAccountId) {
-      throw new Error('masterAccountId is required for deleting API key');
-    }
-    if (!keyPrefix) {
-      throw new Error('keyPrefix is required for deleting API key');
-    }
+    const id = typeof masterAccountId === 'string' ? new ObjectId(masterAccountId) : masterAccountId;
+    // This operation pulls the API key from the array if it matches the keyPrefix.
+    // It ensures the main document updatedAt is also set.
+    const updateResult = await this.updateUserCore(id, {
+      $pull: { apiKeys: { keyPrefix: keyPrefix } },
+    });
+    return updateResult;
+  }
 
-    const filter = { _id: new ObjectId(masterAccountId) };
-    const updateOperation = { 
-      $pull: { 
-        apiKeys: { keyPrefix: keyPrefix } 
-      } 
+  /**
+   * Updates the lastUsedAt timestamp for a specific API key.
+   * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
+   * @param {string} keyPrefix - The prefix of the API key to update.
+   * @returns {Promise<Object|null>} The updated userCore document or null if not found/key not found.
+   */
+  async updateApiKeyLastUsed(masterAccountId, keyPrefix) {
+    const id = typeof masterAccountId === 'string' ? new ObjectId(masterAccountId) : masterAccountId;
+    const now = new Date();
+
+    // Use arrayFilters to target the specific API key in the array
+    const updateOperation = {
+      $set: { 'apiKeys.$.lastUsedAt': now }
     };
-    // Remove the returnDocument option as it's not standard for updateOne
-    const options = {}; 
+    const options = {
+      arrayFilters: [{ 'elem.keyPrefix': keyPrefix, 'elem.status': 'active' }], // Ensure key is active to update lastUsedAt
+    };
 
-    this.logger.debug(`[UserCoreDB] deleteApiKey: Attempting to delete API key with prefix ${keyPrefix} for masterAccountId ${masterAccountId}`);
+    // We call super.updateOne directly if we don't need the full document returned by updateUserCore's findOne call.
+    // However, updateUserCore handles the main updatedAt timestamp and returns the document, which is convenient.
+    // For consistency and to ensure `updatedAt` on the main document is also refreshed, we use updateUserCore.
+    // The update operation will be merged with {$set: {updatedAt: new Date()}} by updateUserCore.
     
-    // First, check if the user and specific API key exist to ensure we don't return a modified user doc if the key wasn't there.
-    // This also helps in the API layer to return a 404 if the key doesn't exist.
-    const userExistsWithKey = await this.findOne(
-      { _id: new ObjectId(masterAccountId), 'apiKeys.keyPrefix': keyPrefix },
-      PRIORITY.MEDIUM // No need for projection here, just existence check
-    );
-
-    if (!userExistsWithKey) {
-      this.logger.warn(`[UserCoreDB] deleteApiKey: API key with prefix ${keyPrefix} not found for masterAccountId ${masterAccountId}. No deletion performed.`);
-      return null; // Or indicate specifically that the key was not found
+    // First, check if the key exists to avoid an update operation that does nothing and returns a potentially misleading user document.
+    const userWithKey = await this.findOne({ _id: id, 'apiKeys.keyPrefix': keyPrefix, 'apiKeys.status': 'active' });
+    if (!userWithKey) {
+      this.logger.warn(`[UserCoreDB] updateApiKeyLastUsed: API key with prefix ${keyPrefix} not found or not active for user ${id}.`);
+      return null;
     }
 
-    // Perform the $pull operation
-    const updateResult = await this.updateOne(filter, updateOperation, options, false, PRIORITY.HIGH);
-    
-    // Check the result of updateOne based on counts
-    if (updateResult && updateResult.matchedCount > 0) {
-      // User found, proceed to fetch the document
-      if (updateResult.modifiedCount > 0) {
-         this.logger.info(`[UserCoreDB] deleteApiKey: Successfully removed API key entry with prefix ${keyPrefix} for masterAccountId ${masterAccountId}. Fetching updated user doc.`);
-      } else {
-          this.logger.warn(`[UserCoreDB] deleteApiKey: User ${masterAccountId} found, but key ${keyPrefix} was likely already removed. Fetching current user doc.`);
-      }
-      // Fetch and return the document AFTER the update attempt
-      return this.findUserCoreById(masterAccountId); 
-    } else {
-      // User not found by updateOne
-      this.logger.warn(`[UserCoreDB] deleteApiKey: User ${masterAccountId} not found during $pull operation for keyPrefix ${keyPrefix}.`);
-      return null; 
-    }
+    return this.updateUserCore(id, updateOperation, options);
+  }
+
+  /**
+   * Updates the 'lastTouch' timestamp for a user.
+   * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
+   * @returns {Promise<Object|null>} The updated userCore document or null if not found.
+   */
+  async updateLastTouch(masterAccountId) {
+    return this.updateUserCore(masterAccountId, {
+      $set: {
+        lastTouch: new Date(),
+      },
+    });
   }
 
 }

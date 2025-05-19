@@ -7,17 +7,67 @@ const { PRIORITY } = require('../../core/services/db/utils/queue'); // Needed fo
 // This function initializes the routes for the User API Keys API
 module.exports = function initializeApiKeysApi(dependencies) {
   const { logger, db } = dependencies;
-  const router = express.Router({ mergeParams: true }); 
+  const managementRouter = express.Router({ mergeParams: true }); 
 
   if (!db || !db.userCore) {
     logger.error('[userApiKeysApi] Critical dependency failure: db.userCore service is missing!');
-    router.use((req, res, next) => {
+    // For managementRouter, if it's used, it will error out per request.
+    // For performApiKeyValidation, it would fail if called.
+    // We can return a stub for performApiKeyValidation if db.userCore is missing to prevent crashes if it's called,
+    // though the caller (userCoreApi) should ideally also check.
+    const failingValidator = async () => {
+      logger.error('[userApiKeysApi:performApiKeyValidation] Called when db.userCore is missing.');
+      return null;
+    };
+    managementRouter.use((req, res, next) => {
         res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserCore database service is not available for API keys.' } });
     });
-    return router;
+    return { managementRouter, performApiKeyValidation: failingValidator };
   }
 
-  logger.info('[userApiKeysApi] Initializing User API Keys API routes...');
+  logger.info('[userApiKeysApi] Initializing User API Keys API routes and validation function...');
+
+  // Helper function for API key validation logic (not an HTTP endpoint itself here)
+  async function performApiKeyValidation(fullApiKey) {
+    if (!fullApiKey || typeof fullApiKey !== 'string') {
+      logger.warn('[userApiKeysApi:performApiKeyValidation] Attempted validation with invalid API key format.');
+      return null;
+    }
+
+    const keyHash = crypto.createHash('sha256').update(fullApiKey).digest('hex');
+    
+    try {
+      // Find user by the hashed key within the apiKeys array
+      const user = await db.userCore.findOne({
+        'apiKeys.keyHash': keyHash,
+        'apiKeys.status': 'active' 
+      }, PRIORITY.HIGH);
+
+      if (user && user._id) {
+        // Key was valid and active, find its prefix to update lastUsedAt
+        const activeKeyEntry = user.apiKeys.find(k => k.keyHash === keyHash && k.status === 'active');
+        if (activeKeyEntry && activeKeyEntry.keyPrefix) {
+          try {
+            await db.userCore.updateApiKeyLastUsed(user._id, activeKeyEntry.keyPrefix);
+            logger.info(`[userApiKeysApi:performApiKeyValidation] API key validated and lastUsedAt updated for user ${user._id}, keyPrefix ${activeKeyEntry.keyPrefix}`);
+          } catch (updateError) {
+            logger.error(`[userApiKeysApi:performApiKeyValidation] Failed to update lastUsedAt for user ${user._id}, keyPrefix ${activeKeyEntry.keyPrefix}:`, updateError);
+            // Continue even if lastUsedAt update fails, authentication itself was successful.
+          }
+        } else {
+          // This case should be rare if the findOne query was successful based on keyHash and status.
+          logger.warn(`[userApiKeysApi:performApiKeyValidation] Key hash matched for user ${user._id} but could not find active key entry to update lastUsedAt.`);
+        }
+        return { masterAccountId: user._id.toString(), user }; // Return user details
+      } else {
+        logger.warn('[userApiKeysApi:performApiKeyValidation] API key validation failed (no match or inactive key).');
+        return null;
+      }
+    } catch (error) {
+      logger.error('[userApiKeysApi:performApiKeyValidation] Database error during API key validation:', error);
+      return null; // Or throw an error to be caught by the caller
+    }
+  }
 
   const getMasterAccountId = (req, res) => {
     const { masterAccountId: masterAccountIdStr } = req.params;
@@ -37,7 +87,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
   //-------------------------------------------------------------------------
 
   // POST / - Creates an API key
-  router.post('/', async (req, res) => {
+  managementRouter.post('/', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -110,7 +160,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
   // GET / - Lists API keys
-  router.get('/', async (req, res) => {
+  managementRouter.get('/', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -153,7 +203,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
   // GET /:keyPrefix - Get a specific API key by prefix
-  router.get('/:keyPrefix', async (req, res) => {
+  managementRouter.get('/:keyPrefix', async (req, res) => {
         const requestId = uuidv4();
         const masterAccountId = getMasterAccountId(req, res);
         if (!masterAccountId) return;
@@ -203,7 +253,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
     });
 
   // PUT /:keyPrefix - Updates an API key
-  router.put('/:keyPrefix', async (req, res) => {
+  managementRouter.put('/:keyPrefix', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -291,7 +341,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
   // DELETE /:keyPrefix - Deletes/Deactivates an API key
-  router.delete('/:keyPrefix', async (req, res) => {
+  managementRouter.delete('/:keyPrefix', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -350,7 +400,7 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
   // Error handling middleware specific to this router
-  router.use((err, req, res, next) => {
+  managementRouter.use((err, req, res, next) => {
     const masterAccountId = req.params.masterAccountId;
     const keyPrefix = req.params.keyPrefix;
     logger.error(`[userApiKeysApi] Error in API key route for user ${masterAccountId}, key ${keyPrefix || 'N/A'}: ${err.message}`, { 
@@ -373,6 +423,6 @@ module.exports = function initializeApiKeysApi(dependencies) {
   });
 
 
-  logger.info('[userApiKeysApi] User API Keys API routes initialized.');
-  return router;
+  logger.info('[userApiKeysApi] User API Keys management router initialized.');
+  return { managementRouter, performApiKeyValidation };
 };

@@ -539,9 +539,47 @@ function createUserCoreApiService(dependencies) {
   const walletsApiRouter = initializeWalletsApi(dependencies);
   router.use('/:masterAccountId/wallets', validateObjectId('masterAccountId', 'params'), walletsApiRouter);
 
-  // Mount API Keys routes
-  const apiKeysApiRouter = initializeApiKeysApi(dependencies);
-  router.use('/:masterAccountId/apikeys', validateObjectId('masterAccountId', 'params'), apiKeysApiRouter);
+  // Mount API Keys routes and get validation function
+  const { managementRouter: apiKeysManagementRouter, performApiKeyValidation } = initializeApiKeysApi(dependencies);
+  if (apiKeysManagementRouter && performApiKeyValidation) {
+    router.use('/:masterAccountId/apikeys', validateObjectId('masterAccountId', 'params'), apiKeysManagementRouter);
+    logger.info(`[userCoreApi] API Keys management routes mounted under /:masterAccountId/apikeys.`);
+
+    // New Internal Endpoint for validating a full API key
+    router.post('/apikeys/validate-token', async (req, res) => {
+      const { apiKey } = req.body;
+      const requestId = uuidv4();
+      logger.info(`[userCoreApi] POST /apikeys/validate-token called, requestId: ${requestId}`);
+
+      if (!apiKey) {
+        logger.warn(`[userCoreApi] POST /apikeys/validate-token: Missing apiKey in request body. requestId: ${requestId}`);
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'apiKey is required in the request body.', requestId } });
+      }
+
+      try {
+        const validationResult = await performApiKeyValidation(apiKey); // db.userCore and logger are in closure of performApiKeyValidation
+        
+        if (validationResult && validationResult.masterAccountId) {
+          logger.info(`[userCoreApi] POST /apikeys/validate-token: API key validated successfully for masterAccountId ${validationResult.masterAccountId}. requestId: ${requestId}`);
+          // Return only necessary, non-sensitive info for auth purposes
+          res.status(200).json({
+            masterAccountId: validationResult.masterAccountId,
+            // Potentially include keyPrefix or permissions if needed by the calling service, but keep it minimal.
+          });
+        } else {
+          logger.warn(`[userCoreApi] POST /apikeys/validate-token: API key validation failed. requestId: ${requestId}`);
+          res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or inactive API key.', requestId } });
+        }
+      } catch (error) {
+        logger.error(`[userCoreApi] POST /apikeys/validate-token: Error during API key validation. Error: ${error.message}. requestId: ${requestId}`, error);
+        res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred during API key validation.', requestId } });
+      }
+    });
+    logger.info(`[userCoreApi] API Key validation endpoint POST /apikeys/validate-token registered.`);
+
+  } else {
+    logger.error('[userCoreApi] Failed to initialize API Keys service (management router or validation function missing).');
+  }
 
   // Mount User Economy routes
   const userEconomyApiRouter = initializeUserEconomyApi(dependencies);

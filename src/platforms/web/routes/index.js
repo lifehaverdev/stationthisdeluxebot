@@ -28,6 +28,9 @@ const { processComfyDeployWebhook } = require('../../../core/services/comfydeplo
 // geniusoverhaul: Import ToolRegistry
 const { ToolRegistry } = require('../../../core/tools/ToolRegistry.js');
 
+// Import new user status API routes
+const createUserStatusApiRoutes = require('./api/userStatus.js');
+
 /**
  * Initialize all routes for the web platform
  * @param {Express} app - Express application instance
@@ -42,6 +45,18 @@ async function initializeRoutes(app, services) {
   app.use('/api/points', pointsRoutes(services));
   app.use('/api/pipelines', pipelinesRoutes);
   app.use('/api/status', statusRoutes(services));
+  
+  // Mount new User Status API (v1/me/status)
+  if (services && services.internal && services.internal.client && services.db && services.db.data && services.db.data.userCore) {
+    app.use('/api/v1/me', createUserStatusApiRoutes({
+      internalApiClient: services.internal.client,
+      logger: logger, // Use the logger defined in this file
+      userCoreDb: services.db.data.userCore
+    }));
+    logger.info('[Web Routes] User Status API (/api/v1/me/status) mounted.');
+  } else {
+    logger.error('[Web Routes] Failed to mount User Status API due to missing dependencies (internal.client or db.data.userCore).');
+  }
   
   // Mount direct file routes
   app.use('/files', fileRoutes());
