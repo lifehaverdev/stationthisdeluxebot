@@ -5,6 +5,7 @@
  */
 
 const { ToolRegistry } = require('../tools/ToolRegistry.js');
+const { getUserSettingsService } = require('./userSettingsService');
 
 const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
@@ -68,8 +69,17 @@ async function initializeServices(options = {}) {
       logger,
       appStartTime,
       version: options.version,
-      db: initializedDbServices // Pass the INSTANTIATED services
+      db: initializedDbServices, // Pass the INSTANTIATED services
+      toolRegistry // Pass toolRegistry to API initialization
     });
+    
+    // Initialize UserSettingsService after API client and toolRegistry are available
+    const userSettingsService = getUserSettingsService({ 
+      logger, 
+      toolRegistry, 
+      internalApiClient: apiServices.internal?.client 
+    });
+    logger.info('UserSettingsService initialized globally in core services.');
     
     logger.info('Core services created successfully');
     
@@ -82,6 +92,7 @@ async function initializeServices(options = {}) {
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
       internalApiClient: apiServices.internal?.client, // Expose the client directly
+      userSettingsService, // Added userSettingsService
       logger,
       appStartTime,
       toolRegistry // geniusoverhaul: Added toolRegistry to returned services

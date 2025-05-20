@@ -113,6 +113,7 @@ async function startApp() {
       db: services.db,
       internal: services.internal,
       internalApiClient: services.internalApiClient,
+      userSettingsService: services.userSettingsService,
       // geniusoverhaul: Add ToolRegistry to platformServices
       toolRegistry: ToolRegistry.getInstance(),
       // Keep the stubbed collections structure separate if needed by other platforms,
