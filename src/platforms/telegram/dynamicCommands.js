@@ -197,7 +197,7 @@ async function setupDynamicCommands(bot, services) {
         let imageUrl = null;
         let videoUrl = null;
 
-        const userInputsForTool = {};
+        let userInputsForTool = {}; // Initialize as an empty object
         if (currentPromptInputKey && promptText) {
           userInputsForTool[currentPromptInputKey] = promptText;
         } else if (currentPromptInputKey && !promptText && !tool.inputSchema[currentPromptInputKey]?.required) {
@@ -236,25 +236,11 @@ async function setupDynamicCommands(bot, services) {
           return;
         }
 
-        // TODO: ADR-006 - User Settings Integration
-        // Before submitting the request, resolve effective inputs by considering user preferences.
-        // This requires masterAccountId, which is obtained after find-or-create-session.
-        // Example structure:
-        // if (services.userSettingsService && masterAccountId) { // masterAccountId will be available inside the try block
-        //   const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId);
-        //   if (resolvedInputs) {
-        //     // Use resolvedInputs for comfyuiService.submitRequest payload
-        //     // This would replace or augment how finalInputValues is constructed later.
-        //     logger.info(`[Telegram EXEC /${commandName}] Inputs resolved with user preferences for tool ${currentToolId}.`);
-        //   } else {
-        //     logger.warn(`[Telegram EXEC /${commandName}] Failed to resolve inputs with user preferences for tool ${currentToolId}. Proceeding with defaults/user input only.`);
-        //   }
-        // }
-
         let masterAccountId;
         let sessionId;
         let eventId;
         let generationId;
+        let finalInputValuesForTool = { ...userInputsForTool }; // Start with user-provided inputs
 
         try {
           logger.debug(`[Telegram EXEC /${commandName}] Entering User/Session/Event Handling block...`);
@@ -264,6 +250,20 @@ async function setupDynamicCommands(bot, services) {
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
           });
           masterAccountId = findOrCreateResponse.data.masterAccountId;
+
+          // ADR-006 - User Settings Integration
+          if (services.userSettingsService && masterAccountId && currentToolId) {
+            logger.info(`[Telegram EXEC /${commandName}] Attempting to resolve inputs with user preferences for tool ${currentToolId}, MAID: ${masterAccountId}. Initial inputs: ${JSON.stringify(userInputsForTool)}`);
+            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId);
+            if (resolvedInputs) {
+              finalInputValuesForTool = resolvedInputs; // Use resolvedInputs
+              logger.info(`[Telegram EXEC /${commandName}] Inputs resolved with user/tool preferences: ${JSON.stringify(finalInputValuesForTool)}.`);
+            } else {
+              logger.warn(`[Telegram EXEC /${commandName}] Failed to resolve inputs with user preferences for tool ${currentToolId}. Proceeding with defaults/user input only: ${JSON.stringify(finalInputValuesForTool)}.`);
+            }
+          } else {
+            logger.warn(`[Telegram EXEC /${commandName}] UserSettingsService not available or masterAccountId/currentToolId missing. Skipping preference resolution. MAID: ${masterAccountId}, ToolID: ${currentToolId}`);
+          }
 
           const activeSessionsResponse = await internalApiClient.get(`/users/${masterAccountId}/sessions/active?platform=${platform}`);
           if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
@@ -323,9 +323,9 @@ async function setupDynamicCommands(bot, services) {
             costRateInfo = { error: 'Rate lookup failed' };
           }
 
-          logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool: ${JSON.stringify(userInputsForTool)}`);
+          logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool (after potential preference merge): ${JSON.stringify(finalInputValuesForTool)}`);
 
-          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, userInputsForTool);
+          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, finalInputValuesForTool);
           if (!preparedResult) {
             logger.error(`[Telegram EXEC /${commandName}] prepareToolRunPayload failed for tool ${currentToolId}. Check WorkflowsService logs.`);
             throw new Error(`Failed to prepare payload for tool '${currentDisplayName}'.`);
