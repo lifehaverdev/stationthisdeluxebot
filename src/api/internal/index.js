@@ -46,7 +46,8 @@ function initializeInternalServices(dependencies = {}) {
     headers: {
       // The X-Internal-Client-Key will be set by the CALLER of this client,
       // as the key depends on which service is making the call (e.g., Telegram backend, Web backend)
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_ADMIN // Add default admin key
     }
   });
 

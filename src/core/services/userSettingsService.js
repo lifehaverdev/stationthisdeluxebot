@@ -45,7 +45,7 @@ class UserSettingsService {
       // but it's implied by PUT /preferences/:toolId and DELETE /preferences/:toolId.
       // Assuming an internal API client method to fetch these.
       // Example: /users/:masterAccountId/preferences/:toolId
-      const response = await this.internalApiClient.get(`/users/${masterAccountId}/preferences/${toolId}`);
+      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`);
       if (response.data && typeof response.data === 'object') {
         userPreferences = response.data; // Assuming the API returns the preferences for the toolId directly
       }
@@ -150,7 +150,7 @@ class UserSettingsService {
       // ADR-006: "Applies validated preferences via internalApiClient.PUT /preferences/:toolId"
       // The route is actually /users/:masterAccountId/preferences/:toolId
       const response = await this.internalApiClient.put(
-        `/users/${masterAccountId}/preferences/${toolId}`,
+        `/v1/data/users/${masterAccountId}/preferences/${toolId}`,
         preferences // The body should be the preferences object for that toolId
       );
       logger.info(`[savePreferences] Preferences saved successfully. Response status: ${response.status}`, { masterAccountId, toolId });
@@ -188,7 +188,7 @@ class UserSettingsService {
 
     let userPreferences = {};
     try {
-      const response = await this.internalApiClient.get(`/users/${masterAccountId}/preferences/${toolId}`);
+      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`);
       if (response.data && typeof response.data === 'object') {
         userPreferences = response.data;
       }
