@@ -195,9 +195,8 @@ async function setupDynamicCommands(bot, services) {
         const currentVideoInputKey = currentTool.metadata?.telegramVideoInputKey;
 
         let imageUrl = null;
-        let videoUrl = null; // For future video handling
+        let videoUrl = null;
 
-        // Prepare user inputs, starting with text
         const userInputsForTool = {};
         if (currentPromptInputKey && promptText) {
           userInputsForTool[currentPromptInputKey] = promptText;
@@ -207,13 +206,12 @@ async function setupDynamicCommands(bot, services) {
             logger.warn(`[Telegram EXEC /${commandName}] Prompt text provided but no promptInputKey defined for tool ${currentToolId}. Ignoring prompt text.`);
         }
 
-        // Handle image inputs
         if (handlerType === 'image_primary_with_text' || handlerType === 'image_only' || handlerType === 'image_required_with_text') {
           if (!msg.reply_to_message || (!msg.reply_to_message.photo && !(msg.reply_to_message.document && msg.reply_to_message.document.mime_type && msg.reply_to_message.document.mime_type.startsWith('image/')))) {
             bot.sendMessage(chatId, `The /${commandName} command requires you to reply to an image. Please send an image and then reply to it with the command.`, { reply_to_message_id: msg.message_id });
             return;
           }
-          imageUrl = await getTelegramFileUrl(bot, msg); // msg here, as getTelegramFileUrl checks msg.reply_to_message
+          imageUrl = await getTelegramFileUrl(bot, msg);
           if (!imageUrl) {
             logger.warn(`[Telegram EXEC /${commandName}] Could not retrieve image URL for replied message.`);
             bot.sendMessage(chatId, `Sorry, I couldn't retrieve the image from your replied message. Please try again.`, { reply_to_message_id: msg.message_id });
@@ -226,24 +224,32 @@ async function setupDynamicCommands(bot, services) {
             logger.warn(`[Telegram EXEC /${commandName}] Image provided but no imageInputKey defined for tool ${currentToolId}. Ignoring image.`);
           }
         }
-        
-        // Placeholder for other handler types that aren't text-only or primarily image-based
-        // This ensures that if a tool is classified but doesn't match the image handling above,
-        // and isn't text_only or text_primary_media_optional, it gives a coming soon message.
         else if (handlerType !== 'text_only' && handlerType !== 'text_primary_media_optional') {
-            logger.warn(`[Telegram EXEC /${commandName}] Tool handler type '${handlerType}' not yet fully supported for command interaction. Tool: ${currentDisplayName}`);
+            logger.warn(`[Telegram EXEC /${commandName}] Tool handler type '${handlerType}' not yet supported for command interaction. Tool: ${currentDisplayName}`);
             bot.sendMessage(chatId, `The /${commandName} command has a configuration not yet fully supported for direct text interaction (Type: ${handlerType}). Coming soon!`, { reply_to_message_id: msg.message_id });
             return;
         }
 
         if (currentPromptInputKey && !promptText && tool.inputSchema[currentPromptInputKey]?.required && !userInputsForTool[currentPromptInputKey]) {
-          // Check if prompt is required and not already satisfied (e.g. by an image for an image_only tool if prompt was misconfigured as required)
-          // This condition might need refinement based on how "required" interacts with multi-modal inputs.
-          // For now, if a text prompt key exists and is required, and no text was given, ask for it.
           logger.info(`[Telegram EXEC /${commandName}] Required prompt not provided for key '${currentPromptInputKey}'. Replying to user.`);
           bot.sendMessage(chatId, `Please provide a prompt after the command. Usage: /${commandName} your prompt here`, { reply_to_message_id: msg.message_id });
           return;
         }
+
+        // TODO: ADR-006 - User Settings Integration
+        // Before submitting the request, resolve effective inputs by considering user preferences.
+        // This requires masterAccountId, which is obtained after find-or-create-session.
+        // Example structure:
+        // if (services.userSettingsService && masterAccountId) { // masterAccountId will be available inside the try block
+        //   const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId);
+        //   if (resolvedInputs) {
+        //     // Use resolvedInputs for comfyuiService.submitRequest payload
+        //     // This would replace or augment how finalInputValues is constructed later.
+        //     logger.info(`[Telegram EXEC /${commandName}] Inputs resolved with user preferences for tool ${currentToolId}.`);
+        //   } else {
+        //     logger.warn(`[Telegram EXEC /${commandName}] Failed to resolve inputs with user preferences for tool ${currentToolId}. Proceeding with defaults/user input only.`);
+        //   }
+        // }
 
         let masterAccountId;
         let sessionId;

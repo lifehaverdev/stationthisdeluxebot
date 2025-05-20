@@ -14,6 +14,7 @@ const createTransactionsApiService = require('./transactionsApi');
 const createGenerationOutputsApiService = require('./generationOutputsApi');
 const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
 const createTeamsApi = require('./teamsApi');
+const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
 
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
@@ -83,13 +84,19 @@ function initializeInternalServices(dependencies = {}) {
       db: dbDataServices, // Use the extracted dbDataServices which contains userCore, userSessions etc.
       // Pass other relevant top-level dependencies if needed
       appStartTime: dependencies.appStartTime,
-      version: dependencies.version
+      version: dependencies.version,
+      toolRegistry: dependencies.toolRegistry || require('../../core/tools/ToolRegistry').ToolRegistry.getInstance(), // Ensure toolRegistry is available
+      // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
+      // internalApiClient: apiClient, (defined later in this function)
+      internalApiClient: apiClient // Added apiClient here
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
   // This ensures that any API service needing teamServiceDb can access it.
   if (dbDataServices) { // only if db is available
     apiDependencies.teamServiceDb = createTeamServiceDb({ logger }); // Pass only logger
+    // Pass userSettingsService if it was initialized here and needed by userPreferencesApi
+    // apiDependencies.userSettingsService = getUserSettingsService({ toolRegistry: apiDependencies.toolRegistry, internalApiClient: apiClient /* or dedicated one */});
   } else {
     logger.warn('[InternalAPI] teamServiceDb not initialized because dbDataServices is not available.');
     // We might want to handle this more gracefully, but for now, teamsApi will get undefined for teamServiceDb
@@ -216,6 +223,19 @@ function initializeInternalServices(dependencies = {}) {
     }
   } else {
     logger.warn('[InternalAPI] teamsApi not imported correctly.');
+  }
+
+  // Tool Definition API Service (New)
+  if (createToolDefinitionApiRouter) {
+    const toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies); // Pass apiDependencies
+    if (toolDefinitionRouter) {
+      mainInternalRouter.use('/v1/data/tools', toolDefinitionRouter);
+      logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
+    } else {
+      logger.error('[InternalAPI] Failed to create Tool Definition API router.');
+    }
+  } else {
+    logger.warn('[InternalAPI] createToolDefinitionApiRouter not imported correctly.');
   }
 
   // User Economy API Service:
