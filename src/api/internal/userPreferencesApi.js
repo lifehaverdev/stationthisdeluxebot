@@ -7,7 +7,7 @@ const { getUserSettingsService } = require('../../core/services/userSettingsServ
 module.exports = function userPreferencesApi(dependencies) {
   const { logger, db, toolRegistry, internalApiClient } = dependencies; // Added toolRegistry and internalApiClient for UserSettingsService
   // Use mergeParams to access masterAccountId from the parent router (userCoreApi)
-  const router = express.Router({ mergeParams: true });
+  const router = express.Router({ mergeParams: true }); 
 
   // Instantiate UserSettingsService
   // It's better if UserSettingsService is initialized once and passed in dependencies.
@@ -150,7 +150,7 @@ module.exports = function userPreferencesApi(dependencies) {
     if (!masterAccountId) return;
 
     const { preferenceScope } = req.params; // This is the toolId
-    if (!preferenceScope || typeof preferenceScope !== 'string' || preferenceScope.trim() === '') {
+     if (!preferenceScope || typeof preferenceScope !== 'string' || preferenceScope.trim() === '') {
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'preferenceScope (toolId) path parameter must be a non-empty string.' } });
     }
     const toolId = preferenceScope.trim();

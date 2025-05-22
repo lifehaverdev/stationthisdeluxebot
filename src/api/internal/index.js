@@ -39,6 +39,9 @@ function initializeInternalServices(dependencies = {}) {
   const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.PORT || 4000}/internal`;
   logger.info(`[InternalAPIClient] Base URL configured to: ${internalApiBaseUrl}`);
 
+  // Log the value of the admin API key
+  logger.info(`[InternalAPIClientConfig] Value of process.env.INTERNAL_API_KEY_ADMIN: "${process.env.INTERNAL_API_KEY_ADMIN}"`);
+
   // Create an Axios instance for the internal API
   const apiClient = axios.create({
     baseURL: internalApiBaseUrl,
@@ -53,7 +56,7 @@ function initializeInternalServices(dependencies = {}) {
 
   // Optional: Add request/response interceptors for logging or error handling
   apiClient.interceptors.request.use(request => {
-    // logger.debug(`[InternalAPIClient] Sending request to: ${request.method?.toUpperCase()} ${request.url}`, { headers: request.headers, data: request.data });
+    logger.debug(`[InternalAPIClient] Sending request to: ${request.method?.toUpperCase()} ${request.url}`, { headers: request.headers, data: request.data });
     return request;
   }, error => {
     logger.error('[InternalAPIClient] Request Error:', error.message);

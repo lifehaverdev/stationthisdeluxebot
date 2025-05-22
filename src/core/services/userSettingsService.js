@@ -21,9 +21,10 @@ class UserSettingsService {
    * Merges tool defaults with user preferences for a specific tool.
    * @param {string} masterAccountId - The user's master account ID.
    * @param {string} toolId - The ID of the tool.
+   * @param {string} [internalApiKey] - Optional API key for the internal request.
    * @returns {Promise<object | null>} Effective settings or null if tool not found.
    */
-  async getEffectiveSettings(masterAccountId, toolId) {
+  async getEffectiveSettings(masterAccountId, toolId, internalApiKey) {
     logger.debug(`[getEffectiveSettings] Called`, { masterAccountId, toolId });
     const tool = this.toolRegistry.getToolById(toolId);
     if (!tool || !tool.inputSchema) {
@@ -45,7 +46,11 @@ class UserSettingsService {
       // but it's implied by PUT /preferences/:toolId and DELETE /preferences/:toolId.
       // Assuming an internal API client method to fetch these.
       // Example: /users/:masterAccountId/preferences/:toolId
-      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`);
+      const requestConfig = {};
+      if (internalApiKey) {
+        requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+      }
+      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
       if (response.data && typeof response.data === 'object') {
         userPreferences = response.data; // Assuming the API returns the preferences for the toolId directly
       }
@@ -136,9 +141,10 @@ class UserSettingsService {
    * @param {string} masterAccountId - The user's master account ID.
    * @param {string} toolId - The ID of the tool.
    * @param {object} preferences - The preference object to save.
+   * @param {string} [internalApiKey] - Optional API key for the internal request.
    * @returns {Promise<{success: boolean, data: object|null, errors: string[]}>} Save result.
    */
-  async savePreferences(masterAccountId, toolId, preferences) {
+  async savePreferences(masterAccountId, toolId, preferences, internalApiKey) {
     logger.debug(`[savePreferences] Called`, { masterAccountId, toolId, preferences });
     const validationResult = this.validatePreferences(toolId, preferences);
     if (!validationResult.isValid) {
@@ -149,9 +155,14 @@ class UserSettingsService {
     try {
       // ADR-006: "Applies validated preferences via internalApiClient.PUT /preferences/:toolId"
       // The route is actually /users/:masterAccountId/preferences/:toolId
+      const requestConfig = {};
+      if (internalApiKey) {
+        requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+      }
       const response = await this.internalApiClient.put(
         `/v1/data/users/${masterAccountId}/preferences/${toolId}`,
-        preferences // The body should be the preferences object for that toolId
+        preferences, // The body should be the preferences object for that toolId
+        requestConfig
       );
       logger.info(`[savePreferences] Preferences saved successfully. Response status: ${response.status}`, { masterAccountId, toolId });
       return { success: true, data: response.data, errors: [] };
@@ -168,9 +179,10 @@ class UserSettingsService {
    * @param {string} toolId - The ID of the tool.
    * @param {object} userInput - The input provided by the user for the current operation.
    * @param {string} masterAccountId - The user's master account ID.
+   * @param {string} [internalApiKey] - Optional API key for the internal request.
    * @returns {Promise<object | null>} Resolved input parameters or null if tool not found.
    */
-  async getResolvedInput(toolId, userInput, masterAccountId) {
+  async getResolvedInput(toolId, userInput, masterAccountId, internalApiKey) {
     logger.debug(`[getResolvedInput] Called`, { toolId, masterAccountId, userInput });
     const tool = this.toolRegistry.getToolById(toolId);
     if (!tool || !tool.inputSchema) {
@@ -188,7 +200,11 @@ class UserSettingsService {
 
     let userPreferences = {};
     try {
-      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`);
+      const requestConfig = {};
+      if (internalApiKey) {
+        requestConfig.headers = { 'X-Internal-Client-Key': internalApiKey };
+      }
+      const response = await this.internalApiClient.get(`/v1/data/users/${masterAccountId}/preferences/${toolId}`, requestConfig);
       if (response.data && typeof response.data === 'object') {
         userPreferences = response.data;
       }

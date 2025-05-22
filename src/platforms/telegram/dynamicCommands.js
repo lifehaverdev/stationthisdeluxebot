@@ -254,7 +254,11 @@ async function setupDynamicCommands(bot, services) {
           // ADR-006 - User Settings Integration
           if (services.userSettingsService && masterAccountId && currentToolId) {
             logger.info(`[Telegram EXEC /${commandName}] Attempting to resolve inputs with user preferences for tool ${currentToolId}, MAID: ${masterAccountId}. Initial inputs: ${JSON.stringify(userInputsForTool)}`);
-            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId);
+            const telegramApiKey = process.env.INTERNAL_API_KEY_TELEGRAM;
+            if (!telegramApiKey) {
+              logger.warn(`[Telegram EXEC /${commandName}] INTERNAL_API_KEY_TELEGRAM is not set. Cannot authenticate UserSettingsService call.`);
+            }
+            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId, telegramApiKey);
             if (resolvedInputs) {
               finalInputValuesForTool = resolvedInputs; // Use resolvedInputs
               logger.info(`[Telegram EXEC /${commandName}] Inputs resolved with user/tool preferences: ${JSON.stringify(finalInputValuesForTool)}.`);
