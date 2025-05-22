@@ -1,30 +1,39 @@
-Hey team, here's a quick update on where we are with the StationThis refactor and current development efforts.
+We're building StationThis, a cross-platform AI assistant for creative tasks, prioritizing user experience and real-time, demonstrable features over perfect abstractions. The system is moving from a foundational infrastructure focus to a demonstration-first, human-reviewed iteration cycle.
 
-We're continuing to build out StationThis as a real-time, creative, cross-platform AI assistant. Our core vision, outlined in REFACTOR_NORTH_STAR.md, is a system allowing users to spend crypto-purchased points for AI generation (images, video, audio via ComfyUI, Vidu, Tripo, 11Labs), model training, and more. The user experience is the primary driver, with a "demonstration-first" approach: features must work visibly. The web interface, for instance, is envisioned as an interactive canvas-based workspace.
+Core architecture includes:
+- Core Services (`src/core/services/`): Manages ComfyUI, points, workflows, media, sessions, user settings, and DB interactions. `ToolRegistry` is central for defining tools.
+- Platform-Agnostic Logic (`src/workflows/`): Handles workflows like image generation and model training.
+- Platform Adapters (`src/platforms/`): Interfaces for Telegram, Discord, and Web, each with their own command handlers and renderers.
+- API Layer (`src/api/`): Internal APIs for inter-service communication and external APIs.
+- Entry Points: Main application entry at `src/index.js` and Express server at `src/server.js`. `app.js` handles initialization.
 
-Architecturally (REFACTOR_GENIUS_PLAN.md), we're establishing a layered system: Core Services (`src/core/services/` like `comfyui.js`, `points.js`), Platform-Agnostic Logic (`src/workflows/` like `makeImage.js`), Platform Adapters (`src/platforms/telegram/`, `discord/`, `web/`, each with `commands/`, `renderer.js`, `bot.js` or `app.js`), an API Layer (`src/api/internal/`, `src/api/external/`), and main entry points (`src/index.js`, `server.js`). A key principle is boundary enforcement – services must not import from platforms, for example.
+Recent architectural improvements focus on user-facing features and robust backend services. The `UserSettingsService` allows per-tool, per-user preference settings, resolving previous authentication issues. This service is now integrated with the Telegram platform, enabling user-specific defaults for tools. A `NotificationDispatcher` has been introduced for decoupled, platform-aware notifications (initially for Telegram).
 
-A major milestone has been the full implementation and testing (see `scripts/test_internal_api.sh`) of our new Noema database backend and its dedicated Internal API layer, as per ADR-003. This API is now the sole gateway for all interactions with Noema collections (`userCore`, `userSessions`, `userEvents`, `userEconomy`, `userPreferences`, `transactions`, `generationOutputs`), whose schemas are detailed in ADR-002. This centralizes data logic, enhances security, and ensures consistency across platforms. All internal API services (`userCoreApi.js`, `userSessionsApi.js`, etc.) are live. The DB services themselves have also been refactored for proper logger injection.
+The system uses an Internal API (`src/api/internal/`) for all Noema database interactions (user core, sessions, events, economy, preferences, generation outputs), ensuring consistent data handling and security. ADR-003 mandates this, and ADR-002 defines the Noema schemas. ADR-004 outlines the `ToolDefinition` and `ToolRegistry` for managing tools, their inputs, costs, and platform hints. ADR-005 standardizes debit accounting, ensuring all generations deduct from `usdCredit` via the internal economy API, triggered by webhooks. ADR-006 details the Tool Parameter Preferences & Settings API, which `UserSettingsService` implements.
 
-The standardized debit accounting system (ADR-005) is now fully operational for ComfyUI generations initiated via Telegram. The `webhookProcessor.js` calculates `costUsd` from `generationRecord.metadata.costRate` and run duration, then calls the internal debit API. If successful, it also updates user EXP (based on `costUsd`); if debit fails, the generation record is marked `payment_failed`, and the product isn't delivered. This ensures monetization integrity. The legacy `PointsService.js` still needs refactoring to use this `usdCredit`-based system. For now, comprehensive cost accounting beyond specific generation costs is deferred (ADR-001 Cost Accounting Deferral).
+Ongoing refactor efforts are guided by the `REFACTOR_GENIUS_PLAN.md` and `REFACTOR_NORTH_STAR.md`, emphasizing visible, working demos. Collaboration follows `AGENT_COLLABORATION_PROTOCOL.md`, with work artifacts in `/vibecode/`.
 
-We've formalized our "tools" via ADR-004, defining a `ToolDefinition` schema and a central `ToolRegistry` service. This registry, which sources tool details including inputs, costs, and ComfyUI Note node-parsed descriptions, is now integrated with `WorkflowCacheManager`, and `WorkflowsService` uses it. This underpins the dynamic Telegram commands. A `tools/flashToolRegistry.js` utility is planned for creating a static version of the registry.
+Key design decisions include:
+- User-supervised iteration and live demonstrations are paramount.
+- All Noema DB access is through the Internal API.
+- Standardized `ToolDefinition` and `ToolRegistry`.
+- Unified debit accounting via `userEconomyApi.js`.
+- Decoupled notification system.
+- User-specific settings per tool.
 
-On the services side, `webhookProcessor.js` has been significantly updated to handle the debit/EXP flow and to align with the decoupled notification system (ADR-001). This notification system is also fully functional: `webhookProcessor.js` updates the `generationRecord` (e.g., with results, cost, and `deliveryStatus: 'pending'`), and the separate `NotificationDispatcher.js` polls these records, sends notifications (e.g., via `TelegramNotifier.js`), and updates `deliveryStatus` to 'sent' or 'failed'. This prevents direct coupling of webhook processing to specific platform notifiers. The `generationOutputsApi.js` now has a query endpoint to support the dispatcher's polling.
+Coordination involves human devs, ChatGPT, and agents, with handoffs and ADRs in `/vibecode/`. The `jobs-teams-sprint-plan.md` outlines future work on team-based infrastructure and multi-step job systems.
 
-Platform-wise, `dynamicCommands.js` for Telegram has been refactored to use the Internal API and `ToolRegistry`. It correctly passes `toolId`, `costRate`, `notificationContext` in generation metadata for the debit/notification flows and supports image inputs using `getTelegramFileUrl`. The ComfyUI services (`comfyui.js`, `workflows.js`) have been substantially refactored into smaller modules like `workflowCacheManager.js`, `runManager.js`, `fileManager.js`, and `resourceFetcher.js` for better maintainability.
+The current focus is shifting to platform-level UX, particularly for Telegram, to leverage the new settings capabilities (as per `HANDOFF-2025-05-22-SETTINGS-API-TELEGRAM-UX.md`). This includes designing a `/settings` command, displaying current settings, and enabling setting modifications.
 
-An internal status report API (`GET /internal/v1/data/users/:masterAccountId/status-report`) and a corresponding Telegram `/status` command are now live, providing users with points, EXP (shown as level and progress bar), wallet, and live task info. An external API (`GET /api/v1/me/status`) with API key authentication also provides this status.
+One thing to note is the system's reliance on `comfyui-deploy` for core AI workflow execution. The `ToolRegistry` and `WorkflowsService` manage these, translating ComfyUI workflows into standardized `ToolDefinition` objects. The `webhookProcessor.js` handles ComfyUI results, updates records, and triggers debiting.
 
-Looking ahead, the detailed plan for Team-based infrastructure and a Job system (multi-step toolchains) from `vibecode/decisions/jobs-teams-sprint-plan.md` is a major ongoing initiative. This will involve new services (`TeamService`, `TeamEconomyService`, `JobOrchestrator`) and requires careful integration with existing debit and context mechanisms.
-
-Our collaboration model, outlined in `AGENT_COLLABORATION_PROTOCOL.md`, emphasizes user-supervised iteration, live demos, and detailed handoffs (in `vibecode/handoffs/`). All project artifacts (prompts, demos, maps, ADRs, etc.) are organized under `/vibecode/`. Remember, working demos are paramount.
-
-A few things to keep top-of-mind:
-- Ensure other platform adapters (Discord, Web) are updated to pass all necessary parameters (`toolId`, `costRate`, `notificationContext`, etc.) for the debit/notification systems.
-- Test stubs for `webhookProcessor.js`, `dynamicCommands.js`, and `notificationDispatcher.js` need updates for recent changes (debit, EXP, payment failure).
-- Refactoring the legacy `PointsService.js` is still on the deck.
-- Integrating the upcoming Team and Job systems with current economy and context logic will be a key challenge.
-- Consider Discord `/status` command integration using the new internal status API.
-
-We're steadily phasing out old code (e.g., in `utils/bot/`, `oldworkflows.js`, `db.legacy.js`) as we build towards the robust, multi-platform system envisioned in our North Star documents, aiming for a unified experience and revenue generation. 
+The business logic aims for revenue generation through points purchased with crypto for AI services. The web interface is envisioned as an interactive canvas.
+We've recently shifted our command structure to align with the `ToolRegistry` and dynamic command generation, especially on Telegram.
+The main application entry is `app.js` which initializes services, databases, and platform adapters (Telegram, Discord, Web).
+The `UserSettingsService` uses an `internalApiClient` with specific API keys per platform for secure calls.
+A key TODO is fleshing out the Telegram `/settings` UX, including how users select tools and modify parameters.
+Friction points can arise if `ToolDefinition` schemas are not kept in sync with backend service capabilities.
+Maintaining backward compatibility during incremental migration is a core principle.
+The `NotificationDispatcher` currently supports Telegram and is designed to be extensible.
+The `internalApiClient` in `UserSettingsService` now uses `X-Internal-Client-Key` for auth.
+The system is actively being developed, with a strong emphasis on ADRs to document architectural choices. 

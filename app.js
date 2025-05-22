@@ -133,6 +133,15 @@ async function startApp() {
       }
     };
     
+    // geniusoverhaul: Add a log to verify platformServices.toolRegistry
+    // logger.info('[App] platformServices constructed. Checking toolRegistry...');
+    // if (platformServices.toolRegistry && typeof platformServices.toolRegistry.getToolById === 'function') {
+    //     logger.info('[App] platformServices.toolRegistry appears to be a valid ToolRegistry instance.');
+    // } else {
+    //     logger.warn('[App] platformServices.toolRegistry is MISSING or INVALID!', { registry: platformServices.toolRegistry });
+    // }
+    // End verification log
+    
     // Rename internal services to match platform expectations if needed
     // (Example assuming platforms expect pointsService, sessionService, etc.)
     platformServices.pointsService = platformServices.points;

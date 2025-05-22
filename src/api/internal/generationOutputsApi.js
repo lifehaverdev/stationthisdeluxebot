@@ -239,6 +239,38 @@ module.exports = function generationOutputsApi(dependencies) {
     }
   });
 
+  // GET /users/:masterAccountId/most-frequent-tools - Retrieves the most frequently used tools for a user
+  router.get('/users/:masterAccountId/most-frequent-tools', validateObjectId('masterAccountId'), async (req, res, next) => {
+    const { masterAccountId } = req.locals; // Comes from validateObjectId middleware
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 12; // Fetch a decent number for client-side filtering, e.g., 12 (was displayLimit * 3)
+
+    if (isNaN(limit) || limit <= 0) {
+      return res.status(400).json({
+        error: { code: 'INVALID_INPUT', message: 'Invalid limit parameter. Must be a positive integer.' }
+      });
+    }
+
+    logger.info(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Requested limit for DB fetch: ${limit}`);
+
+    try {
+      const frequentToolsDataFromDb = await db.generationOutputs.getMostFrequentlyUsedToolsByMasterAccountId(masterAccountId, limit);
+
+      if (!frequentToolsDataFromDb) {
+        logger.warn(`[generationOutputsApi] No frequent tools data returned from DB for MAID ${masterAccountId}`);
+        return res.status(200).json({ frequentTools: [] });
+      }
+      
+      // The API now returns raw data: toolId and usageCount. Client will handle enrichment and filtering.
+      // The objects will be like { toolId: string, usageCount: number }
+      logger.info(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools - Returning ${frequentToolsDataFromDb.length} raw tool usage data entries.`);
+      res.status(200).json({ frequentTools: frequentToolsDataFromDb });
+
+    } catch (error) {
+      logger.error(`[generationOutputsApi] GET /users/${masterAccountId}/most-frequent-tools: Error - ${error.message}`, error);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error retrieving most frequent tools.' } });
+    }
+  });
+
   logger.info('[generationOutputsApi] Generation Outputs API routes initialized.');
   return router;
 }; 

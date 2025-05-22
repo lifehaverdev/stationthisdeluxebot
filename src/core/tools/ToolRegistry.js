@@ -62,6 +62,20 @@ class ToolRegistry {
 
   /**
    * @public
+   * @param {string} displayName 
+   * @returns {ToolDefinition | undefined}
+   */
+  findByDisplayName(displayName) {
+    for (const tool of this.tools.values()) {
+      if (tool.displayName === displayName) {
+        return tool;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * @public
    * @returns {{ isValid: boolean; errors: Array<{ toolId: string | 'unknown', message: string }> }}
    */
   validate() {

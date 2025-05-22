@@ -131,6 +131,16 @@ class BaseDB {
         }, priority);
     }
 
+    async aggregate(pipeline, options = {}, priority = PRIORITY.HIGH, session = null) {
+        return dbQueue.enqueue(async () => {
+            const client = await getCachedClient();
+            const collection = client.db(this.dbName).collection(this.collectionName);
+            const aggregateOptions = session ? { ...options, session } : options;
+            const cursor = collection.aggregate(pipeline, aggregateOptions);
+            return cursor.toArray();
+        }, priority);
+    }
+
     async insertOne(document, batch = false, priority = PRIORITY.HIGH, session = null) {
         const validatedDoc = this.validateData(document);
         

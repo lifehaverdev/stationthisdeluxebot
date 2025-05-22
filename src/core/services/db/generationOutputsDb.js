@@ -121,6 +121,60 @@ class GenerationOutputsDB extends BaseDB {
     this.logger.debug(`[GenerationOutputsDB] findGenerations called with filter: ${JSON.stringify(filter)}, options: ${JSON.stringify(options)}`);
     return this.findMany(filter, options);
   }
+
+  /**
+   * Retrieves the most frequently used tools (services) for a given masterAccountId.
+   * @param {ObjectId} masterAccountId - The master account ID of the user.
+   * @param {number} [limit=4] - The maximum number of tools to return.
+   * @returns {Promise<Array<Object>>} A promise that resolves to an array of objects,
+   * where each object is of the form { toolId: string, usageCount: number }.
+   * Returns an empty array if no tools are found or in case of an error.
+   */
+  async getMostFrequentlyUsedToolsByMasterAccountId(masterAccountId, limit = 4) {
+    if (!masterAccountId) {
+      this.logger.error('[GenerationOutputsDB] masterAccountId is required to get most frequently used tools.');
+      return [];
+    }
+    if (!ObjectId.isValid(masterAccountId)) {
+        this.logger.error(`[GenerationOutputsDB] Invalid masterAccountId format: ${masterAccountId}`);
+        return [];
+    }
+
+    const pipeline = [
+      {
+        $match: { masterAccountId: new ObjectId(masterAccountId) }
+      },
+      {
+        $group: {
+          _id: "$serviceName", // Group by the tool/service name
+          usageCount: { $sum: 1 } // Count occurrences
+        }
+      },
+      {
+        $sort: { usageCount: -1 } // Sort by count in descending order
+      },
+      {
+        $limit: parseInt(limit, 10) || 4 // Limit the number of results
+      },
+      {
+        $project: {
+          _id: 0, // Exclude the default _id field from the group stage
+          toolId: "$_id", // Rename _id (which is serviceName) to toolId
+          usageCount: 1 // Include usageCount
+        }
+      }
+    ];
+
+    try {
+      this.logger.debug(`[GenerationOutputsDB] Executing aggregation for most frequent tools for MAID ${masterAccountId} with limit ${limit}: ${JSON.stringify(pipeline)}`);
+      const results = await this.aggregate(pipeline);
+      this.logger.info(`[GenerationOutputsDB] Found ${results.length} frequently used tool(s) for MAID ${masterAccountId}`);
+      return results;
+    } catch (error) {
+      this.logger.error(`[GenerationOutputsDB] Error aggregating most frequently used tools for MAID ${masterAccountId}: ${error.message}`, error);
+      return []; // Return empty array on error
+    }
+  }
 }
 
 // const client = getCachedClient(); // Not needed here anymore
