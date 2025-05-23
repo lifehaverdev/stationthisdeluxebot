@@ -1,39 +1,46 @@
-We're building StationThis, a cross-platform AI assistant for creative tasks, prioritizing user experience and real-time, demonstrable features over perfect abstractions. The system is moving from a foundational infrastructure focus to a demonstration-first, human-reviewed iteration cycle.
+## System Overview & Recent Progress
 
-Core architecture includes:
-- Core Services (`src/core/services/`): Manages ComfyUI, points, workflows, media, sessions, user settings, and DB interactions. `ToolRegistry` is central for defining tools.
-- Platform-Agnostic Logic (`src/workflows/`): Handles workflows like image generation and model training.
-- Platform Adapters (`src/platforms/`): Interfaces for Telegram, Discord, and Web, each with their own command handlers and renderers.
-- API Layer (`src/api/`): Internal APIs for inter-service communication and external APIs.
-- Entry Points: Main application entry at `src/index.js` and Express server at `src/server.js`. `app.js` handles initialization.
+We're continuing to build StationThis, a real-time, creative, cross-platform AI assistant. The primary focus has shifted to user-visible features and iterative, human-reviewed development. User experience is now the main driver for system evolution, prioritizing practical working solutions.
 
-Recent architectural improvements focus on user-facing features and robust backend services. The `UserSettingsService` allows per-tool, per-user preference settings, resolving previous authentication issues. This service is now integrated with the Telegram platform, enabling user-specific defaults for tools. A `NotificationDispatcher` has been introduced for decoupled, platform-aware notifications (initially for Telegram).
+**Core Architecture:**
+The system is structured into Core Services (ComfyUI, points, workflows, media, session), Platform-Agnostic Logic (image generation, training, collections, settings), Platform Adapters (Telegram, Discord, Web), an API Layer (internal/external), and Entry Points (main app, Express server).
 
-The system uses an Internal API (`src/api/internal/`) for all Noema database interactions (user core, sessions, events, economy, preferences, generation outputs), ensuring consistent data handling and security. ADR-003 mandates this, and ADR-002 defines the Noema schemas. ADR-004 outlines the `ToolDefinition` and `ToolRegistry` for managing tools, their inputs, costs, and platform hints. ADR-005 standardizes debit accounting, ensuring all generations deduct from `usdCredit` via the internal economy API, triggered by webhooks. ADR-006 details the Tool Parameter Preferences & Settings API, which `UserSettingsService` implements.
+**Key Strategic Documents:**
+- `REFACTOR_GENIUS_PLAN.md`: Guides the overall refactor with a focus on demonstration-first iteration.
+- `AGENT_COLLABORATION_PROTOCOL.md`: Defines interaction for agents, emphasizing user supervision and live demos.
+- `ADR-003-InternalAPIForNoemaServices.md`: Mandates that all Noema DB access occurs exclusively through a dedicated Internal API layer (`src/api/internal/`) for consistency and security. All seven internal API services are now implemented and tested.
+- `ADR-004-Tool_Definition_and_Registry.md`: Establishes a unified `ToolDefinition` format and `ToolRegistry` to manage tools across services and platforms. This registry powers dynamic command generation and UI scaffolding.
+- `ADR-005-DEBIT.md`: Implemented a unified debit accounting system. All generation services now trigger a debit via the internal economy API upon successful completion. Webhook processors calculate final costs and issue debits. EXP points are also updated post-debit.
+- `ADR-006-SETTINGS.md`: Introduced the `UserSettingsService` and enhanced internal APIs for managing tool parameter preferences. This allows users to customize tool behavior.
+- `ADR-007-TELEGRAM-MENU-SETTINGS.md`: A multi-level inline keyboard menu for user settings is live on Telegram (`/settings`), allowing users to manage per-tool preferences.
 
-Ongoing refactor efforts are guided by the `REFACTOR_GENIUS_PLAN.md` and `REFACTOR_NORTH_STAR.md`, emphasizing visible, working demos. Collaboration follows `AGENT_COLLABORATION_PROTOCOL.md`, with work artifacts in `/vibecode/`.
+**Recent Architectural Improvements & Notable Changes:**
+- **Internal API Layer:** Fully implemented for all Noema database services (User Core, Sessions, Events, Economy, Transactions, Preferences, Generation Outputs), centralizing data access and enforcing business logic. A comprehensive test script (`scripts/test_internal_api.sh`) verifies all endpoints.
+- **Decoupled Notification System (ADR-001):** Implemented. The `webhookProcessor.js` updates generation records, and a separate `NotificationDispatcher.js` handles sending notifications (currently via Telegram) based on these records, improving modularity and resilience.
+- **Standardized Debit Accounting (ADR-005):** Generations are now consistently debited from user `usdCredit`. The `webhookProcessor.js` handles cost calculation and triggers debits and EXP updates via the internal API.
+- **Tool Definition & Registry (ADR-004):** `ToolRegistry` is integrated with `WorkflowCacheManager` and `WorkflowsService`. Telegram dynamic commands leverage this for registration and execution. Image and text-based ComfyUI tools are functional on Telegram.
+- **Telegram Settings Menu (ADR-007):** Users can now manage their tool-specific settings via an interactive menu in Telegram.
+- **Cost Rate Calculation:** The system now determines generation cost rates by looking up a deployment's machine and GPU, mapping it to predefined rates, and storing this in the generation record.
+- **API Key Authentication:** An external API endpoint (`/api/v1/me/status`) allows users to fetch their status using API key authentication. The internal infrastructure for API key validation is in place.
 
-Key design decisions include:
-- User-supervised iteration and live demonstrations are paramount.
-- All Noema DB access is through the Internal API.
-- Standardized `ToolDefinition` and `ToolRegistry`.
-- Unified debit accounting via `userEconomyApi.js`.
-- Decoupled notification system.
-- User-specific settings per tool.
+**Ongoing Efforts & Motivations:**
+- **Refactoring Platform Adapters:** Gradually updating platform adapters (Telegram, Discord, Web) and core workflows to use the new internal API endpoints for data access, moving away from direct DB calls.
+- **Telegram UI/UX Overhaul for Tool Commands:** The current focus is on improving the Telegram experience for tool commands by adding immediate acknowledgments (reactions) and an enhanced delivery system with options to rate, view info, and tweak/iterate on generations.
 
-Coordination involves human devs, ChatGPT, and agents, with handoffs and ADRs in `/vibecode/`. The `jobs-teams-sprint-plan.md` outlines future work on team-based infrastructure and multi-step job systems.
+**Design Decisions & Coordination:**
+- All collaboration artifacts are managed in the `/vibecode/` directory structure (prompts, handoffs, demos, etc.).
+- Architectural decisions are documented in ADRs within `vibecode/decisions/`.
+- Development emphasizes user checkpoints: "Can you see this working?" before proceeding.
+- Handoff documents (`vibecode/handoffs/`) track progress and next steps.
+- `usdCredit` is the canonical spendable currency for AI tasks.
 
-The current focus is shifting to platform-level UX, particularly for Telegram, to leverage the new settings capabilities (as per `HANDOFF-2025-05-22-SETTINGS-API-TELEGRAM-UX.md`). This includes designing a `/settings` command, displaying current settings, and enabling setting modifications.
+**TODOs & Friction Points:**
+- Continue refactoring platform adapters and core workflows to use the internal API.
+- Implement the planned Telegram UI/UX overhaul (acknowledgments, enhanced delivery).
+- Define and implement mechanisms for fetching "most frequently used tools" for the Telegram settings menu.
+- Address future considerations like `PointsService.js` refactoring and support for other media types in Telegram commands if needed.
+- Update test stubs and enhance test coverage for newly implemented features.
+- Consider log refinement and further internal documentation (JSDoc) for recently developed services.
+- Plan for Team-based infrastructure and a Job (multi-step toolchain) system, as outlined in `jobs-teams-sprint-plan.md`. This includes `TeamService`, `TeamEconomyService`, `JobDefinitionRegistry`, and `JobOrchestrator`. Database schemas for `teams`, `teamMemberships`, `jobDefinitions`, and `jobRecords` will be added. API handlers and Telegram commands will need to support execution context (user vs. team).
 
-One thing to note is the system's reliance on `comfyui-deploy` for core AI workflow execution. The `ToolRegistry` and `WorkflowsService` manage these, translating ComfyUI workflows into standardized `ToolDefinition` objects. The `webhookProcessor.js` handles ComfyUI results, updates records, and triggers debiting.
-
-The business logic aims for revenue generation through points purchased with crypto for AI services. The web interface is envisioned as an interactive canvas.
-We've recently shifted our command structure to align with the `ToolRegistry` and dynamic command generation, especially on Telegram.
-The main application entry is `app.js` which initializes services, databases, and platform adapters (Telegram, Discord, Web).
-The `UserSettingsService` uses an `internalApiClient` with specific API keys per platform for secure calls.
-A key TODO is fleshing out the Telegram `/settings` UX, including how users select tools and modify parameters.
-Friction points can arise if `ToolDefinition` schemas are not kept in sync with backend service capabilities.
-Maintaining backward compatibility during incremental migration is a core principle.
-The `NotificationDispatcher` currently supports Telegram and is designed to be extensible.
-The `internalApiClient` in `UserSettingsService` now uses `X-Internal-Client-Key` for auth.
-The system is actively being developed, with a strong emphasis on ADRs to document architectural choices. 
+This summary provides a snapshot of our current system state and development trajectory. 

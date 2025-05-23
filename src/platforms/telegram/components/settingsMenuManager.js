@@ -1,24 +1,24 @@
 // src/platforms/telegram/components/settingsMenuManager.js
 const internalApiClient = require('../utils/internalApiClient'); // For fetching user-specific data
 
-// Dependencies like logger and toolRegistry will be passed into functions.
-// UserSettingsService will also be passed in when available.
+// Dependencies like logger, toolRegistry, userSettingsService will be passed into functions.
 
-const TELEGRAM_API_KEY = process.env.INTERNAL_API_KEY_TELEGRAM;
+const TELEGRAM_API_KEY = process.env.INTERNAL_API_KEY_TELEGRAM; // Ensure this is defined
+const ITEMS_PER_PAGE_ALL_TOOLS = 6; // 3 rows of 2 tools
 
-// Placeholder for UserSettingsService.getEffectiveSettings - replace with actual service call
-async function getEffectiveSettingsPlaceholder(masterAccountId, toolId, logger) {
-    logger.warn(`[SettingsMenu] Using PLACEHOLDER getEffectiveSettings for MAID ${masterAccountId}, Tool ${toolId}!`);
-    // Simulate fetching settings. Actual implementation would call UserSettingsService.
-    if (toolId === 'comfy-0a863d4e-1f43-4f56-924f-12a9f8ac1ac8') { // Example: quickmake
-        return { input_prompt: 'a placeholder prompt', seed: 12345, steps: 25 };
-    }
-    if (toolId === 'comfy-386015cd-7f1f-48e3-9b4f-17ee6cc983a1') { // Example: effect
-        return { input_prompt: 'effect prompt', strength: 0.75 };
-    }
-    return { generic_param: 'default_value' }; // Default for other tools
+/**
+ * Formats a raw parameter name for display.
+ * Example: "input_seed" -> "Seed", "input_pose_image" -> "Pose Image"
+ * @param {string} paramName - The raw parameter name.
+ * @returns {string} The formatted parameter name.
+ */
+function formatParamNameForDisplay(paramName) {
+    if (!paramName) return '';
+    let formatted = paramName.startsWith('input_') ? paramName.substring(6) : paramName;
+    formatted = formatted.replace(/_/g, ' ');
+    // Convert to Title Case
+    return formatted.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
 }
-
 
 /**
  * Fetches and filters the most frequently used tools for a user.
@@ -145,6 +145,14 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, { log
             menu = await buildMainMenu(masterAccountId, username, { logger, toolRegistry, userSettingsService });
             newText = menu.text;
             newKeyboard = menu.reply_markup;
+        } else if (data.startsWith('set_all_tools_')) {
+            const page = parseInt(data.substring('set_all_tools_'.length), 10) || 0;
+            menu = await buildAllToolsMenu(masterAccountId, username, page, { logger, toolRegistry, userSettingsService });
+            newText = menu.text;
+            newKeyboard = menu.reply_markup;
+        } else if (data === 'no_op_page_indicator') {
+            await bot.answerCallbackQuery(callbackQuery.id, {text: "☹︎"}); // Just acknowledge, do nothing
+            return;
         } else if (data.startsWith('set_viewtool_')) {
             const displayNameFromCallback = data.substring('set_viewtool_'.length);
             const toolDef = toolRegistry.findByDisplayName(displayNameFromCallback.replace(/_/g, ' ')); // Convert underscores back to spaces
@@ -156,12 +164,39 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, { log
                 logger.error(`[SettingsMenu] Callback 'set_viewtool_': ToolDef not found for displayName '${displayNameFromCallback}'.`);
                 newText = "Error: Could not find the tool definition. Please try again.";
                 // Basic keyboard to go back or NVM
-                newKeyboard = { inline_keyboard: [[{ text: "Back to Main", callback_data: "set_main" }], [{ text: "NVM", callback_data: "set_nvm" }]] };
+                newKeyboard = { inline_keyboard: [[{ text: "⇱", callback_data: "set_main" }], [{ text: "Ⓧ", callback_data: "set_nvm" }]] };
             }
-        } else if (data.startsWith('set_back_main_from_tool_')) { // Example for back from tool params
+        } else if (data.startsWith('set_param_')) {
+            const parts = data.substring('set_param_'.length).split('_');
+            const toolCallbackKey = parts[0]; // This is the displayName based callback key
+            const paramName = parts.slice(1).join('_'); // Param name might have underscores
+
+            const toolDef = toolRegistry.findByDisplayName(toolCallbackKey.replace(/_/g, ' '));
+            if (toolDef) {
+                menu = await buildEditParamMenu(masterAccountId, toolDef.toolId, paramName, { logger, toolRegistry, userSettingsService });
+                newText = menu.text;
+                newKeyboard = menu.reply_markup;
+            } else {
+                logger.error(`[SettingsMenu] Callback 'set_param_': ToolDef not found for callback key '${toolCallbackKey}'.`);
+                newText = "Error: Could not find tool to edit parameter. Please try again.";
+                newKeyboard = { inline_keyboard: [[{ text: "⇱", callback_data: "set_main" }], [{ text: "Ⓧ", callback_data: "set_nvm" }]] };
+            }
+        } else if (data.startsWith('set_back_main_from_tool_')) {
             menu = await buildMainMenu(masterAccountId, username, { logger, toolRegistry, userSettingsService });
             newText = menu.text;
             newKeyboard = menu.reply_markup;
+        } else if (data.startsWith('set_back_toolparams_')) {
+            const toolCallbackKey = data.substring('set_back_toolparams_'.length);
+            const toolDef = toolRegistry.findByDisplayName(toolCallbackKey.replace(/_/g, ' '));
+            if (toolDef) {
+                menu = await buildToolParamsMenu(masterAccountId, toolDef.toolId, { logger, toolRegistry, userSettingsService });
+                newText = menu.text;
+                newKeyboard = menu.reply_markup;
+            } else {
+                logger.error(`[SettingsMenu] Callback 'set_back_toolparams_': ToolDef not found for callback key '${toolCallbackKey}'.`);
+                newText = "Error: Could not find tool to go back to. Please try again.";
+                newKeyboard = { inline_keyboard: [[{ text: "⇱", callback_data: "set_main" }], [{ text: "Ⓧ", callback_data: "set_nvm" }]] };
+            }
         } else {
             logger.warn(`[SettingsMenu] Unhandled callback data: ${data}`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Action not implemented yet." });
@@ -202,8 +237,8 @@ async function buildMainMenu(masterAccountId, username, { logger, toolRegistry, 
     const frequentlyUsedTools = await getMostFrequentlyUsedTools(masterAccountId, toolRegistry, logger, 4);
 
     const keyboard = [];
-    keyboard.push([{ text: "Preferences", callback_data: "set_prefs" }]); // Placeholder
-    keyboard.push([{ text: "All Tools", callback_data: "set_all_tools_0" }]); // Placeholder
+    // keyboard.push([{ text: "Preferences", callback_data: "set_prefs" }]); // Temporarily hidden
+    keyboard.push([{ text: "All Tools", callback_data: "set_all_tools_0" }]); // Page 0 for all tools
 
     const toolRows = [];
     for (let i = 0; i < frequentlyUsedTools.length; i += 2) {
@@ -218,7 +253,7 @@ async function buildMainMenu(masterAccountId, username, { logger, toolRegistry, 
         toolRows.push(row);
     }
     keyboard.push(...toolRows);
-    keyboard.push([{ text: "NVM", callback_data: "set_nvm" }]);
+    keyboard.push([{ text: "Ⓧ", callback_data: "set_nvm" }]);
 
     return {
         text,
@@ -234,26 +269,35 @@ async function buildMainMenu(masterAccountId, username, { logger, toolRegistry, 
  * @returns {Promise<object>} Menu object { text, reply_markup }
  */
 async function buildToolParamsMenu(masterAccountId, toolKey, { logger, toolRegistry, userSettingsService }) {
-    const toolDef = toolRegistry.getToolById(toolKey);
+    const toolDef = toolRegistry.getToolById(toolKey); // toolKey is canonical ID here
 
     if (!toolDef) {
         logger.error(`[SettingsMenu] buildToolParamsMenu: Could not find toolDef for toolKey '${toolKey}'.`);
         return {
             text: "Error: Tool not found. Please go back.",
             reply_markup: { inline_keyboard: [
-                [{ text: "Back to Main Menu", callback_data: "set_main" }],
-                [{ text: "NVM", callback_data: "set_nvm" }]
+                [{ text: "⇱", callback_data: "set_main" }],
+                [{ text: "Ⓧ", callback_data: "set_nvm" }]
             ]}
         };
     }
 
     const text = toolDef.description || `Settings for ${toolDef.displayName}`;
     const keyboard = [];
+    let effectiveSettings = {};
 
-    // Fetch effective settings (using placeholder for now)
-    // const effectiveSettings = userSettingsService ? await userSettingsService.getEffectiveSettings(masterAccountId, toolKey) : {};
-    const effectiveSettings = await getEffectiveSettingsPlaceholder(masterAccountId, toolKey, logger);
-
+    if (userSettingsService && typeof userSettingsService.getEffectiveSettings === 'function') {
+        try {
+            effectiveSettings = await userSettingsService.getEffectiveSettings(masterAccountId, toolKey, TELEGRAM_API_KEY);
+            logger.info(`[SettingsMenu] Fetched effective settings for MAID ${masterAccountId}, Tool ${toolKey}: ${JSON.stringify(effectiveSettings)}`);
+        } catch (err) {
+            logger.error(`[SettingsMenu] Error fetching effective settings for MAID ${masterAccountId}, Tool ${toolKey}:`, err);
+            // Proceed with empty effectiveSettings or defaults from paramDef
+        }
+    } else {
+        logger.warn(`[SettingsMenu] UserSettingsService not available or getEffectiveSettings is not a function. Using defaults for toolKey ${toolKey}.`);
+        // Fallback to trying to use paramDef.default below
+    }
 
     if (toolDef.inputSchema) {
         // Use toolDef.displayName (short) for callback data keys if available and simple, otherwise fallback or error.
@@ -263,9 +307,10 @@ async function buildToolParamsMenu(masterAccountId, toolKey, { logger, toolRegis
         for (const paramName in toolDef.inputSchema) {
             const paramDef = toolDef.inputSchema[paramName];
             const currentValue = effectiveSettings[paramName] !== undefined ? effectiveSettings[paramName] : (paramDef.default !== undefined ? paramDef.default : 'Not set');
-            // Use paramName (the key from inputSchema) as it's guaranteed to exist here.
-            // paramDef.name should ideally be the same, but paramName is safer in this loop context.
-            let buttonText = `${paramName}`;
+            
+            const displayParamName = formatParamNameForDisplay(paramName);
+            let buttonText = `${displayParamName}`;
+
             if (typeof currentValue === 'string' && currentValue.length > 15) {
                 buttonText += `: ${currentValue.substring(0,12)}...`;
             } else {
@@ -279,7 +324,7 @@ async function buildToolParamsMenu(masterAccountId, toolKey, { logger, toolRegis
 
     // Use the same short callbackToolKey for the back button
     const callbackToolKeyForBack = toolDef.displayName.replace(/\s+/g, '_');
-    keyboard.push([{ text: "Back", callback_data: `set_back_main_from_tool_${callbackToolKeyForBack}` }, { text: "NVM", callback_data: "set_nvm" }]);
+    keyboard.push([{ text: "⇱", callback_data: `set_back_main_from_tool_${callbackToolKeyForBack}` }, { text: "Ⓧ", callback_data: "set_nvm" }]);
     
     return {
         text,
@@ -287,14 +332,266 @@ async function buildToolParamsMenu(masterAccountId, toolKey, { logger, toolRegis
     };
 }
 
+/**
+ * Builds the parameter editing menu.
+ * @param {string} masterAccountId
+ * @param {string} canonicalToolId - The canonical toolId (e.g. comfy-xyz)
+ * @param {string} paramName - The name of the parameter to edit.
+ * @param {object} dependencies - { logger, toolRegistry, userSettingsService }
+ * @returns {Promise<object>} Menu object { text, reply_markup }
+ */
+async function buildEditParamMenu(masterAccountId, canonicalToolId, paramName, { logger, toolRegistry, userSettingsService }) {
+    const toolDef = toolRegistry.getToolById(canonicalToolId);
+
+    if (!toolDef) {
+        logger.error(`[SettingsMenu] buildEditParamMenu: ToolDef not found for canonical ID '${canonicalToolId}'.`);
+        return { text: "Error: Tool not found.", reply_markup: { inline_keyboard: [[{ text: "⇱", callback_data: "set_main"}]]}};
+    }
+
+    const paramDef = toolDef.inputSchema ? toolDef.inputSchema[paramName] : null;
+    if (!paramDef) {
+        logger.error(`[SettingsMenu] buildEditParamMenu: ParamDef '${paramName}' not found for tool '${canonicalToolId}'.`);
+        // Fallback gracefully to tool params menu
+        const toolParamsMenu = await buildToolParamsMenu(masterAccountId, canonicalToolId, { logger, toolRegistry, userSettingsService });
+        return { 
+            text: `Error: Parameter '${paramName}' not found. ${toolParamsMenu.text}`,
+            reply_markup: toolParamsMenu.reply_markup
+        };
+    }
+
+    // Fetch current value
+    let effectiveSettings = {};
+    if (userSettingsService && typeof userSettingsService.getEffectiveSettings === 'function') {
+        try {
+            effectiveSettings = await userSettingsService.getEffectiveSettings(masterAccountId, canonicalToolId, TELEGRAM_API_KEY);
+            logger.info(`[SettingsMenu] buildEditParamMenu: Fetched effective settings for MAID ${masterAccountId}, Tool ${canonicalToolId}: ${JSON.stringify(effectiveSettings)}`);
+        } catch (err) {
+            logger.error(`[SettingsMenu] buildEditParamMenu: Error fetching effective settings for MAID ${masterAccountId}, Tool ${canonicalToolId}:`, err);
+            // Proceed with empty effectiveSettings or defaults from paramDef
+        }
+    } else {
+        logger.warn(`[SettingsMenu] buildEditParamMenu: UserSettingsService not available or getEffectiveSettings is not a function. Using defaults for tool ${canonicalToolId}.`);
+        // Fallback to trying to use paramDef.default below
+    }
+    const currentValue = effectiveSettings[paramName] !== undefined ? effectiveSettings[paramName] : (paramDef.default !== undefined ? paramDef.default : 'Not set');
+
+    // Add a parseable marker and structure for reply handling
+    const promptMarker = 'SessionSettingsParamEditPrompt::';
+    let promptText = `${promptMarker}Tool:${toolDef.displayName}::Param:${paramName}\n\n`; // Marker and parseable info
+
+    const displayParamName = formatParamNameForDisplay(paramName);
+
+    promptText += `Editing '${displayParamName}' for ${toolDef.displayName}:\n`;
+    promptText += `Type: ${paramDef.type}\n`;
+    if (paramDef.description) {
+        promptText += `Description: ${paramDef.description}\n`;
+    }
+    promptText += `Current value: ${currentValue}\n\n`;
+    promptText += `Please reply to this message with the new value.`;
+
+    // Use short display name for back callback key
+    const callbackToolKey = toolDef.displayName.replace(/\s+/g, '_');
+
+    const keyboard = [
+        [{ text: "⇱", callback_data: `set_back_toolparams_${callbackToolKey}` }],
+        [{ text: "Ⓧ", callback_data: "set_nvm" }]
+    ];
+
+    return {
+        text: promptText,
+        reply_markup: { inline_keyboard: keyboard }
+    };
+}
+
+/**
+ * Handles a user's reply containing a new value for a parameter.
+ * @param {string} masterAccountId
+ * @param {string} toolDisplayName - Display name of the tool.
+ * @param {string} paramName - Name of the parameter.
+ * @param {string} newValue - The new value provided by the user.
+ * @param {object} dependencies - { logger, toolRegistry, userSettingsService }
+ * @returns {Promise<{success: boolean, message: string, canonicalToolId?: string}>}
+ */
+async function handleParameterValueReply(masterAccountId, toolDisplayName, paramName, newValue, { logger, toolRegistry, userSettingsService }) {
+    const toolDef = toolRegistry.findByDisplayName(toolDisplayName);
+    if (!toolDef) {
+        logger.error(`[SettingsMenu] handleParameterValueReply: ToolDef not found for displayName '${toolDisplayName}'.`);
+        return { success: false, message: `Error: Tool '${toolDisplayName}' not found.` };
+    }
+
+    const canonicalToolId = toolDef.toolId;
+    const paramDef = toolDef.inputSchema ? toolDef.inputSchema[paramName] : null;
+    if (!paramDef) {
+        logger.error(`[SettingsMenu] handleParameterValueReply: ParamDef '${paramName}' not found for tool '${canonicalToolId}'.`);
+        return { success: false, message: `Error: Parameter '${paramName}' not found for tool '${toolDisplayName}'.` };
+    }
+
+    // Basic Validation (more sophisticated validation needed later)
+    let parsedValue = newValue;
+    let validationError = null;
+
+    switch (paramDef.type) {
+        case 'number':
+        case 'integer':
+            parsedValue = parseFloat(newValue);
+            if (isNaN(parsedValue)) {
+                validationError = `Invalid number: '${newValue}'. Please provide a valid number.`;
+            }
+            // TODO: Add min/max/step validation if defined in paramDef (e.g., paramDef.constraints.min)
+            break;
+        case 'boolean':
+            if (['true', 'yes', '1', 'on'].includes(newValue.toLowerCase())) parsedValue = true;
+            else if (['false', 'no', '0', 'off'].includes(newValue.toLowerCase())) parsedValue = false;
+            else validationError = `Invalid boolean: '${newValue}'. Use true/false, yes/no, etc.`;
+            break;
+        case 'string':
+            // TODO: Add regex/length validation if defined in paramDef
+            parsedValue = newValue; 
+            break;
+        default:
+            logger.warn(`[SettingsMenu] handleParameterValueReply: Validation not implemented for type '${paramDef.type}'. Accepting as is.`);
+            parsedValue = newValue; // Accept as is for unhandled types for now
+            break;
+    }
+
+    if (validationError) {
+        logger.warn(`[SettingsMenu] handleParameterValueReply: Validation failed for '${paramName}' (Tool: ${toolDisplayName}) with value '${newValue}'. Error: ${validationError}`);
+        return { success: false, message: validationError };
+    }
+
+    const settingsToUpdate = { [paramName]: parsedValue };
+    let saveResult;
+
+    if (userSettingsService && typeof userSettingsService.savePreferences === 'function') {
+        try {
+            saveResult = await userSettingsService.savePreferences(masterAccountId, canonicalToolId, settingsToUpdate, TELEGRAM_API_KEY);
+            logger.info(`[SettingsMenu] Called UserSettingsService.savePreferences for MAID ${masterAccountId}, Tool ${canonicalToolId}. Result: ${JSON.stringify(saveResult)}`);
+            // Assuming savePreferences returns an object like { success: boolean, message?: string }
+            // or throws on error.
+            if (saveResult === undefined || typeof saveResult.success !== 'boolean') {
+                 // If service method doesn't return a clear success structure, assume success if no error thrown
+                logger.warn('[SettingsMenu] UserSettingsService.savePreferences did not return a standard success object. Assuming success as no error was thrown.');
+                saveResult = { success: true, message: `Settings for '${paramName}' updated.` }; // Default success message
+            }
+
+        } catch (err) {
+            logger.error(`[SettingsMenu] Error calling UserSettingsService.savePreferences for MAID ${masterAccountId}, Tool ${canonicalToolId}:`, err);
+            saveResult = { success: false, message: err.message || "An error occurred while saving your settings." };
+        }
+    } else {
+        logger.error(`[SettingsMenu] UserSettingsService not available or savePreferences is not a function. Cannot save settings for tool ${canonicalToolId}.`);
+        saveResult = { success: false, message: "Error: Settings service is unavailable. Cannot save changes." };
+    }
+
+    if (saveResult.success) {
+        logger.info(`[SettingsMenu] Parameter '${paramName}' for tool '${toolDisplayName}' (ID: ${canonicalToolId}) updated to '${parsedValue}' for MAID ${masterAccountId}.`);
+        return { 
+            success: true, 
+            message: `Successfully updated '${paramName}' to '${parsedValue}'.`,
+            canonicalToolId: canonicalToolId // Return canonicalId for navigation
+        };
+    } else {
+        logger.error(`[SettingsMenu] Failed to save parameter '${paramName}' for tool '${toolDisplayName}'. Error: ${saveResult.message}`);
+        return { success: false, message: saveResult.message || "Failed to update setting. Please try again." };
+    }
+}
+
+// Placeholder for "All Tools" menu
+async function buildAllToolsMenu(masterAccountId, username, page = 0, { logger, toolRegistry, userSettingsService }) {
+    const text = "Select a tool to configure its settings (Page " + (page + 1) + "):";
+    
+    const allTools = toolRegistry.getAllTools()
+        .sort((a, b) => (a.displayName || a.toolId).localeCompare(b.displayName || b.toolId));
+
+    const totalTools = allTools.length;
+    const totalPages = Math.ceil(totalTools / ITEMS_PER_PAGE_ALL_TOOLS);
+    const currentPage = Math.max(0, Math.min(page, totalPages - 1)); // Ensure page is within bounds
+
+    const startIndex = currentPage * ITEMS_PER_PAGE_ALL_TOOLS;
+    const endIndex = startIndex + ITEMS_PER_PAGE_ALL_TOOLS;
+    const toolsForPage = allTools.slice(startIndex, endIndex);
+
+    const keyboard = [];
+    keyboard.push([{ text: "⇱", callback_data: "set_main" }]);
+    for (let i = 0; i < toolsForPage.length; i += 2) {
+        const row = [];
+        const tool1 = toolsForPage[i];
+        const toolCallbackKey1 = (tool1.displayName || tool1.toolId).replace(/\s+/g, '_');
+        row.push({ text: (tool1.displayName || tool1.toolId), callback_data: `set_viewtool_${toolCallbackKey1}` });
+
+        if (i + 1 < toolsForPage.length) {
+            const tool2 = toolsForPage[i+1];
+            const toolCallbackKey2 = (tool2.displayName || tool2.toolId).replace(/\s+/g, '_');
+            row.push({ text: (tool2.displayName || tool2.toolId), callback_data: `set_viewtool_${toolCallbackKey2}` });
+        }
+        keyboard.push(row);
+    }
+
+    const navRow = [];
+    if (currentPage > 0) {
+        navRow.push({ text: "⇤", callback_data: `set_all_tools_${currentPage - 1}` });
+    }
+    
+    // Simple page indicator, not a button itself
+    if (totalPages > 1) {
+         // Add a non-clickable page indicator if there's more than one page
+        navRow.push({ text: `${currentPage + 1}/${totalPages}`, callback_data: "no_op_page_indicator" });
+    }
+
+    if (currentPage < totalPages - 1) {
+        navRow.push({ text: "⇥", callback_data: `set_all_tools_${currentPage + 1}` });
+    }
+
+    if (navRow.length > 0) {
+        keyboard.push(navRow);
+    }
+
+    
+    keyboard.push([{ text: "Ⓧ", callback_data: "set_nvm" }]);
+
+    return {
+        text,
+        reply_markup: { inline_keyboard: keyboard }
+    };
+}
+
+// Placeholder for User Preferences Menu
+async function buildUserPreferencesMenu(masterAccountId, username, { logger, userSettingsService }) {
+    // In a real scenario, you'd fetch current preference values here using userSettingsService
+    // For example: const prefs = await userSettingsService.getGlobalPreferences(masterAccountId);
+    // const deliverAsFile = prefs.telegramDeliverAsFile || false; 
+    const deliverAsFile = false; // Placeholder value
+
+    const text = `${username}'s General Preferences`;
+    const keyboard = [];
+
+    keyboard.push([
+        {
+            text: `Always Deliver as File: ${deliverAsFile ? 'Yes' : 'No'}`,
+            callback_data: 'set_pref_toggle_deliverasfile'
+        }
+    ]);
+    // Add more preference toggles here in the future
+
+    keyboard.push([{ text: "⇱", callback_data: "set_main" }]);
+    keyboard.push([{ text: "Ⓧ", callback_data: "set_nvm" }]);
+
+    return {
+        text,
+        reply_markup: { inline_keyboard: keyboard }
+    };
+}
 
 // TODO: Implement other menu building functions as per ADR-007
 // async function buildAllToolsMenu(masterAccountId, page = 0, { logger, toolRegistry, userSettingsService }) { ... }
 // async function buildEditParamMenu(masterAccountId, toolKey, paramName, { logger, toolRegistry, userSettingsService }) { ... }
 // async function buildPreferencesMenu(masterAccountId, { logger, userSettingsService }) { ... }
 
-
 module.exports = {
     handleSettingsCommand,
     handleSettingsCallback,
+    handleParameterValueReply,
+    buildToolParamsMenu,
+    buildAllToolsMenu,
+    // buildUserPreferencesMenu // Temporarily hidden
 }; 

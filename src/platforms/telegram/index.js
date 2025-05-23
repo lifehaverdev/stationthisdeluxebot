@@ -24,7 +24,8 @@ function initializeTelegramPlatform(services, options = {}) {
     internal,
     db,
     logger = console,
-    toolRegistry
+    toolRegistry,
+    userSettingsService
   } = services;
   
   const token = process.env.TELEGRAM_TOKEN || options.token;
@@ -45,7 +46,8 @@ function initializeTelegramPlatform(services, options = {}) {
       db,
       logger,
       appStartTime: services.appStartTime,
-      toolRegistry
+      toolRegistry,
+      userSettingsService
     },
     token,
     { polling: true, ...options } // Enable polling by default

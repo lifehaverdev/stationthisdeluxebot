@@ -190,7 +190,7 @@ module.exports = function userPreferencesApi(dependencies) {
       }
 
       // Now, set the preference for the specific key
-      const updateResult = await db.userPreferences.setPreferenceByKey(masterAccountId, toolId, preferencesToSave);
+      const updateResult = await db.userPreferences.updatePreferenceByKey(masterAccountId, toolId, preferencesToSave);
 
        if (updateResult.matchedCount === 0 && updateResult.upsertedCount === 0 && !updateResult.modifiedCount ===0 ) { // also check modifiedCount if upsert is false for setPreferenceByKey
            // This might happen if the doc was deleted between check and update, or other issue

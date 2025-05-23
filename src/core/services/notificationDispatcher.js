@@ -134,8 +134,7 @@ class NotificationDispatcher {
     try {
       let messageContent;
       if (record.status === 'completed') {
-        const imageUrl = record.responsePayload?.[0]?.data?.images?.[0]?.url || 'Output details processing.';
-        messageContent = `Your job for workflow '${record.serviceName}' (ID: ${recordId}) completed successfully! Image URL: ${imageUrl}`;
+        messageContent = `Your '${record.metadata?.displayName || record.serviceName}' job (ID: ${recordId}) completed successfully!`;
       } else { 
         const reason = record.statusReason || 'Unknown error';
         messageContent = `Your job for workflow '${record.serviceName}' (ID: ${recordId}) failed. Reason: ${reason}`;

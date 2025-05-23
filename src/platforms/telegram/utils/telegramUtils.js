@@ -29,6 +29,38 @@ async function getTelegramFileUrl(bot, message) {
   }
 }
 
+/*
+telegram bot api only accepts the following emojis:
+"👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", 
+"🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "🕊", "🤡", 
+"🥱", "🥴", "😍", "🐳", "❤‍🔥", "🌚", "🌭", "💯", "🤣", "⚡", 
+"🍌", "🏆", "💔", "🤨", "😐", "🍓", "🍾", "💋", "🖕", "😈", 
+"😴", "😭", "🤓", "👻", "👨‍💻", "👀", "🎃", "🙈", "😇", "😨", 
+"🤝", "✍", "🤗", "🫡", "🎅", "🎄", "☃", "💅", "🤪", "🗿", 
+"🆒", "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾", "🤷‍♂",
+"🤷", "🤷‍♀", "😡"
+*/
+
+async function setReaction(bot, chatId, messageId, emoji) {
+  if (!bot || !chatId || !messageId || !emoji) {
+    console.error('[Telegram Utils] Missing parameters for setReaction', { chatId, messageId, emoji });
+    return;
+  }
+  try {
+    await bot.setMessageReaction(chatId, messageId, {
+      reaction: [{ type: 'emoji', emoji: emoji }],
+    });
+  } catch (error) {
+    console.error('[Telegram Utils] Error setting message reaction:', {
+      chatId,
+      messageId,
+      emoji,
+      error: error.message || error,
+    });
+  }
+}
+
 module.exports = {
   getTelegramFileUrl,
+  setReaction,
 }; 

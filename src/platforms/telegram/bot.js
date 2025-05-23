@@ -12,7 +12,7 @@ const createTrainModelCommandHandler = require('./commands/trainModelCommand');
 const createStatusCommandHandler = require('./commands/statusCommand');
 
 // Import new settings menu manager and internal API client
-const { handleSettingsCommand, handleSettingsCallback } = require('./components/settingsMenuManager.js');
+const { handleSettingsCommand, handleSettingsCallback, handleParameterValueReply, buildToolParamsMenu } = require('./components/settingsMenuManager.js');
 const internalApiClient = require('./utils/internalApiClient.js');
 
 /**
@@ -42,7 +42,8 @@ function createTelegramBot(dependencies, token, options = {}) {
     db,
     logger = console,
     appStartTime,
-    toolRegistry
+    toolRegistry,
+    userSettingsService
   } = dependencies;
   
   // Create the Telegram bot instance
@@ -89,8 +90,8 @@ function createTelegramBot(dependencies, token, options = {}) {
       const masterAccountId = findOrCreateResponse.data.masterAccountId;
       logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId}`);
       
-      // Pass logger and toolRegistry to the settings command handler
-      await handleSettingsCommand(bot, message, masterAccountId, { logger, toolRegistry });
+      // Pass logger, toolRegistry, and userSettingsService to the settings command handler
+      await handleSettingsCommand(bot, message, masterAccountId, { logger, toolRegistry, userSettingsService });
     } catch (error) {
       logger.error(`[Bot] Error processing /settings command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
       bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open settings. Please try again.", { reply_to_message_id: message.message_id });
@@ -168,8 +169,8 @@ function createTelegramBot(dependencies, token, options = {}) {
           const masterAccountId = findOrCreateResponse.data.masterAccountId;
           logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for original command user ${originalCommandUser.id} for settings menu.`);
           
-          // Delegate to the new settings callback handler, passing logger and toolRegistry
-          await handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry });
+          // Delegate to the new settings callback handler, passing logger, toolRegistry, and userSettingsService
+          await handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, userSettingsService });
           // Note: handleSettingsCallback is now responsible for bot.answerCallbackQuery(callbackQuery.id)
 
         } catch (error) {
@@ -329,6 +330,90 @@ function createTelegramBot(dependencies, token, options = {}) {
     logger.error('Telegram polling error:', error);
   });
   
+  // ++ NEW MESSAGE HANDLER FOR PARAMETER VALUE REPLIES & DEFAULT ACTIONS ++
+  bot.on('message', async (message) => {
+    // Ignore messages without text (e.g. images, stickers if not handled otherwise)
+    if (!message.text) {
+      return;
+    }
+
+    // Check if the message is a reply to one of our parameter edit prompts
+    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.startsWith('SessionSettingsParamEditPrompt::')) {
+      const promptText = message.reply_to_message.text;
+      const telegramUserId = message.from.id.toString();
+      const value = message.text; // The new value user replied with
+
+      const toolMatch = promptText.match(/Tool:([^:]+)::/);
+      const paramMatch = promptText.match(/Param:([^\n]+)/);
+
+      if (toolMatch && toolMatch[1] && paramMatch && paramMatch[1]) {
+        const toolDisplayName = toolMatch[1];
+        const paramName = paramMatch[1];
+        
+        logger.info(`[Bot] Reply received for settings param edit. User: ${telegramUserId}, Tool: ${toolDisplayName}, Param: ${paramName}, Value: '${value}', Replying to MsgID: ${message.reply_to_message.message_id}`);
+
+        try {
+          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: telegramUserId,
+            platformContext: { firstName: message.from.first_name, username: message.from.username }
+          });
+          const masterAccountId = findOrCreateResponse.data.masterAccountId;
+
+          // Pass logger, toolRegistry, and userSettingsService
+          const result = await handleParameterValueReply(masterAccountId, toolDisplayName, paramName, value, { logger, toolRegistry, userSettingsService });
+
+          if (result.success) {
+            await bot.sendMessage(message.chat.id, result.message, { reply_to_message_id: message.message_id });
+            
+            if (result.canonicalToolId) {
+              const updatedToolParamsMenu = await buildToolParamsMenu(masterAccountId, result.canonicalToolId, { logger, toolRegistry, userSettingsService });
+              await bot.editMessageText(updatedToolParamsMenu.text, {
+                chat_id: message.chat.id,
+                message_id: message.reply_to_message.message_id, // Edit the original prompt message
+                reply_markup: updatedToolParamsMenu.reply_markup
+              });
+            }
+          } else {
+            await bot.sendMessage(message.chat.id, result.message || "Failed to update setting.", { reply_to_message_id: message.message_id });
+          }
+        } catch (error) {
+          logger.error(`[Bot] Error processing settings parameter reply for Tool: ${toolDisplayName}, Param: ${paramName}, User: ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+          await bot.sendMessage(message.chat.id, "Sorry, an error occurred while saving your setting.", { reply_to_message_id: message.message_id });
+        }
+        return; // Stop further processing for this message, as it was a settings reply
+      }
+    }
+    // -- END PARAMETER VALUE REPLY HANDLER --
+
+
+    // Default message handler for make/imagine commands (if not a command and not a settings reply)
+    // This part should contain your existing logic for handling general messages like "make a cat"
+    // Ensure it doesn't conflict with command handlers (onText)
+    if (!message.text.startsWith('/')) {
+        // Check if commandRegistry and findDynamicCommandHandler are available
+        if (dependencies.commandRegistry && typeof dependencies.commandRegistry.findDynamicCommandHandler === 'function') {
+            const commandHandler = dependencies.commandRegistry.findDynamicCommandHandler(message.text, 'telegram');
+            if (commandHandler) {
+                logger.info(`[Bot] Handling general message "${message.text.substring(0,30)}..." with dynamic command handler for tool: ${commandHandler.toolId}`);
+                try {
+                    // Assuming the handler function is named 'handler' and takes (message, args) or similar
+                    // Adjust the call based on the actual signature of your dynamic command handlers
+                    await commandHandler.handler(message, ''); 
+                } catch (error) {
+                    logger.error('[Bot] Error executing dynamic command handler:', error);
+                    bot.sendMessage(message.chat.id, "Sorry, I couldn't process that.", { reply_to_message_id: message.message_id });
+                }
+            } else {
+                // logger.info(`[Bot] No dynamic command handler found for message: "${message.text.substring(0,30)}..."`);
+            }
+        } else {
+            logger.warn('[Bot] commandRegistry or findDynamicCommandHandler is not available in dependencies.');
+        }
+    }
+  });
+  // -- END MESSAGE HANDLER --
+
   logger.info('Telegram bot configured and ready');
   
   return bot;

@@ -1,6 +1,6 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const internalApiClient = require('./utils/internalApiClient'); // Import the API client
-const { getTelegramFileUrl } = require('./utils/telegramUtils'); // Import from new util file
+const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils'); // Import from new util file
 
 async function setupDynamicCommands(bot, services) {
   const workflowsService = services.workflows;
@@ -182,6 +182,17 @@ async function setupDynamicCommands(bot, services) {
       bot.onText(new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i'), async (msg, match) => {
         const chatId = msg.chat.id;
         const telegramUserId = msg.from.id;
+
+        // <<< IMMEDIATE REACTION >>>
+        if (msg.message_id) {
+          try {
+            await setReaction(bot, chatId, msg.message_id, '🤔');
+          } catch (reactError) {
+            logger.warn(`[Telegram EXEC /${commandName}] Failed to set initial reaction: ${reactError.message}`);
+          }
+        }
+        // <<< END IMMEDIATE REACTION >>>
+
         const platformIdStr = telegramUserId.toString();
         const platform = 'telegram';
         const promptText = match && match[1] ? match[1].trim() : '';
@@ -250,6 +261,35 @@ async function setupDynamicCommands(bot, services) {
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
           });
           masterAccountId = findOrCreateResponse.data.masterAccountId;
+          logger.debug(`[Telegram EXEC /${commandName}] MasterAccountId: ${masterAccountId}`);
+
+          // <<< ECONOMY CHECK & REACTION UPDATE >>>
+          try {
+            const economyResponse = await internalApiClient.get(`/users/${masterAccountId}/economy`);
+            // Check if usdCredit exists and has $numberDecimal property
+            if (economyResponse && economyResponse.data && economyResponse.data.usdCredit && typeof economyResponse.data.usdCredit.$numberDecimal === 'string') {
+              const userCredit = parseFloat(economyResponse.data.usdCredit.$numberDecimal);
+              if (userCredit > 0) { // Assuming 0 is the threshold for now
+                await setReaction(bot, chatId, msg.message_id, '👌');
+              } else {
+                await setReaction(bot, chatId, msg.message_id, '🤷');
+                bot.sendMessage(chatId, `You have insufficient funds to use the /${commandName} command. Please add funds to your account.`, { reply_to_message_id: msg.message_id });
+                return; // Abort command processing
+              }
+            } else {
+              // Log the actual structure if it's not as expected, to help debug other cases
+              logger.warn(`[Telegram EXEC /${commandName}] Could not retrieve valid usdCredit (expected $numberDecimal string) from economyResponse for ${masterAccountId}. Response:`, economyResponse?.data);
+              await setReaction(bot, chatId, msg.message_id, '😨');
+              bot.sendMessage(chatId, `Sorry, I couldn't verify your account balance at the moment due to an unexpected data format. Please try again later.`, { reply_to_message_id: msg.message_id });
+              return; // Abort command processing
+            }
+          } catch (economyError) {
+            logger.error(`[Telegram EXEC /${commandName}] Error fetching user economy for ${masterAccountId}: ${economyError.message}`, economyError);
+            await setReaction(bot, chatId, msg.message_id, '😨');
+            bot.sendMessage(chatId, `Sorry, there was an issue checking your account balance. Please try again.`, { reply_to_message_id: msg.message_id });
+            return; // Abort command processing
+          }
+          // <<< END ECONOMY CHECK & REACTION UPDATE >>>
 
           // ADR-006 - User Settings Integration
           if (services.userSettingsService && masterAccountId && currentToolId) {
@@ -388,7 +428,6 @@ async function setupDynamicCommands(bot, services) {
           if (run_id) {
             logger.info(`[Telegram EXEC /${commandName}] ComfyUI submission successful. Run ID: ${run_id}. Linking to GenID: ${generationId}...`);
             await internalApiClient.put(`/generations/${generationId}`, { "metadata.run_id": run_id });
-            await bot.sendMessage(chatId, `Your request for '${currentDisplayName}' is running! Ref: ${generationId}`, { reply_to_message_id: msg.message_id });
           } else { 
             const errorMessage = submissionResult?.error ? (typeof submissionResult.error === 'string' ? submissionResult.error : submissionResult.error.message) : 'Unknown error during ComfyUI submission';
             logger.error(`[Telegram EXEC /${commandName}] ComfyUI submission failed for GenID ${generationId}: ${errorMessage}`);
@@ -397,8 +436,17 @@ async function setupDynamicCommands(bot, services) {
           }
 
         } catch (error) {
-          logger.error(`[Telegram EXEC /${commandName}] Error during execution (MAID: ${masterAccountId}, SID: ${sessionId}, GenID: ${generationId}):`, error.response ? error.response.data : error.message, error.stack);
-          await bot.sendMessage(chatId, `Sorry, an unexpected error occurred while processing '/${commandName}'. Ref: ${generationId || 'N/A'}`, { reply_to_message_id: msg.message_id });
+          logger.error(`[Telegram EXEC /${commandName}] Error in main execution block for tool ${currentToolId}: ${error.message}`, { error: error.stack, masterAccountId, chatId, promptText, userInputsForTool });
+          // <<< ERROR REACTION UPDATE >>>
+          if (msg.message_id) {
+            try {
+              await setReaction(bot, chatId, msg.message_id, '😨');
+            } catch (reactError) {
+              logger.warn(`[Telegram EXEC /${commandName}] Failed to set error reaction: ${reactError.message}`);
+            }
+          }
+          // <<< END ERROR REACTION UPDATE >>>
+          bot.sendMessage(chatId, `Sorry, an unexpected error occurred while trying to process your /${commandName} command. The team has been notified. Please try again later.`, { reply_to_message_id: msg.message_id });
         }
       });
     }
