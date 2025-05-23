@@ -35,9 +35,9 @@ class TelegramNotifier {
       throw new Error('Missing chatId in notificationContext for Telegram notification.');
     }
 
-    this.logger.info(`[TelegramNotifier] Sending notification to chatId: ${chatId}, messageId: ${messageId || 'N/A'}. Content: ${messageContent.substring(0, 50)}...`);
+    this.logger.info(`[TelegramNotifier] Sending notification to chatId: ${chatId}, messageId: ${messageId || 'N/A'}. Initial content: ${messageContent.substring(0, 50)}...`);
 
-    const options = { parse_mode: 'Markdown' }; // Default parse_mode for captions/messages
+    const options = { parse_mode: 'Markdown' };
     if (messageId) {
       options.reply_to_message_id = messageId;
     }
@@ -59,56 +59,67 @@ class TelegramNotifier {
         ]
       };
 
-      // Attempt to find media URLs from the generationRecord
+      let finalMessageText = messageContent; // Default to the generic success message from dispatcher
       let imageUrl = null;
       let animationUrl = null;
-      // Prioritize specific paths if known, then check general structure
+      let specificTextOutput = null;
+
       if (generationRecord.responsePayload && generationRecord.responsePayload.length > 0) {
         const firstOutput = generationRecord.responsePayload[0];
-        if (firstOutput.data && firstOutput.data.images && firstOutput.data.images.length > 0 && firstOutput.data.images[0].url) {
-          imageUrl = firstOutput.data.images[0].url;
-        } else if (firstOutput.data && firstOutput.data.animations && firstOutput.data.animations.length > 0 && firstOutput.data.animations[0].url) {
-          animationUrl = firstOutput.data.animations[0].url;
-        } else if (firstOutput.data && firstOutput.data.videos && firstOutput.data.videos.length > 0 && firstOutput.data.videos[0].url) {
-          animationUrl = firstOutput.data.videos[0].url; // Treat general video as animation for now
-        } else if (firstOutput.url && (firstOutput.url.endsWith('.gif') || firstOutput.url.endsWith('.mp4'))) { // Fallback check for direct URL
-            animationUrl = firstOutput.url;
-        } else if (firstOutput.url && (firstOutput.url.endsWith('.png') || firstOutput.url.endsWith('.jpg') || firstOutput.url.endsWith('.jpeg') || firstOutput.url.endsWith('.webp'))) {
-            imageUrl = firstOutput.url;
+        if (firstOutput.data) {
+          if (firstOutput.data.text) {
+            specificTextOutput = firstOutput.data.text;
+          } else if (Array.isArray(firstOutput.data.tags) && firstOutput.data.tags.length > 0) {
+            specificTextOutput = `Tags: ${firstOutput.data.tags.join(', ')}`;
+          }
+
+          if (firstOutput.data.images && firstOutput.data.images.length > 0 && firstOutput.data.images[0].url) {
+            imageUrl = firstOutput.data.images[0].url;
+          } else if (firstOutput.data.animations && firstOutput.data.animations.length > 0 && firstOutput.data.animations[0].url) {
+            animationUrl = firstOutput.data.animations[0].url;
+          } else if (firstOutput.data.videos && firstOutput.data.videos.length > 0 && firstOutput.data.videos[0].url) {
+            animationUrl = firstOutput.data.videos[0].url; // Treat general video as animation
+          }
+        }
+        // Fallback for direct URLs in payload if no structured data path matches
+        if (!imageUrl && !animationUrl && firstOutput.url) {
+            if (firstOutput.url.endsWith('.gif') || firstOutput.url.endsWith('.mp4')) {
+                animationUrl = firstOutput.url;
+            } else if (firstOutput.url.endsWith('.png') || firstOutput.url.endsWith('.jpg') || firstOutput.url.endsWith('.jpeg') || firstOutput.url.endsWith('.webp')) {
+                imageUrl = firstOutput.url;
+            }
         }
       }
 
       try {
         if (imageUrl) {
-          this.logger.info(`[TelegramNotifier] Sending photo to ${chatId}: ${imageUrl}`);
-          await this.bot.sendPhoto(chatId, imageUrl, {
-            caption: messageContent,
-            ...options // Includes reply_markup and reply_to_message_id
-          });
+          const caption = specificTextOutput ? specificTextOutput : ''; // Use specific text if available, else empty
+          this.logger.info(`[TelegramNotifier] Sending photo to ${chatId}: ${imageUrl} with caption: "${caption.substring(0,30)}..."`);
+          await this.bot.sendPhoto(chatId, imageUrl, { caption, ...options });
         } else if (animationUrl) {
-          this.logger.info(`[TelegramNotifier] Sending animation to ${chatId}: ${animationUrl}`);
-          await this.bot.sendAnimation(chatId, animationUrl, {
-            caption: messageContent,
-            ...options // Includes reply_markup and reply_to_message_id
-          });
+          const caption = specificTextOutput ? specificTextOutput : '';
+          this.logger.info(`[TelegramNotifier] Sending animation to ${chatId}: ${animationUrl} with caption: "${caption.substring(0,30)}..."`);
+          await this.bot.sendAnimation(chatId, animationUrl, { caption, ...options });
         } else {
-          this.logger.info(`[TelegramNotifier] Sending text message (no media found) to ${chatId}`);
-          await this.bot.sendMessage(chatId, messageContent, options);
+          // No visual media, send textual output or fallback generic message
+          finalMessageText = specificTextOutput ? specificTextOutput : finalMessageText; 
+          this.logger.info(`[TelegramNotifier] Sending text message (no media found or primary) to ${chatId}: "${finalMessageText.substring(0,50)}..."`);
+          await this.bot.sendMessage(chatId, finalMessageText, options);
         }
         this.logger.info(`[TelegramNotifier] Successfully sent COMPLETED notification with keyboard to chatId: ${chatId}.`);
       } catch (error) {
         this.logger.error(`[TelegramNotifier] Failed to send COMPLETED notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);
-        // Attempt to send a fallback text message if media sending failed
         try {
-            this.logger.warn(`[TelegramNotifier] Attempting to send fallback text message to ${chatId} after media send failure.`);
-            await this.bot.sendMessage(chatId, `${messageContent}\n(Media could not be displayed directly)`, options);
+          this.logger.warn(`[TelegramNotifier] Attempting to send fallback text message to ${chatId} after media send failure.`);
+          // Send the original generic success message as fallback if media sending fails
+          await this.bot.sendMessage(chatId, messageContent, options);
         } catch (fallbackError) {
-            this.logger.error(`[TelegramNotifier] Fallback text message also failed for ${chatId}: ${fallbackError.message}`);
+          this.logger.error(`[TelegramNotifier] Fallback text message also failed for ${chatId}: ${fallbackError.message}`);
         }
-        throw error; // Re-throw original error for dispatcher to handle
+        throw error; 
       }
     } else {
-      // For FAILED messages or other types, send as regular message
+      // For FAILED messages or other types (non-completed jobs)
       try {
         await this.bot.sendMessage(chatId, messageContent, options);
         this.logger.info(`[TelegramNotifier] Successfully sent basic (non-completed) notification to chatId: ${chatId}.`);
