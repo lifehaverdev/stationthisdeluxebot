@@ -52,8 +52,9 @@ class TelegramNotifier {
             { text: '😿', callback_data: `rate_gen:${generationId}:negative` }
           ],
           [
-            { text: 'ℹ️ Info', callback_data: `view_gen_info:${generationId}` }, // Updated text for clarity
-            { text: '⚙️ Tweak', callback_data: `tweak_gen:${generationId}` }    // Updated text for clarity
+            { text: 'ℹ︎', callback_data: `view_gen_info:${generationId}` },
+            { text: '✎', callback_data: `tweak_gen:${generationId}` },
+            { text: '↻', callback_data: `rerun_gen:${generationId}` }
           ]
         ]
       };
