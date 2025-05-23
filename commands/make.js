@@ -258,8 +258,11 @@ function chooseIdByMachine(ids, promptObj) {
     if(ids.length > 1) {
         if(promptObj.isCookMode) {
             // Use first machine for MAKE, second machine for QUICKMAKE, MAKE3 etc
-            const regs = ['QUICKMAKE','MAKE3'];
-            return regs.includes(promptObj.type) ? ids[1] : ids[0];
+            //const regs = ['QUICKMAKE','MAKE3'];
+            const exception = ['MAKE'];
+            return exception.includes(promptObj.type) ? ids[0] : ids[1];
+            //return regs.includes(promptObj.type) ? ids[1] : ids[0];
+            //return ids[1];
         }
         if(promptObj.isAPI) {
             return ids[2]  // Use third machine for API mode
