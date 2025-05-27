@@ -384,20 +384,21 @@ async function setupDynamicCommands(bot, services) {
             sessionId: sessionId, 
             eventId: eventId,
             initiatingEventId: eventId,
-            serviceName: 'ComfyUI', // Or currentTool.service if more dynamic
-            workflowId: currentTool.workflowId, // Assuming this comes from the tool object
-            status: 'pending', // Initial status
-            deliveryStatus: 'pending', // ADR-005 follow-up: API requires this field
-            requestPayload: finalInputs, // ADR-005 follow-up: API requires this field
+            toolId: currentToolId,
+            serviceName: 'ComfyUI',
+            workflowId: currentTool.workflowId,
+            status: 'pending',
+            deliveryStatus: 'pending',
+            requestPayload: finalInputs,
             metadata: {
               telegramChatId: chatId,
               telegramMessageId: msg.message_id,
               telegramRepliedToMessageId: msg.reply_to_message?.message_id,
               telegramUsername: msg.from.username,
-              displayName: currentDisplayName, // Store the display name for logs/UI
+              displayName: currentDisplayName,
               commandInvoked: `/${commandName}`,
-              toolId: currentToolId, // ADR-005: Ensure toolId is included
-              costRate: costRateInfo, // ADR-005: Ensure costRate is in metadata for webhook processor
+              toolId: currentToolId,
+              costRate: costRateInfo,
               notificationContext: {
                 chatId: chatId,
                 userId: platformIdStr,

@@ -935,7 +935,8 @@ function createTelegramBot(dependencies, token, options = {}) {
               isTweaked: true,
               initiatingEventId: initiatingEventIdForNewGen, // Store it in metadata as well
               costRate: originalGenerationRecord.metadata?.costRate, // ADDED: Carry over costRate
-              notificationContext: originalGenerationRecord.metadata?.notificationContext // ADDED: Carry over notificationContext
+              notificationContext: originalGenerationRecord.metadata?.notificationContext, // ADDED: Carry over notificationContext
+              toolId: toolId // ADDED: Ensure specific toolId is in metadata
             }
           };
 
@@ -1123,12 +1124,22 @@ function createTelegramBot(dependencies, token, options = {}) {
             return;
           }
 
-          const toolId = originalGenerationRecord.metadata?.toolId; // Corrected: toolId from metadata
+          // Robust toolId resolution
+          let toolId = originalGenerationRecord.serviceName; // Fallback to serviceName
+          if (originalGenerationRecord.requestPayload?.invoked_tool_id) {
+            toolId = originalGenerationRecord.requestPayload.invoked_tool_id;
+          } else if (originalGenerationRecord.requestPayload?.tool_id) {
+            toolId = originalGenerationRecord.requestPayload.tool_id;
+          } else if (originalGenerationRecord.metadata?.toolId) {
+            toolId = originalGenerationRecord.metadata.toolId;
+          }
+          
           if (!toolId) {
-            logger.error(`[Bot CB] rerun_gen: Original generation ${originalGenerationId} has no toolId in metadata.`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no tool ID.' });
+            logger.error(`[Bot CB] rerun_gen: Could not resolve toolId for original generation ${originalGenerationId}. Checked serviceName, requestPayload, and metadata.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no resolvable tool ID.' });
             return;
           }
+          logger.info(`[Bot CB] rerun_gen: Resolved toolId as '${toolId}' for original generation ${originalGenerationId}.`);
 
           // Use getToolById instead of getWorkflowById
           const workflow = await workflowsService.getToolById(toolId);
@@ -1186,7 +1197,8 @@ function createTelegramBot(dependencies, token, options = {}) {
             isRerun: true,
             costRate: originalGenerationRecord.metadata?.costRate, // ADDED: Carry over costRate
             notificationContext: originalGenerationRecord.metadata?.notificationContext, // ADDED: Carry over notificationContext
-            initiatingEventId: initiatingEventIdForRerun // Store it in metadata as well
+            initiatingEventId: initiatingEventIdForRerun, // Store it in metadata as well
+            toolId: toolId // ADDED: Ensure specific toolId is in metadata
           };
           
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);
