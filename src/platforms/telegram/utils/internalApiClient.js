@@ -42,4 +42,19 @@ if (!process.env.INTERNAL_API_KEY_TELEGRAM) {
   // throw new Error('INTERNAL_API_KEY_TELEGRAM is not set.');
 }
 
+// Add a method to rate a generation
+internalApiClient.rateGeneration = async function(generationId, ratingType, masterAccountId) {
+  try {
+    const response = await this.post(`/rate_gen/${generationId}`, {
+      ratingType,
+      masterAccountId
+    });
+    logger.info(`[InternalApiClient] Successfully rated generation ${generationId} as ${ratingType}.`);
+    return response.data;
+  } catch (error) {
+    logger.error(`[InternalApiClient] Failed to rate generation ${generationId}: ${error.message}`);
+    throw error;
+  }
+};
+
 module.exports = internalApiClient; 

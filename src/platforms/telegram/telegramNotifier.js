@@ -121,11 +121,11 @@ class TelegramNotifier {
     } else {
       // For FAILED messages or other types (non-completed jobs)
       try {
-        await this.bot.sendMessage(chatId, messageContent, options);
+      await this.bot.sendMessage(chatId, messageContent, options);
         this.logger.info(`[TelegramNotifier] Successfully sent basic (non-completed) notification to chatId: ${chatId}.`);
-      } catch (error) {
+    } catch (error) {
         this.logger.error(`[TelegramNotifier] Failed to send basic (non-completed) notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);
-        throw error;
+      throw error; 
       }
     }
   }

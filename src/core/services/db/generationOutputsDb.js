@@ -71,10 +71,28 @@ class GenerationOutputsDB extends BaseDB {
    * @param {Decimal128} [updateData.costUsd] - Cost of the generation.
    * @param {string} [updateData.platformSpecificRunId] - Updated external platform ID.
    * @param {Object} [updateData.metadata] - Additional metadata.
+   * @param {Object} [updateData.ratings] - Ratings for the generation.
    * @returns {Promise<Object>} The update result.
    */
   async updateGenerationOutput(generationId, updateData) {
     const dataToUpdate = { ...updateData };
+    if (updateData.ratings) {
+      // Ensure ratings is an object with arrays for each rating type
+      const currentRatings = await this.findGenerationById(generationId);
+      const ratings = currentRatings.ratings || { beautiful: [], funny: [], sad: [] };
+
+      // Remove the user from all rating categories
+      for (const key in ratings) {
+        ratings[key] = ratings[key].filter(id => id.toString() !== updateData.masterAccountId.toString());
+      }
+
+      // Add the user to the new rating category
+      if (!ratings[updateData.ratingType].includes(updateData.masterAccountId)) {
+        ratings[updateData.ratingType].push(updateData.masterAccountId);
+      }
+
+      dataToUpdate.ratings = ratings;
+    }
     if (updateData.status && (updateData.status === 'success' || updateData.status === 'failed' || updateData.status === 'cancelled_by_user' || updateData.status === 'timeout')) {
         dataToUpdate.responseTimestamp = updateData.responseTimestamp || new Date();
         // durationMs should ideally be calculated based on requestTimestamp stored in DB
