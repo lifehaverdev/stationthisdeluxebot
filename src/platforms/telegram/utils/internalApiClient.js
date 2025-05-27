@@ -45,7 +45,7 @@ if (!process.env.INTERNAL_API_KEY_TELEGRAM) {
 // Add a method to rate a generation
 internalApiClient.rateGeneration = async function(generationId, ratingType, masterAccountId) {
   try {
-    const response = await this.post(`/rate_gen/${generationId}`, {
+    const response = await this.post(`/generations/rate_gen/${generationId}`, {
       ratingType,
       masterAccountId
     });

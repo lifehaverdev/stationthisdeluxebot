@@ -582,6 +582,134 @@ async function buildUserPreferencesMenu(masterAccountId, username, { logger, use
     };
 }
 
+/**
+ * Builds the UI for tweaking parameters of a specific generation.
+ * @param {string} masterAccountId - MAID of the user performing the tweak.
+ * @param {string} canonicalToolId - The canonical toolId of the generation.
+ * @param {object} currentTweakedParams - The current set of parameters (base from original gen + any user tweaks so far).
+ * @param {string} originalUserCommandMessageId - Message ID of the user's original command.
+ * @param {string} originalUserCommandChatId - Chat ID of the user's original command.
+ * @param {string} generationId - The ID of the generation being tweaked.
+ * @param {object} dependencies - { logger, toolRegistry, userSettingsService (optional for defaults if a param is missing) }.
+ * @returns {Promise<object>} Menu object { text, reply_markup }.
+ */
+async function buildTweakUIMenu(masterAccountId, canonicalToolId, currentTweakedParams, originalUserCommandMessageId, originalUserCommandChatId, generationId, { logger, toolRegistry, userSettingsService }) {
+  const toolDef = toolRegistry.getToolById(canonicalToolId);
+
+  if (!toolDef) {
+    logger.error(`[SettingsMenu][Tweak] buildTweakUIMenu: Could not find toolDef for canonicalToolId '${canonicalToolId}'.`);
+    return {
+      text: "Error: Tool definition not found. Cannot tweak.",
+      reply_markup: { inline_keyboard: [[{ text: "❌ Close", callback_data: `tweak_cancel:${generationId}` }]] }
+    };
+  }
+
+  const shortGenId = generationId.substring(generationId.length - 6);
+  const text = `✎ Tweaking *${toolDef.displayName}* (for Gen \`${shortGenId}\`)\nReply to original: Yes (MsgID ${originalUserCommandMessageId})`;
+  const keyboard = [];
+
+  if (toolDef.inputSchema) {
+    for (const paramName in toolDef.inputSchema) {
+      const paramDef = toolDef.inputSchema[paramName];
+      const currentValue = currentTweakedParams[paramName] !== undefined 
+        ? currentTweakedParams[paramName] 
+        : (paramDef.default !== undefined ? paramDef.default : 'Not set');
+      
+      const displayParamName = formatParamNameForDisplay(paramName);
+      let buttonText = `${displayParamName}`;
+
+      if (typeof currentValue === 'string' && currentValue.length > 15) {
+        buttonText += `: ${currentValue.substring(0,12)}...`;
+      } else {
+        buttonText += `: ${currentValue}`;
+      }
+      // Callback includes generationId to keep context for edits and applying tweaks
+      keyboard.push([{ text: buttonText, callback_data: `tweak_param_edit:${generationId}:${canonicalToolId}:${paramName}` }]);
+    }
+  } else {
+    keyboard.push([{ text: "This tool has no configurable parameters.", callback_data: "no_op_params"}]);
+  }
+
+  // Action buttons for the tweak menu
+  keyboard.push([
+    { text: "🚀 Rerun Tweaked", callback_data: `tweak_apply:${generationId}` },
+  ]);
+  keyboard.push([
+    { text: "❌ Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }
+  ]);
+  
+  return {
+    text,
+    reply_markup: { inline_keyboard: keyboard }
+  };
+}
+
+/**
+ * Builds the prompt for editing a specific parameter during a tweak session.
+ * @param {string} masterAccountId - MAID of the user performing the tweak.
+ * @param {string} generationId - The ID of the generation being tweaked.
+ * @param {string} canonicalToolId - The canonical toolId of the generation.
+ * @param {string} paramName - The name of the parameter to edit.
+ * @param {object} pendingTweaksStore - The entire pendingTweaks store from bot.js.
+ * @param {object} dependencies - { logger, toolRegistry }
+ * @returns {Promise<object>} Menu object { text, reply_markup } for the edit prompt.
+ */
+async function buildTweakParamEditPrompt(masterAccountId, generationId, canonicalToolId, paramName, pendingTweaksStore, { logger, toolRegistry }) {
+  const toolDef = toolRegistry.getToolById(canonicalToolId);
+  if (!toolDef) {
+    logger.error(`[SettingsMenu][TweakPrompt] ToolDef not found for ${canonicalToolId}`);
+    return { text: "Error: Tool definition missing.", reply_markup: { inline_keyboard: [[{ text: "Back to Tweak Menu", callback_data: `tweak_gen:${generationId}` }]] } }; // Should rebuild main tweak menu
+  }
+
+  const paramDef = toolDef.inputSchema ? toolDef.inputSchema[paramName] : null;
+  if (!paramDef) {
+    logger.error(`[SettingsMenu][TweakPrompt] ParamDef not found for ${paramName} in ${canonicalToolId}`);
+    return { text: "Error: Parameter definition missing.", reply_markup: { inline_keyboard: [[{ text: "Back to Tweak Menu", callback_data: `tweak_gen:${generationId}` }]] } };
+  }
+
+  const tweakSessionKey = `${generationId}_${masterAccountId}`;
+  const currentToolTweaks = pendingTweaksStore[tweakSessionKey];
+
+  if (!currentToolTweaks) {
+    logger.error(`[SettingsMenu][TweakPrompt] No pending tweak session found for key: ${tweakSessionKey}`);
+    // This case might indicate an issue or stale callback, try to send them back to initiate tweak again.
+    return { text: "Error: Tweak session not found. Please try starting the tweak again.", reply_markup: { inline_keyboard: [[{ text: "Close", callback_data: "hide_menu"}]] } };
+  }
+
+  const currentValue = currentToolTweaks[paramName] !== undefined 
+    ? currentToolTweaks[paramName] 
+    : (paramDef.default !== undefined ? paramDef.default : 'Not set');
+
+  const displayParamName = formatParamNameForDisplay(paramName);
+  const shortGenId = generationId.substring(generationId.length - 6);
+
+  // Unique identifier for replies to this prompt
+  // TweakParamEditPrompt::GenID:<genId>::ToolDisplay:<toolDisplayName>::ToolID:<canonicalToolId>::Param:<paramName>
+  // Need toolDef.displayName for the prompt text
+  const promptMarker = `TweakParamEditPrompt::GenID:${generationId}::ToolDisplay:${toolDef.displayName}::ToolID:${canonicalToolId}::Param:${paramName}`;
+  
+  let promptText = `${promptMarker}\n\n`; // Hidden marker for reply handler
+  promptText += `✎ Editing *${displayParamName}* for *${toolDef.displayName}* (Gen \`${shortGenId}\`)\n`;
+  promptText += `Current value: \`${escapeMarkdownV2(String(currentValue))}\`\n\n`;
+  promptText += `Please reply to this message with the new value for *${displayParamName}*.`;
+  if (paramDef.description) {
+    promptText += `\n\n_${escapeMarkdownV2(paramDef.description)}_`;
+  }
+  if (paramDef.type === 'boolean') {
+    promptText += `\n(Send \`true\` or \`false\`)`;
+  }
+
+  const keyboard = [
+    [{ text: "🔙 Cancel Edit (Back to Tweak Menu)", callback_data: `tweak_gen_menu_render:${generationId}` }] 
+    // tweak_gen_menu_render will tell bot.js to re-call buildTweakUIMenu with current pendingTweaks
+  ];
+
+  return {
+    text: promptText,
+    reply_markup: { inline_keyboard: keyboard }
+  };
+}
+
 // TODO: Implement other menu building functions as per ADR-007
 // async function buildAllToolsMenu(masterAccountId, page = 0, { logger, toolRegistry, userSettingsService }) { ... }
 // async function buildEditParamMenu(masterAccountId, toolKey, paramName, { logger, toolRegistry, userSettingsService }) { ... }
@@ -593,5 +721,7 @@ module.exports = {
     handleParameterValueReply,
     buildToolParamsMenu,
     buildAllToolsMenu,
+    buildTweakUIMenu,
+    buildTweakParamEditPrompt,
     // buildUserPreferencesMenu // Temporarily hidden
 }; 
