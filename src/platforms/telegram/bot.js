@@ -633,6 +633,418 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.error(`[Bot CB] Error in tweak_cancel for ${generationId}:`, error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error cancelling tweak.", show_alert: true });
         }
+      } else if (data.startsWith('tweak_gen_menu_render:')) {
+        const parts = data.split(':');
+        const generationId = parts[1];
+        const clickerTelegramId = callbackQuery.from.id.toString();
+
+        logger.info(`[Bot CB] tweak_gen_menu_render callback for GenID: ${generationId}`);
+
+        try {
+          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: clickerTelegramId,
+            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
+          });
+          const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
+
+          if (!clickerMasterAccountId) {
+            logger.error(`[Bot CB] tweak_gen_menu_render: MAID not found for ${clickerTelegramId}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Account not identified.", show_alert: true });
+            return;
+          }
+
+          const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
+          const currentTweaks = pendingTweaks[tweakSessionKey];
+
+          if (!currentTweaks) {
+            logger.warn(`[Bot CB] tweak_gen_menu_render: No pending tweak session found for key ${tweakSessionKey}. Re-initiating tweak.`);
+            // Attempt to re-trigger the main tweak_gen flow as if the button was just pressed.
+            // This requires fetching the original generation to get toolId and original command context.
+            const genResponse = await internalApiClient.get(`/generations/${generationId}`);
+            const generationRecord = genResponse.data;
+            if (!generationRecord) {
+                await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Original generation not found to restart tweak.", show_alert: true });
+                return;
+            }
+            let toolId = generationRecord.serviceName; // Basic fallback
+            if (generationRecord.requestPayload?.invoked_tool_id) toolId = generationRecord.requestPayload.invoked_tool_id;
+            else if (generationRecord.requestPayload?.tool_id) toolId = generationRecord.requestPayload.tool_id;
+            else if (generationRecord.metadata?.toolId) toolId = generationRecord.metadata.toolId;
+
+            const originalUserCommandMessageId = generationRecord.metadata?.telegramMessageId;
+            const originalUserCommandChatId = generationRecord.metadata?.telegramChatId;
+
+            if (!toolId || !originalUserCommandMessageId || !originalUserCommandChatId) {
+                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Missing critical info to restart tweak.", show_alert: true });
+                return;
+            }
+            
+            pendingTweaks[tweakSessionKey] = { ...(generationRecord.requestPayload || {}) }; // Re-initialize
+
+            const newTweakMenu = await buildTweakUIMenu(
+                clickerMasterAccountId,
+                toolId,
+                pendingTweaks[tweakSessionKey],
+                originalUserCommandMessageId,
+                originalUserCommandChatId,
+                generationId,
+                { logger, toolRegistry, userSettingsService }
+            );
+             if (newTweakMenu && newTweakMenu.text && newTweakMenu.reply_markup) {
+                // This is a callback, so we edit the message that had the 'cancel edit' button
+                await bot.editMessageText(newTweakMenu.text, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    reply_markup: newTweakMenu.reply_markup,
+                    parse_mode: 'MarkdownV2'
+                });
+            } else { throw new Error('Failed to rebuild tweak menu after session loss.'); }
+
+          } else {
+            // Session found, just re-render the main menu.
+            // We need toolId. It should be part of pendingTweaks or retrievable.
+            // For now, assume we re-fetch generation to get toolId consistently.
+            const genResponse = await internalApiClient.get(`/generations/${generationId}`);
+            const generationRecord = genResponse.data;
+             if (!generationRecord) {
+                await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Original generation not found to refresh tweak menu.", show_alert: true });
+                return;
+            }
+            let toolId = generationRecord.serviceName; // Basic fallback
+            if (generationRecord.requestPayload?.invoked_tool_id) toolId = generationRecord.requestPayload.invoked_tool_id;
+            else if (generationRecord.requestPayload?.tool_id) toolId = generationRecord.requestPayload.tool_id;
+            else if (generationRecord.metadata?.toolId) toolId = generationRecord.metadata.toolId;
+            
+            const originalUserCommandMessageId = generationRecord.metadata?.telegramMessageId; // Needed for buildTweakUIMenu
+            const originalUserCommandChatId = generationRecord.metadata?.telegramChatId; // Needed for buildTweakUIMenu
+
+            if (!toolId || !originalUserCommandMessageId || !originalUserCommandChatId) {
+                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Missing critical info to refresh tweak menu.", show_alert: true });
+                return;
+            }
+
+            const refreshedMenu = await buildTweakUIMenu(
+                clickerMasterAccountId,
+                toolId,
+                currentTweaks,
+                originalUserCommandMessageId,
+                originalUserCommandChatId,
+                generationId,
+                { logger, toolRegistry, userSettingsService }
+            );
+
+            if (refreshedMenu && refreshedMenu.text && refreshedMenu.reply_markup) {
+                await bot.editMessageText(refreshedMenu.text, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    reply_markup: refreshedMenu.reply_markup,
+                    parse_mode: 'MarkdownV2'
+                });
+            } else { throw new Error('Failed to refresh tweak menu.'); }
+          }
+          await bot.answerCallbackQuery(callbackQuery.id);
+        } catch (error) {
+          logger.error(`[Bot CB] Error in tweak_gen_menu_render for ${generationId}:`, error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "Error refreshing tweak menu.", show_alert: true });
+        }
+      } else if (data.startsWith('tweak_apply:')) {
+        const parts = data.split(':');
+        const generationId = parts[1]; // This is the ID of the *original* generation being tweaked
+        const clickerTelegramId = callbackQuery.from.id.toString();
+
+        logger.info(`[Bot CB] tweak_apply callback for original GenID: ${generationId} from UserID: ${clickerTelegramId}`);
+
+        try {
+          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: clickerTelegramId,
+            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
+          });
+          const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
+
+          if (!clickerMasterAccountId) {
+            logger.error(`[Bot CB] tweak_apply: MAID not found for ${clickerTelegramId}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Account not identified.", show_alert: true });
+            return;
+          }
+
+          const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
+          const finalTweakedParams = pendingTweaks[tweakSessionKey];
+
+          if (!finalTweakedParams) {
+            logger.warn(`[Bot CB] tweak_apply: No pending tweak session found for key ${tweakSessionKey}. Cannot apply.`);
+            await bot.editMessageText("Error: Your tweak session has expired. Please start tweaking again.", {
+              chat_id: message.chat.id,
+              message_id: message.message_id,
+              reply_markup: null
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Session expired.", show_alert: true });
+            return;
+          }
+
+          // Fetch the original generation record for toolId and original command context
+          const genResponse = await internalApiClient.get(`/generations/${generationId}`);
+          const originalGenerationRecord = genResponse.data;
+
+          if (!originalGenerationRecord) {
+            logger.error(`[Bot CB] tweak_apply: Original generation record ${generationId} not found.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Original generation details missing.", show_alert: true });
+            delete pendingTweaks[tweakSessionKey]; // Clean up failed session
+            return;
+          }
+
+          let toolId = originalGenerationRecord.serviceName; // Fallback
+          if (originalGenerationRecord.requestPayload?.invoked_tool_id) toolId = originalGenerationRecord.requestPayload.invoked_tool_id;
+          else if (originalGenerationRecord.requestPayload?.tool_id) toolId = originalGenerationRecord.requestPayload.tool_id;
+          else if (originalGenerationRecord.metadata?.toolId) toolId = originalGenerationRecord.metadata.toolId;
+        
+          const originalUserCommandMessageId = originalGenerationRecord.metadata?.telegramMessageId;
+          const originalUserCommandChatId = originalGenerationRecord.metadata?.telegramChatId;
+          const originalPlatformContext = originalGenerationRecord.metadata?.platformContext; // If used
+
+          if (!toolId || !originalUserCommandMessageId || !originalUserCommandChatId) {
+            logger.error(`[Bot CB] tweak_apply: Missing critical info (toolId, originalMsgId, originalChatId) from original gen ${generationId}.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Critical context from original generation is missing.", show_alert: true });
+            delete pendingTweaks[tweakSessionKey];
+            return;
+          }
+
+          // Construct the payload for the new generation request
+          const newGenerationPayload = {
+            toolId: toolId, // The ID of the tool/service to run
+            requestPayload: { ...finalTweakedParams }, // The tweaked parameters
+            masterAccountId: clickerMasterAccountId, // User initiating this new tweaked generation
+            platform: 'telegram',
+            metadata: {
+              telegramMessageId: originalUserCommandMessageId, // So new gen replies to original command
+              telegramChatId: originalUserCommandChatId,
+              platformContext: originalPlatformContext || { // Carry over or default
+                telegramUserId: clickerTelegramId, // User who tweaked
+                username: callbackQuery.from.username,
+                firstName: callbackQuery.from.first_name
+              },
+              parentGenerationId: generationId, // Link to the generation that was tweaked
+              isTweaked: true
+            }
+          };
+
+          logger.info(`[Bot CB] tweak_apply: Dispatching new tweaked generation for tool ${newGenerationPayload.toolId}. Original GenID: ${generationId}.`);
+
+          // 1. Log the new generation intent to get a new generationId
+          const generationToLog = {
+            toolId: newGenerationPayload.toolId,
+            requestPayload: finalTweakedParams, // This is newGenerationPayload.requestPayload
+            masterAccountId: clickerMasterAccountId,
+            platform: 'telegram',
+            status: 'pending', // Initial status
+            deliveryStatus: 'pending',
+            notificationPlatform: 'telegram', // So notifier knows
+            serviceName: originalGenerationRecord.serviceName || 'ComfyUI', // Carry over service name
+            workflowId: originalGenerationRecord.workflowId, // Carry over workflowId
+            metadata: newGenerationPayload.metadata // Contains reply info, parentGenId, isTweaked etc.
+          };
+
+          const newGenerationLogResponse = await internalApiClient.post('/generations', generationToLog);
+          const newGeneratedId = newGenerationLogResponse.data._id;
+          logger.info(`[Bot CB] tweak_apply: New generation successfully logged with ID: ${newGeneratedId}.`);
+
+          // 2. Dispatch to the actual service (e.g., ComfyUI)
+          let run_id;
+          // Determine deploymentId - dynamicCommands.js uses tool.metadata.deploymentId
+          // We should use what was likely used for the original generation.
+          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId; // Fallback to workflowId if deploymentId specifically isn't in metadata.
+          
+          if (deploymentId && typeof deploymentId === 'string' && deploymentId.startsWith('comfy-')) {
+            deploymentId = deploymentId.substring(6);
+          }
+
+          if (!deploymentId) {
+            logger.error(`[Bot CB] tweak_apply: Could not determine ComfyUI deploymentId for new gen ${newGeneratedId} (from original ${generationId}). Original metadata: ${JSON.stringify(originalGenerationRecord.metadata)}`);
+            throw new Error('ComfyUI Deployment ID not found for tweaked generation.');
+          }
+          
+          logger.info(`[Bot CB] tweak_apply: Submitting to ComfyUI. DeploymentID: ${deploymentId}, GenID (new): ${newGeneratedId}. Inputs: ${JSON.stringify(finalTweakedParams)}`);
+
+          if (originalGenerationRecord.serviceName === 'ComfyUI' && dependencies.comfyuiService) {
+            const submissionResult = await dependencies.comfyuiService.submitRequest({
+              deploymentId: deploymentId, // This should be the specific Comfy workflow/deployment identifier
+              inputs: finalTweakedParams, // These are the tweaked parameters
+            });
+            
+            run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
+
+            if (!run_id) {
+              const errorMessage = submissionResult?.error ? (typeof submissionResult.error === 'string' ? submissionResult.error : submissionResult.error.message) : 'Unknown error during ComfyUI submission';
+              logger.error(`[Bot CB] tweak_apply: ComfyUI submission failed for new GenID ${newGeneratedId}. Error: ${errorMessage}`);
+              await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` });
+              throw new Error(`ComfyUI submission failed: ${errorMessage}`);
+            }
+            logger.info(`[Bot CB] tweak_apply: ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}. Linking...`);
+            await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' }); // Update status to processing
+          } else {
+            // Handle other services if necessary, or throw error if service unknown/unsupported for tweak
+            logger.error(`[Bot CB] tweak_apply: Service ${originalGenerationRecord.serviceName} not supported for direct tweak dispatch or service not available.`);
+            await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for tweaked dispatch.` });
+            throw new Error(`Service ${originalGenerationRecord.serviceName} not supported for tweaked generation.`);
+          }
+          
+          // Feedback to user & cleanup
+          await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            reply_markup: null // Remove keyboard
+          });
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "Tweaked generation sent!" });
+
+          delete pendingTweaks[tweakSessionKey];
+          logger.info(`[Bot CB] tweak_apply: Cleared pendingTweaks for sessionKey: ${tweakSessionKey}`);
+
+        } catch (error) {
+          logger.error(`[Bot CB] Error in tweak_apply for original GenID ${generationId}:`, error.response?.data || error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "Error sending tweaked generation.", show_alert: true });
+          // Optionally, keep the pendingTweaks session if dispatch fails, allowing user to retry?
+          // For now, it's cleared on next successful apply or cancel.
+        }
+      } else if (data.startsWith('rerun_gen:')) {
+        const parts = data.split(':');
+        const originalGenerationId = parts[1];
+        const clickerTelegramId = callbackQuery.from.id.toString();
+
+        logger.info(`[Bot CB] rerun_gen callback for Original GenID: ${originalGenerationId} from UserID: ${clickerTelegramId}`);
+
+        try {
+          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: clickerTelegramId,
+            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
+          });
+          const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
+
+          if (!clickerMasterAccountId) {
+            logger.error(`[Bot CB] rerun_gen: MAID not found for ${clickerTelegramId}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Account not identified.", show_alert: true });
+            return;
+          }
+
+          // Fetch the original generation record
+          const genResponse = await internalApiClient.get(`/generations/${originalGenerationId}`);
+          const originalGenerationRecord = genResponse.data;
+
+          if (!originalGenerationRecord || !originalGenerationRecord.requestPayload) {
+            logger.error(`[Bot CB] rerun_gen: Original generation record ${originalGenerationId} or its requestPayload not found.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Original generation details missing for rerun.", show_alert: true });
+            return;
+          }
+
+          let toolId = originalGenerationRecord.serviceName;
+          if (originalGenerationRecord.requestPayload?.invoked_tool_id) toolId = originalGenerationRecord.requestPayload.invoked_tool_id;
+          else if (originalGenerationRecord.requestPayload?.tool_id) toolId = originalGenerationRecord.requestPayload.tool_id;
+          else if (originalGenerationRecord.metadata?.toolId) toolId = originalGenerationRecord.metadata.toolId;
+          
+          const originalUserCommandMessageId = originalGenerationRecord.metadata?.telegramMessageId;
+          const originalUserCommandChatId = originalGenerationRecord.metadata?.telegramChatId;
+          const originalPlatformContext = originalGenerationRecord.metadata?.platformContext;
+
+          if (!toolId || !originalUserCommandMessageId || !originalUserCommandChatId) {
+            logger.error(`[Bot CB] rerun_gen: Missing critical info (toolId, originalMsgId, originalChatId) from original gen ${originalGenerationId}.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Critical context from original generation is missing.", show_alert: true });
+            return;
+          }
+
+          // Prepare the new request payload by copying the original and modifying the seed
+          const newRequestPayload = { ...originalGenerationRecord.requestPayload };
+          if (typeof newRequestPayload.input_seed === 'number') {
+            newRequestPayload.input_seed += 1;
+            logger.info(`[Bot CB] rerun_gen: Incremented input_seed to ${newRequestPayload.input_seed}`);
+          } else if (newRequestPayload.input_seed !== undefined) {
+            logger.warn(`[Bot CB] rerun_gen: input_seed was present but not a number (${typeof newRequestPayload.input_seed}: ${newRequestPayload.input_seed}). Generating random seed.`);
+            newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
+          } else {
+            // If no input_seed, generate one if the tool schema suggests it, or leave it if tool handles it.
+            // For now, if it's missing, we'll add a random one.
+            newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
+            logger.info(`[Bot CB] rerun_gen: No input_seed found. Generated random seed: ${newRequestPayload.input_seed}`);
+          }
+
+          const rerunGenerationMetadata = {
+            telegramMessageId: originalUserCommandMessageId, // So new gen replies to original command
+            telegramChatId: originalUserCommandChatId,
+            platformContext: originalPlatformContext || {
+              telegramUserId: clickerTelegramId,
+              username: callbackQuery.from.username,
+              firstName: callbackQuery.from.first_name
+            },
+            parentGenerationId: originalGenerationId,
+            isRerun: true,
+            // Carry over other relevant metadata if needed, e.g., original costRate if you want to log it again.
+            costRate: originalGenerationRecord.metadata?.costRate 
+          };
+          
+          logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);
+
+          // 1. Log the new generation intent
+          const generationToLog = {
+            toolId: toolId,
+            requestPayload: newRequestPayload,
+            masterAccountId: clickerMasterAccountId,
+            platform: 'telegram',
+            status: 'pending',
+            deliveryStatus: 'pending',
+            notificationPlatform: 'telegram',
+            serviceName: originalGenerationRecord.serviceName || 'ComfyUI',
+            workflowId: originalGenerationRecord.workflowId,
+            metadata: rerunGenerationMetadata
+          };
+
+          const newGenerationLogResponse = await internalApiClient.post('/generations', generationToLog);
+          const newGeneratedId = newGenerationLogResponse.data._id;
+          logger.info(`[Bot CB] rerun_gen: New generation (rerun) successfully logged with ID: ${newGeneratedId}.`);
+
+          // 2. Dispatch to the actual service (e.g., ComfyUI)
+          let run_id;
+          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId;
+          if (deploymentId && typeof deploymentId === 'string' && deploymentId.startsWith('comfy-')) {
+            deploymentId = deploymentId.substring(6);
+          }
+
+          if (!deploymentId) {
+            logger.error(`[Bot CB] rerun_gen: Could not determine ComfyUI deploymentId for new gen ${newGeneratedId}.`);
+            throw new Error('ComfyUI Deployment ID not found for rerun generation.');
+          }
+
+          if (originalGenerationRecord.serviceName === 'ComfyUI' && dependencies.comfyuiService) {
+            const submissionResult = await dependencies.comfyuiService.submitRequest({
+              deploymentId: deploymentId,
+              inputs: newRequestPayload,
+            });
+            run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
+
+            if (!run_id) {
+              const errorMessage = submissionResult?.error ? (typeof submissionResult.error === 'string' ? submissionResult.error : submissionResult.error.message) : 'Unknown error during ComfyUI submission';
+              logger.error(`[Bot CB] rerun_gen: ComfyUI submission failed for new GenID ${newGeneratedId}. Error: ${errorMessage}`);
+              await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` });
+              throw new Error(`ComfyUI submission failed: ${errorMessage}`);
+            }
+            logger.info(`[Bot CB] rerun_gen: ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}. Linking...`);
+            await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
+          } else {
+            logger.error(`[Bot CB] rerun_gen: Service ${originalGenerationRecord.serviceName} not supported or not available.`);
+            await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for rerun.` });
+            throw new Error(`Service ${originalGenerationRecord.serviceName} not supported for rerun.`);
+          }
+
+          await bot.editMessageText("🔄 Rerunning generation with a new seed...", {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            reply_markup: null // Remove keyboard
+          });
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "Rerun initiated!" });
+
+        } catch (error) {
+          logger.error(`[Bot CB] Error in rerun_gen for original GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
+        }
       } else {
         // Fallback for any other unhandled callbacks
         logger.warn(`[Bot CB] Unhandled callback data prefix: ${data}`);
@@ -714,6 +1126,148 @@ function createTelegramBot(dependencies, token, options = {}) {
     }
     // -- END PARAMETER VALUE REPLY HANDLER --
 
+    // ++ NEW TWEAK PARAMETER VALUE REPLY HANDLER ++
+    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.startsWith('TweakParamEditPrompt::')) {
+      const promptText = message.reply_to_message.text;
+      const replierTelegramId = message.from.id.toString();
+      const newValue = message.text; // The new value user replied with
+
+      const genIdMatch = promptText.match(/GenID:([^:]+)::/);
+      const toolDisplayMatch = promptText.match(/ToolDisplay:([^:]+)::/);
+      const toolIdMatch = promptText.match(/ToolID:([^:]+)::/);
+      const paramNameMatch = promptText.match(/Param:([^\n]+)/);
+
+      if (genIdMatch && genIdMatch[1] && toolIdMatch && toolIdMatch[1] && paramNameMatch && paramNameMatch[1]) {
+        const generationId = genIdMatch[1];
+        const canonicalToolId = toolIdMatch[1];
+        const paramName = paramNameMatch[1];
+        const toolDisplayName = toolDisplayMatch ? toolDisplayMatch[1] : canonicalToolId;
+
+        logger.info(`[Bot] Reply received for TWEAK param edit. User: ${replierTelegramId}, GenID: ${generationId}, Tool: ${toolDisplayName} (ID: ${canonicalToolId}), Param: ${paramName}, NewValue: '${newValue.replace(/'/g, "''")}'`);
+
+        try {
+          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: replierTelegramId,
+            platformContext: { firstName: message.from.first_name, username: message.from.username }
+          });
+          const replierMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
+
+          if (!replierMasterAccountId) {
+            logger.error(`[Bot] Tweak reply: MAID not found for ${replierTelegramId}`);
+            await bot.sendMessage(message.chat.id, "Error: Your account could not be identified to save the tweak.", { reply_to_message_id: message.message_id });
+            return;
+          }
+
+          const tweakSessionKey = `${generationId}_${replierMasterAccountId}`;
+          const currentToolTweaks = pendingTweaks[tweakSessionKey];
+
+          if (!currentToolTweaks) {
+            logger.error(`[Bot] Tweak reply: No pending tweak session found for key ${tweakSessionKey}. Cannot save value.`);
+            await bot.sendMessage(message.chat.id, "Error: Your tweak session seems to have expired. Please try tweaking again.", { reply_to_message_id: message.message_id });
+            await bot.deleteMessage(message.chat.id, message.reply_to_message.message_id);
+            return;
+          }
+
+          const toolDef = toolRegistry.getToolById(canonicalToolId);
+          if (!toolDef || !toolDef.inputSchema || !toolDef.inputSchema[paramName]) {
+            logger.error(`[Bot] Tweak reply: ToolDef or ParamDef not found for ToolID ${canonicalToolId}, Param ${paramName}`);
+            await bot.sendMessage(message.chat.id, "Error: Tool or parameter definition is missing. Cannot save value.", { reply_to_message_id: message.message_id });
+            return;
+          }
+          const paramDef = toolDef.inputSchema[paramName];
+
+          let parsedValue = newValue;
+          let validationError = null;
+          switch (paramDef.type) {
+            case 'number':
+            case 'integer':
+              parsedValue = parseFloat(newValue);
+              if (isNaN(parsedValue)) validationError = "Invalid number. Please provide a valid number.";
+              if (paramDef.type === 'integer' && !Number.isInteger(parsedValue)) validationError = "Not a valid whole number.";
+              break;
+            case 'boolean':
+              if (['true', 'yes', '1', 'on'].includes(newValue.toLowerCase())) parsedValue = true;
+              else if (['false', 'no', '0', 'off'].includes(newValue.toLowerCase())) parsedValue = false;
+              else validationError = "Invalid boolean. Use true/false, yes/no, etc.";
+              break;
+            case 'string':
+              parsedValue = newValue;
+              break;
+            default:
+              logger.warn(`[Bot] Tweak reply: Validation not implemented for type '${paramDef.type}'. Accepting as is.`);
+              parsedValue = newValue;
+              break;
+          }
+
+          if (validationError) {
+            logger.warn(`[Bot] Tweak reply: Validation failed for ${paramName} with value '${newValue.replace(/'/g, "''")}'. Error: ${validationError}`);
+            await bot.sendMessage(message.chat.id, validationError, { reply_to_message_id: message.message_id });
+            return;
+          }
+
+          pendingTweaks[tweakSessionKey][paramName] = parsedValue;
+          logger.info(`[Bot] Tweak reply: Updated pendingTweaks for ${tweakSessionKey} - ${paramName} = ${parsedValue}`);
+
+          await bot.deleteMessage(message.chat.id, message.message_id);
+
+          const genResponse = await internalApiClient.get(`/generations/${generationId}`);
+          const generationRecord = genResponse.data;
+          if (!generationRecord || !generationRecord.metadata) {
+              logger.error(`[Bot] Tweak reply: Failed to fetch gen record or metadata for ${generationId} to rebuild menu.`);
+              await bot.editMessageText("Error: Could not refresh tweak menu after update. Please cancel and restart.", {
+                  chat_id: message.chat.id,
+                  message_id: message.reply_to_message.message_id,
+                  reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
+              });
+              return;
+          }
+          const originalUserCommandMessageId = generationRecord.metadata.telegramMessageId;
+          const originalUserCommandChatId = generationRecord.metadata.telegramChatId;
+
+          if(!originalUserCommandMessageId || !originalUserCommandChatId){
+            logger.error(`[Bot] Tweak reply: Missing original command context from gen record ${generationId}.`);
+             await bot.editMessageText("Error: Original command context lost. Cannot refresh tweak menu.", {
+                  chat_id: message.chat.id,
+                  message_id: message.reply_to_message.message_id, 
+                  reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
+              });
+            return;
+          }
+
+          const refreshedMenu = await buildTweakUIMenu(
+            replierMasterAccountId,
+            canonicalToolId,
+            pendingTweaks[tweakSessionKey],
+            originalUserCommandMessageId, 
+            originalUserCommandChatId,    
+            generationId,
+            { logger, toolRegistry, userSettingsService }
+          );
+
+          if (refreshedMenu && refreshedMenu.text && refreshedMenu.reply_markup) {
+            await bot.editMessageText(refreshedMenu.text, {
+              chat_id: message.chat.id,
+              message_id: message.reply_to_message.message_id,
+              reply_markup: refreshedMenu.reply_markup,
+              parse_mode: 'MarkdownV2'
+            });
+          } else {
+            logger.error(`[Bot] Tweak reply: Failed to build refreshed tweak menu for GenID ${generationId}.`);
+            await bot.editMessageText("Updated value, but could not refresh the menu. Please cancel and restart if needed.", {
+                chat_id: message.chat.id,
+                message_id: message.reply_to_message.message_id,
+                reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
+            });
+          }
+        } catch (error) {
+          logger.error(`[Bot] Tweak reply: Error processing parameter reply for GenID ${generationId}, Param ${paramNameMatch ? paramNameMatch[1].replace(/'/g, "''") : 'unknown'}:`, error.stack);
+          await bot.sendMessage(message.chat.id, "Sorry, an error occurred while saving your tweaked value.", { reply_to_message_id: message.message_id });
+        }
+        return;
+      }
+    }
+    // -- END TWEAK PARAMETER VALUE REPLY HANDLER --
 
     // Default message handler for make/imagine commands (if not a command and not a settings reply)
     // This part should contain your existing logic for handling general messages like "make a cat"

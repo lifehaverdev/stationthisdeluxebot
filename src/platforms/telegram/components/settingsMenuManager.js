@@ -21,6 +21,16 @@ function formatParamNameForDisplay(paramName) {
 }
 
 /**
+ * Escapes special characters in a string for Telegram MarkdownV2 format.
+ * @param {string} text The text to escape.
+ * @returns {string} The escaped text.
+ */
+const escapeMarkdownV2 = (text) => {
+  if (text === null || text === undefined) return '';
+  return String(text).replace(/([_*[\\]()~`>#+\\-={}.!])/g, '$1'); // Fixed: removed one backslash from replacement
+};
+
+/**
  * Fetches and filters the most frequently used tools for a user.
  * @param {string} masterAccountId - The user's master account ID.
  * @param {object} toolRegistry - The ToolRegistry instance.
@@ -605,7 +615,7 @@ async function buildTweakUIMenu(masterAccountId, canonicalToolId, currentTweaked
   }
 
   const shortGenId = generationId.substring(generationId.length - 6);
-  const text = `✎ Tweaking *${toolDef.displayName}* (for Gen \`${shortGenId}\`)\nReply to original: Yes (MsgID ${originalUserCommandMessageId})`;
+  const text = `✎ Tweaking *${escapeMarkdownV2(toolDef.displayName)}* (for Gen \`${shortGenId}\`)\nReply to original: Yes (MsgID ${originalUserCommandMessageId})`;
   const keyboard = [];
 
   if (toolDef.inputSchema) {
