@@ -1162,18 +1162,9 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           // Prepare the new request payload by copying the original and modifying the seed
           const newRequestPayload = { ...originalGenerationRecord.requestPayload };
-          if (typeof newRequestPayload.input_seed === 'number') {
-            newRequestPayload.input_seed += 1;
-            logger.info(`[Bot CB] rerun_gen: Incremented input_seed to ${newRequestPayload.input_seed}`);
-          } else if (newRequestPayload.input_seed !== undefined) {
-            logger.warn(`[Bot CB] rerun_gen: input_seed was present but not a number (${typeof newRequestPayload.input_seed}: ${newRequestPayload.input_seed}). Generating random seed.`);
-            newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
-          } else {
-            // If no input_seed, generate one if the tool schema suggests it, or leave it if tool handles it.
-            // For now, if it's missing, we'll add a random one.
-            newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
-            logger.info(`[Bot CB] rerun_gen: No input_seed found. Generated random seed: ${newRequestPayload.input_seed}`);
-          }
+          const oldSeed = newRequestPayload.input_seed;
+          newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
+          logger.info(`[Bot CB] rerun_gen: Assigned new random seed: ${newRequestPayload.input_seed} (old seed was: ${oldSeed === undefined ? 'N/A' : oldSeed})`);
 
           // Determine initiatingEventId for the rerun generation
           let initiatingEventIdForRerun;
@@ -1222,8 +1213,9 @@ function createTelegramBot(dependencies, token, options = {}) {
             // For the metadata.initiatingEventId, we want to preserve the *original* chain's ID if possible.
             // So, we take it from the parent's metadata. If the parent didn't have it, 
             // then this rerun's own event (newEventIdForRerun) becomes the start of this chain for this field.
-            initiatingEventId: originalGenerationRecord.metadata?.initiatingEventId || newEventIdForRerun || finalInitiatingEventIdForRerun, 
-            toolId: toolId 
+            initiatingEventId: metadataInitiatingEventId, 
+            toolId: toolId, 
+            rerunCount: (originalGenerationRecord.metadata?.rerunCount || 0) + 1 // Increment rerun count
           };
           
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);

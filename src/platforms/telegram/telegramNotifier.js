@@ -55,7 +55,7 @@ class TelegramNotifier {
             { text: '-', callback_data: 'hide_menu'},
             { text: 'ℹ︎', callback_data: `view_gen_info:${generationId}` },
             { text: '✎', callback_data: `tweak_gen:${generationId}` },
-            { text: '↻', callback_data: `rerun_gen:${generationId}` }
+            { text: (generationRecord.metadata?.rerunCount || 0) > 0 ? `↻${generationRecord.metadata.rerunCount}` : '↻', callback_data: `rerun_gen:${generationId}` }
           ]
         ]
       };
