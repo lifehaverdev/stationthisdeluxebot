@@ -51,6 +51,14 @@ async function startApp() {
     });
     logger.info('Core services initialized');
     
+    // ADD DIAGNOSTIC LOG HERE:
+    logger.info('[App Debug] Inspecting services object after initialization:');
+    logger.info(`[App Debug] typeof services.userSessionsService: ${typeof services.userSessionsService}`);
+    logger.info(`[App Debug] services.userSessionsService has getOrCreateSession: ${services.userSessionsService ? typeof services.userSessionsService.getOrCreateSession === 'function' : 'N/A (service undefined)'}`);
+    logger.info(`[App Debug] typeof services.session: ${typeof services.session}`);
+    logger.info(`[App Debug] services.session has getOrCreateSession: ${services.session ? typeof services.session.getOrCreateSession === 'function' : 'N/A (service undefined)'}`);
+    logger.info(`[App Debug] All keys in services: ${Object.keys(services).join(', ')}`);
+    
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
       logger.info('Initializing WorkflowsService cache...');
@@ -145,7 +153,7 @@ async function startApp() {
     // Rename internal services to match platform expectations if needed
     // (Example assuming platforms expect pointsService, sessionService, etc.)
     platformServices.pointsService = platformServices.points;
-    platformServices.sessionService = platformServices.sessionService;
+    platformServices.sessionService = services.session;
     // Add other mappings as required by specific platforms... 
     
     // Initialize platforms with the corrected services object

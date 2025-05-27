@@ -15,15 +15,24 @@ const { setupDynamicCommands } = require('./dynamicCommands');
  * @returns {Object} - Initialized bot instance
  */
 function initializeTelegramPlatform(services, options = {}) {
+  const initialLoggerForDepCheck = services.logger || console; // Use logger from services if available
+  initialLoggerForDepCheck.info('[Telegram Index] initializeTelegramPlatform called. Inspecting INCOMING services object:');
+  initialLoggerForDepCheck.info(`[Telegram Index] Keys in incoming services: ${JSON.stringify(Object.keys(services))}`);
+  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui: ${typeof services.comfyui}`);
+  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui?.submitRequest: ${typeof services.comfyui?.submitRequest}`);
+  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows: ${typeof services.workflows}`);
+  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows?.getToolById: ${typeof services.workflows?.getToolById}`);
+
   const {
-    comfyuiService,
-    pointsService,
-    sessionService,
-    workflowsService,
-    mediaService,
+    comfyui: comfyuiService,
+    points: pointsService,
+    session: sessionService,
+    workflows: workflowsService,
+    media: mediaService,
     internal,
     db,
     logger = console,
+    appStartTime,
     toolRegistry,
     userSettingsService
   } = services;
@@ -34,24 +43,24 @@ function initializeTelegramPlatform(services, options = {}) {
     throw new Error('Telegram bot token is required. Set TELEGRAM_TOKEN environment variable.');
   }
   
+  const botDeps = {
+    comfyuiService,
+    pointsService,
+    sessionService,
+    workflowsService,
+    mediaService,
+    internal,
+    db,
+    logger,
+    appStartTime,
+    toolRegistry,
+    userSettingsService
+  };
+  
+  initialLoggerForDepCheck.info(`[Telegram Index] typeof botDeps.workflowsService?.getToolById: ${typeof botDeps.workflowsService?.getToolById}`);
+
   // Initialize the bot with all required services
-  const bot = createTelegramBot(
-    {
-      comfyuiService,
-      pointsService,
-      sessionService,
-      workflowsService,
-      mediaService,
-      internal,
-      db,
-      logger,
-      appStartTime: services.appStartTime,
-      toolRegistry,
-      userSettingsService
-    },
-    token,
-    { polling: true, ...options } // Enable polling by default
-  );
+  const bot = createTelegramBot(botDeps, token, { polling: true, ...options });
   
   logger.info('Telegram platform initialized');
   

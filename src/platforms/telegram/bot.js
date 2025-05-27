@@ -7,6 +7,9 @@
 
 const TelegramBot = require('node-telegram-bot-api');
 
+// Import uuid v4
+const { v4: uuidv4 } = require('uuid');
+
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');
 const createTrainModelCommandHandler = require('./commands/trainModelCommand');
 const createStatusCommandHandler = require('./commands/statusCommand');
@@ -28,27 +31,56 @@ let pendingTweaks = {};
  * @returns {Object} - Configured bot instance
  */
 function createTelegramBot(dependencies, token, options = {}) {
-  // Add a log to verify dependencies.toolRegistry
-  // const initialLogger = dependencies.logger || console;
-  // initialLogger.info('[TelegramBot] createTelegramBot called. Checking received toolRegistry...');
-  // if (dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function') {
-  //   initialLogger.info('[TelegramBot] dependencies.toolRegistry appears to be a valid ToolRegistry instance.');
-  // } else {
-  //   initialLogger.warn('[TelegramBot] dependencies.toolRegistry is MISSING or INVALID! Details:', { registry: dependencies.toolRegistry });
-  // }
-  // End verification log
+  const initialLoggerForDepCheck = dependencies.logger || console;
+  initialLoggerForDepCheck.info('[TelegramBot] createTelegramBot called. Inspecting INCOMING dependencies object:');
+  initialLoggerForDepCheck.info(`[TelegramBot] Keys in incoming dependencies: ${JSON.stringify(Object.keys(dependencies))}`);
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService: ${typeof dependencies.comfyuiService}`);
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService?.submitRequest: ${typeof dependencies.comfyuiService?.submitRequest}`);
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService: ${typeof dependencies.workflowsService}`);
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService?.getToolById: ${typeof dependencies.workflowsService?.getToolById}`); // CHECKING getToolById
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService (direct check): ${typeof dependencies.sessionService}`);
+  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService?.getSession (direct check): ${typeof dependencies.sessionService?.getSession}`);
+
+  // OLD DIAGNOSTIC LOGS (can be removed later if the above is sufficient)
+  // Check sessionService
+  if (dependencies.sessionService && typeof dependencies.sessionService.getSession === 'function') { 
+    initialLoggerForDepCheck.info('[TelegramBot] dependencies.sessionService IS VALID and has getSession method.');
+  } else {
+    initialLoggerForDepCheck.warn(
+      '[TelegramBot] dependencies.sessionService IS MISSING or INVALID or does not have getSession method!', 
+      { 
+        hasSessionService: !!dependencies.sessionService,
+        serviceDetails: dependencies.sessionService ? JSON.stringify(Object.keys(dependencies.sessionService)) : 'N/A',
+        hasGetSessionMethod: dependencies.sessionService ? typeof dependencies.sessionService.getSession === 'function' : 'N/A'
+      }
+    );
+  }
+  // Check comfyuiService
+  if (dependencies.comfyuiService && typeof dependencies.comfyuiService.submitRequest === 'function') { // Now checks comfyuiService
+    initialLoggerForDepCheck.info('[TelegramBot] dependencies.comfyuiService IS VALID and has submitRequest method.');
+  } else {
+    initialLoggerForDepCheck.warn(
+      '[TelegramBot] dependencies.comfyuiService IS MISSING or INVALID or does not have submitRequest method!', 
+      { 
+        hasComfyuiService: !!dependencies.comfyuiService, // Changed key
+        serviceDetails: dependencies.comfyuiService ? JSON.stringify(Object.keys(dependencies.comfyuiService)) : 'N/A',
+        hasSubmitRequestMethod: dependencies.comfyuiService ? typeof dependencies.comfyuiService.submitRequest === 'function' : 'N/A'
+      }
+    );
+  }
 
   const {
-    comfyuiService,
-    pointsService,
-    sessionService,
-    workflowsService,
-    mediaService,
-    db,
-    logger = console,
-    appStartTime,
-    toolRegistry,
-    userSettingsService
+    comfyuiService,      // Directly use dependencies.comfyuiService
+    pointsService,       // Directly use dependencies.pointsService
+    sessionService,      // Directly use dependencies.sessionService
+    workflowsService,  // Directly use dependencies.workflowsService
+    mediaService,        // Directly use dependencies.mediaService
+    db,                  // Directly use dependencies.db
+    internal,            // Directly use dependencies.internal
+    logger = console,    // Use dependencies.logger or default
+    appStartTime,        // Directly use dependencies.appStartTime
+    toolRegistry,        // Directly use dependencies.toolRegistry
+    userSettingsService  // Directly use dependencies.userSettingsService
   } = dependencies;
   
   // Create the Telegram bot instance
@@ -362,7 +394,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             default:
               emoji = '😶😶😶';
           }
-          await bot.answerCallbackQuery(callbackQuery.id, { text: `Your rating of ${ratingType} has been recorded. ${emoji}`, show_alert: false });
+          await bot.answerCallbackQuery(callbackQuery.id, { text: `${emoji}`, show_alert: false });
         } catch (error) {
           logger.error(`[Bot CB] Error in rate_gen callback for generationId: ${generationId} (Telegram UserID: ${telegramUserId}):`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Failed to update rating.", show_alert: true });
@@ -487,13 +519,21 @@ function createTelegramBot(dependencies, token, options = {}) {
           }
 
           // 3. Extract necessary info (toolId, originalParams, original message context)
-          let toolId = generationRecord.serviceName;
-          if (generationRecord.requestPayload?.invoked_tool_id) toolId = generationRecord.requestPayload.invoked_tool_id;
-          else if (generationRecord.requestPayload?.tool_id) toolId = generationRecord.requestPayload.tool_id;
-          else if (generationRecord.metadata?.toolId) toolId = generationRecord.metadata.toolId;
-
           const originalParams = generationRecord.requestPayload || {};
           
+          // Log for toolId derivation
+          logger.info(`[Bot CB] tweak_gen: Deriving toolId. generationRecord.serviceName: '${generationRecord.serviceName}', generationRecord.metadata: ${JSON.stringify(generationRecord.metadata)}, requestPayload: ${JSON.stringify(generationRecord.requestPayload)}`);
+
+          let toolId = generationRecord.serviceName; // Fallback to serviceName if no specific toolId found
+          if (generationRecord.requestPayload?.invoked_tool_id) {
+            toolId = generationRecord.requestPayload.invoked_tool_id;
+          } else if (generationRecord.requestPayload?.tool_id) {
+            toolId = generationRecord.requestPayload.tool_id;
+          } else if (generationRecord.metadata?.toolId) {
+            toolId = generationRecord.metadata.toolId;
+          }
+          logger.info(`[Bot CB] tweak_gen: Resolved toolId: '${toolId}'`);
+
           const originalUserCommandMessageId = generationRecord.metadata?.telegramMessageId;
           const originalUserCommandChatId = generationRecord.metadata?.telegramChatId;
 
@@ -509,8 +549,11 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           // 4. Initialize pendingTweaks for this session
           const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
-          pendingTweaks[tweakSessionKey] = { ...originalParams }; // Initialize with original params
-          logger.info(`[Bot CB] tweak_gen: Initialized pendingTweaks for sessionKey: ${tweakSessionKey} with params: ${JSON.stringify(pendingTweaks[tweakSessionKey])}`);
+          pendingTweaks[tweakSessionKey] = { 
+            ...originalParams,
+            __canonicalToolId__: toolId // Store the canonicalToolId
+          }; 
+          logger.info(`[Bot CB] tweak_gen: Initialized pendingTweaks for sessionKey: ${tweakSessionKey} with params and __canonicalToolId__: ${JSON.stringify(pendingTweaks[tweakSessionKey])}`);
 
           // 5. Build and send the Tweak UI Menu
           const tweakMenu = await buildTweakUIMenu(
@@ -531,35 +574,52 @@ function createTelegramBot(dependencies, token, options = {}) {
             });
             await bot.answerCallbackQuery(callbackQuery.id, {text: "Opening tweak menu..."});
           } else {
-            logger.error(`[Bot CB] tweak_gen: Failed to build tweak UI menu for ${generationId}.`);
+            logger.error(`[Bot CB] tweak_gen: Failed to build tweak UI menu for ${generationId}. Menu object: ${JSON.stringify(tweakMenu)}`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not generate the tweak interface.", show_alert: true });
             // Clean up pending tweak session if menu build fails
             delete pendingTweaks[tweakSessionKey]; 
           }
 
         } catch (error) {
-          logger.error(`[Bot CB] Error in tweak_gen callback for ${generationId}:`, error.response?.data || error.message, error.stack);
+          let errorDetails = 'No details available';
+          try {
+            let loggableError = { message: error.message, stack: error.stack, name: error.name };
+            if (error.response && error.response.data) {
+              loggableError.responseData = error.response.data;
+            }
+            if (error.code) {
+                loggableError.code = error.code;
+            }
+            errorDetails = JSON.stringify(loggableError, null, 2);
+          } catch (stringifyError) {
+            logger.error(`[Bot CB] tweak_gen: Failed to stringify error object: ${stringifyError.message}`);
+            errorDetails = `Message: ${error.message}, Stack: ${error.stack}, Name: ${error.name}, Code: ${error.code || 'N/A'}`;
+          }
+          logger.error(`[Bot CB] Error in tweak_gen callback for ${generationId}: ${errorDetails}`);
+          
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error initiating tweak mode.", show_alert: true });
-          // Ensure cleanup if error occurs before menu is sent but after session init
-          const tweakSessionKey = `${generationId}_${callbackQuery.from.id.toString()}`; // Reconstruct key for cleanup
-          // A bit risky if clickerMasterAccountId wasn't fetched, but MAID is part of the key name now.
-          // We need clickerMasterAccountId for the key, so use that if available.
-          // Let's refine the key for cleanup if clickerMasterAccountId was fetched:
-          // if (clickerMasterAccountId) { delete pendingTweaks[`${generationId}_${clickerMasterAccountId}`]; } 
-          // For simplicity now, assuming it might have been set if error is later.
-          // The key was defined as const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
-          // So, if clickerMasterAccountId was defined, it will be used. If not, that part of the code wouldn't have run.
-          // This implies the catch block for tweak_gen needs access to clickerMasterAccountId if it was set.
-          // Or, we ensure tweakSessionKey is defined outside the try if used in general catch for this callback type.
-        }
-      } else if (data.startsWith('tweak_param_edit:')) {
-        const parts = data.split(':');
-        const generationId = parts[1];
-        const canonicalToolId = parts[2];
-        const paramName = parts.slice(3).join(':'); // Param name might have colons
-        const clickerTelegramId = callbackQuery.from.id.toString();
+          
+          // We need clickerMasterAccountId to safely delete the session key
+          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: clickerTelegramId, // clickerTelegramId should be defined earlier
+            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
+          });
+          const clickerMasterAccountIdForCatch = findOrCreateUserResponse.data.masterAccountId;
 
-        logger.info(`[Bot CB] tweak_param_edit callback for GenID: ${generationId}, ToolID: ${canonicalToolId}, Param: ${paramName}`);
+          if (clickerMasterAccountIdForCatch) {
+            const tweakSessionKey = `${generationId}_${clickerMasterAccountIdForCatch}`;
+            delete pendingTweaks[tweakSessionKey];
+            logger.info(`[Bot CB] tweak_gen (catch): Cleared pendingTweaks for sessionKey: ${tweakSessionKey} after error.`);
+          } else {
+            logger.warn(`[Bot CB] tweak_gen (catch): Could not retrieve MAID for ${clickerTelegramId} to clear session after error.`);
+          }
+        }
+      } else if (data.startsWith('tpe:')) {
+        const parts = data.substring('tpe:'.length).split(':');
+        const generationId = parts[0];
+        const paramName = parts.slice(1).join(':'); // Param name might have colons
+        const clickerTelegramId = callbackQuery.from.id.toString();
 
         try {
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
@@ -570,13 +630,25 @@ function createTelegramBot(dependencies, token, options = {}) {
           const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
 
           if (!clickerMasterAccountId) {
-            logger.error(`[Bot CB] tweak_param_edit: Could not find/create MAID for ${clickerTelegramId}`);
+            logger.error(`[Bot CB] tpe: Could not find/create MAID for ${clickerTelegramId}`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Your account couldn\'t be identified.", show_alert: true });
             return;
           }
 
+          const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
+          const sessionData = pendingTweaks[tweakSessionKey];
+
+          if (!sessionData || !sessionData.__canonicalToolId__) {
+            logger.error(`[Bot CB] tpe: Critical data missing from session ${tweakSessionKey}. sessionData: ${JSON.stringify(sessionData)}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Tweak session data is corrupt or tool info is missing.", show_alert: true });
+            delete pendingTweaks[tweakSessionKey]; // Clean up potentially corrupt session
+            return;
+          }
+          const canonicalToolId = sessionData.__canonicalToolId__; // Retrieve from session
+          
+          logger.info(`[Bot CB] tpe: callback for GenID: ${generationId}, ToolID: ${canonicalToolId}, Param: ${paramName}`);
+          
           // We need settingsMenuManager for buildTweakParamEditPrompt
-          // Assuming it's imported and available as `settingsMenuManager` or functions are directly available.
           const editMenu = await buildTweakParamEditPrompt(
             clickerMasterAccountId,
             generationId,
@@ -594,13 +666,27 @@ function createTelegramBot(dependencies, token, options = {}) {
               parse_mode: 'MarkdownV2' // Assuming prompt is MarkdownV2
             });
           } else {
-            logger.error(`[Bot CB] tweak_param_edit: Failed to build param edit prompt for ${paramName}.`);
+            logger.error(`[Bot CB] tpe: Failed to build param edit prompt for ${paramName}.`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Error opening edit prompt.", show_alert: true });
           }
           await bot.answerCallbackQuery(callbackQuery.id); // Answer silently after edit or error
 
         } catch (error) {
-          logger.error(`[Bot CB] Error in tweak_param_edit for ${paramName}:`, error.message, error.stack);
+          let errorDetails = 'No details available';
+          try {
+            let loggableError = { message: error.message, stack: error.stack, name: error.name };
+            if (error.response && error.response.data) {
+              loggableError.responseData = error.response.data;
+            }
+            if (error.code) {
+                loggableError.code = error.code;
+            }
+            errorDetails = JSON.stringify(loggableError, null, 2);
+          } catch (stringifyError) {
+            logger.error(`[Bot CB] tpe: Failed to stringify error object: ${stringifyError.message}`);
+            errorDetails = `Message: ${error.message}, Stack: ${error.stack}, Name: ${error.name}, Code: ${error.code || 'N/A'}`;
+          }
+          logger.error(`[Bot CB] Error in tpe callback for GenID ${generationId}, Param ${paramName}: ${errorDetails}`);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error processing parameter edit.", show_alert: true });
         }
       } else if (data.startsWith('tweak_cancel:')) {
@@ -623,7 +709,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] tweak_cancel: Cleared pendingTweaks for sessionKey: ${tweakSessionKey}`);
           }
 
-          await bot.editMessageText("Tweak session cancelled.", {
+          await bot.editMessageText("Tweak session cancelled 😤.", {
             chat_id: message.chat.id,
             message_id: message.message_id,
             reply_markup: null // Remove keyboard
@@ -753,7 +839,16 @@ function createTelegramBot(dependencies, token, options = {}) {
         const generationId = parts[1]; // This is the ID of the *original* generation being tweaked
         const clickerTelegramId = callbackQuery.from.id.toString();
 
-        logger.info(`[Bot CB] tweak_apply callback for original GenID: ${generationId} from UserID: ${clickerTelegramId}`);
+        // ADD LOGGING FOR DEPENDENCIES WITHIN THIS CALLBACK SCOPE
+        logger.info(`[Bot CB] tweak_apply: ENTERING for original GenID: ${generationId} from UserID: ${clickerTelegramId}`);
+        logger.info(`[Bot CB] tweak_apply: Inspecting dependencies object IN CALLBACK:`);
+        logger.info(`[Bot CB] tweak_apply: Keys in dependencies: ${JSON.stringify(Object.keys(dependencies))}`); // This will show the aliased names
+        logger.info(`[Bot CB] tweak_apply: typeof comfyuiService: ${typeof comfyuiService}`);
+        logger.info(`[Bot CB] tweak_apply: typeof comfyuiService?.submitRequest: ${typeof comfyuiService?.submitRequest}`);
+        logger.info(`[Bot CB] tweak_apply: typeof workflowsService: ${typeof workflowsService}`);
+        logger.info(`[Bot CB] tweak_apply: typeof workflowsService?.getToolById: ${typeof workflowsService?.getToolById}`); // CHECKING getToolById
+
+        // logger.info(`[Bot CB] tweak_apply callback for original GenID: ${generationId} from UserID: ${clickerTelegramId}`); // Original log, can be removed
 
         try {
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
@@ -789,16 +884,26 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           if (!originalGenerationRecord) {
             logger.error(`[Bot CB] tweak_apply: Original generation record ${generationId} not found.`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Original generation details missing.", show_alert: true });
-            delete pendingTweaks[tweakSessionKey]; // Clean up failed session
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation not found.' });
             return;
           }
 
-          let toolId = originalGenerationRecord.serviceName; // Fallback
-          if (originalGenerationRecord.requestPayload?.invoked_tool_id) toolId = originalGenerationRecord.requestPayload.invoked_tool_id;
-          else if (originalGenerationRecord.requestPayload?.tool_id) toolId = originalGenerationRecord.requestPayload.tool_id;
-          else if (originalGenerationRecord.metadata?.toolId) toolId = originalGenerationRecord.metadata.toolId;
-        
+          const toolId = originalGenerationRecord.metadata?.toolId; // Corrected: toolId from metadata
+          if (!toolId) {
+            logger.error(`[Bot CB] tweak_apply: Original generation ${generationId} has no toolId in metadata.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no tool ID.' });
+            return;
+          }
+
+          // Use getToolById instead of getWorkflowById
+          const workflow = await workflowsService.getToolById(toolId);
+
+          if (!workflow) {
+            logger.error(`[Bot CB] tweak_apply: Workflow not found for toolId ${toolId}. Original GenID: ${generationId}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no corresponding workflow.' });
+            return;
+          }
+
           const originalUserCommandMessageId = originalGenerationRecord.metadata?.telegramMessageId;
           const originalUserCommandChatId = originalGenerationRecord.metadata?.telegramChatId;
           const originalPlatformContext = originalGenerationRecord.metadata?.platformContext; // If used
@@ -808,6 +913,16 @@ function createTelegramBot(dependencies, token, options = {}) {
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Critical context from original generation is missing.", show_alert: true });
             delete pendingTweaks[tweakSessionKey];
             return;
+          }
+
+          // Determine initiatingEventId for the new generation
+          let initiatingEventIdForNewGen;
+          if (originalGenerationRecord.metadata?.initiatingEventId) {
+            initiatingEventIdForNewGen = originalGenerationRecord.metadata.initiatingEventId;
+            logger.info(`[Bot CB] tweak_apply: Copied initiatingEventId '${initiatingEventIdForNewGen}' from parent generation ${generationId}.`);
+          } else {
+            initiatingEventIdForNewGen = uuidv4();
+            logger.info(`[Bot CB] tweak_apply: Parent generation ${generationId} missing initiatingEventId. Generated new one: '${initiatingEventIdForNewGen}'.`);
           }
 
           // Construct the payload for the new generation request
@@ -825,19 +940,95 @@ function createTelegramBot(dependencies, token, options = {}) {
                 firstName: callbackQuery.from.first_name
               },
               parentGenerationId: generationId, // Link to the generation that was tweaked
-              isTweaked: true
+              isTweaked: true,
+              initiatingEventId: initiatingEventIdForNewGen // Store it in metadata as well
             }
           };
 
           logger.info(`[Bot CB] tweak_apply: Dispatching new tweaked generation for tool ${newGenerationPayload.toolId}. Original GenID: ${generationId}.`);
 
-          // 1. Log the new generation intent to get a new generationId
+          // Step 1: Fetch/Create DB UserSession to get its _id
+          let dbUserSessionId;
+          try {
+            const dbSessionResponse = await internalApiClient.post('/sessions', {
+              masterAccountId: clickerMasterAccountId,
+              platform: 'telegram'
+            });
+            if (dbSessionResponse && dbSessionResponse.data && dbSessionResponse.data._id) {
+              dbUserSessionId = dbSessionResponse.data._id;
+              logger.info(`[Bot CB] tweak_apply: Successfully fetched/created DB UserSession. ID: ${dbUserSessionId} for MAID ${clickerMasterAccountId}`);
+            } else {
+              logger.error(`[Bot CB] tweak_apply: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponse.data)}`);
+              // Critical step failed, alert user and abort
+              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for tweak.", show_alert: true });
+              return;
+            }
+          } catch (dbSessionError) {
+            logger.error(`[Bot CB] tweak_apply: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionError.message}.`, dbSessionError.response?.data || dbSessionError);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for tweak.", show_alert: true });
+            return;
+          }
+
+          // Step 2: Log the User Event for this tweak action
+          let newEventId;
+          try {
+            const eventPayload = {
+              masterAccountId: clickerMasterAccountId,
+              sessionId: dbUserSessionId, // Use the DB UserSession ID
+              eventType: 'tweak_generation_request',
+              eventData: {
+                originalGenerationId: generationId,
+                toolId: newGenerationPayload.toolId,
+                tweakedParameters: finalTweakedParams // Contains __canonicalToolId__ if stored
+              },
+              sourcePlatform: 'telegram'
+            };
+            const eventResponse = await internalApiClient.post('/events', eventPayload);
+            if (eventResponse && eventResponse.data && eventResponse.data._id) {
+              newEventId = eventResponse.data._id;
+              logger.info(`[Bot CB] tweak_apply: Successfully logged UserEvent for tweak. EventID: ${newEventId}`);
+            } else {
+              logger.error(`[Bot CB] tweak_apply: Failed to log UserEvent or get _id. Response: ${JSON.stringify(eventResponse.data)}`);
+              // Non-critical for generation itself, but important for audit. Log and continue.
+              // OR: Decide if this is critical enough to stop. For now, let's assume we can proceed.
+            }
+          } catch (eventLogError) {
+            logger.error(`[Bot CB] tweak_apply: Error logging UserEvent: ${eventLogError.message}.`, eventLogError.response?.data || eventLogError);
+            // Continue, newEventId will be undefined. Generation logging will fail if API requires it.
+          }
+          
+          // If newEventId is still undefined, the /generations POST will likely fail due to schema validation.
+          // We should handle this more gracefully. For now, the API will reject.
+          // Consider using the original initiatingEventId if this step fails and parent has one?
+          // For now, let's enforce creating a new event or using a valid existing one.
+          // The previous logic for copying initiatingEventId if present in parent is GONE.
+          // We MUST have a newEventId (or make the API for /generations allow it to be optional).
+          // Let's re-introduce the logic to use parent's initiatingEventId if it exists AND new event logging fails.
+          
+          let finalInitiatingEventId = newEventId; // Prefer the new event
+          if (!finalInitiatingEventId && originalGenerationRecord.metadata?.initiatingEventId) {
+              // Only use parent's if our attempt to create a new one failed AND parent had one.
+              finalInitiatingEventId = originalGenerationRecord.metadata.initiatingEventId;
+              logger.warn(`[Bot CB] tweak_apply: Failed to log new UserEvent, falling back to parent's initiatingEventId: ${finalInitiatingEventId}`);
+          } else if (!finalInitiatingEventId) {
+              // If still no eventId, and parent didn't have one either, we have a problem.
+              // The API for POST /generations expects initiatingEventId.
+              // For robustness, we might generate a fallback UUID here *if and only if* the API allows it.
+              // Given the previous "Invalid initiatingEventId format" error for UUIDs, this is unlikely.
+              // Best to make sure the API for POST /events is robust.
+              // If it's truly missing, the POST /generations will fail with the schema validation as intended.
+              logger.error(`[Bot CB] tweak_apply: Critical - No valid initiatingEventId could be determined (new event failed, parent had none). POST /generations will likely fail.`);
+          }
+
+          // 3. Log the new generation intent
           const generationToLog = {
             toolId: newGenerationPayload.toolId,
-            requestPayload: finalTweakedParams, // This is newGenerationPayload.requestPayload
+            requestPayload: finalTweakedParams,
             masterAccountId: clickerMasterAccountId,
             platform: 'telegram',
-            status: 'pending', // Initial status
+            sessionId: dbUserSessionId, 
+            initiatingEventId: finalInitiatingEventId, // Use the eventId from the logged UserEvent
+            status: 'pending',
             deliveryStatus: 'pending',
             notificationPlatform: 'telegram', // So notifier knows
             serviceName: originalGenerationRecord.serviceName || 'ComfyUI', // Carry over service name
@@ -849,11 +1040,11 @@ function createTelegramBot(dependencies, token, options = {}) {
           const newGeneratedId = newGenerationLogResponse.data._id;
           logger.info(`[Bot CB] tweak_apply: New generation successfully logged with ID: ${newGeneratedId}.`);
 
-          // 2. Dispatch to the actual service (e.g., ComfyUI)
+          // 4. Dispatch to the actual service (e.g., ComfyUI)
           let run_id;
           // Determine deploymentId - dynamicCommands.js uses tool.metadata.deploymentId
           // We should use what was likely used for the original generation.
-          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId; // Fallback to workflowId if deploymentId specifically isn't in metadata.
+          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId || originalGenerationRecord.metadata?.toolId;
           
           if (deploymentId && typeof deploymentId === 'string' && deploymentId.startsWith('comfy-')) {
             deploymentId = deploymentId.substring(6);
@@ -866,8 +1057,8 @@ function createTelegramBot(dependencies, token, options = {}) {
           
           logger.info(`[Bot CB] tweak_apply: Submitting to ComfyUI. DeploymentID: ${deploymentId}, GenID (new): ${newGeneratedId}. Inputs: ${JSON.stringify(finalTweakedParams)}`);
 
-          if (originalGenerationRecord.serviceName === 'ComfyUI' && dependencies.comfyuiService) {
-            const submissionResult = await dependencies.comfyuiService.submitRequest({
+          if (originalGenerationRecord.serviceName === 'ComfyUI' && comfyuiService) {
+            const submissionResult = await comfyuiService.submitRequest({
               deploymentId: deploymentId, // This should be the specific Comfy workflow/deployment identifier
               inputs: finalTweakedParams, // These are the tweaked parameters
             });
@@ -884,7 +1075,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' }); // Update status to processing
           } else {
             // Handle other services if necessary, or throw error if service unknown/unsupported for tweak
-            logger.error(`[Bot CB] tweak_apply: Service ${originalGenerationRecord.serviceName} not supported for direct tweak dispatch or service not available.`);
+            logger.error(`[Bot CB] tweak_apply: Service ${originalGenerationRecord.serviceName} not supported for direct tweak dispatch or comfyui service in dependencies is missing/invalid. Has comfyuiService: ${!!comfyuiService}`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for tweaked dispatch.` });
             throw new Error(`Service ${originalGenerationRecord.serviceName} not supported for tweaked generation.`);
           }
@@ -912,6 +1103,13 @@ function createTelegramBot(dependencies, token, options = {}) {
         const clickerTelegramId = callbackQuery.from.id.toString();
 
         logger.info(`[Bot CB] rerun_gen callback for Original GenID: ${originalGenerationId} from UserID: ${clickerTelegramId}`);
+        // ADD LOGGING FOR DEPENDENCIES SIMILAR TO TWEAK_APPLY IF NEEDED
+        logger.info(`[Bot CB] rerun_gen: Inspecting dependencies object IN CALLBACK:`);
+        logger.info(`[Bot CB] rerun_gen: Keys in dependencies: ${JSON.stringify(Object.keys(dependencies))}`); // This will show aliased names
+        logger.info(`[Bot CB] rerun_gen: typeof comfyuiService: ${typeof comfyuiService}`);
+        logger.info(`[Bot CB] rerun_gen: typeof comfyuiService?.submitRequest: ${typeof comfyuiService?.submitRequest}`);
+        logger.info(`[Bot CB] rerun_gen: typeof workflowsService: ${typeof workflowsService}`);
+        logger.info(`[Bot CB] rerun_gen: typeof workflowsService?.getToolById: ${typeof workflowsService?.getToolById}`); // CHECKING getToolById
 
         try {
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
@@ -937,11 +1135,22 @@ function createTelegramBot(dependencies, token, options = {}) {
             return;
           }
 
-          let toolId = originalGenerationRecord.serviceName;
-          if (originalGenerationRecord.requestPayload?.invoked_tool_id) toolId = originalGenerationRecord.requestPayload.invoked_tool_id;
-          else if (originalGenerationRecord.requestPayload?.tool_id) toolId = originalGenerationRecord.requestPayload.tool_id;
-          else if (originalGenerationRecord.metadata?.toolId) toolId = originalGenerationRecord.metadata.toolId;
-          
+          const toolId = originalGenerationRecord.metadata?.toolId; // Corrected: toolId from metadata
+          if (!toolId) {
+            logger.error(`[Bot CB] rerun_gen: Original generation ${originalGenerationId} has no toolId in metadata.`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no tool ID.' });
+            return;
+          }
+
+          // Use getToolById instead of getWorkflowById
+          const workflow = await workflowsService.getToolById(toolId);
+
+          if (!workflow) {
+            logger.error(`[Bot CB] rerun_gen: Workflow not found for toolId ${toolId}. Original GenID: ${originalGenerationId}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Original generation has no corresponding workflow.' });
+            return;
+          }
+
           const originalUserCommandMessageId = originalGenerationRecord.metadata?.telegramMessageId;
           const originalUserCommandChatId = originalGenerationRecord.metadata?.telegramChatId;
           const originalPlatformContext = originalGenerationRecord.metadata?.platformContext;
@@ -967,6 +1176,16 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: No input_seed found. Generated random seed: ${newRequestPayload.input_seed}`);
           }
 
+          // Determine initiatingEventId for the rerun generation
+          let initiatingEventIdForRerun;
+          if (originalGenerationRecord.metadata?.initiatingEventId) {
+            initiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
+            logger.info(`[Bot CB] rerun_gen: Copied initiatingEventId '${initiatingEventIdForRerun}' from parent generation ${originalGenerationId}.`);
+          } else {
+            initiatingEventIdForRerun = uuidv4();
+            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} missing initiatingEventId. Generated new one: '${initiatingEventIdForRerun}'.`);
+          }
+
           const rerunGenerationMetadata = {
             telegramMessageId: originalUserCommandMessageId, // So new gen replies to original command
             telegramChatId: originalUserCommandChatId,
@@ -977,18 +1196,74 @@ function createTelegramBot(dependencies, token, options = {}) {
             },
             parentGenerationId: originalGenerationId,
             isRerun: true,
-            // Carry over other relevant metadata if needed, e.g., original costRate if you want to log it again.
-            costRate: originalGenerationRecord.metadata?.costRate 
+            costRate: originalGenerationRecord.metadata?.costRate,
+            initiatingEventId: initiatingEventIdForRerun // Store it in metadata as well
           };
           
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);
 
-          // 1. Log the new generation intent
+          // Step 1: Fetch/Create DB UserSession for rerun
+          let dbUserSessionIdForRerun;
+          try {
+            const dbSessionResponseRerun = await internalApiClient.post('/sessions', {
+              masterAccountId: clickerMasterAccountId,
+              platform: 'telegram'
+            });
+            if (dbSessionResponseRerun && dbSessionResponseRerun.data && dbSessionResponseRerun.data._id) {
+              dbUserSessionIdForRerun = dbSessionResponseRerun.data._id;
+              logger.info(`[Bot CB] rerun_gen: Successfully fetched/created DB UserSession. ID: ${dbUserSessionIdForRerun} for MAID ${clickerMasterAccountId}`);
+            } else {
+              logger.error(`[Bot CB] rerun_gen: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponseRerun.data)}`);
+              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for rerun.", show_alert: true });
+              return;
+            }
+          } catch (dbSessionErrorRerun) {
+            logger.error(`[Bot CB] rerun_gen: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionErrorRerun.message}.`, dbSessionErrorRerun.response?.data || dbSessionErrorRerun);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for rerun.", show_alert: true });
+            return;
+          }
+
+          // Step 2: Log the User Event for this rerun action
+          let newEventIdForRerun;
+          try {
+            const eventPayloadRerun = {
+              masterAccountId: clickerMasterAccountId,
+              sessionId: dbUserSessionIdForRerun, // Use the DB UserSession ID
+              eventType: 'rerun_generation_request',
+              eventData: {
+                originalGenerationId: originalGenerationId,
+                toolId: toolId,
+                rerunParams: newRequestPayload 
+              },
+              sourcePlatform: 'telegram'
+            };
+            const eventResponseRerun = await internalApiClient.post('/events', eventPayloadRerun);
+            if (eventResponseRerun && eventResponseRerun.data && eventResponseRerun.data._id) {
+              newEventIdForRerun = eventResponseRerun.data._id;
+              logger.info(`[Bot CB] rerun_gen: Successfully logged UserEvent for rerun. EventID: ${newEventIdForRerun}`);
+            } else {
+              logger.error(`[Bot CB] rerun_gen: Failed to log UserEvent or get _id. Response: ${JSON.stringify(eventResponseRerun.data)}`);
+            }
+          } catch (eventLogErrorRerun) {
+            logger.error(`[Bot CB] rerun_gen: Error logging UserEvent: ${eventLogErrorRerun.message}.`, eventLogErrorRerun.response?.data || eventLogErrorRerun);
+          }
+
+          let finalInitiatingEventIdForRerun = newEventIdForRerun;
+          if (!finalInitiatingEventIdForRerun && originalGenerationRecord.metadata?.initiatingEventId) {
+              finalInitiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
+              logger.warn(`[Bot CB] rerun_gen: Failed to log new UserEvent, falling back to parent's initiatingEventId: ${finalInitiatingEventIdForRerun}`);
+          } else if (!finalInitiatingEventIdForRerun) {
+              logger.error(`[Bot CB] rerun_gen: Critical - No valid initiatingEventId could be determined. POST /generations will likely fail.`);
+          }
+          
+          // 3. Log the new generation intent
           const generationToLog = {
             toolId: toolId,
             requestPayload: newRequestPayload,
             masterAccountId: clickerMasterAccountId,
             platform: 'telegram',
+            sessionId: dbUserSessionIdForRerun, 
+            initiatingEventId: finalInitiatingEventIdForRerun, // Use the eventId from logged UserEvent
             status: 'pending',
             deliveryStatus: 'pending',
             notificationPlatform: 'telegram',
@@ -1001,9 +1276,9 @@ function createTelegramBot(dependencies, token, options = {}) {
           const newGeneratedId = newGenerationLogResponse.data._id;
           logger.info(`[Bot CB] rerun_gen: New generation (rerun) successfully logged with ID: ${newGeneratedId}.`);
 
-          // 2. Dispatch to the actual service (e.g., ComfyUI)
+          // 4. Dispatch to the actual service (e.g., ComfyUI)
           let run_id;
-          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId;
+          let deploymentId = originalGenerationRecord.metadata?.deploymentId || originalGenerationRecord.workflowId || originalGenerationRecord.metadata?.toolId;
           if (deploymentId && typeof deploymentId === 'string' && deploymentId.startsWith('comfy-')) {
             deploymentId = deploymentId.substring(6);
           }
@@ -1013,8 +1288,8 @@ function createTelegramBot(dependencies, token, options = {}) {
             throw new Error('ComfyUI Deployment ID not found for rerun generation.');
           }
 
-          if (originalGenerationRecord.serviceName === 'ComfyUI' && dependencies.comfyuiService) {
-            const submissionResult = await dependencies.comfyuiService.submitRequest({
+          if (originalGenerationRecord.serviceName === 'ComfyUI' && comfyuiService) {
+            const submissionResult = await comfyuiService.submitRequest({
               deploymentId: deploymentId,
               inputs: newRequestPayload,
             });
@@ -1029,7 +1304,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}. Linking...`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
           } else {
-            logger.error(`[Bot CB] rerun_gen: Service ${originalGenerationRecord.serviceName} not supported or not available.`);
+            logger.error(`[Bot CB] rerun_gen: Service ${originalGenerationRecord.serviceName} not supported or comfyui service in dependencies is missing/invalid. Has comfyuiService: ${!!comfyuiService}`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for rerun.` });
             throw new Error(`Service ${originalGenerationRecord.serviceName} not supported for rerun.`);
           }

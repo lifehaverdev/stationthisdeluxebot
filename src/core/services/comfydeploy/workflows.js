@@ -142,16 +142,13 @@ class WorkflowsService {
 
   /**
    * Get a tool by its ID.
-   * @param {string} toolId - The ID of the tool.
+   * @param {string} toolId - The ID of the tool (e.g., comfy-xxxxxxxx).
    * @returns {Promise<ToolDefinition|null>} - ToolDefinition object or null if not found.
    */
   async getToolById(toolId) {
-    await this.cacheManager.ensureInitialized(); // Ensure registry is populated
-    const tool = this.toolRegistry.getToolById(toolId);
-    if (!tool && DEBUG_LOGGING_ENABLED) {
-        this.logger.warn(`[getToolById] Tool with ID "${toolId}" not found in ToolRegistry.`);
-    }
-    return tool || null;
+    await this.cacheManager.ensureInitialized();
+    // The cacheManager's byName map is also indexed by toolId as per its _buildIndexes method
+    return this.cacheManager.cache.byName.get(toolId) || null;
   }
   
   /**

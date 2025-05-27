@@ -8,6 +8,9 @@
 const DEFAULT_CLEAN_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
 const DEFAULT_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours for asset cache expiry
 
+// Import uuid v4
+const { v4: uuidv4 } = require('uuid');
+
 class SessionService {
   /**
    * Create a new Session Service
@@ -63,6 +66,7 @@ class SessionService {
     if (!this.sessions[userId]) {
       const newSession = {
         ...this.createDefaultUserData(),
+        sessionId: uuidv4(), // Add a UUIDv4 sessionId
         created: Date.now(),
         lastTouch: Date.now()
       };
@@ -76,6 +80,11 @@ class SessionService {
     // Update lastTouch if touch is true
     if (touch) {
       this.sessions[userId].lastTouch = Date.now();
+    }
+    
+    // Ensure existing sessions also have a sessionId (for backward compatibility or if created before this change)
+    if (!this.sessions[userId].sessionId) {
+      this.sessions[userId].sessionId = uuidv4();
     }
     
     return this.sessions[userId];
