@@ -941,7 +941,8 @@ function createTelegramBot(dependencies, token, options = {}) {
               },
               parentGenerationId: generationId, // Link to the generation that was tweaked
               isTweaked: true,
-              initiatingEventId: initiatingEventIdForNewGen // Store it in metadata as well
+              initiatingEventId: initiatingEventIdForNewGen, // Store it in metadata as well
+              costRate: originalGenerationRecord.metadata?.costRate // ADDED: Carry over costRate
             }
           };
 
@@ -1196,7 +1197,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             },
             parentGenerationId: originalGenerationId,
             isRerun: true,
-            costRate: originalGenerationRecord.metadata?.costRate,
+            costRate: originalGenerationRecord.metadata?.costRate, // ADDED: Carry over costRate
             initiatingEventId: initiatingEventIdForRerun // Store it in metadata as well
           };
           
