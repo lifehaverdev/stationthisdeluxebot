@@ -31,43 +31,43 @@ let pendingTweaks = {};
  * @returns {Object} - Configured bot instance
  */
 function createTelegramBot(dependencies, token, options = {}) {
-  const initialLoggerForDepCheck = dependencies.logger || console;
-  initialLoggerForDepCheck.info('[TelegramBot] createTelegramBot called. Inspecting INCOMING dependencies object:');
-  initialLoggerForDepCheck.info(`[TelegramBot] Keys in incoming dependencies: ${JSON.stringify(Object.keys(dependencies))}`);
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService: ${typeof dependencies.comfyuiService}`);
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService?.submitRequest: ${typeof dependencies.comfyuiService?.submitRequest}`);
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService: ${typeof dependencies.workflowsService}`);
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService?.getToolById: ${typeof dependencies.workflowsService?.getToolById}`); // CHECKING getToolById
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService (direct check): ${typeof dependencies.sessionService}`);
-  initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService?.getSession (direct check): ${typeof dependencies.sessionService?.getSession}`);
+  // const initialLoggerForDepCheck = dependencies.logger || console; // REMOVE
+  // initialLoggerForDepCheck.info('[TelegramBot] createTelegramBot called. Inspecting INCOMING dependencies object:'); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] Keys in incoming dependencies: ${JSON.stringify(Object.keys(dependencies))}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService: ${typeof dependencies.comfyuiService}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.comfyuiService?.submitRequest: ${typeof dependencies.comfyuiService?.submitRequest}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService: ${typeof dependencies.workflowsService}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.workflowsService?.getToolById: ${typeof dependencies.workflowsService?.getToolById}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService (direct check): ${typeof dependencies.sessionService}`); // REMOVE
+  // initialLoggerForDepCheck.info(`[TelegramBot] typeof dependencies.sessionService?.getSession (direct check): ${typeof dependencies.sessionService?.getSession}`); // REMOVE
 
   // OLD DIAGNOSTIC LOGS (can be removed later if the above is sufficient)
   // Check sessionService
-  if (dependencies.sessionService && typeof dependencies.sessionService.getSession === 'function') { 
-    initialLoggerForDepCheck.info('[TelegramBot] dependencies.sessionService IS VALID and has getSession method.');
-  } else {
-    initialLoggerForDepCheck.warn(
-      '[TelegramBot] dependencies.sessionService IS MISSING or INVALID or does not have getSession method!', 
-      { 
-        hasSessionService: !!dependencies.sessionService,
-        serviceDetails: dependencies.sessionService ? JSON.stringify(Object.keys(dependencies.sessionService)) : 'N/A',
-        hasGetSessionMethod: dependencies.sessionService ? typeof dependencies.sessionService.getSession === 'function' : 'N/A'
-      }
-    );
-  }
-  // Check comfyuiService
-  if (dependencies.comfyuiService && typeof dependencies.comfyuiService.submitRequest === 'function') { // Now checks comfyuiService
-    initialLoggerForDepCheck.info('[TelegramBot] dependencies.comfyuiService IS VALID and has submitRequest method.');
-  } else {
-    initialLoggerForDepCheck.warn(
-      '[TelegramBot] dependencies.comfyuiService IS MISSING or INVALID or does not have submitRequest method!', 
-      { 
-        hasComfyuiService: !!dependencies.comfyuiService, // Changed key
-        serviceDetails: dependencies.comfyuiService ? JSON.stringify(Object.keys(dependencies.comfyuiService)) : 'N/A',
-        hasSubmitRequestMethod: dependencies.comfyuiService ? typeof dependencies.comfyuiService.submitRequest === 'function' : 'N/A'
-      }
-    );
-  }
+  // if (dependencies.sessionService && typeof dependencies.sessionService.getSession === 'function') { 
+  //   initialLoggerForDepCheck.info('[TelegramBot] dependencies.sessionService IS VALID and has getSession method.');
+  // } else {
+  //   initialLoggerForDepCheck.warn(
+  //     '[TelegramBot] dependencies.sessionService IS MISSING or INVALID or does not have getSession method!', 
+  //     { 
+  //       hasSessionService: !!dependencies.sessionService,
+  //       serviceDetails: dependencies.sessionService ? JSON.stringify(Object.keys(dependencies.sessionService)) : 'N/A',
+  //       hasGetSessionMethod: dependencies.sessionService ? typeof dependencies.sessionService.getSession === 'function' : 'N/A'
+  //     }
+  //   );
+  // }
+  // // Check comfyuiService
+  // if (dependencies.comfyuiService && typeof dependencies.comfyuiService.submitRequest === 'function') { // Now checks comfyuiService
+  //   initialLoggerForDepCheck.info('[TelegramBot] dependencies.comfyuiService IS VALID and has submitRequest method.');
+  // } else {
+  //   initialLoggerForDepCheck.warn(
+  //     '[TelegramBot] dependencies.comfyuiService IS MISSING or INVALID or does not have submitRequest method!', 
+  //     { 
+  //       hasComfyuiService: !!dependencies.comfyuiService, // Changed key
+  //       serviceDetails: dependencies.comfyuiService ? JSON.stringify(Object.keys(dependencies.comfyuiService)) : 'N/A',
+  //       hasSubmitRequestMethod: dependencies.comfyuiService ? typeof dependencies.comfyuiService.submitRequest === 'function' : 'N/A'
+  //     }
+  //   );
+  // }
 
   const {
     comfyuiService,      // Directly use dependencies.comfyuiService
@@ -840,15 +840,7 @@ function createTelegramBot(dependencies, token, options = {}) {
         const clickerTelegramId = callbackQuery.from.id.toString();
 
         // ADD LOGGING FOR DEPENDENCIES WITHIN THIS CALLBACK SCOPE
-        logger.info(`[Bot CB] tweak_apply: ENTERING for original GenID: ${generationId} from UserID: ${clickerTelegramId}`);
-        logger.info(`[Bot CB] tweak_apply: Inspecting dependencies object IN CALLBACK:`);
-        logger.info(`[Bot CB] tweak_apply: Keys in dependencies: ${JSON.stringify(Object.keys(dependencies))}`); // This will show the aliased names
-        logger.info(`[Bot CB] tweak_apply: typeof comfyuiService: ${typeof comfyuiService}`);
-        logger.info(`[Bot CB] tweak_apply: typeof comfyuiService?.submitRequest: ${typeof comfyuiService?.submitRequest}`);
-        logger.info(`[Bot CB] tweak_apply: typeof workflowsService: ${typeof workflowsService}`);
-        logger.info(`[Bot CB] tweak_apply: typeof workflowsService?.getToolById: ${typeof workflowsService?.getToolById}`); // CHECKING getToolById
-
-        // logger.info(`[Bot CB] tweak_apply callback for original GenID: ${generationId} from UserID: ${clickerTelegramId}`); // Original log, can be removed
+        logger.info(`[Bot CB] tweak_apply callback for original GenID: ${generationId} from UserID: ${clickerTelegramId}`);
 
         try {
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
@@ -1106,12 +1098,6 @@ function createTelegramBot(dependencies, token, options = {}) {
 
         logger.info(`[Bot CB] rerun_gen callback for Original GenID: ${originalGenerationId} from UserID: ${clickerTelegramId}`);
         // ADD LOGGING FOR DEPENDENCIES SIMILAR TO TWEAK_APPLY IF NEEDED
-        logger.info(`[Bot CB] rerun_gen: Inspecting dependencies object IN CALLBACK:`);
-        logger.info(`[Bot CB] rerun_gen: Keys in dependencies: ${JSON.stringify(Object.keys(dependencies))}`); // This will show aliased names
-        logger.info(`[Bot CB] rerun_gen: typeof comfyuiService: ${typeof comfyuiService}`);
-        logger.info(`[Bot CB] rerun_gen: typeof comfyuiService?.submitRequest: ${typeof comfyuiService?.submitRequest}`);
-        logger.info(`[Bot CB] rerun_gen: typeof workflowsService: ${typeof workflowsService}`);
-        logger.info(`[Bot CB] rerun_gen: typeof workflowsService?.getToolById: ${typeof workflowsService?.getToolById}`); // CHECKING getToolById
 
         try {
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {

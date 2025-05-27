@@ -15,13 +15,13 @@ const { setupDynamicCommands } = require('./dynamicCommands');
  * @returns {Object} - Initialized bot instance
  */
 function initializeTelegramPlatform(services, options = {}) {
-  const initialLoggerForDepCheck = services.logger || console; // Use logger from services if available
-  initialLoggerForDepCheck.info('[Telegram Index] initializeTelegramPlatform called. Inspecting INCOMING services object:');
-  initialLoggerForDepCheck.info(`[Telegram Index] Keys in incoming services: ${JSON.stringify(Object.keys(services))}`);
-  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui: ${typeof services.comfyui}`);
-  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui?.submitRequest: ${typeof services.comfyui?.submitRequest}`);
-  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows: ${typeof services.workflows}`);
-  initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows?.getToolById: ${typeof services.workflows?.getToolById}`);
+  // const initialLoggerForDepCheck = services.logger || console; // Use logger from services if available
+  // initialLoggerForDepCheck.info('[Telegram Index] initializeTelegramPlatform called. Inspecting INCOMING services object:');
+  // initialLoggerForDepCheck.info(`[Telegram Index] Keys in incoming services: ${JSON.stringify(Object.keys(services))}`);
+  // initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui: ${typeof services.comfyui}`);
+  // initialLoggerForDepCheck.info(`[Telegram Index] typeof services.comfyui?.submitRequest: ${typeof services.comfyui?.submitRequest}`);
+  // initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows: ${typeof services.workflows}`);
+  // initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows?.getToolById: ${typeof services.workflows?.getToolById}`);
 
   const {
     comfyui: comfyuiService,
@@ -57,7 +57,7 @@ function initializeTelegramPlatform(services, options = {}) {
     userSettingsService
   };
   
-  initialLoggerForDepCheck.info(`[Telegram Index] typeof botDeps.workflowsService?.getToolById: ${typeof botDeps.workflowsService?.getToolById}`);
+  // initialLoggerForDepCheck.info(`[Telegram Index] typeof botDeps.workflowsService?.getToolById: ${typeof botDeps.workflowsService?.getToolById}`);
 
   // Initialize the bot with all required services
   const bot = createTelegramBot(botDeps, token, { polling: true, ...options });
