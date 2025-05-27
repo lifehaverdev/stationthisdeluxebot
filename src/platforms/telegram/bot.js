@@ -1185,8 +1185,30 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} missing initiatingEventId. Generated new one: '${initiatingEventIdForRerun}'.`);
           }
 
+          // Initialize finalInitiatingEventIdForRerun with the new event ID for the rerun action itself.
+          // This will be the top-level initiatingEventId for the new generation record.
+          let finalInitiatingEventIdForRerun = newEventIdForRerun; 
+
+          // Check if the PARENT generation had an initiatingEventId stored in ITS metadata
+          if (originalGenerationRecord.metadata?.initiatingEventId) {
+            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} had initiatingEventId in its metadata: ${originalGenerationRecord.metadata.initiatingEventId}. New rerun eventId is: ${newEventIdForRerun}`);
+            // If newEventIdForRerun is undefined (logging our new event failed), then we MUST use the parent's for the top-level ID.
+            if (!newEventIdForRerun) {
+                finalInitiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
+                logger.warn(`[Bot CB] rerun_gen: New event logging failed. Using parent's initiatingEventId from metadata: ${finalInitiatingEventIdForRerun} for the new generation record's top-level initiatingEventId.`);
+            }
+          } else if (!newEventIdForRerun) {
+            // New event logging failed AND parent didn't have one in metadata. This is a problem for the top-level ID.
+            logger.error(`[Bot CB] rerun_gen: Critical - No valid top-level initiatingEventId could be determined. New event logging failed, and parent generation ${originalGenerationId} did not have initiatingEventId in its metadata.`);
+            // Fallback: Generate a UUID for the new generation record's top-level initiatingEventId
+            // This is a last resort to satisfy schema, but audit trail to original user action is broken.
+            finalInitiatingEventIdForRerun = uuidv4();
+            logger.warn(`[Bot CB] rerun_gen: Generated fallback UUID ${finalInitiatingEventIdForRerun} for new generation's top-level initiatingEventId.`);
+          }
+          
+          // 3. Log the new generation intent
           const rerunGenerationMetadata = {
-            telegramMessageId: originalUserCommandMessageId, // So new gen replies to original command
+            telegramMessageId: originalUserCommandMessageId, 
             telegramChatId: originalUserCommandChatId,
             platformContext: originalPlatformContext || {
               telegramUserId: clickerTelegramId,
@@ -1195,10 +1217,13 @@ function createTelegramBot(dependencies, token, options = {}) {
             },
             parentGenerationId: originalGenerationId,
             isRerun: true,
-            costRate: originalGenerationRecord.metadata?.costRate, // ADDED: Carry over costRate
-            notificationContext: originalGenerationRecord.metadata?.notificationContext, // ADDED: Carry over notificationContext
-            initiatingEventId: initiatingEventIdForRerun, // Store it in metadata as well
-            toolId: toolId // ADDED: Ensure specific toolId is in metadata
+            costRate: originalGenerationRecord.metadata?.costRate, 
+            notificationContext: originalGenerationRecord.metadata?.notificationContext, 
+            // For the metadata.initiatingEventId, we want to preserve the *original* chain's ID if possible.
+            // So, we take it from the parent's metadata. If the parent didn't have it, 
+            // then this rerun's own event (newEventIdForRerun) becomes the start of this chain for this field.
+            initiatingEventId: originalGenerationRecord.metadata?.initiatingEventId || newEventIdForRerun || finalInitiatingEventIdForRerun, 
+            toolId: toolId 
           };
           
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);
@@ -1229,7 +1254,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           try {
             const eventPayloadRerun = {
               masterAccountId: clickerMasterAccountId,
-              sessionId: dbUserSessionIdForRerun, // Use the DB UserSession ID
+              sessionId: dbUserSessionIdForRerun, 
               eventType: 'rerun_generation_request',
               eventData: {
                 originalGenerationId: originalGenerationId,
@@ -1249,12 +1274,33 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.error(`[Bot CB] rerun_gen: Error logging UserEvent: ${eventLogErrorRerun.message}.`, eventLogErrorRerun.response?.data || eventLogErrorRerun);
           }
 
-          let finalInitiatingEventIdForRerun = newEventIdForRerun;
-          if (!finalInitiatingEventIdForRerun && originalGenerationRecord.metadata?.initiatingEventId) {
-              finalInitiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
-              logger.warn(`[Bot CB] rerun_gen: Failed to log new UserEvent, falling back to parent's initiatingEventId: ${finalInitiatingEventIdForRerun}`);
-          } else if (!finalInitiatingEventIdForRerun) {
-              logger.error(`[Bot CB] rerun_gen: Critical - No valid initiatingEventId could be determined. POST /generations will likely fail.`);
+          // Determine the top-level initiatingEventId for the new generation record.
+          // Priority: 
+          // 1. newEventIdForRerun (event for this specific rerun action).
+          // 2. If newEventIdForRerun failed, use parent's metadata.initiatingEventId.
+          // 3. If both above are unavailable, generate a new UUID as a last resort.
+          let finalTopLevelInitiatingEventId;
+          if (newEventIdForRerun) {
+            finalTopLevelInitiatingEventId = newEventIdForRerun;
+          } else if (originalGenerationRecord.metadata?.initiatingEventId) {
+            finalTopLevelInitiatingEventId = originalGenerationRecord.metadata.initiatingEventId;
+            logger.warn(`[Bot CB] rerun_gen: New event logging failed. Using parent's initiatingEventId from metadata (${finalTopLevelInitiatingEventId}) for the new generation record's top-level initiatingEventId.`);
+          } else {
+            finalTopLevelInitiatingEventId = uuidv4();
+            logger.error(`[Bot CB] rerun_gen: Critical - New event logging failed AND parent metadata missing initiatingEventId. Generated fallback UUID ${finalTopLevelInitiatingEventId} for new generation's top-level initiatingEventId.`);
+          }
+
+          // Determine the initiatingEventId to be stored IN THE METADATA of the new generation.
+          // This should ideally trace back to the true original user command.
+          // Priority:
+          // 1. Parent's metadata.initiatingEventId (if it exists, it's the true origin).
+          // 2. newEventIdForRerun (if parent didn't have one, this rerun event is the origin for this chain in metadata).
+          // 3. finalTopLevelInitiatingEventId (as a last fallback, though less ideal for metadata's purpose here).
+          const metadataInitiatingEventId = originalGenerationRecord.metadata?.initiatingEventId || newEventIdForRerun || finalTopLevelInitiatingEventId;
+          if (originalGenerationRecord.metadata?.initiatingEventId) {
+            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} had metadata.initiatingEventId: ${originalGenerationRecord.metadata.initiatingEventId}. This will be used in new gen's metadata.`);
+          } else {
+            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} did NOT have metadata.initiatingEventId. Using ${metadataInitiatingEventId} for new gen's metadata.`);
           }
           
           // 3. Log the new generation intent
@@ -1264,7 +1310,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             masterAccountId: clickerMasterAccountId,
             platform: 'telegram',
             sessionId: dbUserSessionIdForRerun, 
-            initiatingEventId: finalInitiatingEventIdForRerun, // Use the eventId from logged UserEvent
+            initiatingEventId: finalTopLevelInitiatingEventId, // Use the determined top-level ID
             status: 'pending',
             deliveryStatus: 'pending',
             notificationPlatform: 'telegram',

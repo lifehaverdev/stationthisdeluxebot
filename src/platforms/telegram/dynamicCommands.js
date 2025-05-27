@@ -399,6 +399,7 @@ async function setupDynamicCommands(bot, services) {
               commandInvoked: `/${commandName}`,
               toolId: currentToolId,
               costRate: costRateInfo,
+              initiatingEventId: eventId,
               notificationContext: {
                 chatId: chatId,
                 userId: platformIdStr,
