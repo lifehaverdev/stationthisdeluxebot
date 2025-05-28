@@ -1321,6 +1321,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Rerun initiated!" });
 
         } catch (error) {
+          logger.info('[DEBUG_CATCH_BLOCK] Entered CATCH block in rerun_gen.'); // ADDED DEBUG LINE
           logger.error(`[Bot CB] Error in rerun_gen for original GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
         }
