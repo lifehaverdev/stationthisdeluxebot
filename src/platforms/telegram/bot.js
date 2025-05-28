@@ -1197,75 +1197,6 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.warn(`[Bot CB] rerun_gen: Generated fallback UUID ${finalInitiatingEventIdForRerun} for new generation's top-level initiatingEventId.`);
           }
           
-          // 3. Log the new generation intent
-          const rerunGenerationMetadata = {
-            telegramMessageId: originalUserCommandMessageId, 
-            telegramChatId: originalUserCommandChatId,
-            platformContext: originalPlatformContext || {
-              telegramUserId: clickerTelegramId,
-              username: callbackQuery.from.username,
-              firstName: callbackQuery.from.first_name
-            },
-            parentGenerationId: originalGenerationId,
-            isRerun: true,
-            costRate: originalGenerationRecord.metadata?.costRate, 
-            notificationContext: originalGenerationRecord.metadata?.notificationContext, 
-            // For the metadata.initiatingEventId, we want to preserve the *original* chain's ID if possible.
-            // So, we take it from the parent's metadata. If the parent didn't have it, 
-            // then this rerun's own event (newEventIdForRerun) becomes the start of this chain for this field.
-            initiatingEventId: metadataInitiatingEventId, 
-            toolId: toolId, 
-            rerunCount: (originalGenerationRecord.metadata?.rerunCount || 0) + 1 // Increment rerun count
-          };
-          
-          logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${JSON.stringify(newRequestPayload)}`);
-
-          // Step 1: Fetch/Create DB UserSession for rerun
-          let dbUserSessionIdForRerun;
-          try {
-            const dbSessionResponseRerun = await internalApiClient.post('/sessions', {
-              masterAccountId: clickerMasterAccountId,
-              platform: 'telegram'
-            });
-            if (dbSessionResponseRerun && dbSessionResponseRerun.data && dbSessionResponseRerun.data._id) {
-              dbUserSessionIdForRerun = dbSessionResponseRerun.data._id;
-              logger.info(`[Bot CB] rerun_gen: Successfully fetched/created DB UserSession. ID: ${dbUserSessionIdForRerun} for MAID ${clickerMasterAccountId}`);
-            } else {
-              logger.error(`[Bot CB] rerun_gen: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponseRerun.data)}`);
-              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for rerun.", show_alert: true });
-              return;
-            }
-          } catch (dbSessionErrorRerun) {
-            logger.error(`[Bot CB] rerun_gen: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionErrorRerun.message}.`, dbSessionErrorRerun.response?.data || dbSessionErrorRerun);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for rerun.", show_alert: true });
-            return;
-          }
-
-          // Step 2: Log the User Event for this rerun action
-          let newEventIdForRerun;
-          try {
-            const eventPayloadRerun = {
-              masterAccountId: clickerMasterAccountId,
-              sessionId: dbUserSessionIdForRerun, 
-              eventType: 'rerun_generation_request',
-              eventData: {
-                originalGenerationId: originalGenerationId,
-                toolId: toolId,
-                rerunParams: newRequestPayload 
-              },
-              sourcePlatform: 'telegram'
-            };
-            const eventResponseRerun = await internalApiClient.post('/events', eventPayloadRerun);
-            if (eventResponseRerun && eventResponseRerun.data && eventResponseRerun.data._id) {
-              newEventIdForRerun = eventResponseRerun.data._id;
-              logger.info(`[Bot CB] rerun_gen: Successfully logged UserEvent for rerun. EventID: ${newEventIdForRerun}`);
-            } else {
-              logger.error(`[Bot CB] rerun_gen: Failed to log UserEvent or get _id. Response: ${JSON.stringify(eventResponseRerun.data)}`);
-            }
-          } catch (eventLogErrorRerun) {
-            logger.error(`[Bot CB] rerun_gen: Error logging UserEvent: ${eventLogErrorRerun.message}.`, eventLogErrorRerun.response?.data || eventLogErrorRerun);
-          }
-
           // Determine the top-level initiatingEventId for the new generation record.
           // Priority: 
           // 1. newEventIdForRerun (event for this specific rerun action).
@@ -1295,7 +1226,40 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} did NOT have metadata.initiatingEventId. Using ${metadataInitiatingEventId} for new gen's metadata.`);
           }
           
-          // 3. Log the new generation intent
+          logger.debug('[Bot CB] rerun_gen: PRE-CONSTRUCTING rerunGenerationMetadata object.');
+          
+          // Construct metadata for the RERUN generation itself
+          const rerunGenerationMetadata = {
+            telegramMessageId: originalUserCommandMessageId, 
+            telegramChatId: originalUserCommandChatId,
+            platformContext: originalPlatformContext || {
+              telegramUserId: clickerTelegramId,
+              username: callbackQuery.from.username,
+              firstName: callbackQuery.from.first_name
+            },
+            parentGenerationId: originalGenerationId,
+            isRerun: true,
+            costRate: originalGenerationRecord.metadata?.costRate, 
+            notificationContext: originalGenerationRecord.metadata?.notificationContext, 
+            initiatingEventId: metadataInitiatingEventId, // Use the correctly scoped variable from above
+            toolId: toolId, 
+            rerunCount: (originalGenerationRecord.metadata?.rerunCount || 0) + 1
+          };
+          
+          logger.debug('[Bot CB] rerun_gen: POST-CONSTRUCTED rerunGenerationMetadata object. Content:', JSON.stringify(rerunGenerationMetadata, null, 2));
+          logger.debug(`[Bot CB] rerun_gen: PRE-JSON.STRINGIFY for newRequestPayload. typeof newRequestPayload: ${typeof newRequestPayload}. Keys: ${newRequestPayload ? Object.keys(newRequestPayload).join(', ') : 'N/A'}`);
+          let stringifiedPayloadForLog;
+          try {
+            stringifiedPayloadForLog = JSON.stringify(newRequestPayload);
+          } catch (stringifyError) {
+            logger.error(`[Bot CB] rerun_gen: ERROR during JSON.stringify(newRequestPayload): ${stringifyError.message}`, { payloadKeys: newRequestPayload ? Object.keys(newRequestPayload) : 'N/A' });
+            stringifiedPayloadForLog = "[Error stringifying payload]";
+          }
+          logger.debug('[Bot CB] rerun_gen: POST-JSON.STRINGIFY for newRequestPayload.');
+
+          logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${stringifiedPayloadForLog}`);
+          
+          // 3. Log the new generation intent (this section title "3. Log the new generation intent" is a bit confusingly placed, it refers to the DB record below)
           const generationToLog = {
             toolId: toolId,
             requestPayload: newRequestPayload,
