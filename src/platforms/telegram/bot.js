@@ -1101,6 +1101,7 @@ function createTelegramBot(dependencies, token, options = {}) {
         // ADD LOGGING FOR DEPENDENCIES SIMILAR TO TWEAK_APPLY IF NEEDED
 
         try {
+          let newEventIdForRerun; // Declare newEventIdForRerun here
           const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
             platform: 'telegram',
             platformId: clickerTelegramId,
@@ -1176,31 +1177,10 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} missing initiatingEventId. Generated new one: '${initiatingEventIdForRerun}'.`);
           }
 
-          // Initialize finalInitiatingEventIdForRerun with the new event ID for the rerun action itself.
-          // This will be the top-level initiatingEventId for the new generation record.
-          let finalInitiatingEventIdForRerun = newEventIdForRerun; 
-
-          // Check if the PARENT generation had an initiatingEventId stored in ITS metadata
-          if (originalGenerationRecord.metadata?.initiatingEventId) {
-            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} had initiatingEventId in its metadata: ${originalGenerationRecord.metadata.initiatingEventId}. New rerun eventId is: ${newEventIdForRerun}`);
-            // If newEventIdForRerun is undefined (logging our new event failed), then we MUST use the parent's for the top-level ID.
-            if (!newEventIdForRerun) {
-                finalInitiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
-                logger.warn(`[Bot CB] rerun_gen: New event logging failed. Using parent's initiatingEventId from metadata: ${finalInitiatingEventIdForRerun} for the new generation record's top-level initiatingEventId.`);
-            }
-          } else if (!newEventIdForRerun) {
-            // New event logging failed AND parent didn't have one in metadata. This is a problem for the top-level ID.
-            logger.error(`[Bot CB] rerun_gen: Critical - No valid top-level initiatingEventId could be determined. New event logging failed, and parent generation ${originalGenerationId} did not have initiatingEventId in its metadata.`);
-            // Fallback: Generate a UUID for the new generation record's top-level initiatingEventId
-            // This is a last resort to satisfy schema, but audit trail to original user action is broken.
-            finalInitiatingEventIdForRerun = uuidv4();
-            logger.warn(`[Bot CB] rerun_gen: Generated fallback UUID ${finalInitiatingEventIdForRerun} for new generation's top-level initiatingEventId.`);
-          }
-          
           // Determine the top-level initiatingEventId for the new generation record.
           // Priority: 
           // 1. newEventIdForRerun (event for this specific rerun action).
-          // 2. If newEventIdForRerun failed, use parent's metadata.initiatingEventId.
+          // 2. If newEventIdForRerun failed, use parent\'s metadata.initiatingEventId.
           // 3. If both above are unavailable, generate a new UUID as a last resort.
           let finalTopLevelInitiatingEventId;
           if (newEventIdForRerun) {
