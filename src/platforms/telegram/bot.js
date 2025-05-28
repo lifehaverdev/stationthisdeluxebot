@@ -1321,8 +1321,34 @@ function createTelegramBot(dependencies, token, options = {}) {
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Rerun initiated!" });
 
         } catch (error) {
-          logger.info('[DEBUG_CATCH_BLOCK] Entered CATCH block in rerun_gen.'); // ADDED DEBUG LINE
-          logger.error(`[Bot CB] Error in rerun_gen for original GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack);
+          logger.info('[DEBUG_CATCH_BLOCK] Entered CATCH block in rerun_gen.'); // KEEP THIS
+          
+          logger.error(`[Bot CB] RAW ERROR CAUGHT for GenID ${originalGenerationId}. Attempting to log basic info.`); // NEW BASIC LOG
+          
+          try {
+            logger.error(`[Bot CB] Error type: ${typeof error}`);
+            if (error && typeof error === 'object') {
+              logger.error(`[Bot CB] Error keys: ${Object.keys(error).join(', ')}`);
+            }
+          } catch (e) {
+            logger.error('[Bot CB] Failed to log error type/keys.');
+          }
+
+          try {
+            const errorMessage = error ? (error.message || 'No error.message property') : 'Error object is null/undefined';
+            logger.error(`[Bot CB] Minimal Error Message for GenID ${originalGenerationId}: ${errorMessage}`);
+          } catch (e) {
+            logger.error(`[Bot CB] CRITICAL: Failed to even get error.message for GenID ${originalGenerationId}. Logging raw error object next.`);
+            try {
+                console.error("[RAW CONSOLE ERROR]", error); // Fallback to console.error
+            } catch (rawErr) {
+                console.error("[RAW CONSOLE ERROR FAILED]", rawErr);
+            }
+          }
+          
+          // Original logger.error - keep it for now but it might be the one failing
+          logger.error(`[Bot CB] Full original Error Log for GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack); 
+
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
         }
       } else {
