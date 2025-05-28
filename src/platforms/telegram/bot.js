@@ -1225,7 +1225,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           } else {
             logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} did NOT have metadata.initiatingEventId. Using ${metadataInitiatingEventId} for new gen's metadata.`);
           }
-          
+          logger.info('<<<<< CHECKPOINT ALPHA >>>>>'); // New unique log
           logger.debug('[Bot CB] rerun_gen: PRE-CONSTRUCTING rerunGenerationMetadata object.');
           
           // Construct metadata for the RERUN generation itself
