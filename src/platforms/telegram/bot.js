@@ -1095,9 +1095,10 @@ function createTelegramBot(dependencies, token, options = {}) {
       } else if (data.startsWith('rerun_gen:')) {
         const parts = data.split(':');
         const originalGenerationId = parts[1];
+        const pressCount = parseInt(parts[2] || '0', 10); // Parse current press count, default 0 if not present
         const clickerTelegramId = callbackQuery.from.id.toString();
 
-        logger.info(`[Bot CB] rerun_gen callback for Original GenID: ${originalGenerationId} from UserID: ${clickerTelegramId}`);
+        logger.info(`[Bot CB] rerun_gen callback for Original GenID: ${originalGenerationId}, Press Count: ${pressCount}, from UserID: ${clickerTelegramId}`);
         // ADD LOGGING FOR DEPENDENCIES SIMILAR TO TWEAK_APPLY IF NEEDED
 
         try {
@@ -1309,14 +1310,18 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.info(`[Bot CB] rerun_gen: ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}. Linking...`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
 
-            // Update the inline keyboard to reflect the new rerun count
+            // Update the inline keyboard to reflect the new press count for this button
+            const newPressCount = pressCount + 1;
             if (message.reply_markup && message.reply_markup.inline_keyboard) {
               const newKeyboard = JSON.parse(JSON.stringify(message.reply_markup.inline_keyboard)); // Deep copy
               let buttonFoundAndUpdated = false;
               for (let i = 0; i < newKeyboard.length; i++) {
                 for (let j = 0; j < newKeyboard[i].length; j++) {
-                  if (newKeyboard[i][j].callback_data === `rerun_gen:${originalGenerationId}`) {
-                    newKeyboard[i][j].text = `↻${rerunGenerationMetadata.rerunCount}`;
+                  // Match based on originalGenerationId part of callback_data
+                  const buttonCallbackParts = newKeyboard[i][j].callback_data.split(':');
+                  if (buttonCallbackParts[0] === 'rerun_gen' && buttonCallbackParts[1] === originalGenerationId) {
+                    newKeyboard[i][j].text = `↻${newPressCount}`; // Update text with new press count
+                    newKeyboard[i][j].callback_data = `rerun_gen:${originalGenerationId}:${newPressCount}`; // Update callback_data with new press count
                     buttonFoundAndUpdated = true;
                     break;
                   }
@@ -1330,20 +1335,17 @@ function createTelegramBot(dependencies, token, options = {}) {
                     chat_id: message.chat.id,
                     message_id: message.message_id
                   });
-                  logger.info(`[Bot CB] rerun_gen: Successfully updated keyboard for rerun count ${rerunGenerationMetadata.rerunCount} on GenID ${originalGenerationId}`);
+                  logger.info(`[Bot CB] rerun_gen: Successfully updated keyboard for GenID ${originalGenerationId} to PressCount ${newPressCount}`);
                 } catch (editError) {
-                  // Log the error code and description if available from Telegram API error
                   const errorResponse = editError.response?.body ? JSON.stringify(editError.response.body) : editError.message;
-                  logger.warn(`[Bot CB] rerun_gen: Failed to update keyboard for rerun count. GenID ${originalGenerationId}. Error: ${errorResponse}`);
-                  // Non-critical, proceed with answering callback. The main rerun action succeeded.
+                  logger.warn(`[Bot CB] rerun_gen: Failed to update keyboard for PressCount. GenID ${originalGenerationId}. Error: ${errorResponse}`);
                 }
               } else {
-                logger.warn(`[Bot CB] rerun_gen: Could not find the original rerun button to update its count for GenID ${originalGenerationId}.`);
+                logger.warn(`[Bot CB] rerun_gen: Could not find the original rerun button (matching GenID ${originalGenerationId}) to update its count.`);
               }
             } else {
               logger.warn(`[Bot CB] rerun_gen: Original message for GenID ${originalGenerationId} did not have an inline keyboard to update.`);
             }
-
           } else {
             logger.error(`[Bot CB] rerun_gen: Service ${originalGenerationRecord.serviceName} not supported or comfyui service in dependencies is missing/invalid. Has comfyuiService: ${!!comfyuiService}`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for rerun.` });
