@@ -1,7 +1,7 @@
 # ADR-008: Interactive Generation Delivery Menu in Telegram
 
-**Date**: DATE_PLACEHOLDER
-**Status**: Proposed
+**Date**: 2025-05-28
+**Status**: Implemented
 
 ## Context
 
@@ -41,12 +41,15 @@ We will enhance the inline keyboard attached to generation delivery messages in 
         *   Clicking this button will trigger a new generation using the (potentially modified) parameters, also replying to the original user command message.
 
 5.  **Rerun Generation (`rerun_gen` - Button: `↻`)**:
-    *   **Functionality**: Reruns the original generation. If an `input_seed` parameter was part of the original `requestPayload`, it should be iterated (e.g., incremented by 1) for the new generation.
+    *   **Functionality**: Reruns the original generation with a new random seed. The `↻` button on a specific message updates its text to show a count of how many times it has been pressed (e.g., "↻1", "↻2"). A newly delivered generation message will have a fresh "↻" button (effectively count 0).
     *   **Implementation**:
-        *   The `bot.js` callback handler for `rerun_gen` will parse the `generationId`.
-        *   Fetch the original generation record, specifically its `requestPayload` and `serviceName`.
-        *   If `requestPayload.input_seed` exists and is a number, increment it. If it does not exist or is not a number, it can be ignored or a new random seed could be used if applicable to the tool.
-        *   Trigger a new generation using the (potentially modified) `requestPayload` and original `serviceName`, replying to the original user command message.
+        *   The `bot.js` callback handler for `rerun_gen` parses `generationId` and a `pressCount` from the `callback_data` (e.g., `rerun_gen:generationId:pressCount`). The initial `pressCount` is `0`.
+        *   The `input_seed` in the `requestPayload` is replaced with a new random number for the new generation.
+        *   The original message containing the pressed button has its keyboard updated:
+            *   The button's text is changed to `↻{newPressCount}`.
+            *   The button's `callback_data` is updated to `rerun_gen:generationId:{newPressCount}`.
+        *   A new generation is triggered, replying to the original user command message. The overall lineage depth (how many times a generation chain has been rerun) is tracked in the new generation's metadata (`metadata.rerunCount`), separate from the button's display count.
+        *   The initial "Rerun" button on a newly delivered image message must be set up with `text: "↻"` and `callback_data: "rerun_gen:{newGenerationId}:0"` by the notification/delivery mechanism.
 
 ## Consequences
 
@@ -54,12 +57,12 @@ We will enhance the inline keyboard attached to generation delivery messages in 
     *   Greatly improves user experience by providing more control and iteration capabilities directly from the generated content.
     *   Encourages further interaction and refinement of generations.
     *   Leverages existing systems (settings menu, internal API, DB) with extensions.
+    *   Clear visual feedback on button interaction.
 *   **Cons**:
-    *   Increases complexity in `bot.js` callback handling.
+    *   Increases complexity in `bot.js` callback handling and initial button generation logic.
     *   `tweak_gen` functionality will require careful integration with the settings menu logic and a clear UX flow.
-    *   Requires new API endpoints or modifications if existing ones are not sufficient for fetching detailed generation data or triggering tweaked/reruns.
 *   **Open Questions**:
-    *   How will the "reply to original command message" be reliably achieved for `tweak_gen` and `rerun_gen` if the original message is old or not easily accessible in the current `callbackQuery` context? (The `message.reply_to_message` in the callback query often refers to the bot's own message with the inline keyboard, not the user's initial command. This needs careful handling, possibly by storing the initial command's `message_id` in `generationRecord.metadata.notificationContext`).
+    *   How will the "reply to original command message" be reliably achieved for `tweak_gen` and `rerun_gen` if the original message is old or not easily accessible in the current `callbackQuery` context? (This has been addressed by storing `telegramMessageId` and `telegramChatId` in `generationRecord.metadata` and using these for replies).
 
 ## Tech Stack
 
@@ -74,4 +77,4 @@ We will enhance the inline keyboard attached to generation delivery messages in 
 *   **Simplified Menu**: A menu with fewer options, deferring more complex actions to commands. This reduces initial implementation effort but also reduces utility.
 
 ---
-*Replace DATE_PLACEHOLDER with the current date when finalizing.* 
+*ADR updated 2025-05-28 to reflect implemented `rerun_gen` behavior.* 
