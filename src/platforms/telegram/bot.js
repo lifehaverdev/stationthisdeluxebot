@@ -1238,6 +1238,27 @@ function createTelegramBot(dependencies, token, options = {}) {
           }
           logger.debug('[Bot CB] rerun_gen: POST-JSON.STRINGIFY for newRequestPayload.');
 
+          // Step X: Fetch/Create DB UserSession to get its _id for the rerun
+          let dbUserSessionIdForRerun;
+          try {
+            const dbSessionResponse = await internalApiClient.post('/sessions', {
+              masterAccountId: clickerMasterAccountId,
+              platform: 'telegram'
+            });
+            if (dbSessionResponse && dbSessionResponse.data && dbSessionResponse.data._id) {
+              dbUserSessionIdForRerun = dbSessionResponse.data._id;
+              logger.info(`[Bot CB] rerun_gen: Successfully fetched/created DB UserSession. ID: ${dbUserSessionIdForRerun} for MAID ${clickerMasterAccountId}`);
+            } else {
+              logger.error(`[Bot CB] rerun_gen: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponse.data)}`);
+              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for rerun.", show_alert: true });
+              return;
+            }
+          } catch (dbSessionError) {
+            logger.error(`[Bot CB] rerun_gen: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionError.message}.`, dbSessionError.response?.data || dbSessionError);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for rerun.", show_alert: true });
+            return;
+          }
+
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${stringifiedPayloadForLog}`);
           
           // 3. Log the new generation intent (this section title "3. Log the new generation intent" is a bit confusingly placed, it refers to the DB record below)
