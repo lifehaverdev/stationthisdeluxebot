@@ -24,11 +24,11 @@ function initializeTelegramPlatform(services, options = {}) {
   // initialLoggerForDepCheck.info(`[Telegram Index] typeof services.workflows?.getToolById: ${typeof services.workflows?.getToolById}`);
 
   const {
-    comfyui: comfyuiService,
-    points: pointsService,
-    session: sessionService,
-    workflows: workflowsService,
-    media: mediaService,
+    comfyui: comfyuiService,         // Renamed for local clarity
+    points: pointsService,           // Renamed for local clarity
+    session: sessionService,         // Renamed for local clarity
+    workflows: actualWorkflowsInstance, // Get the instance from services.workflows
+    media: mediaService,             // Renamed for local clarity
     internal,
     db,
     logger = console,
@@ -44,11 +44,11 @@ function initializeTelegramPlatform(services, options = {}) {
   }
   
   const botDeps = {
-    comfyuiService,
-    pointsService,
-    sessionService,
-    workflowsService,
-    mediaService,
+    comfyuiService,      // This is services.comfyui
+    pointsService,       // This is services.points
+    sessionService,      // This is services.session
+    workflowsService: actualWorkflowsInstance, // Assign the instance to the key createTelegramBot expects
+    mediaService,        // This is services.media
     internal,
     db,
     logger,
