@@ -1308,17 +1308,48 @@ function createTelegramBot(dependencies, token, options = {}) {
             }
             logger.info(`[Bot CB] rerun_gen: ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}. Linking...`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
+
+            // Update the inline keyboard to reflect the new rerun count
+            if (message.reply_markup && message.reply_markup.inline_keyboard) {
+              const newKeyboard = JSON.parse(JSON.stringify(message.reply_markup.inline_keyboard)); // Deep copy
+              let buttonFoundAndUpdated = false;
+              for (let i = 0; i < newKeyboard.length; i++) {
+                for (let j = 0; j < newKeyboard[i].length; j++) {
+                  if (newKeyboard[i][j].callback_data === `rerun_gen:${originalGenerationId}`) {
+                    newKeyboard[i][j].text = `↻${rerunGenerationMetadata.rerunCount}`;
+                    buttonFoundAndUpdated = true;
+                    break;
+                  }
+                }
+                if (buttonFoundAndUpdated) break;
+              }
+
+              if (buttonFoundAndUpdated) {
+                try {
+                  await bot.editMessageReplyMarkup({ inline_keyboard: newKeyboard }, {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id
+                  });
+                  logger.info(`[Bot CB] rerun_gen: Successfully updated keyboard for rerun count ${rerunGenerationMetadata.rerunCount} on GenID ${originalGenerationId}`);
+                } catch (editError) {
+                  // Log the error code and description if available from Telegram API error
+                  const errorResponse = editError.response?.body ? JSON.stringify(editError.response.body) : editError.message;
+                  logger.warn(`[Bot CB] rerun_gen: Failed to update keyboard for rerun count. GenID ${originalGenerationId}. Error: ${errorResponse}`);
+                  // Non-critical, proceed with answering callback. The main rerun action succeeded.
+                }
+              } else {
+                logger.warn(`[Bot CB] rerun_gen: Could not find the original rerun button to update its count for GenID ${originalGenerationId}.`);
+              }
+            } else {
+              logger.warn(`[Bot CB] rerun_gen: Original message for GenID ${originalGenerationId} did not have an inline keyboard to update.`);
+            }
+
           } else {
             logger.error(`[Bot CB] rerun_gen: Service ${originalGenerationRecord.serviceName} not supported or comfyui service in dependencies is missing/invalid. Has comfyuiService: ${!!comfyuiService}`);
             await internalApiClient.put(`/generations/${newGeneratedId}`, { status: 'failed', statusReason: `Service ${originalGenerationRecord.serviceName} not supported for rerun.` });
             throw new Error(`Service ${originalGenerationRecord.serviceName} not supported for rerun.`);
           }
 
-          await bot.editMessageText("🔄 Rerunning generation with a new seed...", {
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            reply_markup: null // Remove keyboard
-          });
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Rerun initiated!" });
 
         } catch (error) {
