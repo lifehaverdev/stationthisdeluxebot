@@ -1,5 +1,5 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
-const internalApiClient = require('./utils/internalApiClient'); // Import the API client
+const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
 const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils'); // Import from new util file
 
 async function setupDynamicCommands(bot, services) {

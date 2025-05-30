@@ -16,7 +16,7 @@ const createStatusCommandHandler = require('./commands/statusCommand');
 
 // Import new settings menu manager and internal API client
 const { handleSettingsCommand, handleSettingsCallback, handleParameterValueReply, buildToolParamsMenu, buildTweakUIMenu, buildTweakParamEditPrompt } = require('./components/settingsMenuManager.js');
-const internalApiClient = require('./utils/internalApiClient.js');
+const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
 
 // Temporary store for pending tweaks
 // Key: `generationId_masterAccountId`
