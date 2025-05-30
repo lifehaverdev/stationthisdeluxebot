@@ -1,4 +1,5 @@
 const DEBUG_LOGGING_ENABLED = false; // Set to true to enable detailed logging
+const DEBUG_LOGGING_ENABLED_MULTILORA = true; // Set to true to enable detailed logging
 
 const { 
   DEFAULT_TIMEOUT, // Keep for potential future use within manager
@@ -899,6 +900,21 @@ class WorkflowCacheManager {
       this.logger.warn(`[WorkflowCacheManager] Failed to parse workflow structure for ${toolDefinition.toolId}:`, err);
     }
   
+    // BEGIN ADDITION: Detect MultiLoraLoader
+    let hasLoraLoader = false;
+    if (workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
+      for (const node of workflowJson.nodes) {
+        if (node && node.type && typeof node.type === 'string' && node.type.startsWith('MultiLoraLoader-')) {
+          hasLoraLoader = true;
+          if (DEBUG_LOGGING_ENABLED_MULTILORA) {
+            this.logger.info(`[WorkflowCacheManager] MultiLoraLoader node detected in workflow ${toolDefinition.toolId}.`);
+          }
+          break; 
+        }
+      }
+    }
+    // END ADDITION
+  
     // === Input Schema ===
     if (structureInfo?.inputSchema && Object.keys(structureInfo.inputSchema).length > 0) {
       toolDefinition.inputSchema = structureInfo.inputSchema;
@@ -948,7 +964,7 @@ class WorkflowCacheManager {
       outputType: structureInfo?.outputType || 'unknown',
       hasPromptNode: structureInfo?.hasPromptNode || false,
       hasKSamplerNode: structureInfo?.hasKSamplerNode || false,
-      hasLoraLoader: structureInfo?.hasLoraLoader || false,
+      hasLoraLoader: hasLoraLoader,
       nodeTypes: structureInfo?.nodeTypes || []
     };
   

@@ -38,6 +38,10 @@ const WorkflowCacheManager = require('./workflowCacheManager');
 // geniusoverhaul: Import ToolRegistry
 const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 
+// BEGIN ADDITION: Import LoRA Resolution Service
+const loraResolutionService = require('../loraResolutionService'); // Path from comfydeploy/workflows.js to services/loraResolutionService.js
+// END ADDITION
+
 const DEBUG_LOGGING_ENABLED = false; // Set to true to enable detailed logging
 
 class WorkflowsService {
@@ -602,49 +606,94 @@ class WorkflowsService {
    * This now uses toolId primarily and relies on the refactored methods.
    * @param {string} toolId - The ID of the tool.
    * @param {Object} userInputs - User-provided input values.
+   * @param {string} masterAccountId - The master account ID of the user invoking the tool.
    * @returns {Promise<Object|null>} - Prepared payload or null if error.
    */
-  async prepareToolRunPayload(toolId, userInputs = {}) { // Renamed from prepareWorkflowPayload
+  async prepareToolRunPayload(toolId, userInputs = {}, masterAccountId) { 
     const tool = await this.getToolById(toolId);
     if (!tool) {
-        this.logger.error(`[prepareToolRunPayload] Tool with ID "${toolId}" not found.`);
-        return null;
+        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Tool with ID "${toolId}" not found.`);
+        // Return null or throw an error based on desired error handling strategy
+        // For consistency with original apparent logic, returning null if tool not found by getToolById
+        // which itself might return null.
+        throw new Error(`Tool with ID "${toolId}" not found.`); 
     }
+    // Original check for comfyui service type - this is important if this service only handles comfyui tools
     if (tool.service !== 'comfyui') {
-        this.logger.error(`[prepareToolRunPayload] Tool "${toolId}" is not a comfyui service tool. Service: ${tool.service}`);
-        return null;
+        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Tool "${toolId}" is not a comfyui service tool. Service: ${tool.service}`);
+        throw new Error(`Tool "${toolId}" is not a ComfyUI service tool.`);
     }
 
-    const { isValid, errors, validatedPayload } = await this.validateToolInputPayload(toolId, userInputs);
+    let currentInputs = { ...userInputs }; // Work with a copy of user inputs
+    let appliedLoras = [];
+    let loraWarnings = [];
+    let rawPrompt = null;
+
+    // BEGIN LoRA Resolution Logic Integration
+    if (tool.metadata && tool.metadata.hasLoraLoader && currentInputs.input_prompt && typeof currentInputs.input_prompt === 'string') {
+      if (!masterAccountId) {
+        this.logger.warn(`[WorkflowsService-prepareToolRunPayload] masterAccountId not provided for LoRA resolution on tool ${toolId}. LoRA resolution might be incomplete or fail if private LoRAs are involved.`);
+        // Consider throwing if masterAccountId is absolutely critical: 
+        // throw new Error('masterAccountId is required for LoRA-enabled tools when preparing payload.');
+      }
+      
+      this.logger.info(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader. Attempting to resolve LoRAs for prompt.`);
+      rawPrompt = currentInputs.input_prompt; // Store original prompt before modification
+      try {
+        const resolutionResult = await loraResolutionService.resolveLoraTriggers(rawPrompt, masterAccountId);
+        currentInputs.input_prompt = resolutionResult.modifiedPrompt; // Modify the working copy of inputs
+        appliedLoras = resolutionResult.appliedLoras || [];
+        loraWarnings = resolutionResult.warnings || [];
+        
+        if (DEBUG_LOGGING_ENABLED || (tool.metadata.hasLoraLoader && currentInputs.input_prompt !== rawPrompt)) {
+            this.logger.info(`[WorkflowsService-prepareToolRunPayload] LoRA resolution for ${toolId}. Raw: "${rawPrompt}", Modified: "${currentInputs.input_prompt}"`);
+        }
+        if (appliedLoras.length > 0) {
+          this.logger.info(`[WorkflowsService-prepareToolRunPayload] Applied LoRAs for ${toolId}: ${JSON.stringify(appliedLoras)}`);
+        }
+        if (loraWarnings.length > 0) {
+          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] LoRA resolution warnings for ${toolId}: ${JSON.stringify(loraWarnings)}`);
+        }
+      } catch (error) {
+        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Error during LoRA resolution for tool ${toolId}: ${error.message}`, error);
+        loraWarnings.push(`LoRA resolution failed: ${error.message}. Proceeding with original prompt.`);
+        // currentInputs.input_prompt remains rawPrompt if error occurs
+      }
+    } else if (tool.metadata && tool.metadata.hasLoraLoader && (!currentInputs.input_prompt || typeof currentInputs.input_prompt !== 'string')) {
+        this.logger.warn(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader, but input_prompt is missing or not a string.`);
+    }
+    // END LoRA Resolution Logic Integration
+
+    // Proceed with validation using the potentially modified currentInputs
+    const { isValid, errors, validatedPayload } = await this.validateToolInputPayload(toolId, currentInputs);
 
     if (!isValid) {
-      this.logger.error(`[prepareToolRunPayload] Invalid input payload for tool "${toolId}": ${errors.join(', ')}`);
+      this.logger.error(`[WorkflowsService-prepareToolRunPayload] Invalid input payload for tool "${toolId}" after LoRA processing (if any): ${errors.join(', ')}`);
       // Consider throwing an error or returning a more structured error response
-      return null; 
+      throw new Error(`Invalid input payload for tool "${toolId}": ${errors.join(', ')}`);
     }
     
-    // validatedPayload already has defaults applied if they were missing and required wasn't an issue.
-    // If mergeToolWithDefaultInputs is called after validation, it would ensure all defaults are there,
-    // even for non-required fields if user didn't provide them.
-    // For now, validatedPayload from validateToolInputPayload should be sufficient if its logic is robust.
-    const finalPayloadWithDefaults = await this.mergeToolWithDefaultInputs(toolId, validatedPayload);
+    // Merge with defaults, using the validated (and potentially LoRA-modified) payload
+    const finalInputsForComfy = await this.mergeToolWithDefaultInputs(toolId, validatedPayload);
 
+    // Construct the final payload structure
+    const finalComfyPayload = {
+      deployment_id: tool.metadata.deploymentId, 
+      inputs: finalInputsForComfy, // These are the direct inputs for the ComfyUI workflow
+      // Attach LoRA resolution metadata for our system's logging/downstream use
+      loraResolutionData: {
+        rawPrompt: rawPrompt, // Original prompt if LoRA processing was attempted
+        modifiedPrompt: finalInputsForComfy.input_prompt, // The actual prompt text sent to ComfyUI
+        appliedLoras: appliedLoras,
+        warnings: loraWarnings
+      }
+    };
 
-    // The original prepareWorkflowPayload from workflowUtils might still be useful
-    // if it does ComfyUI-specific transformations beyond basic input mapping.
-    // For now, let's assume finalPayloadWithDefaults is what we need for the API.
-    // If `prepareWorkflowPayload` in `workflowUtils` is essential for ComfyUI structure,
-    // it would need to be adapted to take `tool.inputSchema` and `finalPayloadWithDefaults`.
+    if (DEBUG_LOGGING_ENABLED) {
+        this.logger.info(`[WorkflowsService-prepareToolRunPayload] Prepared payload for tool ${toolId}: ${JSON.stringify(finalComfyPayload).substring(0, 1000)}...`);
+    }
 
-    // Example: If workflowUtils.prepareWorkflowPayload needs to be called:
-    // return prepareWorkflowPayload(this, tool.displayName, finalPayloadWithDefaults); 
-    // BUT, prepareWorkflowPayload in utils would need to be refactored to use tool.inputSchema
-    // or accept the schema directly.
-
-    // For now, returning the processed payload.
-    // The actual ComfyUI execution service (e.g., comfyui.js) will take this payload
-    // and the deploymentId from tool.metadata.deploymentId to run the workflow.
-    return finalPayloadWithDefaults;
+    return finalComfyPayload;
   }
 }
 

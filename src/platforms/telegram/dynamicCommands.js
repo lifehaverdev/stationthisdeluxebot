@@ -369,13 +369,16 @@ async function setupDynamicCommands(bot, services) {
 
           logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool (after potential preference merge): ${JSON.stringify(finalInputValuesForTool)}`);
 
-          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, finalInputValuesForTool);
+          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, finalInputValuesForTool, masterAccountId);
           if (!preparedResult) {
             logger.error(`[Telegram EXEC /${commandName}] prepareToolRunPayload failed for tool ${currentToolId}. Check WorkflowsService logs.`);
             throw new Error(`Failed to prepare payload for tool '${currentDisplayName}'.`);
           }
-          const finalInputs = preparedResult;
-          logger.debug(`[Telegram EXEC /${commandName}] Final inputs for ComfyUI: ${JSON.stringify(finalInputs)}`);
+          const { inputs: finalInputsForComfyUI, loraResolutionData } = preparedResult;
+          logger.debug(`[Telegram EXEC /${commandName}] Final inputs for ComfyUI: ${JSON.stringify(finalInputsForComfyUI)}`);
+          if (loraResolutionData) {
+            logger.info(`[Telegram EXEC /${commandName}] LoRA Resolution Data: ${JSON.stringify(loraResolutionData)}`);
+          }
 
           const generationParams = {
             masterAccountId: masterAccountId,
@@ -389,7 +392,7 @@ async function setupDynamicCommands(bot, services) {
             workflowId: currentTool.workflowId,
             status: 'pending',
             deliveryStatus: 'pending',
-            requestPayload: finalInputs,
+            requestPayload: finalInputsForComfyUI,
             metadata: {
               telegramChatId: chatId,
               telegramMessageId: msg.message_id,
@@ -404,7 +407,8 @@ async function setupDynamicCommands(bot, services) {
                 chatId: chatId,
                 userId: platformIdStr,
                 messageId: msg.message_id 
-              }
+              },
+              loraResolution: loraResolutionData
             },
             notificationPlatform: 'telegram'
           };
@@ -422,7 +426,7 @@ async function setupDynamicCommands(bot, services) {
           logger.info(`[Telegram EXEC /${commandName}] Submitting to ComfyUI: DeploymentID=${deploymentId}, GenID=${generationId}...`);
           const submissionResult = await comfyuiService.submitRequest({
             deploymentId: deploymentId,
-            inputs: finalInputs,
+            inputs: finalInputsForComfyUI,
           });
 
           const run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
