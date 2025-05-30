@@ -23,8 +23,8 @@ async function _fetchAndCacheTriggerMap(masterAccountId) {
   
   try {
     const apiUrl = masterAccountId 
-      ? `/internal/v1/lora/trigger-map-data?userId=${masterAccountId}` 
-      : '/internal/v1/lora/trigger-map-data';
+      ? `/lora/trigger-map-data?userId=${masterAccountId}`
+      : '/lora/trigger-map-data';
       
     // Use the actual internalApiClient instance
     const response = await internalApiClient.get(apiUrl);
