@@ -1,5 +1,8 @@
 // src/api/internal/loraTriggerMapApi.js
 
+const express = require('express');
+const router = express.Router();
+
 // BEGIN ADDITION: Import DB Services and ObjectId
 const LoRAModelsDB = require('../../core/services/db/loRAModelDb'); // Adjust path as needed
 const LoRAPermissionsDB = require('../../core/services/db/loRAPermissionsDb'); // Adjust path as needed
@@ -21,9 +24,9 @@ const loRAPermissionsDb = new LoRAPermissionsDB(logger);
 // const mockLoraPermissionsDb = { ... }; // Remove mock
 
 /**
- * Handler for GET /internal/v1/lora/trigger-map-data
- * @param {object} queryParams - e.g., { userId }
- * @returns {Promise<object>} - The trigger map data.
+ * Handler for GET /lora/trigger-map-data
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
  */
 async function getLoraTriggerMapDataHandler(req, res) {
   const userId = req.query.userId; // masterAccountId from query
@@ -150,27 +153,7 @@ async function getLoraTriggerMapDataHandler(req, res) {
   }
 }
 
-// Example of how this might be mounted in an Express app (conceptual)
-/*
-const express = require('express');
-const router = express.Router();
+// Mount the handler on the router
+router.get('/lora/trigger-map-data', getLoraTriggerMapDataHandler);
 
-router.get('/lora/trigger-map-data', async (req, res) => {
-  try {
-    const userId = req.query.userId; // Potentially from authenticated session
-    const mapData = await getLoraTriggerMapData({ userId });
-    res.json(mapData);
-  } catch (error) {
-    console.error('API Error getting LoRA trigger map data:', error);
-    res.status(500).json({ error: 'Failed to retrieve LoRA trigger map data' });
-  }
-});
-
-module.exports = router;
-*/
-
-// For non-Express setup, just export the handler function:
-module.exports = {
-    getLoraTriggerMapDataHandler,
-    // Potentially other API handlers related to LoRAs could go here
-}; 
+module.exports = router; 

@@ -16,6 +16,10 @@ const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
 const createTeamsApi = require('./teamsApi');
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
 
+// BEGIN ADDITION: Import LoRA Trigger Map API Router
+const loraTriggerMapApiRouter = require('./loraTriggerMapApi');
+// END ADDITION
+
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 const createUserStatusReportApiService = require('./userStatusReportApi');
@@ -228,6 +232,36 @@ function initializeInternalServices(dependencies = {}) {
   } else {
     logger.warn('[InternalAPI] teamsApi not imported correctly.');
   }
+
+  // User Preferences API (includes UserSettingsService logic):
+  // Assuming userPreferencesApi.js exports a function that takes apiDependencies and returns a router
+  // This router should handle routes like /users/:masterAccountId/preferences/:scope?
+  const userPreferencesApi = require('./userPreferencesApi'); // Ensure this is imported
+  if (userPreferencesApi && typeof userPreferencesApi === 'function') {
+    const userPreferencesApiRouter = userPreferencesApi(apiDependencies);
+    if (userPreferencesApiRouter) {
+      // Mount at /v1/data because it deals with user-specific data and preferences.
+      // The routes within userPreferencesApiRouter will be relative to this.
+      // E.g., /users/:masterAccountId/preferences/:scope becomes /internal/v1/data/users/:masterAccountId/preferences/:scope
+      mainInternalRouter.use('/v1/data', userPreferencesApiRouter);
+      logger.info('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data');
+    } else {
+      logger.error('[InternalAPI] Failed to create User Preferences API router.');
+    }
+  } else {
+    logger.warn('[InternalAPI] userPreferencesApi not imported correctly or is not a function.');
+  }
+
+  // BEGIN ADDITION: Mount LoRA Trigger Map API Router
+  if (loraTriggerMapApiRouter) {
+    // The loraTriggerMapApiRouter handles /lora/trigger-map-data internally
+    // So we mount it at /v1/data for the full path to be /internal/v1/data/lora/trigger-map-data
+    mainInternalRouter.use('/v1/data', loraTriggerMapApiRouter);
+    logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data');
+  } else {
+    logger.warn('[InternalAPI] loraTriggerMapApiRouter not imported correctly.');
+  }
+  // END ADDITION
 
   // Tool Definition API Service (New)
   if (createToolDefinitionApiRouter) {
