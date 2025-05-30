@@ -18,7 +18,7 @@ const logger = console; // Replace with a proper logger instance if available
  * @private
  */
 async function _fetchAndCacheTriggerMap(masterAccountId) {
-  const cacheKey = masterAccountId || 'public'; // Use 'public' if no specific user
+  const cacheKey = masterAccountId || 'public';
   logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}`);
   
   try {
@@ -26,19 +26,17 @@ async function _fetchAndCacheTriggerMap(masterAccountId) {
       ? `/lora/trigger-map-data?userId=${masterAccountId}`
       : '/lora/trigger-map-data';
       
-    // Use the actual internalApiClient instance
     const response = await internalApiClient.get(apiUrl);
 
     if (!response || !response.data || typeof response.data !== 'object') {
       logger.error(`[LoRAResolutionService] Invalid API response structure for trigger map. User: ${cacheKey}. Response:`, response);
-      // Fallback to existing cache if available, otherwise empty map
       const existingCached = triggerMapCache.get(cacheKey);
       return existingCached ? existingCached.data : new Map();
     }
 
     const newMap = new Map();
     for (const [key, loraList] of Object.entries(response.data)) {
-      newMap.set(key.toLowerCase(), loraList); // API already provides lowercase keys from our previous step, but ensure.
+      newMap.set(key.toLowerCase(), loraList);
     }
     
     triggerMapCache.set(cacheKey, { data: newMap, timestamp: Date.now() });
@@ -46,13 +44,12 @@ async function _fetchAndCacheTriggerMap(masterAccountId) {
     return newMap;
   } catch (error) {
     logger.error(`[LoRAResolutionService] Error fetching trigger map from API for ${cacheKey}: ${error.message}`, error.stack);
-    // Fallback to existing cache if available and error fetching, otherwise empty map
     const existingCached = triggerMapCache.get(cacheKey);
     if (existingCached) {
         logger.warn(`[LoRAResolutionService] Returning stale cache for ${cacheKey} due to fetch error.`);
         return existingCached.data;
     }
-    return new Map(); // Return empty map on critical error and no cache
+    return new Map();
   }
 }
 
@@ -74,13 +71,13 @@ async function _getTriggerMap(masterAccountId) {
   return _fetchAndCacheTriggerMap(masterAccountId);
 }
 
-
 // Regex to find <lora:slug:weight> tags
 const LORA_TAG_REGEX = /<lora:([^:]+):([^>]+)>/g;
-
-// Regex for tokenizing prompt: captures words, words with weights, and preserves some punctuation contextually
-const PROMPT_TOKENIZATION_REGEX = /(<lora:[^:]+:[^>]+>|\\b[a-zA-Z0-9_]+(?:[:\\\\.]\\d+)?\\b|[.,!?()[\]{}'"]+|\\s+)/g;
-
+// Regex to parse a word and its optional weight: captures word part, then :weight part.
+// Allows for punctuation attached to the word which will be handled separately.
+const WORD_AND_WEIGHT_REGEX = /^([a-zA-Z0-9_.-]+)(?::(\d*\.?\d+))?([\s.,!?()[\]{}\'\"]*)$/;
+// More general split regex to preserve spaces and punctuation as tokens
+const SPLIT_KEEP_DELIMITERS_REGEX = /(\s+|[.,!?()[\]{}\'\"]+)/g;
 
 /**
  * Parses the prompt string, identifies LoRA triggers, resolves conflicts,
@@ -92,16 +89,9 @@ const PROMPT_TOKENIZATION_REGEX = /(<lora:[^:]+:[^>]+>|\\b[a-zA-Z0-9_]+(?:[:\\\\
  */
 async function resolveLoraTriggers(promptString, masterAccountId) {
   const rawPrompt = promptString;
-  let modifiedPromptElements = []; 
   const appliedLoras = [];
   const warnings = [];
-  const lorasAppliedThisRun = new Set(); 
-
-  // ADR-009 specifies masterAccountId is required.
-  // If no masterAccountId, we can fetch a "public-only" map, or skip processing.
-  // For now, let's be strict as per previous logic - if MAID needed for permissions, it must be there.
-  // However, the API can handle no userId to return public. Let's allow fetching public if MAID is missing.
-  // Caller (WorkflowsService) logs a warning if MAID is missing for a LoRA-enabled tool.
+  const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
   logger.info(`[LoRAResolutionService] Resolving LoRAs for user: ${masterAccountId || 'N/A (public map only)'}. Prompt: "${promptString.substring(0,50)}..."`);
   const triggerMap = await _getTriggerMap(masterAccountId);
@@ -111,56 +101,93 @@ async function resolveLoraTriggers(promptString, masterAccountId) {
     return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras, warnings };
   }
 
-  const tokens = promptString.match(PROMPT_TOKENIZATION_REGEX) || [];
+  let remainingPrompt = promptString;
+  const finalPromptParts = [];
   
-  for (const token of tokens) {
-    if (LORA_TAG_REGEX.test(token)) {
-      LORA_TAG_REGEX.lastIndex = 0; 
-      const match = LORA_TAG_REGEX.exec(token);
-      if (match) {
-        const slug = match[1];
-        const weight = parseFloat(match[2]);
-        if (!isNaN(weight)) {
-            if (!lorasAppliedThisRun.has(slug)) {
-                // TODO ADR Q6: Validate inline tags against triggerMap/permissions if strict validation is needed.
-                // For now, assume valid and add to appliedLoras to prevent re-triggering.
-                // The API fetched map would already be permission-filtered for the user.
-                // If the slug from an inline tag isn't in *any* value of the triggerMap, it's an unknown LoRA.
-                let foundInMap = false;
-                triggerMap.forEach(loraList => {
-                    if (loraList.some(l => l.slug === slug)) foundInMap = true;
-                });
-                if (foundInMap || !masterAccountId) { // If public map, or found in user's map
-                    appliedLoras.push({ slug, weight, originalWord: token, replacedWord: token, modelId: 'N/A_INLINE_TAG' });
-                    lorasAppliedThisRun.add(slug);
-                } else {
-                    warnings.push(`Inline tag <lora:${slug}:${weight}> refers to an unknown or inaccessible LoRA.`);
-                }
-            }
-        }
-      }
-      modifiedPromptElements.push(token); 
-      continue;
-    }
+  // Pass 1: Extract and process existing <lora:...> tags
+  let loraTagMatch;
+  let lastIndex = 0;
+  while ((loraTagMatch = LORA_TAG_REGEX.exec(remainingPrompt)) !== null) {
+    // Add text before this tag
+    finalPromptParts.push(remainingPrompt.substring(lastIndex, loraTagMatch.index));
+    
+    const fullTag = loraTagMatch[0];
+    const slug = loraTagMatch[1];
+    const weight = parseFloat(loraTagMatch[2]);
 
-    if (/\\s+/.test(token) || /[.,!?()[\]{}'"]+/.test(token)) {
-        modifiedPromptElements.push(token); 
+    if (!isNaN(weight)) {
+        if (!lorasAppliedThisRun.has(slug)) {
+            // ADR Q6: Validate inline tags
+            let foundInMap = false;
+            triggerMap.forEach(loraList => { // Check if this slug is known (permissioned)
+                if (loraList.some(l => l.slug === slug)) foundInMap = true;
+            });
+
+            if (foundInMap || !masterAccountId) { // Allow if public map or found in user's permissioned map
+                appliedLoras.push({ slug, weight, originalWord: fullTag, replacedWord: fullTag, modelId: 'N/A_INLINE_TAG' });
+                lorasAppliedThisRun.add(slug);
+                finalPromptParts.push(fullTag); // Keep the valid, permissioned tag
+            } else {
+                warnings.push(`Inline tag ${fullTag} refers to an unknown or inaccessible LoRA. It will be stripped.`);
+                // Do not add the tag to finalPromptParts, effectively stripping it.
+            }
+        } else {
+             finalPromptParts.push(fullTag); // Already processed (e.g. duplicate), just pass it through
+        }
+    } else {
+        warnings.push(`Invalid weight in inline tag ${fullTag}. Tag will be preserved as text.`);
+        finalPromptParts.push(fullTag); // Invalid weight, treat as plain text
+    }
+    lastIndex = LORA_TAG_REGEX.lastIndex;
+  }
+  // Add any remaining text after the last LoRA tag (or the whole prompt if no tags)
+  finalPromptParts.push(remainingPrompt.substring(lastIndex));
+
+  // Pass 2: Process remaining text for triggers
+  let currentPromptText = finalPromptParts.join("");
+  finalPromptParts.length = 0; // Clear for reconstruction
+
+  // Split by spaces and punctuation, keeping them as separate tokens
+  const segments = currentPromptText.split(SPLIT_KEEP_DELIMITERS_REGEX).filter(s => s && s.length > 0);
+
+  for (const segment of segments) {
+    if (LORA_TAG_REGEX.test(segment)) { // Skip already processed <lora:...> tags
+        finalPromptParts.push(segment);
         continue;
     }
-    
-    let baseToken = token.toLowerCase();
-    let userSpecifiedWeight = null;
-
-    const weightMatch = token.match(/^([a-zA-Z0-9_]+):([0-9]*\\\\.?([0-9]+))$/i);
-    if (weightMatch) {
-      baseToken = weightMatch[1].toLowerCase();
-      userSpecifiedWeight = parseFloat(weightMatch[2]);
+    if (SPLIT_KEEP_DELIMITERS_REGEX.test(segment) && segment.match(SPLIT_KEEP_DELIMITERS_REGEX)[0] === segment) { // Is a delimiter token
+        finalPromptParts.push(segment);
+        continue;
     }
 
+    // Try to parse word and potential weight (e.g., "word:0.5" or "word" or "word.")
+    // WORD_AND_WEIGHT_REGEX: 1=word, 2=weight (optional), 3=trailing punctuation/space (optional)
+    const wordMatch = segment.match(/^([a-zA-Z0-9_.-]+)(?::(\d*\.?\d+))?/);
+    
+    let baseToken = "";
+    let userSpecifiedWeight = null;
+    let trailingPunctuation = ""; // Punctuation attached to the word
+    let originalSegmentForPush = segment; // What to push if no LoRA found
+
+    if (wordMatch) {
+        baseToken = wordMatch[1].toLowerCase();
+        if (wordMatch[2] !== undefined) { // Weight is present
+            userSpecifiedWeight = parseFloat(wordMatch[2]);
+        }
+        // Check for trailing punctuation that was part of the segment but not the baseToken/weight
+        const matchedPartLength = wordMatch[0].length;
+        if (segment.length > matchedPartLength) {
+            trailingPunctuation = segment.substring(matchedPartLength);
+        }
+    } else { // Not a word[:weight] pattern, likely just a word or unmatchable segment
+        baseToken = segment.toLowerCase().replace(/[.,!?()[\]{}\'\"]+$/, ''); // Clean trailing punctuation for map lookup
+        originalSegmentForPush = segment; // Keep original for re-adding
+    }
+    
     if (triggerMap.has(baseToken)) {
       if (userSpecifiedWeight === 0.0) {
         logger.info(`[LoRAResolutionService] LoRA trigger suppression for: ${baseToken} via weight 0.0`);
-        modifiedPromptElements.push(token); 
+        finalPromptParts.push(originalSegmentForPush); 
         continue;
       }
 
@@ -168,64 +195,62 @@ async function resolveLoraTriggers(promptString, masterAccountId) {
       let selectedLora = null;
 
       if (potentialLoras.length > 0) {
+        // ADR-009 Conflict Resolution (simplified for brevity, full logic was there)
+        const privateLoras = potentialLoras.filter(l => l.access === 'private' && l.ownerAccountId === masterAccountId);
+        const sharedPrivateLoras = potentialLoras.filter(l => l.access === 'private' && l.ownerAccountId !== masterAccountId);
         const publicLoras = potentialLoras.filter(l => l.access === 'public');
-        const privateLoras = potentialLoras.filter(l => l.access === 'private' && l.ownerAccountId === masterAccountId); // User's own
-        const sharedPrivateLoras = potentialLoras.filter(l => l.access === 'private' && l.ownerAccountId !== masterAccountId); // Private but shared via permission
 
-        // ADR-009 Conflict Resolution
-        if (privateLoras.length > 0) { // Prefer user's own private
+        if (privateLoras.length > 0) {
             privateLoras.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
             selectedLora = privateLoras[0];
-        } else if (sharedPrivateLoras.length > 0) { // Then prefer shared private (API already permission-filtered)
+        } else if (sharedPrivateLoras.length > 0) {
             sharedPrivateLoras.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
             selectedLora = sharedPrivateLoras[0];
-        } else if (publicLoras.length > 0) { // Then public
+        } else if (publicLoras.length > 0) {
+          publicLoras.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
           if (publicLoras.length > 1) {
-            const conflictWarning = `Multiple public LoRAs found for trigger '${baseToken}'. Slugs: ${publicLoras.map(l=>l.slug).join(', ')}. Using the most recently updated: ${publicLoras.sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0].slug}.`;
-            logger.warn(`[LoRAResolutionService] ${conflictWarning}`);
+            const conflictWarning = `Multiple public LoRAs for trigger '${baseToken}'. Slugs: ${publicLoras.map(l=>l.slug).join(', ')}. Using: ${publicLoras[0].slug}.`;
             warnings.push(conflictWarning);
-            publicLoras.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-            selectedLora = publicLoras[0];
-          } else {
-            selectedLora = publicLoras[0]; 
           }
+          selectedLora = publicLoras[0];
         }
       }
 
       if (selectedLora && !lorasAppliedThisRun.has(selectedLora.slug)) {
         const weightToApply = userSpecifiedWeight !== null ? userSpecifiedWeight : selectedLora.defaultWeight;
 
-        if (weightToApply === 0.0) {
-            modifiedPromptElements.push(token);
+        if (weightToApply === 0.0) { // Double check, though handled above
+            finalPromptParts.push(originalSegmentForPush);
             continue;
         }
 
         const loraTag = `<lora:${selectedLora.slug}:${weightToApply}>`;
-        
         // ADR Q5: "the trigger becomes <lora:slug:1> trigger"
-        // The 'baseTrigger' field from loraDataForMap (in API response) is the original trigger.
+        // The 'baseTrigger' field in loraDataForMap is the original trigger word form from loraModels.triggerWords
         // If it's a cognate, API provides `replaceWithBaseTrigger`.
-        const replacementWordSegment = selectedLora.isCognate ? selectedLora.replaceWithBaseTrigger : selectedLora.baseTrigger;
+        const replacementWordSegment = selectedLora.isCognate && selectedLora.replaceWithBaseTrigger 
+                                        ? selectedLora.replaceWithBaseTrigger 
+                                        : selectedLora.baseTrigger || baseToken; // Fallback to baseToken if baseTrigger is missing
 
-        modifiedPromptElements.push(`${loraTag} ${replacementWordSegment}`);
+        finalPromptParts.push(`${loraTag} ${replacementWordSegment}${trailingPunctuation}`);
         
         appliedLoras.push({
           slug: selectedLora.slug,
           weight: weightToApply,
-          originalWord: token, 
+          originalWord: segment, // The original segment from the prompt
           replacedWord: `${loraTag} ${replacementWordSegment}`,
           modelId: selectedLora.modelId 
         });
         lorasAppliedThisRun.add(selectedLora.slug);
       } else {
-        modifiedPromptElements.push(token);
+        finalPromptParts.push(originalSegmentForPush); // No suitable LoRA or already applied
       }
     } else {
-      modifiedPromptElements.push(token);
+      finalPromptParts.push(originalSegmentForPush); // Not a trigger
     }
   }
   
-  const finalPrompt = modifiedPromptElements.join("");
+  const finalPrompt = finalPromptParts.join("");
 
   logger.info(`[LoRAResolutionService] Resolution complete for user ${masterAccountId || 'public'}. Modified prompt: "${finalPrompt.substring(0,100)}...". Applied LoRAs: ${appliedLoras.length}. Warnings: ${warnings.length}.`);
   return { modifiedPrompt: finalPrompt, rawPrompt, appliedLoras, warnings };
