@@ -29,31 +29,29 @@ const loRAPermissionsDb = new LoRAPermissionsDB(logger);
  * @param {object} res - Express response object
  */
 async function getLoraTriggerMapDataHandler(req, res) {
-  const userId = req.query.userId; // masterAccountId from query
+  const userId = req.query.userId;
   logger.info(`[LoraTriggerMapApi] Received request for trigger map. UserID: ${userId || 'N/A (public only)'}`);
 
   const triggerMap = {};
   const allFetchedLoras = [];
 
   try {
-    // 1. Fetch Public LoRAs
-    // ADR-009 field names: trigger, cognates: [{word, replaceWith}], slug, defaultWeight, access: "public" | "private", ownerAccountId, updatedAt
-    const publicLoras = await loRAModelsDb.findMany({ access: 'public' }); // Assuming findMany can filter by access type
+    // 1. Fetch Public LoRAs - CHANGED to use visibility: 'public'
+    const publicLoras = await loRAModelsDb.findMany({ visibility: 'public' }); 
     if (publicLoras) {
       publicLoras.forEach(lora => {
         allFetchedLoras.push({
           modelId: lora._id.toString(),
           slug: lora.slug,
-          trigger: lora.trigger, // Main trigger word
-          cognates: lora.cognates || [], // Array of {word, replaceWith}
+          triggerWords: lora.triggerWords || [], // EXPECTS triggerWords (array)
+          cognates: lora.cognates || [],
           defaultWeight: lora.defaultWeight || 1.0,
-          access: 'public',
-          ownerAccountId: lora.ownedBy ? lora.ownedBy.toString() : null, // Assuming ownedBy is ObjectId
-          updatedAt: lora.updatedAt || lora.createdAt, // Fallback to createdAt if updatedAt isn't set
-          // triggerWordForReplacement: lora.trigger, // Per ADR-009 Q5, actual trigger is part of replacement string
+          access: lora.access || 'public', // Keep access field, derive from visibility or permissionType if needed
+          ownerAccountId: lora.ownedBy ? lora.ownedBy.toString() : null,
+          updatedAt: lora.updatedAt || lora.createdAt,
         });
       });
-      logger.info(`[LoraTriggerMapApi] Fetched ${publicLoras.length} public LoRAs.`);
+      logger.info(`[LoraTriggerMapApi] Fetched ${publicLoras.length} public LoRAs using visibility.`);
     }
 
     // 2. Fetch Private LoRAs (if userId is provided)
@@ -62,74 +60,74 @@ async function getLoraTriggerMapDataHandler(req, res) {
       logger.info(`[LoraTriggerMapApi] User ${userId} has ${accessibleLoraPermissions.length} LoRA permissions.`);
       
       for (const permission of accessibleLoraPermissions) {
-        // Avoid re-fetching if already fetched as public (though unlikely if permissions are strict)
         if (!allFetchedLoras.some(l => l.modelId === permission.loraId.toString())) {
           const privateLORA = await loRAModelsDb.findById(permission.loraId);
           if (privateLORA) {
-            // Ensure it's actually marked as private or has some owner defined
-            // (could be public but user has explicit permission record for some reason - though ADR implies clear separation)
             allFetchedLoras.push({
               modelId: privateLORA._id.toString(),
               slug: privateLORA.slug,
-              trigger: privateLORA.trigger,
+              triggerWords: privateLORA.triggerWords || [], // EXPECTS triggerWords (array)
               cognates: privateLORA.cognates || [],
               defaultWeight: privateLORA.defaultWeight || 1.0,
-              access: privateLORA.access || 'private', // Default to private if fetched via permission
-              ownerAccountId: privateLORA.ownedBy ? privateLORA.ownedBy.toString() : userId, // If ownedBy is null, assume requesting user owns it if they have permission
+              access: privateLORA.access || 'private', 
+              ownerAccountId: privateLORA.ownedBy ? privateLORA.ownedBy.toString() : userId,
               updatedAt: privateLORA.updatedAt || privateLORA.createdAt,
-              // triggerWordForReplacement: privateLORA.trigger,
             });
-          } else {
-            logger.warn(`[LoraTriggerMapApi] Could not find LoRA model for permissioned loraId: ${permission.loraId}`);
           }
         }
       }
     }
-    logger.info(`[LoraTriggerMapApi] Total LoRAs to process for map (public + user-specific private): ${allFetchedLoras.length}`);
+    logger.info(`[LoraTriggerMapApi] Total LoRAs to process for map: ${allFetchedLoras.length}`);
 
-    // 3. Build Trigger Map from allFetchedLoras
+    // 3. Build Trigger Map
     for (const loraDetails of allFetchedLoras) {
-      if (!loraDetails.trigger && (!loraDetails.cognates || loraDetails.cognates.length === 0)) {
-        logger.warn(`[LoraTriggerMapApi] LoRA ${loraDetails.slug} (ID: ${loraDetails.modelId}) has no trigger words or cognates. Skipping.`);
+      // Ensure triggerWords is an array and not empty, or cognates exist
+      const hasTriggers = loraDetails.triggerWords && Array.isArray(loraDetails.triggerWords) && loraDetails.triggerWords.length > 0;
+      const hasCognates = loraDetails.cognates && Array.isArray(loraDetails.cognates) && loraDetails.cognates.length > 0;
+
+      if (!hasTriggers && !hasCognates) {
+        logger.warn(`[LoraTriggerMapApi] LoRA ${loraDetails.slug} (ID: ${loraDetails.modelId}) has no triggerWords or cognates. Skipping.`);
         continue;
       }
 
       const loraDataForMap = {
         modelId: loraDetails.modelId,
         slug: loraDetails.slug,
-        baseTrigger: loraDetails.trigger, // Store the original base trigger for reference
+        // baseTrigger: (hasTriggers ? loraDetails.triggerWords[0] : null), // Main trigger for replacement context
         defaultWeight: loraDetails.defaultWeight,
-        access: loraDetails.access,
+        access: loraDetails.access, // Use the access determined when fetching
         ownerAccountId: loraDetails.ownerAccountId,
         updatedAt: loraDetails.updatedAt,
-        // triggerWordForReplacement is implicitly the trigger/cognate word itself when used by loraResolutionService
       };
 
-      // Add primary trigger
-      if (loraDetails.trigger) {
-        const mainTriggerKey = loraDetails.trigger.toLowerCase();
-        if (!triggerMap[mainTriggerKey]) {
-          triggerMap[mainTriggerKey] = [];
-        }
-        // Add only if not already present (e.g. multiple LoRAs on same trigger)
-        if (!triggerMap[mainTriggerKey].some(m => m.modelId === loraDataForMap.modelId)) {
-            triggerMap[mainTriggerKey].push(loraDataForMap);
+      // Add primary triggers from triggerWords array
+      if (hasTriggers) {
+        for (const triggerWord of loraDetails.triggerWords) {
+          if (triggerWord && typeof triggerWord === 'string') {
+            const mainTriggerKey = triggerWord.toLowerCase();
+            const dataToPush = { ...loraDataForMap, baseTrigger: triggerWord }; // Add the specific trigger word for context
+            if (!triggerMap[mainTriggerKey]) triggerMap[mainTriggerKey] = [];
+            if (!triggerMap[mainTriggerKey].some(m => m.modelId === dataToPush.modelId)) {
+                triggerMap[mainTriggerKey].push(dataToPush);
+            }
+          }
         }
       }
 
       // Add cognates
-      if (loraDetails.cognates && loraDetails.cognates.length > 0) {
+      if (hasCognates) {
         for (const cognate of loraDetails.cognates) {
-          if (cognate.word) {
+          if (cognate.word && typeof cognate.word === 'string') {
             const cognateKey = cognate.word.toLowerCase();
+            // If cognate.replaceWith is defined, it implies this cognate maps to a specific primary trigger.
+            // Otherwise, assume it maps to the first primary trigger word if available.
+            const effectiveBaseTrigger = cognate.replaceWith || (hasTriggers ? loraDetails.triggerWords[0] : cognate.word);
             const cognateDataForMap = {
                 ...loraDataForMap,
                 isCognate: true,
-                replaceWithBaseTrigger: cognate.replaceWith || loraDetails.trigger // The trigger to use for <lora:slug:weight> [trigger]
+                replaceWithBaseTrigger: effectiveBaseTrigger 
             };
-            if (!triggerMap[cognateKey]) {
-              triggerMap[cognateKey] = [];
-            }
+            if (!triggerMap[cognateKey]) triggerMap[cognateKey] = [];
             if (!triggerMap[cognateKey].some(m => m.modelId === cognateDataForMap.modelId)) {
                 triggerMap[cognateKey].push(cognateDataForMap);
             }
@@ -138,15 +136,12 @@ async function getLoraTriggerMapDataHandler(req, res) {
       }
     }
 
-    logger.info(`[LoraTriggerMapApi] Trigger map built. Number of unique trigger keys: ${Object.keys(triggerMap).length}`);
-    // For debugging, log a small sample of the map
+    logger.info(`[LoraTriggerMapApi] Trigger map built. Keys: ${Object.keys(triggerMap).length}`);
     if (Object.keys(triggerMap).length > 0) {
         const sampleKey = Object.keys(triggerMap)[0];
-        logger.debug(`[LoraTriggerMapApi] Sample entry for trigger '${sampleKey}': ${JSON.stringify(triggerMap[sampleKey])}`);
+        logger.debug(`[LoraTriggerMapApi] Sample for '${sampleKey}': ${JSON.stringify(triggerMap[sampleKey])}`);
     }
-
-    res.status(200).json(triggerMap); // Send the map as JSON response
-
+    res.status(200).json(triggerMap);
   } catch (error) {
     logger.error(`[LoraTriggerMapApi] Error building trigger map: ${error.message}`, error.stack);
     res.status(500).json({ error: 'Failed to build LoRA trigger map', details: error.message });
