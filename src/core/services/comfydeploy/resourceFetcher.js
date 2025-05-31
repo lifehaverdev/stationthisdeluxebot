@@ -382,6 +382,7 @@ async function getWorkflowContent(instanceData, workflowId) {
     }
     
     const potentialEndpoints = [
+      `/api/workflow/${workflowId}`,
       `/api/workflow/${workflowId}/content`,
       `/api/workflow/${workflowId}/json`,
       `/api/workflow/${workflowId}/data`,
@@ -389,7 +390,7 @@ async function getWorkflowContent(instanceData, workflowId) {
       `/workflow/${workflowId}/content`,
       `/workflow_content/${workflowId}`,
       `/workflow_json/${workflowId}`,
-      `/api/workflow/${workflowId}`,
+
       `/workflow/${workflowId}`
     ];
     

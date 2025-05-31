@@ -14,18 +14,21 @@ const logger = console; // Replace with a proper logger instance if available
 /**
  * Fetches the trigger map from the internal API and caches it.
  * @param {string} [masterAccountId] - Optional user ID for permission-aware map.
+ * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _fetchAndCacheTriggerMap(masterAccountId) {
+async function _fetchAndCacheTriggerMap(masterAccountId, toolBaseModel) {
   const cacheKey = masterAccountId || 'public';
-  logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}`);
+  let apiUrl = masterAccountId ? `/lora/trigger-map-data?userId=${masterAccountId}` : '/lora/trigger-map-data';
+  if (toolBaseModel) {
+    apiUrl += (apiUrl.includes('?') ? '&' : '?') + `baseModelType=${toolBaseModel}`;
+    logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}, ToolBaseModel: ${toolBaseModel}`);
+  } else {
+    logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}`);
+  }
   
   try {
-    const apiUrl = masterAccountId 
-      ? `/lora/trigger-map-data?userId=${masterAccountId}`
-      : '/lora/trigger-map-data';
-      
     const response = await internalApiClient.get(apiUrl);
 
     if (!response || !response.data || typeof response.data !== 'object') {
@@ -56,10 +59,11 @@ async function _fetchAndCacheTriggerMap(masterAccountId) {
 /**
  * Retrieves the trigger map, utilizing cache or fetching if stale/absent.
  * @param {string} [masterAccountId] - Optional user ID.
+ * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _getTriggerMap(masterAccountId) {
+async function _getTriggerMap(masterAccountId, toolBaseModel) {
   const cacheKey = masterAccountId || 'public';
   const cachedEntry = triggerMapCache.get(cacheKey);
 
@@ -68,7 +72,7 @@ async function _getTriggerMap(masterAccountId) {
     return cachedEntry.data;
   }
   
-  return _fetchAndCacheTriggerMap(masterAccountId);
+  return _fetchAndCacheTriggerMap(masterAccountId, toolBaseModel);
 }
 
 // Regex to find <lora:slug:weight> tags
@@ -85,16 +89,17 @@ const SPLIT_KEEP_DELIMITERS_REGEX = /(\s+|[.,!?()[\]{}\'\"]+)/g;
  *
  * @param {string} promptString - The raw prompt input by the user.
  * @param {string} masterAccountId - The ID of the user making the request.
+ * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<{modifiedPrompt: string, rawPrompt: string, appliedLoras: Array<{slug: string, weight: number, originalWord: string, replacedWord: string, modelId: string}>, warnings: string[]}>}
  */
-async function resolveLoraTriggers(promptString, masterAccountId) {
+async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel) {
   const rawPrompt = promptString;
   const appliedLoras = [];
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
-  logger.info(`[LoRAResolutionService] Resolving LoRAs for user: ${masterAccountId || 'N/A (public map only)'}. Prompt: "${promptString.substring(0,50)}..."`);
-  const triggerMap = await _getTriggerMap(masterAccountId);
+  logger.info(`[LoRAResolutionService] Resolving LoRAs for user: ${masterAccountId || 'N/A (public map only)'}. Prompt: "${promptString.substring(0,50)}...". ToolBaseModel: ${toolBaseModel || 'N/A'}`);
+  const triggerMap = await _getTriggerMap(masterAccountId, toolBaseModel);
 
   if (!triggerMap || triggerMap.size === 0) {
     logger.info(`[LoRAResolutionService] Trigger map is empty for ${masterAccountId || 'public'}. Returning original prompt.`);
@@ -192,6 +197,26 @@ async function resolveLoraTriggers(promptString, masterAccountId) {
       }
 
       let potentialLoras = triggerMap.get(baseToken) || [];
+
+      // BEGIN MODIFICATION: Filter by toolBaseModel if provided
+      if (toolBaseModel && potentialLoras.length > 0) {
+        const initialCount = potentialLoras.length;
+        // Updated: Use lora.checkpoint for model type filtering
+        if (toolBaseModel === 'SD1.5-XL') {
+          potentialLoras = potentialLoras.filter(lora =>
+            lora.checkpoint === 'SD1.5' || lora.checkpoint === 'SDXL'
+          );
+        } else {
+          potentialLoras = potentialLoras.filter(lora =>
+            lora.checkpoint === toolBaseModel
+          );
+        }
+        if (potentialLoras.length < initialCount) {
+            logger.info(`[LoRAResolutionService] Filtered ${initialCount - potentialLoras.length} LoRAs from trigger '${baseToken}' due to toolBaseModel/checkpoint mismatch (tool wants ${toolBaseModel}).`);
+        }
+      }
+      // END MODIFICATION
+
       let selectedLora = null;
 
       if (potentialLoras.length > 0) {

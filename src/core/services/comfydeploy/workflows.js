@@ -640,19 +640,28 @@ class WorkflowsService {
       this.logger.info(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader. Attempting to resolve LoRAs for prompt.`);
       rawPrompt = currentInputs.input_prompt; // Store original prompt before modification
       try {
-        const resolutionResult = await loraResolutionService.resolveLoraTriggers(rawPrompt, masterAccountId);
+        const toolBaseModel = tool.metadata.baseModel; // e.g., 'SDXL', 'FLUX'
+        if (!toolBaseModel) {
+          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader but no tool.metadata.baseModel defined. Skipping LoRA version filtering.`);
+        }
+        
+        const resolutionResult = await loraResolutionService.resolveLoraTriggers(
+          rawPrompt, 
+          masterAccountId,
+          toolBaseModel // Pass the tool's base model type
+        );
         currentInputs.input_prompt = resolutionResult.modifiedPrompt; // Modify the working copy of inputs
         appliedLoras = resolutionResult.appliedLoras || [];
         loraWarnings = resolutionResult.warnings || [];
         
         if (DEBUG_LOGGING_ENABLED || (tool.metadata.hasLoraLoader && currentInputs.input_prompt !== rawPrompt)) {
-            this.logger.info(`[WorkflowsService-prepareToolRunPayload] LoRA resolution for ${toolId}. Raw: "${rawPrompt}", Modified: "${currentInputs.input_prompt}"`);
+            this.logger.info(`[WorkflowsService-prepareToolRunPayload] LoRA resolution for ${toolId}. Raw: "${rawPrompt.substring(0, 50)}...", Modified: "${resolutionResult.modifiedPrompt.substring(0,50)}..."`);
         }
         if (appliedLoras.length > 0) {
-          this.logger.info(`[WorkflowsService-prepareToolRunPayload] Applied LoRAs for ${toolId}: ${JSON.stringify(appliedLoras)}`);
+          this.logger.info(`[WorkflowsService-prepareToolRunPayload] Applied LoRAs for ${toolId}:`, appliedLoras.map(l => ({slug: l.slug, weight: l.weight})));
         }
         if (loraWarnings.length > 0) {
-          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] LoRA resolution warnings for ${toolId}: ${JSON.stringify(loraWarnings)}`);
+          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] LoRA resolution warnings for ${toolId}:`, loraWarnings);
         }
       } catch (error) {
         this.logger.error(`[WorkflowsService-prepareToolRunPayload] Error during LoRA resolution for tool ${toolId}: ${error.message}`, error);

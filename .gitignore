@@ -1,5 +1,7 @@
 # tmp/*
 
+tool_registry.generated.json
+
 db/data/*
 src/db/data/*
 

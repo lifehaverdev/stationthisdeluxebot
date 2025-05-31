@@ -115,6 +115,7 @@ function parseWorkflowStructure(workflowJson) {
       });
 
       inputSchema[inputName] = {
+        name: inputName,
         type: inputType,
         default: defaultValue,
         description,
@@ -153,17 +154,17 @@ function parseWorkflowStructure(workflowJson) {
   const hasImage = inputTypeCount.image > 0;
 
   if (hasText && hasImage && outputType === 'image') {
-    toolCategory = 'image-to-image';
+    toolCategory = 'img2img';
   } else if (hasText && outputType === 'image') {
     toolCategory = 'text-to-image';
   } else if (hasImage && outputType === 'image') {
-    toolCategory = 'image-processing';
+    toolCategory = 'img2img';
   } else if (outputType === 'video') {
     toolCategory = 'video';
   } else if (inputTypes.includes('model')) {
-    toolCategory = 'model-tool';
+    toolCategory = 'interrogate';
   } else if (outputType === 'image' && inputTypes.length === 0) {
-    toolCategory = 'utility';
+    toolCategory = 'interrogate';
   }
 
   let primaryInput = 'none';

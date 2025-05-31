@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 // Adjust paths based on your project structure
 // Assuming this script is run from the root of the project, or paths are adjusted accordingly.
@@ -25,10 +26,26 @@ async function flashRegistry() {
     // For example, API keys for ComfyDeploy might be needed via process.env
     // Ensure your .env file or environment variables are set up if ComfyUI service needs them.
 
+    // Explicitly check for COMFY_DEPLOY_API_KEY before initializing services
+    if (!process.env.COMFY_DEPLOY_API_KEY) {
+      logger.error('CRITICAL: COMFY_DEPLOY_API_KEY is not set in the environment.');
+      logger.error('Please ensure it is defined in your .env file and the .env file is being loaded correctly.');
+      logger.error('The flashToolRegistry script cannot function without this key.');
+      process.exit(1);
+    } else {
+      logger.info('COMFY_DEPLOY_API_KEY found in environment.'); // Add this for positive confirmation
+    }
+
+    const mediaConfig = {
+      tempDir: path.join(__dirname, '..', 'tmp'), // Default similar to MediaService
+      storageDir: path.join(__dirname, '..', 'storage', 'media') // Default similar to MediaService
+    };
+
     const initializeTimeoutMs = 300000; // 5 minutes, adjust as needed
 
     const servicesPromise = initializeServices({
       logger,
+      mediaConfig, // Add mediaConfig
       // Add other necessary minimal configurations for services to initialize
       // e.g., mediaConfig if MediaService requires it, etc.
       // This might require looking into what initializeServices and its children (like ComfyUIService/WorkflowCacheManager) expect.
@@ -43,7 +60,28 @@ async function flashRegistry() {
 
     if (!services || !services.toolRegistry) {
       console.error('Failed to get ToolRegistry from initialized services.');
+      if (services) {
+        console.error('Services object was returned, but toolRegistry key is missing or falsy.');
+        console.error('Available keys in services:', Object.keys(services).join(', '));
+      } else {
+        console.error('Services object itself is null or undefined after initialization.');
+      }
       process.exit(1);
+    }
+
+    // Ensure WorkflowsService (and its CacheManager) is initialized
+    if (services.workflows && typeof services.workflows.initialize === 'function') {
+      console.log('Explicitly initializing WorkflowsService...');
+      try {
+        await services.workflows.initialize();
+        console.log('WorkflowsService initialized successfully.');
+      } catch (error) {
+        console.error('Error during explicit WorkflowsService initialization:', error);
+        // Decide if you want to exit or continue if workflow init fails
+        process.exit(1); 
+      }
+    } else {
+      console.warn('services.workflows.initialize is not available. ToolRegistry might be empty.');
     }
 
     const toolRegistry = services.toolRegistry; // Get the instance from initialized services
@@ -53,6 +91,23 @@ async function flashRegistry() {
 
     if (tools.length === 0) {
       console.warn('Warning: ToolRegistry is empty. The output file will be an empty array. Ensure services initialized correctly and workflows were found.');
+      // Add more diagnostic info here if possible
+      if (services.comfyUI) {
+        // Access static property S_IS_INITIALIZED directly via constructor
+        console.log(`ComfyUI Service S_IS_INITIALIZED: ${services.comfyUI.constructor.S_IS_INITIALIZED}`);
+        // Log the API URL being used by ComfyUIService instance
+        if (services.comfyUI.apiUrl) {
+          console.log(`ComfyUI Service API URL: ${services.comfyUI.apiUrl}`);
+        }
+      }
+      if (services.workflows && services.workflows.cacheManager) {
+         // cacheManager.isInitialized is a boolean property
+         console.log(`Workflows Service Cache Manager isInitialized: ${services.workflows.cacheManager.isInitialized}`);
+         console.log(`Workflows Service Cache Manager isLoading: ${services.workflows.cacheManager.isLoading}`);
+         console.log(`Workflows Service Cache Manager _hasInitializedOnce: ${services.workflows.cacheManager._hasInitializedOnce}`);
+         // The getInitializationError was a good idea, but let's assume it's not there for now to avoid more TypeErrors
+         // We'll rely on S_IS_INITIALIZED from ComfyUIService and the cacheManager flags for now.
+      }
     }
 
     const outputPath = path.join(__dirname, '..', 'tool_registry.generated.json'); 
@@ -72,6 +127,7 @@ async function flashRegistry() {
     console.error('Error during flashRegistry script execution:', error);
     process.exit(1);
   }
+  process.exit(0);
 }
 
 // Load .env variables if the script is run directly and services need them

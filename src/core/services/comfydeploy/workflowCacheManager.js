@@ -44,16 +44,32 @@ function mapComfyTypeToToolType(comfyType, inputName) {
     const lowerInputName = inputName.toLowerCase();
     for (const keyword of KNOWN_STRING_SELECTOR_KEYWORDS) {
       if (lowerInputName.includes(keyword)) {
-        return 'string';
+        return 'string'; // Checkpoints, LoRAs, VAEs, etc., are usually selected by name (string)
       }
     }
   }
 
-  if (!comfyType) return 'string';
-  const lowerType = comfyType.toLowerCase();
-  if (lowerType.includes('image')) return 'image';
-  if (lowerType.includes('int') || lowerType.includes('float') || lowerType.includes('number')) return 'number';
+  if (!comfyType) return 'string'; // Default to string if comfyType is missing
+
+  const lowerType = String(comfyType).toLowerCase(); // Ensure comfyType is a string before calling toLowerCase
+
+  // Specific mappings based on validation errors and common Comfy types
+  if (lowerType.includes('int')) return 'number'; // Catches 'INT', 'integer'
+  if (lowerType.includes('float')) return 'number';
+  if (lowerType.includes('number')) return 'number'; // Catches 'NUMBER', 'numberslider'
   if (lowerType.includes('boolean')) return 'boolean';
+  if (lowerType.includes('image')) return 'image';
+  if (lowerType.includes('video')) return 'video'; // Added for completeness
+  if (lowerType.includes('audio')) return 'audio'; // Added for completeness
+  if (lowerType.includes('file')) return 'file';   // Added for completeness
+  
+  // Types that should map to string for ToolRegistry
+  if (['string', 'text', 'textany', 'checkpoint', 'seed', 'model_name', 'lora_name', 'vae_name', 'sampler_name'].includes(lowerType)) {
+    return 'string';
+  }
+  
+  // Fallback for any other types not explicitly handled
+  // console.warn(`[mapComfyTypeToToolType] Unknown Comfy type '${comfyType}' for input '${inputName}'. Defaulting to string.`);
   return 'string';
 }
 
@@ -950,6 +966,40 @@ class WorkflowCacheManager {
     }
   
     // === Metadata and Hints ===
+    let detectedBaseModel = 'unknown'; // Default
+    if (workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
+      const nodeTypes = new Set(workflowJson.nodes.map(node => node && node.type).filter(Boolean));
+      
+      // Simple detection logic (NEEDS ACTUAL NODE TYPES FROM YOU)
+      // Order of checks can matter if a workflow could have ambiguous nodes.
+      // Prioritize more specific model types first.
+      if (nodeTypes.has('FLUXCheckpointLoaderSimple') || /* other FLUX specific nodes */ 
+          Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
+        detectedBaseModel = 'FLUX';
+      } else if (nodeTypes.has('CheckpointLoaderSimpleSDXL') || /* other SDXL specific nodes */ 
+                 nodeTypes.has('CLIPTextEncodeSDXL') || 
+                 Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
+        detectedBaseModel = 'SDXL';
+      } else if (nodeTypes.has('CheckpointLoaderSimple') && 
+                 !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
+        // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
+        // This is a weaker assumption and might need refinement based on actual checkpoint names or other cues.
+        // Special case: quick- workflows get SD1.5-XL
+        const displayName = toolDefinition.displayName?.toLowerCase() || '';
+        if (displayName.includes('quick')) {
+          detectedBaseModel = 'SD1.5-XL';
+        } else {
+          detectedBaseModel = 'SD1.5'; 
+        }
+      }
+      // Add checks for SD3, BAGEL, etc. here with their specific node types
+      // else if (nodeTypes.has('SomeSD3Node')) { detectedBaseModel = 'SD3'; }
+
+      if (DEBUG_LOGGING_ENABLED_MULTILORA) { // Re-use existing debug flag for related features
+        this.logger.info(`[WorkflowCacheManager] Base model detection for ${toolDefinition.toolId}: Found node types: [${Array.from(nodeTypes).join(', ')}]. Detected base model: ${detectedBaseModel}`);
+      }
+    }
+
     toolDefinition.platformHints = {
       primaryInput: structureInfo?.primaryInput || 'text',
       supportsFileCaption: structureInfo?.hasRequiredImageOrVideoInput || false,
@@ -965,6 +1015,7 @@ class WorkflowCacheManager {
       hasPromptNode: structureInfo?.hasPromptNode || false,
       hasKSamplerNode: structureInfo?.hasKSamplerNode || false,
       hasLoraLoader: hasLoraLoader,
+      baseModel: detectedBaseModel,
       nodeTypes: structureInfo?.nodeTypes || []
     };
   
