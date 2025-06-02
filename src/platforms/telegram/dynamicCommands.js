@@ -393,7 +393,12 @@ async function setupDynamicCommands(bot, services) {
             toolId: currentToolId,
             deploymentId: deploymentId, 
             costRate: costRateInfo, 
-            userInputPrompt: actualUserInputPrompt 
+            userInputPrompt: actualUserInputPrompt, 
+            notificationContext: {
+              platform: 'telegram',
+              chatId: chatId,
+              replyToMessageId: msg.message_id
+            }
           };
 
           if (loraResolutionData) {
