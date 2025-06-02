@@ -1183,15 +1183,54 @@ function createTelegramBot(dependencies, token, options = {}) {
           const userFacingPromptForRerun = originalGenerationRecord.metadata?.userInputPrompt || originalGenerationRecord.requestPayload.input_prompt;
           newRequestPayload.input_prompt = userFacingPromptForRerun; // Set it in the payload to be sent
 
-          // Determine initiatingEventId for the rerun generation
-          let initiatingEventIdForRerun;
-          if (originalGenerationRecord.metadata?.initiatingEventId) {
-            initiatingEventIdForRerun = originalGenerationRecord.metadata.initiatingEventId;
-            logger.info(`[Bot CB] rerun_gen: Copied initiatingEventId '${initiatingEventIdForRerun}' from parent generation ${originalGenerationId}.`);
-          } else {
-            initiatingEventIdForRerun = uuidv4();
-            logger.info(`[Bot CB] rerun_gen: Parent generation ${originalGenerationId} missing initiatingEventId. Generated new one: '${initiatingEventIdForRerun}'.`);
+          // Step X: Fetch/Create DB UserSession to get its _id for the rerun
+          // NOTE: Moved this earlier to ensure dbUserSessionIdForRerun is available for event logging
+          let dbUserSessionIdForRerun;
+          try {
+            const dbSessionResponse = await internalApiClient.post('/sessions', {
+              masterAccountId: clickerMasterAccountId,
+              platform: 'telegram'
+            });
+            if (dbSessionResponse && dbSessionResponse.data && dbSessionResponse.data._id) {
+              dbUserSessionIdForRerun = dbSessionResponse.data._id;
+              logger.info(`[Bot CB] rerun_gen: Successfully fetched/created DB UserSession. ID: ${dbUserSessionIdForRerun} for MAID ${clickerMasterAccountId}`);
+            } else {
+              logger.error(`[Bot CB] rerun_gen: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponse.data)}`);
+              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for rerun.", show_alert: true });
+              return;
+            }
+          } catch (dbSessionError) {
+            logger.error(`[Bot CB] rerun_gen: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionError.message}.`, dbSessionError.response?.data || dbSessionError);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for rerun.", show_alert: true });
+            return;
           }
+
+          // BEGIN ADDITION: Log the User Event for this rerun action
+          try {
+            const rerunEventPayload = {
+              masterAccountId: clickerMasterAccountId,
+              sessionId: dbUserSessionIdForRerun, // Use the DB UserSession ID obtained above
+              eventType: 'rerun_generation_request',
+              eventData: {
+                originalGenerationId: originalGenerationId,
+                toolId: toolId, // toolId resolved earlier
+                newSeed: newRequestPayload.input_seed // Log the new seed specifically for rerun
+              },
+              sourcePlatform: 'telegram'
+            };
+            const rerunEventResponse = await internalApiClient.post('/events', rerunEventPayload);
+            if (rerunEventResponse && rerunEventResponse.data && rerunEventResponse.data._id) {
+              newEventIdForRerun = rerunEventResponse.data._id;
+              logger.info(`[Bot CB] rerun_gen: Successfully logged UserEvent for rerun. EventID: ${newEventIdForRerun}`);
+            } else {
+              logger.error(`[Bot CB] rerun_gen: Failed to log UserEvent for rerun or get _id. Response: ${JSON.stringify(rerunEventResponse.data)}`);
+              // newEventIdForRerun will remain undefined, fallback logic will apply
+            }
+          } catch (rerunEventLogError) {
+            logger.error(`[Bot CB] rerun_gen: Error logging UserEvent for rerun: ${rerunEventLogError.message}.`, rerunEventLogError.response?.data || rerunEventLogError);
+            // newEventIdForRerun will remain undefined, fallback logic will apply
+          }
+          // END ADDITION
 
           // Determine the top-level initiatingEventId for the new generation record.
           // Priority: 
@@ -1254,27 +1293,6 @@ function createTelegramBot(dependencies, token, options = {}) {
             stringifiedPayloadForLog = "[Error stringifying payload]";
           }
           logger.debug('[Bot CB] rerun_gen: POST-JSON.STRINGIFY for newRequestPayload.');
-
-          // Step X: Fetch/Create DB UserSession to get its _id for the rerun
-          let dbUserSessionIdForRerun;
-          try {
-            const dbSessionResponse = await internalApiClient.post('/sessions', {
-              masterAccountId: clickerMasterAccountId,
-              platform: 'telegram'
-            });
-            if (dbSessionResponse && dbSessionResponse.data && dbSessionResponse.data._id) {
-              dbUserSessionIdForRerun = dbSessionResponse.data._id;
-              logger.info(`[Bot CB] rerun_gen: Successfully fetched/created DB UserSession. ID: ${dbUserSessionIdForRerun} for MAID ${clickerMasterAccountId}`);
-            } else {
-              logger.error(`[Bot CB] rerun_gen: Failed to get _id from DB UserSession response for MAID ${clickerMasterAccountId}. Response: ${JSON.stringify(dbSessionResponse.data)}`);
-              await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Failed to initialize user session for rerun.", show_alert: true });
-              return;
-            }
-          } catch (dbSessionError) {
-            logger.error(`[Bot CB] rerun_gen: Error creating/fetching DB UserSession for MAID ${clickerMasterAccountId}: ${dbSessionError.message}.`, dbSessionError.response?.data || dbSessionError);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Could not establish session for rerun.", show_alert: true });
-            return;
-          }
 
           logger.info(`[Bot CB] rerun_gen: Dispatching rerun for tool ${toolId}. Original GenID: ${originalGenerationId}. New payload (seed modified): ${stringifiedPayloadForLog}`);
           
