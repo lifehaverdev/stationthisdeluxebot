@@ -201,14 +201,16 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel)
       // BEGIN MODIFICATION: Filter by toolBaseModel if provided
       if (toolBaseModel && potentialLoras.length > 0) {
         const initialCount = potentialLoras.length;
-        // Updated: Use lora.checkpoint for model type filtering
+        // Debug log to show all potential LoRAs for this trigger before filtering
+        logger.info(`[LoRAResolutionService][DEBUG] All potential LoRAs for trigger '${baseToken}':`, potentialLoras.map(l => ({slug: l.slug, checkpoint: l.checkpoint})));
+        // Updated: Use lora.checkpoint for model type filtering, case-insensitive
         if (toolBaseModel === 'SD1.5-XL') {
           potentialLoras = potentialLoras.filter(lora =>
-            lora.checkpoint === 'SD1.5' || lora.checkpoint === 'SDXL'
+            lora.checkpoint && ['SD1.5', 'SDXL'].includes(lora.checkpoint.toUpperCase())
           );
         } else {
           potentialLoras = potentialLoras.filter(lora =>
-            lora.checkpoint === toolBaseModel
+            lora.checkpoint && lora.checkpoint.toUpperCase() === toolBaseModel.toUpperCase()
           );
         }
         if (potentialLoras.length < initialCount) {
