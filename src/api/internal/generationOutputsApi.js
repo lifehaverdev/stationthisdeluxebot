@@ -202,13 +202,19 @@ module.exports = function generationOutputsApi(dependencies) {
     // Basic validation (more specific type checks could be added)
     // Example: Check costUsd if present
     if (updatePayload.costUsd !== undefined) {
-      try {
-        Decimal128.fromString(updatePayload.costUsd.toString());
-      } catch (e) {
-        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid costUsd format. Must be convertible to Decimal128.', details: { field: 'costUsd' } } });
+      // If costUsd is null, set it to 0 for Decimal128 conversion
+      if (updatePayload.costUsd === null) {
+        updatePayload.costUsd = Decimal128.fromString("0");
+      } else {
+        try {
+          // Ensure it's a string before calling Decimal128.fromString
+          Decimal128.fromString(updatePayload.costUsd.toString());
+          // Convert to Decimal128 for the update operation
+          updatePayload.costUsd = Decimal128.fromString(updatePayload.costUsd.toString());
+        } catch (e) {
+          return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid costUsd format. Must be convertible to Decimal128.', details: { field: 'costUsd' } } });
+        }
       }
-      // Convert to Decimal128 for the update operation
-      updatePayload.costUsd = Decimal128.fromString(updatePayload.costUsd.toString());
     }
 
     try {

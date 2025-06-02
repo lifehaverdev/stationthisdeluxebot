@@ -31,6 +31,8 @@ This service will call the LoRA Resolution Service if the tool being processed h
 
 **Auditability:**
 Before prompt modification, the original prompt will be stored in `generationRecord.metadata.rawPrompt`. The modified prompt will be part of `generationRecord.requestPayload`. Both are logged via `src/core/services/db/generationOutputsDb.js`.
+*   The original, unmodified prompt string as provided by the user will be stored in `generationRecord.metadata.userInputPrompt`. This ensures that user-facing displays of the prompt (e.g., in history, tweak menus) reflect what the user actually typed. `generationRecord.metadata.rawPrompt` can be deprecated or used as an alias for `userInputPrompt` if desired, with `userInputPrompt` being the preferred field name moving forward.
+*   The LoRA-processed prompt (containing `<lora:slug:weight>` syntax) will be stored in `generationRecord.requestPayload.input_prompt` (or the relevant prompt field for the target generation service) and is the version sent to the generation backend.
 
 🔄 Trigger Word Resolution Pipeline (Executed by LoRA Resolution Service)
 
@@ -166,6 +168,7 @@ What is the best format for defining `replaceWith` in more complex cognitive sub
 
 *   **Prompt Syntax Clarification:** Confirm the exact output of substitution. E.g., does "trigger" become "<lora:slug:1>" or 
 "<lora:slug:1> trigger"? (Standard is replacement).
+    *   *Clarification:* The trigger word is replaced as per ADR (e.g., "trigger" becomes `<lora:slug:1> triggerWordForReplacement`). The crucial point for user experience is that the *original* prompt as typed by the user will be stored in `generationRecord.metadata.userInputPrompt`. The LoRA-processed version is what's stored in `generationRecord.requestPayload.input_prompt` (or the equivalent field for the generation service) and sent to the backend.
 *   **User-Provided LoRA Tags:** How to handle manually entered `<lora:slug:weight>` tags? (Validation, permissions, precedence over 
 triggers).
 *   **Identifying Prompt Field in Payload:** How will `WorkflowsService.prepareToolRunPayload` reliably identify the prompt field(s) 

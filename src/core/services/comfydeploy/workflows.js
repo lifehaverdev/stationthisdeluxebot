@@ -610,99 +610,68 @@ class WorkflowsService {
    * @returns {Promise<Object|null>} - Prepared payload or null if error.
    */
   async prepareToolRunPayload(toolId, userInputs = {}, masterAccountId) { 
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] prepareToolRunPayload called for toolId: ${toolId}, MAID: ${masterAccountId}`);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Initial userInputs: ${JSON.stringify(userInputs)}`);
+
     const tool = await this.getToolById(toolId);
     if (!tool) {
-        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Tool with ID "${toolId}" not found.`);
-        // Return null or throw an error based on desired error handling strategy
-        // For consistency with original apparent logic, returning null if tool not found by getToolById
-        // which itself might return null.
-        throw new Error(`Tool with ID "${toolId}" not found.`); 
-    }
-    // Original check for comfyui service type - this is important if this service only handles comfyui tools
-    if (tool.service !== 'comfyui') {
-        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Tool "${toolId}" is not a comfyui service tool. Service: ${tool.service}`);
-        throw new Error(`Tool "${toolId}" is not a ComfyUI service tool.`);
+      this.logger.error(`[WorkflowsService] Tool not found for ID: ${toolId} in prepareToolRunPayload.`);
+      throw new Error(`Tool with ID ${toolId} not found.`);
     }
 
-    let currentInputs = { ...userInputs }; // Work with a copy of user inputs
-    let appliedLoras = [];
-    let loraWarnings = [];
-    let rawPrompt = null;
+    // Merge with default inputs to ensure all required fields are present, respecting user overrides.
+    // This also helps in identifying the actual prompt key if it varies.
+    const mergedInputs = await this.mergeToolWithDefaultInputs(toolId, userInputs);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Merged inputs (with defaults): ${JSON.stringify(mergedInputs)}`);
 
-    // BEGIN LoRA Resolution Logic Integration
-    if (tool.metadata && tool.metadata.hasLoraLoader && currentInputs.input_prompt && typeof currentInputs.input_prompt === 'string') {
-      if (!masterAccountId) {
-        this.logger.warn(`[WorkflowsService-prepareToolRunPayload] masterAccountId not provided for LoRA resolution on tool ${toolId}. LoRA resolution might be incomplete or fail if private LoRAs are involved.`);
-        // Consider throwing if masterAccountId is absolutely critical: 
-        // throw new Error('masterAccountId is required for LoRA-enabled tools when preparing payload.');
-      }
-      
-      this.logger.info(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader. Attempting to resolve LoRAs for prompt.`);
-      rawPrompt = currentInputs.input_prompt; // Store original prompt before modification
+    let inputsToRun = { ...mergedInputs }; // Start with merged inputs
+    let loraResolutionResult = null; // To store results from LoRA service
+
+    // Determine the actual prompt key. ToolRegistry might have this info, or we infer it.
+    // For now, assume 'input_prompt' is common, or check metadata if available from workflowCacheManager.
+    const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt'; // Fallback to input_prompt
+    const originalUserPrompt = inputsToRun[promptInputKey];
+
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Identified promptInputKey: ${promptInputKey}, Original User Prompt: "${originalUserPrompt ? originalUserPrompt.substring(0, 50) + '...' : '[No Prompt]'}"`);
+
+    // ADR-009: LoRA Resolution Step
+    if (tool.metadata?.hasLoraLoader && originalUserPrompt && typeof originalUserPrompt === 'string') {
+      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Tool ${toolId} has LoRA loader support. Attempting LoRA resolution. BaseModel: ${tool.baseModel}`);
       try {
-        const toolBaseModel = tool.metadata.baseModel; // e.g., 'SDXL', 'FLUX'
-        if (!toolBaseModel) {
-          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader but no tool.metadata.baseModel defined. Skipping LoRA version filtering.`);
-        }
-        
-        const resolutionResult = await loraResolutionService.resolveLoraTriggers(
-          rawPrompt, 
+        loraResolutionResult = await loraResolutionService.resolveLoraTriggers(
+          originalUserPrompt,
           masterAccountId,
-          toolBaseModel // Pass the tool's base model type
+          tool.baseModel // Pass the tool's baseModel for filtering
         );
-        currentInputs.input_prompt = resolutionResult.modifiedPrompt; // Modify the working copy of inputs
-        appliedLoras = resolutionResult.appliedLoras || [];
-        loraWarnings = resolutionResult.warnings || [];
-        
-        if (DEBUG_LOGGING_ENABLED || (tool.metadata.hasLoraLoader && currentInputs.input_prompt !== rawPrompt)) {
-            this.logger.info(`[WorkflowsService-prepareToolRunPayload] LoRA resolution for ${toolId}. Raw: "${rawPrompt.substring(0, 50)}...", Modified: "${resolutionResult.modifiedPrompt.substring(0,50)}..."`);
+
+        if (loraResolutionResult) {
+          inputsToRun[promptInputKey] = loraResolutionResult.modifiedPrompt;
+          if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] LoRA resolution applied. Modified prompt: "${loraResolutionResult.modifiedPrompt.substring(0,50)}...". Applied: ${loraResolutionResult.appliedLoras.length}, Warnings: ${loraResolutionResult.warnings.length}`);
+        } else {
+          if (DEBUG_LOGGING_ENABLED) this.logger.warn(`[WorkflowsService] LoRA resolution service returned no result for tool ${toolId}. Prompt remains unchanged.`);
         }
-        if (appliedLoras.length > 0) {
-          this.logger.info(`[WorkflowsService-prepareToolRunPayload] Applied LoRAs for ${toolId}:`, appliedLoras.map(l => ({slug: l.slug, weight: l.weight})));
-        }
-        if (loraWarnings.length > 0) {
-          this.logger.warn(`[WorkflowsService-prepareToolRunPayload] LoRA resolution warnings for ${toolId}:`, loraWarnings);
-        }
-      } catch (error) {
-        this.logger.error(`[WorkflowsService-prepareToolRunPayload] Error during LoRA resolution for tool ${toolId}: ${error.message}`, error);
-        loraWarnings.push(`LoRA resolution failed: ${error.message}. Proceeding with original prompt.`);
-        // currentInputs.input_prompt remains rawPrompt if error occurs
+      } catch (loraError) {
+        this.logger.error(`[WorkflowsService] Error during LoRA resolution for tool ${toolId}: ${loraError.message}`, loraError.stack);
+        // Decide if to proceed with original prompt or throw. For now, proceed with original.
+        // A warning might have been added by loraResolutionService if it partially failed.
       }
-    } else if (tool.metadata && tool.metadata.hasLoraLoader && (!currentInputs.input_prompt || typeof currentInputs.input_prompt !== 'string')) {
-        this.logger.warn(`[WorkflowsService-prepareToolRunPayload] Tool ${toolId} has LoRA loader, but input_prompt is missing or not a string.`);
+    } else {
+      if (DEBUG_LOGGING_ENABLED) {
+        if (!tool.metadata?.hasLoraLoader) this.logger.info(`[WorkflowsService] Tool ${toolId} does not have LoRA loader support. Skipping LoRA resolution.`);
+        if (!originalUserPrompt || typeof originalUserPrompt !== 'string') this.logger.info(`[WorkflowsService] No valid prompt string found in inputs for key '${promptInputKey}'. Skipping LoRA resolution.`);
+      }
     }
-    // END LoRA Resolution Logic Integration
 
-    // Proceed with validation using the potentially modified currentInputs
-    const { isValid, errors, validatedPayload } = await this.validateToolInputPayload(toolId, currentInputs);
-
-    if (!isValid) {
-      this.logger.error(`[WorkflowsService-prepareToolRunPayload] Invalid input payload for tool "${toolId}" after LoRA processing (if any): ${errors.join(', ')}`);
-      // Consider throwing an error or returning a more structured error response
-      throw new Error(`Invalid input payload for tool "${toolId}": ${errors.join(', ')}`);
-    }
+    // TODO: Add any other necessary payload transformations here.
+    // For example, ensuring all inputs match the expected types from tool.inputSchema.
     
-    // Merge with defaults, using the validated (and potentially LoRA-modified) payload
-    const finalInputsForComfy = await this.mergeToolWithDefaultInputs(toolId, validatedPayload);
+    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Final inputs to run (after potential LoRA): ${JSON.stringify(inputsToRun)}`);
 
-    // Construct the final payload structure
-    const finalComfyPayload = {
-      deployment_id: tool.metadata.deploymentId, 
-      inputs: finalInputsForComfy, // These are the direct inputs for the ComfyUI workflow
-      // Attach LoRA resolution metadata for our system's logging/downstream use
-      loraResolutionData: {
-        rawPrompt: rawPrompt, // Original prompt if LoRA processing was attempted
-        modifiedPrompt: finalInputsForComfy.input_prompt, // The actual prompt text sent to ComfyUI
-        appliedLoras: appliedLoras,
-        warnings: loraWarnings
-      }
+    return {
+      inputs: inputsToRun,
+      loraResolutionData: loraResolutionResult // This will be null if LoRA resolution didn't run or failed
+                                            // It will contain { modifiedPrompt, rawPrompt, appliedLoras, warnings } if successful.
     };
-
-    if (DEBUG_LOGGING_ENABLED) {
-        this.logger.info(`[WorkflowsService-prepareToolRunPayload] Prepared payload for tool ${toolId}: ${JSON.stringify(finalComfyPayload).substring(0, 1000)}...`);
-    }
-
-    return finalComfyPayload;
   }
 }
 

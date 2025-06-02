@@ -380,38 +380,46 @@ async function setupDynamicCommands(bot, services) {
             logger.info(`[Telegram EXEC /${commandName}] LoRA Resolution Data: ${JSON.stringify(loraResolutionData)}`);
           }
 
+          const actualUserInputPrompt = promptText || (currentPromptInputKey ? finalInputValuesForTool[currentPromptInputKey] : '') || '';
+
+          const generationMetadata = {
+            telegramMessageId: msg.message_id,
+            telegramChatId: chatId,
+            platformContext: {
+              telegramUserId: platformIdStr,
+              username: msg.from.username,
+              firstName: msg.from.first_name
+            },
+            toolId: currentToolId,
+            deploymentId: deploymentId, 
+            costRate: costRateInfo, 
+            userInputPrompt: actualUserInputPrompt 
+          };
+
+          if (loraResolutionData) {
+            if (loraResolutionData.appliedLoras && loraResolutionData.appliedLoras.length > 0) {
+              generationMetadata.appliedLoras = loraResolutionData.appliedLoras;
+            }
+            if (loraResolutionData.warnings && loraResolutionData.warnings.length > 0) {
+              generationMetadata.loraWarnings = loraResolutionData.warnings;
+            }
+          }
+          
+          const generationPayloadForRecord = { ...finalInputsForComfyUI }; 
+
+          // Step 3: Log Generation Start with Internal API
           const generationParams = {
             masterAccountId: masterAccountId,
-            platform: platform,
-            platformId: platformIdStr,
-            sessionId: sessionId, 
-            eventId: eventId,
+            sessionId: sessionId,
             initiatingEventId: eventId,
-            toolId: currentToolId,
-            serviceName: 'ComfyUI',
-            workflowId: currentTool.workflowId,
-            status: 'pending',
-            deliveryStatus: 'pending',
-            requestPayload: finalInputsForComfyUI,
-            metadata: {
-              telegramChatId: chatId,
-              telegramMessageId: msg.message_id,
-              telegramRepliedToMessageId: msg.reply_to_message?.message_id,
-              telegramUsername: msg.from.username,
-              displayName: currentDisplayName,
-              commandInvoked: `/${commandName}`,
-              toolId: currentToolId,
-              costRate: costRateInfo,
-              initiatingEventId: eventId,
-              notificationContext: {
-                chatId: chatId,
-                userId: platformIdStr,
-                messageId: msg.message_id 
-              },
-              loraResolution: loraResolutionData
-            },
-            notificationPlatform: 'telegram'
+            serviceName: currentTool.service, 
+            toolId: currentToolId, 
+            requestPayload: generationPayloadForRecord,
+            metadata: generationMetadata,
+            notificationPlatform: 'telegram', 
+            deliveryStatus: 'pending' 
           };
+
           logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationParams)}`);
           const generationResponse = await internalApiClient.post('/generations', generationParams);
           generationId = generationResponse.data._id;

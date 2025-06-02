@@ -451,7 +451,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           infoMessage += `Tool: \`${escapeMd(toolDisplayName)}\`\n`;
 
           if (generationRecord.requestPayload) {
-            infoMessage += `\n*Parameters Used:*\n`;
+            infoMessage += `\\n*Parameters Used:*\\n`;
             for (const [key, value] of Object.entries(generationRecord.requestPayload)) {
               if ((key === 'invoked_tool_id' || key === 'tool_id') && toolDisplayName === String(value)) continue;
               
@@ -460,8 +460,14 @@ function createTelegramBot(dependencies, token, options = {}) {
                 displayKey = displayKey.substring(6); // Remove "input_" prefix
               }
 
-              const displayValue = typeof value === 'object' ? JSON.stringify(value) : value;
-              infoMessage += `  • *${escapeMd(displayKey)}*: \`${escapeMd(String(displayValue))}\`\n`;
+              let valueToShow = value;
+              // MODIFICATION: Prioritize userInputPrompt for display
+              if (key === 'input_prompt' && generationRecord.metadata?.userInputPrompt) {
+                valueToShow = generationRecord.metadata.userInputPrompt;
+              }
+
+              const displayValue = typeof valueToShow === 'object' ? JSON.stringify(valueToShow) : valueToShow;
+              infoMessage += `  • *${escapeMd(displayKey)}*: \`${escapeMd(String(displayValue))}\\n`;
             }
           }
 
@@ -549,11 +555,15 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           // 4. Initialize pendingTweaks for this session
           const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
+          
+          // MODIFICATION: Use userInputPrompt for the editable prompt in pendingTweaks
+          const userFacingPrompt = generationRecord.metadata?.userInputPrompt || originalParams.input_prompt;
           pendingTweaks[tweakSessionKey] = { 
             ...originalParams,
+            input_prompt: userFacingPrompt, // Ensure the user edits their original prompt
             __canonicalToolId__: toolId // Store the canonicalToolId
           }; 
-          logger.info(`[Bot CB] tweak_gen: Initialized pendingTweaks for sessionKey: ${tweakSessionKey} with params and __canonicalToolId__: ${JSON.stringify(pendingTweaks[tweakSessionKey])}`);
+          logger.info(`[Bot CB] tweak_gen: Initialized pendingTweaks for sessionKey: ${tweakSessionKey} with user-facing prompt and params: ${JSON.stringify(pendingTweaks[tweakSessionKey])}`);
 
           // 5. Build and send the Tweak UI Menu
           const tweakMenu = await buildTweakUIMenu(
@@ -936,7 +946,8 @@ function createTelegramBot(dependencies, token, options = {}) {
               initiatingEventId: initiatingEventIdForNewGen, // Store it in metadata as well
               costRate: originalGenerationRecord.metadata?.costRate, // ADDED: Carry over costRate
               notificationContext: originalGenerationRecord.metadata?.notificationContext, // ADDED: Carry over notificationContext
-              toolId: toolId // ADDED: Ensure specific toolId is in metadata
+              toolId: toolId, // ADDED: Ensure specific toolId is in metadata
+              userInputPrompt: finalTweakedParams.input_prompt // MODIFICATION: Store user's final prompt here
             }
           };
 
@@ -1018,7 +1029,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           // 3. Log the new generation intent
           const generationToLog = {
             toolId: newGenerationPayload.toolId,
-            requestPayload: finalTweakedParams,
+            requestPayload: { ...finalTweakedParams }, // MODIFICATION: User's tweaked prompt goes here directly
             masterAccountId: clickerMasterAccountId,
             platform: 'telegram',
             sessionId: dbUserSessionId, 
@@ -1028,7 +1039,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             notificationPlatform: 'telegram', // So notifier knows
             serviceName: originalGenerationRecord.serviceName || 'ComfyUI', // Carry over service name
             workflowId: originalGenerationRecord.workflowId, // Carry over workflowId
-            metadata: newGenerationPayload.metadata // Contains reply info, parentGenId, isTweaked etc.
+            metadata: newGenerationPayload.metadata // Contains reply info, parentGenId, isTweaked, userInputPrompt etc.
           };
 
           const newGenerationLogResponse = await internalApiClient.post('/generations', generationToLog);
@@ -1168,6 +1179,10 @@ function createTelegramBot(dependencies, token, options = {}) {
           newRequestPayload.input_seed = Math.floor(Math.random() * 1000000000);
           logger.info(`[Bot CB] rerun_gen: Assigned new random seed: ${newRequestPayload.input_seed} (old seed was: ${oldSeed === undefined ? 'N/A' : oldSeed})`);
 
+          // MODIFICATION: Determine user-facing prompt for rerun
+          const userFacingPromptForRerun = originalGenerationRecord.metadata?.userInputPrompt || originalGenerationRecord.requestPayload.input_prompt;
+          newRequestPayload.input_prompt = userFacingPromptForRerun; // Set it in the payload to be sent
+
           // Determine initiatingEventId for the rerun generation
           let initiatingEventIdForRerun;
           if (originalGenerationRecord.metadata?.initiatingEventId) {
@@ -1225,7 +1240,8 @@ function createTelegramBot(dependencies, token, options = {}) {
             notificationContext: originalGenerationRecord.metadata?.notificationContext, 
             initiatingEventId: metadataInitiatingEventId, // Use the correctly scoped variable from above
             toolId: toolId, 
-            rerunCount: (originalGenerationRecord.metadata?.rerunCount || 0) + 1
+            rerunCount: (originalGenerationRecord.metadata?.rerunCount || 0) + 1,
+            userInputPrompt: userFacingPromptForRerun // MODIFICATION: Store the user-facing prompt here
           };
           
           logger.debug('[Bot CB] rerun_gen: POST-CONSTRUCTED rerunGenerationMetadata object. Content:', JSON.stringify(rerunGenerationMetadata, null, 2));
@@ -1265,7 +1281,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           // 3. Log the new generation intent (this section title "3. Log the new generation intent" is a bit confusingly placed, it refers to the DB record below)
           const generationToLog = {
             toolId: toolId,
-            requestPayload: newRequestPayload,
+            requestPayload: newRequestPayload, // MODIFICATION: This now contains the correct user-facing prompt
             masterAccountId: clickerMasterAccountId,
             platform: 'telegram',
             sessionId: dbUserSessionIdForRerun, 
