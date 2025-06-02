@@ -1063,7 +1063,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           
           logger.info(`[Bot CB] tweak_apply: Submitting to ComfyUI. DeploymentID: ${deploymentId}, GenID (new): ${newGeneratedId}. Inputs: ${JSON.stringify(finalTweakedParams)}`);
 
-          if (originalGenerationRecord.serviceName === 'ComfyUI' && comfyuiService) {
+          if (originalGenerationRecord.serviceName === 'comfyui' && comfyuiService) {
             const submissionResult = await comfyuiService.submitRequest({
               deploymentId: deploymentId, // This should be the specific Comfy workflow/deployment identifier
               inputs: finalTweakedParams, // These are the tweaked parameters
@@ -1310,7 +1310,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             throw new Error('ComfyUI Deployment ID not found for rerun generation.');
           }
 
-          if (originalGenerationRecord.serviceName === 'ComfyUI' && comfyuiService) {
+          if (originalGenerationRecord.serviceName === 'comfyui' && comfyuiService) {
             const submissionResult = await comfyuiService.submitRequest({
               deploymentId: deploymentId,
               inputs: newRequestPayload,
