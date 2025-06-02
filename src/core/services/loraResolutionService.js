@@ -266,7 +266,8 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel)
           weight: weightToApply,
           originalWord: segment, // The original segment from the prompt
           replacedWord: `${loraTag} ${replacementWordSegment}`,
-          modelId: selectedLora.modelId 
+          modelId: selectedLora.modelId,
+          checkpoint: selectedLora.checkpoint
         });
         lorasAppliedThisRun.add(selectedLora.slug);
       } else {
