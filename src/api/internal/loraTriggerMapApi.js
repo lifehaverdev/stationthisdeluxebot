@@ -49,6 +49,7 @@ async function getLoraTriggerMapDataHandler(req, res) {
           access: lora.access || 'public', // Keep access field, derive from visibility or permissionType if needed
           ownerAccountId: lora.ownedBy ? lora.ownedBy.toString() : null,
           updatedAt: lora.updatedAt || lora.createdAt,
+          checkpoint: lora.checkpoint
         });
       });
       logger.info(`[LoraTriggerMapApi] Fetched ${publicLoras.length} public LoRAs using visibility.`);
@@ -72,6 +73,7 @@ async function getLoraTriggerMapDataHandler(req, res) {
               access: privateLORA.access || 'private', 
               ownerAccountId: privateLORA.ownedBy ? privateLORA.ownedBy.toString() : userId,
               updatedAt: privateLORA.updatedAt || privateLORA.createdAt,
+              checkpoint: privateLORA.checkpoint
             });
           }
         }
@@ -98,6 +100,7 @@ async function getLoraTriggerMapDataHandler(req, res) {
         access: loraDetails.access, // Use the access determined when fetching
         ownerAccountId: loraDetails.ownerAccountId,
         updatedAt: loraDetails.updatedAt,
+        checkpoint: loraDetails.checkpoint
       };
 
       // Add primary triggers from triggerWords array
