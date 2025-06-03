@@ -7,31 +7,21 @@
 const express = require('express');
 const axios = require('axios');
 const createStatusService = require('./status');
-const userCoreApi = require('./userCoreApi');
-const userSessionsApi = require('./userSessionsApi');
-const userEventsApi = require('./userEventsApi');
+const createUserCoreApi = require('./userCoreApi');
+const createUserSessionsApi = require('./userSessionsApi');
+const createUserEventsApi = require('./userEventsApi');
 const createTransactionsApiService = require('./transactionsApi');
 const createGenerationOutputsApiService = require('./generationOutputsApi');
 const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
 const createTeamsApi = require('./teamsApi');
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
-
-// BEGIN ADDITION: Import LoRA Trigger Map API Router
-const loraTriggerMapApiRouter = require('./loraTriggerMapApi');
-// END ADDITION
+const createLoraTriggerMapApiRouter = require('./loraTriggerMapApi');
+const lorasApiRouter = require('./lorasApi');
+const createUserPreferencesApiRouter = require('./userPreferencesApi');
+const createUserStatusReportApiService = require('./userStatusReportApi');
 
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
-const createUserStatusReportApiService = require('./userStatusReportApi');
-// ... other service imports
-
-// ++ NEW LORAS API ROUTER IMPORT ++
-const lorasApiRouter = require('./lorasApi');
-// -- END NEW LORAS API ROUTER IMPORT --
-
-// ++ NEW USER LORA FAVORITES API ROUTER IMPORT ++
-// const userLoraFavoritesApiRouter = require('./userLoraFavoritesApi'); // REMOVE THIS OLD IMPORT
-// -- END NEW USER LORA FAVORITES API ROUTER IMPORT --
 
 /**
  * Initialize and export all internal API services and their router
@@ -40,6 +30,7 @@ const lorasApiRouter = require('./lorasApi');
  */
 function initializeInternalServices(dependencies = {}) {
   const mainInternalRouter = express.Router();
+  const v1DataRouter = express.Router();
 
   const logger = dependencies.logger || console;
   const dbDataServices = dependencies.db?.data;
@@ -126,12 +117,7 @@ function initializeInternalServices(dependencies = {}) {
   // const statusApiRouter = statusApi(apiDependencies); 
   // if (statusApiRouter) { ... }
   // CURRENT STATUS API MOUNTING SEEMS DIFFERENT - review if needed
-  const statusService = createStatusService({
-    logger,
-    version: dependencies.version,
-    appStartTime: dependencies.appStartTime || new Date(),
-    db: dbDataServices // Pass dbDataServices here too
-  });
+  const statusService = createStatusService(apiDependencies);
 
   if (statusService && typeof statusService.getStatus === 'function') {
     mainInternalRouter.get('/status', statusService.getStatus);
@@ -144,115 +130,76 @@ function initializeInternalServices(dependencies = {}) {
   // --- Initialize and Mount New Data API Services ---
 
   // User Core API Service:
-  if (userCoreApi) {
-    const userCoreApiRouter = userCoreApi(apiDependencies); // Pass apiDependencies
-    if (userCoreApiRouter) {
-      mainInternalRouter.use('/v1/data/users', userCoreApiRouter);
-      logger.info('[InternalAPI] User Core API service mounted to /v1/data/users');
-    } else {
-      logger.error('[InternalAPI] Failed to create User Core API router.');
-    }
+  const userCoreApiRouter = createUserCoreApi(apiDependencies);
+  if (userCoreApiRouter) {
+    v1DataRouter.use('/users', userCoreApiRouter);
+    logger.info('[InternalAPI] User Core API service mounted to /v1/data/users');
   } else {
-    logger.warn('[InternalAPI] userCoreApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create User Core API router.');
   }
 
   // User Sessions API Service:
-  if (userSessionsApi) {
-    const userSessionsApiRouter = userSessionsApi(apiDependencies);
-    if (userSessionsApiRouter) {
-      mainInternalRouter.use('/v1/data/sessions', userSessionsApiRouter);
-      logger.info('[InternalAPI] User Sessions API service mounted to /v1/data/sessions');
-    } else {
-      logger.error('[InternalAPI] Failed to create User Sessions API router.');
-    }
+  const userSessionsApiRouter = createUserSessionsApi(apiDependencies);
+  if (userSessionsApiRouter) {
+    v1DataRouter.use('/sessions', userSessionsApiRouter);
+    logger.info('[InternalAPI] User Sessions API service mounted to /v1/data/sessions');
   } else {
-    logger.warn('[InternalAPI] userSessionsApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create User Sessions API router.');
   }
 
   // User Events API Service:
-  if (userEventsApi) {
-    const userEventsApiRouter = userEventsApi(apiDependencies);
-    if (userEventsApiRouter) {
-      mainInternalRouter.use('/v1/data/events', userEventsApiRouter);
-      logger.info('[InternalAPI] User Events API service mounted to /v1/data/events');
-    } else {
-      logger.error('[InternalAPI] Failed to create User Events API router.');
-    }
+  const userEventsApiRouter = createUserEventsApi(apiDependencies);
+  if (userEventsApiRouter) {
+    v1DataRouter.use('/events', userEventsApiRouter);
+    logger.info('[InternalAPI] User Events API service mounted to /v1/data/events');
   } else {
-    logger.warn('[InternalAPI] userEventsApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create User Events API router.');
   }
 
   // User Status Report API Service:
-  if (createUserStatusReportApiService) {
-    const userStatusReportApiRouter = createUserStatusReportApiService(apiDependencies);
-    if (userStatusReportApiRouter) {
-      // The service itself handles /users/:masterAccountId/status-report
-      // So we mount it at the base it expects.
-      // Considering userCoreApi is at /v1/data/users, and this is also a user-centric data report.
-      // The router in userStatusReportApi.js is defined as router.get('/users/:masterAccountId/status-report', ... )
-      // So, it should be mounted at /v1/data path for the full URL to be /internal/v1/data/users/:masterAccountId/status-report
-      mainInternalRouter.use('/v1/data', userStatusReportApiRouter); // Mount point
-      logger.info('[InternalAPI] User Status Report API service mounted to /v1/data');
-    } else {
-      logger.error('[InternalAPI] Failed to create User Status Report API router.');
-    }
+  const userStatusReportApiRouter = createUserStatusReportApiService(apiDependencies);
+  if (userStatusReportApiRouter) {
+    v1DataRouter.use('/', userStatusReportApiRouter);
+    logger.info('[InternalAPI] User Status Report API service mounted to /v1/data');
   } else {
-    logger.warn('[InternalAPI] createUserStatusReportApiService not imported correctly.');
+    logger.error('[InternalAPI] Failed to create User Status Report API router.');
   }
 
   // Transactions API Service:
-  if (createTransactionsApiService) {
-    const transactionsApiRouter = createTransactionsApiService(apiDependencies);
-    if (transactionsApiRouter) {
-      mainInternalRouter.use('/v1/data/transactions', transactionsApiRouter);
-      logger.info('[internalApiIndex] Transactions API service mounted to /v1/data/transactions');
-    } else {
-      logger.error('[internalApiIndex] Failed to create Transactions API router.');
-    }
+  const transactionsApiRouter = createTransactionsApiService(apiDependencies);
+  if (transactionsApiRouter) {
+    v1DataRouter.use('/transactions', transactionsApiRouter);
+    logger.info('[InternalAPI] Transactions API service mounted to /v1/data/transactions');
   } else {
-    logger.warn('[internalApiIndex] transactionsApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create Transactions API router.');
   }
 
   // Generation Outputs API Service:
-  if (createGenerationOutputsApiService) {
-    const generationOutputsApiRouter = createGenerationOutputsApiService(apiDependencies);
-    if (generationOutputsApiRouter) {
-      mainInternalRouter.use('/v1/data/generations', generationOutputsApiRouter);
-      logger.info('[internalApiIndex] Generation Outputs API service mounted to /v1/data/generations');
-    } else {
-      logger.error('[internalApiIndex] Failed to create Generation Outputs API router.');
-    }
+  const generationOutputsApiRouter = createGenerationOutputsApiService(apiDependencies);
+  if (generationOutputsApiRouter) {
+    v1DataRouter.use('/generations', generationOutputsApiRouter);
+    logger.info('[InternalAPI] Generation Outputs API service mounted to /v1/data/generations');
   } else {
-    logger.warn('[internalApiIndex] generationOutputsApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create Generation Outputs API router.');
   }
 
   // Teams API Service:
-  if (createTeamsApi) {
-    // Pass teamServiceDb specifically if it was created
-    const teamsApiRouter = createTeamsApi({ teamServiceDb: apiDependencies.teamServiceDb, logger });
-    if (teamsApiRouter) {
-      // Mounts routes like /v1/data/teams, /v1/data/users/:masterAccountId/teams
-      mainInternalRouter.use('/v1/data', teamsApiRouter); 
-      logger.info('[InternalAPI] Teams API service mounted to /v1/data');
-    } else {
-      logger.error('[InternalAPI] Failed to create Teams API router.');
-    }
+  const teamsApiRouter = createTeamsApi(apiDependencies);
+  if (teamsApiRouter) {
+    v1DataRouter.use('/', teamsApiRouter);
+    logger.info('[InternalAPI] Teams API service mounted to /v1/data');
   } else {
-    logger.warn('[InternalAPI] teamsApi not imported correctly.');
+    logger.error('[InternalAPI] Failed to create Teams API router.');
   }
 
   // User Preferences API (includes UserSettingsService logic):
   // Assuming userPreferencesApi.js exports a function that takes apiDependencies and returns a router
   // This router should handle routes like /users/:masterAccountId/preferences/:scope?
-  const createUserPreferencesApiRouter = require('./userPreferencesApi'); // Correct import for the factory function
   if (createUserPreferencesApiRouter && typeof createUserPreferencesApiRouter === 'function') {
     const userPreferencesRouter = createUserPreferencesApiRouter(apiDependencies);
     if (userPreferencesRouter) {
-      // Mount at /v1/data because it deals with user-specific data and preferences.
-      // The routes within userPreferencesRouter will be relative to this.
-      // E.g., /users/:masterAccountId/preferences/:scope becomes /internal/v1/data/users/:masterAccountId/preferences/:scope
-      mainInternalRouter.use('/v1/data', userPreferencesRouter);
-      logger.info('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data');
+      v1DataRouter.use('/users/:masterAccountId', userPreferencesRouter);
+      logger.info('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data/users/:masterAccountId');
     } else {
       logger.error('[InternalAPI] Failed to create User Preferences API router.');
     }
@@ -261,27 +208,22 @@ function initializeInternalServices(dependencies = {}) {
   }
 
   // BEGIN ADDITION: Mount LoRA Trigger Map API Router
-  if (loraTriggerMapApiRouter) {
-    // The loraTriggerMapApiRouter handles /lora/trigger-map-data internally
-    // So we mount it at /v1/data for the full path to be /internal/v1/data/lora/trigger-map-data
-    mainInternalRouter.use('/v1/data', loraTriggerMapApiRouter);
-    logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data');
+  const loraTriggerMapRouter = createLoraTriggerMapApiRouter(apiDependencies);
+  if (loraTriggerMapRouter) {
+    v1DataRouter.use('/lora-trigger-map', loraTriggerMapRouter);
+    logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data/lora-trigger-map');
   } else {
     logger.warn('[InternalAPI] loraTriggerMapApiRouter not imported correctly.');
   }
   // END ADDITION
 
   // Tool Definition API Service (New)
-  if (createToolDefinitionApiRouter) {
-    const toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies); // Pass apiDependencies
-    if (toolDefinitionRouter) {
-      mainInternalRouter.use('/v1/data/tools', toolDefinitionRouter);
-      logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
-    } else {
-      logger.error('[InternalAPI] Failed to create Tool Definition API router.');
-    }
+  const toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies);
+  if (toolDefinitionRouter) {
+    v1DataRouter.use('/tools', toolDefinitionRouter);
+    logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
   } else {
-    logger.warn('[InternalAPI] createToolDefinitionApiRouter not imported correctly.');
+    logger.error('[InternalAPI] Failed to create Tool Definition API router.');
   }
 
   // User Economy API Service:
@@ -302,12 +244,21 @@ function initializeInternalServices(dependencies = {}) {
 
   // ... (placeholders for other services: economy, etc.)
 
+  // Mount the consolidated v1DataRouter onto the mainInternalRouter
+  mainInternalRouter.use('/v1/data', v1DataRouter);
+  logger.info('[InternalAPI] All /v1/data services mounted.');
+
   // Mount other specific internal APIs
-  mainInternalRouter.use('/lora-trigger-map', loraTriggerMapApiRouter); // Path might be /lora/trigger-map-data or similar
+  mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // Path might be /lora/trigger-map-data or similar
 
   // ++ MOUNT NEW LORAS API ROUTER ++
   // Assuming we want it under /v1/data/loras
-  mainInternalRouter.use('/loras', lorasApiRouter); 
+  if (lorasApiRouter) {
+    v1DataRouter.use('/loras', lorasApiRouter); 
+    logger.info('[InternalAPI] LoRAs API service mounted to /v1/data/loras');
+  } else {
+    logger.error('[InternalAPI] LoRAs API router not loaded.');
+  }
   // -- END MOUNT NEW LORAS API ROUTER --
 
   // Mount Noema Data Service APIs & other user-specific APIs
@@ -340,13 +291,13 @@ function initializeInternalServices(dependencies = {}) {
   // For now, let's assume userCoreApi does NOT use up the whole /users/:masterAccountId path for itself exclusively.
   // So we can mount userPreferences specific to its needs.
   // The userPreferencesApi.js itself expects to be mounted on a route that already has :masterAccountId.
-  mainInternalRouter.use('/users/:masterAccountId', userPreferencesRouter); 
+  v1DataRouter.use('/users/:masterAccountId', userPreferencesRouter); 
   // This means routes in userPreferencesApi.js like /preferences/lora-favorites will become /users/:masterAccountId/preferences/lora-favorites
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
   mainInternalRouter.use((req, res, next) => {
-    logger.warn(`[InternalAPI] 404 Not Found - ${req.method} ${req.originalUrl}`);
+    logger.warn(`[InternalAPI] 404 Not Found - ${req.method} ${req.originalUrl} ( chegou no final do mainInternalRouter)`);
     res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Internal API endpoint not found.' } });
   });
 
@@ -364,7 +315,12 @@ function initializeInternalServices(dependencies = {}) {
       }
     };
 
-    res.status(500).json(errorResponse);
+    if (process.env.NODE_ENV !== 'production') {
+      errorResponse.error.details = err.message; // Add more details in non-prod
+      errorResponse.error.stack = err.stack;
+    }
+
+    res.status(err.status || 500).json(errorResponse);
   });
 
   logger.info('[InternalAPI] Internal API router fully initialized.');
