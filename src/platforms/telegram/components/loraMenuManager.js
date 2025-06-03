@@ -9,6 +9,11 @@
 
 const AVAILABLE_CHECKPOINTS = ['All', 'SDXL', 'SD1.5', 'FLUX']; // Example, could be dynamic
 
+function escapeMarkdownV2(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/[_*[\\\\\\]()~`>#+\\-|=<>{}.!]/g, '\\\\$&');
+}
+
 /**
  * Handles the /loras command.
  * @param {Object} bot - The Telegram bot instance.
@@ -57,13 +62,13 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
         logger.info(`[LoraMenuManager] Toggling favorite for LoRA ID: ${loraId}, Current Status: ${isCurrentlyFavorite}, MAID: ${masterAccountId}`);
         try {
           if (isCurrentlyFavorite) {
-            // Remove from favorites
+            // Corrected API path for DELETE
             await internalApiClient.delete(`/users/${masterAccountId}/preferences/lora-favorites/${loraId}`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Removed from favorites ❤️' });
           } else {
-            // Add to favorites
+            // Corrected API path for POST
             await internalApiClient.post(`/users/${masterAccountId}/preferences/lora-favorites`, { loraId });
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! 💔' }); // Emoji inversion intentional for quick feedback
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! 💔' });
           }
           // Refresh the detail screen to show updated status
           // Ensure loraIdentifierForRefresh is the slug or ID originally used to view the detail
@@ -111,7 +116,7 @@ async function displayLoraMainMenu(bot, messageOrQuery, masterAccountId, depende
   const chatId = isEdit ? messageOrQuery.message.chat.id : messageOrQuery.chat.id;
   const messageId = isEdit ? messageOrQuery.message.message_id : null;
 
-  const menuMessage = '*LoRA Categories* 🎨\nSelect a category to explore:';
+  const menuMessage = escapeMarkdownV2('LoRA Categories 🎨\nSelect a category to explore:');
   
   const inlineKeyboard = [
     [{ text: '😹 Memes', callback_data: 'lora:category:type_meme:All:1' }],
@@ -176,9 +181,9 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
   let displayFilterName = filterType.replace(/^type_/, '');
   displayFilterName = displayFilterName.charAt(0).toUpperCase() + displayFilterName.slice(1);
 
-  let title = `*${displayFilterName} LoRAs*`;
+  let title = `*${escapeMarkdownV2(displayFilterName)} LoRAs*`;
   if (currentCheckpoint !== 'All') {
-    title += ` (Checkpoint: ${currentCheckpoint})`;
+    title += ` (Checkpoint: ${escapeMarkdownV2(currentCheckpoint)})`;
   }
   // Page number will be added after fetching data and totalPages is known, if showing list
 
@@ -203,20 +208,21 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
   }).toString();
 
   try {
-    logger.info(`[LoraMenuManager] Calling /internal/v1/data/loras/list?${queryParams}`);
-    const response = await internalApiClient.get(`/data/loras/list?${queryParams}`);
+    logger.info(`[LoraMenuManager] Calling /loras/list with params: ${queryParams}`);
+    const response = await internalApiClient.get(`/loras/list?${queryParams}`);
     const responseData = response.data; // Assuming response.data is the object { loras: [], pagination: {} }
     
     if (responseData && responseData.loras) {
       const fetchedLoras = responseData.loras;
       totalPages = responseData.pagination.totalPages || 1;
       title += ` - Page ${currentPage}/${totalPages}`;
+      title = escapeMarkdownV2(title);
 
       if (fetchedLoras.length > 0) {
         loraListText = '\n'; // Reset placeholder
         fetchedLoras.forEach(lora => {
           // Using name for display, slug for callback
-          const displayName = lora.name || lora.slug;
+          const displayName = escapeMarkdownV2(lora.name || lora.slug);
           // Callback for detail: lora:detail:SLUG_OR_ID:filterType:checkpoint:page
           const detailCallback = `lora:detail:${lora.slug || lora._id}:${filterType}:${currentCheckpoint}:${currentPage}`;
           keyboard.push([{ text: displayName, callback_data: detailCallback }]);
@@ -228,11 +234,13 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
       logger.warn('[LoraMenuManager] Invalid response structure from loras API:', responseData);
       loraListText = '\n_Error: Could not parse LoRA list from server._\n';
       title += ` - Page ${currentPage}/${totalPages}`;
+      title = escapeMarkdownV2(title);
     }
   } catch (apiError) {
     logger.error(`[LoraMenuManager] API Error fetching LoRAs for ${filterType} (Checkpoint: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
     loraListText = '\n_Sorry, there was an error fetching the LoRAs. Please try again later._\n';
     title += ` - Page ${currentPage}/${totalPages}`;
+    title = escapeMarkdownV2(title);
   }
 
   const navigationRow = [];
@@ -275,31 +283,32 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
 
-  let messageText = `*LoRA Detail: ${loraIdentifier}*\n\n_Fetching details..._`;
+  let messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_Fetching details..._`;
   const keyboard = [];
   let photoUrl = null; // For sending a photo with caption
 
   try {
-    logger.info(`[LoraMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}`);
-    const response = await internalApiClient.get(`/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    logger.info(`[LoraMenuManager] Calling /loras/${loraIdentifier} with userId: ${masterAccountId}`);
+    const response = await internalApiClient.get(`/loras/${loraIdentifier}?userId=${masterAccountId}`);
     const lora = response.data.lora; // Expecting { lora: { ...details } }
 
     if (lora) {
-      messageText = `*${lora.name || lora.slug}*\n`;
+      messageText = `*${escapeMarkdownV2(lora.name || lora.slug)}*\n`;
       if (lora.description) {
         // Truncate description for Telegram, append ... if too long
         const maxLength = 150;
-        messageText += `_${lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description}_\n\n`;
+        const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
+        messageText += `_${escapeMarkdownV2(desc)}_\n\n`;
       }
-      messageText += `*Checkpoint:* ${lora.checkpoint || 'N/A'}\n`;
+      messageText += `*Checkpoint:* ${escapeMarkdownV2(lora.checkpoint || 'N/A')}\n`;
       if (lora.triggerWords && lora.triggerWords.length > 0) {
-        messageText += `*Triggers:* \`${lora.triggerWords.join(', ')}\`\n`;
+        messageText += `*Triggers:* \`${escapeMarkdownV2(lora.triggerWords.join(', '))}\`\n`;
       }
       if (lora.tags && lora.tags.length > 0) {
-        messageText += `*Tags:* _${lora.tags.slice(0, 5).map(t => t.tag).join(', ')}_\n`; // Show first 5 tags
+        messageText += `*Tags:* _${escapeMarkdownV2(lora.tags.slice(0, 5).map(t => t.tag).join(', '))}_\n`; // Show first 5 tags
       }
       if (lora.defaultWeight) {
-        messageText += `*Default Weight:* ${lora.defaultWeight}\n`;
+        messageText += `*Default Weight:* ${escapeMarkdownV2(String(lora.defaultWeight))}\n`;
       }
       if (lora.previewImages && lora.previewImages.length > 0) {
         photoUrl = lora.previewImages[0]; // Use the first preview image
@@ -314,14 +323,14 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
       }]);
 
     } else {
-      messageText = `*LoRA Detail: ${loraIdentifier}*\n\n_Could not find details for this LoRA._`;
+      messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_Could not find details for this LoRA._`;
     }
 
   } catch (apiError) {
     logger.error(`[LoraMenuManager] API Error fetching LoRA detail for ${loraIdentifier}:`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
-    messageText = `*LoRA Detail: ${loraIdentifier}*\n\n_Sorry, there was an error fetching details. Please try again later._`;
+    messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_Sorry, there was an error fetching details. Please try again later._`;
     if (apiError.response && apiError.response.status === 404) {
-      messageText = `*LoRA Detail: ${loraIdentifier}*\n\n_This LoRA could not be found._`;
+      messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_This LoRA could not be found._`;
     }
   }
 
