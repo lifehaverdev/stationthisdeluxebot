@@ -208,22 +208,39 @@ function initializeInternalServices(dependencies = {}) {
   }
 
   // BEGIN ADDITION: Mount LoRA Trigger Map API Router
-  const loraTriggerMapRouter = createLoraTriggerMapApiRouter(apiDependencies);
-  if (loraTriggerMapRouter) {
-    v1DataRouter.use('/lora-trigger-map', loraTriggerMapRouter);
-    logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data/lora-trigger-map');
-  } else {
-    logger.warn('[InternalAPI] loraTriggerMapApiRouter not imported correctly.');
+  let loraTriggerMapRouterImport;
+  try {
+    // Correctly assign the imported router module, not calling it as a function
+    loraTriggerMapRouterImport = require('./loraTriggerMapApi'); 
+
+    if (loraTriggerMapRouterImport && typeof loraTriggerMapRouterImport === 'function') {
+      // Check if it's a router by looking for a common router method like .stack
+      if (Array.isArray(loraTriggerMapRouterImport.stack)) { 
+        v1DataRouter.use('/', loraTriggerMapRouterImport); // Mount at root, as it defines /lora/trigger-map-data internally
+        logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data for path /lora/trigger-map-data');
+      } else {
+        logger.error('[InternalAPI] loraTriggerMapApi.js exported a function, but it does not appear to be a valid Express router (missing .stack). Value:', loraTriggerMapRouterImport);
+      }
+    } else {
+      logger.error('[InternalAPI] loraTriggerMapApi.js did not export a valid router/function. Value received:', loraTriggerMapRouterImport);
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error importing or mounting LoRA Trigger Map API:', err);
   }
   // END ADDITION
 
   // Tool Definition API Service (New)
-  const toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies);
-  if (toolDefinitionRouter) {
-    v1DataRouter.use('/tools', toolDefinitionRouter);
-    logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
-  } else {
-    logger.error('[InternalAPI] Failed to create Tool Definition API router.');
+  let toolDefinitionRouter;
+  try {
+    toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies);
+    if (toolDefinitionRouter && typeof toolDefinitionRouter === 'function') {
+      v1DataRouter.use('/tools', toolDefinitionRouter);
+      logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
+    } else {
+      logger.error('[InternalAPI] createToolDefinitionApiRouter did not return a valid router/function. Value received:', toolDefinitionRouter);
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error initializing or mounting Tool Definition API:', err);
   }
 
   // User Economy API Service:
@@ -249,15 +266,19 @@ function initializeInternalServices(dependencies = {}) {
   logger.info('[InternalAPI] All /v1/data services mounted.');
 
   // Mount other specific internal APIs
-  mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // Path might be /lora/trigger-map-data or similar
+  // mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // REVOVED: Redundant mounting, already on v1DataRouter
 
   // ++ MOUNT NEW LORAS API ROUTER ++
   // Assuming we want it under /v1/data/loras
-  if (lorasApiRouter) {
-    v1DataRouter.use('/loras', lorasApiRouter); 
-    logger.info('[InternalAPI] LoRAs API service mounted to /v1/data/loras');
-  } else {
-    logger.error('[InternalAPI] LoRAs API router not loaded.');
+  try {
+    if (lorasApiRouter && typeof lorasApiRouter === 'function') {
+      v1DataRouter.use('/loras', lorasApiRouter);
+      logger.info('[InternalAPI] LoRAs API service mounted to /v1/data/loras');
+    } else {
+      logger.error('[InternalAPI] lorasApiRouter (from ./lorasApi.js) is not a valid router/function. Value received:', lorasApiRouter);
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error mounting LoRAs API router:', err);
   }
   // -- END MOUNT NEW LORAS API ROUTER --
 
@@ -279,20 +300,6 @@ function initializeInternalServices(dependencies = {}) {
   // and it has routes like /:masterAccountId/profile, then the order of mounting might matter,
   // or more specific routes should be defined first.
   // For now, this explicit path should work.
-
-  // Mount the User Preferences API router (which now includes LoRA favorites)
-  // This router is designed to be mounted at /users/:masterAccountId
-  const userPreferencesRouter = createUserPreferencesApiRouter(apiDependencies); 
-  // userCoreApiRouter should ideally handle the /:masterAccountId part and then use userPreferencesRouter for /preferences/*
-  // For example, inside userCoreApi.js:
-  //   router.use('/:masterAccountId/preferences', createUserPreferencesApiRouter(dependencies));
-  // However, if userCoreApiRouter is not structured for that, we mount userPreferencesRouter directly here for the specific path.
-  // Let's refine this based on userCoreApi.js's actual structure if needed. 
-  // For now, let's assume userCoreApi does NOT use up the whole /users/:masterAccountId path for itself exclusively.
-  // So we can mount userPreferences specific to its needs.
-  // The userPreferencesApi.js itself expects to be mounted on a route that already has :masterAccountId.
-  v1DataRouter.use('/users/:masterAccountId', userPreferencesRouter); 
-  // This means routes in userPreferencesApi.js like /preferences/lora-favorites will become /users/:masterAccountId/preferences/lora-favorites
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
