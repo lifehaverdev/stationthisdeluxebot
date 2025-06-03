@@ -1,6 +1,7 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
 
 const COLLECTION_NAME = 'userPreferences';
+const LORA_FAVORITES_KEY = 'loraFavoriteIds'; // Define a constant for the key
 
 class UserPreferencesDB extends BaseDB {
   constructor(logger) {
@@ -175,6 +176,100 @@ class UserPreferencesDB extends BaseDB {
     }
     return this.updateOne({ masterAccountId }, { $set: { [key]: value } }, { upsert: true });
   }
+
+  // ++ NEW LORA FAVORITES METHODS ++
+  /**
+   * Retrieves the list of favorite LoRA IDs for a user.
+   * @param {ObjectId} masterAccountId - The master account ID.
+   * @returns {Promise<string[]>} An array of LoRA IDs, or an empty array if none/error.
+   */
+  async getLoraFavoriteIds(masterAccountId) {
+    try {
+      const record = await this.findByMasterAccountId(masterAccountId);
+      if (record && record.preferences && Array.isArray(record.preferences[LORA_FAVORITES_KEY])) {
+        return record.preferences[LORA_FAVORITES_KEY];
+      }
+      return []; // Return empty array if no favorites or path doesn't exist
+    } catch (error) {
+      this.logger.error(`[UserPreferencesDB] Error in getLoraFavoriteIds for MAID ${masterAccountId}:`, error);
+      return []; // Return empty array on error
+    }
+  }
+
+  /**
+   * Adds a LoRA ID to the user's favorites list.
+   * Ensures the user preferences document and the loraFavoriteIds array exist.
+   * @param {ObjectId} masterAccountId - The master account ID.
+   * @param {string} loraId - The LoRA ID (string) to add.
+   * @returns {Promise<boolean>} True if added or already existed, false on error.
+   */
+  async addLoraFavorite(masterAccountId, loraId) {
+    if (!loraId) {
+      this.logger.warn(`[UserPreferencesDB] addLoraFavorite called with null/empty loraId for MAID ${masterAccountId}`);
+      return false;
+    }
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      // Ensure the document and the loraFavoriteIds array exist, then add to set.
+      // $addToSet ensures uniqueness.
+      const updateResult = await this.updateOne(
+        { masterAccountId: MAID },
+        {
+          $addToSet: { [`preferences.${LORA_FAVORITES_KEY}`]: loraId },
+          $setOnInsert: { 
+            masterAccountId: MAID, 
+            preferences: { [LORA_FAVORITES_KEY]: [loraId] }, // Initialize if doc created
+            createdAt: new Date() 
+          },
+          $currentDate: { updatedAt: true }
+        },
+        { upsert: true }
+      );
+      // For $addToSet, if the value is already there, it doesn't modify, but operation is successful.
+      // Check if upsert happened or if an existing doc was matched.
+      // If matchedCount is 0 and upsertedCount is 0, something went wrong (shouldn't with upsert:true)
+      if (updateResult.matchedCount === 0 && !updateResult.upsertedId) {
+         this.logger.error(`[UserPreferencesDB] addLoraFavorite: Upsert operation failed unexpectedly for MAID ${masterAccountId}.`, { updateResult });
+         return false;
+      }
+      return true; // Successfully added or already existed
+    } catch (error) {
+      this.logger.error(`[UserPreferencesDB] Error in addLoraFavorite for MAID ${masterAccountId}, LoRA ${loraId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Removes a LoRA ID from the user's favorites list.
+   * @param {ObjectId} masterAccountId - The master account ID.
+   * @param {string} loraId - The LoRA ID (string) to remove.
+   * @returns {Promise<boolean>} True if removed or was not present, false on error.
+   */
+  async removeLoraFavorite(masterAccountId, loraId) {
+    if (!loraId) {
+      this.logger.warn(`[UserPreferencesDB] removeLoraFavorite called with null/empty loraId for MAID ${masterAccountId}`);
+      return false;
+    }
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const updateResult = await this.updateOne(
+        { masterAccountId: MAID, [`preferences.${LORA_FAVORITES_KEY}`]: loraId }, // Only match if LoRA is in favorites
+        {
+          $pull: { [`preferences.${LORA_FAVORITES_KEY}`]: loraId },
+          $currentDate: { updatedAt: true }
+        }
+        // No upsert needed here; if user or favorites list doesn't exist, can't remove from it.
+      );
+      // $pull is successful even if the item wasn't in the array.
+      // We consider it successful if the operation didn't error.
+      // modifiedCount will be 1 if removed, 0 if not present. matchedCount indicates doc was found.
+      return true; 
+    } catch (error) {
+      this.logger.error(`[UserPreferencesDB] Error in removeLoraFavorite for MAID ${masterAccountId}, LoRA ${loraId}:`, error);
+      return false;
+    }
+  }
+  // -- END NEW LORA FAVORITES METHODS --
 }
 
 module.exports = UserPreferencesDB; 

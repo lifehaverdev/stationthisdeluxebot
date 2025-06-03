@@ -2,10 +2,14 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 // Import UserSettingsService - adjust path as necessary
 const { getUserSettingsService } = require('../../core/services/userSettingsService'); 
+const UserPreferencesDB = require('../../core/services/db/userPreferencesDb');
+const LoRAModelsDB = require('../../core/services/db/loRAModelDb'); // For validation
 
 // This function initializes the routes for the User Preferences API
 module.exports = function userPreferencesApi(dependencies) {
   const { logger, db, toolRegistry, internalApiClient } = dependencies; // Added toolRegistry and internalApiClient for UserSettingsService
+  const userPreferencesDb = new UserPreferencesDB(logger);
+  const loRAModelsDb = new LoRAModelsDB(logger); // For validating LoRA existence
   // Use mergeParams to access masterAccountId from the parent router (userCoreApi)
   const router = express.Router({ mergeParams: true }); 
 
@@ -250,6 +254,111 @@ module.exports = function userPreferencesApi(dependencies) {
       res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error deleting scoped preferences.' } });
     }
   });
+
+  // --- LORA FAVORITES SUB-ROUTER ---
+  const loraFavoritesRouter = express.Router({ mergeParams: true });
+
+  /**
+   * GET /lora-favorites - Retrieve user's favorite LoRA IDs
+   * Path: /users/:masterAccountId/preferences/lora-favorites
+   */
+  loraFavoritesRouter.get('/', async (req, res) => {
+    const { masterAccountId } = req.params;
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const favoriteLoraIds = await userPreferencesDb.getLoraFavoriteIds(MAID);
+      logger.info(`[UserPreferencesApi-LoraFav] GET / for MAID ${masterAccountId} - Found ${favoriteLoraIds.length} favorites.`);
+      res.status(200).json({ loraFavoriteIds });
+    } catch (error) {
+      logger.error(`[UserPreferencesApi-LoraFav] Error getting favorites for MAID ${masterAccountId}:`, error);
+      if (error.name === 'BSONTypeError') {
+        return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      }
+      res.status(500).json({ error: 'Failed to retrieve LoRA favorites.' });
+    }
+  });
+
+  /**
+   * POST /lora-favorites - Add a LoRA to user's favorites
+   * Path: /users/:masterAccountId/preferences/lora-favorites
+   * Body: { "loraId": "loraMongoId" }
+   */
+  loraFavoritesRouter.post('/', async (req, res) => {
+    const { masterAccountId } = req.params;
+    const { loraId } = req.body;
+
+    if (!loraId) {
+      return res.status(400).json({ error: 'loraId is required in the request body.' });
+    }
+
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      // Validate loraId actually exists in loRAModelsDb
+      const loraExists = await loRAModelsDb.findById(loraId); // Assumes loraId is string here
+      if (!loraExists) {
+        logger.warn(`[UserPreferencesApi-LoraFav] Attempt to favorite non-existent LoRA ${loraId} by MAID ${masterAccountId}`);
+        return res.status(404).json({ error: `LoRA with id ${loraId} not found.` });
+      }
+
+      const success = await userPreferencesDb.addLoraFavorite(MAID, loraId);
+      
+      logger.info(`[UserPreferencesApi-LoraFav] POST / for MAID ${masterAccountId}, LoRA ${loraId}. Success: ${success}`);
+      if (success) {
+        // To determine if it was newly added vs already existed, getLoraFavoriteIds could be checked before add,
+        // or addLoraFavorite could return more detailed info. For now, 201 for simplicity if 'success' is true.
+        // The DB method with $addToSet is idempotent, so a 200 or 201 are both reasonable.
+        // Let's use 200 if it might have already existed, 201 if we are sure it's new.
+        // Since addLoraFavorite returns true if added OR already existed, 200 is safer.
+        return res.status(200).json({ message: 'LoRA added to favorites or already existed.', loraId });
+      } else {
+        // This path might be hit if there was a DB error within addLoraFavorite not caught as an exception
+        return res.status(500).json({ error: 'Failed to add LoRA to favorites due to an internal issue.' });
+      }
+    } catch (error) {
+      logger.error(`[UserPreferencesApi-LoraFav] Error adding favorite LoRA ${loraId} for MAID ${masterAccountId}:`, error);
+      if (error.name === 'BSONTypeError') { // For masterAccountId ObjectId conversion
+        return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      }
+      if (error.name === 'CastError') { // From findById if loraId is invalid format for ObjectId (if it expects ObjectId)
+          return res.status(400).json({ error: 'Invalid loraId format.' });
+      }
+      res.status(500).json({ error: 'Failed to add LoRA to favorites.' });
+    }
+  });
+
+  /**
+   * DELETE /lora-favorites/:loraId - Remove a LoRA from user's favorites
+   * Path: /users/:masterAccountId/preferences/lora-favorites/:loraId
+   */
+  loraFavoritesRouter.delete('/:loraId', async (req, res) => {
+    const { masterAccountId, loraId } = req.params;
+
+    if (!loraId) {
+      return res.status(400).json({ error: 'loraId parameter is required.' });
+    }
+
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const success = await userPreferencesDb.removeLoraFavorite(MAID, loraId);
+      
+      logger.info(`[UserPreferencesApi-LoraFav] DELETE /${loraId} for MAID ${masterAccountId}. Success: ${success}`);
+      if (success) {
+        res.status(204).send(); // Successfully removed or was not present
+      } else {
+        // This path might be hit if there was a DB error not caught as an exception
+        return res.status(500).json({ error: 'Failed to remove LoRA from favorites due to an internal issue.'});
+      }
+    } catch (error) {
+      logger.error(`[UserPreferencesApi-LoraFav] Error removing favorite LoRA ${loraId} for MAID ${masterAccountId}:`, error);
+      if (error.name === 'BSONTypeError') { // For masterAccountId ObjectId conversion
+        return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      }
+      res.status(500).json({ error: 'Failed to remove LoRA from favorites.' });
+    }
+  });
+
+  // Mount the LoRA favorites sub-router under /preferences
+  router.use('/preferences/lora-favorites', loraFavoritesRouter);
 
   logger.info('[userPreferencesApi] User Preferences API routes initialized.');
   return router;

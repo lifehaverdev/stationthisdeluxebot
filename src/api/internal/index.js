@@ -25,6 +25,14 @@ const loraTriggerMapApiRouter = require('./loraTriggerMapApi');
 const createUserStatusReportApiService = require('./userStatusReportApi');
 // ... other service imports
 
+// ++ NEW LORAS API ROUTER IMPORT ++
+const lorasApiRouter = require('./lorasApi');
+// -- END NEW LORAS API ROUTER IMPORT --
+
+// ++ NEW USER LORA FAVORITES API ROUTER IMPORT ++
+// const userLoraFavoritesApiRouter = require('./userLoraFavoritesApi'); // REMOVE THIS OLD IMPORT
+// -- END NEW USER LORA FAVORITES API ROUTER IMPORT --
+
 /**
  * Initialize and export all internal API services and their router
  * @param {Object} dependencies - Shared dependencies for services (logger, appStartTime, version, db)
@@ -236,14 +244,14 @@ function initializeInternalServices(dependencies = {}) {
   // User Preferences API (includes UserSettingsService logic):
   // Assuming userPreferencesApi.js exports a function that takes apiDependencies and returns a router
   // This router should handle routes like /users/:masterAccountId/preferences/:scope?
-  const userPreferencesApi = require('./userPreferencesApi'); // Ensure this is imported
-  if (userPreferencesApi && typeof userPreferencesApi === 'function') {
-    const userPreferencesApiRouter = userPreferencesApi(apiDependencies);
-    if (userPreferencesApiRouter) {
+  const createUserPreferencesApiRouter = require('./userPreferencesApi'); // Correct import for the factory function
+  if (createUserPreferencesApiRouter && typeof createUserPreferencesApiRouter === 'function') {
+    const userPreferencesRouter = createUserPreferencesApiRouter(apiDependencies);
+    if (userPreferencesRouter) {
       // Mount at /v1/data because it deals with user-specific data and preferences.
-      // The routes within userPreferencesApiRouter will be relative to this.
+      // The routes within userPreferencesRouter will be relative to this.
       // E.g., /users/:masterAccountId/preferences/:scope becomes /internal/v1/data/users/:masterAccountId/preferences/:scope
-      mainInternalRouter.use('/v1/data', userPreferencesApiRouter);
+      mainInternalRouter.use('/v1/data', userPreferencesRouter);
       logger.info('[InternalAPI] User Preferences API service (including settings) mounted to /v1/data');
     } else {
       logger.error('[InternalAPI] Failed to create User Preferences API router.');
@@ -293,6 +301,47 @@ function initializeInternalServices(dependencies = {}) {
   */
 
   // ... (placeholders for other services: economy, etc.)
+
+  // Mount other specific internal APIs
+  mainInternalRouter.use('/lora-trigger-map', loraTriggerMapApiRouter); // Path might be /lora/trigger-map-data or similar
+
+  // ++ MOUNT NEW LORAS API ROUTER ++
+  // Assuming we want it under /v1/data/loras
+  mainInternalRouter.use('/loras', lorasApiRouter); 
+  // -- END MOUNT NEW LORAS API ROUTER --
+
+  // Mount Noema Data Service APIs & other user-specific APIs
+  // It's common to group user-specific sub-routes under a main user route.
+  // For example, if userCoreApiRouter handles /users/:masterAccountId/*
+  // we might need to adjust how it's structured or add a new top-level router for users.
+
+  // Assuming userCoreApiRouter already handles routes starting with /users/:masterAccountId/
+  // If so, we would ideally add the new route *within* userCoreApiRouter or make userCoreApiRouter a parent.
+  // For simplicity now, and if userCoreApiRouter is only for /users/find-or-create etc., 
+  // we can mount it directly, but this path structure is a bit less standard if other /users/:id routes exist elsewhere.
+
+  // Let's assume a structure where user-specific sub-routes are explicitly mounted:
+  // mainInternalRouter.use('/users/:masterAccountId/preferences/lora-favorites', userLoraFavoritesApiRouter); // REMOVE THIS OLD MOUNTING
+
+  // Make sure this doesn't conflict with how userCoreApiRouter is defined if it uses general /users/ path.
+  // Example: if userCoreApiRouter is mounted at router.use('/users', userCoreApiRouter)
+  // and it has routes like /:masterAccountId/profile, then the order of mounting might matter,
+  // or more specific routes should be defined first.
+  // For now, this explicit path should work.
+
+  // Mount the User Preferences API router (which now includes LoRA favorites)
+  // This router is designed to be mounted at /users/:masterAccountId
+  const userPreferencesRouter = createUserPreferencesApiRouter(apiDependencies); 
+  // userCoreApiRouter should ideally handle the /:masterAccountId part and then use userPreferencesRouter for /preferences/*
+  // For example, inside userCoreApi.js:
+  //   router.use('/:masterAccountId/preferences', createUserPreferencesApiRouter(dependencies));
+  // However, if userCoreApiRouter is not structured for that, we mount userPreferencesRouter directly here for the specific path.
+  // Let's refine this based on userCoreApi.js's actual structure if needed. 
+  // For now, let's assume userCoreApi does NOT use up the whole /users/:masterAccountId path for itself exclusively.
+  // So we can mount userPreferences specific to its needs.
+  // The userPreferencesApi.js itself expects to be mounted on a route that already has :masterAccountId.
+  mainInternalRouter.use('/users/:masterAccountId', userPreferencesRouter); 
+  // This means routes in userPreferencesApi.js like /preferences/lora-favorites will become /users/:masterAccountId/preferences/lora-favorites
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

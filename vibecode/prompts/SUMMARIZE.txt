@@ -41,4 +41,4 @@ Plain markdown with no headings or sections
 Conversational, clear, and emotionally neutral (e.g., “We’ve recently shifted our command structure to align with...”, “One thing to note is...”)
 
 Save the final result to: vibecode/summary.md
-Do not log or output anything else. This file will be used directly as the context payload for ChatGPT.
+Do not log or output anything else.

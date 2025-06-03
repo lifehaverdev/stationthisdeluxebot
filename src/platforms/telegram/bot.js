@@ -18,6 +18,10 @@ const createStatusCommandHandler = require('./commands/statusCommand');
 const { handleSettingsCommand, handleSettingsCallback, handleParameterValueReply, buildToolParamsMenu, buildTweakUIMenu, buildTweakParamEditPrompt } = require('./components/settingsMenuManager.js');
 const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
 
+// ++ NEW LORA MENU MANAGER IMPORT ++
+const { handleLoraCommand, handleLoraCallback: handleLoraMenuCallback } = require('./components/loraMenuManager.js');
+// -- END NEW LORA MENU MANAGER IMPORT --
+
 // Temporary store for pending tweaks
 // Key: `generationId_masterAccountId`
 // Value: Object of parameters being tweaked
@@ -136,6 +140,31 @@ function createTelegramBot(dependencies, token, options = {}) {
   });
   // -- END NEW /settings COMMAND HANDLER --
   
+  // ++ NEW /loras COMMAND HANDLER (Corrected Placement) ++
+  bot.onText(/^\/loras(?:@\w+)?$/i, async (message) => {
+    const telegramUserId = message.from.id.toString();
+    const platform = 'telegram';
+    logger.info(`[Bot] /loras command received from Telegram User ID: ${telegramUserId}`);
+    try {
+      const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+        platform: platform,
+        platformId: telegramUserId,
+        platformContext: { firstName: message.from.first_name, username: message.from.username }
+      });
+      const masterAccountId = findOrCreateResponse.data.masterAccountId;
+      logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId} for /loras`);
+      
+      // Pass all dependencies that loraMenuManager might need
+      await handleLoraCommand(bot, message, masterAccountId, 
+        { logger, internalApiClient, userSettingsService, toolRegistry } // Add other deps as needed
+      );
+    } catch (error) {
+      logger.error(`[Bot] Error processing /loras command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+      bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open the LoRAs menu. Please try again.", { reply_to_message_id: message.message_id });
+    }
+  });
+  // -- END NEW /loras COMMAND HANDLER --
+  
   // /collections command - Manage user collections
   bot.onText(/^\/collections(?:@\w+)?\s*(.*)/i, (message, match) => {
     const args = match[1] || '';
@@ -223,6 +252,32 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.error(`[Bot CB] Error in 'set_' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for settings.", show_alert: true});
         }
+      // ++ NEW 'lora:' (LORA MENU) CALLBACK HANDLER ++
+      } else if (data.startsWith('lora:')) {
+        // User specificity for LoRA menu (same as settings)
+        if (message.reply_to_message && originalCommandUser && originalCommandUser.id !== callbackUserId) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "This LoRA menu isn't for you.", show_alert: true });
+          return;
+        }
+        const platform = 'telegram';
+        logger.info(`[Bot CB] 'lora:' callback '${data}' from UserID ${callbackUserId} (original cmd by ${originalCommandUser.id})`);
+        try {
+          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: platform,
+            platformId: originalCommandUser.id.toString(),
+            platformContext: { firstName: originalCommandUser.first_name, username: originalCommandUser.username }
+          });
+          const masterAccountId = findOrCreateResponse.data.masterAccountId;
+          logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for original command user ${originalCommandUser.id} for LoRA menu.`);
+          
+          await handleLoraMenuCallback(bot, callbackQuery, masterAccountId, 
+            { logger, internalApiClient, userSettingsService, toolRegistry } // Pass dependencies
+          );
+        } catch (error) {
+          logger.error(`[Bot CB] Error in 'lora:' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for LoRAs.", show_alert: true});
+        }
+      // -- END NEW 'lora:' CALLBACK HANDLER --
       } else if (data.startsWith('collection:')) {
         // Existing collection logic starts here
         // (Code for 'collection:' callbacks remains unchanged from the original file)
@@ -1417,6 +1472,27 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.error(`[Bot CB] Error in rerun_gen for Original GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack); 
 
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
+        }
+      } else if (data.startsWith('loras:')) {
+        const telegramUserId = message.from.id.toString();
+        const platform = 'telegram';
+        logger.info(`[Bot] /loras command received from Telegram User ID: ${telegramUserId}`);
+        try {
+          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: platform,
+            platformId: telegramUserId,
+            platformContext: { firstName: message.from.first_name, username: message.from.username }
+          });
+          const masterAccountId = findOrCreateResponse.data.masterAccountId;
+          logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId} for /loras`);
+          
+          // Pass all dependencies that loraMenuManager might need
+          await handleLoraCommand(bot, message, masterAccountId, 
+            { logger, internalApiClient, userSettingsService, toolRegistry } // Add other deps as needed
+          );
+        } catch (error) {
+          logger.error(`[Bot] Error processing /loras command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+          bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open the LoRAs menu. Please try again.", { reply_to_message_id: message.message_id });
         }
       } else {
         // Fallback for any other unhandled callbacks
