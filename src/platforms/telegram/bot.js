@@ -10,6 +10,12 @@ const TelegramBot = require('node-telegram-bot-api');
 // Import uuid v4
 const { v4: uuidv4 } = require('uuid');
 
+// Helper function to escape text for Telegram's MarkdownV2 parse mode
+function escapeMarkdownV2(text) {
+  if (text === null || text === undefined) return '';
+  return String(text).replace(/([_*[\]()\[\]~`>#+\-=|{}.!])/g, '\\$1');
+}
+
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');
 const createTrainModelCommandHandler = require('./commands/trainModelCommand');
 const createStatusCommandHandler = require('./commands/statusCommand');
@@ -478,10 +484,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             return;
           }
 
-          const escapeMd = (text) => {
-            if (text === null || text === undefined) return '';
-            return String(text).replace(/([_*[\\]()~`>#+\\-=|{}.!])/g, '\\\\$1');
-          };
+          const escapeMd = escapeMarkdownV2; // Use the top-level function
 
           let infoMessage = `*Generation Info*\n`;
 
