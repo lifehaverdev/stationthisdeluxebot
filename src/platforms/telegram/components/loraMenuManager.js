@@ -216,7 +216,7 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
     if (responseData && responseData.loras) {
       const fetchedLoras = responseData.loras;
       totalPages = responseData.pagination.totalPages || 1;
-      title += ` - Page ${currentPage}/${totalPages}`;
+      title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
 
       if (fetchedLoras.length > 0) {
         loraListText = '\n'; // Reset placeholder
@@ -234,14 +234,14 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
       logger.warn('[LoraMenuManager] Invalid response structure from loras API:', responseData);
       loraListText = '\n_Error: Could not parse LoRA list from server._\n';
       if (!title.includes('Page ')) {
-          title += ` - Page ${currentPage}/${totalPages}`;
+          title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
       }
     }
   } catch (apiError) {
     logger.error(`[LoraMenuManager] API Error fetching LoRAs for ${filterType} (Checkpoint: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
     loraListText = '\n_Sorry, there was an error fetching the LoRAs. Please try again later._\n';
     if (!title.includes('Page ')) {
-        title += ` - Page ${currentPage}/${totalPages}`;
+        title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
     }
   }
 
