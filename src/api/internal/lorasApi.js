@@ -97,6 +97,7 @@ router.get('/list', async (req, res) => {
       slug: lora.slug,
       name: lora.name, 
       triggerWords: lora.triggerWords || [],
+      cognates: lora.cognates || [],
       checkpoint: lora.checkpoint,
       usageCount: lora.usageCount || 0,
       createdAt: lora.createdAt,

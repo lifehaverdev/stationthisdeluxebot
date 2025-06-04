@@ -114,6 +114,25 @@ function transformLoraModel(legacyLora) {
 
  const displayName = legacyLora.lora_name || 'Untitled LoRA'; // Keep for potential use, though 'name' is primary
 
+  // Process existing legacy tags
+  let processedTags = (Array.isArray(legacyLora.tags)
+    ? legacyLora.tags.map(tagInput => ({ tag: sanitizeTrigger(typeof tagInput === 'string' ? tagInput : String(tagInput)), source: 'user', score: 1 }))
+    : typeof legacyLora.tags === 'string'
+    ? [{ tag: sanitizeTrigger(legacyLora.tags), source: 'user', score: 1 }]
+    : []).filter(t => t.tag && t.tag.length > 0); // Ensure tag is not empty and has length
+
+  // Determine the modelType value that will be used for the modelType field
+  const modelTypeForTagging = legacyLora.type || 'style'; // Matches the logic for the actual modelType field
+  const sanitizedModelTypeAsTag = sanitizeTrigger(modelTypeForTagging);
+
+  // Add the modelType as a tag if it's valid and not already present
+  if (sanitizedModelTypeAsTag && sanitizedModelTypeAsTag.length > 0) {
+    const modelTypeTagObject = { tag: sanitizedModelTypeAsTag, source: 'user', score: 1 };
+    if (!processedTags.some(existingTag => existingTag.tag === sanitizedModelTypeAsTag)) {
+      processedTags.push(modelTypeTagObject);
+    }
+  }
+
  return {
    _id: new ObjectId(),
    slug: modelName,
@@ -137,12 +156,8 @@ function transformLoraModel(legacyLora) {
     ? { priceUSD: parseFloat(legacyLora.gate), forSale: true }
     : undefined,
 
-   tags: (Array.isArray(legacyLora.tags)
-    ? legacyLora.tags.map(tag => ({ tag: sanitizeTrigger(typeof tag === 'string' ? tag : String(tag)), source: 'user', score: 1 }))
-    : typeof legacyLora.tags === 'string'
-    ? [{ tag: sanitizeTrigger(legacyLora.tags), source: 'user', score: 1 }]
-    : []).filter(t => t.tag), // Ensure tag is not empty after sanitization
-
+   tags: processedTags,
+    
    description: legacyLora.description || '',
    examplePrompts: legacyLora.examplePrompt ? (Array.isArray(legacyLora.examplePrompt) ? legacyLora.examplePrompt : [legacyLora.examplePrompt]) : [],
    previewImages: legacyLora.exampleImagePath ? (Array.isArray(legacyLora.exampleImagePath) ? legacyLora.exampleImagePath : [legacyLora.exampleImagePath]) : [],
