@@ -473,7 +473,8 @@ function buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
         type: workflow.name,  // Add workflow type explicitly
         collectionId: userContext.collectionId,
         traits: userContext.traits,
-        configHash: userContext.configHash
+        configHash: userContext.configHash,
+        input_seed: makeSeed(userContext.input_seed)
     };
 
     return promptObj;
