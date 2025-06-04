@@ -8,11 +8,12 @@
 // bot, logger, internalApiClient, userSettingsService, toolRegistry (if needed)
 
 const AVAILABLE_CHECKPOINTS = ['All', 'SDXL', 'SD1.5', 'FLUX']; // Example, could be dynamic
+const { ObjectId } = require('../../../core/services/db/BaseDB');
+// Placeholder for internalApiClient if needed directly, or pass via dependencies
+// const internalApiClient = require('../../../utils/internalApiClient'); 
+const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
 
-function escapeMarkdownV2(text) {
-  if (typeof text !== 'string') return '';
-  return text.replace(/[_*[\\\\\\]()~`>#+\\-|=<>{}.!]/g, '\\\\$&');
-}
+// const MAX_LORAS_PER_PAGE = 5; // Default, can be overridden by API call
 
 /**
  * Handles the /loras command.

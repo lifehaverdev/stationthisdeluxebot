@@ -23,6 +23,18 @@ function sanitizeCommandName(name) {
         .slice(0, 32);
 }
 
+/**
+ * Escapes special characters in a string for Telegram MarkdownV2 format.
+ * Telegram specifies the following characters must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+ * @param {string | number | undefined | null} text The text to escape.
+ * @returns {string} The escaped text, or an empty string if input is null/undefined.
+ */
+function escapeMarkdownV2(text) {
+  if (text === null || text === undefined) return '';
+  return String(text).replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+}
+
 module.exports = {
-    sanitizeCommandName
+    sanitizeCommandName,
+    escapeMarkdownV2
 };

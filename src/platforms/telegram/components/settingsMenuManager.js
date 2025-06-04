@@ -1,5 +1,8 @@
 // src/platforms/telegram/components/settingsMenuManager.js
-const internalApiClient = require('../utils/internalApiClient'); // For fetching user-specific data
+const { ObjectId } = require('../../../core/services/db/BaseDB');
+const internalApiClient = require('../../../utils/internalApiClient');
+// const UserSettingsService = require('../../../core/services/userSettingsService'); // Direct import not needed if passed via dependencies
+const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
 
 // Dependencies like logger, toolRegistry, userSettingsService will be passed into functions.
 
@@ -19,20 +22,6 @@ function formatParamNameForDisplay(paramName) {
     // Convert to Title Case
     return formatted.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.substring(1)).join(' ');
 }
-
-/**
- * Escapes special characters in a string for Telegram MarkdownV2 format.
- * @param {string} text The text to escape.
- * @returns {string} The escaped text.
- */
-const escapeMarkdownV2 = (text) => {
-  if (text === null || text === undefined) return '';
-  let escapedText = String(text).replace(/\-/g, '\\-'); // Explicitly escape hyphens first
-  // Then escape other characters, ensuring hyphen is not re-processed if already escaped.
-  // The regex for other characters will not include the hyphen.
-  escapedText = escapedText.replace(/([_*[\]()~`>#+={}.!])/g, '\\$1'); 
-  return escapedText;
-};
 
 /**
  * Fetches and filters the most frequently used tools for a user.
