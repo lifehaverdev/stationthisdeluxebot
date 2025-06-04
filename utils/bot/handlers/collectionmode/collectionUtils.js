@@ -456,6 +456,14 @@ function validateMasterPrompt(masterPrompt) {
         formattedErrors: errors.join('\n')
     };
 }
+function makeSeed(seed) {
+    //console.log(lobby[userId])
+    if(seed == -1){
+        return Math.floor(Math.random() * 1000000);
+    } else {
+        return seed;
+    }
+};
 // === Workflow Processing ===
 function buildCookModePromptObjFromWorkflow(workflow, userContext, message) {
     let promptObj = buildPromptObjFromWorkflow(workflow, userContext, message)
