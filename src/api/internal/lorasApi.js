@@ -83,7 +83,7 @@ router.get('/list', async (req, res) => {
     
     logger.debug(`[LorasApi] Executing DB query: ${JSON.stringify(dbQuery)}, Sort: ${JSON.stringify(sortOptions)}, Skip: ${skip}, Limit: ${limit}`);
 
-    const totalLoras = await loRAModelsDb.countDocuments(dbQuery);
+    const totalLoras = await loRAModelsDb.count(dbQuery);
     const lorasFromDb = await loRAModelsDb.findMany(dbQuery, { sort: sortOptions, skip, limit });
 
     let userFavoriteIdsSet = new Set();
