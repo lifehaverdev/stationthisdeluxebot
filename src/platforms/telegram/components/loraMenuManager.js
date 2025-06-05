@@ -12,8 +12,6 @@ const { ObjectId } = require('../../../core/services/db/BaseDB');
 // Placeholder for internalApiClient if needed directly, or pass via dependencies
 // const internalApiClient = require('../../../utils/internalApiClient'); 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
-const fs = require('fs');
-const path = require('path');
 
 // const MAX_LORAS_PER_PAGE = 5; // Default, can be overridden by API call
 
@@ -59,7 +57,10 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
         await displayLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, true, loraIdentifier, backFilterType, backCheckpoint, backPage);
       } else if (subAction === 'toggle_favorite') {
         // New structure: IS_FAVORITE_STATUS:LORA_IDENTIFIER_FOR_REFRESH:BACK_FILTER:BACK_CHECKPOINT:BACK_PAGE
-        const [currentFavoriteStatusStr, loraIdentifierForRefresh, backFilterType, backCheckpoint, backPageStr] = params;
+        // params from data.split(':') is [action, subAction, currentFavoriteStatusStr, loraIdentifierForRefresh, ...]
+        // So we need to slice params starting from index 1 of the original params array (which is index 2 of data.split(':'))
+        const favoriteParams = params.slice(1); // Correctly get the parameters after subAction
+        const [currentFavoriteStatusStr, loraIdentifierForRefresh, backFilterType, backCheckpoint, backPageStr] = favoriteParams;
         const isCurrentlyFavorite = currentFavoriteStatusStr === 'true';
         const backPage = parseInt(backPageStr, 10) || 1;
 
@@ -112,9 +113,85 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
         await bot.answerCallbackQuery(callbackQuery.id, { text: '🙂‍↕️🤫' });
         await bot.deleteMessage(callbackQuery.message.chat.id, callbackQuery.message.message_id);
         return;
+      } else if (subAction === 'request_form') {
+        logger.info(`[LoraMenuManager] LoRA import form requested by MAID: ${masterAccountId}`);
+        const chatId = callbackQuery.message.chat.id;
+        const originalMenuMessageId = callbackQuery.message.message_id; // The message with the "Import LoRA" button
+
+        // Simplified promptMessage without inline backticks for example URLs
+        const promptMessage = 
+`Please reply to this message with the direct URL to the LoRA model you want to import.\n
+Supported sources: Civitai or Hugging Face
+Supported model types: FLUX (FLUX1-dev, FLUX-schnell), SDXL, SD3, SD1.5.
+
+Example URLs:
+https://civitai.com/models/12345/my-awesome-lora
+https://huggingface.co/user/my-lora-model
+
+Send '/cancel' if you change your mind.
+
+(Internal Info: LORA_IMPORT_URL_PROMPT::${masterAccountId}::${originalMenuMessageId})
+`;
+        // Edit the current message (which is the LoRA menu) to become the prompt.
+        try {
+          await bot.editMessageText(escapeMarkdownV2(promptMessage), {
+            chat_id: chatId,
+            message_id: originalMenuMessageId,
+            parse_mode: 'MarkdownV2',
+            reply_markup: { 
+              inline_keyboard: [[{ text: 'Cancel Import', callback_data: 'lora:cancel_import_prompt' }]]
+            }
+          });
+          await bot.answerCallbackQuery(callbackQuery.id);
+        } catch (error) {
+          logger.error(`[LoraMenuManager] Error displaying LoRA import prompt for MAID ${masterAccountId}:`, error);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error opening LoRA import form.', show_alert: true });
+        }
+        return;
+      } else if (subAction === 'cancel_import_prompt') {
+        logger.info(`[LoraMenuManager] LoRA import prompt cancelled by MAID: ${masterAccountId}`);
+        // Re-display the main LoRA menu by editing the message that showed the prompt
+        await displayLoraMainMenu(bot, callbackQuery, masterAccountId, dependencies, true);
+        // displayLoraMainMenu will call answerCallbackQuery
+        return;
       } else {
         logger.warn(`[LoraMenuManager] Unknown lora subAction: ${subAction}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action.' });
+      }
+    } else if (action === 'lora_store') { // New action for LoRA Store
+      const subAction = params[0];
+      if (subAction === 'main_menu') {
+        // We will define this function next
+        await displayLoraStoreMainMenu(bot, callbackQuery, masterAccountId, dependencies, true); 
+      } else if (subAction === 'category') {
+        const [filterType, checkpoint, pageStr] = params.slice(1);
+        const page = parseInt(pageStr, 10) || 1;
+        await displayStoreLorasByFilterScreen(bot, callbackQuery, masterAccountId, dependencies, true, filterType, checkpoint, page);
+      } else if (subAction === 'my_listed') { // Placeholder for user's listed items
+        const [checkpoint, pageStr] = params.slice(1);
+        const page = parseInt(pageStr, 10) || 1;
+        // await displayUserListedStoreLorasScreen(bot, callbackQuery, masterAccountId, dependencies, true, checkpoint, page);
+        logger.info(`[LoraMenuManager] Placeholder for 'my_listed' LoRAs in store. MAID: ${masterAccountId}, CP: ${checkpoint}, Page: ${page}`);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Viewing your listed LoRAs (not implemented yet).' });
+      } else if (subAction === 'my_purchases') { // Placeholder for user's purchases
+        const [checkpoint, pageStr] = params.slice(1);
+        const page = parseInt(pageStr, 10) || 1;
+        // await displayUserPurchasedStoreLorasScreen(bot, callbackQuery, masterAccountId, dependencies, true, checkpoint, page);
+        logger.info(`[LoraMenuManager] Placeholder for 'my_purchases' in store. MAID: ${masterAccountId}, CP: ${checkpoint}, Page: ${page}`);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Viewing your purchased LoRAs (not implemented yet).' });
+      } else if (subAction === 'detail') {
+        const [loraIdentifier, backFilterType, backCheckpoint, backPageStr] = params.slice(1);
+        const backPage = parseInt(backPageStr, 10) || 1;
+        await displayStoreLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, true, loraIdentifier, backFilterType, backCheckpoint, backPage);
+      } else if (subAction === 'purchase_confirm') { // Placeholder for purchase action
+        const [loraIdentifier, price, backFilterType, backCheckpoint, backPageStr] = params.slice(1);
+        const backPage = parseInt(backPageStr, 10) || 1;
+        logger.info(`[LoraMenuManager] Placeholder for 'purchase_confirm' of LoRA ${loraIdentifier} for ${price} points. MAID: ${masterAccountId}`);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: `CONFIRM: Buy ${loraIdentifier} for ${price} points? (Not Implemented)`, show_alert: true });
+        // Potentially, after this, we would call a function to show a final confirm/cancel message or proceed to purchase API
+      } else {
+        logger.warn(`[LoraMenuManager] Unknown lora_store subAction: ${subAction}`);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Unknown store action.' });
       }
     } else {
       logger.warn(`[LoraMenuManager] Unknown action prefix: ${action}`);
@@ -123,7 +200,7 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
   } catch (error) {
     logger.error(`[LoraMenuManager] Error in handleLoraCallback (data: ${data}):`, error);
     try {
-      if (!callbackQuery.answered) {
+      if (callbackQuery && !callbackQuery.answered) {
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error processing your request.', show_alert: true });
       }
     } catch (ackError) {
@@ -148,7 +225,6 @@ async function displayLoraMainMenu(bot, messageOrQuery, masterAccountId, depende
   const menuMessage = escapeMarkdownV2('LoRA Categories 🎨\nSelect a category to explore:');
   
   const inlineKeyboard = [
-    [{ text: '😹 Memes', callback_data: 'lora:category:type_meme:All:1' }],
     [
       { text: '🎭 Character', callback_data: 'lora:category:type_character:All:1' },
       { text: '🖼 Style', callback_data: 'lora:category:type_style:All:1' }
@@ -157,8 +233,11 @@ async function displayLoraMainMenu(bot, messageOrQuery, masterAccountId, depende
       { text: '🔥 Popular', callback_data: 'lora:category:popular:All:1' },
       { text: '⏳ Recent', callback_data: 'lora:category:recent:All:1' }
     ],
-    [{ text: '💖 Favorites', callback_data: 'lora:category:favorites:All:1' }],
-    [{ text: '📝 Request Model', callback_data: 'lora:request_form' }],
+    [
+      { text: '🛍️ LoRA Store', callback_data: 'lora_store:main_menu' },
+      { text: '💖 Favorites', callback_data: 'lora:category:favorites:All:1' }
+    ],
+    [{ text: '📝 Import LoRA', callback_data: 'lora:request_form' }],
     [{ text: "Ⓧ", callback_data: 'lora:nvm' }]
   ];
 
@@ -206,20 +285,16 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
   const chatId = callbackQuery.message.chat.id;
   let messageId = callbackQuery.message.message_id; // Can be modified if we delete and resend
 
-  // --- Request 2: Fix "Return to Menu" from Photo Detail View ---
-  if (isEdit && callbackQuery.message.photo && callbackQuery.message.photo.length > 0) {
-    logger.debug(`[LoraMenuManager] displayLorasByFilterScreen: Callback is from a photo message (ID: ${messageId}). Deleting it and sending new category list.`);
-    try {
-      await bot.deleteMessage(chatId, messageId);
-      logger.debug(`[LoraMenuManager] Deleted photo message ${messageId} to display category list.`);
-    } catch (deleteError) {
-      logger.warn(`[LoraMenuManager] Failed to delete photo message ${messageId} when going back to category list:`, deleteError.message);
-      // Continue, but isEdit might lead to an error if the message is already gone.
-      // Forcing isEdit to false ensures a new message.
-    }
-    isEdit = false; // Force sending a new message for the category list
-  }
-  // --- End Request 2 ---
+  // --- MODIFIED: Handle transition from photo detail view ---
+  const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
+  if (isEdit && originalMessageWasPhoto) {
+    logger.debug(`[LoraMenuManager] displayLorasByFilterScreen: Callback is from a photo message (ID: ${messageId}). Will attempt to edit it to text list, or send new if edit fails.`);
+    // We won't delete. We'll try to edit. If edit fails, the main editMessageText later will fail,
+    // and we'll proceed to sending a new message if that more robust error handling is in place.
+    // For now, the existing editMessageText will be attempted. If it fails due to incompatible types,
+    // the catch block for it should handle sending a new message.
+  } 
+  // --- END MODIFICATION ---
 
   // Sanitize/Beautify filterType for display
   let displayFilterName = filterType.replace(/^type_/, '');
@@ -263,7 +338,7 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
       title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
 
       if (fetchedLoras.length > 0) {
-        loraListText = '\n'; // Reset placeholder
+        loraListText = '\n'; 
         fetchedLoras.forEach(lora => {
           // --- Request 3: Change LoRA Button Text ---
           let buttonDisplayName = '';
@@ -318,6 +393,8 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
   const fullMessage = `${title}${loraListText}`;
 
   try {
+    // If isEdit is true, try to edit. If originalMessageWasPhoto, this might fail if Telegram doesn't allow direct edit from photo to text.
+    // If it fails, the catch block should ideally handle sending a new message.
     await bot.editMessageText(fullMessage, {
       chat_id: chatId,
       message_id: messageId,
@@ -329,7 +406,21 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
     }
   } catch (error) {
     logger.error(`[LoraMenuManager] Error in displayLorasByFilterScreen (Filter: ${filterType}):`, error);
-    if (!callbackQuery.answered) {
+    // If editing failed (e.g. tried to edit a photo to text), send a new message with the category list.
+    if (isEdit) {
+        logger.info(`[LoraMenuManager] Editing failed for filter screen (Filter: ${filterType}), attempting to send as new message.`);
+        try {
+            await bot.sendMessage(chatId, fullMessage, {
+                reply_markup: { inline_keyboard: keyboard },
+                parse_mode: 'MarkdownV2'
+            });
+            if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
+            return; // Sent as new, so we are done.
+        } catch (sendError) {
+            logger.error(`[LoraMenuManager] Also failed to send filter screen as new message (Filter: ${filterType}):`, sendError);
+        }
+    }
+    if (callbackQuery && !callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id, {text: "Error updating LoRA list.", show_alert: true});
     }
   }
@@ -341,16 +432,16 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
 async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraIdentifier, backFilterType, backCheckpoint, backPage) {
   const { logger, internalApiClient } = dependencies;
   const chatId = callbackQuery.message.chat.id;
-  const originalMessageId = callbackQuery.message.message_id; // Store original message ID for editing/deleting
+  const originalMessageId = callbackQuery.message.message_id;
 
   let messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Fetching details...')}_`;
   const keyboard = [];
-  let photoUrl = null; // For sending a photo with caption
+  let photoUrl = null;
 
   try {
     logger.info(`[LoraMenuManager] Calling /loras/${loraIdentifier} with userId: ${masterAccountId}`);
     const response = await internalApiClient.get(`/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const lora = response.data.lora; // Expecting { lora: { ...details } }
+    const lora = response.data.lora;
     logger.debug(`[LoraMenuManager] Fetched LoRA details for ${loraIdentifier}:`, JSON.stringify(lora, null, 2));
 
     if (lora) {
@@ -361,7 +452,6 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
       messageText = `*${escapedName}*\n`;
 
       if (lora.description) {
-        // Truncate description for Telegram, append ... if too long
         const maxLength = 150;
         const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
         logger.debug(`[LoraMenuManager] Raw description for ${loraIdentifier}: "${desc}"`);
@@ -401,23 +491,23 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
       }
 
       if (lora.previewImages && lora.previewImages.length > 0) {
-        photoUrl = lora.previewImages[0]; // Use the first preview image
-        logger.debug(`[LoraMenuManager] Photo URL for ${loraIdentifier}: ${photoUrl}`);
-        // The messageText will become the caption if a photo is sent
+        // Assuming previewImages[0] is an HTTP(S) URL
+        if (typeof lora.previewImages[0] === 'string' && (lora.previewImages[0].startsWith('http://') || lora.previewImages[0].startsWith('https://'))) {
+            photoUrl = lora.previewImages[0];
+            logger.debug(`[LoraMenuManager] Photo URL for ${loraIdentifier}: ${photoUrl}`);
+        } else {
+            logger.warn(`[LoraMenuManager] Invalid or non-HTTP preview image URL for ${loraIdentifier}: ${lora.previewImages[0]}. Will display as text.`);
+            photoUrl = null;
+        }
       }
 
-      // Favorite button using lora.isFavorite and lora._id (MongoDB ID)
-      // Callback needs to include all info to refresh: lora:toggle_favorite:IS_FAVORITE_STATUS:LORA_IDENTIFIER_FOR_REFRESH:BACK_FILTER:BACK_CHECKPOINT:BACK_PAGE
-      // loraIdentifier is the slug, which will be used to re-fetch the _id if needed by the handler.
       const toggleFavoriteCallback = `lora:toggle_favorite:${lora.isFavorite}:${loraIdentifier}:${backFilterType}:${backCheckpoint}:${backPage}`;
       keyboard.push([{
          text: (lora.isFavorite ? '💔 Unfavorite' : '❤️ Favorite'), callback_data: toggleFavoriteCallback
       }]);
-
     } else {
       messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this LoRA.')}_`;
     }
-
   } catch (apiError) {
     logger.error(`[LoraMenuManager] API Error fetching LoRA detail for ${loraIdentifier}:`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
     messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Sorry, there was an error fetching details. Please try again later.')}_`;
@@ -426,152 +516,70 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
     }
   }
 
-  // Back button
   keyboard.push([{ text: "⇱", callback_data: `lora:category:${backFilterType}:${backCheckpoint}:${backPage}` }]);
   
-  logger.debug(`[LoraMenuManager] Attempting to display LoRA detail for ${loraIdentifier}. Message text before sending/editing:\n${messageText}`);
-  logger.debug(`[LoraMenuManager] Keyboard for ${loraIdentifier}:`, JSON.stringify(keyboard, null, 2));
+  logger.debug(`[LoraMenuManager] Final message text for ${loraIdentifier} (before Telegram ops):\n${messageText}`);
+  logger.debug(`[LoraMenuManager] Final keyboard for ${loraIdentifier}:`, JSON.stringify(keyboard, null, 2));
+  logger.debug(`[LoraMenuManager] Photo URL to be used: ${photoUrl}, isEdit: ${isEdit}`);
 
-  try {
-    let photoAttemptedAndFailed = false;
-    let newPhotoMessageSent = false; // Track if a new photo message replaced the old one
-
-    if (photoUrl) {
-      let photoDisplayedSuccessfully = false; // Renamed from photoSentSuccessfully for clarity
-
-      if (isEdit && photoUrl.startsWith('http')) {
-        logger.debug(`[LoraMenuManager] Mode: Edit message - Attempting to change to HTTP photo for ${loraIdentifier}`);
+  try { // Try block for Telegram operations
+    if (isEdit) {
+      const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
+      if (photoUrl) { // We want to display/update a photo
+        logger.debug(`[LoraMenuManager] Edit Mode: Attempting to show/update photo for ${loraIdentifier} on message ${originalMessageId}`);
         try {
           await bot.editMessageMedia(
             { type: 'photo', media: photoUrl, caption: messageText, parse_mode: 'MarkdownV2' },
             { chat_id: chatId, message_id: originalMessageId, reply_markup: { inline_keyboard: keyboard } }
           );
-          logger.debug(`[LoraMenuManager] Message ${originalMessageId} edited to HTTP photo successfully for ${loraIdentifier}`);
-          photoDisplayedSuccessfully = true;
+          logger.info(`[LoraMenuManager] editMessageMedia succeeded for ${originalMessageId}.`);
         } catch (editMediaError) {
-          logger.warn(`[LoraMenuManager] Failed to edit message ${originalMessageId} to HTTP photo for ${loraIdentifier}. URL: ${photoUrl}. Error:`, {
-            errorMsg: editMediaError.message,
-            errorResponse: editMediaError.response ? editMediaError.response.body || editMediaError.response.data : null,
-            errorCode: editMediaError.code,
-            fullError: JSON.stringify(editMediaError, Object.getOwnPropertyNames(editMediaError)),
-            stack: editMediaError.stack
-          });
-          photoAttemptedAndFailed = true; // Fallback to text edit on original message
-        }
-      } else if (!photoUrl.startsWith('http')) { // Local file path, send as new, delete old if isEdit
-        try {
-          const localPhotoPath = path.resolve(__dirname, '../../../../', photoUrl);
-          logger.debug(`[LoraMenuManager] Attempting to read local photo for ${loraIdentifier}: ${localPhotoPath}`);
-          const photoBuffer = fs.readFileSync(localPhotoPath);
-
-          if (isEdit) {
-            logger.debug(`[LoraMenuManager] Mode: Edit (by replacement) - Sending new local photo for ${loraIdentifier}, will delete old message ${originalMessageId} on success.`);
-          } else {
-            logger.debug(`[LoraMenuManager] Mode: New message - Attempting local photo for ${loraIdentifier}`);
-          }
-
-          await bot.sendPhoto(chatId, photoBuffer, {
-            caption: messageText,
-            parse_mode: 'MarkdownV2',
-            reply_markup: { inline_keyboard: keyboard }
-          });
-          logger.debug(`[LoraMenuManager] Local photo message sent successfully as new message for ${loraIdentifier}`);
-          photoDisplayedSuccessfully = true;
-          if (isEdit) {
-            try { 
-              await bot.deleteMessage(chatId, originalMessageId); 
-              logger.debug(`[LoraMenuManager] Original message ${originalMessageId} deleted after new local photo sent.`); 
-              newPhotoMessageSent = true; // Mark that original message is gone
-            } catch (delErr) { 
-              logger.warn(`[LoraMenuManager] Failed to delete original message ${originalMessageId} after sending new local photo:`, delErr.message); 
+          logger.warn(`[LoraMenuManager] editMessageMedia failed for ${originalMessageId} (${editMediaError.message}).`);
+          if (originalMessageWasPhoto) {
+            logger.debug(`[LoraMenuManager] editMessageMedia failed, original was photo. Trying editMessageCaption for ${originalMessageId}.`);
+            try {
+              await bot.editMessageCaption(messageText, {
+                chat_id: chatId, message_id: originalMessageId,
+                reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+              });
+              logger.info(`[LoraMenuManager] editMessageCaption succeeded for ${originalMessageId}.`);
+            } catch (editCaptionError) {
+              logger.warn(`[LoraMenuManager] editMessageCaption also failed for ${originalMessageId} (${editCaptionError.message}). Sending new photo.`);
+              await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
             }
+          } else { // Original was text, editMessageMedia failed to convert. Send new photo.
+            logger.warn(`[LoraMenuManager] editMessageMedia failed to convert text to photo for ${originalMessageId}. Sending new photo.`);
+            await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
           }
-        } catch (fileOrSendError) {
-          logger.warn(`[LoraMenuManager] Error reading or sending local photo ${photoUrl} for ${loraIdentifier}:`, {
-            errorMsg: fileOrSendError.message,
-            errorResponse: fileOrSendError.response ? fileOrSendError.response.body || fileOrSendError.response.data : null,
-            errorCode: fileOrSendError.code,
-            fullError: JSON.stringify(fileOrSendError, Object.getOwnPropertyNames(fileOrSendError)),
-            stack: fileOrSendError.stack
-          });
-          photoAttemptedAndFailed = true; // Fallback to text (will try to edit original if !newPhotoMessageSent)
         }
-      } else { // HTTP URL but not isEdit (send as new message)
-        logger.debug(`[LoraMenuManager] Mode: New message - Attempting HTTP photo for ${loraIdentifier}`);
-        try {
-          await bot.sendPhoto(chatId, photoUrl, {
-            caption: messageText,
-            parse_mode: 'MarkdownV2',
-            reply_markup: { inline_keyboard: keyboard }
-          });
-          logger.debug(`[LoraMenuManager] HTTP photo message sent successfully as new message for ${loraIdentifier}`);
-          photoDisplayedSuccessfully = true;
-        } catch (sendPhotoError) {
-          logger.warn(`[LoraMenuManager] Error sending new HTTP photo message for ${loraIdentifier}. URL: ${photoUrl}. Error:`, {
-            errorMsg: sendPhotoError.message,
-            errorResponse: sendPhotoError.response ? sendPhotoError.response.body || sendPhotoError.response.data : null,
-            errorCode: sendPhotoError.code,
-            fullError: JSON.stringify(sendPhotoError, Object.getOwnPropertyNames(sendPhotoError)),
-            stack: sendPhotoError.stack
-          });
-          photoAttemptedAndFailed = true; // Fallback to text (will be a new text message)
-        }
-      }
-      if (!photoDisplayedSuccessfully) photoAttemptedAndFailed = true;
-    }
-
-    if (!photoUrl || photoAttemptedAndFailed) {
-      // Fallback to text message if photo wasn't applicable, or if photo display failed.
-      // If isEdit is true AND a new photo message hasn't already replaced the original message, edit the original.
-      // Otherwise, send a new text message.
-      if (isEdit && !newPhotoMessageSent) { 
-        logger.debug(`[LoraMenuManager] Fallback/Mode: Edit original message ${originalMessageId} to text for ${loraIdentifier}.`);
+      } else { // We want to display/update text (photoUrl is null)
+        logger.debug(`[LoraMenuManager] Edit Mode: Attempting to show/update text for ${loraIdentifier} on message ${originalMessageId}`);
         try {
           await bot.editMessageText(messageText, {
-            chat_id: chatId,
-            message_id: originalMessageId, // Edit the original message
-            reply_markup: { inline_keyboard: keyboard },
-            parse_mode: 'MarkdownV2'
+            chat_id: chatId, message_id: originalMessageId,
+            reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
           });
-          logger.debug(`[LoraMenuManager] Text message ${originalMessageId} edited for ${loraIdentifier} (text mode/fallback)`);
-        } catch (editError) {
-          logger.error(`[LoraMenuManager] Error editing text message ${originalMessageId} for ${loraIdentifier} (text mode/fallback):`, {
-            errorMsg: editError.message,
-            errorResponse: editError.response ? editError.response.body || editError.response.data : null,
-            errorCode: editError.code,
-            fullError: JSON.stringify(editError, Object.getOwnPropertyNames(editError)),
-            stack: editError.stack
-          });
-          throw editError; 
-        }
-      } else if (!isEdit) { // Send new text message if not an edit operation
-        logger.debug(`[LoraMenuManager] Mode: New message (text only - original intent) for ${loraIdentifier}`);
-        try {
-          await bot.sendMessage(chatId, messageText, {
-            reply_markup: { inline_keyboard: keyboard },
-            parse_mode: 'MarkdownV2'
-          });
-          logger.debug(`[LoraMenuManager] New text message sent for ${loraIdentifier} (original text mode)`);
-        } catch (sendError) {
-          logger.error(`[LoraMenuManager] Error sending new text message for ${loraIdentifier} (original text mode):`, {
-            errorMsg: sendError.message,
-            errorResponse: sendError.response ? sendError.response.body || sendError.response.data : null,
-            errorCode: sendError.code,
-            fullError: JSON.stringify(sendError, Object.getOwnPropertyNames(sendError)),
-            stack: sendError.stack
-          });
-          throw sendError;
+          logger.info(`[LoraMenuManager] editMessageText succeeded for ${originalMessageId}.`);
+        } catch (editTextError) {
+          logger.warn(`[LoraMenuManager] editMessageText failed for ${originalMessageId} (${editTextError.message}). Sending new text message.`);
+          await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
         }
       }
-      // If isEdit was true, but a newPhotoMessageSent was true, we do nothing here for text, photo took precedence.
+    } else { // Not an edit, send a new message
+      if (photoUrl) {
+        logger.debug(`[LoraMenuManager] New Message Mode: Sending photo for ${loraIdentifier}.`);
+        await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+      } else {
+        logger.debug(`[LoraMenuManager] New Message Mode: Sending text for ${loraIdentifier}.`);
+        await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+      }
     }
 
-    if (!callbackQuery.answered) {
+    if (callbackQuery && !callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id);
     }
-  } catch (error) {
-    // This outer catch now primarily handles errors from the Telegram bot operations if they were re-thrown
-    // or any other unexpected errors within this block.
+
+  } catch (error) { // Main catch for Telegram bot operations
     logger.error(`[LoraMenuManager] Error in displayLoraDetailScreen Telegram operations (Identifier: ${loraIdentifier}):`, {
       errorMsg: error.message,
       errorResponse: error.response ? error.response.body || error.response.data : null,
@@ -579,17 +587,402 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
       fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
       stack: error.stack
     });
-    if (!callbackQuery.answered) {
+    
+    // Check if error was due to photo URL being invalid (e.g. Telegram couldn't fetch it)
+    // This is a general catch; specific ENOENT for local files is removed as we assume HTTP.
+    if (photoUrl && error.message) { // A crude check, Telegram errors can be varied.
+        logger.warn(`[LoraMenuManager] A photo was intended but an error occurred (${error.message}). Attempting to send/edit as text fallback.`);
+        try {
+            if (isEdit) {
+                 await bot.editMessageText(messageText, { // Try to edit original message to text
+                    chat_id: chatId, message_id: originalMessageId,
+                    reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                });
+            } else {
+                 await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+            }
+            if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
+            // Exiting here as we've handled the fallback
+            return; 
+        } catch (fallbackError) {
+            logger.error(`[LoraMenuManager] Text fallback also failed for ${loraIdentifier}:`, fallbackError);
+        }
+    }
+
+    if (callbackQuery && !callbackQuery.answered) {
       try {
         await bot.answerCallbackQuery(callbackQuery.id, {text: "Error updating LoRA detail.", show_alert: true});
       } catch (ackError) {
-        logger.error(`[LoraMenuManager] FATAL: Could not acknowledge callback query after Telegram operation error (LoRA: ${loraIdentifier}):`, {
-          errorMsg: ackError.message,
-          errorResponse: ackError.response ? ackError.response.body || ackError.response.data : null,
-          errorCode: ackError.code,
-          fullError: JSON.stringify(ackError, Object.getOwnPropertyNames(ackError)),
-          stack: ackError.stack
+        logger.error(`[LoraMenuManager] FATAL: Could not acknowledge callback query after Telegram operation error (LoRA: ${loraIdentifier}):`, { /* ... ackError details ... */ });
+      }
+    }
+  }
+}
+
+/**
+ * Displays the main LoRA Store categories menu.
+ * @param {Object} bot - The Telegram bot instance.
+ * @param {Object} callbackQuery - The callback query object.
+ * @param {string} masterAccountId - The user's master account ID.
+ * @param {Object} dependencies - Shared dependencies.
+ * @param {boolean} isEdit - Whether to edit an existing message or send a new one.
+ */
+async function displayLoraStoreMainMenu(bot, callbackQuery, masterAccountId, dependencies, isEdit = true) {
+  const { logger } = dependencies;
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+
+  logger.info(`[LoraMenuManager] Displaying LoRA Store main menu for MAID: ${masterAccountId}`);
+
+  const menuMessage = escapeMarkdownV2('🛍️ LoRA Store 🛍️\nBrowse user-trained LoRAs:');
+  
+  const inlineKeyboard = [
+    // Placeholder buttons for the store menu
+    [{ text: '💰 By Price', callback_data: 'lora_store:category:price:All:1' }],
+    [{ text: '🏷️ By Tag', callback_data: 'lora_store:category:tag:All:1' }],
+    [{ text: '🔥 Popular', callback_data: 'lora_store:category:popular:All:1' }],
+    [{ text: '🆕 Newest', callback_data: 'lora_store:category:recent:All:1' }],
+    [{ text: '🔍 My Listed LoRAs', callback_data: 'lora_store:my_listed:All:1' }], 
+    [{ text: '📜 My Purchases', callback_data: 'lora_store:my_purchases:All:1' }], 
+    [{ text: 'Back to Main LoRA Menu', callback_data: 'lora:main_menu' }],
+    [{ text: "Ⓧ Close Store", callback_data: 'lora:nvm' }] // Reuse nvm for now
+  ];
+
+  const options = {
+    reply_markup: { inline_keyboard: inlineKeyboard },
+    parse_mode: 'MarkdownV2'
+  };
+
+  try {
+    await bot.editMessageText(menuMessage, {
+      chat_id: chatId,
+      message_id: messageId,
+      ...options
+    });
+    if (callbackQuery && !callbackQuery.answered) {
+        await bot.answerCallbackQuery(callbackQuery.id);
+    }
+  } catch (error) {
+    logger.error(`[LoraMenuManager] Error in displayLoraStoreMainMenu (MAID: ${masterAccountId}):`, error.response ? error.response.data : error.message, error.stack);
+    if (callbackQuery && !callbackQuery.answered) {
+        await bot.answerCallbackQuery(callbackQuery.id, {text: "Error showing LoRA Store menu.", show_alert: true});
+    }
+  }
+}
+
+/**
+ * Displays LoRAs from the store based on a filter type and checkpoint.
+ * @param {Object} bot
+ * @param {Object} callbackQuery
+ * @param {string} masterAccountId
+ * @param {Object} dependencies
+ * @param {boolean} isEdit
+ * @param {string} filterType - e.g., 'price', 'tag', 'popular', 'recent'
+ * @param {string} currentCheckpoint - e.g., 'All', 'SDXL', 'SD1.5'
+ * @param {number} currentPage - e.g., 1
+ */
+async function displayStoreLorasByFilterScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, filterType, currentCheckpoint, currentPage) {
+  const { logger, internalApiClient } = dependencies;
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+
+  logger.info(`[LoraMenuManager] Displaying Store LoRAs. Filter: ${filterType}, Checkpoint: ${currentCheckpoint}, Page: ${currentPage}, MAID: ${masterAccountId}`);
+
+  // Sanitize/Beautify filterType for display
+  let displayFilterName = filterType.charAt(0).toUpperCase() + filterType.slice(1);
+  if (filterType === 'price') displayFilterName = 'By Price';
+  if (filterType === 'tag') displayFilterName = 'By Tag'; // This will likely need a sub-menu for selecting tags
+
+  let title = `*${escapeMarkdownV2(displayFilterName)} Store LoRAs*`;
+  if (currentCheckpoint !== 'All') {
+    title += ` ${escapeMarkdownV2(`(Checkpoint: ${currentCheckpoint})`)}`;
+  }
+
+  const keyboard = [];
+
+  // Checkpoint filter buttons (similar to existing lora menu)
+  const checkpointButtons = AVAILABLE_CHECKPOINTS.map(cp => ({
+    text: (cp === currentCheckpoint ? `✅ ${cp}` : cp),
+    // Reset to page 1 on checkpoint change, maintain filterType
+    callback_data: `lora_store:category:${filterType}:${cp}:1` 
+  }));
+  keyboard.push(checkpointButtons);
+
+  let loraListText = `
+_${escapeMarkdownV2('Fetching LoRAs from the store...')}_
+`;
+  let totalPages = 1;
+
+  const queryParams = new URLSearchParams({
+    storeFilterType: filterType, // API uses storeFilterType
+    checkpoint: currentCheckpoint,
+    page: currentPage.toString(),
+    limit: '5', 
+    userId: masterAccountId 
+  }).toString();
+
+  try {
+    logger.info(`[LoraMenuManager] Calling /loras/store/list with params: ${queryParams}`);
+    const response = await internalApiClient.get(`/loras/store/list?${queryParams}`);
+    const responseData = response.data; // Assuming response.data is { loras: [], pagination: {} }
+    
+    if (responseData && responseData.loras) {
+      const fetchedLoras = responseData.loras;
+      totalPages = responseData.pagination.totalPages || 1;
+      title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+
+      if (fetchedLoras.length > 0) {
+        loraListText = ''; 
+        fetchedLoras.forEach(lora => {
+          const buttonDisplayName = lora.name || lora.slug;
+          // Add price to the button text
+          const priceText = lora.monetization?.forSale && lora.monetization?.priceUSD ? `(${lora.monetization.priceUSD} pts)` : '(Price N/A)';
+          const escapedButtonText = `${escapeMarkdownV2(buttonDisplayName)} ${escapeMarkdownV2(priceText)}`;
+          
+          // Callback for store detail: lora_store:detail:SLUG_OR_ID:filterType:checkpoint:page
+          const detailCallback = `lora_store:detail:${lora.slug || lora._id}:${filterType}:${currentCheckpoint}:${currentPage}`;
+          keyboard.push([{ text: escapedButtonText, callback_data: detailCallback }]);
         });
+      } else {
+        loraListText = `
+_${escapeMarkdownV2('No LoRAs found in the store matching your criteria.')}_
+`;
+      }
+    } else {
+      logger.warn('[LoraMenuManager] Invalid response structure from store loras API (or placeholder error).');
+      loraListText = `
+_${escapeMarkdownV2('Error: Could not parse LoRA list from server store.')}_
+`;
+      if (!title.includes('Page ')) {
+          title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+      }
+    }
+  } catch (apiError) {
+    logger.error(`[LoraMenuManager] API Error fetching Store LoRAs for ${filterType} (CP: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
+    loraListText = `
+_${escapeMarkdownV2('Sorry, there was an error fetching LoRAs from the store. Please try again.')}_
+`;
+    if (!title.includes('Page ')) {
+        title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+    }
+  }
+
+  const navigationRow = [];
+  if (currentPage > 1) {
+    navigationRow.push({ text: "⇤ Prev", callback_data: `lora_store:category:${filterType}:${currentCheckpoint}:${currentPage - 1}` });
+  }
+  // Back to Store Main Menu button
+  navigationRow.push({ text: "⇱ Store Menu", callback_data: 'lora_store:main_menu' }); 
+  if (currentPage < totalPages) { 
+    navigationRow.push({ text: "Next ⇥", callback_data: `lora_store:category:${filterType}:${currentCheckpoint}:${currentPage + 1}` });
+  }
+  if (navigationRow.length > 0) {
+      keyboard.push(navigationRow);
+  }
+
+  const fullMessage = `${title}${loraListText}`;
+
+  try {
+    await bot.editMessageText(fullMessage, {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: keyboard },
+      parse_mode: 'MarkdownV2'
+    });
+    if (callbackQuery && !callbackQuery.answered) {
+      await bot.answerCallbackQuery(callbackQuery.id);
+    }
+  } catch (error) {
+    logger.error(`[LoraMenuManager] Error in displayStoreLorasByFilterScreen (Filter: ${filterType}):`, error);
+    if (isEdit) {
+        logger.info(`[LoraMenuManager] Editing failed for store filter screen (Filter: ${filterType}), attempting to send as new message.`);
+        try {
+            await bot.sendMessage(chatId, fullMessage, {
+                reply_markup: { inline_keyboard: keyboard },
+                parse_mode: 'MarkdownV2'
+            });
+            // If we sent a new message, we might want to delete the old one if it was an edit attempt that failed.
+            // For now, just send new and acknowledge.
+            if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
+            return; 
+        } catch (sendError) {
+            logger.error(`[LoraMenuManager] Also failed to send store filter screen as new message (Filter: ${filterType}):`, sendError);
+        }
+    }
+    if (callbackQuery && !callbackQuery.answered) {
+      await bot.answerCallbackQuery(callbackQuery.id, {text: "Error updating store LoRA list.", show_alert: true});
+    }
+  }
+}
+
+/**
+ * Displays the detailed screen for a single LoRA from the store.
+ */
+async function displayStoreLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraIdentifier, backFilterType, backCheckpoint, backPage) {
+  const { logger, internalApiClient, loRAPermissionsDb } = dependencies;
+  const chatId = callbackQuery.message.chat.id;
+  const originalMessageId = callbackQuery.message.message_id;
+
+  logger.info(`[LoraMenuManager] Displaying Store LoRA Detail. LoRA: ${loraIdentifier}, MAID: ${masterAccountId}`);
+
+  let messageText = `*LoRA Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Fetching details...')}_`;
+  const keyboard = [];
+  let photoUrl = null;
+  let isOwned = false; // Will be determined by API response or permissions check
+
+  try {
+    // Use the existing /loras/:loraIdentifier endpoint. 
+    // It should ideally tell us if the MAID owns it, or we might need a separate check.
+    // For now, let's assume the API includes enough info or we add a specific `isPurchased` field or similar to its response.
+    logger.info(`[LoraMenuManager] Store Detail: Calling /loras/${loraIdentifier}?userId=${masterAccountId}`);
+    const response = await internalApiClient.get(`/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    const lora = response.data.lora; // Assuming structure { lora: { ... } }
+    // The general /loras/:loraIdentifier API returns `isFavorite`. We need `isPurchased` for store context.
+    // For now, we'll manually check permissions as a fallback if not directly in lora object.
+
+    if (lora) {
+      // Check if user owns this LoRA (has permission)
+      const permission = await loRAPermissionsDb.hasAccess(masterAccountId, lora._id);
+      isOwned = !!permission;
+
+      let tempName = lora.name || lora.slug;
+      let escapedName = escapeMarkdownV2(tempName);
+      messageText = `*${escapedName}*\n`;
+
+      if (lora.description) {
+        const maxLength = 150;
+        const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
+        let escapedDesc = escapeMarkdownV2(desc);
+        messageText += `_${escapedDesc}_\n\n`;
+      }
+
+      let tempCheckpoint = lora.checkpoint || 'N/A';
+      let escapedCheckpoint = escapeMarkdownV2(tempCheckpoint);
+      messageText += `*Checkpoint:* ${escapedCheckpoint}\n`;
+
+      if (lora.triggerWords && lora.triggerWords.length > 0) {
+        let tempTriggers = lora.triggerWords.join(', ');
+        let escapedTriggers = escapeMarkdownV2(tempTriggers);
+        messageText += `*Triggers:* \`${escapedTriggers}\`\n`;
+      }
+      
+      const price = lora.monetization?.forSale && lora.monetization?.priceUSD ? lora.monetization.priceUSD : null;
+      if (price !== null) {
+        messageText += `*Price:* ${escapeMarkdownV2(String(price))} points\n`;
+      } else {
+        messageText += `*Price:* Not currently for sale\n`;
+      }
+
+      if (lora.previewImages && lora.previewImages.length > 0 && 
+          typeof lora.previewImages[0] === 'string' && 
+          (lora.previewImages[0].startsWith('http://') || lora.previewImages[0].startsWith('https://'))) {
+        photoUrl = lora.previewImages[0];
+      }
+
+      if (isOwned) {
+        messageText += `\n*Status: ✅ You own this LoRA!*\n`;
+        // Optionally, add a button to go to the standard LoRA detail view or a direct use command
+        // keyboard.push([{ text: 'View/Use LoRA', callback_data: `lora:detail:${loraIdentifier}:${backFilterType}:${backCheckpoint}:${backPage}` }]);
+      } else if (price !== null && lora.monetization?.forSale) {
+        // Lora is for sale and user doesn't own it
+        keyboard.push([{ 
+          text: `💰 Buy for ${price} points`, 
+          callback_data: `lora_store:purchase_confirm:${loraIdentifier}:${price}:${backFilterType}:${backCheckpoint}:${backPage}`
+        }]);
+      } else {
+        // Not for sale, or user owns it but price is null (should not happen if forSale is true)
+        messageText += `\n*Status: Not available for purchase at this moment.*\n`;
+      }
+
+    } else {
+      messageText = `*LoRA Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this LoRA.')}_`;
+    }
+  } catch (apiError) {
+    logger.error(`[LoraMenuManager] API Error fetching Store LoRA detail for ${loraIdentifier}:`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
+    messageText = `*LoRA Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Sorry, there was an error fetching details.')}_`;
+    if (apiError.response && apiError.response.status === 404) {
+      messageText = `*LoRA Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('This LoRA could not be found in the store.')}_`;
+    }
+  }
+
+  // Back button to the store listing screen
+  keyboard.push([{ text: "⇱", callback_data: `lora_store:category:${backFilterType}:${backCheckpoint}:${backPage}` }]);
+  
+  logger.debug(`[LoraMenuManager] Store Detail - Final message text for ${loraIdentifier}:\n${messageText}`);
+  logger.debug(`[LoraMenuManager] Store Detail - Final keyboard:`, JSON.stringify(keyboard, null, 2));
+
+  // Telegram send/edit logic (similar to displayLoraDetailScreen, adapted for store context)
+  try { 
+    if (isEdit) {
+      const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
+      if (photoUrl) { 
+        try {
+          await bot.editMessageMedia(
+            { type: 'photo', media: photoUrl, caption: messageText, parse_mode: 'MarkdownV2' },
+            { chat_id: chatId, message_id: originalMessageId, reply_markup: { inline_keyboard: keyboard } }
+          );
+        } catch (editMediaError) {
+          logger.warn(`[LoraMenuManager] Store Detail editMessageMedia failed: ${editMediaError.message}. Trying caption or new.`);
+          if (originalMessageWasPhoto) {
+            try {
+              await bot.editMessageCaption(messageText, {
+                chat_id: chatId, message_id: originalMessageId,
+                reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+              });
+            } catch (editCaptionError) {
+              logger.warn(`[LoraMenuManager] Store Detail editMessageCaption failed: ${editCaptionError.message}. Sending new photo.`);
+              await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+            }
+          } else { 
+            logger.warn(`[LoraMenuManager] Store Detail: Original was text, editMessageMedia failed. Sending new photo.`);
+            await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+          }
+        }
+      } else { 
+        try {
+          await bot.editMessageText(messageText, {
+            chat_id: chatId, message_id: originalMessageId,
+            reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+          });
+        } catch (editTextError) {
+          logger.warn(`[LoraMenuManager] Store Detail editMessageText failed: ${editTextError.message}. Sending new text message.`);
+          await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+        }
+      }
+    } else { 
+      if (photoUrl) {
+        await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+      } else {
+        await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+      }
+    }
+    if (callbackQuery && !callbackQuery.answered) {
+      await bot.answerCallbackQuery(callbackQuery.id);
+    }
+  } catch (error) { 
+    logger.error(`[LoraMenuManager] Error in displayStoreLoraDetailScreen Telegram ops (LoRA: ${loraIdentifier}):`, error.message, error.stack);
+    if (photoUrl && error.message) { 
+        logger.warn(`[LoraMenuManager] Store Detail: Photo intended but error occurred (${error.message}). Fallback to text.`);
+        try {
+            if (isEdit) {
+                 await bot.editMessageText(messageText, { 
+                    chat_id: chatId, message_id: originalMessageId,
+                    reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                });
+            } else {
+                 await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+            }
+            if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
+            return; 
+        } catch (fallbackError) {
+            logger.error(`[LoraMenuManager] Store Detail: Text fallback also failed for ${loraIdentifier}:`, fallbackError);
+        }
+    }
+    if (callbackQuery && !callbackQuery.answered) {
+      try {
+        await bot.answerCallbackQuery(callbackQuery.id, {text: "Error updating store LoRA detail.", show_alert: true});
+      } catch (ackError) {
+        logger.error(`[LoraMenuManager] FATAL: Store Detail: Could not ack CBQ after error (LoRA: ${loraIdentifier}):`, ackError);
       }
     }
   }
@@ -607,5 +1000,8 @@ module.exports = {
   handleLoraCallback,
   displayLoraMainMenu,
   displayLorasByFilterScreen,
-  displayLoraDetailScreen
+  displayLoraDetailScreen,
+  displayLoraStoreMainMenu,
+  displayStoreLorasByFilterScreen,
+  displayStoreLoraDetailScreen
 }; 

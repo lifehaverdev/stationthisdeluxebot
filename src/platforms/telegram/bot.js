@@ -25,10 +25,21 @@ const internalApiClient = require('../../utils/internalApiClient'); // UPDATED P
 const { handleLoraCommand, handleLoraCallback: handleLoraMenuCallback } = require('./components/loraMenuManager.js');
 // -- END NEW LORA MENU MANAGER IMPORT --
 
+// ++ NEW TRAINING MENU MANAGER IMPORT ++
+const {
+  handleTrainCommand,
+  handleTrainingCallbackQuery,
+  processNewTrainingName, // ADD THIS LINE
+  // handleTrainingTextMessage // REMOVE - We will use reply-to-message pattern
+} = require('./components/trainingMenuManager.js');
+// -- END NEW TRAINING MENU MANAGER IMPORT --
+
 // Temporary store for pending tweaks
 // Key: `generationId_masterAccountId`
 // Value: Object of parameters being tweaked
 let pendingTweaks = {};
+
+const PROMPT_MARKER_TRAINING_NAME = 'PROMPT_TRAINING_NAME_V1'; // Define marker for bot.js
 
 /**
  * Create and configure the Telegram bot
@@ -90,6 +101,10 @@ function createTelegramBot(dependencies, token, options = {}) {
     userSettingsService  // Directly use dependencies.userSettingsService
   } = dependencies;
   
+  // ++ Ensure loRAPermissionsDb is available from dependencies ++
+  const loRAPermissionsDb = dependencies.loRAPermissionsDb || new (require('../../core/services/db/loRAPermissionsDb'))(logger);
+  // -- End loRAPermissionsDb --
+
   // Create the Telegram bot instance
   const bot = new TelegramBot(token, {
     polling: options.polling !== false,
@@ -174,11 +189,27 @@ function createTelegramBot(dependencies, token, options = {}) {
     // handleCollectionsCommand(message, args);
   });
   
-  // /train command - Manage LoRA model training
-  bot.onText(/^\/train(?:@\w+)?\s*(.*)/i, (message, match) => {
-    const args = match[1] || '';
-    handleTrainModelCommand(message, args);
+  // ++ NEW /train COMMAND HANDLER (for training menu) ++
+  bot.onText(/^\/train(?:@\w+)?$/i, async (message) => {
+    logger.info(`[Bot] /train (training menu) command received from UserID: ${message.from.id}`);
+    const telegramUserId = message.from.id.toString();
+    const platform = 'telegram';
+    try {
+      const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+        platform: platform,
+        platformId: telegramUserId,
+        platformContext: { firstName: message.from.first_name, username: message.from.username }
+      });
+      const masterAccountId = findOrCreateResponse.data.masterAccountId;
+      logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId} for /train command.`);
+      
+      await handleTrainCommand(bot, message, masterAccountId, { logger });
+    } catch (error) {
+      logger.error(`[Bot] Error processing /train command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+      bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open the training hub. Please try again.", { reply_to_message_id: message.message_id });
+    }
   });
+  // -- END NEW /train COMMAND HANDLER --
   
   // /status command - Show application runtime information
   bot.onText(/^\/status(?:@\w+)?/i, (message) => {
@@ -256,7 +287,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for settings.", show_alert: true});
         }
       // ++ NEW 'lora:' (LORA MENU) CALLBACK HANDLER ++
-      } else if (data.startsWith('lora:')) {
+      } else if (data.startsWith('lora:') || data.startsWith('lora_store:')) {
         // User specificity for LoRA menu (same as settings)
         if (message.reply_to_message && originalCommandUser && originalCommandUser.id !== callbackUserId) {
           await bot.answerCallbackQuery(callbackQuery.id, { text: "This LoRA menu isn't for you.", show_alert: true });
@@ -274,10 +305,10 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for original command user ${originalCommandUser.id} for LoRA menu.`);
           
           await handleLoraMenuCallback(bot, callbackQuery, masterAccountId, 
-            { logger, internalApiClient, userSettingsService, toolRegistry } // Pass dependencies
+            { logger, internalApiClient, userSettingsService, toolRegistry, loRAPermissionsDb } // Pass dependencies
           );
         } catch (error) {
-          logger.error(`[Bot CB] Error in 'lora:' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
+          logger.error(`[Bot CB] Error in 'lora:' or 'lora_store:' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for LoRAs.", show_alert: true});
         }
       // -- END NEW 'lora:' CALLBACK HANDLER --
@@ -1473,6 +1504,107 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
         }
+      } else if (data.startsWith('admin_lora_approve:') || data.startsWith('admin_lora_reject:')) {
+        const callbackUserIdStr = callbackQuery.from.id.toString();
+        const adminTelegramId = '5472638766'; // Your Telegram User ID for admin actions
+
+        logger.info(`[Bot CB] Admin LoRA approval/rejection callback: ${data} from UserID: ${callbackUserIdStr}`);
+
+        if (callbackUserIdStr !== adminTelegramId) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
+          return;
+        }
+
+        const parts = data.split(':');
+        const action = parts[0]; // 'admin_lora_approve' or 'admin_lora_reject'
+        const loraIdentifier = parts[1];
+
+        let apiEndpoint = '';
+        let successMessage = '';
+        let failureMessage = '';
+
+        if (action === 'admin_lora_approve') {
+          apiEndpoint = `/loras/${loraIdentifier}/admin-approve`;
+          successMessage = '✅ LoRA Approved & Deployment Initiated';
+          failureMessage = '⚠️ Error approving LoRA';
+        } else { // admin_lora_reject
+          apiEndpoint = `/loras/${loraIdentifier}/admin-reject`;
+          successMessage = '❌ LoRA Rejected';
+          failureMessage = '⚠️ Error rejecting LoRA';
+        }
+
+        try {
+          // Call the internal API - Assuming POST request, adjust if different
+          // We'll need to pass the admin's MasterAccountId if the API needs to record who approved/rejected.
+          // For now, the API endpoint itself implies admin action.
+          logger.info(`[Bot CB] Calling internal API: POST ${apiEndpoint}`);
+          const response = await internalApiClient.post(apiEndpoint, {}); // Empty body for now, or add admin MAID if needed
+
+          if (response.status === 200 || response.status === 202) {
+            await bot.editMessageText(
+              message.text + `\n\n---\n*Action Taken: ${successMessage}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`,
+              {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'MarkdownV2',
+                reply_markup: null // Remove buttons
+              }
+            );
+            await bot.answerCallbackQuery(callbackQuery.id, { text: response.data.message || successMessage });
+          } else {
+            const errorDetail = response.data?.details || response.data?.error || 'Unknown API error';
+            logger.error(`[Bot CB] Admin LoRA action API call failed for ${loraIdentifier}. Status: ${response.status}, Error: ${errorDetail}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}: ${errorDetail}`, show_alert: true });
+          }
+        } catch (error) {
+          const errorDetail = error.response?.data?.details || error.response?.data?.error || error.message;
+          logger.error(`[Bot CB] Error in admin LoRA action for ${loraIdentifier} (${action}):`, errorDetail, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}. Details: ${errorDetail}`, show_alert: true });
+        }
+
+      } else if (data.startsWith('admin_lora_approve_private:')) {
+        const callbackUserIdStr = callbackQuery.from.id.toString();
+        const adminTelegramId = '5472638766'; // Your Telegram User ID for admin actions
+
+        logger.info(`[Bot CB] Admin LoRA private approval callback: ${data} from UserID: ${callbackUserIdStr}`);
+
+        if (callbackUserIdStr !== adminTelegramId) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
+          return;
+        }
+
+        const parts = data.split(':');
+        const loraIdentifier = parts[1];
+        const apiEndpoint = `/loras/${loraIdentifier}/admin-approve-private`;
+        const successMessageBase = '🔒 LoRA Approved Privately';
+        const failureMessage = '⚠️ Error privately approving LoRA';
+
+        try {
+          logger.info(`[Bot CB] Calling internal API: POST ${apiEndpoint}`);
+          const response = await internalApiClient.post(apiEndpoint, {}); 
+
+          if (response.status === 200 || response.status === 202) {
+            await bot.editMessageText(
+              message.text + `\n\n---\n*Action Taken: ${successMessageBase}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`,
+              {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                parse_mode: 'MarkdownV2',
+                reply_markup: null 
+              }
+            );
+            await bot.answerCallbackQuery(callbackQuery.id, { text: response.data.message || successMessageBase });
+          } else {
+            const errorDetail = response.data?.details || response.data?.error || 'Unknown API error';
+            logger.error(`[Bot CB] Admin LoRA private approval API call failed for ${loraIdentifier}. Status: ${response.status}, Error: ${errorDetail}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}: ${errorDetail}`, show_alert: true });
+          }
+        } catch (error) {
+          const errorDetail = error.response?.data?.details || error.response?.data?.error || error.message;
+          logger.error(`[Bot CB] Error in admin LoRA private approval action for ${loraIdentifier}:`, errorDetail, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}. Details: ${errorDetail}`, show_alert: true });
+        }
+
       } else if (data.startsWith('loras:')) {
         const telegramUserId = message.from.id.toString();
         const platform = 'telegram';
@@ -1493,6 +1625,31 @@ function createTelegramBot(dependencies, token, options = {}) {
         } catch (error) {
           logger.error(`[Bot] Error processing /loras command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
           bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open the LoRAs menu. Please try again.", { reply_to_message_id: message.message_id });
+        }
+      } else if (data.startsWith('train_')) {
+        if (message.reply_to_message && originalCommandUser && originalCommandUser.id !== callbackUserId) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "This training menu isn't for you.", show_alert: true });
+          return;
+        }
+        const platform = 'telegram';
+        const userForMaid = originalCommandUser || callbackQuery.from; // User who initiated or clicked
+        logger.info(`[Bot CB] 'train_' callback '${data}' from UserID ${callbackUserId} (MAID for user ${userForMaid.id})`);
+        try {
+          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: platform,
+            platformId: userForMaid.id.toString(), 
+            platformContext: { 
+              firstName: userForMaid.first_name, 
+              username: userForMaid.username 
+            }
+          });
+          const masterAccountId = findOrCreateResponse.data.masterAccountId;
+          logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for user ${userForMaid.id} for training menu callback.`);
+          
+          await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, { logger });
+        } catch (error) {
+          logger.error(`[Bot CB] Error in 'train_' callback logic (fetching MAID) for user ${userForMaid.id}:`, error.response ? error.response.data : error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for training.", show_alert: true});
         }
       } else {
         // Fallback for any other unhandled callbacks
@@ -1742,6 +1899,148 @@ function createTelegramBot(dependencies, token, options = {}) {
             logger.warn('[Bot] commandRegistry or findDynamicCommandHandler is not available in dependencies.');
         }
     }
+
+    // ++ NEW: LoRA Import URL Reply Handler ++
+    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.includes('LORA_IMPORT_URL_PROMPT::')) {
+      const promptText = message.reply_to_message.text;
+      const submittedUrl = message.text.trim();
+      const telegramUserId = message.from.id.toString(); // User who replied
+
+      // Extract masterAccountId and originalMenuMessageId from the promptText
+      // Format: (Internal Info: LORA_IMPORT_URL_PROMPT::MASTER_ACCOUNT_ID::ORIGINAL_MENU_MESSAGE_ID)
+      const sessionMatch = promptText.match(/LORA_IMPORT_URL_PROMPT::([^:]+)::([^)]+)\)/);
+
+      if (sessionMatch && sessionMatch[1] && sessionMatch[2]) {
+        const masterAccountIdFromPrompt = sessionMatch[1];
+        // const originalMenuMessageId = sessionMatch[2]; // Not strictly needed for this part but good to have
+        
+        logger.info(`[Bot] LoRA Import URL reply received. MAID (from prompt): ${masterAccountIdFromPrompt}, User (who replied): ${telegramUserId}, URL: '${submittedUrl}'.`);
+
+        if (!submittedUrl.startsWith('http://') && !submittedUrl.startsWith('https://')) {
+          await bot.sendMessage(message.chat.id, "That doesn't look like a valid URL. Please provide a full URL starting with http:// or https://.", { reply_to_message_id: message.message_id });
+          return;
+        }
+
+        try {
+          logger.info(`[Bot] Calling internal API POST /loras/import-from-url with URL: ${submittedUrl}, MAID: ${masterAccountIdFromPrompt}`);
+          const importResponse = await internalApiClient.post('/loras/import-from-url', { 
+            loraUrl: submittedUrl, 
+            masterAccountId: masterAccountIdFromPrompt 
+          });
+
+          if (importResponse.status === 202 && importResponse.data && importResponse.data.lora) {
+            const loraDetailsForAdmin = importResponse.data.lora;
+            await bot.sendMessage(message.chat.id, importResponse.data.message, { reply_to_message_id: message.message_id });
+            
+            const adminChatId = '5472638766';
+            const loraIdentifier = loraDetailsForAdmin.slug || loraDetailsForAdmin._id;
+
+            if (!loraIdentifier) {
+                logger.error(`[Bot] LoRA identifier (slug or _id) missing from import API response for admin notification. URL: ${submittedUrl}`);
+                await bot.sendMessage(message.chat.id, "Your LoRA was submitted, but there was an issue notifying the admin. Please contact support if it's not reviewed.", { reply_to_message_id: message.message_id });
+                return;
+            }
+
+            // Commenting out all escapeMarkdownV2 calls for diagnosis
+            // logger.debug(`[Bot] AdminMsg: MAID type: ${typeof masterAccountIdFromPrompt}, value: '${masterAccountIdFromPrompt}'`);
+            const rawMAID = masterAccountIdFromPrompt;
+            // logger.debug(`[Bot] AdminMsg: Escaped MAID: '${escapedMAID}'`);
+
+            // logger.debug(`[Bot] AdminMsg: URL type: ${typeof submittedUrl}, value: '${submittedUrl}'`);
+            const rawUrl = submittedUrl;
+            // logger.debug(`[Bot] AdminMsg: Escaped URL: '${escapedUrl}'`);
+
+            const loraNameForMsg = loraDetailsForAdmin.name || 'N/A';
+            // logger.debug(`[Bot] AdminMsg: LoRA Name type: ${typeof loraNameForMsg}, value: '${loraNameForMsg}'`);
+            const rawLoraName = loraNameForMsg;
+            // logger.debug(`[Bot] AdminMsg: Escaped LoRA Name: '${escapedLoraName}'`);
+
+            const adminMessageText = 
+                '*New LoRA Submission for Review* 🤖\n' +
+                `User MAID: \`${rawMAID}\`\n` + // Using raw value
+                `Original URL: ${rawUrl}\n` + // Using raw value
+                `LoRA Name: ${rawLoraName}\n\n` + // Using raw value
+                'Please approve or reject this LoRA.';
+
+            // ++ LOG THE FINAL PAYLOAD FIRST ++
+            logger.debug(`[Bot] Admin Message Text Payload (FORCED LOG - RAW INPUTS):\n${adminMessageText}`);
+            // -- END FORCED LOG --
+
+            logger.info(`[Bot] Preparing to send admin notification. ChatID: ${adminChatId}, LoRA Identifier: ${loraIdentifier}`);
+
+            await bot.sendMessage(adminChatId, adminMessageText, {
+                parse_mode: null, // EXPLICITLY SET TO NULL
+                reply_markup: { inline_keyboard: [[
+                    { text: '✅ Approve Publicly', callback_data: 'admin_lora_approve:' + loraIdentifier },
+                    { text: '🔒 Approve Privately', callback_data: 'admin_lora_approve_private:' + loraIdentifier },
+                    { text: '❌ Reject', callback_data: 'admin_lora_reject:' + loraIdentifier }
+                ]] }
+            });
+            // ++ LOGGING AFTER SUCCESSFUL SEND TO ADMIN ++
+            logger.info(`[Bot] Admin notification sent successfully for LoRA: ${loraIdentifier} (Name: ${loraDetailsForAdmin.name}) submitted by MAID ${masterAccountIdFromPrompt}`);
+            // -- END LOGGING AFTER SUCCESSFUL SEND --
+
+          } else {
+            const errorMessage = importResponse.data?.error || importResponse.data?.message || "Could not process LoRA import request.";
+            logger.warn(`[Bot] LoRA import API call for URL ${submittedUrl} returned status ${importResponse.status}. Message: ${errorMessage}`);
+            await bot.sendMessage(message.chat.id, `Import request failed or had an unexpected status: ${errorMessage}`, { reply_to_message_id: message.message_id });
+          }
+        } catch (error) {
+          logger.error(`[Bot] Error processing LoRA import URL reply for MAID ${masterAccountIdFromPrompt}, URL ${submittedUrl}:`, error.response ? error.response.data : error.message, error.stack);
+          const detail = error.response?.data?.details || error.response?.data?.error || error.message;
+          // ++ MORE DETAILED ERROR LOGGING ++
+          logger.error(
+            `[Bot] Full error object during LoRA import URL reply processing for MAID ${masterAccountIdFromPrompt}, URL ${submittedUrl}:`,
+            {
+              message: error.message,
+              stack: error.stack,
+              responseStatus: error.response?.status,
+              responseData: error.response?.data,
+              configUrl: error.config?.url,
+              configMethod: error.config?.method,
+              isAxiosError: error.isAxiosError
+            }
+          );
+          // -- END MORE DETAILED ERROR LOGGING --
+          await bot.sendMessage(message.chat.id, `Sorry, an unexpected error occurred while trying to import the LoRA: ${detail}`, { reply_to_message_id: message.message_id });
+        }
+        return; 
+      }
+    }
+    // -- END LoRA Import URL Reply Handler --
+
+    // ++ HANDLE TRAINING NAME REPLY ++
+    if (message.reply_to_message && 
+        message.reply_to_message.text && 
+        message.reply_to_message.text.includes(PROMPT_MARKER_TRAINING_NAME + '::MAID::')) {
+      
+      const repliedToText = message.reply_to_message.text;
+      const maidPrefix = PROMPT_MARKER_TRAINING_NAME + '::MAID::';
+      const maidStartIndex = repliedToText.indexOf(maidPrefix);
+
+      if (maidStartIndex !== -1) {
+        const masterAccountIdFromPrompt = repliedToText.substring(maidStartIndex + maidPrefix.length).split(')')[0]; // Assuming MAID is before a closing parenthesis or end of line
+        const replierTelegramId = message.from.id.toString();
+
+        if (masterAccountIdFromPrompt) {
+          logger.info(`[Bot] Reply received for Training Name Prompt. MAID (from prompt): ${masterAccountIdFromPrompt}, Replier: ${replierTelegramId}, Value: '${message.text}'`);
+          try {
+            // Assuming processNewTrainingName is exported from trainingMenuManager
+            // and imported correctly (which it should be from previous steps)
+            await processNewTrainingName(bot, message, masterAccountIdFromPrompt, { logger }); // CALL DIRECTLY
+          } catch (error) {
+            logger.error(`[Bot] Error processing training name reply for MAID ${masterAccountIdFromPrompt}:`, error.message, error.stack);
+            bot.sendMessage(message.chat.id, "Sorry, an error occurred while processing the training name.", { reply_to_message_id: message.message_id });
+          }
+          return; // Message handled
+        } else {
+          logger.warn('[Bot] Could not parse MasterAccountId from training name prompt reply.', repliedToText);
+        }
+      } else {
+         logger.warn('[Bot] Training name prompt marker present, but MAID prefix not found as expected.', repliedToText);
+      }
+    }
+    // -- END HANDLE TRAINING NAME REPLY --
   });
   // -- END MESSAGE HANDLER --
 

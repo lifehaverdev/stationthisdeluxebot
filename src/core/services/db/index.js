@@ -12,6 +12,7 @@ const GenerationOutputsDB = require('./generationOutputsDb');
 const UserEconomyDB = require('./userEconomyDb');
 const UserPreferencesDB = require('./userPreferencesDb');
 const TransactionsDB = require('./transactionsDb');
+const LoRATrainingsDB = require('./trainingDb'); // Import LoRATrainingsDB
 // ... import other DB service classes as they are created
 
 // Placeholder for any existing/legacy DB service exports if this file already exists
@@ -25,10 +26,13 @@ const TransactionsDB = require('./transactionsDb');
  */
 function initializeDbServices(logger) {
   if (!logger) {
-    console.warn('[DB Index] Logger not provided to initializeDbServices. DB services may lack logging.');
-    // Optionally provide a default console logger here if critical
+    // Fallback to console if logger is not provided, to ensure these critical logs are seen
+    (console.warn || console.log)('[DB Index] Logger not provided to initializeDbServices. DB services may lack logging. Using console for init logs.');
+    logger = console;
   }
   
+  logger.info(`[DB Index] LoRATrainingsDB class loaded, type: ${typeof LoRATrainingsDB}`);
+
   const databaseServices = {
     userCore: new UserCoreDB(logger), // Instantiate with logger
     // Instantiate others similarly (assuming they accept logger or will be updated)
@@ -39,16 +43,25 @@ function initializeDbServices(logger) {
     userEconomy: UserEconomyDB ? new UserEconomyDB(logger) : null,
     userPreferences: UserPreferencesDB ? new UserPreferencesDB(logger) : null,
     transactions: TransactionsDB ? new TransactionsDB(logger) : null,
+    loraTrainings: LoRATrainingsDB ? new LoRATrainingsDB(logger) : null, // ADDED: Instantiate LoRATrainingsDB
     // ... add other services here
   };
 
   // Filter out null services if any failed instantiation or weren't classes
   Object.keys(databaseServices).forEach(key => {
     if (databaseServices[key] === null) {
-      logger?.warn(`[DB Index] Service '${key}' could not be instantiated, possibly missing or not a class constructor.`);
+      logger?.warn(`[DB Index] Service '${key}' was initially null (or failed instantiation) and is being removed from databaseServices.`);
       delete databaseServices[key];
     }
   });
+
+  logger.info(`[DB Index] Final check of databaseServices.loraTrainings type: ${typeof databaseServices.loraTrainings}`);
+  logger.info(`[DB Index] Is databaseServices.loraTrainings strictly null: ${databaseServices.loraTrainings === null}`);
+  if (databaseServices.loraTrainings && typeof databaseServices.loraTrainings.findTrainingsByUser === 'function') {
+    logger.info(`[DB Index] LoRATrainingsDB instance appears valid in databaseServices.`);
+  } else {
+    logger.warn(`[DB Index] LoRATrainingsDB instance IS MISSING or INVALID in databaseServices. Check loading of LoRATrainingsDB class and its instantiation.`);
+  }
 
   return {
     // ...any existing exports from the old db/index.js could be spread here if needed

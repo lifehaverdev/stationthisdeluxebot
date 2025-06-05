@@ -97,6 +97,77 @@ class LoRAModelsDB extends BaseDB {
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
 
+  /**
+   * Creates a LoRA model record from an imported source.
+   * @param {Object} modelData - The base data for the LoRA model.
+   * @param {string} masterAccountId - The ID of the user who initiated the import.
+   * @param {Object} importDetails - Details about the import source.
+   * @param {string} importDetails.source - e.g., 'civitai', 'huggingface'.
+   * @param {string} importDetails.url - The original URL of the model.
+   * @param {string} [importDetails.originalAuthor] - The original author, if known.
+   * @param {string} [importDetails.modelFileUrl] - The direct download URL for the model file.
+   * @returns {Promise<Object|null>} The created LoRA model document or null on error.
+   */
+  async createImportedLoRAModel(modelData, masterAccountId, importDetails) {
+    const now = new Date();
+    
+    // Improved slug generation
+    let slugBase = (modelData.name || 'imported-lora')
+      .toString() // Ensure it's a string
+      .toLowerCase()
+      // Replace characters that are not alphanumeric or whitespace with a space.
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .trim() // Trim leading/trailing spaces that might have been created
+      // Replace sequences of whitespace characters with a single hyphen
+      .replace(/\s+/g, '-');
+
+    // Fallback if slugBase becomes empty after sanitization
+    if (!slugBase) {
+      slugBase = 'imported-lora';
+    }
+
+    const uniqueSlug = `${slugBase}-${new ObjectId().toHexString().substring(0, 6)}`;
+
+    const dataToInsert = {
+      ...modelData, // Includes name, description, triggerWords, baseModel (as checkpoint), tags from import service
+      slug: uniqueSlug, 
+      permissionType: 'public', // Stays public, access controlled by visibility & moderation
+      visibility: 'unlisted', // MODIFICATION: Initial visibility is unlisted
+      usageCount: 0,
+      createdBy: new ObjectId(masterAccountId),
+      // ownedBy could be a system ID or the importer. For now, let's make it same as createdBy.
+      ownedBy: new ObjectId(masterAccountId),
+      importedFrom: {
+        source: importDetails.source,
+        url: importDetails.url,
+        originalAuthor: importDetails.originalAuthor || null,
+        modelFileUrl: importDetails.modelFileUrl || null, // Store the direct download URL
+        importedAt: now
+      },
+      // --- BEGIN ADDITION: Moderation status for admin review ---
+      moderation: {
+        status: 'pending_review',
+        flagged: true, // Indicates it needs admin attention
+        requestedBy: new ObjectId(masterAccountId),
+        requestedAt: now,
+        issues: [], // Initialize empty issues array
+      },
+      // --- END ADDITION: Moderation status for admin review ---
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Ensure required fields for the schema are present, even if null from importData
+    dataToInsert.triggerWords = dataToInsert.triggerWords || [];
+    dataToInsert.tags = dataToInsert.tags || [];
+    dataToInsert.cognates = dataToInsert.cognates || [];
+    dataToInsert.defaultWeight = dataToInsert.defaultWeight || 1.0;
+
+    this.logger.info(`[LoRAModelDb] Creating imported LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
+    const result = await this.insertOne(dataToInsert);
+    return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
+  }
+
   async findById(modelId) {
     return this.findOne({ _id: new ObjectId(modelId) });
   }

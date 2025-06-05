@@ -59,15 +59,28 @@ class LoRATrainingsDB extends BaseDB {
 
   async createTrainingSession(trainingData) {
     const now = new Date();
+    const userIdAsObjectId = typeof trainingData.userId === 'string' ? new ObjectId(trainingData.userId) : trainingData.userId;
     const dataToInsert = {
       createdAt: now,
       updatedAt: now,
       status: 'draft',
       captionSets: [],
       trainingRuns: [],
-      ownedBy: trainingData.userId, // Defaults ownership to creator
+      ownedBy: userIdAsObjectId, // Store as ObjectId
       ...trainingData,
+      userId: userIdAsObjectId, // Ensure userId from trainingData is also ObjectId
     };
+    // Remove masterAccountId if it's part of ...trainingData and we are using userId consistently
+    if (dataToInsert.masterAccountId && dataToInsert.userId) {
+        // Assuming userId is canonical, we might remove masterAccountId to avoid confusion
+        // For now, let's leave it if present, but ensure userId is the ObjectId one.
+        // Or, if trainingData comes with masterAccountId string, ensure it's not overriding the ObjectId userId.
+        // The spread ...trainingData comes AFTER ownedBy and userId are set from userIdAsObjectId if trainingData.userId was the source.
+        // If trainingData itself has a masterAccountId field, and it's also a string, that might be an issue.
+        // Let's explicitly ensure the primary identifier `userId` is ObjectId.
+    }
+    dataToInsert.userId = userIdAsObjectId; // Explicitly set/overwrite to ensure it's ObjectId
+
     const result = await this.insertOne(dataToInsert);
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
   }
@@ -118,7 +131,14 @@ class LoRATrainingsDB extends BaseDB {
   }
 
   async findTrainingsByUser(userId, options = {}) {
-    return this.findMany({ userId: new ObjectId(userId) }, options);
+    // Ensure userId is an ObjectId for the query
+    const idAsObjectId = typeof userId === 'string' ? new ObjectId(userId) : userId;
+    return this.findMany({
+      $or: [
+        { userId: idAsObjectId },
+        { masterAccountId: idAsObjectId }
+      ]
+    }, options);
   }
 
   async transferOwnership(trainingId, newOwnerId) {

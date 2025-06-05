@@ -210,29 +210,60 @@ class UserPreferencesDB extends BaseDB {
     }
     try {
       const MAID = new ObjectId(masterAccountId);
-      // Ensure the document and the loraFavoriteIds array exist, then add to set.
-      // $addToSet ensures uniqueness.
-      const updateResult = await this.updateOne(
+      const userPrefsDoc = await this.findOne({ masterAccountId: MAID });
+
+      if (!userPrefsDoc) {
+        // Document doesn't exist, use upsert to create it with the favorite.
+        // $setOnInsert will correctly initialize 'preferences' as an object.
+        const 최초결과 = await this.updateOne(
+          { masterAccountId: MAID },
+          {
+            $addToSet: { [`preferences.${LORA_FAVORITES_KEY}`]: loraId }, // Ensures loraId is added
+            $setOnInsert: {
+              masterAccountId: MAID,
+              preferences: { [LORA_FAVORITES_KEY]: [loraId] }, // Initializes structure
+              createdAt: new Date()
+            },
+            $currentDate: { updatedAt: true }
+          },
+          { upsert: true }
+        );
+        // Check upsert success
+        if (!최초결과.upsertedId && 최초결과.matchedCount === 0) {
+            this.logger.error(`[UserPreferencesDB] addLoraFavorite: Upsert operation failed unexpectedly for new MAID ${masterAccountId}.`, { 최초결과 });
+            return false;
+        }
+        return true;
+      }
+
+      // Document exists, check 'preferences' field
+      if (!userPrefsDoc.preferences || typeof userPrefsDoc.preferences !== 'object') {
+        // 'preferences' is null, undefined, or not an object.
+        // Overwrite 'preferences' with a correct structure including the new favorite.
+        this.logger.warn(`[UserPreferencesDB] addLoraFavorite: 'preferences' field for MAID ${masterAccountId} is missing or not an object. Re-initializing.`);
+        await this.updateOne(
+          { masterAccountId: MAID },
+          {
+            $set: {
+              preferences: { [LORA_FAVORITES_KEY]: [loraId] },
+              updatedAt: new Date()
+            }
+          }
+        );
+        return true;
+      }
+
+      // 'preferences' exists and is an object. Proceed with $addToSet.
+      // This also handles if preferences.loraFavoriteIds is not an array; $addToSet will create it.
+      await this.updateOne(
         { masterAccountId: MAID },
         {
           $addToSet: { [`preferences.${LORA_FAVORITES_KEY}`]: loraId },
-          $setOnInsert: { 
-            masterAccountId: MAID, 
-            preferences: { [LORA_FAVORITES_KEY]: [loraId] }, // Initialize if doc created
-            createdAt: new Date() 
-          },
           $currentDate: { updatedAt: true }
-        },
-        { upsert: true }
+        }
       );
-      // For $addToSet, if the value is already there, it doesn't modify, but operation is successful.
-      // Check if upsert happened or if an existing doc was matched.
-      // If matchedCount is 0 and upsertedCount is 0, something went wrong (shouldn't with upsert:true)
-      if (updateResult.matchedCount === 0 && !updateResult.upsertedId) {
-         this.logger.error(`[UserPreferencesDB] addLoraFavorite: Upsert operation failed unexpectedly for MAID ${masterAccountId}.`, { updateResult });
-         return false;
-      }
-      return true; // Successfully added or already existed
+      return true;
+
     } catch (error) {
       this.logger.error(`[UserPreferencesDB] Error in addLoraFavorite for MAID ${masterAccountId}, LoRA ${loraId}:`, error);
       return false;

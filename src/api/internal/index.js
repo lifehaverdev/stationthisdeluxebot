@@ -19,7 +19,8 @@ const createLoraTriggerMapApiRouter = require('./loraTriggerMapApi');
 const lorasApiRouter = require('./lorasApi');
 const createUserPreferencesApiRouter = require('./userPreferencesApi');
 const createUserStatusReportApiService = require('./userStatusReportApi');
-
+const loraImportRouter = require('./loraImportApi');
+const createTrainingsApi = require('./trainingsApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -282,6 +283,23 @@ function initializeInternalServices(dependencies = {}) {
   }
   // -- END MOUNT NEW LORAS API ROUTER --
 
+  // Mount LoRA Import API Service
+  if (loraImportRouter && typeof loraImportRouter === 'function') {
+    v1DataRouter.use('/loras', loraImportRouter);
+    logger.info('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
+  } else {
+    logger.error('[InternalAPI] Failed to create LoRA Import API router.');
+  }
+
+  // Trainings API Service:
+  const trainingsApiRouter = createTrainingsApi(apiDependencies);
+  if (trainingsApiRouter) {
+    v1DataRouter.use('/trainings', trainingsApiRouter);
+    logger.info('[InternalAPI] Trainings API service mounted to /v1/data/trainings');
+  } else {
+    logger.error('[InternalAPI] Failed to create Trainings API router.');
+  }
+
   // Mount Noema Data Service APIs & other user-specific APIs
   // It's common to group user-specific sub-routes under a main user route.
   // For example, if userCoreApiRouter handles /users/:masterAccountId/*
@@ -300,6 +318,14 @@ function initializeInternalServices(dependencies = {}) {
   // and it has routes like /:masterAccountId/profile, then the order of mounting might matter,
   // or more specific routes should be defined first.
   // For now, this explicit path should work.
+
+  // Mount LoRA Import API Service
+  if (loraImportRouter && typeof loraImportRouter === 'function') {
+    v1DataRouter.use('/loras', loraImportRouter);
+    logger.info('[InternalAPI] LoRA Import API service mounted to /v1/data/loras (handling /import-from-url internally)');
+  } else {
+    logger.error('[InternalAPI] Failed to create LoRA Import API router.');
+  }
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
