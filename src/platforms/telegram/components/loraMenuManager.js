@@ -12,6 +12,25 @@ const { ObjectId } = require('../../../core/services/db/BaseDB');
 // Placeholder for internalApiClient if needed directly, or pass via dependencies
 // const internalApiClient = require('../../../utils/internalApiClient'); 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
+ 
+// Map for shortening callback data to fit within Telegram's 64-byte limit
+const FILTER_SHORTCODE_MAP = {
+  'type_character': 'char',
+  'type_style': 'style',
+  'popular': 'pop',
+  'recent': 'rec',
+  'favorites': 'fav',
+};
+// Create reverse map for easy lookup
+const FILTER_FROM_SHORTCODE_MAP = Object.fromEntries(Object.entries(FILTER_SHORTCODE_MAP).map(([key, value]) => [value, key]));
+
+function getFilterShortcode(filterType) {
+  return FILTER_SHORTCODE_MAP[filterType] || filterType;
+}
+
+function getFilterFromShortcode(shortcode) {
+  return FILTER_FROM_SHORTCODE_MAP[shortcode] || shortcode;
+}
 
 // const MAX_LORAS_PER_PAGE = 5; // Default, can be overridden by API call
 
@@ -56,31 +75,22 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
         const backPage = parseInt(backPageStr, 10) || 1;
         await displayLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, true, loraIdentifier, backFilterType, backCheckpoint, backPage);
       } else if (subAction === 'toggle_favorite') {
-        // New structure: IS_FAVORITE_STATUS:LORA_IDENTIFIER_FOR_REFRESH:BACK_FILTER:BACK_CHECKPOINT:BACK_PAGE
-        // params from data.split(':') is [action, subAction, currentFavoriteStatusStr, loraIdentifierForRefresh, ...]
-        // So we need to slice params starting from index 1 of the original params array (which is index 2 of data.split(':'))
-        const favoriteParams = params.slice(1); // Correctly get the parameters after subAction
-        const [currentFavoriteStatusStr, loraIdentifierForRefresh, backFilterType, backCheckpoint, backPageStr] = favoriteParams;
+        // Updated structure: IS_FAVORITE_STATUS:LORA_MONGO_ID:BACK_FILTER_SHORTCODE:BACK_CHECKPOINT:BACK_PAGE
+        const favoriteParams = params.slice(1);
+        const [currentFavoriteStatusStr, loraMongoId, backFilterShortcode, backCheckpoint, backPageStr] = favoriteParams;
         const isCurrentlyFavorite = currentFavoriteStatusStr === 'true';
         const backPage = parseInt(backPageStr, 10) || 1;
+        // We need the full filter type to refresh the detail screen, which in turn needs it for its own back button.
+        const backFilterType = getFilterFromShortcode(backFilterShortcode);
 
-        logger.info(`[LoraMenuManager] Toggling favorite for LoRA (slug: ${loraIdentifierForRefresh}), Current Status: ${isCurrentlyFavorite}, MAID: ${masterAccountId}`);
-        
-        let loraMongoId = null;
-        try {
-          // Fetch LoRA details to get its MongoDB _id using the slug (loraIdentifierForRefresh)
-          logger.debug(`[LoraMenuManager] Fetching LoRA details for ${loraIdentifierForRefresh} to get _id for favorite toggle.`);
-          const loraDetailResponse = await internalApiClient.get(`/loras/${loraIdentifierForRefresh}?userId=${masterAccountId}`);
-          if (loraDetailResponse.data && loraDetailResponse.data.lora && loraDetailResponse.data.lora._id) {
-            loraMongoId = loraDetailResponse.data.lora._id;
-            logger.debug(`[LoraMenuManager] Found _id: ${loraMongoId} for slug: ${loraIdentifierForRefresh}`);
-          } else {
-            throw new Error('Could not fetch LoRA _id for favorite toggle.');
-          }
-        } catch (fetchIdError) {
-          logger.error(`[LoraMenuManager] Error fetching LoRA _id for slug ${loraIdentifierForRefresh} to toggle favorite:`, {
-            errorMsg: fetchIdError.message, errorResponse: fetchIdError.response ? fetchIdError.response.data : null, errorCode: fetchIdError.code, fullError: JSON.stringify(fetchIdError, Object.getOwnPropertyNames(fetchIdError)), stack: fetchIdError.stack
-          });
+        // The lora identifier for refresh is now the mongo ID, which the detail screen can handle.
+        const loraIdentifierForRefresh = loraMongoId;
+
+        logger.info(`[LoraMenuManager] Toggling favorite for LoRA (ID: ${loraMongoId}), Current Status: ${isCurrentlyFavorite}, MAID: ${masterAccountId}`);
+
+        // The loraMongoId is now passed directly in the callback, so no need to fetch it.
+        if (!loraMongoId) {
+            logger.error(`[LoraMenuManager] No loraMongoId found in toggle_favorite callback.`);
           await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Could not identify LoRA for favorite action.', show_alert: true });
           return;
         }
@@ -93,6 +103,8 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
             await internalApiClient.post(`/users/${masterAccountId}/preferences/lora-favorites`, { loraId: loraMongoId });
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! 💔' });
           }
+          // Refresh the detail screen, passing the same context back.
+          // Note: loraIdentifierForRefresh is the Mongo ID, which displayLoraDetailScreen can handle.
           await displayLoraDetailScreen(bot, callbackQuery, masterAccountId, dependencies, true, loraIdentifierForRefresh, backFilterType, backCheckpoint, backPage);
         } catch (favError) {
           logger.error(`[LoraMenuManager] Error toggling favorite for LoRA _id ${loraMongoId}:`, {
@@ -117,10 +129,12 @@ async function handleLoraCallback(bot, callbackQuery, masterAccountId, dependenc
         logger.info(`[LoraMenuManager] LoRA import form requested by MAID: ${masterAccountId}`);
         const chatId = callbackQuery.message.chat.id;
         const originalMenuMessageId = callbackQuery.message.message_id; // The message with the "Import LoRA" button
+        const { replyContextManager } = dependencies;
 
         // Simplified promptMessage without inline backticks for example URLs
         const promptMessage = 
-`Please reply to this message with the direct URL to the LoRA model you want to import.\n
+`Please reply to this message with the direct URL to the LoRA model you want to import.
+
 Supported sources: Civitai or Hugging Face
 Supported model types: FLUX (FLUX1-dev, FLUX-schnell), SDXL, SD3, SD1.5.
 
@@ -128,20 +142,31 @@ Example URLs:
 https://civitai.com/models/12345/my-awesome-lora
 https://huggingface.co/user/my-lora-model
 
-Send '/cancel' if you change your mind.
+Send '/cancel' if you change your mind.`;
 
-(Internal Info: LORA_IMPORT_URL_PROMPT::${masterAccountId}::${originalMenuMessageId})
-`;
         // Edit the current message (which is the LoRA menu) to become the prompt.
         try {
-          await bot.editMessageText(escapeMarkdownV2(promptMessage), {
+          const sentMessage = await bot.editMessageText(promptMessage, {
             chat_id: chatId,
             message_id: originalMenuMessageId,
-            parse_mode: 'MarkdownV2',
             reply_markup: { 
               inline_keyboard: [[{ text: 'Cancel Import', callback_data: 'lora:cancel_import_prompt' }]]
             }
           });
+
+          // Store context for the reply
+          if (replyContextManager) {
+            const context = {
+              type: 'lora_import_url',
+              masterAccountId: masterAccountId,
+              originalMenuMessageId: originalMenuMessageId
+            };
+            replyContextManager.addContext(sentMessage, context);
+            logger.info(`[LoraMenuManager] Stored reply context for 'lora_import_url' for MAID ${masterAccountId}.`);
+          } else {
+            logger.error('[LoraMenuManager] ReplyContextManager not found. Cannot set context for import URL reply.');
+          }
+
           await bot.answerCallbackQuery(callbackQuery.id);
         } catch (error) {
           logger.error(`[LoraMenuManager] Error displaying LoRA import prompt for MAID ${masterAccountId}:`, error);
@@ -153,6 +178,47 @@ Send '/cancel' if you change your mind.
         // Re-display the main LoRA menu by editing the message that showed the prompt
         await displayLoraMainMenu(bot, callbackQuery, masterAccountId, dependencies, true);
         // displayLoraMainMenu will call answerCallbackQuery
+        return;
+      } else if (subAction === 'admin_menu') {
+        const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
+        await displayLoraAdminMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+        return;
+      } else if (subAction === 'admin_delete_confirm') {
+        const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
+        const loraResponse = await internalApiClient.get(`/loras/${loraId}?userId=${masterAccountId}`);
+        const loraName = loraResponse.data?.lora?.name || 'Unknown LoRA';
+        const text = `Are you sure you want to permanently delete LoRA: *${escapeMarkdownV2(loraName)}* \\(ID: \`${loraId}\`\\)?\n\nThis action cannot be undone\\.`;
+        const keyboard = [[
+            { text: '❌ Yes, Delete Permanently ❌', callback_data: `lora:admin_delete_execute:${loraId}` },
+            { text: 'Cancel', callback_data: `lora:admin_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }
+        ]];
+        await bot.editMessageText(text, {
+            chat_id: callbackQuery.message.chat.id,
+            message_id: callbackQuery.message.message_id,
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+        await bot.answerCallbackQuery(callbackQuery.id);
+        return;
+      } else if (subAction === 'admin_delete_execute') {
+        const [loraId] = params.slice(1);
+        try {
+            await internalApiClient.delete(`/loras/${loraId}`);
+            await bot.editMessageText(`LoRA with ID \`${loraId}\` has been deleted\\.`, {
+                chat_id: callbackQuery.message.chat.id,
+                message_id: callbackQuery.message.message_id,
+                parse_mode: 'MarkdownV2',
+                reply_markup: { inline_keyboard: [[{text: 'Back to Main Menu', callback_data: 'lora:main_menu'}]] }
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'LoRA Deleted!' });
+        } catch(err) {
+            const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+            logger.error(`[LoraMenuManager] Error deleting lora ${loraId}`, err);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Error deleting LoRA: ${errorDetail}`, show_alert: true });
+        }
+        return;
+      } else if (subAction === 'admin_edit_nyi') {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Edit functionality is not yet implemented.', show_alert: true });
         return;
       } else {
         logger.warn(`[LoraMenuManager] Unknown lora subAction: ${subAction}`);
@@ -391,7 +457,7 @@ async function displayLorasByFilterScreen(bot, callbackQuery, masterAccountId, d
   }
 
   const fullMessage = `${title}${loraListText}`;
-
+  logger.debug(`[LoraMenuManager] Full message for ${filterType} (before Telegram ops):\n${fullMessage}`);
   try {
     // If isEdit is true, try to edit. If originalMessageWasPhoto, this might fail if Telegram doesn't allow direct edit from photo to text.
     // If it fails, the catch block should ideally handle sending a new message.
@@ -474,6 +540,13 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
         messageText += `*Triggers:* \`${escapedTriggers}\`\n`;
       }
 
+      // Display cognates if they exist
+      if (lora.cognates && lora.cognates.length > 0) {
+        const cognateWords = lora.cognates.map(c => c.word).join(', ');
+        const escapedCognates = escapeMarkdownV2(cognateWords);
+        messageText += `*Shortcuts:* \`${escapedCognates}\`\n`;
+      }
+
       if (lora.tags && lora.tags.length > 0) {
         let tempTags = lora.tags.slice(0, 5).map(t => t.tag).join(', ');
         logger.debug(`[LoraMenuManager] Raw tags for ${loraIdentifier}: "${tempTags}"`);
@@ -494,17 +567,30 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
         // Assuming previewImages[0] is an HTTP(S) URL
         if (typeof lora.previewImages[0] === 'string' && (lora.previewImages[0].startsWith('http://') || lora.previewImages[0].startsWith('https://'))) {
             photoUrl = lora.previewImages[0];
-            logger.debug(`[LoraMenuManager] Photo URL for ${loraIdentifier}: ${photoUrl}`);
+        logger.debug(`[LoraMenuManager] Photo URL for ${loraIdentifier}: ${photoUrl}`);
         } else {
             logger.warn(`[LoraMenuManager] Invalid or non-HTTP preview image URL for ${loraIdentifier}: ${lora.previewImages[0]}. Will display as text.`);
             photoUrl = null;
         }
       }
 
-      const toggleFavoriteCallback = `lora:toggle_favorite:${lora.isFavorite}:${loraIdentifier}:${backFilterType}:${backCheckpoint}:${backPage}`;
+      // Shorten the filter type to prevent the callback data from exceeding 64 bytes.
+      const backFilterShortcode = getFilterShortcode(backFilterType);
+      const toggleFavoriteCallback = `lora:toggle_favorite:${lora.isFavorite}:${lora._id}:${backFilterShortcode}:${backCheckpoint}:${backPage}`;
+
       keyboard.push([{
          text: (lora.isFavorite ? '💔 Unfavorite' : '❤️ Favorite'), callback_data: toggleFavoriteCallback
       }]);
+
+      // Add admin button if user is an admin
+      const ADMIN_TELEGRAM_USER_ID = 5472638766;
+      if (callbackQuery.from.id === ADMIN_TELEGRAM_USER_ID) {
+          const backFilterShortcode = getFilterShortcode(backFilterType);
+          keyboard.push([{ 
+              text: '⚙️ Admin Actions', 
+              callback_data: `lora:admin_menu:${lora._id}:${backFilterShortcode}:${backCheckpoint}:${backPage}`
+          }]);
+      }
     } else {
       messageText = `*LoRA Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this LoRA.')}_`;
     }
@@ -525,8 +611,7 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
   try { // Try block for Telegram operations
     if (isEdit) {
       const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
-      if (photoUrl) { // We want to display/update a photo
-        logger.debug(`[LoraMenuManager] Edit Mode: Attempting to show/update photo for ${loraIdentifier} on message ${originalMessageId}`);
+    if (photoUrl) {
         try {
           await bot.editMessageMedia(
             { type: 'photo', media: photoUrl, caption: messageText, parse_mode: 'MarkdownV2' },
@@ -569,7 +654,7 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
       if (photoUrl) {
         logger.debug(`[LoraMenuManager] New Message Mode: Sending photo for ${loraIdentifier}.`);
         await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
-      } else {
+          } else {
         logger.debug(`[LoraMenuManager] New Message Mode: Sending text for ${loraIdentifier}.`);
         await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
       }
@@ -593,7 +678,7 @@ async function displayLoraDetailScreen(bot, callbackQuery, masterAccountId, depe
     if (photoUrl && error.message) { // A crude check, Telegram errors can be varied.
         logger.warn(`[LoraMenuManager] A photo was intended but an error occurred (${error.message}). Attempting to send/edit as text fallback.`);
         try {
-            if (isEdit) {
+          if (isEdit) {
                  await bot.editMessageText(messageText, { // Try to edit original message to text
                     chat_id: chatId, message_id: originalMessageId,
                     reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
@@ -781,14 +866,14 @@ _${escapeMarkdownV2('Sorry, there was an error fetching LoRAs from the store. Pl
   }
 
   const fullMessage = `${title}${loraListText}`;
-
+  logger.debug(`[LoraMenuManager] Full message for store filter (before Telegram ops):\n${fullMessage}`);
   try {
     await bot.editMessageText(fullMessage, {
-      chat_id: chatId,
+            chat_id: chatId,
       message_id: messageId,
-      reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'MarkdownV2'
-    });
+            reply_markup: { inline_keyboard: keyboard },
+            parse_mode: 'MarkdownV2'
+          });
     if (callbackQuery && !callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id);
     }
@@ -798,9 +883,9 @@ _${escapeMarkdownV2('Sorry, there was an error fetching LoRAs from the store. Pl
         logger.info(`[LoraMenuManager] Editing failed for store filter screen (Filter: ${filterType}), attempting to send as new message.`);
         try {
             await bot.sendMessage(chatId, fullMessage, {
-                reply_markup: { inline_keyboard: keyboard },
-                parse_mode: 'MarkdownV2'
-            });
+            reply_markup: { inline_keyboard: keyboard },
+            parse_mode: 'MarkdownV2'
+          });
             // If we sent a new message, we might want to delete the old one if it was an edit attempt that failed.
             // For now, just send new and acknowledge.
             if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
@@ -894,6 +979,29 @@ async function displayStoreLoraDetailScreen(bot, callbackQuery, masterAccountId,
         messageText += `\n*Status: Not available for purchase at this moment.*\n`;
       }
 
+      // Display cognates if they exist
+      if (lora.cognates && lora.cognates.length > 0) {
+        const cognateWords = lora.cognates.map(c => c.word).join(', ');
+        const escapedCognates = escapeMarkdownV2(cognateWords);
+        messageText += `*Shortcuts:* \`${escapedCognates}\`\n`;
+      }
+
+      if (lora.tags && lora.tags.length > 0) {
+        let tempTags = lora.tags.slice(0, 5).map(t => t.tag).join(', ');
+        logger.debug(`[LoraMenuManager] Raw tags for ${loraIdentifier}: "${tempTags}"`);
+        let escapedTags = escapeMarkdownV2(tempTags);
+        logger.debug(`[LoraMenuManager] Escaped tags for ${loraIdentifier}: "${escapedTags}"`);
+        messageText += `*Tags:* _${escapedTags}_\n`;
+      }
+
+      if (lora.defaultWeight) {
+        let tempWeight = String(lora.defaultWeight);
+        logger.debug(`[LoraMenuManager] Raw weight for ${loraIdentifier}: "${tempWeight}"`);
+        let escapedWeight = escapeMarkdownV2(tempWeight);
+        logger.debug(`[LoraMenuManager] Escaped weight for ${loraIdentifier}: "${escapedWeight}"`);
+        messageText += `*Default Weight:* ${escapedWeight}\n`;
+      }
+
     } else {
       messageText = `*LoRA Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this LoRA.')}_`;
     }
@@ -959,7 +1067,7 @@ async function displayStoreLoraDetailScreen(bot, callbackQuery, masterAccountId,
     if (callbackQuery && !callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id);
     }
-  } catch (error) { 
+  } catch (error) {
     logger.error(`[LoraMenuManager] Error in displayStoreLoraDetailScreen Telegram ops (LoRA: ${loraIdentifier}):`, error.message, error.stack);
     if (photoUrl && error.message) { 
         logger.warn(`[LoraMenuManager] Store Detail: Photo intended but error occurred (${error.message}). Fallback to text.`);
@@ -985,6 +1093,49 @@ async function displayStoreLoraDetailScreen(bot, callbackQuery, masterAccountId,
         logger.error(`[LoraMenuManager] FATAL: Store Detail: Could not ack CBQ after error (LoRA: ${loraIdentifier}):`, ackError);
       }
     }
+  }
+}
+
+/**
+ * Displays the Admin menu for a single LoRA.
+ * @param {Object} bot
+ * @param {Object} callbackQuery
+ * @param {string} masterAccountId
+ * @param {Object} dependencies
+ * @param {boolean} isEdit
+ * @param {string} loraId
+ * @param {string} backFilterShortcode
+ * @param {string} backCheckpoint
+ * @param {number} backPage
+ */
+async function displayLoraAdminMenu(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraId, backFilterShortcode, backCheckpoint, backPage) {
+    const { logger } = dependencies;
+    const chatId = callbackQuery.message.chat.id;
+    const messageId = callbackQuery.message.message_id;
+
+    logger.info(`[LoraMenuManager] Displaying admin menu for LoRA ${loraId}`);
+
+    const backFilterType = getFilterFromShortcode(backFilterShortcode);
+
+    const text = `*Admin Menu for LoRA* \\(ID: \`${loraId}\`\\)`;
+    const keyboard = [
+        [{ text: '❌ Delete LoRA', callback_data: `lora:admin_delete_confirm:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
+        // Placeholder for edit button
+        [{ text: '✏️ Edit Details (Not Implemented)', callback_data: 'lora:admin_edit_nyi' }],
+        [{ text: 'Back to LoRA Detail', callback_data: `lora:detail:${loraId}:${backFilterType}:${backCheckpoint}:${backPage}`}]
+    ];
+
+    try {
+        await bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+        await bot.answerCallbackQuery(callbackQuery.id);
+    } catch(error) {
+        logger.error(`[LoraMenuManager] Error displaying admin menu for LoRA ${loraId}:`, error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing admin menu.', show_alert: true });
   }
 }
 

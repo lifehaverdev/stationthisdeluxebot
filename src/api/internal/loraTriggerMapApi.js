@@ -16,12 +16,37 @@ const loRAModelsDb = new LoRAModelsDB(logger);
 const loRAPermissionsDb = new LoRAPermissionsDB(logger);
 // END ADDITION
 
-// This would typically be an Express router or similar
-// For now, just an illustrative function representing the API endpoint handler.
+// --- Caching Layer ---
+let publicLorasCache = null;
 
-// Mock DB services for now
-// const mockLoraModelsDb = { ... }; // Remove mock
-// const mockLoraPermissionsDb = { ... }; // Remove mock
+/**
+ * Rebuilds the in-memory cache of public LoRAs.
+ * This is called on startup and when LoRA visibility changes.
+ */
+async function refreshPublicLoraCache() {
+  logger.info('[LoraTriggerMapApi] Refreshing public LoRA cache...');
+  try {
+    const publicLoras = await loRAModelsDb.findMany({ visibility: 'public' });
+    publicLorasCache = publicLoras.map(lora => ({
+      modelId: lora._id.toString(),
+      slug: lora.slug,
+      triggerWords: lora.triggerWords || [],
+      cognates: lora.cognates || [],
+      defaultWeight: lora.defaultWeight || 1.0,
+      access: 'public',
+      ownerAccountId: lora.ownedBy ? lora.ownedBy.toString() : null,
+      updatedAt: lora.updatedAt || lora.createdAt,
+      checkpoint: lora.checkpoint
+    }));
+    logger.info(`[LoraTriggerMapApi] Public LoRA cache refreshed. Count: ${publicLorasCache.length}`);
+  } catch (error) {
+    logger.error(`[LoraTriggerMapApi] Failed to refresh public LoRA cache:`, error);
+    // On error, clear the cache to force a rebuild on the next request.
+    publicLorasCache = null;
+  }
+}
+// --- End Caching Layer ---
+
 
 /**
  * Handler for GET /lora/trigger-map-data
@@ -33,44 +58,34 @@ async function getLoraTriggerMapDataHandler(req, res) {
   logger.info(`[LoraTriggerMapApi] Received request for trigger map. UserID: ${userId || 'N/A (public only)'}`);
 
   const triggerMap = {};
-  const allFetchedLoras = [];
 
   try {
-    // 1. Fetch Public LoRAs - CHANGED to use visibility: 'public'
-    const publicLoras = await loRAModelsDb.findMany({ visibility: 'public' }); 
-    if (publicLoras) {
-      publicLoras.forEach(lora => {
-        allFetchedLoras.push({
-          modelId: lora._id.toString(),
-          slug: lora.slug,
-          triggerWords: lora.triggerWords || [], // EXPECTS triggerWords (array)
-          cognates: lora.cognates || [],
-          defaultWeight: lora.defaultWeight || 1.0,
-          access: lora.access || 'public', // Keep access field, derive from visibility or permissionType if needed
-          ownerAccountId: lora.ownedBy ? lora.ownedBy.toString() : null,
-          updatedAt: lora.updatedAt || lora.createdAt,
-          checkpoint: lora.checkpoint
-        });
-      });
-      logger.info(`[LoraTriggerMapApi] Fetched ${publicLoras.length} public LoRAs using visibility.`);
+    // 1. Use cached public LoRAs
+    if (publicLorasCache === null) {
+      logger.warn('[LoraTriggerMapApi] Public LoRA cache was empty, rebuilding...');
+      await refreshPublicLoraCache();
     }
+    const allFetchedLoras = [...(publicLorasCache || [])];
+    const publicLoraIds = new Set((publicLorasCache || []).map(l => l.modelId));
+    logger.info(`[LoraTriggerMapApi] Started with ${allFetchedLoras.length} LoRAs from public cache.`);
 
-    // 2. Fetch Private LoRAs (if userId is provided)
+
+    // 2. Fetch user-specific private LoRAs (if userId is provided)
     if (userId) {
       const accessibleLoraPermissions = await loRAPermissionsDb.listAccessibleLoRAs(userId);
       logger.info(`[LoraTriggerMapApi] User ${userId} has ${accessibleLoraPermissions.length} LoRA permissions.`);
       
       for (const permission of accessibleLoraPermissions) {
-        if (!allFetchedLoras.some(l => l.modelId === permission.loraId.toString())) {
+        if (!publicLoraIds.has(permission.loraId.toString())) {
           const privateLORA = await loRAModelsDb.findById(permission.loraId);
           if (privateLORA) {
             allFetchedLoras.push({
               modelId: privateLORA._id.toString(),
               slug: privateLORA.slug,
-              triggerWords: privateLORA.triggerWords || [], // EXPECTS triggerWords (array)
+              triggerWords: privateLORA.triggerWords || [],
               cognates: privateLORA.cognates || [],
               defaultWeight: privateLORA.defaultWeight || 1.0,
-              access: privateLORA.access || 'private', 
+              access: 'private', 
               ownerAccountId: privateLORA.ownedBy ? privateLORA.ownedBy.toString() : userId,
               updatedAt: privateLORA.updatedAt || privateLORA.createdAt,
               checkpoint: privateLORA.checkpoint
@@ -154,4 +169,9 @@ async function getLoraTriggerMapDataHandler(req, res) {
 // Mount the handler on the router
 router.get('/lora/trigger-map-data', getLoraTriggerMapDataHandler);
 
-module.exports = router; 
+// Populate cache on startup
+refreshPublicLoraCache();
+
+// Export the refresh function alongside the router
+module.exports = router;
+module.exports.refreshPublicLoraCache = refreshPublicLoraCache; 

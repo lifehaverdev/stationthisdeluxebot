@@ -122,9 +122,9 @@ async function handleSettingsCommand(bot, msg, masterAccountId, { logger, toolRe
  * @param {object} bot - The Telegram bot instance.
  * @param {object} callbackQuery - The Telegram callback query object.
  * @param {string} masterAccountId - The user's master account ID (derived from the original command).
- * @param {object} dependencies - Object containing { logger, toolRegistry, userSettingsService (optional) }.
+ * @param {object} dependencies - Object containing { logger, toolRegistry, userSettingsService (optional), replyContextManager }.
  */
-async function handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, userSettingsService }) {
+async function handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, userSettingsService, replyContextManager }) {
     const message = callbackQuery.message;
     const chatId = message.chat.id;
     const messageId = message.message_id;
@@ -177,8 +177,32 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, { log
             const toolDef = toolRegistry.findByDisplayName(toolCallbackKey.replace(/_/g, ' '));
             if (toolDef) {
                 menu = await buildEditParamMenu(masterAccountId, toolDef.toolId, paramName, { logger, toolRegistry, userSettingsService });
-                newText = menu.text;
-                newKeyboard = menu.reply_markup;
+                // newText = menu.text;
+                // newKeyboard = menu.reply_markup;
+                
+                // This is where the prompt is about to be sent. We will send it, then store context for the reply.
+                const sentMessage = await bot.editMessageText(menu.text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: menu.reply_markup
+                });
+
+                if (replyContextManager) {
+                    const context = {
+                        type: 'settings_param_edit',
+                        masterAccountId: masterAccountId,
+                        toolDisplayName: toolDef.displayName,
+                        paramName: paramName
+                    };
+                    replyContextManager.addContext(sentMessage, context);
+                    logger.info(`[SettingsMenu] Stored reply context for 'settings_param_edit' for MAID ${masterAccountId}, Tool: ${toolDef.displayName}, Param: ${paramName}.`);
+                } else {
+                    logger.error('[SettingsMenu] ReplyContextManager not found in dependencies. Cannot set context for settings reply.');
+                }
+                
+                await bot.answerCallbackQuery(callbackQuery.id);
+                return; // Return early as we've handled the full interaction here.
+
             } else {
                 logger.error(`[SettingsMenu] Callback 'set_param_': ToolDef not found for callback key '${toolCallbackKey}'.`);
                 newText = "Error: Could not find tool to edit parameter. Please try again.";
@@ -379,8 +403,8 @@ async function buildEditParamMenu(masterAccountId, canonicalToolId, paramName, {
     const currentValue = effectiveSettings[paramName] !== undefined ? effectiveSettings[paramName] : (paramDef.default !== undefined ? paramDef.default : 'Not set');
 
     // Add a parseable marker and structure for reply handling
-    const promptMarker = 'SessionSettingsParamEditPrompt::';
-    let promptText = `${promptMarker}Tool:${toolDef.displayName}::Param:${paramName}\n\n`; // Marker and parseable info
+    // const promptMarker = 'SessionSettingsParamEditPrompt::';
+    let promptText = ``; // `${promptMarker}Tool:${toolDef.displayName}::Param:${paramName}\n\n`; // Marker and parseable info
 
     const displayParamName = formatParamNameForDisplay(paramName);
 
@@ -694,9 +718,9 @@ async function buildTweakParamEditPrompt(masterAccountId, generationId, canonica
   const escapedCanonicalToolId = escapeMarkdownV2(canonicalToolId);
   const escapedParamNameInMarker = escapeMarkdownV2(paramName);
 
-  const promptMarker = `TweakParamEditPrompt::GenID:${escapedGenId}::ToolDisplay:${escapedToolDisplayNameInMarker}::ToolID:${escapedCanonicalToolId}::Param:${escapedParamNameInMarker}`;
+  // const promptMarker = `TweakParamEditPrompt::GenID:${escapedGenId}::ToolDisplay:${escapedToolDisplayNameInMarker}::ToolID:${escapedCanonicalToolId}::Param:${escapedParamNameInMarker}`;
   
-  let promptText = promptMarker + "\n\n"; 
+  let promptText = ""; // promptMarker + "\n\n"; 
 
   const displayableParamName = escapeMarkdownV2(displayParamName);
   const displayableToolName = escapeMarkdownV2(toolDef.displayName);

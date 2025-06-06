@@ -5,6 +5,7 @@ const LoRAPermissionsDB = require('../../core/services/db/loRAPermissionsDb');
 const UserPreferencesDB = require('../../core/services/db/userPreferencesDb');
 const { ObjectId } = require('../../core/services/db/BaseDB');
 const axios = require('axios'); // For ComfyUI Deploy API call
+const loraTriggerMapApi = require('./loraTriggerMapApi');
 
 // TODO: Proper dependency injection for DB services and logger
 const logger = console; // Placeholder logger
@@ -285,15 +286,43 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
 
     // Assume .safetensors, make more robust if other types are expected or filename is in metadata
     const filename = `${lora.slug}.safetensors`; 
-    const deployPayload = {
-      source: "link",
-      folder_path: "loras", // As per your example
-      filename: filename,
-      downloadLink: lora.importedFrom.modelFileUrl
-    };
+    let deployPayload;
+    const source = (lora.importedFrom?.source || 'link').toLowerCase();
 
-    const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model/file';
-    logger.info(`[LorasApi] Deploying LoRA ${lora.name} (Filename: ${filename}) to ComfyUI. URL: ${deployPayload.downloadLink}`);
+    if (source === 'civitai') {
+      deployPayload = {
+        source: "civitai",
+        folderPath: "loras",
+        filename: filename,
+        civitai: {
+          "url": lora.importedFrom.url
+        }
+      };
+    } else if (source === 'huggingface') {
+      deployPayload = {
+        source: "huggingface",
+        folderPath: "loras",
+        filename: filename,
+        huggingface: {
+          "repoId": lora.importedFrom.modelFileUrl
+        }
+      };
+    } else {
+      deployPayload = {
+        source: "link",
+        folderPath: "loras",
+        filename: filename,
+        download_link: lora.importedFrom.modelFileUrl
+      };
+      logger.info(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method.`);
+    }
+
+    const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model';
+    logger.info(`[LorasApi] --- Attempting ComfyUI Deployment for Public Approval ---`);
+    logger.info(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
+    logger.info(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
+    logger.info(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
+    logger.info(`[LorasApi] --- End ComfyUI Deployment Details ---`);
 
     try {
       const deployResponse = await axios.post(comfyDeployUrl, deployPayload, {
@@ -310,8 +339,9 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
       }
       logger.info(`[LorasApi] Successfully deployed ${lora.name} to ComfyUI.`);
     } catch (deployError) {
-      logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}):`, deployError.response?.data || deployError.message);
-      const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || deployError.message || 'Unknown deployment error';
+      const errorPayload = deployError.response?.data || deployError.message;
+      logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}):`, JSON.stringify(errorPayload, null, 2));
+      const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || errorPayload || 'Unknown deployment error';
       return res.status(500).json({ error: 'Failed to deploy LoRA to ComfyUI.', details: errorDetails });
     }
     // --- End ComfyUI Deployment ---
@@ -338,8 +368,10 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update LoRA status in database after deployment.' });
     }
 
+    const updatedLora = await loRAModelsDb.findById(lora._id);
     logger.info(`[LorasApi] LoRA ${loraIdentifier} approved and status updated by ${adminActor}.`);
-    res.status(200).json({ message: 'LoRA approved, deployed, and status updated successfully!', loraId: lora._id });
+    res.status(200).json({ message: 'LoRA approved, deployed, and status updated successfully!', lora: updatedLora });
+    triggerMapRefresh();
 
   } catch (error) {
     logger.error(`[LorasApi] Error in admin-approve for LoRA ${loraIdentifier}:`, error.message, error.stack);
@@ -391,15 +423,44 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
     }
 
     const filename = `${lora.slug}.safetensors`; 
-    const deployPayload = {
-      source: "link",
-      folder_path: "loras",
-      filename: filename,
-      downloadLink: lora.importedFrom.modelFileUrl
-    };
-    const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model/file';
+    let deployPayload;
+    const source = (lora.importedFrom?.source || 'link').toLowerCase();
 
-    logger.info(`[LorasApi] Deploying LoRA ${lora.name} (Filename: ${filename}) to ComfyUI for private approval. URL: ${deployPayload.downloadLink}`);
+    if (source === 'civitai') {
+      deployPayload = {
+        source: "civitai",
+        folderPath: "loras",
+        filename: filename,
+        civitai: {
+          "url": lora.importedFrom.url
+        }
+      };
+    } else if (source === 'huggingface') {
+      deployPayload = {
+        source: "huggingface",
+        folderPath: "loras",
+        filename: filename,
+        huggingface: {
+          "repoId": lora.importedFrom.modelFileUrl
+        }
+      };
+    } else {
+      deployPayload = {
+        source: "link",
+        folderPath: "loras",
+        filename: filename,
+        download_link: lora.importedFrom.modelFileUrl
+      };
+      logger.info(`[LorasApi] Deploying LoRA with unknown source '${source}' using 'link' method for private approval.`);
+    }
+    const comfyDeployUrl = 'https://api.comfydeploy.com/api/volume/model';
+
+    logger.info(`[LorasApi] --- Attempting ComfyUI Deployment for Private Approval ---`);
+    logger.info(`[LorasApi] LoRA Name: ${lora.name} (Filename: ${filename})`);
+    logger.info(`[LorasApi] Target Endpoint: POST ${comfyDeployUrl}`);
+    logger.info(`[LorasApi] Payload:\n${JSON.stringify(deployPayload, null, 2)}`);
+    logger.info(`[LorasApi] --- End ComfyUI Deployment Details ---`);
+
     try {
       const deployResponse = await axios.post(comfyDeployUrl, deployPayload, {
         headers: { 'Authorization': `Bearer ${comfyDeployApiKey}`, 'Content-Type': 'application/json' }
@@ -410,8 +471,9 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
       }
       logger.info(`[LorasApi] Successfully deployed ${lora.name} to ComfyUI (for private approval).`);
     } catch (deployError) {
-      logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}) during private approval:`, deployError.response?.data || deployError.message);
-      const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || deployError.message || 'Unknown deployment error';
+      const errorPayload = deployError.response?.data || deployError.message;
+      logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}) during private approval:`, JSON.stringify(errorPayload, null, 2));
+      const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || errorPayload || 'Unknown deployment error';
       return res.status(500).json({ error: 'Failed to deploy LoRA to ComfyUI for private use.', details: errorDetails });
     }
     // --- End ComfyUI Deployment ---
@@ -439,8 +501,10 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
     // This would involve getting lora.moderation.requestedBy (MAID)
     // and calling a notification service/endpoint.
 
+    const updatedLora = await loRAModelsDb.findById(lora._id);
     logger.info(`[LorasApi] LoRA ${loraIdentifier} privately approved and status updated by ${adminActor}.`);
-    res.status(200).json({ message: 'LoRA privately approved, deployed, and status updated successfully!', loraId: lora._id });
+    res.status(200).json({ message: 'LoRA privately approved, deployed, and status updated successfully!', lora: updatedLora });
+    triggerMapRefresh();
 
   } catch (error) {
     logger.error(`[LorasApi] Error in admin-approve-private for LoRA ${loraIdentifier}:`, error.message, error.stack);
@@ -498,8 +562,10 @@ router.post('/:loraIdentifier/admin-reject', async (req, res) => {
       return res.status(500).json({ error: 'Failed to update LoRA status to rejected in database.' });
     }
 
+    const updatedLora = await loRAModelsDb.findById(lora._id);
     logger.info(`[LorasApi] LoRA ${loraIdentifier} rejected and status updated by ${adminActor}.`);
-    res.status(200).json({ message: 'LoRA rejected and status updated successfully!', loraId: lora._id });
+    res.status(200).json({ message: 'LoRA rejected and status updated successfully!', lora: updatedLora });
+    triggerMapRefresh();
 
   } catch (error) {
     logger.error(`[LorasApi] Error in admin-reject for LoRA ${loraIdentifier}:`, error.message, error.stack);
@@ -509,7 +575,64 @@ router.post('/:loraIdentifier/admin-reject', async (req, res) => {
     res.status(500).json({ error: 'Failed to reject LoRA', details: error.message });
   }
 });
+
+/**
+ * DELETE /:loraIdentifier - [ADMIN] Delete a LoRA.
+ * Path Parameters:
+ *  - loraIdentifier (string): The LoRA's MongoDB _id.
+ */
+router.delete('/:loraIdentifier', async (req, res) => {
+    // Note: In a real-world scenario, this should be protected by a robust admin authentication middleware.
+    const { loraIdentifier } = req.params;
+    const adminActor = 'ADMIN_DELETE_ACTION';
+
+    logger.info(`[LorasApi] Admin DELETION requested for LoRA: ${loraIdentifier}`);
+    
+    try {
+        const loraId = new ObjectId(loraIdentifier);
+        const lora = await loRAModelsDb.findById(loraId);
+        if (!lora) {
+            return res.status(404).json({ error: 'LoRA not found for deletion.' });
+        }
+
+        const deleteResult = await loRAModelsDb.deleteOne({ _id: loraId });
+
+        if (!deleteResult || deleteResult.deletedCount === 0) {
+            logger.warn(`[LorasApi] Failed to delete LoRA ${loraIdentifier} from DB, or it was already deleted.`);
+            return res.status(500).json({ error: 'Failed to delete LoRA from database.' });
+        }
+        
+        // TODO: Consider a follow-up job to delete the model file from storage (e.g., ComfyUI volume).
+
+        logger.info(`[LorasApi] LoRA ${loraIdentifier} deleted successfully by ${adminActor}.`);
+        res.status(200).json({ message: 'LoRA deleted successfully!', loraId: loraIdentifier });
+        triggerMapRefresh();
+
+    } catch (error) {
+        logger.error(`[LorasApi] Error in admin-delete for LoRA ${loraIdentifier}:`, error.message, error.stack);
+        if (error.name === 'CastError') {
+            return res.status(400).json({ error: 'Invalid LoRA identifier format for deletion.' });
+        }
+        res.status(500).json({ error: 'Failed to delete LoRA', details: error.message });
+    }
+});
 // -- END NEW GET LORA BY IDENTIFIER ENDPOINT --
+
+// ++ HELPER FUNCTIONS ++
+/**
+ * Triggers a refresh of the LoRA trigger map cache.
+ * This is a fire-and-forget call.
+ */
+async function triggerMapRefresh() {
+    try {
+        logger.info('[LorasApi] Triggering LoRA trigger map refresh...');
+        // This is an async function, but we don't await it.
+        // The API response shouldn't be blocked by this.
+        loraTriggerMapApi.refreshPublicLoraCache();
+    } catch (error) {
+        logger.error('[LorasApi] Failed to trigger LoRA trigger map refresh:', error.message);
+    }
+}
 
 // ++ NEW STORE LISTING ENDPOINT ++
 /**
@@ -575,7 +698,7 @@ router.get('/store/list', async (req, res) => {
         sortOptions = { createdAt: -1 }; // Default sort for tag view
       } else {
         // Default sort for the store if no specific filterType implies sorting
-        sortOptions = { createdAt: -1 }; 
+        sortOptions = { createdAt: -1 };
       }
     } else {
       // Default sort if no storeFilterType is provided

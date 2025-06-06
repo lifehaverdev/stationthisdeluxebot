@@ -163,6 +163,24 @@ class LoRAModelsDB extends BaseDB {
     dataToInsert.cognates = dataToInsert.cognates || [];
     dataToInsert.defaultWeight = dataToInsert.defaultWeight || 1.0;
 
+    // Create a cognate for very long trigger words
+    const LONG_TRIGGER_THRESHOLD = 50; // characters
+    if (
+      dataToInsert.triggerWords &&
+      dataToInsert.triggerWords.length === 1 &&
+      dataToInsert.triggerWords[0].length > LONG_TRIGGER_THRESHOLD
+    ) {
+      const longTrigger = dataToInsert.triggerWords[0];
+      const cognateWord = slugBase; // Use the clean slug as the shortcut word
+
+      dataToInsert.cognates.push({
+        word: cognateWord,
+        replaceWith: longTrigger
+      });
+
+      this.logger.info(`[LoRAModelDb] Created a cognate '${cognateWord}' for a long trigger word for LoRA: ${dataToInsert.name}`);
+    }
+
     this.logger.info(`[LoRAModelDb] Creating imported LoRA: ${dataToInsert.name} (Slug: ${dataToInsert.slug}) by MAID ${masterAccountId}`);
     const result = await this.insertOne(dataToInsert);
     return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;

@@ -87,19 +87,30 @@ Manage your custom LoRA training sessions here. Use the buttons below to create 
  * Initiates the process of creating a new LoRA training session.
  */
 async function handleCreateNewTraining(bot, chatId, messageId, masterAccountId, dependencies = {}) {
-  const { logger = console } = dependencies;
+  const { logger = console, replyContextManager } = dependencies;
   try {
-    // Marker includes masterAccountId for context when handling the reply
-    const escapedPromptMarker = escapeMarkdownV2(PROMPT_MARKER_TRAINING_NAME);
-    const escapedMasterAccountId = escapeMarkdownV2(masterAccountId);
-    const text = `📝 **Create New Training**\n\nWhat would you like to name your new LoRA training session?\n\n\(Internal Info: ${escapedPromptMarker}\:\:MAID\:\:${escapedMasterAccountId}\)`;
-    await bot.editMessageText(text, {
+    // The prompt is now clean and doesn't contain internal markers.
+    const text = `📝 **Create New Training**\n\nWhat would you like to name your new LoRA training session?`;
+    
+    const sentMessage = await bot.editMessageText(text, {
       chat_id: chatId,
       message_id: messageId,
       reply_markup: { inline_keyboard: [[{ text: '⬅️ Cancel', callback_data: 'train_main_menu' }]] },
-      parse_mode: 'Markdown',
+      parse_mode: 'Markdown', // Keep as Markdown for the bolding
     });
-    // No setUserState needed now
+
+    // Store the context for the reply using the new manager
+    if (replyContextManager) {
+      const context = {
+        type: 'training_name_prompt',
+        masterAccountId: masterAccountId,
+      };
+      replyContextManager.addContext(sentMessage, context);
+      logger.info(`[TrainingMenu] Stored reply context for 'training_name_prompt' for MAID ${masterAccountId}.`);
+    } else {
+      logger.error('[TrainingMenu] ReplyContextManager not found in dependencies. Cannot set context for reply.');
+    }
+
   } catch (error) {
     logger.error('Error in handleCreateNewTraining:', error);
     await bot.sendMessage(chatId, '⚠️ An error occurred. Please try again.');

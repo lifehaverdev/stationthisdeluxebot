@@ -20,6 +20,7 @@ const createStatusCommandHandler = require('./commands/statusCommand');
 // Import new settings menu manager and internal API client
 const { handleSettingsCommand, handleSettingsCallback, handleParameterValueReply, buildToolParamsMenu, buildTweakUIMenu, buildTweakParamEditPrompt } = require('./components/settingsMenuManager.js');
 const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
+const replyContextManager = require('./utils/replyContextManager.js');
 
 // ++ NEW LORA MENU MANAGER IMPORT ++
 const { handleLoraCommand, handleLoraCallback: handleLoraMenuCallback } = require('./components/loraMenuManager.js');
@@ -279,7 +280,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for original command user ${originalCommandUser.id} for settings menu.`);
           
           // Delegate to the new settings callback handler, passing logger, toolRegistry, and userSettingsService
-          await handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, userSettingsService });
+          await handleSettingsCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, userSettingsService, replyContextManager });
           // Note: handleSettingsCallback is now responsible for bot.answerCallbackQuery(callbackQuery.id)
 
         } catch (error) {
@@ -305,7 +306,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for original command user ${originalCommandUser.id} for LoRA menu.`);
           
           await handleLoraMenuCallback(bot, callbackQuery, masterAccountId, 
-            { logger, internalApiClient, userSettingsService, toolRegistry, loRAPermissionsDb } // Pass dependencies
+            { logger, internalApiClient, userSettingsService, toolRegistry, loRAPermissionsDb, replyContextManager } // Pass dependencies
           );
         } catch (error) {
           logger.error(`[Bot CB] Error in 'lora:' or 'lora_store:' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
@@ -755,12 +756,20 @@ function createTelegramBot(dependencies, token, options = {}) {
           );
 
           if (editMenu && editMenu.text && editMenu.reply_markup) {
-            await bot.editMessageText(editMenu.text, {
+            const sentMessage = await bot.editMessageText(editMenu.text, {
               chat_id: message.chat.id, // Edit the existing tweak menu message
               message_id: message.message_id,
               reply_markup: editMenu.reply_markup,
               parse_mode: 'MarkdownV2' // Assuming prompt is MarkdownV2
             });
+            const context = {
+                type: 'tweak_param_edit',
+                generationId: generationId,
+                masterAccountId: clickerMasterAccountId,
+                canonicalToolId: canonicalToolId,
+                paramName: paramName,
+            };
+            replyContextManager.addContext(sentMessage, context);
           } else {
             logger.error(`[Bot CB] tpe: Failed to build param edit prompt for ${paramName}.`);
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Error opening edit prompt.", show_alert: true });
@@ -1542,7 +1551,7 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           if (response.status === 200 || response.status === 202) {
             await bot.editMessageText(
-              message.text + `\n\n---\n*Action Taken: ${successMessage}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`,
+              escapeMarkdownV2(message.text + `\n\n---\n*Action Taken: ${successMessage}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`),
               {
                 chat_id: message.chat.id,
                 message_id: message.message_id,
@@ -1585,7 +1594,7 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           if (response.status === 200 || response.status === 202) {
             await bot.editMessageText(
-              message.text + `\n\n---\n*Action Taken: ${successMessageBase}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`,
+              escapeMarkdownV2(message.text + `\n\n---\n*Action Taken: ${successMessageBase}* by Admin ${callbackUserIdStr} at ${new Date().toISOString()}`), 
               {
                 chat_id: message.chat.id,
                 message_id: message.message_id,
@@ -1646,7 +1655,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           const masterAccountId = findOrCreateResponse.data.masterAccountId;
           logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for user ${userForMaid.id} for training menu callback.`);
           
-          await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, { logger });
+          await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, { logger, replyContextManager });
         } catch (error) {
           logger.error(`[Bot CB] Error in 'train_' callback logic (fetching MAID) for user ${userForMaid.id}:`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for training.", show_alert: true});
@@ -1678,369 +1687,238 @@ function createTelegramBot(dependencies, token, options = {}) {
   
   // ++ NEW MESSAGE HANDLER FOR PARAMETER VALUE REPLIES & DEFAULT ACTIONS ++
   bot.on('message', async (message) => {
-    // Ignore messages without text (e.g. images, stickers if not handled otherwise)
-    if (!message.text) {
-      return;
-    }
-
-    // Check if the message is a reply to one of our parameter edit prompts
-    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.startsWith('SessionSettingsParamEditPrompt::')) {
-      const promptText = message.reply_to_message.text;
-      const telegramUserId = message.from.id.toString();
-      const value = message.text; // The new value user replied with
-
-      const toolMatch = promptText.match(/Tool:([^:]+)::/);
-      const paramMatch = promptText.match(/Param:([^\n]+)/);
-
-      if (toolMatch && toolMatch[1] && paramMatch && paramMatch[1]) {
-        const toolDisplayName = toolMatch[1];
-        const paramName = paramMatch[1];
-        
-        logger.info(`[Bot] Reply received for settings param edit. User: ${telegramUserId}, Tool: ${toolDisplayName}, Param: ${paramName}, Value: '${value}', Replying to MsgID: ${message.reply_to_message.message_id}`);
-
-        try {
-          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: 'telegram',
-            platformId: telegramUserId,
-            platformContext: { firstName: message.from.first_name, username: message.from.username }
-          });
-          const masterAccountId = findOrCreateResponse.data.masterAccountId;
-
-          // Pass logger, toolRegistry, and userSettingsService
-          const result = await handleParameterValueReply(masterAccountId, toolDisplayName, paramName, value, { logger, toolRegistry, userSettingsService });
-
-          if (result.success) {
-            await bot.sendMessage(message.chat.id, result.message, { reply_to_message_id: message.message_id });
-            
-            if (result.canonicalToolId) {
-              const updatedToolParamsMenu = await buildToolParamsMenu(masterAccountId, result.canonicalToolId, { logger, toolRegistry, userSettingsService });
-              await bot.editMessageText(updatedToolParamsMenu.text, {
-                chat_id: message.chat.id,
-                message_id: message.reply_to_message.message_id, // Edit the original prompt message
-                reply_markup: updatedToolParamsMenu.reply_markup
-              });
-            }
-          } else {
-            await bot.sendMessage(message.chat.id, result.message || "Failed to update setting.", { reply_to_message_id: message.message_id });
-          }
-        } catch (error) {
-          logger.error(`[Bot] Error processing settings parameter reply for Tool: ${toolDisplayName}, Param: ${paramName}, User: ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
-          await bot.sendMessage(message.chat.id, "Sorry, an error occurred while saving your setting.", { reply_to_message_id: message.message_id });
-        }
-        return; // Stop further processing for this message, as it was a settings reply
-      }
-    }
-    // -- END PARAMETER VALUE REPLY HANDLER --
-
-    // ++ NEW TWEAK PARAMETER VALUE REPLY HANDLER ++
-    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.startsWith('TweakParamEditPrompt::')) {
-      const promptText = message.reply_to_message.text;
-      const replierTelegramId = message.from.id.toString();
-      const newValue = message.text; // The new value user replied with
-
-      const genIdMatch = promptText.match(/GenID:([^:]+)::/);
-      const toolDisplayMatch = promptText.match(/ToolDisplay:([^:]+)::/);
-      const toolIdMatch = promptText.match(/ToolID:([^:]+)::/);
-      const paramNameMatch = promptText.match(/Param:([^\n]+)/);
-
-      if (genIdMatch && genIdMatch[1] && toolIdMatch && toolIdMatch[1] && paramNameMatch && paramNameMatch[1]) {
-        const generationId = genIdMatch[1];
-        const canonicalToolId = toolIdMatch[1];
-        const paramName = paramNameMatch[1];
-        const toolDisplayName = toolDisplayMatch ? toolDisplayMatch[1] : canonicalToolId;
-
-        logger.info(`[Bot] Reply received for TWEAK param edit. User: ${replierTelegramId}, GenID: ${generationId}, Tool: ${toolDisplayName} (ID: ${canonicalToolId}), Param: ${paramName}, NewValue: '${newValue.replace(/'/g, "''")}'`);
-
-        try {
-          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: 'telegram',
-            platformId: replierTelegramId,
-            platformContext: { firstName: message.from.first_name, username: message.from.username }
-          });
-          const replierMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
-
-          if (!replierMasterAccountId) {
-            logger.error(`[Bot] Tweak reply: MAID not found for ${replierTelegramId}`);
-            await bot.sendMessage(message.chat.id, "Error: Your account could not be identified to save the tweak.", { reply_to_message_id: message.message_id });
-            return;
-          }
-
-          const tweakSessionKey = `${generationId}_${replierMasterAccountId}`;
-          const currentToolTweaks = pendingTweaks[tweakSessionKey];
-
-          if (!currentToolTweaks) {
-            logger.error(`[Bot] Tweak reply: No pending tweak session found for key ${tweakSessionKey}. Cannot save value.`);
-            await bot.sendMessage(message.chat.id, "Error: Your tweak session seems to have expired. Please try tweaking again.", { reply_to_message_id: message.message_id });
-            await bot.deleteMessage(message.chat.id, message.reply_to_message.message_id);
-            return;
-          }
-
-          const toolDef = toolRegistry.getToolById(canonicalToolId);
-          if (!toolDef || !toolDef.inputSchema || !toolDef.inputSchema[paramName]) {
-            logger.error(`[Bot] Tweak reply: ToolDef or ParamDef not found for ToolID ${canonicalToolId}, Param ${paramName}`);
-            await bot.sendMessage(message.chat.id, "Error: Tool or parameter definition is missing. Cannot save value.", { reply_to_message_id: message.message_id });
-            return;
-          }
-          const paramDef = toolDef.inputSchema[paramName];
-
-          let parsedValue = newValue;
-          let validationError = null;
-          switch (paramDef.type) {
-            case 'number':
-            case 'integer':
-              parsedValue = parseFloat(newValue);
-              if (isNaN(parsedValue)) validationError = "Invalid number. Please provide a valid number.";
-              if (paramDef.type === 'integer' && !Number.isInteger(parsedValue)) validationError = "Not a valid whole number.";
-              break;
-            case 'boolean':
-              if (['true', 'yes', '1', 'on'].includes(newValue.toLowerCase())) parsedValue = true;
-              else if (['false', 'no', '0', 'off'].includes(newValue.toLowerCase())) parsedValue = false;
-              else validationError = "Invalid boolean. Use true/false, yes/no, etc.";
-              break;
-            case 'string':
-              parsedValue = newValue;
-              break;
-            default:
-              logger.warn(`[Bot] Tweak reply: Validation not implemented for type '${paramDef.type}'. Accepting as is.`);
-              parsedValue = newValue;
-              break;
-          }
-
-          if (validationError) {
-            logger.warn(`[Bot] Tweak reply: Validation failed for ${paramName} with value '${newValue.replace(/'/g, "''")}'. Error: ${validationError}`);
-            await bot.sendMessage(message.chat.id, validationError, { reply_to_message_id: message.message_id });
-            return;
-          }
-
-          pendingTweaks[tweakSessionKey][paramName] = parsedValue;
-          logger.info(`[Bot] Tweak reply: Updated pendingTweaks for ${tweakSessionKey} - ${paramName} = ${parsedValue}`);
-
-          await bot.deleteMessage(message.chat.id, message.message_id);
-
-          const genResponse = await internalApiClient.get(`/generations/${generationId}`);
-          const generationRecord = genResponse.data;
-          if (!generationRecord || !generationRecord.metadata) {
-              logger.error(`[Bot] Tweak reply: Failed to fetch gen record or metadata for ${generationId} to rebuild menu.`);
-              await bot.editMessageText("Error: Could not refresh tweak menu after update. Please cancel and restart.", {
-                  chat_id: message.chat.id,
-                  message_id: message.reply_to_message.message_id,
-                  reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
-              });
-              return;
-          }
-          const originalUserCommandMessageId = generationRecord.metadata.telegramMessageId;
-          const originalUserCommandChatId = generationRecord.metadata.telegramChatId;
-
-          if(!originalUserCommandMessageId || !originalUserCommandChatId){
-            logger.error(`[Bot] Tweak reply: Missing original command context from gen record ${generationId}.`);
-             await bot.editMessageText("Error: Original command context lost. Cannot refresh tweak menu.", {
-                  chat_id: message.chat.id,
-                  message_id: message.reply_to_message.message_id, 
-                  reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
-              });
-            return;
-          }
-
-          const refreshedMenu = await buildTweakUIMenu(
-            replierMasterAccountId,
-            canonicalToolId,
-            pendingTweaks[tweakSessionKey],
-            originalUserCommandMessageId, 
-            originalUserCommandChatId,    
-            generationId,
-            { logger, toolRegistry, userSettingsService }
-          );
-
-          if (refreshedMenu && refreshedMenu.text && refreshedMenu.reply_markup) {
-            await bot.editMessageText(refreshedMenu.text, {
-              chat_id: message.chat.id,
-              message_id: message.reply_to_message.message_id,
-              reply_markup: refreshedMenu.reply_markup,
-              parse_mode: 'MarkdownV2'
-            });
-          } else {
-            logger.error(`[Bot] Tweak reply: Failed to build refreshed tweak menu for GenID ${generationId}.`);
-            await bot.editMessageText("Updated value, but could not refresh the menu. Please cancel and restart if needed.", {
-                chat_id: message.chat.id,
-                message_id: message.reply_to_message.message_id,
-                reply_markup: { inline_keyboard: [[{ text: "Cancel Tweak", callback_data: `tweak_cancel:${generationId}` }]]}
-            });
-          }
-        } catch (error) {
-          logger.error(`[Bot] Tweak reply: Error processing parameter reply for GenID ${generationId}, Param ${paramNameMatch ? paramNameMatch[1].replace(/'/g, "''") : 'unknown'}:`, error.stack);
-          await bot.sendMessage(message.chat.id, "Sorry, an error occurred while saving your tweaked value.", { reply_to_message_id: message.message_id });
-        }
-        return;
-      }
-    }
-    // -- END TWEAK PARAMETER VALUE REPLY HANDLER --
-
-    // Default message handler for make/imagine commands (if not a command and not a settings reply)
-    // This part should contain your existing logic for handling general messages like "make a cat"
-    // Ensure it doesn't conflict with command handlers (onText)
-    if (!message.text.startsWith('/')) {
-        // Check if commandRegistry and findDynamicCommandHandler are available
+    // Ignore messages that aren't text or replies
+    if (!message.text || !message.reply_to_message) {
+      // If it's not a reply, it might be a dynamic command.
+      if (message.text && !message.text.startsWith('/')) {
         if (dependencies.commandRegistry && typeof dependencies.commandRegistry.findDynamicCommandHandler === 'function') {
             const commandHandler = dependencies.commandRegistry.findDynamicCommandHandler(message.text, 'telegram');
             if (commandHandler) {
                 logger.info(`[Bot] Handling general message "${message.text.substring(0,30)}..." with dynamic command handler for tool: ${commandHandler.toolId}`);
                 try {
-                    // Assuming the handler function is named 'handler' and takes (message, args) or similar
-                    // Adjust the call based on the actual signature of your dynamic command handlers
                     await commandHandler.handler(message, ''); 
                 } catch (error) {
                     logger.error('[Bot] Error executing dynamic command handler:', error);
                     bot.sendMessage(message.chat.id, "Sorry, I couldn't process that.", { reply_to_message_id: message.message_id });
                 }
-            } else {
-                // logger.info(`[Bot] No dynamic command handler found for message: "${message.text.substring(0,30)}..."`);
             }
         } else {
             logger.warn('[Bot] commandRegistry or findDynamicCommandHandler is not available in dependencies.');
         }
+      }
+      return;
     }
 
-    // ++ NEW: LoRA Import URL Reply Handler ++
-    if (message.reply_to_message && message.reply_to_message.text && message.reply_to_message.text.includes('LORA_IMPORT_URL_PROMPT::')) {
-      const promptText = message.reply_to_message.text;
-      const submittedUrl = message.text.trim();
-      const telegramUserId = message.from.id.toString(); // User who replied
+    const repliedToMessage = message.reply_to_message;
+    const context = replyContextManager.getContext(repliedToMessage);
 
-      // Extract masterAccountId and originalMenuMessageId from the promptText
-      // Format: (Internal Info: LORA_IMPORT_URL_PROMPT::MASTER_ACCOUNT_ID::ORIGINAL_MENU_MESSAGE_ID)
-      const sessionMatch = promptText.match(/LORA_IMPORT_URL_PROMPT::([^:]+)::([^)]+)\)/);
+    // If there's no context, it's not a special reply we need to handle.
+    // The dynamic command handler logic is now above, for non-replies.
+    if (!context) {
+      // logger.debug(`[Bot] Message received is a reply, but no special context found. Ignoring. MsgID: ${message.message_id}, RepliedToID: ${repliedToMessage.message_id}`);
+      return;
+    }
+    
+    // Context found, so we must handle it. 
+    // Once context is retrieved, we clear it to prevent replay attacks or accidental re-triggering.
+    replyContextManager.removeContext(repliedToMessage);
+    logger.info(`[Bot] Found and removed reply context of type: ${context.type}`);
+    
+    const telegramUserId = message.from.id.toString();
 
-      if (sessionMatch && sessionMatch[1] && sessionMatch[2]) {
-        const masterAccountIdFromPrompt = sessionMatch[1];
-        // const originalMenuMessageId = sessionMatch[2]; // Not strictly needed for this part but good to have
-        
-        logger.info(`[Bot] LoRA Import URL reply received. MAID (from prompt): ${masterAccountIdFromPrompt}, User (who replied): ${telegramUserId}, URL: '${submittedUrl}'.`);
+    try {
+        switch (context.type) {
+            case 'settings_param_edit':
+                {
+                    const { masterAccountId, toolDisplayName, paramName } = context;
+                    const value = message.text;
+                    logger.info(`[Bot] Reply received for settings param edit via Context. User: ${telegramUserId}, MAID: ${masterAccountId}, Tool: ${toolDisplayName}, Param: ${paramName}, Value: '${value}'`);
 
-        if (!submittedUrl.startsWith('http://') && !submittedUrl.startsWith('https://')) {
-          await bot.sendMessage(message.chat.id, "That doesn't look like a valid URL. Please provide a full URL starting with http:// or https://.", { reply_to_message_id: message.message_id });
-          return;
-        }
+                    const result = await handleParameterValueReply(masterAccountId, toolDisplayName, paramName, value, { logger, toolRegistry, userSettingsService });
 
-        try {
-          logger.info(`[Bot] Calling internal API POST /loras/import-from-url with URL: ${submittedUrl}, MAID: ${masterAccountIdFromPrompt}`);
-          const importResponse = await internalApiClient.post('/loras/import-from-url', { 
-            loraUrl: submittedUrl, 
-            masterAccountId: masterAccountIdFromPrompt 
-          });
+                    if (result.success) {
+                        await bot.sendMessage(message.chat.id, result.message, { reply_to_message_id: message.message_id });
+                        if (result.canonicalToolId) {
+                            const updatedToolParamsMenu = await buildToolParamsMenu(masterAccountId, result.canonicalToolId, { logger, toolRegistry, userSettingsService });
+                            await bot.editMessageText(updatedToolParamsMenu.text, {
+                                chat_id: repliedToMessage.chat.id,
+                                message_id: repliedToMessage.message_id,
+                                reply_markup: updatedToolParamsMenu.reply_markup
+                            });
+                        }
+                    } else {
+                        await bot.sendMessage(message.chat.id, result.message || "Failed to update setting.", { reply_to_message_id: message.message_id });
+                    }
+                    break;
+                }
 
-          if (importResponse.status === 202 && importResponse.data && importResponse.data.lora) {
-            const loraDetailsForAdmin = importResponse.data.lora;
-            await bot.sendMessage(message.chat.id, importResponse.data.message, { reply_to_message_id: message.message_id });
+            case 'tweak_param_edit':
+                {
+                    const { generationId, masterAccountId, canonicalToolId, paramName } = context;
+                    const newValue = message.text;
+                    const toolDef = toolRegistry.getToolById(canonicalToolId);
+
+                    logger.info(`[Bot] Reply received for TWEAK param edit via Context. User: ${telegramUserId}, MAID: ${masterAccountId}, GenID: ${generationId}, Param: ${paramName}, NewValue: '${newValue.replace(/'/g, "''")}'`);
+
+                    if (telegramUserId !== masterAccountId.split(':')[1]) {
+                        const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
+                            platform: 'telegram',
+                            platformId: telegramUserId,
+                            platformContext: { firstName: message.from.first_name, username: message.from.username }
+                        });
+                        const replierMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
+                        if (replierMasterAccountId !== masterAccountId) {
+                            logger.warn(`[Bot] Tweak reply attempt by wrong user. Expected MAID ${masterAccountId}, got ${replierMasterAccountId}.`);
+                            await bot.sendMessage(message.chat.id, "You cannot edit a tweak session started by someone else.", { reply_to_message_id: message.message_id });
+                            return;
+                        }
+                    }
+                    
+                    const tweakSessionKey = `${generationId}_${masterAccountId}`;
+                    const currentToolTweaks = pendingTweaks[tweakSessionKey];
+
+                    if (!currentToolTweaks) {
+                        logger.error(`[Bot] Tweak reply: No pending tweak session found for key ${tweakSessionKey}. Cannot save value.`);
+                        await bot.sendMessage(message.chat.id, "Error: Your tweak session seems to have expired. Please try tweaking again.", { reply_to_message_id: message.message_id });
+                        await bot.deleteMessage(repliedToMessage.chat.id, repliedToMessage.message_id);
+                        return;
+                    }
+
+                    if (!toolDef || !toolDef.inputSchema || !toolDef.inputSchema[paramName]) {
+                        logger.error(`[Bot] Tweak reply: ToolDef or ParamDef not found for ToolID ${canonicalToolId}, Param ${paramName}`);
+                        await bot.sendMessage(message.chat.id, "Error: Tool or parameter definition is missing. Cannot save value.", { reply_to_message_id: message.message_id });
+                        return;
+                    }
+                    
+                    const paramDef = toolDef.inputSchema[paramName];
+                    let parsedValue = newValue;
+                    let validationError = null;
+                    switch (paramDef.type) {
+                        case 'number':
+                        case 'integer':
+                            parsedValue = parseFloat(newValue);
+                            if (isNaN(parsedValue)) validationError = "Invalid number. Please provide a valid number.";
+                            if (paramDef.type === 'integer' && !Number.isInteger(parsedValue)) validationError = "Not a valid whole number.";
+                            break;
+                        case 'boolean':
+                            if (['true', 'yes', '1', 'on'].includes(newValue.toLowerCase())) parsedValue = true;
+                            else if (['false', 'no', '0', 'off'].includes(newValue.toLowerCase())) parsedValue = false;
+                            else validationError = "Invalid boolean. Use true/false, yes/no, etc.";
+                            break;
+                    }
+
+                    if (validationError) {
+                        logger.warn(`[Bot] Tweak reply: Validation failed for ${paramName} with value '${newValue.replace(/'/g, "''")}'. Error: ${validationError}`);
+                        await bot.sendMessage(message.chat.id, validationError, { reply_to_message_id: message.message_id });
+                        return;
+                    }
+
+                    pendingTweaks[tweakSessionKey][paramName] = parsedValue;
+                    logger.info(`[Bot] Tweak reply: Updated pendingTweaks for ${tweakSessionKey} - ${paramName} = ${parsedValue}`);
+
+                    await bot.deleteMessage(message.chat.id, message.message_id);
+
+                    const genResponse = await internalApiClient.get(`/generations/${generationId}`);
+                    const generationRecord = genResponse.data;
+                    if (!generationRecord || !generationRecord.metadata) { throw new Error('Failed to fetch gen record for menu rebuild'); }
+                    
+                    const originalUserCommandMessageId = generationRecord.metadata.telegramMessageId;
+                    const originalUserCommandChatId = generationRecord.metadata.telegramChatId;
+                    if (!originalUserCommandMessageId || !originalUserCommandChatId) { throw new Error('Missing original command context'); }
+
+                    const refreshedMenu = await buildTweakUIMenu(
+                        masterAccountId,
+                        canonicalToolId,
+                        pendingTweaks[tweakSessionKey],
+                        originalUserCommandMessageId,
+                        originalUserCommandChatId,
+                        generationId,
+                        { logger, toolRegistry, userSettingsService }
+                    );
+
+                    if (refreshedMenu && refreshedMenu.text && refreshedMenu.reply_markup) {
+                        await bot.editMessageText(refreshedMenu.text, {
+                            chat_id: repliedToMessage.chat.id,
+                            message_id: repliedToMessage.message_id,
+                            reply_markup: refreshedMenu.reply_markup,
+                            parse_mode: 'MarkdownV2'
+                        });
+                    } else {
+                        throw new Error('Failed to build refreshed tweak menu.');
+                    }
+                    break;
+                }
             
-            const adminChatId = '5472638766';
-            const loraIdentifier = loraDetailsForAdmin.slug || loraDetailsForAdmin._id;
+            case 'lora_import_url':
+                {
+                    const { masterAccountId } = context;
+                    const submittedUrl = message.text.trim();
+                    logger.info(`[Bot] LoRA Import URL reply received via Context. MAID: ${masterAccountId}, User: ${telegramUserId}, URL: '${submittedUrl}'.`);
 
-            if (!loraIdentifier) {
-                logger.error(`[Bot] LoRA identifier (slug or _id) missing from import API response for admin notification. URL: ${submittedUrl}`);
-                await bot.sendMessage(message.chat.id, "Your LoRA was submitted, but there was an issue notifying the admin. Please contact support if it's not reviewed.", { reply_to_message_id: message.message_id });
-                return;
-            }
+                    if (!submittedUrl.startsWith('http://') && !submittedUrl.startsWith('https://')) {
+                        await bot.sendMessage(message.chat.id, "That doesn't look like a valid URL. Please provide a full URL starting with http:// or https://.", { reply_to_message_id: message.message_id });
+                        return;
+                    }
 
-            // Commenting out all escapeMarkdownV2 calls for diagnosis
-            // logger.debug(`[Bot] AdminMsg: MAID type: ${typeof masterAccountIdFromPrompt}, value: '${masterAccountIdFromPrompt}'`);
-            const rawMAID = masterAccountIdFromPrompt;
-            // logger.debug(`[Bot] AdminMsg: Escaped MAID: '${escapedMAID}'`);
+                    const importResponse = await internalApiClient.post('/loras/import-from-url', {
+                        loraUrl: submittedUrl,
+                        masterAccountId: masterAccountId
+                    });
 
-            // logger.debug(`[Bot] AdminMsg: URL type: ${typeof submittedUrl}, value: '${submittedUrl}'`);
-            const rawUrl = submittedUrl;
-            // logger.debug(`[Bot] AdminMsg: Escaped URL: '${escapedUrl}'`);
+                    if (importResponse.status === 202 && importResponse.data && importResponse.data.lora) {
+                        const loraDetailsForAdmin = importResponse.data.lora;
+                        await bot.sendMessage(message.chat.id, importResponse.data.message, { reply_to_message_id: message.message_id });
 
-            const loraNameForMsg = loraDetailsForAdmin.name || 'N/A';
-            // logger.debug(`[Bot] AdminMsg: LoRA Name type: ${typeof loraNameForMsg}, value: '${loraNameForMsg}'`);
-            const rawLoraName = loraNameForMsg;
-            // logger.debug(`[Bot] AdminMsg: Escaped LoRA Name: '${escapedLoraName}'`);
+                        const adminChatId = '5472638766';
+                        const loraIdentifier = loraDetailsForAdmin.slug || loraDetailsForAdmin._id;
+                        if (!loraIdentifier) {
+                            logger.error(`[Bot] LoRA identifier missing from import API response. URL: ${submittedUrl}`);
+                            return;
+                        }
+                        const rawMAID = masterAccountId;
+                        const rawUrl = submittedUrl;
+                        const rawLoraName = loraDetailsForAdmin.name || 'N/A';
+                        const adminMessageText =
+                            '*New LoRA Submission for Review* 🤖\n' +
+                            `User MAID: \`${rawMAID}\`\n` +
+                            `Original URL: ${rawUrl}\n` +
+                            `LoRA Name: ${rawLoraName}\n\n` +
+                            'Please approve or reject this LoRA.';
+                        
+                        await bot.sendMessage(adminChatId, adminMessageText, {
+                            parse_mode: null,
+                            reply_markup: {
+                                inline_keyboard: [[
+                                    { text: '✅ Approve Publicly', callback_data: 'admin_lora_approve:' + loraIdentifier },
+                                    { text: '🔒 Approve Privately', callback_data: 'admin_lora_approve_private:' + loraIdentifier },
+                                    { text: '❌ Reject', callback_data: 'admin_lora_reject:' + loraIdentifier }
+                                ]]
+                            }
+                        });
+                         logger.info(`[Bot] Admin notification sent successfully for LoRA: ${loraIdentifier}`);
+                    } else {
+                        const errorMessage = importResponse.data?.error || importResponse.data?.message || "Could not process LoRA import request.";
+                        logger.warn(`[Bot] LoRA import API call for URL ${submittedUrl} returned status ${importResponse.status}. Message: ${errorMessage}`);
+                        await bot.sendMessage(message.chat.id, `Import request failed or had an unexpected status: ${errorMessage}`, { reply_to_message_id: message.message_id });
+                    }
+                    break;
+                }
 
-            const adminMessageText = 
-                '*New LoRA Submission for Review* 🤖\n' +
-                `User MAID: \`${rawMAID}\`\n` + // Using raw value
-                `Original URL: ${rawUrl}\n` + // Using raw value
-                `LoRA Name: ${rawLoraName}\n\n` + // Using raw value
-                'Please approve or reject this LoRA.';
-
-            // ++ LOG THE FINAL PAYLOAD FIRST ++
-            logger.debug(`[Bot] Admin Message Text Payload (FORCED LOG - RAW INPUTS):\n${adminMessageText}`);
-            // -- END FORCED LOG --
-
-            logger.info(`[Bot] Preparing to send admin notification. ChatID: ${adminChatId}, LoRA Identifier: ${loraIdentifier}`);
-
-            await bot.sendMessage(adminChatId, adminMessageText, {
-                parse_mode: null, // EXPLICITLY SET TO NULL
-                reply_markup: { inline_keyboard: [[
-                    { text: '✅ Approve Publicly', callback_data: 'admin_lora_approve:' + loraIdentifier },
-                    { text: '🔒 Approve Privately', callback_data: 'admin_lora_approve_private:' + loraIdentifier },
-                    { text: '❌ Reject', callback_data: 'admin_lora_reject:' + loraIdentifier }
-                ]] }
-            });
-            // ++ LOGGING AFTER SUCCESSFUL SEND TO ADMIN ++
-            logger.info(`[Bot] Admin notification sent successfully for LoRA: ${loraIdentifier} (Name: ${loraDetailsForAdmin.name}) submitted by MAID ${masterAccountIdFromPrompt}`);
-            // -- END LOGGING AFTER SUCCESSFUL SEND --
-
-          } else {
-            const errorMessage = importResponse.data?.error || importResponse.data?.message || "Could not process LoRA import request.";
-            logger.warn(`[Bot] LoRA import API call for URL ${submittedUrl} returned status ${importResponse.status}. Message: ${errorMessage}`);
-            await bot.sendMessage(message.chat.id, `Import request failed or had an unexpected status: ${errorMessage}`, { reply_to_message_id: message.message_id });
-          }
-        } catch (error) {
-          logger.error(`[Bot] Error processing LoRA import URL reply for MAID ${masterAccountIdFromPrompt}, URL ${submittedUrl}:`, error.response ? error.response.data : error.message, error.stack);
-          const detail = error.response?.data?.details || error.response?.data?.error || error.message;
-          // ++ MORE DETAILED ERROR LOGGING ++
-          logger.error(
-            `[Bot] Full error object during LoRA import URL reply processing for MAID ${masterAccountIdFromPrompt}, URL ${submittedUrl}:`,
-            {
-              message: error.message,
-              stack: error.stack,
-              responseStatus: error.response?.status,
-              responseData: error.response?.data,
-              configUrl: error.config?.url,
-              configMethod: error.config?.method,
-              isAxiosError: error.isAxiosError
-            }
-          );
-          // -- END MORE DETAILED ERROR LOGGING --
-          await bot.sendMessage(message.chat.id, `Sorry, an unexpected error occurred while trying to import the LoRA: ${detail}`, { reply_to_message_id: message.message_id });
+            case 'training_name_prompt':
+                {
+                    const { masterAccountId } = context;
+                    logger.info(`[Bot] Reply received for Training Name Prompt via Context. MAID: ${masterAccountId}, Replier: ${telegramUserId}, Value: '${message.text}'`);
+                    await processNewTrainingName(bot, message, masterAccountId, { logger });
+                    break;
+                }
+            
+            default:
+                logger.warn(`[Bot] Unhandled reply context type: ${context.type}`);
         }
-        return; 
-      }
+    } catch (error) {
+        logger.error(`[Bot] Error processing reply with context type ${context.type}:`, error.response ? error.response.data : error.message, error.stack);
+        await bot.sendMessage(message.chat.id, "Sorry, an unexpected error occurred while processing your reply.", { reply_to_message_id: message.message_id });
     }
-    // -- END LoRA Import URL Reply Handler --
-
-    // ++ HANDLE TRAINING NAME REPLY ++
-    if (message.reply_to_message && 
-        message.reply_to_message.text && 
-        message.reply_to_message.text.includes(PROMPT_MARKER_TRAINING_NAME + '::MAID::')) {
-      
-      const repliedToText = message.reply_to_message.text;
-      const maidPrefix = PROMPT_MARKER_TRAINING_NAME + '::MAID::';
-      const maidStartIndex = repliedToText.indexOf(maidPrefix);
-
-      if (maidStartIndex !== -1) {
-        const masterAccountIdFromPrompt = repliedToText.substring(maidStartIndex + maidPrefix.length).split(')')[0]; // Assuming MAID is before a closing parenthesis or end of line
-        const replierTelegramId = message.from.id.toString();
-
-        if (masterAccountIdFromPrompt) {
-          logger.info(`[Bot] Reply received for Training Name Prompt. MAID (from prompt): ${masterAccountIdFromPrompt}, Replier: ${replierTelegramId}, Value: '${message.text}'`);
-          try {
-            // Assuming processNewTrainingName is exported from trainingMenuManager
-            // and imported correctly (which it should be from previous steps)
-            await processNewTrainingName(bot, message, masterAccountIdFromPrompt, { logger }); // CALL DIRECTLY
-          } catch (error) {
-            logger.error(`[Bot] Error processing training name reply for MAID ${masterAccountIdFromPrompt}:`, error.message, error.stack);
-            bot.sendMessage(message.chat.id, "Sorry, an error occurred while processing the training name.", { reply_to_message_id: message.message_id });
-          }
-          return; // Message handled
-        } else {
-          logger.warn('[Bot] Could not parse MasterAccountId from training name prompt reply.', repliedToText);
-        }
-      } else {
-         logger.warn('[Bot] Training name prompt marker present, but MAID prefix not found as expected.', repliedToText);
-      }
-    }
-    // -- END HANDLE TRAINING NAME REPLY --
   });
   // -- END MESSAGE HANDLER --
 

@@ -216,23 +216,23 @@ class UserPreferencesDB extends BaseDB {
         // Document doesn't exist, use upsert to create it with the favorite.
         // $setOnInsert will correctly initialize 'preferences' as an object.
         const 최초결과 = await this.updateOne(
-          { masterAccountId: MAID },
-          {
+        { masterAccountId: MAID },
+        {
             $addToSet: { [`preferences.${LORA_FAVORITES_KEY}`]: loraId }, // Ensures loraId is added
-            $setOnInsert: {
-              masterAccountId: MAID,
+          $setOnInsert: { 
+            masterAccountId: MAID, 
               preferences: { [LORA_FAVORITES_KEY]: [loraId] }, // Initializes structure
-              createdAt: new Date()
-            },
-            $currentDate: { updatedAt: true }
+            createdAt: new Date() 
           },
-          { upsert: true }
-        );
+          $currentDate: { updatedAt: true }
+        },
+        { upsert: true }
+      );
         // Check upsert success
         if (!최초결과.upsertedId && 최초결과.matchedCount === 0) {
             this.logger.error(`[UserPreferencesDB] addLoraFavorite: Upsert operation failed unexpectedly for new MAID ${masterAccountId}.`, { 최초결과 });
-            return false;
-        }
+         return false;
+      }
         return true;
       }
 
