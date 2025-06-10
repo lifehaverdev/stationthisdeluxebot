@@ -13,6 +13,10 @@ const UserEconomyDB = require('./userEconomyDb');
 const UserPreferencesDB = require('./userPreferencesDb');
 const TransactionsDB = require('./transactionsDb');
 const LoRATrainingsDB = require('./trainingDb'); // Import LoRATrainingsDB
+const LoRAModelsDB = require('./loRAModelDb'); // Import LoRAModelsDB
+const LoRAPermissionsDB = require('./loRAPermissionsDb'); // Import LoRAPermissionsDB
+const SpellsDB = require('./spellsDb'); // Import SpellsDB
+const SpellPermissionsDB = require('./spellPermissionsDb'); // Import SpellPermissionsDB
 // ... import other DB service classes as they are created
 
 // Placeholder for any existing/legacy DB service exports if this file already exists
@@ -44,6 +48,10 @@ function initializeDbServices(logger) {
     userPreferences: UserPreferencesDB ? new UserPreferencesDB(logger) : null,
     transactions: TransactionsDB ? new TransactionsDB(logger) : null,
     loraTrainings: LoRATrainingsDB ? new LoRATrainingsDB(logger) : null, // ADDED: Instantiate LoRATrainingsDB
+    loraModels: LoRAModelsDB ? new LoRAModelsDB(logger) : null, // ADDED: Instantiate LoRAModelsDB
+    loraPermissions: LoRAPermissionsDB ? new LoRAPermissionsDB(logger) : null, // ADDED: Instantiate LoRAPermissionsDB
+    spells: SpellsDB ? new SpellsDB(logger) : null, // ADDED: Instantiate SpellsDB
+    spellPermissions: SpellPermissionsDB ? new SpellPermissionsDB(logger) : null, // ADDED: Instantiate SpellPermissionsDB
     // ... add other services here
   };
 

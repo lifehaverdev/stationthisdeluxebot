@@ -26,6 +26,10 @@ const replyContextManager = require('./utils/replyContextManager.js');
 const { handleLoraCommand, handleLoraCallback: handleLoraMenuCallback } = require('./components/loraMenuManager.js');
 // -- END NEW LORA MENU MANAGER IMPORT --
 
+// ++ NEW SPELL MENU MANAGER IMPORT ++
+const { handleSpellCommand, handleSpellCallback, handleNewSpellNameReply, handleStepParameterValueReply } = require('./components/spellMenuManager.js');
+// -- END NEW SPELL MENU MANAGER IMPORT --
+
 // ++ NEW TRAINING MENU MANAGER IMPORT ++
 const {
   handleTrainCommand,
@@ -99,7 +103,8 @@ function createTelegramBot(dependencies, token, options = {}) {
     logger = console,    // Use dependencies.logger or default
     appStartTime,        // Directly use dependencies.appStartTime
     toolRegistry,        // Directly use dependencies.toolRegistry
-    userSettingsService  // Directly use dependencies.userSettingsService
+    userSettingsService, // Directly use dependencies.userSettingsService
+    spellsService        // Directly use dependencies.spellsService
   } = dependencies;
   
   // ++ Ensure loRAPermissionsDb is available from dependencies ++
@@ -239,6 +244,117 @@ function createTelegramBot(dependencies, token, options = {}) {
     }
   });
   
+  // ++ NEW /spells COMMAND HANDLER ++
+  bot.onText(/^\/spells(?:@\w+)?$/i, async (message) => {
+    const telegramUserId = message.from.id.toString();
+    const platform = 'telegram';
+    logger.info(`[Bot] /spells command received from Telegram User ID: ${telegramUserId}`);
+    try {
+      const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+        platform: platform,
+        platformId: telegramUserId,
+        platformContext: { firstName: message.from.first_name, username: message.from.username }
+      });
+      const masterAccountId = findOrCreateResponse.data.masterAccountId;
+      logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId} for /spells`);
+      
+      await handleSpellCommand(bot, message, masterAccountId, 
+        { logger, toolRegistry, replyContextManager }
+      );
+    } catch (error) {
+      logger.error(`[Bot] Error processing /spells command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+      bot.sendMessage(message.chat.id, "Sorry, there was an error opening your spellbook. Please try again.", { reply_to_message_id: message.message_id });
+    }
+  });
+  // -- END NEW /spells COMMAND HANDLER --
+
+  // ++ NEW /cast COMMAND HANDLER ++
+  bot.onText(/^\/cast(?:@\w+)?\s+(\w[-\w]*)(?:\s+(.*))?$/i, async (message, match) => {
+    const telegramUserId = message.from.id.toString();
+    const platform = 'telegram';
+    const slug = match[1];
+    const overridesString = match[2];
+    
+    logger.info(`[Bot] /cast command received from UserID: ${telegramUserId} for slug: "${slug}"`);
+
+    try {
+        const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: platform,
+            platformId: telegramUserId,
+            platformContext: { firstName: message.from.first_name, username: message.from.username }
+        });
+        const masterAccountId = findOrCreateResponse.data.masterAccountId;
+
+        // Parse the overrides string. For now, we'll assume the entire
+        // string is the value for the 'input_prompt' parameter.
+        const parameterOverrides = {};
+        if (overridesString) {
+            // This assumes the first step of the spell wants an 'input_prompt'.
+            // This is a strong convention we'll rely on for now.
+            parameterOverrides.input_prompt = overridesString.trim();
+            logger.info(`[Bot] Parsed overrides string "${overridesString}" into input_prompt.`);
+        }
+
+        const context = {
+            masterAccountId,
+            platform,
+            telegramUserId,
+            chatId: message.chat.id,
+            messageId: message.message_id,
+            parameterOverrides,
+        };
+
+        // Acknowledge the command immediately
+        bot.sendMessage(message.chat.id, `Casting spell "${slug}"...`, { reply_to_message_id: message.message_id });
+
+        // This is fire-and-forget. The result will be sent by the notifier.
+        // We handle the promise rejection to report errors back to the user.
+        spellsService.castSpell(slug, context)
+          .catch(error => {
+            logger.error(`[Bot] Asynchronous error during /cast for slug "${slug}":`, error.message, error.stack);
+            const friendlyErrors = ['not found', 'permission', 'Multiple spells'];
+            const isFriendly = friendlyErrors.some(term => error.message.includes(term));
+            
+            const errorMessage = isFriendly
+                ? error.message
+                : "Sorry, an unexpected error occurred while casting that spell.";
+            
+            // Escape the message for MarkdownV2, as it might contain characters like backticks from the error
+            bot.sendMessage(context.chatId, escapeMarkdownV2(errorMessage), { 
+                reply_to_message_id: context.messageId,
+                parse_mode: 'MarkdownV2'
+            });
+        });
+
+    } catch (error) {
+        // This catch block handles synchronous errors from find-or-create, etc.
+        let errorDetails = 'No details available';
+        try {
+            let loggableError = { message: error.message, stack: error.stack, name: error.name };
+            if (error.response && error.response.data) {
+                loggableError.responseData = error.response.data;
+            }
+            if (error.config) {
+                loggableError.config = {
+                    url: error.config.url,
+                    method: error.config.method,
+                }
+            }
+             if (error.code) {
+                loggableError.code = error.code;
+            }
+            errorDetails = JSON.stringify(loggableError, null, 2);
+        } catch (stringifyError) {
+            errorDetails = `Could not stringify error. Message: ${error.message}`;
+        }
+        logger.error(`[Bot] Synchronous error processing /cast command for slug "${slug}": ${errorDetails}`);
+        
+        const errorMessage = "Sorry, there was an error preparing to cast the spell.";
+        bot.sendMessage(message.chat.id, errorMessage, { reply_to_message_id: message.message_id });
+    }
+  });
+  // -- END NEW /cast COMMAND HANDLER --
+
   // Handle callback queries for inline buttons
   bot.on('callback_query', async (callbackQuery) => {
     const { data, message } = callbackQuery;
@@ -286,6 +402,29 @@ function createTelegramBot(dependencies, token, options = {}) {
         } catch (error) {
           logger.error(`[Bot CB] Error in 'set_' callback logic (fetching MAID) for original user ${originalCommandUser.id}:`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your account for settings.", show_alert: true});
+        }
+      // ++ NEW 'spell_' (SPELL MENU) CALLBACK HANDLER ++
+      } else if (data.startsWith('spell_')) {
+        if (message.reply_to_message && originalCommandUser && originalCommandUser.id !== callbackUserId) {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: "This spellbook isn't for you.", show_alert: true });
+          return;
+        }
+        const platform = 'telegram';
+        const userForMaid = originalCommandUser || callbackQuery.from;
+        logger.info(`[Bot CB] 'spell_' callback '${data}' from UserID ${callbackUserId} (MAID for user ${userForMaid.id})`);
+        try {
+          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: platform,
+            platformId: userForMaid.id.toString(),
+            platformContext: { firstName: userForMaid.first_name, username: userForMaid.username }
+          });
+          const masterAccountId = findOrCreateResponse.data.masterAccountId;
+          logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for user ${userForMaid.id} for spell menu.`);
+          
+          await handleSpellCallback(bot, callbackQuery, masterAccountId, { logger, toolRegistry, replyContextManager });
+        } catch (error) {
+          logger.error(`[Bot CB] Error in 'spell_' callback logic (fetching MAID) for user ${userForMaid.id}:`, error.response ? error.response.data : error.message, error.stack);
+          await bot.answerCallbackQuery(callbackQuery.id, {text: "Error accessing your spellbook.", show_alert: true});
         }
       // ++ NEW 'lora:' (LORA MENU) CALLBACK HANDLER ++
       } else if (data.startsWith('lora:') || data.startsWith('lora_store:')) {
@@ -1653,7 +1792,7 @@ function createTelegramBot(dependencies, token, options = {}) {
             }
           });
           const masterAccountId = findOrCreateResponse.data.masterAccountId;
-          logger.info(`[Bot CB] MasterAccountId ${masterAccountId} determined for user ${userForMaid.id} for training menu callback.`);
+          logger.info(`[Bot] MasterAccountId ${masterAccountId} determined for user ${userForMaid.id} for training menu callback.`);
           
           await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, { logger, replyContextManager });
         } catch (error) {
@@ -1912,6 +2051,16 @@ function createTelegramBot(dependencies, token, options = {}) {
                     break;
                 }
             
+            case 'spell_create_name':
+                logger.info(`[Bot] Processing spell_create_name reply from UserID: ${telegramUserId}`);
+                await handleNewSpellNameReply(bot, message, context, { logger, toolRegistry });
+                break;
+            
+            case 'spell_param_value':
+                logger.info(`[Bot] Processing spell_param_value reply from UserID: ${telegramUserId}`);
+                await handleStepParameterValueReply(bot, message, context, { logger, toolRegistry });
+                break;
+
             default:
                 logger.warn(`[Bot] Unhandled reply context type: ${context.type}`);
         }

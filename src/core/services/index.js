@@ -12,6 +12,8 @@ const PointsService = require('./points');
 const WorkflowsService = require('./comfydeploy/workflows');
 const MediaService = require('./media');
 const SessionService = require('./session');
+const SpellsService = require('./SpellsService');
+const WorkflowExecutionService = require('./workflowExecutionService');
 const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 
@@ -81,6 +83,26 @@ async function initializeServices(options = {}) {
     });
     logger.info('UserSettingsService initialized globally in core services.');
     
+    // Initialize WorkflowExecutionService
+    const workflowExecutionService = new WorkflowExecutionService({
+      logger,
+      toolRegistry,
+      comfyUIService: comfyUIService,
+      internalApiClient: apiServices.internal?.client,
+      db: initializedDbServices.data,
+      workflowsService: workflowsService,
+    });
+    logger.info('WorkflowExecutionService initialized.');
+
+    // Initialize SpellsService
+    const spellsService = new SpellsService({
+      logger,
+      db: initializedDbServices.data,
+      workflowExecutionService,
+      spellPermissionsDb: initializedDbServices.data.spellPermissions,
+    });
+    logger.info('SpellsService initialized.');
+
     logger.info('Core services created successfully');
     
     const returnedServices = {
@@ -93,6 +115,8 @@ async function initializeServices(options = {}) {
       internal: apiServices.internal, // This contains router, status
       internalApiClient: apiServices.internal?.client, // Expose the client directly
       userSettingsService, // Added userSettingsService
+      spellsService, // Added spellsService
+      workflowExecutionService, // Added workflowExecutionService
       logger,
       appStartTime,
       toolRegistry // geniusoverhaul: Added toolRegistry to returned services

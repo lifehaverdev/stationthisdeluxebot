@@ -1,4 +1,5 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
+const { v4: uuidv4 } = require('uuid');
 
 const COLLECTION_NAME = 'userPreferences';
 const LORA_FAVORITES_KEY = 'loraFavoriteIds'; // Define a constant for the key

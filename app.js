@@ -122,6 +122,7 @@ async function startApp() {
       internal: services.internal,
       internalApiClient: services.internalApiClient,
       userSettingsService: services.userSettingsService,
+      spellsService: services.spellsService,
       // geniusoverhaul: Add ToolRegistry to platformServices
       toolRegistry: ToolRegistry.getInstance(),
       // Keep the stubbed collections structure separate if needed by other platforms,
@@ -186,6 +187,7 @@ async function startApp() {
             internalApiClient: services.internalApiClient,
             logger: services.logger,
             platformNotifiers: platformNotifiersMap,
+            workflowExecutionService: services.workflowExecutionService,
           },
           { /* Optional: pollingIntervalMs, etc. */ }
         );

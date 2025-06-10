@@ -34,7 +34,8 @@ function initializeTelegramPlatform(services, options = {}) {
     logger = console,
     appStartTime,
     toolRegistry,
-    userSettingsService
+    userSettingsService,
+    spellsService
   } = services;
   
   const token = process.env.TELEGRAM_TOKEN || options.token;
@@ -54,7 +55,8 @@ function initializeTelegramPlatform(services, options = {}) {
     logger,
     appStartTime,
     toolRegistry,
-    userSettingsService
+    userSettingsService,
+    spellsService
   };
   
   // initialLoggerForDepCheck.info(`[Telegram Index] typeof botDeps.workflowsService?.getToolById: ${typeof botDeps.workflowsService?.getToolById}`);

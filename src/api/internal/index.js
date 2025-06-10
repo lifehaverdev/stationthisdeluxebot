@@ -21,6 +21,7 @@ const createUserPreferencesApiRouter = require('./userPreferencesApi');
 const createUserStatusReportApiService = require('./userStatusReportApi');
 const loraImportRouter = require('./loraImportApi');
 const createTrainingsApi = require('./trainingsApi');
+const createSpellsApi = require('./spellsApi'); // Import the new spells API
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -242,6 +243,19 @@ function initializeInternalServices(dependencies = {}) {
     }
   } catch (err) {
     logger.error('[InternalAPI] Error initializing or mounting Tool Definition API:', err);
+  }
+
+  // Spells API Service (New)
+  try {
+    const spellsApiRouter = createSpellsApi(apiDependencies);
+    if (spellsApiRouter) {
+      v1DataRouter.use('/spells', spellsApiRouter);
+      logger.info('[InternalAPI] Spells API service mounted to /v1/data/spells');
+    } else {
+      logger.error('[InternalAPI] Failed to create Spells API router.');
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error initializing or mounting Spells API:', err);
   }
 
   // User Economy API Service:

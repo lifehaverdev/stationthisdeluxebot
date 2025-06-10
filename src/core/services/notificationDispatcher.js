@@ -9,10 +9,14 @@ class NotificationDispatcher {
     if (!services.logger) {
         throw new Error('[NotificationDispatcher] Critical: services.logger is required.');
     }
+    if (!services.workflowExecutionService) {
+      this.logger.warn('[NotificationDispatcher] workflowExecutionService is not provided. Spell execution will not work.');
+    }
     
     this.internalApiClient = services.internalApiClient;
     this.logger = services.logger;
     this.platformNotifiers = services.platformNotifiers || {};
+    this.workflowExecutionService = services.workflowExecutionService;
     
     this.pollingIntervalMs = options.pollingIntervalMs || DEFAULT_POLLING_INTERVAL_MS;
     this.isPolling = false;
@@ -57,13 +61,22 @@ class NotificationDispatcher {
     this.logger.debug('[NotificationDispatcher] Checking for pending notifications via internalApiClient...');
     try {
       const params = new URLSearchParams();
+      // Fetch records for normal notification dispatch
       params.append('deliveryStatus', 'pending');
       params.append('status_in', 'completed'); 
       params.append('status_in', 'failed'); 
       params.append('notificationPlatform_ne', 'none');
 
+      // Also fetch records for spell step continuation
+      const spellParams = new URLSearchParams();
+      spellParams.append('deliveryStrategy', 'spell_step');
+      spellParams.append('status', 'completed');
+      spellParams.append('deliveryStatus', 'pending'); // Process only once
+
       const queryString = params.toString();
-      this.logger.debug(`[NotificationDispatcher] Querying internal API: /v1/data/generations?${queryString}`);
+      const spellQueryString = spellParams.toString();
+      this.logger.debug(`[NotificationDispatcher] Querying for notifications: /v1/data/generations?${queryString}`);
+      this.logger.debug(`[NotificationDispatcher] Querying for spell steps: /v1/data/generations?${spellQueryString}`);
       
       const requestOptions = {
         headers: {
@@ -74,41 +87,77 @@ class NotificationDispatcher {
         this.logger.warn(`[NotificationDispatcher] INTERNAL_API_KEY_WEB (used as system key) is not set. Internal API calls may fail authentication.`);
       }
 
-      const response = await this.internalApiClient.get(`/v1/data/generations?${queryString}`, requestOptions);
+      const [notificationResponse, spellStepResponse] = await Promise.all([
+        this.internalApiClient.get(`/v1/data/generations?${queryString}`, requestOptions),
+        this.internalApiClient.get(`/v1/data/generations?${spellQueryString}`, requestOptions)
+      ]);
 
-      let pendingRecords = [];
-      if (response && response.data && Array.isArray(response.data.generations)) {
-        pendingRecords = response.data.generations.filter(record => 
-          (record.status === 'completed' || record.status === 'failed') && 
-          record.status !== 'payment_failed' &&
-          record.notificationPlatform !== 'none'
-        );
-      } else if (response && response.data && Array.isArray(response.data)) {
-        pendingRecords = response.data.filter(record => 
-          record.deliveryStatus === 'pending' &&
-          (record.status === 'completed' || record.status === 'failed') && 
-          record.status !== 'payment_failed' &&
-          record.notificationPlatform !== 'none'
-        );
-      } else {
-        this.logger.warn('[NotificationDispatcher] Received unexpected response structure from GET /v1/data/generations. Expected an array of generations.', response.data);
+      const pendingNotifications = notificationResponse.data?.generations || notificationResponse.data || [];
+      const pendingSpellSteps = spellStepResponse.data?.generations || spellStepResponse.data || [];
+
+      if (pendingSpellSteps.length > 0) {
+          this.logger.info(`[NotificationDispatcher] Found ${pendingSpellSteps.length} completed spell steps to process.`);
+          for (const record of pendingSpellSteps) {
+              await this._handleSpellStep(record);
+          }
       }
 
-      if (pendingRecords.length > 0) {
-        this.logger.info(`[NotificationDispatcher] Found ${pendingRecords.length} pending notifications to process after filtering.`);
-        for (const record of pendingRecords) {
+      if (pendingNotifications.length > 0) {
+        this.logger.info(`[NotificationDispatcher] Found ${pendingNotifications.length} pending notifications to process.`);
+        for (const record of pendingNotifications) {
           const recordId = record._id || record.id;
           if (!recordId) {
-            this.logger.warn('[NotificationDispatcher] Skipping record due to missing ID:', record);
+            this.logger.warn('[NotificationDispatcher] Skipping notification record due to missing ID:', record);
             continue;
           }
           await this._dispatchNotification({ ...record, _id: recordId });
         }
       } else {
-        this.logger.debug('[NotificationDispatcher] No pending notifications found in this cycle after filtering.');
+        if(pendingSpellSteps.length === 0) this.logger.debug('[NotificationDispatcher] No pending notifications or spell steps found in this cycle.');
       }
     } catch (error) {
-      this.logger.error('[NotificationDispatcher] Error fetching pending notifications via internalApiClient:', error.response ? error.response.data : error.message, error.stack);
+      this.logger.error(`[NotificationDispatcher] Error fetching pending records via internalApiClient:`, error.response ? error.response.data : error.message, error.stack);
+    }
+  }
+
+  async _handleSpellStep(record) {
+    const recordId = record._id;
+    this.logger.info(`[NotificationDispatcher] Handling completed spell step for generationId: ${recordId}`);
+
+    // Defensive check for required metadata to prevent crashes on malformed records
+    if (!record.metadata || !record.metadata.spell || typeof record.metadata.stepIndex === 'undefined') {
+      this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: record is missing required spell metadata.`);
+      const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+      await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+        deliveryStatus: 'failed',
+        deliveryError: 'Malformed spell step record, missing required metadata.'
+      }, updateOptions);
+      return;
+    }
+
+    if (!this.workflowExecutionService) {
+        this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: workflowExecutionService is not available.`);
+        return;
+    }
+    try {
+        await this.workflowExecutionService.continueExecution(record);
+        
+        // Mark this step's generation record as complete so it isn't picked up again.
+        const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+          deliveryStatus: 'complete', // 'complete' signifies it's been handled by the spell engine
+          deliveryTimestamp: new Date(),
+        }, updateOptions);
+
+        this.logger.info(`[NotificationDispatcher] Successfully processed spell step for GenID ${recordId}.`);
+    } catch (error) {
+        this.logger.error(`[NotificationDispatcher] Error processing spell step for GenID ${recordId}:`, error.message, error.stack);
+        // Optionally, update the record to reflect the failure
+        const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+          deliveryStatus: 'failed',
+          deliveryError: `Spell continuation failed: ${error.message}`
+        }, updateOptions);
     }
   }
 

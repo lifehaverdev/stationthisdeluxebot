@@ -40,10 +40,18 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] GET / - Received request with query:', req.query);
     try {
       const filter = {};
-      const { deliveryStatus, status_in, notificationPlatform_ne, "metadata.run_id": metadataRunId } = req.query;
+      const { deliveryStatus, status_in, status, deliveryStrategy, notificationPlatform_ne, "metadata.run_id": metadataRunId } = req.query;
 
       if (deliveryStatus) {
         filter.deliveryStatus = deliveryStatus;
+      }
+
+      if (status) {
+        filter.status = status;
+      }
+      
+      if (deliveryStrategy) {
+        filter.deliveryStrategy = deliveryStrategy;
       }
 
       if (status_in) {
@@ -193,7 +201,7 @@ module.exports = function generationOutputsApi(dependencies) {
     const { generationId } = req.locals;
     const updatePayload = req.body;
 
-    logger.info(`[generationOutputsApi] PUT /${generationId} - Received request`, { body: updatePayload });
+    logger.info(`[generationOutputsApi] PUT /${generationId} - Received request, PAYLOAD:`, { body: updatePayload });
 
     if (!updatePayload || typeof updatePayload !== 'object' || Object.keys(updatePayload).length === 0) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Request body must be a non-empty object containing fields to update.' } });

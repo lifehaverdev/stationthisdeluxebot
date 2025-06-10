@@ -24,6 +24,25 @@ function sanitizeCommandName(name) {
 }
 
 /**
+ * Converts a string into a URL-friendly slug.
+ * - Converts to lowercase
+ * - Removes special characters
+ * - Replaces spaces and multiple hyphens with a single hyphen
+ * @param {string} text The string to convert.
+ * @returns {string} The slugified string.
+ */
+function slugify(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .toLowerCase()
+        .replace(/\s+/g, '-')           // Replace spaces with -
+        .replace(/[^\w\-]+/g, '')       // Remove all non-word chars except -
+        .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+        .replace(/^-+/, '')             // Trim - from start of text
+        .replace(/-+$/, '');            // Trim - from end of text
+}
+
+/**
  * Escapes special characters in a string for Telegram MarkdownV2 format.
  * Telegram specifies the following characters must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
  * @param {string | number | undefined | null} text The text to escape.
@@ -36,5 +55,6 @@ function escapeMarkdownV2(text) {
 
 module.exports = {
     sanitizeCommandName,
+    slugify,
     escapeMarkdownV2
 };
