@@ -66,6 +66,7 @@ class NotificationDispatcher {
       params.append('status_in', 'completed'); 
       params.append('status_in', 'failed'); 
       params.append('notificationPlatform_ne', 'none');
+      params.append('deliveryStrategy_ne', 'spell_step'); // Exclude spell steps from regular dispatch
 
       // Also fetch records for spell step continuation
       const spellParams = new URLSearchParams();

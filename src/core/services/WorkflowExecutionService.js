@@ -83,6 +83,11 @@ class WorkflowExecutionService {
                 stepIndex,
                 pipelineContext,
                 originalContext,
+                notificationContext: {
+                    type: 'spell_step_completion',
+                    spellId: spell._id,
+                    stepIndex,
+                },
             },
             deliveryStrategy: 'spell_step', // Special strategy for the dispatcher
             deliveryStatus: 'pending',
