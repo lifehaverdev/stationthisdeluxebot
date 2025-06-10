@@ -88,6 +88,8 @@ class NotificationDispatcher {
             continue;
           }
 
+          this.logger.info(`[NotificationDispatcher] DIAGNOSTIC: Processing record: ${JSON.stringify(record)}`);
+
           if (record.deliveryStrategy === 'spell_step') {
             await this._handleSpellStep(record);
           } else {
