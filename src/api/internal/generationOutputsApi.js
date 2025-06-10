@@ -40,51 +40,32 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] GET / - Received request with query:', req.query);
     try {
       const filter = {};
-      const { deliveryStatus, status_in, status, deliveryStrategy, notificationPlatform_ne, "metadata.run_id": metadataRunId } = req.query;
-
-      if (deliveryStatus) {
-        filter.deliveryStatus = deliveryStatus;
-      }
-
-      if (status) {
-        filter.status = status;
-      }
       
-      if (deliveryStrategy) {
-        filter.deliveryStrategy = deliveryStrategy;
-      }
+      // Generic query parameter processing
+      for (const key in req.query) {
+        const value = req.query[key];
 
-      if (status_in) {
-        // If status_in is a string, make it an array. If it's already an array, use it directly.
-        filter.status = { $in: Array.isArray(status_in) ? status_in : [status_in] };
+        if (key.endsWith('_in')) {
+          const field = key.slice(0, -3);
+          filter[field] = { $in: Array.isArray(value) ? value : [value] };
+        } else if (key.endsWith('_ne')) {
+          const field = key.slice(0, -3);
+          filter[field] = { $ne: value };
+        } else {
+          // Allow dot notation for nested metadata fields e.g., "metadata.run_id"
+          if (key.startsWith('metadata.')) {
+              filter[key] = value;
+          } else {
+              filter[key] = value;
+          }
+        }
       }
-
-      if (notificationPlatform_ne) {
-        filter.notificationPlatform = { $ne: notificationPlatform_ne };
-      }
-
-      if (metadataRunId) {
-        filter['metadata.run_id'] = metadataRunId;
-      }
-
-      // Add more query parameters as needed, e.g., for pagination
-      // const { page = 1, limit = 20 } = req.query; // Example pagination
-      // const options = {
-      //   skip: (parseInt(page, 10) - 1) * parseInt(limit, 10),
-      //   limit: parseInt(limit, 10),
-      //   sort: { createdAt: -1 } // Example sort
-      // };
 
       logger.debug('[generationOutputsApi] GET / - Constructed filter:', filter);
 
-      // Assuming db.generationOutputs has a method like findGenerations that accepts a filter object
-      // and potentially options for pagination/sorting.
-      // For now, we'll just pass the filter.
-      const generations = await db.generationOutputs.findGenerations(filter /*, options */);
+      const generations = await db.generationOutputs.findGenerations(filter);
 
       if (!generations) {
-        // This case might mean an error in the DB method or it could simply return an empty array for no matches.
-        // Assuming findGenerations returns an array, even if empty.
         logger.info('[generationOutputsApi] GET / - No generations found matching criteria or db method returned null/undefined.');
         return res.status(200).json({ generations: [] }); // Return empty array for consistency
       }

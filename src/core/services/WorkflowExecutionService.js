@@ -102,10 +102,6 @@ class WorkflowExecutionService {
             generationId = generationResponse.data._id;
             this.logger.info(`[WorkflowExecution] Logged generation ${generationId} successfully.`);
 
-            // DIAGNOSTIC: Immediately fetch the record back to check its status
-            const checkResponse = await this.internalApiClient.get(`/v1/data/generations/${generationId}`);
-            this.logger.info(`[WorkflowExecution] DIAGNOSTIC CHECK: Fetched generation ${generationId} immediately after creation. Status is: "${checkResponse.data.status}"`);
-
         } catch(e) {
             this.logger.error(`[WorkflowExecution] FAILED to post generation record for spell "${spell.name}". Error: ${e.message}`, { 
                 responseData: e.response?.data,

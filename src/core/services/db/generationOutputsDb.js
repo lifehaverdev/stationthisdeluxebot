@@ -136,7 +136,7 @@ class GenerationOutputsDB extends BaseDB {
    * @returns {Promise<Array<Object>>} A list of documents matching the filter.
    */
   async findGenerations(filter, options = {}) {
-    this.logger.info(`[GenerationOutputsDB] findGenerations called with filter: ${JSON.stringify(filter)}`, { options });
+    // this.logger.info(`[GenerationOutputsDB] findGenerations called with filter: ${JSON.stringify(filter)}`, { options });
     return this.findMany(filter, options);
   }
 
