@@ -98,6 +98,7 @@ class WorkflowExecutionService {
                 pipelineContext,
                 originalContext,
                 costRate: costRateInfo,
+                toolId: tool.toolId,
                 notificationContext: {
                     type: 'spell_step_completion',
                     spellId: spell._id,
@@ -209,7 +210,7 @@ class WorkflowExecutionService {
                 masterAccountId: originalContext.masterAccountId,
                 sessionId: completedGeneration.sessionId,
                 initiatingEventId: completedGeneration.initiatingEventId,
-                serviceName: 'spells',
+                serviceName: completedGeneration.serviceName,
                 toolId: `spell-${spell.slug}`,
                 requestPayload: originalContext.parameterOverrides,
                 responsePayload: completedGeneration.responsePayload,
