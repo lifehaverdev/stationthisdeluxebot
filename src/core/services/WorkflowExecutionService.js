@@ -70,6 +70,20 @@ class WorkflowExecutionService {
         const eventResponse = await this.internalApiClient.post('/v1/data/events', eventPayload);
         const eventId = eventResponse.data._id;
 
+        // Get cost rate for the tool
+        let costRateInfo = null;
+        try {
+            const deploymentId = tool.metadata?.deploymentId;
+            if (deploymentId) {
+                costRateInfo = await this.comfyuiService.getCostRateForDeployment(deploymentId);
+                this.logger.info(`[WorkflowExecution] Fetched cost rate for deployment ${deploymentId}: ${JSON.stringify(costRateInfo)}`);
+            } else {
+                this.logger.warn(`[WorkflowExecution] Tool ${tool.toolId} is missing a deploymentId in its metadata. Cannot fetch cost.`);
+            }
+        } catch (costError) {
+            this.logger.error(`[WorkflowExecution] Error fetching cost rate for tool ${tool.toolId}: ${costError.message}`);
+        }
+
         const generationParams = {
             masterAccountId: originalContext.masterAccountId,
             sessionId: sessionId,
@@ -83,6 +97,7 @@ class WorkflowExecutionService {
                 stepIndex,
                 pipelineContext,
                 originalContext,
+                costRate: costRateInfo,
                 notificationContext: {
                     type: 'spell_step_completion',
                     spellId: spell._id,
