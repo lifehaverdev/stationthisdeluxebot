@@ -13,7 +13,7 @@ const WorkflowsService = require('./comfydeploy/workflows');
 const MediaService = require('./media');
 const SessionService = require('./session');
 const SpellsService = require('./SpellsService');
-const WorkflowExecutionService = require('./workflowExecutionService');
+const WorkflowExecutionService = require('./workflowExecutionService.js');
 const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 
@@ -138,6 +138,8 @@ module.exports = {
   WorkflowsService,
   MediaService,
   SessionService,
+  SpellsService,
+  WorkflowExecutionService,
   initializeServices,
   ToolRegistry // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
 }; 
