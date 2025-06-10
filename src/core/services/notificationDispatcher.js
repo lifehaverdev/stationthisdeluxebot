@@ -95,11 +95,13 @@ class NotificationDispatcher {
 
       const pendingNotifications = notificationResponse.data?.generations || notificationResponse.data || [];
       const pendingSpellSteps = spellStepResponse.data?.generations || spellStepResponse.data || [];
+      const processedSpellStepIds = new Set();
 
       if (pendingSpellSteps.length > 0) {
           this.logger.info(`[NotificationDispatcher] Found ${pendingSpellSteps.length} completed spell steps to process.`);
           for (const record of pendingSpellSteps) {
               await this._handleSpellStep(record);
+              processedSpellStepIds.add(record._id.toString());
           }
       }
 
@@ -109,6 +111,10 @@ class NotificationDispatcher {
           const recordId = record._id || record.id;
           if (!recordId) {
             this.logger.warn('[NotificationDispatcher] Skipping notification record due to missing ID:', record);
+            continue;
+          }
+          if (processedSpellStepIds.has(recordId.toString())) {
+            this.logger.info(`[NotificationDispatcher] Skipping record ${recordId} because it was already handled as a spell step.`);
             continue;
           }
           await this._dispatchNotification({ ...record, _id: recordId });
