@@ -13,7 +13,7 @@ const WorkflowsService = require('./comfydeploy/workflows');
 const MediaService = require('./media');
 const SessionService = require('./session');
 const SpellsService = require('./SpellsService');
-const WorkflowExecutionService = require('./workflowExecutionService');
+const WorkflowExecutionService = require('./WorkflowExecutionService.js');
 const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 

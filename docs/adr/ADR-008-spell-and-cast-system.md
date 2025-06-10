@@ -21,7 +21,8 @@ We will implement a "Spell & Cast" system, introducing two new user-facing comma
 
 ### 2. New Core Components
 
--   **`WorkflowExecutionService` (`src/core/services/workflowExecutionService.js`)**: This new service will be the engine for the `/cast` command. It will be responsible for the stateful, sequential execution of tools within a Spell. It will manage the flow of data between steps, handle errors, and ensure only the final output is sent to the user.
+-   **`SpellsService` (`src/core/services/SpellsService.js`)**: Manages the CRUD operations for Spells (creating, reading, updating, deleting). It will interact with the database to store and retrieve spell definitions.
+-   **`WorkflowExecutionService` (`src/core/services/WorkflowExecutionService.js`)**: This new service will be the engine for the `/cast` command. It will be responsible for the stateful, sequential execution of tools within a Spell. It will manage the context (inputs/outputs) between steps and orchestrate the entire workflow.
 -   **`SpellMenuManager` (`src/platforms/telegram/components/spellMenuManager.js`)**: Modeled after the existing `SettingsMenuManager`, this component will manage the entire UI flow for the `/spell` command, including both the private Spellbook and the public Spell Store.
 -   **`SpellsDB` (`src/core/services/db/spellsDb.js`)**: A new database service, analogous to `LoRAModelsDB`, to manage the persistence of all spell documents in a dedicated `spells` collection.
 -   **`SpellPermissionsDB` (`src/core/services/db/spellPermissionsDb.js`)**: A new database service, analogous to `LoRAPermissionsDB`, to manage user access rights for licensed or purchased spells.
