@@ -61,7 +61,7 @@ module.exports = function generationOutputsApi(dependencies) {
         }
       }
 
-      logger.info('[generationOutputsApi] GET / - DIAGNOSTIC Constructed filter:', filter);
+      logger.debug('[generationOutputsApi] GET / - Constructed filter:', filter);
 
       const generations = await db.generationOutputs.findGenerations(filter);
 
@@ -85,7 +85,7 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
-    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus } = req.body;
+    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy } = req.body;
     const requiredFields = { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
       if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
@@ -132,7 +132,8 @@ module.exports = function generationOutputsApi(dependencies) {
         requestPayload: requestPayload,
         status: 'pending', // Default initial job status
         notificationPlatform: notificationPlatform.trim(),
-        deliveryStatus: deliveryStatus,        
+        deliveryStatus: deliveryStatus,
+        ...(deliveryStrategy && { deliveryStrategy }),
         ...(metadata && { metadata }), // metadata now contains notificationContext
         ...(parsedTimestamp && { requestTimestamp: parsedTimestamp }),
       };
