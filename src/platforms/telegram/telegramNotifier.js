@@ -28,18 +28,18 @@ class TelegramNotifier {
    * @returns {Promise<void>} 
    */
   async sendNotification(notificationContext, messageContent, generationRecord) {
-    const { chatId, messageId } = notificationContext;
+    const { chatId, replyToMessageId } = notificationContext;
 
     if (!chatId) {
       this.logger.error('[TelegramNotifier] Attempted to send notification but chatId is missing in notificationContext.', notificationContext);
       throw new Error('Missing chatId in notificationContext for Telegram notification.');
     }
 
-    this.logger.info(`[TelegramNotifier] Sending notification to chatId: ${chatId}, messageId: ${messageId || 'N/A'}. Initial content: ${messageContent.substring(0, 50)}...`);
+    this.logger.info(`[TelegramNotifier] Sending notification to chatId: ${chatId}, replyToMessageId: ${replyToMessageId || 'N/A'}.`);
 
     const options = { parse_mode: 'Markdown' };
-    if (messageId) {
-      options.reply_to_message_id = messageId;
+    if (replyToMessageId) {
+      options.reply_to_message_id = replyToMessageId;
     }
 
     if (generationRecord && generationRecord.status === 'completed') {
@@ -64,6 +64,9 @@ class TelegramNotifier {
       let imageUrl = null;
       let animationUrl = null;
       let specificTextOutput = null;
+
+      // DIAGNOSTIC LOG
+      this.logger.info(`[TelegramNotifier] DIAGNOSTIC: Checking payload for GenID ${generationRecord._id}. Payload: ${JSON.stringify(generationRecord.responsePayload)}`);
 
       if (generationRecord.responsePayload && generationRecord.responsePayload.length > 0) {
         const firstOutput = generationRecord.responsePayload[0];
