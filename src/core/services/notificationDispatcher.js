@@ -54,73 +54,48 @@ class NotificationDispatcher {
   }
 
   async _processPendingNotifications() {
-    if (!this.isPolling && this.pollTimer) { 
-        this.logger.info('[NotificationDispatcher] Polling is disabled, skipping _processPendingNotifications cycle.');
-        return;
+    if (!this.isPolling && this.pollTimer) {
+      this.logger.info('[NotificationDispatcher] Polling is disabled, skipping _processPendingNotifications cycle.');
+      return;
     }
     this.logger.debug('[NotificationDispatcher] Checking for pending notifications via internalApiClient...');
     try {
       const params = new URLSearchParams();
-      // Fetch records for normal notification dispatch
       params.append('deliveryStatus', 'pending');
-      params.append('status_in', 'completed'); 
-      params.append('status_in', 'failed'); 
+      params.append('status_in', 'completed');
+      params.append('status_in', 'failed');
       params.append('notificationPlatform_ne', 'none');
-      params.append('deliveryStrategy_ne', 'spell_step'); // Exclude spell steps from regular dispatch
-
-      // Also fetch records for spell step continuation
-      const spellParams = new URLSearchParams();
-      spellParams.append('deliveryStrategy', 'spell_step');
-      spellParams.append('status', 'completed');
-      spellParams.append('deliveryStatus', 'pending'); // Process only once
 
       const queryString = params.toString();
-      const spellQueryString = spellParams.toString();
-      this.logger.debug(`[NotificationDispatcher] Querying for notifications: /v1/data/generations?${queryString}`);
-      this.logger.debug(`[NotificationDispatcher] Querying for spell steps: /v1/data/generations?${spellQueryString}`);
-      
+      this.logger.debug(`[NotificationDispatcher] Querying for all processable jobs: /v1/data/generations?${queryString}`);
+
       const requestOptions = {
-        headers: {
-          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
-        }
+        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }
       };
       if (!process.env.INTERNAL_API_KEY_WEB) {
-        this.logger.warn(`[NotificationDispatcher] INTERNAL_API_KEY_WEB (used as system key) is not set. Internal API calls may fail authentication.`);
+        this.logger.warn(`[NotificationDispatcher] INTERNAL_API_KEY_WEB is not set. Internal API calls may fail.`);
       }
 
-      const [notificationResponse, spellStepResponse] = await Promise.all([
-        this.internalApiClient.get(`/v1/data/generations?${queryString}`, requestOptions),
-        this.internalApiClient.get(`/v1/data/generations?${spellQueryString}`, requestOptions)
-      ]);
+      const response = await this.internalApiClient.get(`/v1/data/generations?${queryString}`, requestOptions);
+      const pendingJobs = response.data?.generations || response.data || [];
 
-      const pendingNotifications = notificationResponse.data?.generations || notificationResponse.data || [];
-      const pendingSpellSteps = spellStepResponse.data?.generations || spellStepResponse.data || [];
-      const processedSpellStepIds = new Set();
-
-      if (pendingSpellSteps.length > 0) {
-          this.logger.info(`[NotificationDispatcher] Found ${pendingSpellSteps.length} completed spell steps to process.`);
-          for (const record of pendingSpellSteps) {
-              await this._handleSpellStep(record);
-              processedSpellStepIds.add(record._id.toString());
-          }
-      }
-
-      if (pendingNotifications.length > 0) {
-        this.logger.info(`[NotificationDispatcher] Found ${pendingNotifications.length} pending notifications to process.`);
-        for (const record of pendingNotifications) {
+      if (pendingJobs.length > 0) {
+        this.logger.info(`[NotificationDispatcher] Found ${pendingJobs.length} total pending job(s) to process.`);
+        for (const record of pendingJobs) {
           const recordId = record._id || record.id;
           if (!recordId) {
-            this.logger.warn('[NotificationDispatcher] Skipping notification record due to missing ID:', record);
+            this.logger.warn('[NotificationDispatcher] Skipping record due to missing ID:', record);
             continue;
           }
-          if (processedSpellStepIds.has(recordId.toString())) {
-            this.logger.info(`[NotificationDispatcher] Skipping record ${recordId} because it was already handled as a spell step.`);
-            continue;
+
+          if (record.deliveryStrategy === 'spell_step') {
+            await this._handleSpellStep(record);
+          } else {
+            await this._dispatchNotification({ ...record, _id: recordId });
           }
-          await this._dispatchNotification({ ...record, _id: recordId });
         }
       } else {
-        if(pendingSpellSteps.length === 0) this.logger.debug('[NotificationDispatcher] No pending notifications or spell steps found in this cycle.');
+        this.logger.debug('[NotificationDispatcher] No pending jobs found in this cycle.');
       }
     } catch (error) {
       this.logger.error(`[NotificationDispatcher] Error fetching pending records via internalApiClient:`, error.response ? error.response.data : error.message, error.stack);
