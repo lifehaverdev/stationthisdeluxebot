@@ -85,7 +85,7 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
-    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
+    const { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
     const requiredFields = { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
       if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
@@ -130,6 +130,7 @@ module.exports = function generationOutputsApi(dependencies) {
         initiatingEventId: new ObjectId(initiatingEventId),
         serviceName: serviceName.trim(),
         requestPayload: requestPayload,
+        ...(responsePayload && { responsePayload }),
         status: status || 'pending', // Honor status from body, otherwise default to pending
         notificationPlatform: notificationPlatform.trim(),
         deliveryStatus: deliveryStatus,

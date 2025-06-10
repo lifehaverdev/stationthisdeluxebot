@@ -65,9 +65,6 @@ class TelegramNotifier {
       let animationUrl = null;
       let specificTextOutput = null;
 
-      // DIAGNOSTIC LOG
-      this.logger.info(`[TelegramNotifier] DIAGNOSTIC: Checking payload for GenID ${generationRecord._id}. Payload: ${JSON.stringify(generationRecord.responsePayload)}`);
-
       if (generationRecord.responsePayload && generationRecord.responsePayload.length > 0) {
         const firstOutput = generationRecord.responsePayload[0];
         if (firstOutput.data) {
