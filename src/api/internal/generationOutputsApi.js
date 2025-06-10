@@ -61,7 +61,7 @@ module.exports = function generationOutputsApi(dependencies) {
         }
       }
 
-      this.logger.info('[generationOutputsApi] GET / - DIAGNOSTIC Constructed filter:', filter);
+      logger.info('[generationOutputsApi] GET / - DIAGNOSTIC Constructed filter:', filter);
 
       const generations = await db.generationOutputs.findGenerations(filter);
 
