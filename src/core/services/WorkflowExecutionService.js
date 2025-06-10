@@ -146,6 +146,17 @@ class WorkflowExecutionService {
         const next_inputs = {};
         if (stepOutput) {
             this.logger.info(`[WorkflowExecution] Processing output from step ${stepIndex + 1}. Mappings: ${JSON.stringify(outputMappings)}`, { stepOutput });
+            
+            // Handle the common case of chaining image outputs to image inputs
+            if (Array.isArray(stepOutput.images) && stepOutput.images.length > 0 && stepOutput.images[0].url) {
+                // If there's no explicit mapping for 'images', default to mapping it to 'input_image'
+                if (!outputMappings || !outputMappings.images) {
+                    const imageUrl = stepOutput.images[0].url;
+                    next_inputs.input_image = imageUrl;
+                    this.logger.info(`[WorkflowExecution] Mapped "images" output to "input_image" via default convention with URL: ${imageUrl}`);
+                }
+            }
+            
             for (const outputKey in stepOutput) {
                 // 1. Check for an explicit mapping
                 if (outputMappings[outputKey]) {
@@ -159,7 +170,10 @@ class WorkflowExecutionService {
                     this.logger.info(`[WorkflowExecution] Mapped output "${outputKey}" to input "${inputKey}" via default convention.`);
                 } else {
                 // 3. Carry over any other fields that don't match
-                    next_inputs[outputKey] = stepOutput[outputKey];
+                    // Avoid overwriting a more specific mapping (like input_image) with a broader one (like the images array)
+                    if (!next_inputs[outputKey]) {
+                        next_inputs[outputKey] = stepOutput[outputKey];
+                    }
                 }
             }
         }
