@@ -220,9 +220,16 @@ async function handleSaveCollection(message,user,collectionId) {
 }
 
 async function removeCollection(message,user, collectionId) {
-    StudioManager.removeCollection(user, collectionId)
+    // await editMessage({ 
+    //     reply_markup: { inline_keyboard: [[{ text: 'Are you sure you want to delete this collection?', callback_data: `confirmRemoveCollection_${collectionId}` }]] } ,
+    //     text: 'Are you sure you want to delete this collection?', 
+    //     chat_id: message.chat.id, message_id: message.message_id,
+    //     parse_mode: 'MarkdownV2',
+    // }
+    //)
+    //StudioManager.removeCollection(user, collectionId)
     // Delete the collection data from the database and associated files
-    await collectionDB.deleteCollection(collectionId);
+    //await collectionDB.deleteCollection(collectionId);
     await handleCollectionModeMenu(message,user)
 }
 
