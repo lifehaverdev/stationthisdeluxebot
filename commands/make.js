@@ -203,7 +203,7 @@ async function generate(promptObj) {
         
         let run_id;
         const response = //null
-            await fetch("https://www.comfydeploy.com/api/run", {
+            await fetch("https://www.comfydeploy.com/api/run/deployment/queue", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
