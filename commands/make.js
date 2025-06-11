@@ -98,7 +98,7 @@ function extractType(url) {
     }
 }
 async function fetchOutput(run_id) {
-    const response = await fetch(`https://www.comfydeploy.com/api/run?run_id=${run_id}`, {
+    const response = await fetch(`https://www.comfydeploy.com/api/run/${run_id}`, {
         method: "GET",
         headers: {
             "Content-Type": "application/json",
@@ -203,7 +203,7 @@ async function generate(promptObj) {
         
         let run_id;
         const response = //null
-            await fetch("https://www.comfydeploy.com/api/run/deployment/queue", {
+            await fetch("https://api.comfydeploy.com/api/run/deployment/queue", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
