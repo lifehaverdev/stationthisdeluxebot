@@ -1,6 +1,9 @@
 // Require ToolDefinition JSDoc types for clarity, though they might be globally available
 // /** @typedef {import('./ToolDefinition').ToolDefinition} ToolDefinition */
 
+const fs = require('fs');
+const path = require('path');
+
 class ToolRegistry {
   /** @private @type {ToolRegistry} */
   static instance;
@@ -27,6 +30,40 @@ class ToolRegistry {
       console.warn(`ToolRegistry: Tool with ID ${tool.toolId} is being overwritten.`);
     }
     this.tools.set(tool.toolId, tool);
+  }
+
+  /**
+   * @public
+   * Loads tool definitions from a specified directory.
+   */
+  loadStaticTools() {
+    const toolsDir = path.join(__dirname, 'definitions');
+    try {
+      if (!fs.existsSync(toolsDir)) {
+        console.warn(`ToolRegistry: Static tools directory not found at ${toolsDir}. Skipping static tool loading.`);
+        return;
+      }
+
+      const toolFiles = fs.readdirSync(toolsDir).filter(file => file.endsWith('.js') || file.endsWith('.json'));
+
+      for (const file of toolFiles) {
+        const filePath = path.join(toolsDir, file);
+        try {
+          const toolDefinition = require(filePath);
+          // Basic validation to ensure it looks like a tool
+          if (toolDefinition && toolDefinition.toolId && toolDefinition.service) {
+            this.registerTool(toolDefinition);
+            console.log(`ToolRegistry: Registered static tool '${toolDefinition.displayName}' from ${file}`);
+          } else {
+            console.warn(`ToolRegistry: Invalid tool definition in ${file}. Missing toolId or service.`);
+          }
+        } catch (error) {
+          console.error(`ToolRegistry: Error loading tool from ${file}`, error);
+        }
+      }
+    } catch (error) {
+        console.error(`ToolRegistry: Failed to read static tools directory at ${toolsDir}`, error);
+    }
   }
 
   /**

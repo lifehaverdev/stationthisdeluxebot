@@ -22,6 +22,7 @@ const createUserStatusReportApiService = require('./userStatusReportApi');
 const loraImportRouter = require('./loraImportApi');
 const createTrainingsApi = require('./trainingsApi');
 const createSpellsApi = require('./spellsApi'); // Import the new spells API
+const { initializeLlmApi } = require('./llm');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -91,6 +92,7 @@ function initializeInternalServices(dependencies = {}) {
   const apiDependencies = {
       logger: logger,
       db: dbDataServices, // Use the extracted dbDataServices which contains userCore, userSessions etc.
+      openai: dependencies.openai, // Pass down the openai service instance
       // Pass other relevant top-level dependencies if needed
       appStartTime: dependencies.appStartTime,
       version: dependencies.version,
@@ -257,6 +259,11 @@ function initializeInternalServices(dependencies = {}) {
   } catch (err) {
     logger.error('[InternalAPI] Error initializing or mounting Spells API:', err);
   }
+
+  // Initialize and mount the LLM API within the data router
+  const llmRouter = initializeLlmApi(apiDependencies);
+  v1DataRouter.use('/llm', llmRouter);
+  logger.info('[InternalAPI] LLM API service mounted to /v1/data/llm');
 
   // User Economy API Service:
   // MOVED to userCoreApi.js - Remove this mounting

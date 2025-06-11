@@ -24,17 +24,17 @@ async function setupDynamicCommands(bot, services) {
       return;
     }
 
-    const allTools = await workflowsService.getWorkflows();
+    const allTools = toolRegistry.getAllTools(); // Use ToolRegistry as the source of truth
     
     if (!allTools || allTools.length === 0) {
-      logger.warn('[Telegram] No tools found to process for dynamic commands.');
+      logger.warn('[Telegram] No tools found in the registry to process for dynamic commands.');
       return;
     }
-    logger.info(`[Telegram] Found ${allTools.length} total tools from WorkflowsService.`);
+    logger.info(`[Telegram] Found ${allTools.length} total tools from ToolRegistry.`);
 
     // Refactored tool filtering and classification
     const commandableTools = allTools.reduce((acc, tool) => {
-      if (!tool || !tool.toolId || !tool.displayName || tool.service !== 'comfyui') {
+      if (!tool || !tool.toolId || !tool.displayName) { // Removed service check
         return acc;
       }
       if (!tool.inputSchema || typeof tool.inputSchema !== 'object' || Object.keys(tool.inputSchema).length === 0) {
@@ -250,18 +250,67 @@ async function setupDynamicCommands(bot, services) {
         let masterAccountId;
         let sessionId;
         let eventId;
-        let generationId;
-        let finalInputValuesForTool = { ...userInputsForTool }; // Start with user-provided inputs
+        let finalInputValuesForTool = { ...userInputsForTool }; // Initialize here
 
         try {
-          logger.debug(`[Telegram EXEC /${commandName}] Entering User/Session/Event Handling block...`);
+          // Resolve user and settings first, as they are needed for both sync and async paths
           const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
             platform: platform,
             platformId: platformIdStr,
             platformContext: { firstName: msg.from.first_name, username: msg.from.username }
           });
           masterAccountId = findOrCreateResponse.data.masterAccountId;
-          logger.debug(`[Telegram EXEC /${commandName}] MasterAccountId: ${masterAccountId}`);
+
+          // ADR-006 - User Settings Integration
+          if (services.userSettingsService && masterAccountId && currentToolId) {
+            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId, process.env.INTERNAL_API_KEY_TELEGRAM);
+            finalInputValuesForTool = resolvedInputs || finalInputValuesForTool;
+          }
+        } catch (setupError) {
+             logger.error(`[Telegram EXEC /${commandName}] Error during initial user/settings setup: ${setupError.message}`, { error: setupError.stack });
+             await setReaction(bot, chatId, msg.message_id, '😨');
+             bot.sendMessage(chatId, `Sorry, an error occurred while setting up your request. Please try again later.`, { reply_to_message_id: msg.message_id });
+             return;
+        }
+
+        // <<< NEW: Differentiate execution strategy based on service type >>>
+        if (currentTool.service === 'openai') {
+            // Synchronous execution for OpenAI
+            try {
+                logger.info(`[Telegram EXEC /${commandName}] Executing SYNCHRONOUS tool: ${currentDisplayName}`);
+                
+                // The user's text input is in `finalInputValuesForTool[currentPromptInputKey]`
+                // The tool definition for chatgpt now has 'prompt' and 'instructions'
+                // We need to map the user input to the 'prompt' field.
+                const payload = {
+                    prompt: finalInputValuesForTool[currentPromptInputKey],
+                    instructions: finalInputValuesForTool['instructions'],
+                    temperature: finalInputValuesForTool['temperature']
+                };
+
+                const response = await internalApiClient.post(currentTool.apiPath, payload);
+                
+                if (response && response.data && response.data.result) {
+                    bot.sendMessage(chatId, response.data.result, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '👌');
+                } else {
+                    throw new Error('Received an invalid or empty response from the internal API.');
+                }
+            } catch (error) {
+                logger.error(`[Telegram EXEC /${commandName}] Error in synchronous execution for tool ${currentToolId}: ${error.message}`, { error: error.stack });
+                await setReaction(bot, chatId, msg.message_id, '😨');
+                bot.sendMessage(chatId, `Sorry, an error occurred while running the /${commandName} command.`, { reply_to_message_id: msg.message_id });
+            }
+            return; // End execution for sync tool
+        }
+        // <<< END NEW >>>
+
+        // Asynchronous execution for ComfyUI and other webhook-based services
+        let generationId;
+
+        try {
+          logger.debug(`[Telegram EXEC /${commandName}] Entering ASYNC User/Session/Event Handling block...`);
+          // masterAccountId is already resolved
 
           // <<< ECONOMY CHECK & REACTION UPDATE >>>
           try {
@@ -290,24 +339,6 @@ async function setupDynamicCommands(bot, services) {
             return; // Abort command processing
           }
           // <<< END ECONOMY CHECK & REACTION UPDATE >>>
-
-          // ADR-006 - User Settings Integration
-          if (services.userSettingsService && masterAccountId && currentToolId) {
-            logger.info(`[Telegram EXEC /${commandName}] Attempting to resolve inputs with user preferences for tool ${currentToolId}, MAID: ${masterAccountId}. Initial inputs: ${JSON.stringify(userInputsForTool)}`);
-            const telegramApiKey = process.env.INTERNAL_API_KEY_TELEGRAM;
-            if (!telegramApiKey) {
-              logger.warn(`[Telegram EXEC /${commandName}] INTERNAL_API_KEY_TELEGRAM is not set. Cannot authenticate UserSettingsService call.`);
-            }
-            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId, telegramApiKey);
-            if (resolvedInputs) {
-              finalInputValuesForTool = resolvedInputs; // Use resolvedInputs
-              logger.info(`[Telegram EXEC /${commandName}] Inputs resolved with user/tool preferences: ${JSON.stringify(finalInputValuesForTool)}.`);
-            } else {
-              logger.warn(`[Telegram EXEC /${commandName}] Failed to resolve inputs with user preferences for tool ${currentToolId}. Proceeding with defaults/user input only: ${JSON.stringify(finalInputValuesForTool)}.`);
-            }
-          } else {
-            logger.warn(`[Telegram EXEC /${commandName}] UserSettingsService not available or masterAccountId/currentToolId missing. Skipping preference resolution. MAID: ${masterAccountId}, ToolID: ${currentToolId}`);
-          }
 
           const activeSessionsResponse = await internalApiClient.get(`/users/${masterAccountId}/sessions/active?platform=${platform}`);
           if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {

@@ -12,19 +12,8 @@ const initializeInternalServices = require('./internal');
  * @returns {Object} - Initialized API services
  */
 function initializeAPI(options = {}) {
-  const { 
-    logger = console,
-    appStartTime = new Date(),
-    version = process.env.APP_VERSION || '1.0.0'
-  } = options;
-  
-  // Initialize internal API services
-  const internalServices = initializeInternalServices({
-    logger,
-    appStartTime,
-    version,
-    db: options.db
-  });
+  // Initialize internal API services. Pass all options down.
+  const internalServices = initializeInternalServices(options);
   
   return {
     internal: internalServices

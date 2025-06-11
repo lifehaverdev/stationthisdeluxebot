@@ -6,6 +6,7 @@
 
 const { ToolRegistry } = require('../tools/ToolRegistry.js');
 const { getUserSettingsService } = require('./userSettingsService');
+const OpenAIService = require('./openai/openaiService');
 
 const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
@@ -28,6 +29,7 @@ async function initializeServices(options = {}) {
   
   // Initialize ToolRegistry Singleton
   const toolRegistry = ToolRegistry.getInstance();
+  toolRegistry.loadStaticTools(); // Load hardcoded tools
   logger.info('ToolRegistry initialized.');
   
   // DIAGNOSTIC LOGGING REMOVED
@@ -44,6 +46,7 @@ async function initializeServices(options = {}) {
     });
     const pointsService = new PointsService({ logger });
     const comfyUIService = new ComfyUIService({ logger });
+    const openAIService = new OpenAIService({ logger });
     
     // Create a compatible logger for WorkflowsService if needed
     // The WorkflowsService expects logger to be a function, but we want to use logger.info method
@@ -72,7 +75,8 @@ async function initializeServices(options = {}) {
       appStartTime,
       version: options.version,
       db: initializedDbServices, // Pass the INSTANTIATED services
-      toolRegistry // Pass toolRegistry to API initialization
+      toolRegistry, // Pass toolRegistry to API initialization
+      openai: openAIService // Pass the newly instantiated openai service
     });
     
     // Initialize UserSettingsService after API client and toolRegistry are available
@@ -111,6 +115,7 @@ async function initializeServices(options = {}) {
       points: pointsService,
       comfyUI: comfyUIService,
       workflows: workflowsService,
+      openai: openAIService,
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
       internalApiClient: apiServices.internal?.client, // Expose the client directly
@@ -139,6 +144,7 @@ module.exports = {
   MediaService,
   SessionService,
   SpellsService,
+  OpenAIService,
   WorkflowExecutionService,
   initializeServices,
   ToolRegistry // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
