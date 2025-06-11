@@ -1,5 +1,6 @@
 const express = require('express');
 const { ObjectId, Decimal128 } = require('mongodb');
+const notificationEvents = require('../../core/events/notificationEvents');
 
 // This function initializes the routes for the Generation Outputs API
 module.exports = function generationOutputsApi(dependencies) {
@@ -225,6 +226,17 @@ module.exports = function generationOutputsApi(dependencies) {
         // Should be rare if update succeeded
         logger.error(`[generationOutputsApi] PUT /${generationId}: Failed to fetch record after update.`);
         throw new Error('Failed to fetch generation output after successful update.');
+      }
+
+      // If the generation is complete and pending notification, emit an event
+      const isNotificationReady =
+        updatedGeneration.deliveryStatus === 'pending' &&
+        ['completed', 'failed'].includes(updatedGeneration.status) &&
+        updatedGeneration.notificationPlatform !== 'none';
+
+      if (isNotificationReady) {
+        logger.info(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, emitting event.`);
+        notificationEvents.emit('generationUpdated', updatedGeneration);
       }
 
       logger.info(`[generationOutputsApi] PUT /${generationId}: Generation output updated successfully.`);

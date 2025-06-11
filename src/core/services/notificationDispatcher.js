@@ -1,4 +1,4 @@
-const DEFAULT_POLLING_INTERVAL_MS = 10000; // 10 seconds
+const notificationEvents = require('../events/notificationEvents');
 const MAX_DELIVERY_ATTEMPTS = 3;
 
 class NotificationDispatcher {
@@ -18,41 +18,50 @@ class NotificationDispatcher {
     this.platformNotifiers = services.platformNotifiers || {};
     this.workflowExecutionService = services.workflowExecutionService;
     
-    this.pollingIntervalMs = options.pollingIntervalMs || DEFAULT_POLLING_INTERVAL_MS;
-    this.isPolling = false;
-    this.pollTimer = null;
+    this.isListening = false;
+    this.boundProcessRecord = this._processRecord.bind(this); // Bind once for adding/removing listener
 
-    this.logger.info(`[NotificationDispatcher] Initialized. Polling interval: ${this.pollingIntervalMs / 1000}s. Using internalApiClient for DB operations.`);
+    this.logger.info(`[NotificationDispatcher] Initialized. Ready to listen for events.`);
   }
 
-  async start() {
-    if (this.isPolling) {
-      this.logger.warn('[NotificationDispatcher] start() called but already polling.');
+  start() {
+    if (this.isListening) {
+      this.logger.warn('[NotificationDispatcher] start() called but already listening.');
       return;
     }
-    this.logger.info('[NotificationDispatcher] Starting polling for pending notifications...');
-    this.isPolling = true;
-    
-    await this._processPendingNotifications(); 
-    
-    this.pollTimer = setInterval(async () => {
-      await this._processPendingNotifications();
-    }, this.pollingIntervalMs);
+    this.logger.info('[NotificationDispatcher] Starting to listen for generation update events...');
+    notificationEvents.on('generationUpdated', this.boundProcessRecord);
+    this.isListening = true;
   }
 
-  async stop() {
-    if (!this.isPolling) {
-      this.logger.warn('[NotificationDispatcher] stop() called but not currently polling.');
+  stop() {
+    if (!this.isListening) {
+      this.logger.warn('[NotificationDispatcher] stop() called but not currently listening.');
       return;
     }
-    this.logger.info('[NotificationDispatcher] Stopping polling.');
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    this.isPolling = false;
+    this.logger.info('[NotificationDispatcher] Stopping event listener.');
+    notificationEvents.removeListener('generationUpdated', this.boundProcessRecord);
+    this.isListening = false;
   }
 
+  async _processRecord(record) {
+    this.logger.debug(`[NotificationDispatcher] Received event for record: ${record._id || record.id}`);
+    
+    const recordId = record._id || record.id;
+    if (!recordId) {
+      this.logger.warn('[NotificationDispatcher] Skipping record from event due to missing ID:', record);
+      return;
+    }
+
+    if (record.deliveryStrategy === 'spell_step') {
+      await this._handleSpellStep(record);
+    } else {
+      // The record passed in should already be complete
+      await this._dispatchNotification({ ...record, _id: recordId });
+    }
+  }
+
+  /*
   async _processPendingNotifications() {
     if (!this.isPolling && this.pollTimer) {
       this.logger.info('[NotificationDispatcher] Polling is disabled, skipping _processPendingNotifications cycle.');
@@ -101,6 +110,7 @@ class NotificationDispatcher {
       this.logger.error(`[NotificationDispatcher] Error fetching pending records via internalApiClient:`, error.response ? error.response.data : error.message, error.stack);
     }
   }
+  */
 
   async _handleSpellStep(record) {
     const recordId = record._id;

@@ -29,6 +29,12 @@ We will support two methods for linking user wallets to their application accoun
 
 To bridge the gap, a Telegram user will be given a unique, single-use link to our web app to perform the secure SiWE connection flow, associating their verified wallet with their Telegram ID.
 
+### Gas Strategy
+We will implement EIP-1559 for all transactions, allowing us to set different priority levels for the priority fee (tip) based on the transaction's urgency. This will help manage costs while ensuring critical transactions are processed quickly.
+
+### Secure Private Key Management
+We will use a secrets manager, such as HashiCorp Vault, to securely manage the Ethereum signer's private key. The key will be fetched at runtime and held only in memory, never written to disk.
+
 ## Consequences
 -   **New Services**: Two services will be created: `EthereumService.js` and `CreditService.js` in `src/core/services/`.
 -   **Wallet Management**: The application will require a securely managed Ethereum wallet (private key) to sign and send transactions. Initially, this will be managed via environment variables.
@@ -49,4 +55,5 @@ To bridge the gap, a Telegram user will be given a unique, single-use link to ou
 5.  **Security**: What are the long-term security protocols for managing the bot's signer wallet? (e.g., Hardware Security Module, multi-sig).
 6.  **Gas Management**: How will gas fees for confirmation and withdrawal transactions be handled and paid for?
 7.  **Error Handling**: What is the recovery strategy if a confirmation transaction fails? How do we notify the user or admin?
-8.  **Database Schema**: What changes are needed to the user model to store their wallet address and potentially track deposit/withdrawal history for reconciliation? 
+8.  **Secrets Management Setup**: Configure HashiCorp Vault (or a similar service) to securely manage the Ethereum signer's private key.
+9.  **Database Design**: Design a database schema to store transaction receipts and other relevant data for tracking and auditing. 
