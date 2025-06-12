@@ -147,6 +147,18 @@ module.exports = function generationOutputsApi(dependencies) {
         throw new Error('Database operation failed to create generation output.');
       }
 
+      // If the newly created generation is immediately ready for delivery, emit an event.
+      // This is crucial for spell/workflow final notifications.
+      const isNotificationReady =
+        newGeneration.deliveryStatus === 'pending' &&
+        ['completed', 'failed'].includes(newGeneration.status) &&
+        newGeneration.notificationPlatform !== 'none';
+
+      if (isNotificationReady) {
+        logger.info(`[generationOutputsApi] POST /: New generation ${newGeneration._id} is ready for delivery, emitting event.`);
+        notificationEvents.emit('generationUpdated', newGeneration);
+      }
+
       logger.info(`[generationOutputsApi] POST /: Generation output created successfully. ID: ${newGeneration._id}`);
       res.status(201).json(newGeneration); // ADR: Response: GenerationOutputObject
 
