@@ -651,10 +651,80 @@ function createTelegramBot(dependencies, token, options = {}) {
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Generation info not found.", show_alert: true });
             return;
           }
+          const escapeMd = escapeMarkdownV2;
 
-          const escapeMd = escapeMarkdownV2; // This will now use the imported version
+          // ++ NEW: Check if it's a spell ++
+          if (generationRecord.metadata?.isSpell && Array.isArray(generationRecord.metadata?.stepGenerationIds)) {
+              logger.info(`[Bot CB] Generation ${generationId} is a spell. Displaying spell info view.`);
+              
+              const spellName = generationRecord.metadata.spellName || 'Unnamed Spell';
+              const userInput = generationRecord.metadata.userInputPrompt || 'No initial prompt.';
+              
+              let text = `*Spell: ${escapeMd(spellName)}*\\n\\n`;
+              if (userInput) {
+                text += `*Initial Input:*\\n\`\`\`\\n${escapeMd(userInput)}\\n\`\`\``;
+              }
 
-          let infoMessage = `*Generation Info*\n`;
+              // Fetch step generations to build buttons
+              const stepGenerationIds = generationRecord.metadata.stepGenerationIds;
+              
+              // Use Promise.all to fetch all step generations in parallel
+              const stepPromises = stepGenerationIds.map(stepGenId => 
+                internalApiClient.get(`/generations/${stepGenId}`).catch(e => {
+                  logger.error(`[Bot CB] Failed to fetch step generation ${stepGenId} for spell info view.`, e);
+                  return null; // Return null on error
+                })
+              );
+              const stepResponses = await Promise.all(stepPromises);
+
+              const stepButtons = stepResponses.map((stepResponse, index) => {
+                if (stepResponse && stepResponse.data) {
+                  const stepGen = stepResponse.data;
+                  let toolDisplayName = stepGen.metadata?.toolId || 'Unknown Tool';
+                  const toolDef = toolRegistry.getToolById(stepGen.metadata?.toolId);
+                  if (toolDef?.displayName) {
+                    toolDisplayName = toolDef.displayName;
+                  }
+                  return {
+                    text: `Step ${index + 1}: ${toolDisplayName}`,
+                    callback_data: `view_spell_step:${generationId}:${index}`
+                  };
+                } else {
+                  return {
+                    text: `Step ${index + 1}: (Error loading)`,
+                    callback_data: 'no_op'
+                  };
+                }
+              });
+              
+              const keyboard = [];
+              for (let i = 0; i < stepButtons.length; i += 2) {
+                  keyboard.push(stepButtons.slice(i, i + 2));
+              }
+
+              const isEditing = callbackQuery.message.text.includes(`*Spell: ${escapeMd(spellName)}*`);
+
+              if (isEditing) {
+                  await bot.editMessageText(text, {
+                      chat_id: message.chat.id,
+                      message_id: message.message_id,
+                      parse_mode: 'MarkdownV2',
+                      reply_markup: { inline_keyboard: keyboard }
+                  });
+              } else {
+                  await bot.sendMessage(message.chat.id, text, {
+                      parse_mode: 'MarkdownV2',
+                      reply_to_message_id: message.message_id,
+                      reply_markup: { inline_keyboard: keyboard }
+                  });
+              }
+
+              await bot.answerCallbackQuery(callbackQuery.id);
+              return; // End execution here for spells
+          }
+          // -- END NEW --
+
+          let infoMessage = `*Generation Info*\\n`;
 
           let toolId = generationRecord.serviceName; // Fallback to serviceName if no specific toolId found
           if (generationRecord.requestPayload?.invoked_tool_id) {
@@ -674,7 +744,7 @@ function createTelegramBot(dependencies, token, options = {}) {
           }
           toolDisplayName = String(toolDisplayName); // Ensure it's a string
 
-          infoMessage += `Tool: \`${escapeMd(toolDisplayName)}\`\n`;
+          infoMessage += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
 
           if (generationRecord.requestPayload) {
             infoMessage += `\\n*Parameters Used:*\\n`;
@@ -699,10 +769,10 @@ function createTelegramBot(dependencies, token, options = {}) {
 
           if (generationRecord.ratings && Object.keys(generationRecord.ratings).length > 0) {
             let ratingsExist = false;
-            let ratingsText = "\n*Current Ratings:*\n";
+            let ratingsText = "\n*Current Ratings:*\\n";
             for (const [ratingType, userList] of Object.entries(generationRecord.ratings)) {
               if (userList && userList.length > 0) {
-                ratingsText += `  • ${escapeMd(ratingType.charAt(0).toUpperCase() + ratingType.slice(1))}: ${escapeMd(String(userList.length))}\n`;
+                ratingsText += `  • ${escapeMd(ratingType.charAt(0).toUpperCase() + ratingType.slice(1))}: ${escapeMd(String(userList.length))}\\n`;
                 ratingsExist = true;
               }
             }
@@ -718,6 +788,75 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.error(`[Bot CB] Error fetching or sending gen info for ${generationId}:`, error.response ? error.response.data : error.message, error.stack);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Couldn't fetch generation info.", show_alert: true });
         }
+      } else if (data.startsWith('view_spell_step:')) {
+          const [, spellGenId, stepIndexStr] = data.split(':');
+          const stepIndex = parseInt(stepIndexStr, 10);
+          const { message } = callbackQuery;
+          logger.info(`[Bot CB] view_spell_step callback for spell ${spellGenId}, step index ${stepIndex}`);
+
+          try {
+              const spellGenResponse = await internalApiClient.get(`/generations/${spellGenId}`);
+              const spellGen = spellGenResponse.data;
+
+              if (!spellGen || !spellGen.metadata?.stepGenerationIds) {
+                  await bot.answerCallbackQuery(callbackQuery.id, { text: "Spell info not found.", show_alert: true });
+                  return;
+              }
+
+              const stepGenId = spellGen.metadata.stepGenerationIds[stepIndex];
+              if (!stepGenId) {
+                  await bot.answerCallbackQuery(callbackQuery.id, { text: "Spell step info not found.", show_alert: true });
+                  return;
+              }
+
+              const stepGenResponse = await internalApiClient.get(`/generations/${stepGenId}`);
+              const stepGen = stepGenResponse.data;
+
+              const escapeMd = escapeMarkdownV2;
+              let infoMessage = `*Spell: ${escapeMd(spellGen.metadata.spellName)}*\\n`;
+              infoMessage += `*Step ${stepIndex + 1} Details*\\n\\n`;
+
+              let toolId = stepGen.metadata?.toolId || stepGen.serviceName;
+              let toolDisplayName = toolId;
+              const toolDef = toolRegistry.getToolById(toolId);
+              if (toolDef?.displayName) {
+                  toolDisplayName = toolDef.displayName;
+              }
+              infoMessage += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
+
+              if (stepGen.requestPayload) {
+                  infoMessage += `\\n*Parameters Used:*\\n`;
+                  let paramsText = '';
+                  for (const [key, value] of Object.entries(stepGen.requestPayload)) {
+                      if (key === 'invoked_tool_id' || key === 'tool_id' || key === 'canonical_tool_id' || key === '__canonicalToolId__') continue;
+                      let displayKey = key.startsWith('input_') ? key.substring(6) : key;
+                      const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                      paramsText += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\\n`;
+                  }
+                  
+                  const maxLength = 3800; // Telegram limit is 4096, leave some room.
+                  if (infoMessage.length + paramsText.length > maxLength) {
+                    const availableLength = maxLength - infoMessage.length - 20; // 20 for "... (truncated)"
+                    paramsText = paramsText.substring(0, availableLength) + "\\n... \\(truncated\\)";
+                  }
+                  infoMessage += paramsText;
+              }
+              
+              const keyboard = [[{ text: '⬅️ Back to Spell', callback_data: `view_gen_info:${spellGenId}` }]];
+
+              await bot.editMessageText(infoMessage.trim(), {
+                  chat_id: message.chat.id,
+                  message_id: message.message_id,
+                  parse_mode: 'MarkdownV2',
+                  reply_markup: { inline_keyboard: keyboard }
+              });
+
+              await bot.answerCallbackQuery(callbackQuery.id);
+
+          } catch (error) {
+              logger.error(`[Bot CB] Error in view_spell_step for spell ${spellGenId}:`, error.response ? error.response.data : error.message, error.stack);
+              await bot.answerCallbackQuery(callbackQuery.id, { text: "Couldn't fetch step info.", show_alert: true });
+          }
       } else if (data.startsWith('tweak_gen:')) {
         const parts = data.split(':');
         const generationId = parts[1];
@@ -850,118 +989,6 @@ function createTelegramBot(dependencies, token, options = {}) {
           } else {
             logger.warn(`[Bot CB] tweak_gen (catch): Could not retrieve MAID for ${clickerTelegramId} to clear session after error.`);
           }
-        }
-      } else if (data.startsWith('tpe:')) {
-        const parts = data.substring('tpe:'.length).split(':');
-        const generationId = parts[0];
-        const paramName = parts.slice(1).join(':'); // Param name might have colons
-        const clickerTelegramId = callbackQuery.from.id.toString();
-
-        try {
-          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: 'telegram',
-            platformId: clickerTelegramId,
-            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
-          });
-          const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
-
-          if (!clickerMasterAccountId) {
-            logger.error(`[Bot CB] tpe: Could not find/create MAID for ${clickerTelegramId}`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Your account couldn\'t be identified.", show_alert: true });
-            return;
-          }
-
-          const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
-          const sessionData = pendingTweaks[tweakSessionKey];
-
-          if (!sessionData || !sessionData.__canonicalToolId__) {
-            logger.error(`[Bot CB] tpe: Critical data missing from session ${tweakSessionKey}. sessionData: ${JSON.stringify(sessionData)}`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error: Tweak session data is corrupt or tool info is missing.", show_alert: true });
-            delete pendingTweaks[tweakSessionKey]; // Clean up potentially corrupt session
-            return;
-          }
-          const canonicalToolId = sessionData.__canonicalToolId__; // Retrieve from session
-          
-          logger.info(`[Bot CB] tpe: callback for GenID: ${generationId}, ToolID: ${canonicalToolId}, Param: ${paramName}`);
-          
-          // We need settingsMenuManager for buildTweakParamEditPrompt
-          const editMenu = await buildTweakParamEditPrompt(
-            clickerMasterAccountId,
-            generationId,
-            canonicalToolId,
-            paramName,
-            pendingTweaks, // Pass the whole store, or just the relevant session part
-            { logger, toolRegistry, userSettingsService }
-          );
-
-          if (editMenu && editMenu.text && editMenu.reply_markup) {
-            const sentMessage = await bot.editMessageText(editMenu.text, {
-              chat_id: message.chat.id, // Edit the existing tweak menu message
-              message_id: message.message_id,
-              reply_markup: editMenu.reply_markup,
-              parse_mode: 'MarkdownV2' // Assuming prompt is MarkdownV2
-            });
-            const context = {
-                type: 'tweak_param_edit',
-                generationId: generationId,
-                masterAccountId: clickerMasterAccountId,
-                canonicalToolId: canonicalToolId,
-                paramName: paramName,
-            };
-            replyContextManager.addContext(sentMessage, context);
-          } else {
-            logger.error(`[Bot CB] tpe: Failed to build param edit prompt for ${paramName}.`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Error opening edit prompt.", show_alert: true });
-          }
-          await bot.answerCallbackQuery(callbackQuery.id); // Answer silently after edit or error
-
-        } catch (error) {
-          let errorDetails = 'No details available';
-          try {
-            let loggableError = { message: error.message, stack: error.stack, name: error.name };
-            if (error.response && error.response.data) {
-              loggableError.responseData = error.response.data;
-            }
-            if (error.code) {
-                loggableError.code = error.code;
-            }
-            errorDetails = JSON.stringify(loggableError, null, 2);
-          } catch (stringifyError) {
-            logger.error(`[Bot CB] tpe: Failed to stringify error object: ${stringifyError.message}`);
-            errorDetails = `Message: ${error.message}, Stack: ${error.stack}, Name: ${error.name}, Code: ${error.code || 'N/A'}`;
-          }
-          logger.error(`[Bot CB] Error in tpe callback for GenID ${generationId}, Param ${paramName}: ${errorDetails}`);
-          await bot.answerCallbackQuery(callbackQuery.id, { text: "Error processing parameter edit.", show_alert: true });
-        }
-      } else if (data.startsWith('tweak_cancel:')) {
-        const parts = data.split(':');
-        const generationId = parts[1];
-        const clickerTelegramId = callbackQuery.from.id.toString();
-        logger.info(`[Bot CB] tweak_cancel callback for GenID: ${generationId}`);
-
-        try {
-          const findOrCreateUserResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: 'telegram',
-            platformId: clickerTelegramId,
-            platformContext: { firstName: callbackQuery.from.first_name, username: callbackQuery.from.username }
-          });
-          const clickerMasterAccountId = findOrCreateUserResponse.data.masterAccountId;
-
-          if (clickerMasterAccountId) {
-            const tweakSessionKey = `${generationId}_${clickerMasterAccountId}`;
-            delete pendingTweaks[tweakSessionKey];
-            logger.info(`[Bot CB] tweak_cancel: Cleared pendingTweaks for sessionKey: ${tweakSessionKey}`);
-          }
-
-          await bot.editMessageText("Tweak session cancelled 😤.", {
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            reply_markup: null // Remove keyboard
-          });
-          await bot.answerCallbackQuery(callbackQuery.id, { text: "Tweak cancelled." });
-        } catch (error) {
-          logger.error(`[Bot CB] Error in tweak_cancel for ${generationId}:`, error.message, error.stack);
-          await bot.answerCallbackQuery(callbackQuery.id, { text: "Error cancelling tweak.", show_alert: true });
         }
       } else if (data.startsWith('tweak_gen_menu_render:')) {
         const parts = data.split(':');

@@ -154,6 +154,11 @@ class WorkflowExecutionService {
         const { spell, stepIndex, pipelineContext, originalContext } = completedGeneration.metadata;
         this.logger.info(`[WorkflowExecution] Continuing spell "${spell.name}". Finished step ${stepIndex + 1}.`);
 
+        // Accumulate step generation IDs
+        const previousStepGenIds = (pipelineContext && pipelineContext.stepGenerationIds) ? pipelineContext.stepGenerationIds : [];
+        const stepGenerationIds = [...previousStepGenIds, completedGeneration._id];
+        this.logger.info(`[WorkflowExecution] Accumulated step generation IDs for spell "${spell.name}": ${stepGenerationIds.length} steps.`);
+
         // Get the current step definition to check for outputMappings
         const currentStep = spell.steps[stepIndex];
         const outputMappings = currentStep.outputMappings || {};
@@ -200,7 +205,8 @@ class WorkflowExecutionService {
         if (nextStepIndex < spell.steps.length) {
             // There are more steps, execute the next one.
             this.logger.info(`[WorkflowExecution] Proceeding to step ${nextStepIndex + 1} of "${spell.name}".`);
-            await this._executeStep(spell, nextStepIndex, nextPipelineContext, originalContext);
+            const contextForNextStep = { ...nextPipelineContext, stepGenerationIds };
+            await this._executeStep(spell, nextStepIndex, contextForNextStep, originalContext);
         } else {
             // This was the last step. The spell is finished.
             this.logger.info(`[WorkflowExecution] Spell "${spell.name}" finished successfully. Creating final notification record.`);
@@ -221,6 +227,7 @@ class WorkflowExecutionService {
                     isSpell: true,
                     spellName: spell.name,
                     userInputPrompt: originalContext.parameterOverrides?.input_prompt || '',
+                    stepGenerationIds,
                     notificationContext: {
                         platform: originalContext.platform,
                         chatId: originalContext.chatId,
