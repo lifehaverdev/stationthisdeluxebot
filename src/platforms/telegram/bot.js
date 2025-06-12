@@ -702,23 +702,39 @@ function createTelegramBot(dependencies, token, options = {}) {
                   keyboard.push(stepButtons.slice(i, i + 2));
               }
 
-              const messageText = callbackQuery.message.text || callbackQuery.message.caption || '';
-              const isEditing = messageText.includes(`*Spell: ${escapeMd(spellName)}*`);
-
-              if (isEditing) {
-                  await bot.editMessageText(text, {
-                      chat_id: message.chat.id,
-                      message_id: message.message_id,
-                      parse_mode: 'MarkdownV2',
-                      reply_markup: { inline_keyboard: keyboard }
-                  });
-              } else {
-                  const replyToId = generationRecord.metadata?.notificationContext?.replyToMessageId || message.message_id;
+              // If coming from a media message (e.g. back from a step with an image),
+              // we must delete and resend as we cannot edit a media message into a text message.
+              if (callbackQuery.message.photo || callbackQuery.message.animation) {
+                  await bot.deleteMessage(message.chat.id, message.message_id);
+                  const replyToId = generationRecord.metadata?.notificationContext?.replyToMessageId || message.reply_to_message?.message_id;
                   await bot.sendMessage(message.chat.id, text, {
                       parse_mode: 'MarkdownV2',
                       reply_to_message_id: replyToId,
                       reply_markup: { inline_keyboard: keyboard }
                   });
+              } else {
+                  // This is either the first view or coming back from a text-only step.
+                  // We can either edit the existing message or send a new one.
+                  const messageText = callbackQuery.message.text || callbackQuery.message.caption || '';
+                  // A bit of a heuristic: if the message doesn't already look like a spell view, send a new message.
+                  // Otherwise, edit it. This handles both first-click and back-from-text-step.
+                  const isAlreadySpellView = messageText.startsWith(`*Spell: ${escapeMd(spellName)}*`);
+
+                  if (isAlreadySpellView) {
+                      await bot.editMessageText(text, {
+                          chat_id: message.chat.id,
+                          message_id: message.message_id,
+                          parse_mode: 'MarkdownV2',
+                          reply_markup: { inline_keyboard: keyboard }
+                      });
+                  } else {
+                      const replyToId = generationRecord.metadata?.notificationContext?.replyToMessageId || message.message_id;
+                      await bot.sendMessage(message.chat.id, text, {
+                          parse_mode: 'MarkdownV2',
+                          reply_to_message_id: replyToId,
+                          reply_markup: { inline_keyboard: keyboard }
+                      });
+                  }
               }
 
               await bot.answerCallbackQuery(callbackQuery.id);
@@ -831,43 +847,84 @@ function createTelegramBot(dependencies, token, options = {}) {
               const stepGen = stepGenResponse.data;
 
               const escapeMd = escapeMarkdownV2;
-              let infoMessage = `*Spell: ${escapeMd(spellGen.metadata.spellName)}*\\n`;
-              infoMessage += `*Step ${stepIndex + 1} Details*\\n\\n`;
+              let infoCaption = `*Spell: ${escapeMd(spellGen.metadata.spellName)}* \\| *Step ${stepIndex + 1}*\\n`;
 
               let toolId = stepGen.metadata?.toolId || stepGen.serviceName;
               let toolDisplayName = toolId;
               const toolDef = toolRegistry.getToolById(toolId);
-              if (toolDef?.displayName) {
-                  toolDisplayName = toolDef.displayName;
-              }
-              infoMessage += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
+              if (toolDef?.displayName) { toolDisplayName = toolDef.displayName; }
+              infoCaption += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
+              
+              const buildParamsString = (params) => {
+                  let text = '';
+                  if (!params) return text;
+                  for (const [key, value] of Object.entries(params)) {
+                      if (['invoked_tool_id', 'tool_id', 'canonical_tool_id', '__canonicalToolId__'].includes(key)) continue;
+                      
+                      let displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                      
+                      if (typeof displayValue === 'string' && (displayValue.includes('api.telegram.org/file/bot') || key === 'images' || key === 'animations')) {
+                          continue; // Security: Don't leak token or show redundant raw data
+                      }
 
-              if (stepGen.requestPayload) {
-                  infoMessage += `\\n*Parameters Used:*\\n`;
-                  let paramsText = '';
-                  for (const [key, value] of Object.entries(stepGen.requestPayload)) {
-                      if (key === 'invoked_tool_id' || key === 'tool_id' || key === 'canonical_tool_id' || key === '__canonicalToolId__') continue;
                       let displayKey = key.startsWith('input_') ? key.substring(6) : key;
-                      const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                      paramsText += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\\n`;
+                      text += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\\n`;
                   }
-                  
-                  const maxLength = 3800; // Telegram limit is 4096, leave some room.
-                  if (infoMessage.length + paramsText.length > maxLength) {
-                    const availableLength = maxLength - infoMessage.length - 20; // 20 for "... (truncated)"
-                    paramsText = paramsText.substring(0, availableLength) + "\\n... \\(truncated\\)";
-                  }
-                  infoMessage += paramsText;
+                  return text;
+              };
+
+              let paramsText = '';
+              if (stepGen.requestPayload) {
+                  paramsText += `\\n*Inputs:*\\n` + buildParamsString(stepGen.requestPayload);
+              }
+              if (stepGen.responsePayload?.[0]?.data) {
+                  paramsText += `\\n*Outputs:*\\n` + buildParamsString(stepGen.responsePayload[0].data);
               }
               
-              const keyboard = [[{ text: '⬅️ Back to Spell', callback_data: `view_gen_info:${spellGenId}` }]];
+              const maxLength = 1000; // Telegram caption limit is 1024
+              if (infoCaption.length + paramsText.length > maxLength) {
+                const availableLength = maxLength - infoCaption.length - 20;
+                paramsText = paramsText.substring(0, availableLength) + "\\n... \\(truncated\\)";
+              }
+              infoCaption += paramsText;
 
-              await bot.editMessageText(infoMessage.trim(), {
-                  chat_id: message.chat.id,
-                  message_id: message.message_id,
-                  parse_mode: 'MarkdownV2',
-                  reply_markup: { inline_keyboard: keyboard }
-              });
+              const keyboard = [[{ text: '⬅️ Back to Spell', callback_data: `view_gen_info:${spellGenId}` }]];
+              
+              // Check for media in the step output
+              let imageUrl, animationUrl;
+              const stepOutput = stepGen.responsePayload?.[0];
+              if (stepOutput?.data?.images?.[0]?.url) imageUrl = stepOutput.data.images[0].url;
+              if (stepOutput?.data?.animations?.[0]?.url) animationUrl = stepOutput.data.animations[0].url;
+              if (stepOutput?.data?.videos?.[0]?.url) animationUrl = stepOutput.data.videos[0].url;
+              if (!imageUrl && !animationUrl && stepOutput?.url) {
+                  if (stepOutput.url.endsWith('.gif') || stepOutput.url.endsWith('.mp4')) animationUrl = stepOutput.url;
+                  else if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => stepOutput.url.endsWith(ext))) imageUrl = stepOutput.url;
+              }
+
+              // If we found media, we cannot edit the text message. We must delete and resend.
+              if (imageUrl || animationUrl) {
+                  await bot.deleteMessage(message.chat.id, message.message_id);
+                  const replyToId = spellGen.metadata?.notificationContext?.replyToMessageId || message.reply_to_message?.message_id;
+                  const mediaUrl = imageUrl || animationUrl;
+
+                  const sendAction = imageUrl ? bot.sendPhoto.bind(bot) : bot.sendAnimation.bind(bot);
+                  
+                  await sendAction(message.chat.id, mediaUrl, {
+                      caption: infoCaption.trim(),
+                      parse_mode: 'MarkdownV2',
+                      reply_to_message_id: replyToId,
+                      reply_markup: { inline_keyboard: keyboard }
+                  });
+
+              } else {
+                  // No media, just edit the text of the existing message
+                  await bot.editMessageText(infoCaption.trim(), {
+                      chat_id: message.chat.id,
+                      message_id: message.message_id,
+                      parse_mode: 'MarkdownV2',
+                      reply_markup: { inline_keyboard: keyboard }
+                  });
+              }
 
               await bot.answerCallbackQuery(callbackQuery.id);
 
