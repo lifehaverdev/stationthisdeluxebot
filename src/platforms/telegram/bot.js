@@ -660,9 +660,9 @@ function createTelegramBot(dependencies, token, options = {}) {
               const spellName = generationRecord.metadata.spellName || 'Unnamed Spell';
               const userInput = generationRecord.metadata.userInputPrompt || 'No initial prompt.';
               
-              let text = `*Spell: ${escapeMd(spellName)}*\\n\\n`;
+              let text = `*Spell: ${escapeMd(spellName)}*\n\n`;
               if (userInput) {
-                text += `*Initial Input:*\\n\`\`\`\\n${escapeMd(userInput)}\\n\`\`\``;
+                text += `*Initial Input:*\n\`\`\`\n${escapeMd(userInput)}\n\`\`\``;
               }
 
               // Fetch step generations to build buttons
@@ -701,6 +701,8 @@ function createTelegramBot(dependencies, token, options = {}) {
               for (let i = 0; i < stepButtons.length; i += 2) {
                   keyboard.push(stepButtons.slice(i, i + 2));
               }
+              // Add the new "Back to Delivery" button
+              keyboard.push([{ text: '⬅️ Back to Result', callback_data: `hide_spell_info:${generationId}` }]);
 
               // If coming from a media message (e.g. back from a step with an image),
               // we must delete and resend as we cannot edit a media message into a text message.
@@ -822,6 +824,29 @@ function createTelegramBot(dependencies, token, options = {}) {
           logger.error(`[Bot CB] Error fetching or sending gen info for ${generationId}: ${errorDetails}`);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Couldn't fetch generation info.", show_alert: true });
         }
+      } else if (data.startsWith('hide_spell_info:')) {
+        const [, generationId] = data.split(':');
+        logger.info(`[Bot CB] hide_spell_info callback for generationId: ${generationId}`);
+        try {
+            const response = await internalApiClient.get(`/generations/${generationId}`);
+            const generationRecord = response.data;
+
+            if (!generationRecord) {
+                await bot.answerCallbackQuery(callbackQuery.id, { text: "Original generation not found.", show_alert: true });
+                return;
+            }
+
+            // Delete the current spell info message
+            await bot.deleteMessage(callbackQuery.message.chat.id, callbackQuery.message.message_id);
+
+            // Resend the original delivery message
+            await _reSendDeliveryMessage(bot, generationRecord, logger);
+            
+            await bot.answerCallbackQuery(callbackQuery.id);
+        } catch (error) {
+            logger.error(`[Bot CB] Error in hide_spell_info for ${generationId}:`, error.response ? error.response.data : error.message, error.stack);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Couldn't restore result view.", show_alert: true });
+        }
       } else if (data.startsWith('view_spell_step:')) {
           const [, spellGenId, stepIndexStr] = data.split(':');
           const stepIndex = parseInt(stepIndexStr, 10);
@@ -847,50 +872,37 @@ function createTelegramBot(dependencies, token, options = {}) {
               const stepGen = stepGenResponse.data;
 
               const escapeMd = escapeMarkdownV2;
-              let infoCaption = `*Spell: ${escapeMd(spellGen.metadata.spellName)}* \\| *Step ${stepIndex + 1}*\\n`;
+              let infoCaption = `*Spell: ${escapeMd(spellGen.metadata.spellName)}* | *Step ${stepIndex + 1}*\n`;
 
               let toolId = stepGen.metadata?.toolId || stepGen.serviceName;
               let toolDisplayName = toolId;
               const toolDef = toolRegistry.getToolById(toolId);
               if (toolDef?.displayName) { toolDisplayName = toolDef.displayName; }
-              infoCaption += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
+              infoCaption += `Tool: \`${escapeMd(toolDisplayName)}\`\n`;
               
-              const buildParamsString = (params) => {
+              const buildParamsString = (params, mediaUrlToSkip = null) => {
                   let text = '';
                   if (!params) return text;
+                  const mediaKeys = ['image', 'images', 'animation', 'animations', 'video', 'videos', 'input_image', 'output_image'];
+
                   for (const [key, value] of Object.entries(params)) {
                       if (['invoked_tool_id', 'tool_id', 'canonical_tool_id', '__canonicalToolId__'].includes(key)) continue;
                       
+                      const normalizedKey = key.replace('input_', '').replace('output_', '');
+                      if (mediaKeys.includes(normalizedKey) || mediaKeys.includes(key)) continue;
+
                       let displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
                       
-                      if (typeof displayValue === 'string' && (displayValue.includes('api.telegram.org/file/bot') || key === 'images' || key === 'animations')) {
-                          continue; // Security: Don't leak token or show redundant raw data
-                      }
+                      if (mediaUrlToSkip && displayValue === mediaUrlToSkip) continue;
+                      if (typeof displayValue === 'string' && displayValue.includes('api.telegram.org/file/bot')) continue;
 
                       let displayKey = key.startsWith('input_') ? key.substring(6) : key;
-                      text += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\\n`;
+                      text += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\n`;
                   }
                   return text;
               };
 
-              let paramsText = '';
-              if (stepGen.requestPayload) {
-                  paramsText += `\\n*Inputs:*\\n` + buildParamsString(stepGen.requestPayload);
-              }
-              if (stepGen.responsePayload?.[0]?.data) {
-                  paramsText += `\\n*Outputs:*\\n` + buildParamsString(stepGen.responsePayload[0].data);
-              }
-              
-              const maxLength = 1000; // Telegram caption limit is 1024
-              if (infoCaption.length + paramsText.length > maxLength) {
-                const availableLength = maxLength - infoCaption.length - 20;
-                paramsText = paramsText.substring(0, availableLength) + "\\n... \\(truncated\\)";
-              }
-              infoCaption += paramsText;
-
-              const keyboard = [[{ text: '⬅️ Back to Spell', callback_data: `view_gen_info:${spellGenId}` }]];
-              
-              // Check for media in the step output
+              // Check for media in the step output first to get the URL to skip
               let imageUrl, animationUrl;
               const stepOutput = stepGen.responsePayload?.[0];
               if (stepOutput?.data?.images?.[0]?.url) imageUrl = stepOutput.data.images[0].url;
@@ -900,12 +912,29 @@ function createTelegramBot(dependencies, token, options = {}) {
                   if (stepOutput.url.endsWith('.gif') || stepOutput.url.endsWith('.mp4')) animationUrl = stepOutput.url;
                   else if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => stepOutput.url.endsWith(ext))) imageUrl = stepOutput.url;
               }
+              const mediaUrl = imageUrl || animationUrl;
 
+              let paramsText = '';
+              if (stepGen.requestPayload) {
+                  paramsText += `\n*Inputs:*\n` + buildParamsString(stepGen.requestPayload, mediaUrl);
+              }
+              if (stepGen.responsePayload?.[0]?.data) {
+                  paramsText += `\n*Outputs:*\n` + buildParamsString(stepGen.responsePayload[0].data, mediaUrl);
+              }
+              
+              const maxLength = 1000; // Telegram caption limit is 1024
+              if (infoCaption.length + paramsText.length > maxLength) {
+                const availableLength = maxLength - infoCaption.length - 20;
+                paramsText = paramsText.substring(0, availableLength) + "\n... (truncated)";
+              }
+              infoCaption += paramsText;
+
+              const keyboard = [[{ text: '⬅️ Back to Spell', callback_data: `view_gen_info:${spellGenId}` }]];
+              
               // If we found media, we cannot edit the text message. We must delete and resend.
-              if (imageUrl || animationUrl) {
+              if (mediaUrl) {
                   await bot.deleteMessage(message.chat.id, message.message_id);
                   const replyToId = spellGen.metadata?.notificationContext?.replyToMessageId || message.reply_to_message?.message_id;
-                  const mediaUrl = imageUrl || animationUrl;
 
                   const sendAction = imageUrl ? bot.sendPhoto.bind(bot) : bot.sendAnimation.bind(bot);
                   
@@ -2177,5 +2206,84 @@ function createTelegramBot(dependencies, token, options = {}) {
   
   return bot;
 }
+
+/**
+ * Re-sends the final delivery message for a generation, including media and the standard action keyboard.
+ * This is used to restore the view after leaving the spell info screen.
+ * @param {TelegramBot} bot - The bot instance.
+ * @param {object} generationRecord - The completed generation record.
+ * @param {Logger} logger - The logger instance.
+ */
+async function _reSendDeliveryMessage(bot, generationRecord, logger) {
+    const { metadata, responsePayload } = generationRecord;
+    const { chatId, replyToMessageId } = metadata.notificationContext;
+    const generationId = generationRecord._id;
+
+    // 1. Rebuild the standard keyboard
+    const keyboard = {
+        inline_keyboard: [
+            [
+                { text: '😻', callback_data: `rate_gen:${generationId}:beautiful` },
+                { text: '😹', callback_data: `rate_gen:${generationId}:funny` },
+                { text: '😿', callback_data: `rate_gen:${generationId}:negative` }
+            ],
+            [
+                { text: '-', callback_data: 'hide_menu' },
+                { text: 'ℹ︎', callback_data: `view_gen_info:${generationId}` },
+                { text: '✎', callback_data: `tweak_gen:${generationId}` },
+                { text: (metadata?.rerunCount || 0) > 0 ? `↻${metadata.rerunCount}` : '↻', callback_data: `rerun_gen:${generationId}` }
+            ]
+        ]
+    };
+    const options = {
+        parse_mode: 'Markdown',
+        reply_to_message_id: replyToMessageId,
+        reply_markup: keyboard
+    };
+
+    // 2. Determine if there is media and a caption
+    let imageUrl, animationUrl, caption = '';
+    let hasMedia = false;
+
+    const firstOutput = responsePayload?.[0];
+    if (firstOutput) {
+        if (firstOutput.data?.text) {
+            caption = firstOutput.data.text;
+        } else if (Array.isArray(firstOutput.data?.tags) && firstOutput.data.tags.length > 0) {
+            caption = `Tags: ${firstOutput.data.tags.join(', ')}`;
+        }
+
+        if (firstOutput.data?.images?.[0]?.url) imageUrl = firstOutput.data.images[0].url;
+        else if (firstOutput.data?.animations?.[0]?.url) animationUrl = firstOutput.data.animations[0].url;
+        else if (firstOutput.data?.videos?.[0]?.url) animationUrl = firstOutput.data.videos[0].url; // Treat general video as animation
+        else if (firstOutput.url) { // Fallback for direct URLs
+            if (['.gif', '.mp4'].some(ext => firstOutput.url.endsWith(ext))) animationUrl = firstOutput.url;
+            else if (['.png', '.jpg', '.jpeg', '.webp'].some(ext => firstOutput.url.endsWith(ext))) imageUrl = firstOutput.url;
+        }
+    }
+    
+    hasMedia = !!(imageUrl || animationUrl);
+
+    // 3. Send the message
+    try {
+        if (imageUrl) {
+            logger.info(`[Bot] Re-sending delivery photo to ${chatId}`);
+            await bot.sendPhoto(chatId, imageUrl, { caption, ...options });
+        } else if (animationUrl) {
+            logger.info(`[Bot] Re-sending delivery animation to ${chatId}`);
+            await bot.sendAnimation(chatId, animationUrl, { caption, ...options });
+        } else {
+            // No media, just send text
+            logger.info(`[Bot] Re-sending delivery text to ${chatId}`);
+            const textContent = caption || 'Spell finished.';
+            await bot.sendMessage(chatId, textContent, options);
+        }
+    } catch (error) {
+        logger.error(`[Bot] Failed to re-send delivery message for GenID ${generationId}: ${error.message}`, error.stack);
+        // Inform user in chat that it failed
+        await bot.sendMessage(chatId, "Sorry, couldn't restore the result view. Please try again.", { reply_to_message_id: replyToMessageId });
+    }
+}
+
 
 module.exports = createTelegramBot; 
