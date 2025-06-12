@@ -702,7 +702,8 @@ function createTelegramBot(dependencies, token, options = {}) {
                   keyboard.push(stepButtons.slice(i, i + 2));
               }
 
-              const isEditing = callbackQuery.message.text.includes(`*Spell: ${escapeMd(spellName)}*`);
+              const messageText = callbackQuery.message.text || callbackQuery.message.caption || '';
+              const isEditing = messageText.includes(`*Spell: ${escapeMd(spellName)}*`);
 
               if (isEditing) {
                   await bot.editMessageText(text, {
@@ -785,7 +786,23 @@ function createTelegramBot(dependencies, token, options = {}) {
           await bot.answerCallbackQuery(callbackQuery.id);
 
         } catch (error) {
-          logger.error(`[Bot CB] Error fetching or sending gen info for ${generationId}:`, error.response ? error.response.data : error.message, error.stack);
+          let errorDetails = 'No details available';
+          try {
+              let loggableError = { message: error.message, stack: error.stack, name: error.name };
+              if (error.response && error.response.data) {
+                  loggableError.responseData = error.response.data;
+              }
+              if (error.config) {
+                  loggableError.config = { url: error.config.url, method: error.config.method };
+              }
+              if (error.code) {
+                  loggableError.code = error.code;
+              }
+              errorDetails = JSON.stringify(loggableError, null, 2);
+          } catch (stringifyError) {
+              errorDetails = `Could not stringify error. Message: ${error.message}`;
+          }
+          logger.error(`[Bot CB] Error fetching or sending gen info for ${generationId}: ${errorDetails}`);
           await bot.answerCallbackQuery(callbackQuery.id, { text: "Couldn't fetch generation info.", show_alert: true });
         }
       } else if (data.startsWith('view_spell_step:')) {
