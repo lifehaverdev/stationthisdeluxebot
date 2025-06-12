@@ -713,9 +713,10 @@ function createTelegramBot(dependencies, token, options = {}) {
                       reply_markup: { inline_keyboard: keyboard }
                   });
               } else {
+                  const replyToId = generationRecord.metadata?.notificationContext?.replyToMessageId || message.message_id;
                   await bot.sendMessage(message.chat.id, text, {
                       parse_mode: 'MarkdownV2',
-                      reply_to_message_id: message.message_id,
+                      reply_to_message_id: replyToId,
                       reply_markup: { inline_keyboard: keyboard }
                   });
               }
