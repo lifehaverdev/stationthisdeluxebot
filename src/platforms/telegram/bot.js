@@ -660,9 +660,9 @@ function createTelegramBot(dependencies, token, options = {}) {
               const spellName = generationRecord.metadata.spellName || 'Unnamed Spell';
               const userInput = generationRecord.metadata.userInputPrompt || 'No initial prompt.';
               
-              let text = `*Spell: ${escapeMd(spellName)}*\\n\\n`;
+              let text = `*Spell: ${escapeMd(spellName)}*\n\n`;
               if (userInput) {
-                text += `*Initial Input:*\\n\`\`\`\\n${escapeMd(userInput)}\\n\`\`\``;
+                text += `*Initial Input:*\n\`\`\`\n${escapeMd(userInput)}\n\`\`\``;
               }
 
               // Fetch step generations to build buttons
@@ -701,6 +701,9 @@ function createTelegramBot(dependencies, token, options = {}) {
               for (let i = 0; i < stepButtons.length; i += 2) {
                   keyboard.push(stepButtons.slice(i, i + 2));
               }
+
+              // Add a 'Back to Delivery' button
+              keyboard.push([{ text: '⬅️ Back to Delivery', callback_data: `restore_delivery:${generationId}` }]);
 
               // If coming from a media message (e.g. back from a step with an image),
               // we must delete and resend as we cannot edit a media message into a text message.
@@ -847,31 +850,41 @@ function createTelegramBot(dependencies, token, options = {}) {
               const stepGen = stepGenResponse.data;
 
               const escapeMd = escapeMarkdownV2;
-              let infoCaption = `*Spell: ${escapeMd(spellGen.metadata.spellName)}* \\| *Step ${stepIndex + 1}*\\n`;
+              let infoCaption = `*Spell: ${escapeMd(spellGen.metadata.spellName)}* \\| *Step ${stepIndex + 1}*\n`;
 
               let toolId = stepGen.metadata?.toolId || stepGen.serviceName;
               let toolDisplayName = toolId;
               const toolDef = toolRegistry.getToolById(toolId);
               if (toolDef?.displayName) { toolDisplayName = toolDef.displayName; }
-              infoCaption += `Tool: \`${escapeMd(toolDisplayName)}\`\\n`;
+              infoCaption += `Tool: \`${escapeMd(toolDisplayName)}\`\n`;
               
               const buildParamsString = (params) => {
-                  let text = '';
-                  if (!params) return text;
-                  for (const [key, value] of Object.entries(params)) {
-                      if (['invoked_tool_id', 'tool_id', 'canonical_tool_id', '__canonicalToolId__'].includes(key)) continue;
-                      
-                      let displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                      
-                      if (typeof displayValue === 'string' && (displayValue.includes('api.telegram.org/file/bot') || key === 'images' || key === 'animations')) {
-                          continue; // Security: Don't leak token or show redundant raw data
-                      }
+                   let text = '';
+                   if (!params) return text;
+                   for (const [key, value] of Object.entries(params)) {
+                       if (['invoked_tool_id', 'tool_id', 'canonical_tool_id', '__canonicalToolId__'].includes(key)) continue;
+                       
+                       // Skip any URL parameters or image-related fields
+                       if (key === 'input_image' || key === 'image' || key === 'images' || key === 'animations' || key === 'videos') {
+                           continue;
+                       }
+                       
+                       let displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                       
+                       // Skip any parameter value that looks like a URL
+                       if (typeof displayValue === 'string' && (
+                           displayValue.startsWith('http://') || 
+                           displayValue.startsWith('https://') ||
+                           displayValue.includes('api.telegram.org/file/bot')
+                       )) {
+                           continue;
+                       }
 
-                      let displayKey = key.startsWith('input_') ? key.substring(6) : key;
-                      text += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\\n`;
-                  }
-                  return text;
-              };
+                       let displayKey = key.startsWith('input_') ? key.substring(6) : key;
+                       text += `  • *${escapeMd(displayKey)}*: \`${escapeMd(displayValue)}\`\n`;
+                   }
+                   return text;
+               };
 
               let paramsText = '';
               if (stepGen.requestPayload) {
