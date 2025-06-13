@@ -454,10 +454,43 @@ async function handleTrainCommand(bot, message, masterAccountId, dependencies = 
     await showMainTrainingMenu(bot, chatId, null, masterAccountId, false, dependencies);
 }
 
+function registerHandlers(dispatchers, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
+    const { logger, bot } = dependencies;
+
+    // Helper to get MasterAccountId
+    async function getMasterAccountId(platformId, from) {
+        const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+            platform: 'telegram',
+            platformId: platformId.toString(),
+            platformContext: { firstName: from.first_name, username: from.username }
+        });
+        return findOrCreateResponse.data.masterAccountId;
+    }
+
+    // Register /train command to show the main menu
+    commandDispatcher.register(/^\/train(?:@\w+)?$/i, async (message) => {
+        const masterAccountId = await getMasterAccountId(message.from.id, message.from);
+        await handleTrainCommand(bot, message, masterAccountId, dependencies);
+    });
+
+    // Register all train_* callbacks to the main callback handler
+    callbackQueryDispatcher.register('train_', async (bot, callbackQuery, masterAccountId, deps) => {
+        await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, deps);
+    });
+
+    // Register reply handler for when user provides a name for a new training
+    messageReplyDispatcher.register('training_name_prompt', async (bot, message, context, deps) => {
+        const { masterAccountId } = context;
+        await processNewTrainingName(bot, message, masterAccountId, deps);
+    });
+}
+
 module.exports = {
   handleTrainCommand, // Main command handler
   handleTrainingCallbackQuery, // Main callback handler
   handleTrainingTextMessage, // Main text message handler (if using state-based input)
+  registerHandlers, // <-- EXPORT THE NEW FUNCTION
 
   // Exporting individual functions might be useful for more complex routing or testing
   showMainTrainingMenu,

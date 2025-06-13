@@ -15,8 +15,21 @@ We will implement a **Dispatcher/Router pattern** within `bot.js` to decentraliz
 1.  **Introduce Handler Dispatchers**: Two dispatcher classes, `CallbackQueryDispatcher` and `MessageReplyDispatcher`, will be created.
     *   `CallbackQueryDispatcher` will map string prefixes (e.g., `'lora:'`, `'settings_:'`) to handler functions.
     *   `MessageReplyDispatcher` will map context types (e.g., `'lora_import_url'`, `'settings_param_edit'`) to handler functions.
+    *   A `DynamicCommandDispatcher` will be added to handle non-reply text messages that map to dynamic commands (e.g., text prompts for image generation).
 
-2.  **Standardize Feature Managers**: Each feature-specific manager (e.g., `loraMenuManager.js`, `settingsMenuManager.js`) will export a new `registerHandlers` function.
+2.  **Standardize Feature Managers**: Each feature-specific manager will export a new `registerHandlers` function. This will be applied not just to existing large features, but also to the remaining inline logic in `bot.js`. The proposed structure includes:
+    *   `settingsMenuManager.js`
+    *   `modsMenuManager.js` (consolidating the deprecated `loraMenuManager.js`)
+    *   `spellMenuManager.js`
+    *   `trainingMenuManager.js`
+    *   `collectionMenuManager.js` (for collection management)
+    *   **A new `deliveryMenu/` subdirectory** will be created to house managers for actions performed on completed generations. This isolates post-delivery logic from the primary feature menus. It will contain:
+        *   `infoManager.js` (for `view_gen_info:`, `view_spell_step:`, etc.)
+        *   `rateManager.js` (for `rate_gen:`)
+        *   `rerunManager.js` (for `rerun_gen:`)
+        *   `tweakManager.js` (for all `tweak_*` callbacks and replies)
+        *   `globalMenuManager.js` (for generic actions like `hide_menu`)
+    *   **The existing `commands/` directory** will be used for simple, stateless, single-interaction commands (e.g., `/status`, `/help`). Complex, menu-driven features (`/train`, `/collections`) will be migrated from `commands/` to their respective managers in `components/`.
 
 3.  **Registration at Startup**: During bot initialization in `bot.js`, it will iterate through the feature managers and call their `registerHandlers` function, passing the dispatcher instances. Each manager will then register its specific prefixes and context types.
 
