@@ -686,9 +686,109 @@ async function handleStepParameterValueReply(bot, msg, context, { logger, toolRe
     }
 }
 
+/**
+ * Registers all handlers for the spell menu feature.
+ * @param {object} dispatchers - The dispatchers object.
+ * @param {CommandDispatcher} dispatchers.commandDispatcher - The command dispatcher.
+ * @param {CallbackQueryDispatcher} dispatchers.callbackQueryDispatcher - The callback query dispatcher.
+ * @param {MessageReplyDispatcher} dispatchers.messageReplyDispatcher - The message reply dispatcher.
+ * @param {object} dependencies - The dependencies needed by the handlers.
+ */
+function registerHandlers(dispatchers, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
+    const { logger, toolRegistry, replyContextManager, internalApiClient, spellsService } = dependencies;
+
+    // /spells command
+    commandDispatcher.register(/^\/spells(?:@\w+)?$/i, async (message) => {
+        const telegramUserId = message.from.id.toString();
+        logger.info(`[Bot] /spells command received from Telegram User ID: ${telegramUserId}`);
+        try {
+            const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+                platform: 'telegram',
+                platformId: telegramUserId,
+                platformContext: { firstName: message.from.first_name, username: message.from.username }
+            });
+            const masterAccountId = findOrCreateResponse.data.masterAccountId;
+            await handleSpellCommand(dependencies.bot, message, masterAccountId, { logger, toolRegistry, replyContextManager });
+        } catch (error) {
+            logger.error(`[Bot] Error processing /spells command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+            dependencies.bot.sendMessage(message.chat.id, "Sorry, there was an error opening your spellbook. Please try again.", { reply_to_message_id: message.message_id });
+        }
+    });
+
+    // /cast command
+    commandDispatcher.register(/^\/cast(?:@\w+)?\s+(\w[-\w]*)(?:\s+(.*))?$/i, async (message, match) => {
+        const telegramUserId = message.from.id.toString();
+        const slug = match[1];
+        const overridesString = match[2];
+        
+        logger.info(`[Bot] /cast command received from UserID: ${telegramUserId} for slug: "${slug}"`);
+
+        try {
+            const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+                platform: 'telegram',
+                platformId: telegramUserId,
+                platformContext: { firstName: message.from.first_name, username: message.from.username }
+            });
+            const masterAccountId = findOrCreateResponse.data.masterAccountId;
+
+            const parameterOverrides = {};
+            if (overridesString) {
+                parameterOverrides.input_prompt = overridesString.trim();
+            }
+
+            const context = {
+                masterAccountId,
+                platform: 'telegram',
+                telegramUserId,
+                chatId: message.chat.id,
+                messageId: message.message_id,
+                parameterOverrides,
+            };
+
+            dependencies.bot.sendMessage(message.chat.id, `Casting spell "${slug}"...`, { reply_to_message_id: message.message_id });
+
+            spellsService.castSpell(slug, context)
+              .catch(error => {
+                logger.error(`[Bot] Asynchronous error during /cast for slug "${slug}":`, error.message, error.stack);
+                const friendlyErrors = ['not found', 'permission', 'Multiple spells'];
+                const isFriendly = friendlyErrors.some(term => error.message.includes(term));
+                
+                const errorMessage = isFriendly
+                    ? error.message
+                    : "Sorry, an unexpected error occurred while casting that spell.";
+                
+                dependencies.bot.sendMessage(context.chatId, escapeMarkdownV2(errorMessage), { 
+                    reply_to_message_id: context.messageId,
+                    parse_mode: 'MarkdownV2'
+                });
+            });
+
+        } catch (error) {
+            logger.error(`[Bot] Synchronous error processing /cast command for slug "${slug}":`, error.message);
+            dependencies.bot.sendMessage(message.chat.id, "Sorry, there was an error preparing to cast the spell.", { reply_to_message_id: message.message_id });
+        }
+    });
+
+    // Callback query handler
+    callbackQueryDispatcher.register('spell_', async (bot, callbackQuery, masterAccountId, deps) => {
+        await handleSpellCallback(bot, callbackQuery, masterAccountId, { ...deps, replyContextManager });
+    });
+
+    // Message reply handlers
+    messageReplyDispatcher.register('spell_create_name', async (bot, message, context, deps) => {
+        await handleNewSpellNameReply(bot, message, context, { ...deps });
+    });
+
+    messageReplyDispatcher.register('spell_param_value', async (bot, message, context, deps) => {
+        await handleStepParameterValueReply(bot, message, context, { ...deps });
+    });
+}
+
 module.exports = {
     handleSpellCommand,
     handleSpellCallback,
     handleNewSpellNameReply,
     handleStepParameterValueReply,
+    registerHandlers,
 };

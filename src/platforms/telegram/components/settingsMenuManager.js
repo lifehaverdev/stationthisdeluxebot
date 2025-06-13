@@ -747,6 +747,65 @@ async function buildTweakParamEditPrompt(masterAccountId, generationId, canonica
   };
 }
 
+/**
+ * Registers all handlers for the settings menu feature.
+ * @param {object} dispatchers - The dispatchers object.
+ * @param {CommandDispatcher} dispatchers.commandDispatcher - The command dispatcher.
+ * @param {CallbackQueryDispatcher} dispatchers.callbackQueryDispatcher - The callback query dispatcher.
+ * @param {MessageReplyDispatcher} dispatchers.messageReplyDispatcher - The message reply dispatcher.
+ * @param {object} dependencies - The dependencies needed by the handlers.
+ */
+function registerHandlers(dispatchers, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
+    const { logger, toolRegistry, userSettingsService, replyContextManager, internalApiClient } = dependencies;
+
+    commandDispatcher.register(/^\/settings(?:@\w+)?$/i, async (message) => {
+        const telegramUserId = message.from.id.toString();
+        const platform = 'telegram';
+        logger.info(`[Bot] /settings command received from Telegram User ID: ${telegramUserId}`);
+        try {
+            const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+                platform: platform,
+                platformId: telegramUserId,
+                platformContext: { firstName: message.from.first_name, username: message.from.username }
+            });
+            const masterAccountId = findOrCreateResponse.data.masterAccountId;
+            logger.info(`[Bot] MasterAccountId ${masterAccountId} found/created for Telegram User ID: ${telegramUserId}`);
+            
+            await handleSettingsCommand(dependencies.bot, message, masterAccountId, { logger, toolRegistry, userSettingsService });
+        } catch (error) {
+            logger.error(`[Bot] Error processing /settings command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+            dependencies.bot.sendMessage(message.chat.id, "Sorry, there was an error trying to open settings. Please try again.", { reply_to_message_id: message.message_id });
+        }
+    });
+
+    callbackQueryDispatcher.register('set_', async (bot, callbackQuery, masterAccountId, deps) => {
+        await handleSettingsCallback(bot, callbackQuery, masterAccountId, { ...deps, replyContextManager });
+    });
+
+    messageReplyDispatcher.register('settings_param_edit', async (bot, message, context, deps) => {
+        const { masterAccountId, toolDisplayName, paramName } = context;
+        const value = message.text;
+        logger.info(`[Bot] Reply received for settings param edit via Context. User: ${message.from.id}, MAID: ${masterAccountId}, Tool: ${toolDisplayName}, Param: ${paramName}, Value: '${value}'`);
+
+        const result = await handleParameterValueReply(masterAccountId, toolDisplayName, paramName, value, { logger, toolRegistry, userSettingsService });
+
+        if (result.success) {
+            await bot.sendMessage(message.chat.id, result.message, { reply_to_message_id: message.message_id });
+            if (result.canonicalToolId) {
+                const updatedToolParamsMenu = await buildToolParamsMenu(masterAccountId, result.canonicalToolId, { logger, toolRegistry, userSettingsService });
+                await bot.editMessageText(updatedToolParamsMenu.text, {
+                    chat_id: message.reply_to_message.chat.id,
+                    message_id: message.reply_to_message.message_id,
+                    reply_markup: updatedToolParamsMenu.reply_markup
+                });
+            }
+        } else {
+            await bot.sendMessage(message.chat.id, result.message || "Failed to update setting.", { reply_to_message_id: message.message_id });
+        }
+    });
+}
+
 // TODO: Implement other menu building functions as per ADR-007
 // async function buildAllToolsMenu(masterAccountId, page = 0, { logger, toolRegistry, userSettingsService }) { ... }
 // async function buildEditParamMenu(masterAccountId, toolKey, paramName, { logger, toolRegistry, userSettingsService }) { ... }
@@ -760,5 +819,6 @@ module.exports = {
     buildAllToolsMenu,
     buildTweakUIMenu,
     buildTweakParamEditPrompt,
+    registerHandlers,
     // buildUserPreferencesMenu // Temporarily hidden
 }; 

@@ -1129,7 +1129,7 @@ async function displayModAdminMenu(bot, callbackQuery, masterAccountId, dependen
         [{ text: '❌ Delete Mod', callback_data: `mods:admin_delete_confirm:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
         // Placeholder for edit button
         [{ text: '✏️ Edit Details (Not Implemented)', callback_data: 'mods:admin_edit_nyi' }],
-        [{ text: 'Back to Mod Detail', callback_data: `mods:detail:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}`}]
+        [{ text: 'Back to Mod Detail', callback_data: `mods:detail:${loraId}:${backFilterType}:${backCheckpoint}:${backPage}`}]
     ];
 
     try {
@@ -1144,6 +1144,157 @@ async function displayModAdminMenu(bot, callbackQuery, masterAccountId, dependen
         logger.error(`[ModsMenuManager] Error displaying admin menu for Mod ${loraId}:`, error);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing admin menu.', show_alert: true });
   }
+}
+
+/**
+ * Registers all handlers for the Mod menu feature.
+ * @param {object} dispatchers - The dispatchers object.
+ * @param {CommandDispatcher} dispatchers.commandDispatcher - The command dispatcher.
+ * @param {CallbackQueryDispatcher} dispatchers.callbackQueryDispatcher - The callback query dispatcher.
+ * @param {MessageReplyDispatcher} dispatchers.messageReplyDispatcher - The message reply dispatcher.
+ * @param {object} dependencies - The dependencies needed by the handlers.
+ */
+function registerHandlers(dispatchers, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
+    const { logger, internalApiClient, userSettingsService, toolRegistry, loRAPermissionsDb, replyContextManager } = dependencies;
+
+    // /mods command
+    commandDispatcher.register(/^\/mods(?:@\w+)?$/i, async (message) => {
+        const telegramUserId = message.from.id.toString();
+        logger.info(`[Bot] /mods command received from Telegram User ID: ${telegramUserId}`);
+        try {
+            const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
+                platform: 'telegram',
+                platformId: telegramUserId,
+                platformContext: { firstName: message.from.first_name, username: message.from.username }
+            });
+            const masterAccountId = findOrCreateResponse.data.masterAccountId;
+            await handleModsCommand(dependencies.bot, message, masterAccountId, dependencies);
+        } catch (error) {
+            logger.error(`[Bot] Error processing /mods command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
+            dependencies.bot.sendMessage(message.chat.id, "Sorry, there was an error opening the Mods menu. Please try again.", { reply_to_message_id: message.message_id });
+        }
+    });
+
+    // Callback query handlers
+    const modsCallbackHandler = async (bot, callbackQuery, masterAccountId, deps) => {
+        await handleModsCallback(bot, callbackQuery, masterAccountId, { ...deps, bot: bot });
+    };
+    callbackQueryDispatcher.register('mods:', modsCallbackHandler);
+    callbackQueryDispatcher.register('mods_store:', modsCallbackHandler);
+
+    const adminModApprovalHandler = async (bot, callbackQuery, masterAccountId, deps) => {
+        const { logger } = deps;
+        const { data, from: { id: callbackUserId } } = callbackQuery;
+        const adminTelegramId = '5472638766';
+
+        logger.info(`[Bot CB] Admin Mod approval/rejection callback: ${data} from UserID: ${callbackUserId}`);
+
+        if (callbackUserId.toString() !== adminTelegramId) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
+            return;
+        }
+
+        const parts = data.split(':');
+        const action = parts[0];
+        const loraIdentifier = parts[1];
+        let apiEndpoint, successMessage, failureMessage;
+
+        if (action === 'admin_mod_approve') {
+            apiEndpoint = `/loras/${loraIdentifier}/admin-approve`;
+            successMessage = '✅ Mod Approved & Deployment Initiated';
+        } else { // admin_mod_reject
+            apiEndpoint = `/loras/${loraIdentifier}/admin-reject`;
+            successMessage = '❌ Mod Rejected';
+        }
+        failureMessage = `⚠️ Error ${action.includes('approve') ? 'approving' : 'rejecting'} Mod`;
+
+        try {
+            const response = await internalApiClient.post(apiEndpoint, {});
+            await bot.editMessageText(
+                escapeMarkdownV2(callbackQuery.message.text + `\n\n---\n*Action Taken: ${successMessage}*`),
+                { chat_id: callbackQuery.message.chat.id, message_id: callbackQuery.message.message_id, parse_mode: 'MarkdownV2', reply_markup: null }
+            );
+            await bot.answerCallbackQuery(callbackQuery.id, { text: response.data.message || successMessage });
+        } catch (error) {
+            const errorDetail = error.response?.data?.details || error.message;
+            logger.error(`[Bot CB] Admin Mod action API call failed for ${loraIdentifier}. Error: ${errorDetail}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}: ${errorDetail}`, show_alert: true });
+        }
+    };
+
+    callbackQueryDispatcher.register('admin_mod_approve:', adminModApprovalHandler);
+    callbackQueryDispatcher.register('admin_mod_reject:', adminModApprovalHandler);
+
+    callbackQueryDispatcher.register('admin_mod_approve_private:', async (bot, callbackQuery, masterAccountId, deps) => {
+        const { logger } = deps;
+        const { from: { id: callbackUserId } } = callbackQuery;
+        const adminTelegramId = '5472638766';
+
+        if (callbackUserId.toString() !== adminTelegramId) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
+            return;
+        }
+        
+        const loraIdentifier = callbackQuery.data.split(':')[1];
+        try {
+            await internalApiClient.post(`/loras/${loraIdentifier}/admin-approve-private`, {});
+            await bot.editMessageText(
+                escapeMarkdownV2(callbackQuery.message.text + `\n\n---\n*Action Taken: 🔒 Mod Approved Privately*`),
+                { chat_id: callbackQuery.message.chat.id, message_id: callbackQuery.message.message_id, parse_mode: 'MarkdownV2', reply_markup: null }
+            );
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Mod approved privately.' });
+        } catch (error) {
+            const errorDetail = error.response?.data?.details || error.message;
+            logger.error(`[Bot CB] Admin private approval failed for ${loraIdentifier}. Error: ${errorDetail}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Error approving privately: ${errorDetail}`, show_alert: true });
+        }
+    });
+
+    // Message reply handler for mod import
+    messageReplyDispatcher.register('mod_import_url', async (bot, message, context, deps) => {
+        const { masterAccountId } = context;
+        const submittedUrl = message.text.trim();
+        logger.info(`[Bot] Mod Import URL reply received via Context. MAID: ${masterAccountId}, URL: '${submittedUrl}'.`);
+
+        if (!submittedUrl.startsWith('http://') && !submittedUrl.startsWith('https://')) {
+            await bot.sendMessage(message.chat.id, "That doesn't look like a valid URL.", { reply_to_message_id: message.message_id });
+            return;
+        }
+
+        try {
+            const importResponse = await internalApiClient.post('/loras/import-from-url', {
+                loraUrl: submittedUrl,
+                masterAccountId: masterAccountId
+            });
+
+            if (importResponse.status === 202 && importResponse.data?.lora) {
+                const lora = importResponse.data.lora;
+                await bot.sendMessage(message.chat.id, importResponse.data.message, { reply_to_message_id: message.message_id });
+                
+                const adminChatId = '5472638766';
+                const loraIdentifier = lora.slug || lora._id;
+                const adminMessageText = `*New Mod Submission for Review* 🤖\nUser MAID: \`${masterAccountId}\`\nURL: ${submittedUrl}\nName: ${lora.name || 'N/A'}`;
+                
+                await bot.sendMessage(adminChatId, adminMessageText, {
+                    parse_mode: 'MarkdownV2',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '✅ Approve Publicly', callback_data: `admin_mod_approve:${loraIdentifier}` },
+                            { text: '🔒 Approve Privately', callback_data: `admin_mod_approve_private:${loraIdentifier}` },
+                            { text: '❌ Reject', callback_data: `admin_mod_reject:${loraIdentifier}` }
+                        ]]
+                    }
+                });
+            } else {
+                const errorMsg = importResponse.data?.error || "Could not process Mod import.";
+                await bot.sendMessage(message.chat.id, `Import failed: ${errorMsg}`, { reply_to_message_id: message.message_id });
+            }
+        } catch (error) {
+            logger.error(`[Bot] Mod import API call failed:`, error.response?.data || error.message);
+            await bot.sendMessage(message.chat.id, `Import failed: ${error.response?.data?.error || error.message}`, { reply_to_message_id: message.message_id });
+        }
+    });
 }
 
 // TODO: Implement other display functions:
@@ -1161,5 +1312,6 @@ module.exports = {
   displayModDetailScreen,
   displayModsStoreMainMenu,
   displayStoreModsByFilterScreen,
-  displayStoreModDetailScreen
+  displayStoreModDetailScreen,
+  registerHandlers,
 }; 
