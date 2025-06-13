@@ -179,11 +179,23 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
         logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
         // Potentially mark as payment_failed or requires_manual_intervention
       } else {
-        const debitPayload = buildDebitPayload(toolId, generationRecord, costUsd);
+
+        // <<<< ADR-012: Micro-Fee System START >>>>
+        const { finalCost, rewards } = calculateCreatorRewards(generationRecord, costUsd, logger);
+        const debitPayload = buildDebitPayload(toolId, generationRecord, finalCost);
+        // <<<< ADR-012: Micro-Fee System END >>>>
+
         try {
           logger.info(`[Webhook Processor] Attempting debit for generation ${generationId}, user ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(debitPayload));
           await issueDebit(generationRecord.masterAccountId, debitPayload, { internalApiClient, logger });
           logger.info(`[Webhook Processor] Debit successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
+
+          // <<<< ADR-012: Micro-Fee System START >>>>
+          if (rewards.length > 0) {
+            await distributeCreatorRewards(generationRecord, rewards, { internalApiClient, logger });
+          }
+          // <<<< ADR-012: Micro-Fee System END >>>>
+
           // If debit succeeds, the 'completed' status remains, and NotificationDispatcher will pick it up.
 
           // << ADR-005 EXP Update Start >>
@@ -235,6 +247,131 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
   }
   return { success: true, statusCode: 200, data: { message: "Webhook processed successfully. DB record updated." } };
 }
+
+// <<<< ADR-012: Micro-Fee System START >>>>
+/**
+ * Calculates creator rewards based on spell and LoRA usage.
+ * @param {object} generationRecord - The full generation record.
+ * @param {number} baseCost - The base cost of the generation in USD.
+ * @param {object} logger - The logger instance.
+ * @returns {{finalCost: number, rewards: Array<{ownerId: string, amount: number, type: string}>}}
+ */
+function calculateCreatorRewards(generationRecord, baseCost, logger) {
+    const rewards = [];
+    let totalFee = 0;
+    const generatingUserId = generationRecord.masterAccountId.toString();
+
+    const isSpell = generationRecord.metadata?.isSpell;
+    const appliedLoras = generationRecord.metadata?.loraResolutionData?.appliedLoras || [];
+
+    const uniqueLoras = appliedLoras.reduce((acc, lora) => {
+        // Don't reward user for using their own LoRA
+        if (lora.ownerAccountId && lora.ownerAccountId !== generatingUserId) {
+            if (!acc.find(item => item.modelId === lora.modelId)) {
+                acc.push(lora);
+            }
+        }
+        return acc;
+    }, []);
+
+    if (isSpell) {
+        const spellOwnerId = generationRecord.metadata?.spell?.ownedBy?.toString();
+        const LORA_FEE_RATE = 0.03;
+        const SPELL_FEE_RATE = 0.03;
+
+        // Credit spell owner (if they aren't the one running the spell)
+        if (spellOwnerId && spellOwnerId !== generatingUserId) {
+            const spellFee = baseCost * SPELL_FEE_RATE;
+            rewards.push({ ownerId: spellOwnerId, amount: spellFee, type: 'spell_fee' });
+            totalFee += spellFee;
+            logger.info(`[calculateCreatorRewards] Calculated spell fee of ${spellFee} for owner ${spellOwnerId}`);
+        }
+
+        // Credit LoRA owners
+        if (uniqueLoras.length > 0) {
+            const loraFeePool = baseCost * LORA_FEE_RATE;
+            const perLoraFee = loraFeePool / uniqueLoras.length;
+            uniqueLoras.forEach(lora => {
+                rewards.push({ ownerId: lora.ownerAccountId, amount: perLoraFee, type: 'lora_fee' });
+                totalFee += perLoraFee;
+            });
+            logger.info(`[calculateCreatorRewards] Calculated LoRA fee of ${loraFeePool} split among ${uniqueLoras.length} LoRAs for spell generation.`);
+        }
+    } else if (uniqueLoras.length > 0) {
+        const LORA_FEE_RATE = 0.05;
+        const loraFeePool = baseCost * LORA_FEE_RATE;
+        const perLoraFee = loraFeePool / uniqueLoras.length;
+        uniqueLoras.forEach(lora => {
+            rewards.push({ ownerId: lora.ownerAccountId, amount: perLoraFee, type: 'lora_fee' });
+            totalFee += perLoraFee;
+        });
+        logger.info(`[calculateCreatorRewards] Calculated LoRA fee of ${loraFeePool} split among ${uniqueLoras.length} LoRAs.`);
+    }
+
+    const finalCost = baseCost + totalFee;
+    logger.info(`[calculateCreatorRewards] Base Cost: ${baseCost}, Total Fee: ${totalFee}, Final Cost: ${finalCost}`);
+
+    return { finalCost, rewards };
+}
+
+/**
+ * Distributes rewards to creators by calling the credit API.
+ * @param {object} generationRecord - The generation record for context.
+ * @param {Array<{ownerId: string, amount: number, type: string}>} rewards - The rewards to distribute.
+ * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
+ */
+async function distributeCreatorRewards(generationRecord, rewards, { internalApiClient, logger }) {
+    logger.info(`[distributeCreatorRewards] Distributing ${rewards.length} rewards for generation ${generationRecord._id}.`);
+
+    for (const reward of rewards) {
+        try {
+            const creditPayload = {
+                amountUsd: reward.amount,
+                description: `Reward for your ${reward.type === 'spell_fee' ? 'Spell' : 'LoRA'} used in generation ${generationRecord._id}`,
+                transactionType: "creator_reward",
+                relatedItems: {
+                    generationId: generationRecord._id,
+                    rewardType: reward.type,
+                }
+            };
+            await issueCredit(reward.ownerId, creditPayload, { internalApiClient, logger });
+            logger.info(`[distributeCreatorRewards] Successfully credited ${reward.amount} to owner ${reward.ownerId}.`);
+        } catch (error) {
+            logger.error(`[distributeCreatorRewards] FAILED to credit owner ${reward.ownerId} for generation ${generationRecord._id}. Error:`, error.message);
+            // This failure is logged but does not stop other rewards or fail the main process.
+        }
+    }
+}
+
+
+/**
+ * Issues a credit to a user's account via the internal API.
+ * @param {string} masterAccountId - The user to credit.
+ * @param {object} payload - The credit payload.
+ * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
+ */
+async function issueCredit(masterAccountId, payload, { internalApiClient, logger }) {
+    if (!masterAccountId) {
+        throw new Error('masterAccountId is required for credit.');
+    }
+    const creditEndpoint = `/v1/data/users/${masterAccountId}/economy/credit`;
+    const requestOptions = {
+        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB },
+    };
+
+    logger.info(`[issueCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));
+
+    try {
+        await internalApiClient.post(creditEndpoint, payload, requestOptions);
+    } catch (error) {
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error during credit';
+        logger.error(`[issueCredit] Credit request failed for user ${masterAccountId}. Error: ${errorMessage}`);
+        const creditError = new Error(`Credit API call failed: ${errorMessage}`);
+        creditError.statusCode = error.response?.status || 500;
+        throw creditError;
+    }
+}
+// <<<< ADR-012: Micro-Fee System END >>>>
 
 // Helper function to build the debit payload as per ADR-005
 function buildDebitPayload(toolId, generationRecord, costUsd) {

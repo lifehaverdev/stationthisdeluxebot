@@ -43,7 +43,7 @@ class WorkflowExecutionService {
         this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
         const stepInput = { ...pipelineContext, ...step.parameterOverrides };
-        const { inputs: finalInputsForComfyUI } = await this.workflowsService.prepareToolRunPayload(tool.toolId, stepInput, originalContext.masterAccountId);
+        const { inputs: finalInputsForComfyUI, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(tool.toolId, stepInput, originalContext.masterAccountId);
 
         // Find or create a session for this execution
         let sessionId;
@@ -99,6 +99,7 @@ class WorkflowExecutionService {
                 originalContext,
                 costRate: costRateInfo,
                 toolId: tool.toolId,
+                loraResolutionData,
                 notificationContext: {
                     type: 'spell_step_completion',
                     spellId: spell._id,

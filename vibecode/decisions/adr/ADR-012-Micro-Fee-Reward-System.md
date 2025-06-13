@@ -35,3 +35,16 @@ The StationThis platform allows users to create and share mods (LoRA models) and
 - **Flat Fee:** Rejected in favor of a percentage-based system, which scales with usage and cost.
 - **Delayed Payouts:** Rejected in favor of instant payouts for better user experience and transparency.
 - **Points-Only Rewards:** Rejected in favor of USD credits for backend accounting, with points as the user-facing denomination. 
+
+## Implementation Notes
+
+- **Data Flow:**
+  - `src/core/services/WorkflowExecutionService.js`: The `_executeStep` function was modified to capture the `loraResolutionData` (which includes `appliedLoras`) from `workflowsService.prepareToolRunPayload`. This data is now stored in the `metadata` of the generation record, making it available for billing.
+
+- **Billing & Reward Logic:**
+  - `src/core/services/comfydeploy/webhookProcessor.js`: This file now contains the core implementation for the reward system.
+    - A new function, `calculateCreatorRewards`, was introduced. It's called after a generation is successful and calculates the total fee based on the generation's base cost and the applied spell/LoRAs from the generation record's metadata. It returns the final cost (base + fee) and a list of reward objects.
+    - The user who initiated the generation is now debited for the `finalCost`.
+    - After the user's debit is successful, a new `distributeCreatorRewards` function is called.
+    - This function iterates through the rewards and calls a new `issueCredit` helper function for each creator, which posts to the `/v1/data/users/{masterAccountId}/economy/credit` internal API endpoint.
+    - This ensures that creators are only paid after the user's payment has been successfully processed. 
