@@ -802,7 +802,7 @@ async function initializeRoutes(app, services) {
 
       // Dependencies for the processor
       const dependencies = {
-        internalApiClient: services.internalApiClient, // Reverted to use services.internalApiClient
+        internalApiClient: services.internal.client, // Corrected to use services.internal.client
         telegramNotifier: services.telegramNotifier, 
         logger: services.logger || console 
       };

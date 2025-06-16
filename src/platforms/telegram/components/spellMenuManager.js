@@ -711,13 +711,68 @@ function registerHandlers(dispatcherInstances, dependencies) {
         let paramOverrides = {};
         // Parse slug and parameter overrides from the command
         if (match && match[1]) {
-            const parts = match[1].trim().split(/\s+/);
-            spellSlug = parts[0];
-            // Parse param1=foo param2=bar ...
-            for (let i = 1; i < parts.length; i++) {
-                const [key, value] = parts[i].split('=');
-                if (key && value !== undefined) {
-                    paramOverrides[key] = value;
+            const commandBody = match[1].trim();
+            const firstSpaceIndex = commandBody.indexOf(' ');
+
+            if (firstSpaceIndex === -1) {
+                spellSlug = commandBody;
+            } else {
+                spellSlug = commandBody.substring(0, firstSpaceIndex);
+                const argString = commandBody.substring(firstSpaceIndex + 1).trim();
+
+                // Regex to match key=value pairs, supporting quotes.
+                const paramRegex = /([\w_.-]+)=("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"'`]+)/g;
+                
+                const parsedParams = {};
+                let lastIndex = 0;
+                let isKeyValueFormat = true;
+                let matchResult;
+                
+                // Only attempt key-value parsing if there's at least one '='
+                if (argString.includes('=')) {
+                    while ((matchResult = paramRegex.exec(argString)) !== null) {
+                        // Check for any non-whitespace characters between the last match and this one.
+                        if (argString.substring(lastIndex, matchResult.index).trim() !== '') {
+                            isKeyValueFormat = false;
+                            break;
+                        }
+
+                        const key = matchResult[1];
+                        let value = matchResult[2];
+
+                        // Unquote and unescape.
+                        if (value.startsWith('"') && value.endsWith('"')) {
+                            try {
+                                value = JSON.parse(value);
+                            } catch (e) {
+                                // If JSON parsing fails, it's malformed. Treat as literal.
+                                value = value.slice(1, -1);
+                            }
+                        } else if (value.startsWith("'") && value.endsWith("'")) {
+                            value = value.slice(1, -1).replace(/\\'/g, "'");
+                        }
+                        
+                        parsedParams[key] = value;
+                        lastIndex = paramRegex.lastIndex;
+                    }
+
+                    // If we haven't had an error, check for any trailing non-whitespace characters.
+                    if (isKeyValueFormat && argString.substring(lastIndex).trim() !== '') {
+                        isKeyValueFormat = false;
+                    }
+
+                } else {
+                    // No '=' means it's not key-value
+                    isKeyValueFormat = false; 
+                }
+                
+                if (!isKeyValueFormat || Object.keys(parsedParams).length === 0 && argString.includes('=')) {
+                    // If parsing as key-value failed or was not attempted,
+                    // or if it resulted in no parameters despite having an '=',
+                    // treat the whole thing as a single prompt.
+                    paramOverrides = { prompt: argString };
+                } else {
+                    paramOverrides = parsedParams;
                 }
             }
         }
