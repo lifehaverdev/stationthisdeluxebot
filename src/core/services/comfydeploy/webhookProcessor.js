@@ -81,6 +81,33 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];
         generationId = generationRecord._id;
+
+        // --- SPELL STEP CHECK ---
+        // If this is an intermediate step in a spell, we just update the record and let the dispatcher handle it.
+        // We do NOT calculate cost or debit the user at this stage.
+        if (generationRecord.metadata?.isSpell && generationRecord.deliveryStrategy === 'spell_step') {
+            logger.info(`[Webhook Processor] Detected spell step for generation ${generationId}. Bypassing cost/debit logic.`);
+            const spellStepUpdatePayload = {
+                status: status === 'success' ? 'completed' : 'failed',
+                statusReason: status === 'failed' ? (payload.error_details || payload.error || 'Unknown error from ComfyDeploy') : null,
+                responseTimestamp: finalEventTimestamp,
+                responsePayload: status === 'success' ? (outputs || null) : (payload.error_details || payload.error || null),
+            };
+            
+            try {
+                const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+                await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, spellStepUpdatePayload, putRequestOptions);
+                logger.info(`[Webhook Processor] Successfully updated spell step generation record ${generationId}.`);
+                return { success: true, statusCode: 200, data: { message: "Spell step processed successfully." } };
+            } catch (err) {
+                logger.error(`[Webhook Processor] Error updating spell step generation record ${generationId}:`, err.message, err.stack);
+                const errStatus = err.response ? err.response.status : 500;
+                const errMessage = err.response && err.response.data && err.response.data.message ? err.response.data.message : "Failed to update spell step record.";
+                return { success: false, statusCode: errStatus, error: errMessage };
+            }
+        }
+        // --- END SPELL STEP CHECK ---
+
         if (generationRecord.metadata) {
             costRate = generationRecord.metadata.costRate;
             telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
