@@ -1,5 +1,4 @@
 const axios = require('axios');
-require('dotenv').config(); // Ensure environment variables are loaded
 
 // Import our custom logger
 const { createLogger } = require('./logger'); // Adjusted path for new location

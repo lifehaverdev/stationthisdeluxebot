@@ -1,3 +1,4 @@
+require('dotenv').config();
 /**
  * Web Platform Entry Point
  * 
