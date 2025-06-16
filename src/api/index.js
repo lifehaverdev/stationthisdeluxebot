@@ -22,4 +22,4 @@ function initializeAPI(options = {}) {
 
 module.exports = {
   initializeAPI
-}; 
+};  

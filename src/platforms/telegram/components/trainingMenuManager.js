@@ -6,7 +6,7 @@
 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
 
-const internalApiClient = require('../../../utils/internalApiClient'); // Use the actual internal API client
+// const internalApiClient = require('../../../utils/internalApiClient'); // Remove direct import
 
 // REMOVE mockApiClient
 // const mockApiClient = {
@@ -46,7 +46,7 @@ async function showMainTrainingMenu(bot, chatId, messageId, masterAccountId, isE
   const { logger = console } = dependencies;
   try {
     // Path updated to /trainings/owner/:masterAccountId
-    const response = await internalApiClient.get(`/trainings/owner/${masterAccountId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/owner/${masterAccountId}`);
     const userTrainings = response.data || [];
 
     const keyboard = [
@@ -140,7 +140,7 @@ async function processNewTrainingName(bot, message, masterAccountId, dependencie
     // Replace mockApiClient.createTraining
     // API endpoint: POST /internal/v1/data/trainings
     // Payload includes masterAccountId
-    const createResponse = await internalApiClient.post(`/trainings`, {
+    const createResponse = await dependencies.services.internal.client.post(`/trainings`, {
       masterAccountId: masterAccountId,
       name: trainingName,
       // Add other default fields for a new training if your API requires them
@@ -170,7 +170,7 @@ async function showMyTrainingsMenu(bot, chatId, messageId, masterAccountId, depe
   const { logger = console } = dependencies;
   try {
     // Path updated to /trainings/owner/:masterAccountId
-    const response = await internalApiClient.get(`/trainings/owner/${masterAccountId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/owner/${masterAccountId}`);
     const userTrainings = response.data || [];
     const keyboard = [];
     let text = `📘 **My Trainings**
@@ -210,7 +210,7 @@ async function showEditTrainingMenu(bot, chatId, messageId, masterAccountId, tra
   const { logger = console } = dependencies;
   try {
     // Use internalApiClient to get training details, path relative to /internal/v1/data/
-    const response = await internalApiClient.get(`/trainings/${trainingId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
     const training = response.data;
 
     if (!training) {
@@ -282,7 +282,7 @@ async function showEditTrainingMenu(bot, chatId, messageId, masterAccountId, tra
 async function showImageManagementMenu(bot, chatId, messageId, masterAccountId, trainingId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    const response = await internalApiClient.get(`/trainings/${trainingId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
     const training = response.data;
 
     if (!training) {
@@ -323,7 +323,7 @@ async function showImageManagementMenu(bot, chatId, messageId, masterAccountId, 
 async function handleRequestAddImage(bot, chatId, messageId, masterAccountId, trainingId, dependencies = {}) {
   const { logger = console } = dependencies;
   try {
-    const response = await internalApiClient.get(`/trainings/${trainingId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/trainings/${trainingId}`);
     const training = response.data;
     if (!training) {
       await bot.editMessageText('⚠️ Training session not found. Cannot add image.', {
@@ -454,27 +454,34 @@ async function handleTrainCommand(bot, message, masterAccountId, dependencies = 
     await showMainTrainingMenu(bot, chatId, null, masterAccountId, false, dependencies);
 }
 
-function registerHandlers(dispatchers, dependencies) {
-    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
-    const { logger, bot } = dependencies;
+function registerHandlers(dispatcherInstances, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
 
-    // Helper to get MasterAccountId
-    async function getMasterAccountId(platformId, from) {
-        const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: 'telegram',
-            platformId: platformId.toString(),
-            platformContext: { firstName: from.first_name, username: from.username }
-        });
-        return findOrCreateResponse.data.masterAccountId;
-    }
-
-    // Register /train command to show the main menu
-    commandDispatcher.register(/^\/train(?:@\w+)?$/i, async (message) => {
-        const masterAccountId = await getMasterAccountId(message.from.id, message.from);
+    // Register a handler for the /train command
+    commandDispatcher.register(/^\/train(?:@\w+)?$/i, async (bot, message, dependencies, match) => {
+        // Resolve masterAccountId via internal API (find-or-create)
+        const internal = dependencies.internal;
+        let masterAccountId;
+        try {
+            const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+                platform: 'telegram',
+                platformId: message.from.id.toString(),
+                platformContext: {
+                    firstName: message.from.first_name,
+                    username: message.from.username
+                }
+            });
+            masterAccountId = findOrCreateResponse.data.masterAccountId;
+        } catch (error) {
+            const logger = dependencies.logger || console;
+            logger.error('[TrainingMenu] Failed to resolve masterAccountId for /train command:', error);
+            await bot.sendMessage(message.chat.id, '⚠️ Could not identify your account. Please try again later.', { reply_to_message_id: message.message_id });
+            return;
+        }
         await handleTrainCommand(bot, message, masterAccountId, dependencies);
     });
 
-    // Register all train_* callbacks to the main callback handler
+    // Register a handler for all callbacks starting with 'train_'
     callbackQueryDispatcher.register('train_', async (bot, callbackQuery, masterAccountId, deps) => {
         await handleTrainingCallbackQuery(bot, callbackQuery, masterAccountId, deps);
     });

@@ -1,10 +1,5 @@
 // src/core/services/loraResolutionService.js
 
-// BEGIN ADDITION: Import a shared internal API client instance
-// Assuming a singleton or factory pattern for the client.
-const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
-// END ADDITION
-
 const USER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Cache structure: Map<masterAccountId_or_\"public\", { data: Map<triggerKey, LoRAInfo[]>, timestamp: number }>
@@ -18,7 +13,7 @@ const logger = console; // Replace with a proper logger instance if available
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _fetchAndCacheTriggerMap(masterAccountId, toolBaseModel) {
+async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, toolBaseModel) {
   const cacheKey = masterAccountId || 'public';
   let apiUrl = masterAccountId ? `/lora/trigger-map-data?userId=${masterAccountId}` : '/lora/trigger-map-data';
   if (toolBaseModel) {
@@ -63,7 +58,7 @@ async function _fetchAndCacheTriggerMap(masterAccountId, toolBaseModel) {
  * @returns {Promise<Map<string, any[]>>} - The trigger map.
  * @private
  */
-async function _getTriggerMap(masterAccountId, toolBaseModel) {
+async function _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel) {
   const cacheKey = masterAccountId || 'public';
   const cachedEntry = triggerMapCache.get(cacheKey);
 
@@ -72,7 +67,7 @@ async function _getTriggerMap(masterAccountId, toolBaseModel) {
     return cachedEntry.data;
   }
   
-  return _fetchAndCacheTriggerMap(masterAccountId, toolBaseModel);
+  return _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, toolBaseModel);
 }
 
 // Regex to find <lora:slug:weight> tags
@@ -92,14 +87,15 @@ const SPLIT_KEEP_DELIMITERS_REGEX = /(\s+|[.,!?()[\]{}\'\"]+)/g;
  * @param {string} [toolBaseModel] - Optional tool base model for filtering.
  * @returns {Promise<{modifiedPrompt: string, rawPrompt: string, appliedLoras: Array<{slug: string, weight: number, originalWord: string, replacedWord: string, modelId: string}>, warnings: string[]}>}
  */
-async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel) {
+async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel, dependencies) {
   const rawPrompt = promptString;
+  const internalApiClient = dependencies.internal.client;
   const appliedLoras = [];
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run
 
   logger.info(`[LoRAResolutionService] Resolving LoRAs for user: ${masterAccountId || 'N/A (public map only)'}. Prompt: "${promptString.substring(0,50)}...". ToolBaseModel: ${toolBaseModel || 'N/A'}`);
-  const triggerMap = await _getTriggerMap(masterAccountId, toolBaseModel);
+  const triggerMap = await _getTriggerMap(internalApiClient, masterAccountId, toolBaseModel);
 
   if (!triggerMap || triggerMap.size === 0) {
     logger.info(`[LoRAResolutionService] Trigger map is empty for ${masterAccountId || 'public'}. Returning original prompt.`);

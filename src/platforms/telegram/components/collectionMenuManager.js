@@ -8,11 +8,11 @@ const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
 
 /**
  * All-in-one manager for collections feature.
- * @param {object} dispatchers - The dispatchers object.
- * @param {object} dependencies - The dependencies needed by the handlers.
+ * @param {object} dispatcherInstances - The dispatcher instances object.
+ * @param {object} dependencies - The canonical dependencies object.
  */
-function registerHandlers(dispatchers, dependencies) {
-    const { commandDispatcher, callbackQueryDispatcher } = dispatchers;
+function registerHandlers(dispatcherInstances, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher } = dispatcherInstances;
     const { logger, bot, sessionService, mediaService, db, internalApiClient } = dependencies;
 
     const collectionsWorkflow = new CollectionsWorkflow({
@@ -107,10 +107,10 @@ function registerHandlers(dispatchers, dependencies) {
         }
     }
 
-    commandDispatcher.register(/^\/collections(?:@\w+)?\s*(.*)/i, async (message, match) => {
-        const userId = message.from.id.toString();
+    async function handleCollectionsCommand(bot, message, dependencies, initialAction) {
+        const { userId } = message;
         const masterAccountId = await getMasterAccountId(userId, message.from);
-        const args = (match[1] || '').trim().split(/\s+/);
+        const args = (initialAction || '').split(/\s+/);
         const command = args[0] ? args[0].toLowerCase() : 'list';
         const name = args.slice(1).join(' ');
 
@@ -124,9 +124,9 @@ function registerHandlers(dispatchers, dependencies) {
             default:
                 await bot.sendMessage(message.chat.id, "Unknown collections command. Try `list` or `create`.", { reply_to_message_id: message.message_id });
         }
-    });
+    }
 
-    callbackQueryDispatcher.register('collection:', async (bot, callbackQuery, masterAccountId, deps) => {
+    async function handleCollectionCallback(bot, callbackQuery, masterAccountId, deps) {
         const { data, message } = callbackQuery;
         const parts = data.split(':');
         const action = parts[1];
@@ -166,6 +166,15 @@ function registerHandlers(dispatchers, dependencies) {
                 logger.warn(`[CollectionManager] Unknown collection action: ${action}`);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Unknown collection action" });
         }
+    }
+
+    commandDispatcher.register(/^\/collections(?:@\w+)?\s*(.*)/i, async (message, match) => {
+        const initialAction = match[1] ? match[1].trim() : null;
+        await handleCollectionsCommand(bot, message, dependencies, initialAction);
+    });
+
+    callbackQueryDispatcher.register('collection:', async (bot, callbackQuery, masterAccountId, deps) => {
+        await handleCollectionCallback(bot, callbackQuery, masterAccountId, deps);
     });
 }
 

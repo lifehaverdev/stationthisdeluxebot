@@ -71,7 +71,7 @@ async function initializeServices(options = {}) {
 
     // Initialize API services
     const apiServices = initializeAPI({
-      logger,
+      logger, 
       appStartTime,
       version: options.version,
       db: initializedDbServices, // Pass the INSTANTIATED services
@@ -118,7 +118,6 @@ async function initializeServices(options = {}) {
       openai: openAIService,
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
-      internalApiClient: apiServices.internal?.client, // Expose the client directly
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService

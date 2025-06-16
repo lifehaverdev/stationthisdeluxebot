@@ -5,9 +5,9 @@
 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
 
-function registerHandlers(dispatchers, dependencies) {
-    const { commandDispatcher, callbackQueryDispatcher } = dispatchers;
-    const { logger, bot, internalApiClient } = dependencies;
+function registerHandlers(dispatcherInstances, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher } = dispatcherInstances;
+    const { bot, logger, modsService, userSettingsService } = dependencies;
 
     const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || '5472638766';
 
@@ -22,7 +22,7 @@ function registerHandlers(dispatchers, dependencies) {
 
         try {
             logger.info(`[AdminManager] Attempting to clear commands for chat_id: ${chatId}`);
-            await bot.setMyCommands([], { scope: { type: 'chat', chat_id: chatId } });
+            await bot.deleteMyCommands();
             logger.info(`[AdminManager] Successfully cleared commands for chat_id: ${chatId}`);
             bot.sendMessage(chatId, "Your chat-specific command list has been cleared.", { reply_to_message_id: message.message_id });
         } catch (error) {
@@ -69,7 +69,7 @@ function registerHandlers(dispatchers, dependencies) {
 
         try {
             logger.info(`[AdminManager] Calling internal API: POST ${apiEndpoint}`);
-            const response = await internalApiClient.post(apiEndpoint, {});
+            const response = await dependencies.services.internal.client.post(apiEndpoint, {});
 
             if (response.status === 200 || response.status === 202) {
                 await bot.editMessageText(

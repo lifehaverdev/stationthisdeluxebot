@@ -38,7 +38,7 @@ module.exports = function createUserStatusApiRoutes(dependencies) {
     try {
       // Step 1: Authenticate API Key via Internal Auth Endpoint
       logger.info('[userStatusApi] Attempting to validate API key via internal endpoint...');
-      const authResponse = await internalApiClient.post('/v1/data/users/apikeys/validate-token', 
+      const authResponse = await internalApiClient.post('/internal/v1/data/users/apikeys/validate-token', 
         { apiKey: presentedApiKey }, 
         {
           headers: {
@@ -67,7 +67,7 @@ module.exports = function createUserStatusApiRoutes(dependencies) {
     try {
       logger.info(`[userStatusApi] Authenticated user ${masterAccountId}. Fetching status report via internal API...`);
 
-      const internalStatusPath = `/v1/data/users/${masterAccountId}/status-report`;
+      const internalStatusPath = `/internal/v1/data/users/${masterAccountId}/status-report`;
       const statusReportResponse = await internalApiClient.get(internalStatusPath, {
         headers: {
           'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 

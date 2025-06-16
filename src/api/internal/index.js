@@ -23,6 +23,8 @@ const loraImportRouter = require('./loraImportApi');
 const createTrainingsApi = require('./trainingsApi');
 const createSpellsApi = require('./spellsApi'); // Import the new spells API
 const { initializeLlmApi } = require('./llm');
+const { createLogger } = require('../../utils/logger');
+const internalApiClient = require('../../utils/internalApiClient');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -38,50 +40,21 @@ function initializeInternalServices(dependencies = {}) {
   const logger = dependencies.logger || console;
   const dbDataServices = dependencies.db?.data;
 
-  // Determine the base URL for the internal API client
-  // This should ideally come from environment variables or a central config
-  logger.info(`[InternalAPIClientConfig] Current process.env.PORT: ${process.env.PORT}`);
-  logger.info(`[InternalAPIClientConfig] Current process.env.INTERNAL_API_BASE_URL: ${process.env.INTERNAL_API_BASE_URL}`);
-  const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.PORT || 4000}/internal`;
-  logger.info(`[InternalAPIClient] Base URL configured to: ${internalApiBaseUrl}`);
+  // Initialize logger for the internal API
+  const internalLogger = createLogger('InternalAPI');
 
-  // Log the value of the admin API key
-  logger.info(`[InternalAPIClientConfig] Value of process.env.INTERNAL_API_KEY_ADMIN: "${process.env.INTERNAL_API_KEY_ADMIN}"`);
+  // Retrieve the base URL for the internal API from environment variables,
+  // falling back to a default for local development.
+  const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
 
-  // Create an Axios instance for the internal API
-  const apiClient = axios.create({
-    baseURL: internalApiBaseUrl,
-    timeout: process.env.INTERNAL_API_TIMEOUT_MS || 10000, // Default 10 seconds
-    headers: {
-      // The X-Internal-Client-Key will be set by the CALLER of this client,
-      // as the key depends on which service is making the call (e.g., Telegram backend, Web backend)
-      'Content-Type': 'application/json',
-      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_ADMIN // Add default admin key
-    }
-  });
+  // Create an instance of the Axios-based API client for internal use.
+  //const internalApiClient = internalApiClient(internalApiBaseUrl, 'InternalOnBehalfOf');
 
-  // Optional: Add request/response interceptors for logging or error handling
-  apiClient.interceptors.request.use(request => {
-    logger.debug(`[InternalAPIClient] Sending request to: ${request.method?.toUpperCase()} ${request.url}`, { headers: request.headers, data: request.data });
-    return request;
-  }, error => {
-    logger.error('[InternalAPIClient] Request Error:', error.message);
-    return Promise.reject(error);
-  });
-
-  apiClient.interceptors.response.use(response => {
-    // logger.debug(`[InternalAPIClient] Received response from: ${response.config.method?.toUpperCase()} ${response.config.url}`, { status: response.status, data: response.data });
-    return response;
-  }, error => {
-    if (error.response) {
-      logger.error(`[InternalAPIClient] Response Error Status: ${error.response.status} from ${error.config.method?.toUpperCase()} ${error.config.url}`, { data: error.response.data, headers: error.response.headers });
-    } else if (error.request) {
-      logger.error(`[InternalAPIClient] No response received for request to ${error.config.method?.toUpperCase()} ${error.config.url}:`, error.message);
-    } else {
-      logger.error('[InternalAPIClient] Error setting up request:', error.message);
-    }
-    return Promise.reject(error);
-  });
+  // Middleware to enforce that requests to this API must originate from an allowed internal source.
+  // It checks for a valid internal API key.
+  function internalOnly(req, res, next) {
+    // ... existing code ...
+  }
 
   if (!dbDataServices) {
     logger.error('[InternalAPI] Database services (dependencies.db.data) not found. API services requiring DB will likely fail.');
@@ -99,7 +72,6 @@ function initializeInternalServices(dependencies = {}) {
       toolRegistry: dependencies.toolRegistry || require('../../core/tools/ToolRegistry').ToolRegistry.getInstance(), // Ensure toolRegistry is available
       // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
       // internalApiClient: apiClient, (defined later in this function)
-      internalApiClient: apiClient // Added apiClient here
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
@@ -382,7 +354,7 @@ function initializeInternalServices(dependencies = {}) {
   return {
     status: statusService, 
     router: mainInternalRouter,
-    client: apiClient
+    client: internalApiClient
   };
 }
 

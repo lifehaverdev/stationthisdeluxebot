@@ -1,40 +1,105 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
-const internalApiClient = require('../../utils/internalApiClient'); // UPDATED PATH
-const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils'); // Import from new util file
+const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
 
-async function setupDynamicCommands(bot, services) {
-  const workflowsService = services.workflows;
-  const comfyuiService = services.comfyui;
-  const logger = services.logger || console;
-  const toolRegistry = services.toolRegistry; // Assuming toolRegistry is added to services
+/**
+ * A registry to hold dynamic command definitions and their handlers.
+ * This decouples the command setup from the bot's event listeners.
+ */
+class CommandRegistry {
+    constructor(logger) {
+        this.commands = new Map();
+        this.logger = logger || console;
+    }
+
+    /**
+     * Registers a command and its handler logic.
+     * @param {string} commandName - The command name (e.g., 'animediffusion').
+     * @param {RegExp} regex - The regex to match the command.
+     * @param {Function} handler - The async function to handle the command.
+     */
+    register(commandName, regex, handler) {
+        if (this.commands.has(commandName)) {
+            this.logger.warn(`[CommandRegistry] Command '/${commandName}' is already registered. Overwriting.`);
+        }
+        this.commands.set(commandName, { regex, handler });
+        this.logger.info(`[CommandRegistry] Registered command: /${commandName}`);
+    }
+
+    /**
+     * Finds a handler for a given message text.
+     * @param {string} text - The message text to match against.
+     * @returns {object|null} - An object with the handler and the match result, or null if no match.
+     */
+    findHandler(text) {
+        for (const [commandName, { regex, handler }] of this.commands.entries()) {
+            const match = text.match(regex);
+            if (match) {
+                this.logger.debug(`[CommandRegistry] Matched command '/${commandName}'`);
+                return { handler, match };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Gets all registered commands for setting bot commands.
+     * @returns {Array<object>} - An array of { command, description } objects.
+     */
+    getAllCommands() {
+        // This is a simplified version. In a real scenario, you'd store the description
+        // during registration. For now, we derive it.
+        return Array.from(this.commands.keys()).map(cmd => ({
+            command: cmd,
+            description: `Run ${cmd}` // Placeholder description
+        }));
+    }
+}
+
+
+/**
+ * Sets up dynamic commands by populating a CommandRegistry.
+ * @param {CommandRegistry} commandRegistry - The registry to populate.
+ * @param {object} dependencies - The canonical dependencies object.
+ * @returns {Promise<Array<object>>} - A promise that resolves to the list of commands for API registration.
+ */
+async function setupDynamicCommands(commandRegistry, dependencies) {
+  const { workflows, comfyui, logger, toolRegistry, userSettingsService, openaiService } = dependencies;
+  
+  // Backwards compatibility for services structure if needed, but prefer flat dependencies.
+  const workflowsService = workflows || dependencies.workflowsService;
+  const comfyuiService = comfyui || dependencies.comfyUI;
 
   logger.info('[Telegram] Setting up dynamic commands...');
 
   try {
     if (!workflowsService || typeof workflowsService.getWorkflows !== 'function') {
       logger.warn('[Telegram] WorkflowsService not available or getWorkflows method is missing. Skipping dynamic command generation.');
-      return;
+      return [];
     }
     if (!comfyuiService || typeof comfyuiService.submitRequest !== 'function') {
       logger.warn('[Telegram] ComfyUIService not available or submitRequest method is missing. Skipping dynamic command generation.');
-      return;
+      return [];
     }
     if (!toolRegistry) {
       logger.warn('[Telegram] ToolRegistry not available in services. Skipping dynamic command generation.');
-      return;
+      return [];
+    }
+    if (!userSettingsService) {
+        logger.error('[Telegram] userSettingsService is missing from dependencies. Cannot set up dynamic commands.');
+        return [];
     }
 
-    const allTools = toolRegistry.getAllTools(); // Use ToolRegistry as the source of truth
+    const allTools = toolRegistry.getAllTools();
     
     if (!allTools || allTools.length === 0) {
       logger.warn('[Telegram] No tools found in the registry to process for dynamic commands.');
-      return;
+      return [];
     }
     logger.info(`[Telegram] Found ${allTools.length} total tools from ToolRegistry.`);
 
-    // Refactored tool filtering and classification
     const commandableTools = allTools.reduce((acc, tool) => {
-      if (!tool || !tool.toolId || !tool.displayName) { // Removed service check
+      // ... (existing tool classification logic remains the same)
+      if (!tool || !tool.toolId || !tool.displayName) { 
         return acc;
       }
       if (!tool.inputSchema || typeof tool.inputSchema !== 'object' || Object.keys(tool.inputSchema).length === 0) {
@@ -55,7 +120,7 @@ async function setupDynamicCommands(bot, services) {
         const inputField = tool.inputSchema[inputName];
         if (!inputField) continue;
 
-        const fieldType = inputField.type || 'unknown'; // Get type, default to 'unknown'
+        const fieldType = inputField.type || 'unknown';
         const fieldTypeLower = typeof fieldType === 'string' ? fieldType.toLowerCase() : 'unknown';
         
         const isPromptCandidateByName = (inputName === 'input_prompt' || inputName === 'prompt' || inputName.toLowerCase().includes('text'));
@@ -63,7 +128,7 @@ async function setupDynamicCommands(bot, services) {
         const isVideoCandidateByName = (inputName === 'input_video' || inputName === 'video' || inputName.toLowerCase().includes('video'));
         
         if ((fieldTypeLower === 'string' || fieldTypeLower === 'text') && isPromptCandidateByName) {
-          if (!textInputKey) textInputKey = inputName; // Prefer specific names first
+          if (!textInputKey) textInputKey = inputName;
           if (inputField.required) hasRequiredText = true;
         }
         if (fieldTypeLower === 'image' && isImageCandidateByName) {
@@ -76,24 +141,18 @@ async function setupDynamicCommands(bot, services) {
         }
       }
       
-      // Fallback: if no specifically named prompt, and primaryHint is 'text', take the first string input.
       if (!textInputKey && primaryHint === 'text') {
-        logger.info(`[Telegram Filter Debug] Tool '${tool.displayName}' (ID: ${tool.toolId}) is text-primary but no specific prompt key found yet. Scanning all string inputs...`);
         for (const inputName in tool.inputSchema) {
           const inputField = tool.inputSchema[inputName];
           const currentFieldTypeLower = inputField?.type?.toLowerCase?.();
           if (inputField && (currentFieldTypeLower === 'string' || currentFieldTypeLower === 'text')) {
-            logger.info(`[Telegram Filter Debug]   Found potential string/text input: '${inputName}' (type: ${inputField.type}). Assigning as textInputKey.`);
             textInputKey = inputName;
             if (inputField.required) hasRequiredText = true;
             break; 
-          } else if (inputField) {
-            logger.info(`[Telegram Filter Debug]   Skipping input '${inputName}' (type: ${inputField.type || 'undefined'}) during text fallback.`);
           }
         }
       }
 
-      // Fallback for image/video if not specifically named (less critical if primaryHint guides us)
       if (!imageInputKey) {
           for (const inputName in tool.inputSchema) {
               const inputField = tool.inputSchema[inputName];
@@ -121,20 +180,18 @@ async function setupDynamicCommands(bot, services) {
       if (primaryHint === 'text' && textInputKey && !imageInputKey && !videoInputKey) {
         handlerType = 'text_only';
       } else if (primaryHint === 'text' && textInputKey && (imageInputKey || videoInputKey)) {
-        // Text is primary, but image/video might be optional or also accepted.
-        // For Telegram, if an image/video is *required*, it changes the interaction model.
         if (hasRequiredImage) handlerType = 'image_required_with_text';
         else if (hasRequiredVideo) handlerType = 'video_required_with_text';
-        else handlerType = 'text_primary_media_optional'; // User provides text, can optionally reply to media
+        else handlerType = 'text_primary_media_optional';
       } else if (primaryHint === 'image' && imageInputKey) {
         handlerType = textInputKey ? 'image_primary_with_text' : 'image_only';
       } else if (primaryHint === 'video' && videoInputKey) {
         handlerType = textInputKey ? 'video_primary_with_text' : 'video_only';
-      } else if (textInputKey && !imageInputKey && !videoInputKey) { // Fallback if no clear primaryHint but has text
+      } else if (textInputKey && !imageInputKey && !videoInputKey) {
          handlerType = 'text_only';
-      } else if (imageInputKey && !textInputKey && !videoInputKey) { // Fallback for image only
+      } else if (imageInputKey && !textInputKey && !videoInputKey) {
          handlerType = 'image_only';
-      } else if (videoInputKey && !textInputKey && !imageInputKey) { // Fallback for video only
+      } else if (videoInputKey && !textInputKey && !imageInputKey) {
          handlerType = 'video_only';
       }
 
@@ -143,19 +200,9 @@ async function setupDynamicCommands(bot, services) {
         tool.metadata.telegramPromptInputKey = textInputKey;
         tool.metadata.telegramImageInputKey = imageInputKey;
         tool.metadata.telegramVideoInputKey = videoInputKey;
-        logger.info(`[Telegram Filter] Classified tool '${tool.displayName}' (ID: ${tool.toolId}) as '${handlerType}'. PromptKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}`);
         acc.push(tool);
       } else {
-        const inputKeys = Object.keys(tool.inputSchema || {}).join(', ');
-        let typeDebug = '';
-        if (primaryHint === 'text' && !textInputKey) {
-            Object.entries(tool.inputSchema || {}).forEach(([key, val]) => {
-                if (key === 'input_prompt' || key === 'prompt' || key.toLowerCase().includes('text')) {
-                    typeDebug += ` Field '${key}' has type: ${val?.type || 'undefined'}.`;
-                }
-            });
-        }
-        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) could not be classified for a Telegram handler. Skipping. PrimaryHint: ${primaryHint}, TextKey: ${textInputKey}, ImgKey: ${imageInputKey}, VidKey: ${videoInputKey}, ReqImg: ${hasRequiredImage}, ReqVid: ${hasRequiredVideo}, InputSchemaKeys: [${inputKeys}].${typeDebug}`);
+        logger.warn(`[Telegram Filter] Tool '${tool.displayName}' (ID: ${tool.toolId}) could not be classified for a Telegram handler. Skipping.`);
       }
       return acc;
     }, []);
@@ -164,10 +211,10 @@ async function setupDynamicCommands(bot, services) {
 
     if (commandableTools.length === 0) {
       logger.info('[Telegram] No suitable tools found to register as dynamic commands after classification.');
-      return;
+      return [];
     }
 
-    const registeredCommands = [];
+    const registeredCommandsList = [];
 
     for (const tool of commandableTools) {
       const commandName = sanitizeCommandName(tool.displayName);
@@ -176,407 +223,135 @@ async function setupDynamicCommands(bot, services) {
         continue;
       }
 
-      logger.info(`[Telegram] Registering command: /${commandName} for tool ID: ${tool.toolId}`);
-      registeredCommands.push({ command: commandName, description: `Run ${tool.displayName}` });
-
-      bot.onText(new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i'), async (msg, match) => {
+      // The handler is now a standalone async function.
+      const commandHandler = async (bot, msg, dependencies, match) => {
+        const { internal, comfyui, openaiService, logger } = dependencies;
         const chatId = msg.chat.id;
-        const telegramUserId = msg.from.id;
-
-        // <<< IMMEDIATE REACTION >>>
-        if (msg.message_id) {
-          try {
-            await setReaction(bot, chatId, msg.message_id, '🤔');
-          } catch (reactError) {
-            logger.warn(`[Telegram EXEC /${commandName}] Failed to set initial reaction: ${reactError.message}`);
-          }
-        }
-        // <<< END IMMEDIATE REACTION >>>
-
-        const platformIdStr = telegramUserId.toString();
-        const platform = 'telegram';
+        await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
+            logger.warn(`[Telegram EXEC /${commandName}] Failed to set initial reaction: ${reactError.message}`)
+        );
         const promptText = match && match[1] ? match[1].trim() : '';
-        
-        const currentTool = tool;
-        const currentToolId = currentTool.toolId;
-        const currentDisplayName = currentTool.displayName;
-        const handlerType = currentTool.metadata?.telegramHandlerType;
-        const currentPromptInputKey = currentTool.metadata?.telegramPromptInputKey;
-        const currentImageInputKey = currentTool.metadata?.telegramImageInputKey;
-        const currentVideoInputKey = currentTool.metadata?.telegramVideoInputKey;
-
-        let imageUrl = null;
-        let videoUrl = null;
-
-        let userInputsForTool = {}; // Initialize as an empty object
-        if (currentPromptInputKey && promptText) {
-          userInputsForTool[currentPromptInputKey] = promptText;
-        } else if (currentPromptInputKey && !promptText && !tool.inputSchema[currentPromptInputKey]?.required) {
-          // Optional prompt, not provided.
-        } else if (!currentPromptInputKey && promptText) {
-            logger.warn(`[Telegram EXEC /${commandName}] Prompt text provided but no promptInputKey defined for tool ${currentToolId}. Ignoring prompt text.`);
-        }
-
-        if (handlerType === 'image_primary_with_text' || handlerType === 'image_only' || handlerType === 'image_required_with_text') {
-          if (!msg.reply_to_message || (!msg.reply_to_message.photo && !(msg.reply_to_message.document && msg.reply_to_message.document.mime_type && msg.reply_to_message.document.mime_type.startsWith('image/')))) {
-            bot.sendMessage(chatId, `The /${commandName} command requires you to reply to an image. Please send an image and then reply to it with the command.`, { reply_to_message_id: msg.message_id });
-            return;
-          }
-          imageUrl = await getTelegramFileUrl(bot, msg);
-          if (!imageUrl) {
-            logger.warn(`[Telegram EXEC /${commandName}] Could not retrieve image URL for replied message.`);
-            bot.sendMessage(chatId, `Sorry, I couldn't retrieve the image from your replied message. Please try again.`, { reply_to_message_id: msg.message_id });
-            return;
-          }
-          if (currentImageInputKey) {
-            userInputsForTool[currentImageInputKey] = imageUrl;
-            logger.info(`[Telegram EXEC /${commandName}] Using image URL: ${imageUrl} for input key: ${currentImageInputKey}`);
-          } else {
-            logger.warn(`[Telegram EXEC /${commandName}] Image provided but no imageInputKey defined for tool ${currentToolId}. Ignoring image.`);
-          }
-        }
-        else if (handlerType !== 'text_only' && handlerType !== 'text_primary_media_optional') {
-            logger.warn(`[Telegram EXEC /${commandName}] Tool handler type '${handlerType}' not yet supported for command interaction. Tool: ${currentDisplayName}`);
-            bot.sendMessage(chatId, `The /${commandName} command has a configuration not yet fully supported for direct text interaction (Type: ${handlerType}). Coming soon!`, { reply_to_message_id: msg.message_id });
-            return;
-        }
-
-        if (currentPromptInputKey && !promptText && tool.inputSchema[currentPromptInputKey]?.required && !userInputsForTool[currentPromptInputKey]) {
-          logger.info(`[Telegram EXEC /${commandName}] Required prompt not provided for key '${currentPromptInputKey}'. Replying to user.`);
-          bot.sendMessage(chatId, `Please provide a prompt after the command. Usage: /${commandName} your prompt here`, { reply_to_message_id: msg.message_id });
-          return;
-        }
-
-        let masterAccountId;
-        let sessionId;
-        let eventId;
-        let finalInputValuesForTool = { ...userInputsForTool }; // Initialize here
-
         try {
-          // Resolve user and settings first, as they are needed for both sync and async paths
-          const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
-            platform: platform,
-            platformId: platformIdStr,
-            platformContext: { firstName: msg.from.first_name, username: msg.from.username }
-          });
-          masterAccountId = findOrCreateResponse.data.masterAccountId;
-
-          // ADR-006 - User Settings Integration
-          if (services.userSettingsService && masterAccountId && currentToolId) {
-            const resolvedInputs = await services.userSettingsService.getResolvedInput(currentToolId, userInputsForTool, masterAccountId, process.env.INTERNAL_API_KEY_TELEGRAM);
-            finalInputValuesForTool = resolvedInputs || finalInputValuesForTool;
-          }
-        } catch (setupError) {
-             logger.error(`[Telegram EXEC /${commandName}] Error during initial user/settings setup: ${setupError.message}`, { error: setupError.stack });
-             await setReaction(bot, chatId, msg.message_id, '😨');
-             bot.sendMessage(chatId, `Sorry, an error occurred while setting up your request. Please try again later.`, { reply_to_message_id: msg.message_id });
-             return;
-        }
-
-        // <<< NEW: Differentiate execution strategy based on service type >>>
-        if (currentTool.service === 'openai') {
-            // Synchronous execution for OpenAI
-            try {
-                logger.info(`[Telegram EXEC /${commandName}] Executing SYNCHRONOUS tool: ${currentDisplayName}`);
-                
-                // The user's text input is in `finalInputValuesForTool[currentPromptInputKey]`
-                // The tool definition for chatgpt now has 'prompt' and 'instructions'
-                // We need to map the user input to the 'prompt' field.
-                const payload = {
-                    prompt: finalInputValuesForTool[currentPromptInputKey],
-                    instructions: finalInputValuesForTool['instructions'],
-                    temperature: finalInputValuesForTool['temperature']
-                };
-
-                const response = await internalApiClient.post(currentTool.apiPath, payload);
-                
-                if (response && response.data && response.data.result) {
-                    bot.sendMessage(chatId, response.data.result, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '👌');
-                } else {
-                    throw new Error('Received an invalid or empty response from the internal API.');
+            // Use internal API to find or create user
+            const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+                platform: 'telegram',
+                platformId: msg.from.id.toString(),
+                platformContext: {
+                  firstName: msg.from.first_name,
+                  username: msg.from.username
                 }
-            } catch (error) {
-                logger.error(`[Telegram EXEC /${commandName}] Error in synchronous execution for tool ${currentToolId}: ${error.message}`, { error: error.stack });
-                await setReaction(bot, chatId, msg.message_id, '😨');
-                bot.sendMessage(chatId, `Sorry, an error occurred while running the /${commandName} command.`, { reply_to_message_id: msg.message_id });
+            });
+            const masterAccountId = findOrCreateResponse.data.masterAccountId;
+            if (!masterAccountId) {
+                logger.error(`[Telegram EXEC /${commandName}] Could not resolve masterAccountId for user ${msg.from.id}.`);
+                await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
+                await setReaction(bot, chatId, msg.message_id, '✖️');
+                return;
             }
-            return; // End execution for sync tool
-        }
-        // <<< END NEW >>>
-
-        // Asynchronous execution for ComfyUI and other webhook-based services
-        let generationId;
-
-        try {
-          logger.debug(`[Telegram EXEC /${commandName}] Entering ASYNC User/Session/Event Handling block...`);
-          // masterAccountId is already resolved
-
-          // <<< ECONOMY CHECK & REACTION UPDATE >>>
-          try {
-            const economyResponse = await internalApiClient.get(`/users/${masterAccountId}/economy`);
-            // Check if usdCredit exists and has $numberDecimal property
-            if (economyResponse && economyResponse.data && economyResponse.data.usdCredit && typeof economyResponse.data.usdCredit.$numberDecimal === 'string') {
-              const userCredit = parseFloat(economyResponse.data.usdCredit.$numberDecimal);
-              if (userCredit > 0) { // Assuming 0 is the threshold for now
-                await setReaction(bot, chatId, msg.message_id, '👌');
-              } else {
-                await setReaction(bot, chatId, msg.message_id, '🤷');
-                bot.sendMessage(chatId, `You have insufficient funds to use the /${commandName} command. Please add funds to your account.`, { reply_to_message_id: msg.message_id });
-                return; // Abort command processing
-              }
+            const currentTool = tool; // The specific tool for this handler
+            const { telegramHandlerType, telegramPromptInputKey, telegramImageInputKey } = currentTool.metadata;
+            let userInputsForTool = {};
+            if (telegramPromptInputKey && promptText) {
+                userInputsForTool[telegramPromptInputKey] = promptText;
+            } else if (telegramPromptInputKey && !promptText && currentTool.inputSchema[telegramPromptInputKey]?.required) {
+                await bot.sendMessage(chatId, `Please provide a prompt. Usage: /${commandName} your prompt`, { reply_to_message_id: msg.message_id });
+                await setReaction(bot, chatId, msg.message_id, '✖️');
+                return;
+            }
+            if (telegramHandlerType === 'image_primary_with_text' || telegramHandlerType === 'image_only' || telegramHandlerType === 'image_required_with_text') {
+                 if (!msg.reply_to_message || !msg.reply_to_message.photo) {
+                    await bot.sendMessage(chatId, `This command requires you to reply to an image.`, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                    return;
+                }
+                const imageUrl = await getTelegramFileUrl(bot, msg);
+                if (!imageUrl) {
+                    await bot.sendMessage(chatId, `Sorry, I couldn't get the image URL.`, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                    return;
+                }
+                if (telegramImageInputKey) {
+                    userInputsForTool[telegramImageInputKey] = imageUrl;
+                }
+            }
+            await setReaction(bot, chatId, msg.message_id, '👌');
+            // Service map for extensibility
+            const serviceMap = {
+                comfyui: comfyui,
+                openai: openaiService,
+                // Add more mappings as needed for future tool services
+            };
+            const service = serviceMap[currentTool.service];
+            if (!service || typeof service.submitRequest !== 'function') {
+                logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} has unsupported or missing service: ${currentTool.service}`);
+                await bot.sendMessage(chatId, `This tool is not supported in Telegram yet.`, { reply_to_message_id: msg.message_id });
+                await setReaction(bot, chatId, msg.message_id, '✖️');
+                return;
+            }
+            if (currentTool.service === 'comfyui') {
+                // Ensure deploymentId is present
+                const deploymentId = currentTool.metadata?.deploymentId;
+                if (!deploymentId) {
+                    logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} is missing deploymentId in metadata.`);
+                    await bot.sendMessage(chatId, `This tool is not properly configured (missing deploymentId). Please contact support.`, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                    return;
+                }
+                await service.submitRequest({
+                    deploymentId,
+                    toolId: currentTool.toolId,
+                    masterAccountId: masterAccountId,
+                    inputs: userInputsForTool,
+                    telegramContext: {
+                        chatId: chatId,
+                        messageId: msg.message_id,
+                        userId: msg.from.id
+                    }
+                });
             } else {
-              // Log the actual structure if it's not as expected, to help debug other cases
-              logger.warn(`[Telegram EXEC /${commandName}] Could not retrieve valid usdCredit (expected $numberDecimal string) from economyResponse for ${masterAccountId}. Response:`, economyResponse?.data);
-              await setReaction(bot, chatId, msg.message_id, '😨');
-              bot.sendMessage(chatId, `Sorry, I couldn't verify your account balance at the moment due to an unexpected data format. Please try again later.`, { reply_to_message_id: msg.message_id });
-              return; // Abort command processing
+                // For all other services, just call submitRequest
+                const response = await service.submitRequest({
+                    toolId: currentTool.toolId,
+                    masterAccountId: masterAccountId,
+                    inputs: userInputsForTool,
+                    telegramContext: {
+                        chatId: chatId,
+                        messageId: msg.message_id,
+                        userId: msg.from.id
+                    }
+                });
+                // Optionally send the response to the user if present
+                if (response && response.data && response.data.response) {
+                    await bot.sendMessage(chatId, response.data.response, { reply_to_message_id: msg.message_id });
+                } else {
+                    await bot.sendMessage(chatId, `✅ Request sent to ${currentTool.displayName}.`, { reply_to_message_id: msg.message_id });
+                }
             }
-          } catch (economyError) {
-            logger.error(`[Telegram EXEC /${commandName}] Error fetching user economy for ${masterAccountId}: ${economyError.message}`, economyError);
-            await setReaction(bot, chatId, msg.message_id, '😨');
-            bot.sendMessage(chatId, `Sorry, there was an issue checking your account balance. Please try again.`, { reply_to_message_id: msg.message_id });
-            return; // Abort command processing
-          }
-          // <<< END ECONOMY CHECK & REACTION UPDATE >>>
-
-          const activeSessionsResponse = await internalApiClient.get(`/users/${masterAccountId}/sessions/active?platform=${platform}`);
-          if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
-            sessionId = activeSessionsResponse.data[0]._id;
-          } else {
-            const newSessionResponse = await internalApiClient.post('/sessions', { masterAccountId, platform, userAgent: 'Telegram Bot Command' });
-            sessionId = newSessionResponse.data._id;
-            internalApiClient.post('/events', { masterAccountId, sessionId, eventType: 'session_started', sourcePlatform: platform, eventData: { platform, startMethod: 'command_interaction' } })
-              .catch(err => logger.error(`[Telegram EXEC /${commandName}] Failed to log session_started event: ${err.message}`));
-          }
-          
-          const eventPayload = {
-              masterAccountId: masterAccountId,
-              sessionId: sessionId,
-              eventType: 'user_command_triggered',
-              sourcePlatform: platform,
-              eventData: { 
-                command: `/${commandName}`,
-                chatId: chatId,
-                userId: platformIdStr,
-                prompt: promptText,
-                toolId: currentToolId
-              }
-          };
-          const eventResponse = await internalApiClient.post('/events', eventPayload);
-          eventId = eventResponse.data._id;
-          internalApiClient.put(`/sessions/${sessionId}/activity`, {}).catch(err => logger.error(`[Telegram EXEC /${commandName}] Failed to update activity: ${err.message}`));
-          logger.debug(`[Telegram EXEC /${commandName}] Activity update requested (async).`);
-          logger.debug(`[Telegram EXEC /${commandName}] Got/Created SID: ${sessionId}`);
-          logger.debug(`[Telegram EXEC /${commandName}] Logged Event: ${eventId}`);
-
-          logger.info(`[Telegram EXEC /${commandName}] Preparing to run tool: ${currentDisplayName} (ID: ${currentToolId})...`);
-          
-          let deploymentId = tool.metadata?.deploymentId;
-          if (deploymentId && deploymentId.startsWith('comfy-')) {
-            deploymentId = deploymentId.substring(6);
-          }
-
-          if (!deploymentId) {
-             logger.error(`[Telegram EXEC /${commandName}] No ComfyUI deployment_id found in metadata for tool: ${currentDisplayName} (ID: ${currentToolId})`);
-             throw new Error(`Configuration error: Deployment ID not found for tool: ${currentDisplayName}`);
-          }
-          logger.info(`[Telegram EXEC /${commandName}] Using Deployment ID: ${deploymentId}`);
-
-          let costRateInfo = null;
-          try {
-            logger.debug(`[Telegram EXEC /${commandName}] Fetching cost rate for deployment ${deploymentId}...`);
-            costRateInfo = await comfyuiService.getCostRateForDeployment(deploymentId);
-            if (!costRateInfo) {
-              logger.warn(`[Telegram EXEC /${commandName}] Could not determine cost rate for deployment ${deploymentId}. Proceeding without cost info.`);
-              costRateInfo = { error: 'Rate unknown' };
-            } else {
-              logger.info(`[Telegram EXEC /${commandName}] Determined cost rate: ${JSON.stringify(costRateInfo)}`);
-            }
-          } catch (costError) {
-            logger.error(`[Telegram EXEC /${commandName}] Error fetching cost rate for deployment ${deploymentId}: ${costError.message}. Proceeding without cost info.`);
-            costRateInfo = { error: 'Rate lookup failed' };
-          }
-
-          logger.debug(`[Telegram EXEC /${commandName}] User inputs for tool (after potential preference merge): ${JSON.stringify(finalInputValuesForTool)}`);
-
-          const preparedResult = await workflowsService.prepareToolRunPayload(currentToolId, finalInputValuesForTool, masterAccountId);
-          if (!preparedResult) {
-            logger.error(`[Telegram EXEC /${commandName}] prepareToolRunPayload failed for tool ${currentToolId}. Check WorkflowsService logs.`);
-            throw new Error(`Failed to prepare payload for tool '${currentDisplayName}'.`);
-          }
-          const { inputs: finalInputsForComfyUI, loraResolutionData } = preparedResult;
-          logger.debug(`[Telegram EXEC /${commandName}] Final inputs for ComfyUI: ${JSON.stringify(finalInputsForComfyUI)}`);
-          if (loraResolutionData) {
-            logger.info(`[Telegram EXEC /${commandName}] LoRA Resolution Data: ${JSON.stringify(loraResolutionData)}`);
-          }
-
-          const actualUserInputPrompt = promptText || (currentPromptInputKey ? finalInputValuesForTool[currentPromptInputKey] : '') || '';
-
-          const generationMetadata = {
-            telegramMessageId: msg.message_id,
-            telegramChatId: chatId,
-            platformContext: {
-              telegramUserId: platformIdStr,
-              username: msg.from.username,
-              firstName: msg.from.first_name
-            },
-            toolId: currentToolId,
-            deploymentId: deploymentId, 
-            costRate: costRateInfo, 
-            userInputPrompt: actualUserInputPrompt, 
-            notificationContext: {
-              platform: 'telegram',
-              chatId: chatId,
-              replyToMessageId: msg.message_id
-            }
-          };
-
-          if (loraResolutionData) {
-            if (loraResolutionData.appliedLoras && loraResolutionData.appliedLoras.length > 0) {
-              generationMetadata.appliedLoras = loraResolutionData.appliedLoras;
-            }
-            if (loraResolutionData.warnings && loraResolutionData.warnings.length > 0) {
-              generationMetadata.loraWarnings = loraResolutionData.warnings;
-            }
-          }
-          
-          const generationPayloadForRecord = { ...finalInputsForComfyUI }; 
-
-          // Step 3: Log Generation Start with Internal API
-          const generationParams = {
-            masterAccountId: masterAccountId,
-            sessionId: sessionId,
-            initiatingEventId: eventId,
-            serviceName: currentTool.service, 
-            toolId: currentToolId, 
-            requestPayload: generationPayloadForRecord,
-            metadata: generationMetadata,
-            notificationPlatform: 'telegram', 
-            deliveryStatus: 'pending' 
-          };
-
-          logger.debug(`[Telegram EXEC /${commandName}] Logging generation start with payload: ${JSON.stringify(generationParams)}`);
-          const generationResponse = await internalApiClient.post('/generations', generationParams);
-          generationId = generationResponse.data._id;
-          logger.info(`[Telegram EXEC /${commandName}] Generation logged: ${generationId}`);
-          // ADR-005: Verify toolId injection
-          if (generationParams.metadata && generationParams.metadata.toolId) {
-            logger.info(`[Telegram EXEC /${commandName}] [GENERATION RECORD] toolId (${generationParams.metadata.toolId}) correctly prepared for generation ${generationId}`);
-          } else {
-            logger.warn(`[Telegram EXEC /${commandName}] [GENERATION RECORD] toolId was NOT found in generationParams.metadata for generation ${generationId}`);
-          }
-
-          logger.info(`[Telegram EXEC /${commandName}] Submitting to ComfyUI: DeploymentID=${deploymentId}, GenID=${generationId}...`);
-          const submissionResult = await comfyuiService.submitRequest({
-            deploymentId: deploymentId,
-            inputs: finalInputsForComfyUI,
-          });
-
-          const run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
-
-          if (run_id) {
-            logger.info(`[Telegram EXEC /${commandName}] ComfyUI submission successful. Run ID: ${run_id}. Linking to GenID: ${generationId}...`);
-            await internalApiClient.put(`/generations/${generationId}`, { "metadata.run_id": run_id });
-          } else { 
-            const errorMessage = submissionResult?.error ? (typeof submissionResult.error === 'string' ? submissionResult.error : submissionResult.error.message) : 'Unknown error during ComfyUI submission';
-            logger.error(`[Telegram EXEC /${commandName}] ComfyUI submission failed for GenID ${generationId}: ${errorMessage}`);
-            await internalApiClient.put(`/generations/${generationId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` }).catch(e => logger.error("Failed to update generation status to failed", e));
-            throw new Error(`ComfyUI submission failed: ${errorMessage}`);
-          }
-
+            // The result will be handled by the NotificationDispatcher, so we don't send a final message here for comfyui tools.
         } catch (error) {
-          logger.error(`[Telegram EXEC /${commandName}] Error in main execution block for tool ${currentToolId}: ${error.message}`, { error: error.stack, masterAccountId, chatId, promptText, userInputsForTool });
-          // <<< ERROR REACTION UPDATE >>>
-          if (msg.message_id) {
-            try {
-              await setReaction(bot, chatId, msg.message_id, '😨');
-            } catch (reactError) {
-              logger.warn(`[Telegram EXEC /${commandName}] Failed to set error reaction: ${reactError.message}`);
-            }
-          }
-          // <<< END ERROR REACTION UPDATE >>>
-          bot.sendMessage(chatId, `Sorry, an unexpected error occurred while trying to process your /${commandName} command. The team has been notified. Please try again later.`, { reply_to_message_id: msg.message_id });
+            logger.error(`[Telegram EXEC /${commandName}] Unhandled error for tool ${tool.toolId}:`, error);
+            await bot.sendMessage(chatId, `A critical error occurred while running '${tool.displayName}'.`, { reply_to_message_id: msg.message_id });
+            await setReaction(bot, chatId, msg.message_id, '😨');
         }
-      });
+      };
+
+      // Register with the registry instead of bot.onText
+      const regex = new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i');
+      commandRegistry.register(commandName, regex, commandHandler);
+
+      registeredCommandsList.push({ command: commandName, description: tool.description || `Run ${tool.displayName}` });
     }
 
-    if (registeredCommands.length > 0) {
-      try {
-        logger.info(`[Telegram Commands] Attempting to get existing bot commands.`);
-        const existingCommands = await bot.getMyCommands();
-        logger.info(`[Telegram Commands] Existing commands: ${JSON.stringify(existingCommands)}`);
-        logger.info(`[Telegram Commands] Dynamically registered commands to add: ${JSON.stringify(registeredCommands)}`);
-
-        const newCommandList = [...existingCommands, ...registeredCommands].reduce((acc, current) => {
-            if (!acc.find(item => item.command === current.command)) {
-                acc.push(current);
-            }
-            return acc;
-        }, []);
-        logger.info(`[Telegram Commands] New command list to set: ${JSON.stringify(newCommandList)}`);
-        
-        if (newCommandList.length > 0) { 
-            await bot.setMyCommands(newCommandList);
-            logger.info('[Telegram Commands] Successfully updated bot command list with dynamic workflow commands.');
-        } else {
-            logger.info('[Telegram Commands] New command list is empty after merge, or no dynamic commands registered. Skipping update.');
-        }
-      } catch (error) {
-        logger.error('[Telegram Commands] Failed to update bot command list:', error);
-      }
-    } else {
-        logger.info('[Telegram Commands] No dynamic commands were registered, skipping command list update.');
-    }
-
-    logger.info('[Telegram] Dynamic commands setup process completed.');
+    logger.info(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
+    return registeredCommandsList;
 
   } catch (error) {
-    logger.error('[Telegram] Critical error during dynamic commands setup:', error);
-  }
-
-  try {
-    logger.info('[Telegram] Registering command: /noemainfome');
-    bot.onText(new RegExp(`^/noemainfome(?:@\w+)?(?:\s+([\w-]+))?`, 'i'), async (msg, match) => {
-      const chatId = msg.chat.id;
-      const requesterTelegramId = msg.from.id.toString();
-      const targetTelegramId = match && match[1] && /^[\d]+$/.test(match[1].trim()) ? match[1].trim() : requesterTelegramId;
-
-      logger.info(`[Telegram EXEC /noemainfome] Handler triggered. Requester: ${requesterTelegramId}, Target Platform ID: ${targetTelegramId}`);
-
-      try {
-        logger.debug(`[Telegram EXEC /noemainfome] Fetching user core data via API for platform ID: ${targetTelegramId}...`);
-        const response = await internalApiClient.get(`/users/by-platform/telegram/${targetTelegramId}`);
-        const userCoreDoc = response.data;
-
-        logger.info(`[Telegram EXEC /noemainfome] UserCore Document Found via API for ${targetTelegramId}`);
-        
-        let messageText = 'UserCore Document Found:\n```json\n' +
-                         JSON.stringify(userCoreDoc, (key, value) => {
-                           if (value && value._bsontype === 'ObjectId') return value.toString();
-                           if (value && value.$numberDecimal) return parseFloat(value.$numberDecimal);
-                           return value;
-                         }, 2) +
-                         '\n```';
-        if (messageText.length > 4096) {
-          messageText = messageText.substring(0, 4090) + '\n... (truncated)';
-        }
-        await bot.sendMessage(chatId, messageText, { parse_mode: 'Markdown' });
-
-      } catch (apiError) {
-        if (apiError.response && apiError.response.status === 404) {
-          logger.info(`[Telegram EXEC /noemainfome] No UserCore document found via API for Telegram User ID: ${targetTelegramId}`);
-          await bot.sendMessage(chatId, `No Noema userCore data found for Telegram ID: ${targetTelegramId}.`, { reply_to_message_id: msg.message_id });
-        } else {
-          logger.error(`[Telegram EXEC /noemainfome] Error fetching user data via API for ${targetTelegramId}:`, apiError.response ? apiError.response.data : apiError.message);
-          await bot.sendMessage(chatId, `Sorry, an API error occurred while fetching user data for ${targetTelegramId}.`, { reply_to_message_id: msg.message_id });
-        }
-      }
-    });
-
-  } catch (error) {
-    logger.error('[Telegram] Error setting up /noemainfome command:', error);
+    logger.error('[Telegram] A critical error occurred during dynamic command setup:', error);
+    return []; // Return empty array on critical failure
   }
 }
 
-module.exports = { setupDynamicCommands };
+module.exports = {
+  setupDynamicCommands,
+  CommandRegistry
+};

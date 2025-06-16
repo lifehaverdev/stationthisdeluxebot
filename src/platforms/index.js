@@ -11,23 +11,23 @@ const { initializeWebPlatform } = require('./web');
 
 /**
  * Initialize all platform adapters
- * @param {Object} services - Core services
+ * @param {Object} dependencies - The canonical dependencies object.
  * @param {Object} options - Configuration options
  * @returns {Object} - Initialized platform adapters
  */
-function initializePlatforms(services, options = {}) {
+function initializePlatforms(dependencies, options = {}) {
   const platforms = {};
-  const logger = services.logger || console;
+  const logger = dependencies.logger || console;
   
   // Debug log for internal services
   logger.info('DEBUG: Platforms - Internal services:', 
-    services.internal ? 'exists' : 'missing',
-    services.internal?.status ? 'status service exists' : 'status service missing');
+    dependencies.internal ? 'exists' : 'missing',
+    dependencies.internal?.status ? 'status service exists' : 'status service missing');
   
   // Initialize platforms based on configuration
   if (options.enableTelegram !== false) {
     try {
-      platforms.telegram = initializeTelegramPlatform(services, options.telegram);
+      platforms.telegram = initializeTelegramPlatform(dependencies, options.telegram);
       logger.info('Telegram platform successfully initialized');
     } catch (error) {
       logger.error('Failed to initialize Telegram platform:', error);
@@ -37,7 +37,7 @@ function initializePlatforms(services, options = {}) {
   // Initialize Discord platform if enabled
   if (options.enableDiscord) {
     try {
-      platforms.discord = initializeDiscordPlatform(services, options.discord);
+      platforms.discord = initializeDiscordPlatform(dependencies, options.discord);
       logger.info('Discord platform successfully initialized');
     } catch (error) {
       logger.error('Failed to initialize Discord platform:', error);
@@ -47,7 +47,7 @@ function initializePlatforms(services, options = {}) {
   // Initialize Web platform if enabled
   if (options.enableWeb) {
     try {
-      platforms.web = initializeWebPlatform(services, options.web);
+      platforms.web = initializeWebPlatform(dependencies, options.web);
       logger.info('Web platform successfully initialized');
     } catch (error) {
       logger.error('Failed to initialize Web platform:', error);

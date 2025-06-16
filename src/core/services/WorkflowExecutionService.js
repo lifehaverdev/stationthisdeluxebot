@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 
 class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
@@ -43,16 +44,21 @@ class WorkflowExecutionService {
         this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
         const stepInput = { ...pipelineContext, ...step.parameterOverrides };
-        const { inputs: finalInputsForComfyUI, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(tool.toolId, stepInput, originalContext.masterAccountId);
+        const { inputs: finalInputsForComfyUI, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(
+            tool.toolId,
+            stepInput,
+            originalContext.masterAccountId,
+            { internal: { client: this.internalApiClient } }
+        );
 
         // Find or create a session for this execution
         let sessionId;
         try {
-            const activeSessionsResponse = await this.internalApiClient.get(`/v1/data/users/${originalContext.masterAccountId}/sessions/active?platform=${originalContext.platform}`);
+            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${originalContext.masterAccountId}/sessions/active?platform=${originalContext.platform}`);
             if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
                 sessionId = activeSessionsResponse.data[0]._id;
             } else {
-                const newSessionResponse = await this.internalApiClient.post('/v1/data/sessions', { masterAccountId: originalContext.masterAccountId, platform: originalContext.platform, userAgent: 'Spell Execution' });
+                const newSessionResponse = await this.internalApiClient.post('/internal/v1/data/sessions', { masterAccountId: originalContext.masterAccountId, platform: originalContext.platform, userAgent: 'Spell Execution' });
                 sessionId = newSessionResponse.data._id;
             }
         } catch (e) {
@@ -67,7 +73,7 @@ class WorkflowExecutionService {
             sourcePlatform: originalContext.platform,
             eventData: { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId }
         };
-        const eventResponse = await this.internalApiClient.post('/v1/data/events', eventPayload);
+        const eventResponse = await this.internalApiClient.post('/internal/v1/data/events', eventPayload);
         const eventId = eventResponse.data._id;
 
         // Get cost rate for the tool
@@ -115,7 +121,7 @@ class WorkflowExecutionService {
         let generationId;
         try {
             this.logger.info(`[WorkflowExecution] Preparing to log generation for spell "${spell.name}", step ${stepIndex + 1}.`);
-            const generationResponse = await this.internalApiClient.post('/v1/data/generations', generationParams);
+            const generationResponse = await this.internalApiClient.post('/internal/v1/data/generations', generationParams);
             generationId = generationResponse.data._id;
             this.logger.info(`[WorkflowExecution] Logged generation ${generationId} successfully.`);
 
@@ -137,11 +143,11 @@ class WorkflowExecutionService {
         const run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
 
         if (run_id) {
-            await this.internalApiClient.put(`/v1/data/generations/${generationId}`, { "metadata.run_id": run_id, status: 'processing' });
+            await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, { "metadata.run_id": run_id, status: 'processing' });
             this.logger.info(`[WorkflowExecution] Step ${stepIndex + 1} submitted. GenID: ${generationId}, RunID: ${run_id}`);
         } else {
             const errorMessage = submissionResult?.error || 'Unknown error during ComfyUI submission';
-            await this.internalApiClient.put(`/v1/data/generations/${generationId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` });
+            await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` });
             throw new Error(`ComfyUI submission failed for step ${stepIndex + 1}: ${errorMessage}`);
         }
     }
@@ -236,8 +242,66 @@ class WorkflowExecutionService {
                     }
                 }
             };
-            await this.internalApiClient.post('/v1/data/generations', finalGenerationParams);
+            await this.internalApiClient.post('/internal/v1/data/generations', finalGenerationParams);
             this.logger.info(`[WorkflowExecution] Final notification record for spell "${spell.name}" created.`);
+        }
+    }
+
+    async executeGpt(tool, originalContext, mergedInputs, dependencies) {
+        const { logger } = dependencies;
+        const { masterAccountId, platform, notification } = originalContext;
+
+        try {
+             // --- User & Session Handling ---
+            let sessionId;
+            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${masterAccountId}/sessions/active?platform=${platform}`);
+            if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
+                sessionId = activeSessionsResponse.data[0]._id;
+            } else {
+                const newSessionResponse = await this.internalApiClient.post('/internal/v1/data/sessions', { masterAccountId, platform, userAgent: 'GPT Execution' });
+                sessionId = newSessionResponse.data._id;
+            }
+
+            // --- Event Logging ---
+            const eventPayload = {
+                masterAccountId: masterAccountId,
+                sessionId: sessionId,
+                eventType: 'gpt_execution_triggered',
+                sourcePlatform: platform,
+                eventData: {
+                    toolId: tool.toolId
+                }
+            };
+            const eventResponse = await this.internalApiClient.post('/internal/v1/data/events', eventPayload);
+            const eventId = eventResponse.data._id;
+            
+            // --- OpenAI API Call ---
+            const gptResponse = await axios.post(tool.apiPath, {
+                // ... existing code ...
+            });
+
+            const finalGenerationParams = {
+                masterAccountId: masterAccountId,
+                sessionId: sessionId,
+                initiatingEventId: eventId,
+                serviceName: 'openai',
+                toolId: tool.toolId,
+                requestPayload: mergedInputs,
+                responsePayload: { result: gptResponse.data.result },
+                metadata: {
+                    notificationContext: notification,
+                },
+                status: 'completed',
+                deliveryStatus: 'pending',
+                notificationPlatform: notification.platform,
+            };
+
+            await this.internalApiClient.post('/internal/v1/data/generations', finalGenerationParams);
+
+            return { success: true };
+
+        } catch (error) {
+            // ... existing code ...
         }
     }
 }

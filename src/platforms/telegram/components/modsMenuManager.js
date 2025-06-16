@@ -5,7 +5,7 @@
  */
 
 // Dependencies will be passed in by the main bot.js, typically including:
-// bot, logger, internalApiClient, userSettingsService, toolRegistry (if needed)
+// bot, logger, internalApiClient
 
 const AVAILABLE_CHECKPOINTS = ['All', 'SDXL', 'SD1.5', 'FLUX']; // Example, could be dynamic
 const { ObjectId } = require('../../../core/services/db/BaseDB');
@@ -41,10 +41,10 @@ function getFilterFromShortcode(shortcode) {
  * @param {string} masterAccountId - The user's master account ID.
  * @param {Object} dependencies - Shared dependencies (logger, internalApiClient, etc.).
  */
-async function handleModsCommand(bot, message, masterAccountId, dependencies) {
+async function handleModsCommand(bot, msg, masterAccountId, dependencies) {
   const { logger } = dependencies;
   logger.info(`[ModsMenuManager] /mods command received from MAID: ${masterAccountId}`);
-  await displayModsMainMenu(bot, message, masterAccountId, dependencies, false);
+  await displayModsMainMenu(bot, msg, masterAccountId, dependencies, false);
 }
 
 /**
@@ -55,7 +55,7 @@ async function handleModsCommand(bot, message, masterAccountId, dependencies) {
  * @param {Object} dependencies - Shared dependencies.
  */
 async function handleModsCallback(bot, callbackQuery, masterAccountId, dependencies) {
-  const { logger, internalApiClient } = dependencies;
+  const { logger } = dependencies;
   const data = callbackQuery.data;
   const [action, ...params] = data.split(':');
 
@@ -90,7 +90,6 @@ async function handleModsCallback(bot, callbackQuery, masterAccountId, dependenc
 
         logger.info(`[ModsMenuManager] Toggling favorite for Mod (ID: ${loraMongoId}), Current Status: ${isCurrentlyFavorite}, MAID: ${masterAccountId}`);
 
-        // The loraMongoId is now passed directly in the callback, so no need to fetch it.
         if (!loraMongoId) {
             logger.error(`[ModsMenuManager] No loraMongoId found in toggle_favorite callback.`);
           await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Could not identify Mod for favorite action.', show_alert: true });
@@ -99,20 +98,18 @@ async function handleModsCallback(bot, callbackQuery, masterAccountId, dependenc
 
         try {
           if (isCurrentlyFavorite) {
-            await internalApiClient.delete(`/users/${masterAccountId}/preferences/lora-favorites/${loraMongoId}`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Removed from favorites ❤️' });
+            await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraMongoId}/favorite`, { data: { masterAccountId } });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Removed from favorites 💔' });
           } else {
-            await internalApiClient.post(`/users/${masterAccountId}/preferences/lora-favorites`, { loraId: loraMongoId });
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! 💔' });
+            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraMongoId}/favorite`, { masterAccountId });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Added to favorites! ❤️' });
           }
           // Refresh the detail screen, passing the same context back.
-          // Note: loraIdentifierForRefresh is the Mongo ID, which displayModDetailScreen can handle.
           await displayModDetailScreen(bot, callbackQuery, masterAccountId, dependencies, true, loraIdentifierForRefresh, backFilterType, backCheckpoint, backPage);
         } catch (favError) {
           logger.error(`[ModsMenuManager] Error toggling favorite for LoRA _id ${loraMongoId}:`, {
-            errorMsg: favError.message, errorResponse: favError.response ? favError.response.data : null, errorCode: favError.code, fullError: JSON.stringify(favError, Object.getOwnPropertyNames(favError)), stack: favError.stack
+            errorMsg: favError.message, errorResponse: favError.response ? favError.response.data : null
           });
-          // Check if callbackQuery was already answered by the post/delete success
           if (!callbackQuery.answered) {
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error updating favorites.', show_alert: true });
           }
@@ -131,7 +128,6 @@ async function handleModsCallback(bot, callbackQuery, masterAccountId, dependenc
         logger.info(`[ModsMenuManager] Mod import form requested by MAID: ${masterAccountId}`);
         const chatId = callbackQuery.message.chat.id;
         const originalMenuMessageId = callbackQuery.message.message_id; // The message with the "Import Mod" button
-        const { replyContextManager } = dependencies;
 
         // Simplified promptMessage without inline backticks for example URLs
         const promptMessage = 
@@ -157,13 +153,13 @@ Send '/cancel' if you change your mind.`;
           });
 
           // Store context for the reply
-          if (replyContextManager) {
+          if (dependencies.replyContextManager) {
             const context = {
               type: 'mod_import_url',
               masterAccountId: masterAccountId,
               originalMenuMessageId: originalMenuMessageId
             };
-            replyContextManager.addContext(sentMessage, context);
+            dependencies.replyContextManager.addContext(sentMessage, context);
             logger.info(`[ModsMenuManager] Stored reply context for 'mod_import_url' for MAID ${masterAccountId}.`);
           } else {
             logger.error('[ModsMenuManager] ReplyContextManager not found. Cannot set context for import URL reply.');
@@ -187,7 +183,7 @@ Send '/cancel' if you change your mind.`;
         return;
       } else if (subAction === 'admin_delete_confirm') {
         const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
-        const loraResponse = await internalApiClient.get(`/loras/${loraId}?userId=${masterAccountId}`);
+        const loraResponse = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`);
         const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
         const text = `Are you sure you want to permanently delete Mod: *${escapeMarkdownV2(loraName)}* \\(ID: \`${loraId}\`\\)?\n\nThis action cannot be undone\\.`;
         const keyboard = [[
@@ -205,7 +201,7 @@ Send '/cancel' if you change your mind.`;
       } else if (subAction === 'admin_delete_execute') {
         const [loraId] = params.slice(1);
         try {
-            await internalApiClient.delete(`/loras/${loraId}`);
+            await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraId}`);
             await bot.editMessageText(`Mod with ID \`${loraId}\` has been deleted\\.`, {
                 chat_id: callbackQuery.message.chat.id,
                 message_id: callbackQuery.message.message_id,
@@ -238,13 +234,11 @@ Send '/cancel' if you change your mind.`;
         await displayStoreModsByFilterScreen(bot, callbackQuery, masterAccountId, dependencies, true, filterType, checkpoint, page);
       } else if (subAction === 'my_listed') { // Placeholder for user's listed items
         const [checkpoint, pageStr] = params.slice(1);
-        const page = parseInt(pageStr, 10) || 1;
         // await displayUserListedStoreLorasScreen(bot, callbackQuery, masterAccountId, dependencies, true, checkpoint, page);
         logger.info(`[ModsMenuManager] Placeholder for 'my_listed' Mods in store. MAID: ${masterAccountId}, CP: ${checkpoint}, Page: ${page}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Viewing your listed Mods (not implemented yet).' });
       } else if (subAction === 'my_purchases') { // Placeholder for user's purchases
         const [checkpoint, pageStr] = params.slice(1);
-        const page = parseInt(pageStr, 10) || 1;
         // await displayUserPurchasedStoreLorasScreen(bot, callbackQuery, masterAccountId, dependencies, true, checkpoint, page);
         logger.info(`[ModsMenuManager] Placeholder for 'my_purchases' in store. MAID: ${masterAccountId}, CP: ${checkpoint}, Page: ${page}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Viewing your purchased Mods (not implemented yet).' });
@@ -293,7 +287,7 @@ async function displayModsMainMenu(bot, messageOrQuery, masterAccountId, depende
   const chatId = isEdit ? messageOrQuery.message.chat.id : messageOrQuery.chat.id;
   const messageId = isEdit ? messageOrQuery.message.message_id : null;
 
-  const menuMessage = escapeMarkdownV2('Mod Categories 🎨\nSelect a category to explore:');
+  const menuMessage = escapeMarkdownV2('Mod Categories \nSelect a category to explore:');
   
   const inlineKeyboard = [
     [
@@ -352,7 +346,7 @@ async function displayModsMainMenu(bot, messageOrQuery, masterAccountId, depende
  * @param {number} currentPage - e.g., 1
  */
 async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, filterType, currentCheckpoint, currentPage) {
-  const { logger, internalApiClient } = dependencies;
+  const { logger } = dependencies;
   const chatId = callbackQuery.message.chat.id;
   let messageId = callbackQuery.message.message_id; // Can be modified if we delete and resend
 
@@ -400,8 +394,16 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
   }).toString();
 
   try {
-    logger.info(`[ModsMenuManager] Calling /loras/list with params: ${queryParams}`);
-    const response = await internalApiClient.get(`/loras/list?${queryParams}`);
+    logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/list with params: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=5&userId=${masterAccountId}`);
+    const response = await dependencies.internal.client.get('/internal/v1/data/loras/list', {
+      params: {
+        filterType: filterType,
+        checkpoint: currentCheckpoint,
+        page: currentPage,
+        limit: 5,
+        userId: masterAccountId
+      }
+    });
     const responseData = response.data; // Assuming response.data is the object { loras: [], pagination: {} }
     
     if (responseData && responseData.loras) {
@@ -502,7 +504,7 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
  * Displays the detailed screen for a single Mod.
  */
 async function displayModDetailScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraIdentifier, backFilterType, backCheckpoint, backPage) {
-  const { logger, internalApiClient } = dependencies;
+  const { logger } = dependencies;
   const chatId = callbackQuery.message.chat.id;
   const originalMessageId = callbackQuery.message.message_id;
 
@@ -512,8 +514,15 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
   const backFilterShortcode = getFilterShortcode(backFilterType);
 
   try {
-    logger.info(`[ModsMenuManager] Calling /loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await internalApiClient.get(`/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    const response = await dependencies.internal.client.get('/internal/v1/data/loras', {
+      params: {
+        filterType: backFilterType,
+        checkpoint: backCheckpoint,
+        page: backPage,
+        userId: masterAccountId
+      }
+    });
     const lora = response.data.lora;
     logger.debug(`[ModsMenuManager] Fetched LoRA details for ${loraIdentifier}:`, JSON.stringify(lora, null, 2));
 
@@ -772,7 +781,7 @@ async function displayModsStoreMainMenu(bot, callbackQuery, masterAccountId, dep
  * @param {number} currentPage - e.g., 1
  */
 async function displayStoreModsByFilterScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, filterType, currentCheckpoint, currentPage) {
-  const { logger, internalApiClient } = dependencies;
+  const { logger } = dependencies;
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
 
@@ -813,40 +822,28 @@ _${escapeMarkdownV2('Fetching Mods from the store...')}_
   }).toString();
 
   try {
-    logger.info(`[ModsMenuManager] Calling /loras/store/list with params: ${queryParams}`);
-    const response = await internalApiClient.get(`/loras/store/list?${queryParams}`);
-    const responseData = response.data; // Assuming response.data is { loras: [], pagination: {} }
+    logger.info(`[ModsMenuManager] Calling /internal/v1/data/store/loras with params:`, queryParams);
+    const response = await dependencies.internal.client.get('/internal/v1/data/store/loras', {
+      params: queryParams
+    });
+    const { loras, totalPages, hasNextPage, hasPrevPage } = response.data;
     
-    if (responseData && responseData.loras) {
-      const fetchedLoras = responseData.loras;
-      totalPages = responseData.pagination.totalPages || 1;
-      title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
-
-      if (fetchedLoras.length > 0) {
-        loraListText = ''; 
-        fetchedLoras.forEach(lora => {
-          const buttonDisplayName = lora.name || lora.slug;
-          // Add price to the button text
-          const priceText = lora.monetization?.forSale && lora.monetization?.priceUSD ? `(${lora.monetization.priceUSD} pts)` : '(Price N/A)';
-          const escapedButtonText = `${escapeMarkdownV2(buttonDisplayName)} ${escapeMarkdownV2(priceText)}`;
-          
-          // Callback for store detail: mods_store:detail:SLUG_OR_ID:filterType:checkpoint:page
-          const detailCallback = `mods_store:detail:${lora.slug || lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
-          keyboard.push([{ text: escapedButtonText, callback_data: detailCallback }]);
-        });
-      } else {
-        loraListText = `
+    if (loras.length > 0) {
+      loraListText = ''; 
+      loras.forEach(lora => {
+        const buttonDisplayName = lora.name || lora.slug;
+        // Add price to the button text
+        const priceText = lora.monetization?.forSale && lora.monetization?.priceUSD ? `(${lora.monetization.priceUSD} pts)` : '(Price N/A)';
+        const escapedButtonText = `${escapeMarkdownV2(buttonDisplayName)} ${escapeMarkdownV2(priceText)}`;
+        
+        // Callback for store detail: mods_store:detail:SLUG_OR_ID:filterType:checkpoint:page
+        const detailCallback = `mods_store:detail:${lora.slug || lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
+        keyboard.push([{ text: escapedButtonText, callback_data: detailCallback }]);
+      });
+    } else {
+      loraListText = `
 _${escapeMarkdownV2('No Mods found in the store matching your criteria.')}_
 `;
-      }
-    } else {
-      logger.warn('[ModsMenuManager] Invalid response structure from store loras API (or placeholder error).');
-      loraListText = `
-_${escapeMarkdownV2('Error: Could not parse Mod list from server store.')}_
-`;
-      if (!title.includes('Page ')) {
-          title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
-      }
     }
   } catch (apiError) {
     logger.error(`[ModsMenuManager] API Error fetching Store Mods for ${filterType} (CP: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
@@ -910,7 +907,7 @@ _${escapeMarkdownV2('Sorry, there was an error fetching Mods from the store. Ple
  * Displays the detailed screen for a single Mod from the store.
  */
 async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraIdentifier, backFilterType, backCheckpoint, backPage) {
-  const { logger, internalApiClient, loRAPermissionsDb } = dependencies;
+  const { logger } = dependencies;
   const chatId = callbackQuery.message.chat.id;
   const originalMessageId = callbackQuery.message.message_id;
 
@@ -926,16 +923,21 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
     // Use the existing /loras/:loraIdentifier endpoint. 
     // It should ideally tell us if the MAID owns it, or we might need a separate check.
     // For now, let's assume the API includes enough info or we add a specific `isPurchased` field or similar to its response.
-    logger.info(`[ModsMenuManager] Store Detail: Calling /loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await internalApiClient.get(`/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const lora = response.data.lora; // Assuming structure { lora: { ... } }
+    logger.info(`[ModsMenuManager] Store Detail: Calling /internal/v1/data/store/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    const response = await dependencies.internal.client.get('/internal/v1/data/store/loras', {
+      params: { userId: masterAccountId }
+    });
+    const lora = response.data.lora;
     // The general /loras/:loraIdentifier API returns `isFavorite`. We need `isPurchased` for store context.
     // For now, we'll manually check permissions as a fallback if not directly in lora object.
 
     if (lora) {
       // Check if user owns this LoRA (has permission)
-      const permission = await loRAPermissionsDb.hasAccess(masterAccountId, lora._id);
-      isOwned = !!permission;
+      const permission = await dependencies.internal.client.post('/internal/v1/data/loras/access', {
+        loraId: lora._id,
+        userId: masterAccountId
+      });
+      isOwned = !!permission.data.hasAccess;
 
       let tempName = lora.name || lora.slug;
       let escapedName = escapeMarkdownV2(tempName);
@@ -1147,154 +1149,97 @@ async function displayModAdminMenu(bot, callbackQuery, masterAccountId, dependen
 }
 
 /**
- * Registers all handlers for the Mod menu feature.
- * @param {object} dispatchers - The dispatchers object.
- * @param {CommandDispatcher} dispatchers.commandDispatcher - The command dispatcher.
- * @param {CallbackQueryDispatcher} dispatchers.callbackQueryDispatcher - The callback query dispatcher.
- * @param {MessageReplyDispatcher} dispatchers.messageReplyDispatcher - The message reply dispatcher.
- * @param {object} dependencies - The dependencies needed by the handlers.
+ * Handles replies for importing a mod via URL.
+ * This is triggered by the MessageReplyDispatcher.
+ * @param {object} bot - The Telegram bot instance.
+ * @param {object} msg - The user's reply message.
+ * @param {object} context - The reply context.
+ * @param {object} dependencies - Shared dependencies.
  */
-function registerHandlers(dispatchers, dependencies) {
-    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
-    const { logger, internalApiClient, userSettingsService, toolRegistry, loRAPermissionsDb, replyContextManager } = dependencies;
+async function handleModImportReply(bot, msg, context, dependencies) {
+    const { logger } = dependencies;
+    const chatId = msg.chat.id;
+    const { masterAccountId, originalMenuMessageId } = context;
+    const url = msg.text;
 
-    // /mods command
-    commandDispatcher.register(/^\/mods(?:@\w+)?$/i, async (message) => {
-        const telegramUserId = message.from.id.toString();
-        logger.info(`[Bot] /mods command received from Telegram User ID: ${telegramUserId}`);
-        try {
-            const findOrCreateResponse = await internalApiClient.post('/users/find-or-create', {
-                platform: 'telegram',
-                platformId: telegramUserId,
-                platformContext: { firstName: message.from.first_name, username: message.from.username }
-            });
-            const masterAccountId = findOrCreateResponse.data.masterAccountId;
-            await handleModsCommand(dependencies.bot, message, masterAccountId, dependencies);
-        } catch (error) {
-            logger.error(`[Bot] Error processing /mods command for ${telegramUserId}:`, error.response ? error.response.data : error.message, error.stack);
-            dependencies.bot.sendMessage(message.chat.id, "Sorry, there was an error opening the Mods menu. Please try again.", { reply_to_message_id: message.message_id });
+    logger.info(`[ModsMenu] Received reply for mod import. MAID: ${masterAccountId}, URL: '${url}'`);
+
+    try {
+        const result = await dependencies.internal.client.post('/internal/v1/data/loras/import', {
+            url: url,
+            userId: masterAccountId
+        });
+        await bot.sendMessage(chatId, result.data.message, { reply_to_message_id: msg.message_id });
+
+        // Refresh the menu
+        if (msg.reply_to_message && msg.reply_to_message.message_id) {
+            await displayModsMainMenu(bot, msg.reply_to_message, masterAccountId, dependencies, true);
         }
-    });
+    } catch (error) {
+        const errorMessage = error.response?.data?.message || 'Failed to import Mod.';
+        logger.error(`[ModsMenu] Error importing Mod from URL ${url} for MAID ${masterAccountId}:`, errorMessage);
+        await bot.sendMessage(chatId, `⚠️ ${errorMessage}`, { reply_to_message_id: msg.message_id });
+    }
+}
 
-    // Callback query handlers
-    const modsCallbackHandler = async (bot, callbackQuery, masterAccountId, deps) => {
-        await handleModsCallback(bot, callbackQuery, masterAccountId, { ...deps, bot: bot });
-    };
-    callbackQueryDispatcher.register('mods:', modsCallbackHandler);
-    callbackQueryDispatcher.register('mods_store:', modsCallbackHandler);
+/**
+ * The handler for the /mods command.
+ * @param {object} bot - The Telegram bot instance.
+ * @param {object} msg - The message object from the command.
+ * @param {object} dependencies - The canonical dependencies object.
+ */
+async function modsCommandHandler(bot, msg, dependencies) {
+    const { logger } = dependencies;
+    logger.info(`[ModsMenuManager] /mods command received from Telegram User ID: ${msg.from.id}`);
+    try {
+        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+            platform: 'telegram',
+            platformId: msg.from.id.toString(),
+            platformContext: { firstName: msg.from.first_name, username: msg.from.username }
+        });
+        const masterAccountId = findOrCreateResponse.data.masterAccountId;
+        await displayModsMainMenu(bot, msg, masterAccountId, dependencies, false);
+    } catch (error) {
+        logger.error(`[ModsMenuManager] Critical error in modsCommandHandler:`, error.stack || error);
+        await sendEscapedMessage(bot, msg.chat.id, 'A critical error occurred while opening the Mods menu.');
+    }
+}
 
-    const adminModApprovalHandler = async (bot, callbackQuery, masterAccountId, deps) => {
-        const { logger } = deps;
-        const { data, from: { id: callbackUserId } } = callbackQuery;
-        const adminTelegramId = '5472638766';
+/**
+ * The handler for callback queries related to the mods menu.
+ * @param {object} bot - The Telegram bot instance.
+ * @param {object} callbackQuery - The callback query object.
+ * @param {string} masterAccountId - The user's master account ID.
+ * @param {object} dependencies - The canonical dependencies object.
+ */
+async function modsCallbackHandler(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger } = dependencies;
+    logger.info(`[ModsMenuManager] modsCallbackHandler triggered with data: ${callbackQuery.data}`);
+    try {
+        await handleModsCallback(bot, callbackQuery, masterAccountId, dependencies);
+    } catch (error) {
+        logger.error(`[ModsMenuManager] Critical error in modsCallbackHandler:`, error.stack || error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'A critical error occurred.', show_alert: true });
+    }
+}
 
-        logger.info(`[Bot CB] Admin Mod approval/rejection callback: ${data} from UserID: ${callbackUserId}`);
+/**
+ * Registers all handlers for the mods menu feature.
+ * @param {object} dispatcherInstances - The dispatcher instances object.
+ * @param {object} dependencies - The canonical dependencies object.
+ */
+function registerHandlers(dispatcherInstances, dependencies) {
+    const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
+    const { logger } = dependencies;
 
-        if (callbackUserId.toString() !== adminTelegramId) {
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
-            return;
-        }
+    const modImportHandler = (bot, msg, context) => handleModImportReply(bot, msg, context, dependencies);
 
-        const parts = data.split(':');
-        const action = parts[0];
-        const loraIdentifier = parts[1];
-        let apiEndpoint, successMessage, failureMessage;
+    commandDispatcher.register(/^\/mods(?:@\w+)?/i, modsCommandHandler);
+    callbackQueryDispatcher.register('mods', modsCallbackHandler);
+    callbackQueryDispatcher.register('mods_store', modsCallbackHandler);
+    messageReplyDispatcher.register('mod_import_url', modImportHandler);
 
-        if (action === 'admin_mod_approve') {
-            apiEndpoint = `/loras/${loraIdentifier}/admin-approve`;
-            successMessage = '✅ Mod Approved & Deployment Initiated';
-        } else { // admin_mod_reject
-            apiEndpoint = `/loras/${loraIdentifier}/admin-reject`;
-            successMessage = '❌ Mod Rejected';
-        }
-        failureMessage = `⚠️ Error ${action.includes('approve') ? 'approving' : 'rejecting'} Mod`;
-
-        try {
-            const response = await internalApiClient.post(apiEndpoint, {});
-            await bot.editMessageText(
-                escapeMarkdownV2(callbackQuery.message.text + `\n\n---\n*Action Taken: ${successMessage}*`),
-                { chat_id: callbackQuery.message.chat.id, message_id: callbackQuery.message.message_id, parse_mode: 'MarkdownV2', reply_markup: null }
-            );
-            await bot.answerCallbackQuery(callbackQuery.id, { text: response.data.message || successMessage });
-        } catch (error) {
-            const errorDetail = error.response?.data?.details || error.message;
-            logger.error(`[Bot CB] Admin Mod action API call failed for ${loraIdentifier}. Error: ${errorDetail}`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: `${failureMessage}: ${errorDetail}`, show_alert: true });
-        }
-    };
-
-    callbackQueryDispatcher.register('admin_mod_approve:', adminModApprovalHandler);
-    callbackQueryDispatcher.register('admin_mod_reject:', adminModApprovalHandler);
-
-    callbackQueryDispatcher.register('admin_mod_approve_private:', async (bot, callbackQuery, masterAccountId, deps) => {
-        const { logger } = deps;
-        const { from: { id: callbackUserId } } = callbackQuery;
-        const adminTelegramId = '5472638766';
-
-        if (callbackUserId.toString() !== adminTelegramId) {
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "🚫 This action is for admins only.", show_alert: true });
-            return;
-        }
-        
-        const loraIdentifier = callbackQuery.data.split(':')[1];
-        try {
-            await internalApiClient.post(`/loras/${loraIdentifier}/admin-approve-private`, {});
-            await bot.editMessageText(
-                escapeMarkdownV2(callbackQuery.message.text + `\n\n---\n*Action Taken: 🔒 Mod Approved Privately*`),
-                { chat_id: callbackQuery.message.chat.id, message_id: callbackQuery.message.message_id, parse_mode: 'MarkdownV2', reply_markup: null }
-            );
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Mod approved privately.' });
-        } catch (error) {
-            const errorDetail = error.response?.data?.details || error.message;
-            logger.error(`[Bot CB] Admin private approval failed for ${loraIdentifier}. Error: ${errorDetail}`);
-            await bot.answerCallbackQuery(callbackQuery.id, { text: `Error approving privately: ${errorDetail}`, show_alert: true });
-        }
-    });
-
-    // Message reply handler for mod import
-    messageReplyDispatcher.register('mod_import_url', async (bot, message, context, deps) => {
-        const { masterAccountId } = context;
-        const submittedUrl = message.text.trim();
-        logger.info(`[Bot] Mod Import URL reply received via Context. MAID: ${masterAccountId}, URL: '${submittedUrl}'.`);
-
-        if (!submittedUrl.startsWith('http://') && !submittedUrl.startsWith('https://')) {
-            await bot.sendMessage(message.chat.id, "That doesn't look like a valid URL.", { reply_to_message_id: message.message_id });
-            return;
-        }
-
-        try {
-            const importResponse = await internalApiClient.post('/loras/import-from-url', {
-                loraUrl: submittedUrl,
-                masterAccountId: masterAccountId
-            });
-
-            if (importResponse.status === 202 && importResponse.data?.lora) {
-                const lora = importResponse.data.lora;
-                await bot.sendMessage(message.chat.id, importResponse.data.message, { reply_to_message_id: message.message_id });
-                
-                const adminChatId = '5472638766';
-                const loraIdentifier = lora.slug || lora._id;
-                const adminMessageText = `*New Mod Submission for Review* 🤖\nUser MAID: \`${masterAccountId}\`\nURL: ${submittedUrl}\nName: ${lora.name || 'N/A'}`;
-                
-                await bot.sendMessage(adminChatId, adminMessageText, {
-                    parse_mode: 'MarkdownV2',
-                    reply_markup: {
-                        inline_keyboard: [[
-                            { text: '✅ Approve Publicly', callback_data: `admin_mod_approve:${loraIdentifier}` },
-                            { text: '🔒 Approve Privately', callback_data: `admin_mod_approve_private:${loraIdentifier}` },
-                            { text: '❌ Reject', callback_data: `admin_mod_reject:${loraIdentifier}` }
-                        ]]
-                    }
-                });
-            } else {
-                const errorMsg = importResponse.data?.error || "Could not process Mod import.";
-                await bot.sendMessage(message.chat.id, `Import failed: ${errorMsg}`, { reply_to_message_id: message.message_id });
-            }
-        } catch (error) {
-            logger.error(`[Bot] Mod import API call failed:`, error.response?.data || error.message);
-            await bot.sendMessage(message.chat.id, `Import failed: ${error.response?.data?.error || error.message}`, { reply_to_message_id: message.message_id });
-        }
-    });
+    logger.info('[ModsMenuManager] All handlers registered.');
 }
 
 // TODO: Implement other display functions:
@@ -1305,13 +1250,5 @@ function registerHandlers(dispatchers, dependencies) {
 // handleLoraRequestReply(bot, message, masterAccountId, dependencies) - for message listener
 
 module.exports = {
-  handleModsCommand,
-  handleModsCallback,
-  displayModsMainMenu,
-  displayModsByFilterScreen,
-  displayModDetailScreen,
-  displayModsStoreMainMenu,
-  displayStoreModsByFilterScreen,
-  displayStoreModDetailScreen,
-  registerHandlers,
+    registerHandlers
 }; 

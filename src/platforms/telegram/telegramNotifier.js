@@ -1,5 +1,7 @@
 // src/platforms/telegram/telegramNotifier.js
 
+const { sendEscapedMessage, sendPhotoWithEscapedCaption } = require('./utils/messaging');
+
 // Placeholder for actual Telegram message sending utilities
 // These might come from a central bot service or utils like '../../utils/utils.js'
 // For now, we assume sendMessage is a function available or passed via a bot instance.
@@ -37,7 +39,7 @@ class TelegramNotifier {
 
     this.logger.info(`[TelegramNotifier] Sending notification to chatId: ${chatId}, replyToMessageId: ${replyToMessageId || 'N/A'}.`);
 
-    const options = { parse_mode: 'Markdown' };
+    const options = {};
     if (replyToMessageId) {
       options.reply_to_message_id = replyToMessageId;
     }
@@ -96,16 +98,19 @@ class TelegramNotifier {
         if (imageUrl) {
           const caption = specificTextOutput ? specificTextOutput : ''; // Use specific text if available, else empty
           this.logger.info(`[TelegramNotifier] Sending photo to ${chatId}: ${imageUrl} with caption: "${caption.substring(0,30)}..."`);
-          await this.bot.sendPhoto(chatId, imageUrl, { caption, ...options });
+          await sendPhotoWithEscapedCaption(this.bot, chatId, imageUrl, options, caption);
         } else if (animationUrl) {
           const caption = specificTextOutput ? specificTextOutput : '';
           this.logger.info(`[TelegramNotifier] Sending animation to ${chatId}: ${animationUrl} with caption: "${caption.substring(0,30)}..."`);
-          await this.bot.sendAnimation(chatId, animationUrl, { caption, ...options });
+          // sendPhotoWithEscapedCaption does not support animations, so fallback to bot.sendAnimation with manual escaping
+          // For now, escape caption manually
+          const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
+          await this.bot.sendAnimation(chatId, animationUrl, { caption: escapeMarkdownV2(caption), parse_mode: 'MarkdownV2', ...options });
         } else {
           // No visual media, send textual output or fallback generic message
           finalMessageText = specificTextOutput ? specificTextOutput : finalMessageText; 
           this.logger.info(`[TelegramNotifier] Sending text message (no media found or primary) to ${chatId}: "${finalMessageText.substring(0,50)}..."`);
-          await this.bot.sendMessage(chatId, finalMessageText, options);
+          await sendEscapedMessage(this.bot, chatId, finalMessageText, options);
         }
         this.logger.info(`[TelegramNotifier] Successfully sent COMPLETED notification with keyboard to chatId: ${chatId}.`);
       } catch (error) {
@@ -113,7 +118,7 @@ class TelegramNotifier {
         try {
           this.logger.warn(`[TelegramNotifier] Attempting to send fallback text message to ${chatId} after media send failure.`);
           // Send the original generic success message as fallback if media sending fails
-          await this.bot.sendMessage(chatId, messageContent, options);
+          await sendEscapedMessage(this.bot, chatId, messageContent, options);
         } catch (fallbackError) {
           this.logger.error(`[TelegramNotifier] Fallback text message also failed for ${chatId}: ${fallbackError.message}`);
         }
@@ -122,11 +127,11 @@ class TelegramNotifier {
     } else {
       // For FAILED messages or other types (non-completed jobs)
       try {
-      await this.bot.sendMessage(chatId, messageContent, options);
+        await sendEscapedMessage(this.bot, chatId, messageContent, options);
         this.logger.info(`[TelegramNotifier] Successfully sent basic (non-completed) notification to chatId: ${chatId}.`);
-    } catch (error) {
+      } catch (error) {
         this.logger.error(`[TelegramNotifier] Failed to send basic (non-completed) notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);
-      throw error; 
+        throw error; 
       }
     }
   }

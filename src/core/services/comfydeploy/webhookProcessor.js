@@ -69,17 +69,15 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
         return { success: false, statusCode: 500, error: "Internal server error: Core API client not configured or invalid for webhook processing." };
       }
       
-      // Add the X-Internal-Client-Key header for this request
+      // Use an API key with permissions for both GET and PUT on generations
       const requestOptions = {
-        headers: {
-          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
-        }
+        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL }
       };
-      if (!process.env.INTERNAL_API_KEY_WEB) {
-        logger.warn(`[Webhook Processor] INTERNAL_API_KEY_WEB is not set in environment variables. Internal API calls may fail authentication.`);
+      if (!process.env.INTERNAL_API_KEY_GENERAL) {
+        logger.warn(`[Webhook Processor] INTERNAL_API_KEY_GENERAL is not set in environment variables. Internal API calls may fail authentication.`);
       }
 
-      const response = await internalApiClient.get(`/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
+      const response = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
       if (response && response.data && response.data.generations && response.data.generations.length > 0) {
         generationRecord = response.data.generations[0];
         generationId = generationRecord._id;
@@ -157,10 +155,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
        // Add the X-Internal-Client-Key header for this request
        const putRequestOptions = {
         headers: {
-          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB
+          'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL
         }
       };
-       await internalApiClient.put(`/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
+       await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
        logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
@@ -206,8 +204,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
               expChange: pointsSpent,
               description: `EXP gained for ${pointsSpent} points spent via tool ${toolId}`
             };
-            const expUpdateEndpoint = `/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
-            const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+            const expUpdateEndpoint = `/internal/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
+            const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL } };
             
             logger.info(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
             await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
@@ -228,8 +226,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
             // Potentially add more context about the debit failure
           };
           try {
-            const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-            await internalApiClient.put(`/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
+            const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL } };
+            await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
             logger.info(`[Webhook Processor] Successfully updated generation ${generationId} status to 'payment_failed'.`);
           } catch (updateError) {
             logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after debit failure. Error:`, updateError.message, updateError.stack);
@@ -354,9 +352,9 @@ async function issueCredit(masterAccountId, payload, { internalApiClient, logger
     if (!masterAccountId) {
         throw new Error('masterAccountId is required for credit.');
     }
-    const creditEndpoint = `/v1/data/users/${masterAccountId}/economy/credit`;
+    const creditEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/credit`;
     const requestOptions = {
-        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB },
+        headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL },
     };
 
     logger.info(`[issueCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));
@@ -406,15 +404,15 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
 
   // const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
   // ADR-005 hotfix: Path issue with internalApiClient potentially double-prepending /internal
-  const debitEndpoint = `/v1/data/users/${masterAccountId}/economy/debit`;
+  const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
   const requestOptions = {
     headers: {
-      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB,
+      'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL,
       // Add other necessary headers like Content-Type if not automatically handled by internalApiClient
     },
   };
-  if (!process.env.INTERNAL_API_KEY_WEB) {
-    logger.warn(`[Webhook Processor - issueDebit] INTERNAL_API_KEY_WEB is not set. Debit call to ${debitEndpoint} may fail authentication.`);
+  if (!process.env.INTERNAL_API_KEY_GENERAL) {
+    logger.warn(`[Webhook Processor - issueDebit] INTERNAL_API_KEY_GENERAL is not set. Debit call to ${debitEndpoint} may fail authentication.`);
   }
 
   logger.info(`[Webhook Processor - issueDebit] Sending POST to ${debitEndpoint} for user ${masterAccountId}. Payload:`, JSON.stringify(payload));

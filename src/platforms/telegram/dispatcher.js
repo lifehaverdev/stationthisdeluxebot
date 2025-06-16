@@ -46,6 +46,24 @@ class CallbackQueryDispatcher {
     }
     return null;
   }
+
+  async handle(bot, callbackQuery, dependencies) {
+    const { data, from } = callbackQuery;
+    for (const [prefix, handler] of this.handlers.entries()) {
+      if (data.startsWith(prefix)) {
+        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+          platform: 'telegram',
+          platformId: from.id.toString(),
+          platformContext: { firstName: from.first_name, username: from.username }
+        });
+        const masterAccountId = findOrCreateResponse.data.masterAccountId;
+        await handler(bot, callbackQuery, masterAccountId, dependencies);
+        return true;
+      }
+    }
+    this.logger.warn(`[CallbackQueryDispatcher] No handler found for callback data: ${data}`);
+    return false;
+  }
 }
 
 class MessageReplyDispatcher {
@@ -64,9 +82,9 @@ class MessageReplyDispatcher {
    */
   register(contextType, handler) {
     if (this.handlers.has(contextType)) {
-      this.logger.warn(`[MessageReplyDispatcher] Overwriting handler for context type: ${contextType}`);
+      this.logger.warn(`[MessageReplyDispatcher] Overwriting handler for context: ${contextType}`);
     }
-    this.logger.info(`[MessageReplyDispatcher] Registering handler for context type: ${contextType}`);
+    this.logger.info(`[MessageReplyDispatcher] Registering handler for context: ${contextType}`);
     this.handlers.set(contextType, handler);
   }
 
@@ -78,32 +96,85 @@ class MessageReplyDispatcher {
   getHandler(contextType) {
     return this.handlers.get(contextType) || null;
   }
+
+  async handle(bot, message, context, dependencies) {
+    const handler = this.handlers.get(context.type);
+    if (handler) {
+      await handler(bot, message, context, dependencies);
+      return true;
+    }
+    this.logger.warn(`[MessageReplyDispatcher] No handler found for context type: ${context.type}`);
+    return false;
+  }
 }
 
 class CommandDispatcher {
     /**
-     * @param {object} bot - The Telegram bot instance.
      * @param {object} logger - The logger instance.
      */
-    constructor(bot, logger) {
-        this.bot = bot;
+    constructor(logger) {
         this.logger = logger;
+        this.handlers = new Map();
     }
 
     /**
      * Registers a text command handler.
      * @param {RegExp} regex - The regex to match for the command.
-     * @param {Function} handler - The function to execute. The handler will receive the message and the regex match result.
+     * @param {Function} handler - The function to execute.
      */
     register(regex, handler) {
+        if (this.handlers.has(regex)) this.logger.warn(`[CommandDispatcher] Overwriting handler for regex: ${regex}`);
         this.logger.info(`[CommandDispatcher] Registering command handler for regex: ${regex}`);
-        this.bot.onText(regex, handler);
+        this.handlers.set(regex, handler);
+    }
+
+    async handle(bot, message, dependencies) {
+        for (const [regex, handler] of this.handlers.entries()) {
+            const match = message.text.match(regex);
+            if (match) {
+                // Pass the bot, message, and the stored dependencies to the handler.
+                await handler(bot, message, dependencies, match);
+                return true;
+            }
+        }
+        return false;
     }
 }
 
+class DynamicCommandDispatcher {
+    constructor(commandRegistry, logger) {
+        this.commandRegistry = commandRegistry;
+        this.logger = logger || console;
+    }
+
+    async handle(bot, message, dependencies) {
+        if (!this.commandRegistry) {
+            this.logger.warn('[DynamicCommandDispatcher] CommandRegistry is not available. Skipping.');
+            return false;
+        }
+
+        const result = this.commandRegistry.findHandler(message.text);
+
+        if (result) {
+            const { handler, match } = result;
+            this.logger.info(`[DynamicCommandDispatcher] Found and executing dynamic command handler.`);
+            try {
+                await handler(bot, message, dependencies, match);
+                return true;
+            } catch (error) {
+                this.logger.error('[DynamicCommandDispatcher] Error executing dynamic command handler:', error);
+                await bot.sendMessage(message.chat.id, "Sorry, an error occurred while processing that command.", { reply_to_message_id: message.message_id });
+                return true;
+            }
+        }
+        
+        return false;
+    }
+}
 
 module.exports = {
   CallbackQueryDispatcher,
   MessageReplyDispatcher,
   CommandDispatcher,
+  DynamicCommandDispatcher,
 }; 

@@ -1,8 +1,7 @@
 /**
- * StationThis Bot - Modern Entry Point
+ * StationThis Bot - Entry Point
  * 
- * This file serves as the modern entry point for the refactored application
- * while preserving backward compatibility with the legacy codebase.
+ * This file serves as the entry point for the refactored application.
  */
 
 const express = require('express');
@@ -18,8 +17,8 @@ const { createLogger } = require('./src/utils/logger');
 const logger = createLogger('app'); // Create a logger for app.js
 
 // Import refactored components
-const { initializeDatabase } = require('./src/core/initDB');
-const { initializeServices } = require('./src/core/services');
+const { initializeDatabase } = require('./src/core/initDB'); // Uses getCachedClient() to ping database and create a connection;
+const { initializeServices } = require('./src/core/services'); // Initializes all services
 const { initializePlatforms } = require('./src/platforms');
 const { initialize } = require('./src/core/initialization');
 // Import the route initializer function directly
@@ -31,6 +30,8 @@ const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
 
 // geniusoverhaul: Import ToolRegistry
 const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
+// Import the new CommandRegistry
+const { CommandRegistry } = require('./src/platforms/telegram/dynamicCommands.js');
 
 /**
  * Initialize and start the refactored application
@@ -38,26 +39,40 @@ const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
 async function startApp() {
   try {
     logger.info('===================================================');
-    logger.info('| Initializing StationThis refactored application |');
+    logger.info('| Initializing StationThis Bot application |');
     logger.info('===================================================');
-    
+    logger.info('===================================================');
+    logger.info('=')
+    logger.info('=')
+    logger.info('=')
     // Initialize Database Connection FIRST
     await initializeDatabase();
-    logger.info('Database connection initialized (or initialization process started).');
+    logger.info('Database connection initialized.');
     
     // Initialize core services
     const services = await initializeServices({ 
       logger: logger // Pass the app logger or a child logger
     });
-    logger.info('Core services initialized');
-    
-    // ADD DIAGNOSTIC LOG HERE:
-    logger.info('[App Debug] Inspecting services object after initialization:');
-    logger.info(`[App Debug] typeof services.userSessionsService: ${typeof services.userSessionsService}`);
-    logger.info(`[App Debug] services.userSessionsService has getOrCreateSession: ${services.userSessionsService ? typeof services.userSessionsService.getOrCreateSession === 'function' : 'N/A (service undefined)'}`);
-    logger.info(`[App Debug] typeof services.session: ${typeof services.session}`);
-    logger.info(`[App Debug] services.session has getOrCreateSession: ${services.session ? typeof services.session.getOrCreateSession === 'function' : 'N/A (service undefined)'}`);
-    logger.info(`[App Debug] All keys in services: ${Object.keys(services).join(', ')}`);
+    logger.info('Core services initialized.');
+/*
+] [app]: services (shallow): {
+  "session": "object",
+  "media": "object",
+  "points": "object",
+  "comfyUI": "object",
+  "workflows": "object",
+  "openai": "object",
+  "db": "object",
+  "internal": "object",
+  "internalApiClient": "undefined",
+  "userSettingsService": "object",
+  "spellsService": "object",
+  "workflowExecutionService": "object",
+  "logger": "object",
+  "appStartTime": "object",
+  "toolRegistry": "object"
+}
+*/
     
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
@@ -107,59 +122,27 @@ async function startApp() {
     
     logger.info('\nProceeding to platform initialization...\n');
     
-    // Map services to the names/structure expected by the platform initializers
-    const platformServices = {
-      // Pass the actual comfyUI service instance under the key 'comfyui'
-      comfyui: services.comfyUI, 
-      points: services.points,
-      session: services.session,
-      // Pass the actual workflows service instance under the key 'workflows'
-      workflows: services.workflows,
-      media: services.media,
-      logger: services.logger,
+    // Create the canonical dependencies object as defined in ADR-001
+    const dependencies = {
+      ...services, // Spread all initialized services
+      logger,      // Add the root app logger
       appStartTime: APP_START_TIME,
-      db: services.db,
-      internal: services.internal,
-      internalApiClient: services.internalApiClient,
-      userSettingsService: services.userSettingsService,
-      spellsService: services.spellsService,
-      // geniusoverhaul: Add ToolRegistry to platformServices
       toolRegistry: ToolRegistry.getInstance(),
-      // Keep the stubbed collections structure separate if needed by other platforms,
-      // but don't overwrite the main workflows service instance.
-      // If platforms *specifically* need the stubbed collections, they should access
-      // it via a different key or this structure needs rethinking.
-      _workflowsServiceWithCollectionsStub: { // Example of keeping it separate
-        ...services.workflows,
-        collections: {
-          collectionsWorkflow: {
-            getUserCollections: async () => ([]),
-            getCollection: async () => null,
-            createCollection: async () => ({ error: 'Not implemented' }),
-            deleteCollection: async () => false
-          }
-        }
-      }
+      commandRegistry: new CommandRegistry(logger), // Instantiate the CommandRegistry
     };
     
-    // geniusoverhaul: Add a log to verify platformServices.toolRegistry
-    // logger.info('[App] platformServices constructed. Checking toolRegistry...');
-    // if (platformServices.toolRegistry && typeof platformServices.toolRegistry.getToolById === 'function') {
-    //     logger.info('[App] platformServices.toolRegistry appears to be a valid ToolRegistry instance.');
-    // } else {
-    //     logger.warn('[App] platformServices.toolRegistry is MISSING or INVALID!', { registry: platformServices.toolRegistry });
-    // }
+    // geniusoverhaul: Add a log to verify dependencies.toolRegistry
+    logger.info('[App] Canonical dependencies object created. Checking toolRegistry...');
+    if (dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function') {
+        logger.info('[App] dependencies.toolRegistry appears to be a valid ToolRegistry instance.');
+    } else {
+        logger.warn('[App] dependencies.toolRegistry is MISSING or INVALID!', { registry: dependencies.toolRegistry });
+    }
     // End verification log
     
-    // Rename internal services to match platform expectations if needed
-    // (Example assuming platforms expect pointsService, sessionService, etc.)
-    platformServices.pointsService = platformServices.points;
-    platformServices.sessionService = services.session;
-    // Add other mappings as required by specific platforms... 
-    
-    // Initialize platforms with the corrected services object
+    // Initialize platforms with the canonical dependencies object
     logger.info('Initializing platform adapters...');
-    const platforms = initializePlatforms(platformServices, {
+    const platforms = initializePlatforms(dependencies, {
       enableTelegram: true,
       enableDiscord: true,
       enableWeb: true,

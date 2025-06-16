@@ -74,20 +74,6 @@ class WorkflowsService {
       cacheConfig: options.cache // Pass the cache config sub-object
     });
     
-    //DEPRECATED / HALLUCINATED
-    // Load machine routing configuration
-    // try {
-    //   const configPath = path.resolve(process.cwd(), 'config/workflow-machine-routing.js');
-    //   this.routingConfig = require(configPath);
-    //   if (DEBUG_LOGGING_ENABLED) this.logger.info(`Loaded machine routing configuration with ${Object.keys(this.routingConfig.routingRules).length} rules`);
-    // } catch (error) {
-    //   this.logger.warn(`Could not load machine routing configuration: ${error.message}`);
-    //   this.routingConfig = {
-    //     routingRules: {},
-    //     defaultMachine: null
-    //   };
-    // }
-    
     // Validate API key
     if (!this.apiKey) {
       this.logger.warn('ComfyUI Deploy API key not configured. Service will be inoperable.');
@@ -609,7 +595,7 @@ class WorkflowsService {
    * @param {string} masterAccountId - The master account ID of the user invoking the tool.
    * @returns {Promise<Object|null>} - Prepared payload or null if error.
    */
-  async prepareToolRunPayload(toolId, userInputs = {}, masterAccountId) { 
+  async prepareToolRunPayload(toolId, userInputs = {}, masterAccountId, dependencies) { 
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] prepareToolRunPayload called for toolId: ${toolId}, MAID: ${masterAccountId}`);
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Initial userInputs: ${JSON.stringify(userInputs)}`);
 
@@ -641,7 +627,8 @@ class WorkflowsService {
         loraResolutionResult = await loraResolutionService.resolveLoraTriggers(
           originalUserPrompt,
           masterAccountId,
-          tool.baseModel // Pass the tool's baseModel for filtering
+          tool.baseModel, // Pass the tool's baseModel for filtering
+          dependencies.internal.client
         );
 
         if (loraResolutionResult) {
