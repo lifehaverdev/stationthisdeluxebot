@@ -153,7 +153,7 @@ async function startApp() {
     logger.info('Platform adapters initialized');
 
     // --- Initialize and Start Notification Dispatcher ---
-    if (services.internalApiClient && services.logger && platforms.telegram && platforms.telegram.bot) {
+    if (services.internal?.client && services.logger && platforms.telegram && platforms.telegram.bot) {
       try {
         logger.info('[App] Initializing TelegramNotifier...');
         const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
@@ -167,7 +167,7 @@ async function startApp() {
         logger.info('[App] Initializing NotificationDispatcher...');
         const notificationDispatcher = new NotificationDispatcher(
           {
-            internalApiClient: services.internalApiClient,
+            internalApiClient: services.internal.client,
             logger: services.logger,
             platformNotifiers: platformNotifiersMap,
             workflowExecutionService: services.workflowExecutionService,
@@ -181,7 +181,7 @@ async function startApp() {
         // Decide if this is a fatal error or if the app can run without it
       }
     } else {
-      logger.warn('[App] Could not initialize NotificationDispatcher: Missing dependencies (internalApiClient, logger, or Telegram platform/bot). Dispatcher will not run.');
+      logger.warn('[App] Could not initialize NotificationDispatcher: Missing dependencies (internal.client, logger, or Telegram platform/bot). Dispatcher will not run.');
     }
     // --- End Notification Dispatcher Initialization ---
 
