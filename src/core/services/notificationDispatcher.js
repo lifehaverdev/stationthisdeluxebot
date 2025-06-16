@@ -120,7 +120,7 @@ class NotificationDispatcher {
     if (!record.metadata || !record.metadata.spell || typeof record.metadata.stepIndex === 'undefined') {
       this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: record is missing required spell metadata.`);
       const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-      await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
         deliveryStatus: 'failed',
         deliveryError: 'Malformed spell step record, missing required metadata.'
       }, updateOptions);
@@ -136,7 +136,7 @@ class NotificationDispatcher {
         
         // Mark this step's generation record as complete so it isn't picked up again.
         const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
           deliveryStatus: 'complete', // 'complete' signifies it's been handled by the spell engine
           deliveryTimestamp: new Date(),
         }, updateOptions);
@@ -146,7 +146,7 @@ class NotificationDispatcher {
         this.logger.error(`[NotificationDispatcher] Error processing spell step for GenID ${recordId}:`, error.message, error.stack);
         // Optionally, update the record to reflect the failure
         const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
           deliveryStatus: 'failed',
           deliveryError: `Spell continuation failed: ${error.message}`
         }, updateOptions);
@@ -162,7 +162,7 @@ class NotificationDispatcher {
       this.logger.warn(`[NotificationDispatcher] No notifier found or 'sendNotification' method missing for platform: '${record.notificationPlatform}' for generationId: ${recordId}. Setting deliveryStatus to 'skipped'.`);
       try {
         const updateSkippedOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, { 
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { 
           deliveryStatus: 'skipped', 
           deliveryError: `No notifier for platform ${record.notificationPlatform}` 
         }, updateSkippedOptions);
@@ -189,7 +189,7 @@ class NotificationDispatcher {
       
       this.logger.info(`[NotificationDispatcher] Successfully sent notification for generationId: ${recordId} via ${record.notificationPlatform}.`);
       const updateSentOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-      await this.internalApiClient.put(`/v1/data/generations/${recordId}`, {
+      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
         deliveryStatus: 'sent',
         deliveryTimestamp: new Date(),
         deliveryAttempts: (record.deliveryAttempts || 0) + 1
@@ -214,7 +214,7 @@ class NotificationDispatcher {
             'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB 
           }
         };
-        await this.internalApiClient.put(`/v1/data/generations/${recordId}`, updatePayload, requestOptions);
+        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, updatePayload, requestOptions);
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} after dispatch error:`, updateError.message);
       }
