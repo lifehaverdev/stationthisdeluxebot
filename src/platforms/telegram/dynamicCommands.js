@@ -285,7 +285,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             if (!service || typeof service.submitRequest !== 'function') {
                 logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} has unsupported or missing service: ${currentTool.service}`);
                 await bot.sendMessage(chatId, `This tool is not supported in Telegram yet.`, { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '✖️');
+                await setReaction(bot, chatId, msg.message_id, '😨');
                 return;
             }
             if (currentTool.service === 'comfyui') {
@@ -294,7 +294,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 if (!deploymentId) {
                     logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} is missing deploymentId in metadata.`);
                     await bot.sendMessage(chatId, `This tool is not properly configured (missing deploymentId). Please contact support.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                    await setReaction(bot, chatId, msg.message_id, '😨');
                     return;
                 }
                 await service.submitRequest({

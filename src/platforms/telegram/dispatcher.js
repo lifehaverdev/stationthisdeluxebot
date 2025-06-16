@@ -153,7 +153,7 @@ class DynamicCommandDispatcher {
             return false;
         }
 
-        const result = this.commandRegistry.findHandler(message.text);
+        const result = this.commandRegistry.findHandler(message.text || message.caption);
 
         if (result) {
             const { handler, match } = result;

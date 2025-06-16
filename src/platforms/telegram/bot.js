@@ -96,6 +96,40 @@ function createTelegramBot(dependencies, token, options = {}) {
     }
   });
 
+  bot.on('photo', async (message) => {
+    try {
+      if (!message.caption) return;
+
+      const fullDependencies = { ...dependencies, replyContextManager };
+
+      // Check for replies with a specific context first
+      if (message.reply_to_message) {
+        const context = replyContextManager.getContext(message.reply_to_message);
+        if (context) {
+            const handled = await messageReplyDispatcher.handle(bot, message, context, fullDependencies);
+            if (handled) {
+                replyContextManager.removeContext(message.reply_to_message);
+                return;
+            }
+        }
+      }
+
+      // Check for explicit commands (e.g. /status)
+      if (message.caption.startsWith('/')) {
+        const handled = await commandDispatcher.handle(bot, message, fullDependencies);
+        if (handled) return;
+      }
+
+      // If no other handler has returned, treat as a potential dynamic command
+      const dynamicHandled = await dynamicCommandDispatcher.handle(bot, message, fullDependencies);
+      if (dynamicHandled) return;
+
+    } catch (error) {
+        logger.error(`[Bot] Error processing message: ${error.stack}`);
+        await bot.sendMessage(message.chat.id, "Sorry, an unexpected error occurred.", { reply_to_message_id: message.message_id });
+    }
+  });
+
   bot.on('message', async (message) => {
     try {
       if (!message.text) return;
