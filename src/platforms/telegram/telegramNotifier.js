@@ -1,6 +1,11 @@
 // src/platforms/telegram/telegramNotifier.js
 
-const { sendEscapedMessage, sendPhotoWithEscapedCaption } = require('./utils/messaging');
+const { 
+    sendEscapedMessage, 
+    sendPhotoWithEscapedCaption, 
+    sendAnimationWithEscapedCaption, 
+    sendVideoWithEscapedCaption 
+} = require('./utils/messaging');
 
 // Placeholder for actual Telegram message sending utilities
 // These might come from a central bot service or utils like '../../utils/utils.js'
@@ -62,57 +67,75 @@ class TelegramNotifier {
         ]
       };
 
-      let finalMessageText = messageContent; // Default to the generic success message from dispatcher
-      let imageUrl = null;
-      let animationUrl = null;
-      let specificTextOutput = null;
+      // --- New Multi-Output Handling Logic ---
+      const mediaToSend = [];
+      let textOutputs = [];
 
-      if (generationRecord.responsePayload && generationRecord.responsePayload.length > 0) {
-        const firstOutput = generationRecord.responsePayload[0];
-        if (firstOutput.data) {
-          if (firstOutput.data.text) {
-            specificTextOutput = firstOutput.data.text;
-          } else if (Array.isArray(firstOutput.data.tags) && firstOutput.data.tags.length > 0) {
-            specificTextOutput = `Tags: ${firstOutput.data.tags.join(', ')}`;
-          }
+      if (generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload)) {
+          generationRecord.responsePayload.forEach(output => {
+              if (!output.data) return;
 
-          if (firstOutput.data.images && firstOutput.data.images.length > 0 && firstOutput.data.images[0].url) {
-            imageUrl = firstOutput.data.images[0].url;
-          } else if (firstOutput.data.animations && firstOutput.data.animations.length > 0 && firstOutput.data.animations[0].url) {
-            animationUrl = firstOutput.data.animations[0].url;
-          } else if (firstOutput.data.videos && firstOutput.data.videos.length > 0 && firstOutput.data.videos[0].url) {
-            animationUrl = firstOutput.data.videos[0].url; // Treat general video as animation
-          }
-        }
-        // Fallback for direct URLs in payload if no structured data path matches
-        if (!imageUrl && !animationUrl && firstOutput.url) {
-            if (firstOutput.url.endsWith('.gif') || firstOutput.url.endsWith('.mp4')) {
-                animationUrl = firstOutput.url;
-            } else if (firstOutput.url.endsWith('.png') || firstOutput.url.endsWith('.jpg') || firstOutput.url.endsWith('.jpeg') || firstOutput.url.endsWith('.webp')) {
-                imageUrl = firstOutput.url;
-            }
-        }
+              // Collect Text
+              if (output.data.text && Array.isArray(output.data.text)) {
+                  textOutputs.push(...output.data.text);
+              }
+
+              // Collect Images
+              if (output.data.images && Array.isArray(output.data.images)) {
+                  output.data.images.forEach(image => {
+                      if (image.url) mediaToSend.push({ type: 'photo', url: image.url, caption: '' });
+                  });
+              }
+
+              // Collect Videos/Animations from 'files'
+              if (output.data.files && Array.isArray(output.data.files)) {
+                  output.data.files.forEach(file => {
+                      if (file.url && file.format && file.format.startsWith('video/')) {
+                          // Simple distinction: use 'animation' for looping GIFs/short MP4s, 'video' for others.
+                          // For now, we'll treat all videos from this payload as 'video'.
+                          mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+                      }
+                  });
+              }
+          });
+      }
+      
+      // If after processing there's no media but there is text, send the text.
+      // If there's media, the text will be sent as a separate message after.
+      if (mediaToSend.length === 0 && textOutputs.length > 0) {
+          await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), options);
+          this.logger.info(`[TelegramNotifier] Successfully sent text-only output to chatId: ${chatId}.`);
+          return; // Exit after sending text
       }
 
+      // Send all collected media items.
       try {
-        if (imageUrl) {
-          const caption = specificTextOutput ? specificTextOutput : ''; // Use specific text if available, else empty
-          this.logger.info(`[TelegramNotifier] Sending photo to ${chatId}: ${imageUrl} with caption: "${caption.substring(0,30)}..."`);
-          await sendPhotoWithEscapedCaption(this.bot, chatId, imageUrl, options, caption);
-        } else if (animationUrl) {
-          const caption = specificTextOutput ? specificTextOutput : '';
-          this.logger.info(`[TelegramNotifier] Sending animation to ${chatId}: ${animationUrl} with caption: "${caption.substring(0,30)}..."`);
-          // sendPhotoWithEscapedCaption does not support animations, so fallback to bot.sendAnimation with manual escaping
-          // For now, escape caption manually
-          const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
-          await this.bot.sendAnimation(chatId, animationUrl, { caption: escapeMarkdownV2(caption), parse_mode: 'MarkdownV2', ...options });
-        } else {
-          // No visual media, send textual output or fallback generic message
-          finalMessageText = specificTextOutput ? specificTextOutput : finalMessageText; 
-          this.logger.info(`[TelegramNotifier] Sending text message (no media found or primary) to ${chatId}: "${finalMessageText.substring(0,50)}..."`);
-          await sendEscapedMessage(this.bot, chatId, finalMessageText, options);
-        }
-        this.logger.info(`[TelegramNotifier] Successfully sent COMPLETED notification with keyboard to chatId: ${chatId}.`);
+          for (let i = 0; i < mediaToSend.length; i++) {
+              const media = mediaToSend[i];
+              // Only attach the inline keyboard to the *last* media item to avoid clutter.
+              const currentOptions = (i === mediaToSend.length - 1) ? options : { reply_to_message_id: replyToMessageId };
+
+              this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${chatId}: ${media.url}`);
+
+              switch (media.type) {
+                  case 'photo':
+                      await sendPhotoWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
+                      break;
+                  case 'animation':
+                      await sendAnimationWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
+                      break;
+                  case 'video':
+                      await sendVideoWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
+                      break;
+              }
+          }
+          // After all media is sent, send a separate message with all the text joined together.
+          if (textOutputs.length > 0) {
+              await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), { reply_to_message_id: replyToMessageId });
+          }
+
+          this.logger.info(`[TelegramNotifier] Successfully sent all media and text for COMPLETED notification to chatId: ${chatId}.`);
+
       } catch (error) {
         this.logger.error(`[TelegramNotifier] Failed to send COMPLETED notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);
         try {

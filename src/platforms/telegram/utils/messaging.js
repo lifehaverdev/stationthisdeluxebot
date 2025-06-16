@@ -71,9 +71,50 @@ async function sendPhotoWithEscapedCaption(bot, chatId, photo, options = {}, cap
     return bot.sendPhoto(chatId, photo, finalOptions);
 }
 
+/**
+ * Sends an animation (GIF, MP4) with a caption that is automatically MarkdownV2 escaped.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {number|string} chatId - The ID of the chat to send the animation to.
+ * @param {string|stream.Stream|Buffer} animation - The animation to send.
+ * @param {object} [options={}] - Additional options for the sendAnimation call.
+ * @param {string} [caption=''] - The raw, unescaped caption for the animation.
+ * @returns {Promise<object>} The sent message object.
+ */
+async function sendAnimationWithEscapedCaption(bot, chatId, animation, options = {}, caption = '') {
+    const escapedCaption = escapeMarkdownV2(caption);
+    const finalOptions = {
+        ...options,
+        caption: escapedCaption,
+        parse_mode: 'MarkdownV2',
+    };
+    return bot.sendAnimation(chatId, animation, finalOptions);
+}
+
+/**
+ * Sends a video with a caption that is automatically MarkdownV2 escaped.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {number|string} chatId - The ID of the chat to send the video to.
+ * @param {string|stream.Stream|Buffer} video - The video to send.
+ * @param {object} [options={}] - Additional options for the sendVideo call.
+ * @param {string} [caption=''] - The raw, unescaped caption for the video.
+ * @returns {Promise<object>} The sent message object.
+ */
+async function sendVideoWithEscapedCaption(bot, chatId, video, options = {}, caption = '') {
+    const escapedCaption = escapeMarkdownV2(caption);
+    const finalOptions = {
+        ...options,
+        caption: escapedCaption,
+        parse_mode: 'MarkdownV2',
+    };
+    return bot.sendVideo(chatId, video, finalOptions);
+}
 
 module.exports = {
     sendEscapedMessage,
     editEscapedMessageText,
     sendPhotoWithEscapedCaption,
+    sendAnimationWithEscapedCaption,
+    sendVideoWithEscapedCaption,
 }; 
