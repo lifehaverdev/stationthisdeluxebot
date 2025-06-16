@@ -20,6 +20,14 @@ class WorkflowExecutionService {
      */
     async execute(spell, context) {
         this.logger.info(`[WorkflowExecution] Starting execution for spell: "${spell.name}" (ID: ${spell._id})`);
+        
+        // Normalize the 'prompt' parameter to 'input_prompt' for consistency.
+        if (context.parameterOverrides && context.parameterOverrides.prompt && !context.parameterOverrides.input_prompt) {
+            this.logger.info('[WorkflowExecution] Normalizing "prompt" to "input_prompt" in parameterOverrides.');
+            context.parameterOverrides.input_prompt = context.parameterOverrides.prompt;
+            delete context.parameterOverrides.prompt;
+        }
+
         // The initial pipeline context starts with the global parameters from the /cast command.
         const initialPipelineContext = { ...context.parameterOverrides };
         await this._executeStep(spell, 0, initialPipelineContext, context);
@@ -237,8 +245,8 @@ class WorkflowExecutionService {
                     stepGenerationIds,
                     notificationContext: {
                         platform: originalContext.platform,
-                        chatId: originalContext.chatId,
-                        replyToMessageId: originalContext.messageId
+                        chatId: originalContext.telegramContext?.chatId,
+                        replyToMessageId: originalContext.telegramContext?.messageId
                     }
                 }
             };
