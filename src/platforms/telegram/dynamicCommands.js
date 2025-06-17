@@ -63,11 +63,11 @@ class CommandRegistry {
  * @returns {Promise<Array<object>>} - A promise that resolves to the list of commands for API registration.
  */
 async function setupDynamicCommands(commandRegistry, dependencies) {
-  const { workflows, comfyui, logger, toolRegistry, userSettingsService, openaiService } = dependencies;
+  const { workflows, comfyUI, logger, toolRegistry, userSettingsService, openaiService } = dependencies;
   
   // Backwards compatibility for services structure if needed, but prefer flat dependencies.
   const workflowsService = workflows || dependencies.workflowsService;
-  const comfyuiService = comfyui || dependencies.comfyUI;
+  const comfyuiService = comfyUI;
 
   logger.info('[Telegram] Setting up dynamic commands...');
 
