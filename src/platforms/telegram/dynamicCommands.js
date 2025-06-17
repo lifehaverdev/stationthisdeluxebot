@@ -286,6 +286,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 requestTimestamp: new Date().toISOString(),
                 requestPayload: {}, // Initially empty, updated before submission
                 metadata: {
+                    ...tool.metadata,
                     displayName: tool.displayName,
                     toolId: tool.toolId,
                     notificationContext: {
