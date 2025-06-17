@@ -316,31 +316,22 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 inputs[textInputKey] = promptText || (tool.inputSchema[textInputKey]?.default ?? '');
             }
 
-            // ADR-011: Media Handling - Corrected Implementation
-            let mediaMessage = null;
-            if (msg.photo || msg.video || msg.document) {
-                mediaMessage = msg;
-            } else if (msg.reply_to_message && (msg.reply_to_message.photo || msg.reply_to_message.video || msg.reply_to_message.document)) {
-                mediaMessage = msg.reply_to_message;
-            }
-
-            if (mediaMessage) {
-                const imageInputKey = tool.metadata.telegramImageInputKey;
-                if (imageInputKey) {
-                    const mediaType = mediaMessage.photo ? 'photo' : (mediaMessage.video ? 'video' : 'document');
-                    const fileId = mediaType === 'photo' 
-                        ? mediaMessage.photo[mediaMessage.photo.length - 1].file_id 
-                        : mediaMessage[mediaType].file_id;
-                    
-                    const fileUrl = await getTelegramFileUrl(bot, fileId);
-                    if (fileUrl) {
-                        inputs[imageInputKey] = fileUrl;
-                    } else {
-                        logger.error(`[Telegram EXEC /${commandName}] Failed to retrieve file URL for fileId ${fileId}.`);
-                        await bot.sendMessage(chatId, `I couldn't get the URL for the media file. Please try again.`, { reply_to_message_id: msg.message_id });
-                        await setReaction(bot, chatId, msg.message_id, '😨');
-                        return; // Stop execution
-                    }
+            // ADR-011: Media Handling - Simplified and Corrected
+            const imageInputKey = tool.metadata.telegramImageInputKey;
+            
+            if (imageInputKey) {
+                // The utility function is designed to find the fileId from the message object itself,
+                // including checking the message it's replying to.
+                const fileUrl = await getTelegramFileUrl(bot, msg);
+                
+                if (fileUrl) {
+                    inputs[imageInputKey] = fileUrl;
+                } else if (tool.inputSchema[imageInputKey]?.required) {
+                    // If the tool requires an image and we couldn't find one, abort.
+                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found.`);
+                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image or reply to a message containing one.`, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '😨');
+                    return; // Stop execution
                 }
             }
             
