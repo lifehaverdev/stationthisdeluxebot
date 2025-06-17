@@ -297,17 +297,105 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                     await setReaction(bot, chatId, msg.message_id, '😨');
                     return;
                 }
-                await service.submitRequest({
-                    deploymentId,
-                    toolId: currentTool.toolId,
+                const textInputKey = tool.metadata.telegramPromptInputKey;
+                
+                // Build initial input payload
+                let inputs = {};
+                if (textInputKey) {
+                    inputs[textInputKey] = promptText || (tool.inputSchema[textInputKey]?.default ?? '');
+                }
+
+                const getFileUrlFunction = async (fileId) => getTelegramFileUrl(bot, fileId);
+
+                // ADR-011: Media Handling
+                if (msg.photo || msg.video || msg.document) {
+                    const mediaType = msg.photo ? 'photo' : (msg.video ? 'video' : 'document');
+                    const fileId = mediaType === 'photo' ? msg.photo[msg.photo.length - 1].file_id : msg[mediaType].file_id;
+
+                    try {
+                        const fileUrl = await getFileUrlFunction(fileId);
+                        const uploadedFile = await comfyUI.uploadFile({
+                            fileUrl: fileUrl,
+                            fileName: msg[mediaType].file_name,
+                            fileType: msg[mediaType].mime_type
+                        });
+                        
+                        if (uploadedFile && uploadedFile.name) {
+                            const imageKey = tool.metadata.telegramImageInputKey;
+                            const videoKey = tool.metadata.telegramVideoInputKey;
+                            if (imageKey && (uploadedFile.type?.startsWith('image/') || mediaType === 'photo')) {
+                                inputs[imageKey] = uploadedFile.name;
+                            } else if (videoKey && (uploadedFile.type?.startsWith('video/') || mediaType === 'video')) {
+                                inputs[videoKey] = uploadedFile.name;
+                            } else {
+                                // Fallback logic if primary media keys don't match file type
+                                if (imageKey) inputs[imageKey] = uploadedFile.name;
+                                else if (videoKey) inputs[videoKey] = uploadedFile.name;
+                            }
+                        } else {
+                             throw new Error('File upload did not return a valid file name.');
+                        }
+                    } catch (uploadError) {
+                        logger.error(`[Telegram EXEC /${commandName}] Failed to upload media for user ${msg.from.id}: ${uploadError.message}`);
+                        await bot.sendMessage(chatId, `I couldn't process your media file. Please try another one or check if the bot has permission to access it.`, { reply_to_message_id: msg.message_id });
+                        await setReaction(bot, chatId, msg.message_id, '😨');
+                        return;
+                    }
+                }
+
+                // Create generation record
+                const generationRecord = await internal.client.post('/internal/v1/data/generations/create', {
                     masterAccountId: masterAccountId,
-                    inputs: userInputsForTool,
-                    telegramContext: {
+                    platform: 'telegram',
+                    toolId: tool.toolId,
+                    status: 'pending', 
+                    costUsd: null, 
+                    deliveryStatus: 'pending',
+                    notificationPlatform: 'telegram',
+                    requestTimestamp: new Date().toISOString(),
+                    metadata: {
+                      displayName: tool.displayName,
+                      toolId: tool.toolId,
+                      // Any other relevant tool metadata can go here
+                      notificationContext: {
                         chatId: chatId,
                         messageId: msg.message_id,
+                        replyToMessageId: msg.message_id, 
                         userId: msg.from.id
+                      }
                     }
                 });
+
+                const generationId = generationRecord.data._id;
+
+                // Prepare the final payload for ComfyUI
+                const { inputs: finalInputs, loraResolutionData } = await workflowsService.prepareToolRunPayload(tool.toolId, inputs, masterAccountId, dependencies);
+
+                // Update the generation record with LoRA data if available
+                if (loraResolutionData) {
+                    await internal.client.put(`/internal/v1/data/generations/${generationId}`, {
+                        metadata: { loraResolutionData }
+                    });
+                }
+                
+                // Submit the request to ComfyUI
+                const runId = await comfyuiService.submitRequest({
+                    deploymentId,
+                    inputs: finalInputs
+                });
+
+                // IMPORTANT: Update the generation record with the runId
+                await internal.client.put(`/internal/v1/data/generations/${generationId}`, {
+                    metadata: { run_id: runId }
+                });
+                
+                logger.info(`[Telegram EXEC /${commandName}] Submitted job for user ${msg.from.id}. GenerationID: ${generationId}, RunID: ${runId}`);
+                
+                // Set final reaction for acknowledgement
+                await setReaction(bot, chatId, msg.message_id, '👍').catch(reactError => 
+                    logger.warn(`[Telegram EXEC /${commandName}] Failed to set final reaction: ${reactError.message}`)
+                );
+            
             } else {
                 // For all other services, just call submitRequest
                 const response = await service.submitRequest({
@@ -329,17 +417,17 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             }
             // The result will be handled by the NotificationDispatcher, so we don't send a final message here for comfyui tools.
         } catch (error) {
-            logger.error(`[Telegram EXEC /${commandName}] Unhandled error for tool ${tool.toolId}:`, error);
-            await bot.sendMessage(chatId, `A critical error occurred while running '${tool.displayName}'.`, { reply_to_message_id: msg.message_id });
+            logger.error(`[Telegram EXEC /${commandName}] An error occurred: ${error.message}`, error.stack);
+            await bot.sendMessage(chatId, `Yikes! Something went wrong while running the '${commandName}' command. The error has been logged.`, { reply_to_message_id: msg.message_id });
             await setReaction(bot, chatId, msg.message_id, '😨');
         }
       };
 
       // Register with the registry instead of bot.onText
-      const regex = new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'i');
+      const regex = new RegExp(`^/${commandName}(?:\\s+(.*))?$`, 'is');
       commandRegistry.register(commandName, regex, commandHandler);
 
-      registeredCommandsList.push({ command: commandName, description: tool.description || `Run ${tool.displayName}` });
+      registeredCommandsList.push({ command: commandName, description: tool.description?.split('\\n')[0] || `Runs the ${tool.displayName} tool.` });
     }
 
     logger.info(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);
