@@ -235,6 +235,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
         const promptText = match && match[1] ? match[1].trim() : '';
         let masterAccountId;
+        let sessionId;
         let generationRecord;
 
         try {
@@ -254,12 +255,27 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 masterAccountId: masterAccountId,
                 platform: 'telegram',
             });
-            const sessionId = sessionResponse.data._id;
+            sessionId = sessionResponse.data._id;
 
-            // Step 3: Create the generation record, now with the sessionId
+            // Step 3: Create the initiating event record
+            const eventResponse = await internal.client.post('/internal/v1/data/events', {
+                masterAccountId,
+                sessionId,
+                eventType: 'command_used',
+                sourcePlatform: 'telegram',
+                eventData: {
+                    command: commandName,
+                    text: msg.text || msg.caption || '',
+                    toolId: tool.toolId,
+                }
+            });
+            const initiatingEventId = eventResponse.data._id;
+
+            // Step 4: Create the generation record, now with the sessionId and initiatingEventId
             const generationRecordResponse = await internal.client.post('/internal/v1/data/generations', {
-                masterAccountId: masterAccountId,
-                sessionId: sessionId,
+                masterAccountId,
+                sessionId,
+                initiatingEventId,
                 platform: 'telegram',
                 toolId: tool.toolId,
                 serviceName: 'comfy-deploy',
