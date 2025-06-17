@@ -334,12 +334,10 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             }
             
             // Step 4: Submit job to ComfyUI
-            const comfyResponse = await comfyuiService.submitRequest(
-                generationRecord,
-                inputs,
-                tool.metadata.deploymentId,
-                null
-            );
+            const comfyResponse = await comfyuiService.submitRequest({
+                deployment_id: tool.metadata.deploymentId,
+                inputs: inputs,
+            });
 
             // Step 5: IMPORTANT - Update generation record with the run_id and final inputs
             await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
