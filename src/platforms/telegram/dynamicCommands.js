@@ -337,8 +337,8 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             const comfyResponse = await comfyuiService.submitRequest(
                 generationRecord,
                 inputs,
-                null, // deploy_name
-                null  // spellVariant
+                tool.metadata.deploymentId,
+                null
             );
 
             // Step 5: IMPORTANT - Update generation record with the run_id and final inputs
