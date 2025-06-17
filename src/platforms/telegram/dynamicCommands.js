@@ -335,7 +335,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             
             // Step 4: Submit job to ComfyUI
             const comfyResponse = await comfyuiService.submitRequest({
-                deployment_id: tool.metadata.deploymentId,
+                deploymentId: tool.metadata.deploymentId,
                 inputs: inputs,
             });
 

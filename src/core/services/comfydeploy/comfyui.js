@@ -279,6 +279,8 @@ class ComfyUIService {
    * @returns {Promise<string>} - Run ID
    */
   async submitRequest(options = {}) {
+    this.logger.info(`[ComfyUIService] submitRequest received options:`, options);
+
     const instanceData = {
         apiUrl: this.apiUrl,
         apiKey: this.apiKey,
@@ -342,6 +344,7 @@ class ComfyUIService {
       webhook: finalWebhookUrl // Use the potentially modified URL
     };
 
+    this.logger.info(`[ComfyUIService] submitRequest forwarding options to runManager:`, runManagerOptions);
     return submitRequestAction(instanceData, runManagerOptions);
   }
 
