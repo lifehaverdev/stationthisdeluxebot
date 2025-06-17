@@ -129,18 +129,36 @@ class TelegramNotifier {
               // Only attach the inline keyboard to the *last* media item to avoid clutter.
               const currentOptions = (i === mediaToSend.length - 1) ? options : { reply_to_message_id: replyToMessageId };
 
-              this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${chatId}: ${media.url}`);
+              this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${chatId}. Attempting to fetch from URL: ${media.url}`);
+              
+              try {
+                  const response = await fetch(media.url);
+                  if (!response.ok) {
+                      const errorBody = await response.text();
+                      this.logger.error(`[TelegramNotifier] Failed to fetch media from URL ${media.url}. Status: ${response.status}. Body: ${errorBody.substring(0, 500)}`);
+                      throw new Error(`Failed to fetch media from URL. Status: ${response.status}`);
+                  }
+                  
+                  const arrayBuffer = await response.arrayBuffer();
+                  const mediaBuffer = Buffer.from(arrayBuffer);
+                  
+                  this.logger.info(`[TelegramNotifier] Successfully fetched ${mediaBuffer.length} bytes for ${media.type} from ${media.url}. Sending to Telegram.`);
 
-              switch (media.type) {
-                  case 'photo':
-                      await sendPhotoWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
-                      break;
-                  case 'animation':
-                      await sendAnimationWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
-                      break;
-                  case 'video':
-                      await sendVideoWithEscapedCaption(this.bot, chatId, media.url, currentOptions, media.caption);
-                      break;
+                  switch (media.type) {
+                      case 'photo':
+                          await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                          break;
+                      case 'animation':
+                          await sendAnimationWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                          break;
+                      case 'video':
+                          await sendVideoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                          break;
+                  }
+              } catch (fetchError) {
+                  this.logger.error(`[TelegramNotifier] Could not process media from URL ${media.url}. Error: ${fetchError.message} ${fetchError.stack}` );
+                  // Propagate the error to the outer catch block to trigger the main fallback logic.
+                  throw fetchError;
               }
           }
           // After all media is sent, send a separate message with all the text joined together.

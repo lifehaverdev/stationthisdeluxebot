@@ -240,15 +240,21 @@ module.exports = function generationOutputsApi(dependencies) {
         throw new Error('Failed to fetch generation output after successful update.');
       }
 
+      // We only want to fire the delivery event ONCE, when the status *changes* to a terminal state.
+      // We can infer this by checking if the 'status' field was part of the payload that triggered this update.
+      const statusJustBecameTerminal = updatePayload.status === 'completed' || updatePayload.status === 'failed';
+
       // If the generation is complete and pending notification, emit an event
       const isNotificationReady =
         updatedGeneration.deliveryStatus === 'pending' &&
         ['completed', 'failed'].includes(updatedGeneration.status) &&
         updatedGeneration.notificationPlatform !== 'none';
 
-      if (isNotificationReady) {
-        logger.info(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, emitting event.`);
+      if (isNotificationReady && statusJustBecameTerminal) {
+        logger.info(`[generationOutputsApi] PUT /${generationId}: Generation has become terminal and is ready for delivery, emitting event.`);
         notificationEvents.emit('generationUpdated', updatedGeneration);
+      } else if (isNotificationReady) {
+        logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, but status did not just become terminal in this update. Suppressing redundant event.`);
       }
 
       logger.info(`[generationOutputsApi] PUT /${generationId}: Generation output updated successfully.`);
