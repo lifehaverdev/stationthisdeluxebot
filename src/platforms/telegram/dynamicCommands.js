@@ -225,206 +225,131 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
       // The handler is now a standalone async function.
       const commandHandler = async (bot, msg, dependencies, match) => {
-        const { internal, comfyUI, openaiService, logger } = dependencies;
+        const { internal, comfyUI, userSettingsService, logger } = dependencies;
+        const comfyuiService = comfyUI; // Alias for clarity
         const chatId = msg.chat.id;
+
         await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
             logger.warn(`[Telegram EXEC /${commandName}] Failed to set initial reaction: ${reactError.message}`)
         );
+
         const promptText = match && match[1] ? match[1].trim() : '';
+        let masterAccountId;
+        let generationRecord;
+
         try {
-            // Use internal API to find or create user
-            const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+            // Step 1: Find or create user to get masterAccountId
+            const userResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
                 platform: 'telegram',
                 platformId: msg.from.id.toString(),
                 platformContext: {
-                  firstName: msg.from.first_name,
-                  username: msg.from.username
+                    firstName: msg.from.first_name,
+                    username: msg.from.username,
+                },
+            });
+            masterAccountId = userResponse.data.masterAccountId;
+
+            // Step 2: Create a user session for this interaction
+            const sessionResponse = await internal.client.post('/internal/v1/data/sessions', {
+                masterAccountId: masterAccountId,
+                platform: 'telegram',
+            });
+            const sessionId = sessionResponse.data._id;
+
+            // Step 3: Create the generation record, now with the sessionId
+            const generationRecordResponse = await internal.client.post('/internal/v1/data/generations', {
+                masterAccountId: masterAccountId,
+                sessionId: sessionId,
+                platform: 'telegram',
+                toolId: tool.toolId,
+                serviceName: 'comfy-deploy',
+                status: 'pending',
+                costUsd: null,
+                deliveryStatus: 'pending',
+                notificationPlatform: 'telegram',
+                requestTimestamp: new Date().toISOString(),
+                requestPayload: {}, // Initially empty, updated before submission
+                metadata: {
+                    displayName: tool.displayName,
+                    toolId: tool.toolId,
+                    notificationContext: {
+                        chatId: msg.chat.id,
+                        messageId: msg.message_id,
+                        replyToMessageId: msg.message_id,
+                        userId: msg.from.id,
+                    }
                 }
             });
-            const masterAccountId = findOrCreateResponse.data.masterAccountId;
-            if (!masterAccountId) {
-                logger.error(`[Telegram EXEC /${commandName}] Could not resolve masterAccountId for user ${msg.from.id}.`);
-                await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '😨');
-                return;
-            }
-            const currentTool = tool; // The specific tool for this handler
-            const { telegramHandlerType, telegramPromptInputKey, telegramImageInputKey } = currentTool.metadata;
-            let userInputsForTool = {};
-            if (telegramPromptInputKey && promptText) {
-                userInputsForTool[telegramPromptInputKey] = promptText;
-            } else if (telegramPromptInputKey && !promptText && currentTool.inputSchema[telegramPromptInputKey]?.required) {
-                await bot.sendMessage(chatId, `Please provide a prompt. Usage: /${commandName} your prompt`, { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '😨');
-                return;
-            }
-            if (telegramHandlerType === 'image_primary_with_text' || telegramHandlerType === 'image_only' || telegramHandlerType === 'image_required_with_text') {
-                 if ((!msg.reply_to_message || !msg.reply_to_message.photo) && !msg.photo && !msg.document) {
-                    await bot.sendMessage(chatId, `This command requires you to reply to or include an image.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '😨');
-                    return;
-                }
-                const imageUrl = await getTelegramFileUrl(bot, msg);
-                if (!imageUrl) {
-                    await bot.sendMessage(chatId, `Sorry, I couldn't get the image URL.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '😨');
-                    return;
-                }
-                if (telegramImageInputKey) {
-                    userInputsForTool[telegramImageInputKey] = imageUrl;
-                }
-            }
-            await setReaction(bot, chatId, msg.message_id, '👌');
-            // Service map for extensibility
-            const serviceMap = {
-                comfyui: comfyUI,
-                openai: openaiService,
-                // Add more mappings as needed for future tool services
-            };
-            const service = serviceMap[currentTool.service];
-            if (!service || typeof service.submitRequest !== 'function') {
-                logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} has unsupported or missing service: ${currentTool.service}`);
-                await bot.sendMessage(chatId, `This tool is not supported in Telegram yet.`, { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '😨');
-                return;
-            }
-            if (currentTool.service === 'comfyui') {
-                // Ensure deploymentId is present
-                const deploymentId = currentTool.metadata?.deploymentId;
-                if (!deploymentId) {
-                    logger.error(`[Telegram EXEC /${commandName}] Tool ${currentTool.toolId} is missing deploymentId in metadata.`);
-                    await bot.sendMessage(chatId, `This tool is not properly configured (missing deploymentId). Please contact support.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '😨');
-                    return;
-                }
-                const textInputKey = tool.metadata.telegramPromptInputKey;
-                
-                // Build initial input payload
-                let inputs = {};
-                if (textInputKey) {
-                    inputs[textInputKey] = promptText || (tool.inputSchema[textInputKey]?.default ?? '');
-                }
+            generationRecord = generationRecordResponse.data;
 
-                const getFileUrlFunction = async (fileId) => getTelegramFileUrl(bot, fileId);
+        } catch (err) {
+            const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
+            logger.error(`[Telegram EXEC /${commandName}] An error occurred during initial record creation: ${errorMessage}`, { stack: err.stack });
+            await bot.sendMessage(msg.chat.id, `An error occurred: ${err.message}`, { reply_to_message_id: msg.message_id });
+            await setReaction(bot, chatId, msg.message_id, '😨');
+            return;
+        }
 
-                // ADR-011: Media Handling
-                if (msg.photo || msg.video || msg.document) {
-                    const mediaType = msg.photo ? 'photo' : (msg.video ? 'video' : 'document');
-                    const fileId = mediaType === 'photo' ? msg.photo[msg.photo.length - 1].file_id : msg[mediaType].file_id;
-
-                    try {
-                        const fileUrl = await getFileUrlFunction(fileId);
-                        const uploadedFile = await comfyUI.uploadFile({
-                            fileUrl: fileUrl,
-                            fileName: msg[mediaType].file_name,
-                            fileType: msg[mediaType].mime_type
-                        });
-                        
-                        if (uploadedFile && uploadedFile.name) {
-                            const imageKey = tool.metadata.telegramImageInputKey;
-                            const videoKey = tool.metadata.telegramVideoInputKey;
-                            if (imageKey && (uploadedFile.type?.startsWith('image/') || mediaType === 'photo')) {
-                                inputs[imageKey] = uploadedFile.name;
-                            } else if (videoKey && (uploadedFile.type?.startsWith('video/') || mediaType === 'video')) {
-                                inputs[videoKey] = uploadedFile.name;
-                            } else {
-                                // Fallback logic if primary media keys don't match file type
-                                if (imageKey) inputs[imageKey] = uploadedFile.name;
-                                else if (videoKey) inputs[videoKey] = uploadedFile.name;
-                            }
-                        } else {
-                             throw new Error('File upload did not return a valid file name.');
-                        }
-                    } catch (uploadError) {
-                        logger.error(`[Telegram EXEC /${commandName}] Failed to upload media for user ${msg.from.id}: ${uploadError.message}`);
-                        await bot.sendMessage(chatId, `I couldn't process your media file. Please try another one or check if the bot has permission to access it.`, { reply_to_message_id: msg.message_id });
-                        await setReaction(bot, chatId, msg.message_id, '😨');
-                        return;
-                    }
-                }
-
-                // Create generation record
-                const generationRecord = await internal.client.post('/internal/v1/data/generations', {
-                    masterAccountId: masterAccountId,
-                    platform: 'telegram',
-                    toolId: tool.toolId,
-                    status: 'pending', 
-                    costUsd: null, 
-                    deliveryStatus: 'pending',
-                    notificationPlatform: 'telegram',
-                    requestTimestamp: new Date().toISOString(),
-                    metadata: {
-                      displayName: tool.displayName,
-                      toolId: tool.toolId,
-                      // Any other relevant tool metadata can go here
-                      notificationContext: {
-                        chatId: chatId,
-                        messageId: msg.message_id,
-                        replyToMessageId: msg.message_id, 
-                        userId: msg.from.id
-                      }
-                    }
-                });
-
-                const generationId = generationRecord.data._id;
-
-                // Prepare the final payload for ComfyUI
-                const { inputs: finalInputs, loraResolutionData } = await workflowsService.prepareToolRunPayload(tool.toolId, inputs, masterAccountId, dependencies);
-
-                // Update the generation record with LoRA data if available
-                if (loraResolutionData) {
-                    await internal.client.put(`/internal/v1/data/generations/${generationId}`, {
-                        metadata: { loraResolutionData }
-                    });
-                }
-                
-                // Submit the request to ComfyUI
-                const runId = await comfyuiService.submitRequest({
-                    deploymentId,
-                    inputs: finalInputs
-                });
-
-                // IMPORTANT: Update the generation record with the runId
-                await internal.client.put(`/internal/v1/data/generations/${generationId}`, {
-                    metadata: { run_id: runId }
-                });
-                
-                logger.info(`[Telegram EXEC /${commandName}] Submitted job for user ${msg.from.id}. GenerationID: ${generationId}, RunID: ${runId}`);
-                
-                // Set final reaction for acknowledgement
-                await setReaction(bot, chatId, msg.message_id, '👍').catch(reactError => 
-                    logger.warn(`[Telegram EXEC /${commandName}] Failed to set final reaction: ${reactError.message}`)
-                );
+        try {
+            const textInputKey = tool.metadata.telegramPromptInputKey;
             
-            } else {
-                // For all other services, just call submitRequest
-                const response = await service.submitRequest({
-                    toolId: currentTool.toolId,
-                    masterAccountId: masterAccountId,
-                    inputs: userInputsForTool,
-                    telegramContext: {
-                        chatId: chatId,
-                        messageId: msg.message_id,
-                        userId: msg.from.id
-                    }
-                });
-                // Optionally send the response to the user if present
-                if (response && response.data && response.data.response) {
-                    await bot.sendMessage(chatId, response.data.response, { reply_to_message_id: msg.message_id });
-                } else {
-                    await bot.sendMessage(chatId, `✅ Request sent to ${currentTool.displayName}.`, { reply_to_message_id: msg.message_id });
-                }
+            // Build initial input payload
+            let inputs = {};
+            if (textInputKey) {
+                inputs[textInputKey] = promptText || (tool.inputSchema[textInputKey]?.default ?? '');
             }
-            // The result will be handled by the NotificationDispatcher, so we don't send a final message here for comfyui tools.
-        } catch (error) {
-            logger.error(`[Telegram EXEC /${commandName}] An error occurred: ${error.message}`, error.stack);
-            await bot.sendMessage(chatId, `Yikes! Something went wrong while running the '${commandName}' command. The error has been logged.`, { reply_to_message_id: msg.message_id });
+
+            const getFileUrlFunction = async (fileId) => getTelegramFileUrl(bot, fileId);
+
+            // ADR-011: Media Handling
+            if (msg.photo || msg.video || msg.document) {
+                const mediaType = msg.photo ? 'photo' : (msg.video ? 'video' : 'document');
+                const fileId = mediaType === 'photo' ? msg.photo[msg.photo.length - 1].file_id : msg[mediaType].file_id;
+
+                const mediaInputs = await comfyuiService.handleMediaInput({
+                    tool,
+                    fileId,
+                    getFileUrlFunction,
+                    userSettingsService,
+                    masterAccountId
+                });
+                inputs = { ...inputs, ...mediaInputs };
+            }
+            
+            // Step 4: Submit job to ComfyUI
+            const comfyResponse = await comfyuiService.submitRequest(
+                generationRecord,
+                inputs,
+                null, // deploy_name
+                null  // spellVariant
+            );
+
+            // Step 5: IMPORTANT - Update generation record with the run_id and final inputs
+            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+                'metadata.run_id': comfyResponse.run_id,
+                'requestPayload': inputs, 
+            });
+
+            logger.info(`[Telegram EXEC /${commandName}] ComfyUI job submitted. Run ID: ${comfyResponse.run_id}`);
+            await setReaction(bot, chatId, msg.message_id, '✅');
+
+        } catch (err) {
+            const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
+            logger.error(`[Telegram EXEC /${commandName}] An error occurred during job submission: ${errorMessage}`, { stack: err.stack });
+            
+            // Update the generation record to failed status
+            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+                status: 'failed',
+                responsePayload: { error: errorMessage },
+            }).catch(updateErr => logger.error(`[Telegram EXEC /${commandName}] Failed to update generation status to FAILED after submission error: ${updateErr.message}`));
+
+            await bot.sendMessage(msg.chat.id, `Sorry, something went wrong while starting the task: ${err.message}`, { reply_to_message_id: msg.message_id });
             await setReaction(bot, chatId, msg.message_id, '😨');
         }
       };
 
       // Register with the registry instead of bot.onText
-      const regex = new RegExp(`^/${commandName}(?:\\s+(.*))?$`, 'is');
+      const regex = new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'is');
       commandRegistry.register(commandName, regex, commandHandler);
 
       registeredCommandsList.push({ command: commandName, description: tool.description?.split('\\n')[0] || `Runs the ${tool.displayName} tool.` });
