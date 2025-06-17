@@ -225,7 +225,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
       // The handler is now a standalone async function.
       const commandHandler = async (bot, msg, dependencies, match) => {
-        const { internal, comfyui, openaiService, logger } = dependencies;
+        const { internal, comfyUI, openaiService, logger } = dependencies;
         const chatId = msg.chat.id;
         await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
             logger.warn(`[Telegram EXEC /${commandName}] Failed to set initial reaction: ${reactError.message}`)
@@ -245,7 +245,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             if (!masterAccountId) {
                 logger.error(`[Telegram EXEC /${commandName}] Could not resolve masterAccountId for user ${msg.from.id}.`);
                 await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '✖️');
+                await setReaction(bot, chatId, msg.message_id, '😨');
                 return;
             }
             const currentTool = tool; // The specific tool for this handler
@@ -255,19 +255,19 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 userInputsForTool[telegramPromptInputKey] = promptText;
             } else if (telegramPromptInputKey && !promptText && currentTool.inputSchema[telegramPromptInputKey]?.required) {
                 await bot.sendMessage(chatId, `Please provide a prompt. Usage: /${commandName} your prompt`, { reply_to_message_id: msg.message_id });
-                await setReaction(bot, chatId, msg.message_id, '✖️');
+                await setReaction(bot, chatId, msg.message_id, '😨');
                 return;
             }
             if (telegramHandlerType === 'image_primary_with_text' || telegramHandlerType === 'image_only' || telegramHandlerType === 'image_required_with_text') {
-                 if (!msg.reply_to_message || !msg.reply_to_message.photo) {
-                    await bot.sendMessage(chatId, `This command requires you to reply to an image.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                 if ((!msg.reply_to_message || !msg.reply_to_message.photo) && !msg.photo && !msg.document) {
+                    await bot.sendMessage(chatId, `This command requires you to reply to or include an image.`, { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '😨');
                     return;
                 }
                 const imageUrl = await getTelegramFileUrl(bot, msg);
                 if (!imageUrl) {
                     await bot.sendMessage(chatId, `Sorry, I couldn't get the image URL.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '✖️');
+                    await setReaction(bot, chatId, msg.message_id, '😨');
                     return;
                 }
                 if (telegramImageInputKey) {
@@ -277,7 +277,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             await setReaction(bot, chatId, msg.message_id, '👌');
             // Service map for extensibility
             const serviceMap = {
-                comfyui: comfyui,
+                comfyUI: comfyUI,
                 openai: openaiService,
                 // Add more mappings as needed for future tool services
             };
