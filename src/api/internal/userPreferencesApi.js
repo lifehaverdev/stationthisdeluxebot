@@ -153,11 +153,21 @@ module.exports = function userPreferencesApi(dependencies) {
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
 
-    const { preferenceScope } = req.params; // This is the toolId
+    const { preferenceScope } = req.params; // This is the tool's displayName
      if (!preferenceScope || typeof preferenceScope !== 'string' || preferenceScope.trim() === '') {
-        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'preferenceScope (toolId) path parameter must be a non-empty string.' } });
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'preferenceScope (tool displayName) path parameter must be a non-empty string.' } });
     }
-    const toolId = preferenceScope.trim();
+    const toolIdentifier = preferenceScope.trim();
+
+    // Find the tool by its display name (identifier) to get its canonical toolId for validation
+    const toolDef = toolRegistry.findByDisplayName(toolIdentifier);
+    if (!toolDef) {
+      logger.warn(`[userPreferencesApi] PUT .../${toolIdentifier}: Could not find tool by displayName. Validation cannot proceed.`);
+      return res.status(404).json({
+        error: { code: 'TOOL_NOT_FOUND', message: `Tool with display name '${toolIdentifier}' not found in registry.` }
+      });
+    }
+    const canonicalToolId = toolDef.toolId;
 
     const preferencesToSave = req.body;
     if (!preferencesToSave || typeof preferencesToSave !== 'object') {
@@ -166,12 +176,12 @@ module.exports = function userPreferencesApi(dependencies) {
       });
     }
 
-    logger.info(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences/${toolId} - Received request`, { body: preferencesToSave });
+    logger.info(`[userPreferencesApi] PUT /users/${masterAccountId}/preferences/${toolIdentifier} - Received request`, { body: preferencesToSave });
 
-    // Validate preferences using UserSettingsService
-    const validationResult = userSettingsService.validatePreferences(toolId, preferencesToSave);
+    // Validate preferences using UserSettingsService with the canonical toolId
+    const validationResult = userSettingsService.validatePreferences(canonicalToolId, preferencesToSave);
     if (!validationResult.isValid) {
-      logger.warn(`[userPreferencesApi] PUT .../${toolId}: Validation failed.`, { errors: validationResult.errors });
+      logger.warn(`[userPreferencesApi] PUT .../${toolIdentifier}: Validation failed.`, { errors: validationResult.errors });
       return res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -185,7 +195,7 @@ module.exports = function userPreferencesApi(dependencies) {
       // Pre-check: Ensure the top-level user preferences document exists.
       let userPrefsDoc = await db.userPreferences.findByMasterAccountId(masterAccountId);
       if (!userPrefsDoc) {
-        logger.info(`[userPreferencesApi] PUT .../${toolId}: User preferences document not found for ${masterAccountId}, creating one.`);
+        logger.info(`[userPreferencesApi] PUT .../${toolIdentifier}: User preferences document not found for ${masterAccountId}, creating one.`);
         userPrefsDoc = await db.userPreferences.createUserPreferences(masterAccountId);
         if (!userPrefsDoc) {
           // This would be an unexpected failure during creation
@@ -193,13 +203,13 @@ module.exports = function userPreferencesApi(dependencies) {
         }
       }
 
-      // Now, set the preference for the specific key
-      const updateResult = await db.userPreferences.updatePreferenceByKey(masterAccountId, toolId, preferencesToSave);
+      // Now, set the preference for the specific key using the original identifier (displayName)
+      const updateResult = await db.userPreferences.updatePreferenceByKey(masterAccountId, toolIdentifier, preferencesToSave);
 
        if (updateResult.matchedCount === 0 && updateResult.upsertedCount === 0 && !updateResult.modifiedCount ===0 ) { // also check modifiedCount if upsert is false for setPreferenceByKey
            // This might happen if the doc was deleted between check and update, or other issue
            // or if setPreferenceByKey does not upsert the user document itself.
-           logger.error(`[userPreferencesApi] PUT .../${toolId}: Failed to match or update document during setPreferenceByKey.`, { updateResult });
+           logger.error(`[userPreferencesApi] PUT .../${toolIdentifier}: Failed to match or update document during setPreferenceByKey.`, { updateResult });
            // Check if userPrefsDoc was initially null and creation failed, or if it simply wasn't matched by setPreferenceByKey
            const existingDoc = await db.userPreferences.findByMasterAccountId(masterAccountId);
            if (!existingDoc) {
@@ -209,13 +219,13 @@ module.exports = function userPreferencesApi(dependencies) {
        }
 
       // Fetch the updated scope to return it
-      const updatedScope = await db.userPreferences.getPreferenceByKey(masterAccountId, toolId);
+      const updatedScope = await db.userPreferences.getPreferenceByKey(masterAccountId, toolIdentifier);
 
-      logger.info(`[userPreferencesApi] PUT .../${toolId}: Preferences scope updated successfully.`);
+      logger.info(`[userPreferencesApi] PUT .../${toolIdentifier}: Preferences scope updated successfully.`);
       res.status(200).json(updatedScope || {}); // Return updated scope, or {} if somehow null
 
     } catch (error) {
-      logger.error(`[userPreferencesApi] PUT .../${toolId}: Error - ${error.message}`, error);
+      logger.error(`[userPreferencesApi] PUT .../${toolIdentifier}: Error - ${error.message}`, error);
       res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error updating scoped preferences.' } });
     }
   });

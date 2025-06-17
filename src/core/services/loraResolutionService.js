@@ -15,7 +15,7 @@ const logger = console; // Replace with a proper logger instance if available
  */
 async function _fetchAndCacheTriggerMap(internalApiClient, masterAccountId, toolBaseModel) {
   const cacheKey = masterAccountId || 'public';
-  let apiUrl = masterAccountId ? `/lora/trigger-map-data?userId=${masterAccountId}` : '/lora/trigger-map-data';
+  let apiUrl = masterAccountId ? `/internal/v1/data/lora/trigger-map-data?userId=${masterAccountId}` : '/internal/v1/data/lora/trigger-map-data';
   if (toolBaseModel) {
     apiUrl += (apiUrl.includes('?') ? '&' : '?') + `baseModelType=${toolBaseModel}`;
     logger.info(`[LoRAResolutionService] Fetching trigger map from API. User: ${masterAccountId || 'N/A (public only)'}, ToolBaseModel: ${toolBaseModel}`);

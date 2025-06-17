@@ -6,12 +6,144 @@ const UserPreferencesDB = require('../../core/services/db/userPreferencesDb');
 const { ObjectId } = require('../../core/services/db/BaseDB');
 const axios = require('axios'); // For ComfyUI Deploy API call
 const loraTriggerMapApi = require('./loraTriggerMapApi');
+const { sendAdminLoraApprovalRequest } = require('../../core/services/notifications/telegramNotifier');
+
+// Mount the trigger map router
+router.use(loraTriggerMapApi.router);
 
 // TODO: Proper dependency injection for DB services and logger
 const logger = console; // Placeholder logger
 const loRAModelsDb = new LoRAModelsDB(logger);
 const loRAPermissionsDb = new LoRAPermissionsDB(logger);
 const userPreferencesDb = new UserPreferencesDB(logger);
+
+/**
+ * Fetches and transforms model data from a Civitai URL.
+ * @param {string} url - The Civitai model URL.
+ * @returns {Promise<Object|null>} - The transformed model data or null.
+ */
+async function getCivitaiModelData(url) {
+    logger.info(`[LorasApi] Fetching Civitai data for URL: ${url}`);
+    
+    const modelVersionIdMatch = url.match(/modelVersionId=(\d+)/);
+    const modelIdMatch = url.match(/models\/(\d+)/);
+
+    let versionId = modelVersionIdMatch ? modelVersionIdMatch[1] : null;
+    let modelId = modelIdMatch ? modelIdMatch[1] : null;
+
+    if (!versionId && !modelId) {
+        logger.error('[LorasApi] Could not extract modelId or modelVersionId from Civitai URL.');
+        throw new Error('Could not extract modelId or modelVersionId from Civitai URL.');
+    }
+
+    let versionData;
+    try {
+        if (versionId) {
+            const response = await axios.get(`https://civitai.com/api/v1/model-versions/${versionId}`);
+            versionData = response.data;
+        } else {
+            const modelResponse = await axios.get(`https://civitai.com/api/v1/models/${modelId}`);
+            if (modelResponse.data && modelResponse.data.modelVersions && modelResponse.data.modelVersions.length > 0) {
+                versionData = modelResponse.data.modelVersions[0];
+            }
+        }
+    } catch (apiError) {
+        const errorMsg = apiError.response ? JSON.stringify(apiError.response.data) : apiError.message;
+        logger.error(`[LorasApi] Civitai API error fetching data for versionId=${versionId}/modelId=${modelId}: ${errorMsg}`);
+        throw new Error(`Civitai API request failed: ${errorMsg}`);
+    }
+
+    if (!versionData) {
+        logger.error(`[LorasApi] No version data found on Civitai for url: ${url}`);
+        throw new Error('No version data found on Civitai for the provided URL.');
+    }
+
+    const modelFile = versionData.files.find(f => f.type === 'Model' && f.metadata?.format?.toLowerCase() === 'safetensors');
+    
+    if (!modelFile) {
+        logger.warn(`[LorasApi] No SafeTensors model file found for Civitai model version ${versionData.id}. Proceeding without a direct modelFileUrl.`);
+    }
+    
+    const modelData = {
+        name: versionData.model.name,
+        description: versionData.description || versionData.model.description || '',
+        triggerWords: versionData.trainedWords || [],
+        checkpoint: versionData.baseModel,
+        tags: (versionData.model.tags || []).map(tag => ({ tag: tag, source: 'civitai' })),
+        previewImages: (versionData.images || []).filter(img => img.url).map(img => img.url),
+        defaultWeight: 1.0,
+    };
+
+    const importDetails = {
+        source: 'civitai',
+        url: url,
+        originalAuthor: versionData.model.creator?.username || null,
+        modelFileUrl: modelFile ? modelFile.downloadUrl : null,
+    };
+    
+    return { modelData, importDetails };
+}
+
+/**
+ * POST /import - Imports a LoRA model from a URL.
+ * Body:
+ *  - url (string): The URL of the model to import (e.g., from Civitai).
+ *  - userId (string): The masterAccountId of the user initiating the import.
+ */
+router.post('/import', async (req, res) => {
+    const { url, userId } = req.body;
+
+    if (!url || !userId) {
+        return res.status(400).json({ message: 'URL and userId are required.' });
+    }
+
+    logger.info(`[LorasApi] POST /import called for URL: ${url} by UserID: ${userId}`);
+
+    try {
+        let MAID;
+        try {
+            MAID = new ObjectId(userId);
+        } catch (e) {
+            return res.status(400).json({ message: 'Invalid userId format for masterAccountId.' });
+        }
+
+        let modelData;
+        let importDetails;
+
+        if (url.includes('civitai.com')) {
+            const civitaiData = await getCivitaiModelData(url);
+            modelData = civitaiData.modelData;
+            importDetails = civitaiData.importDetails;
+        } else if (url.includes('huggingface.co')) {
+            return res.status(501).json({ message: 'Hugging Face import is not yet implemented.' });
+        } else {
+            return res.status(400).json({ message: 'Unsupported model URL. Please use a Civitai or Hugging Face link.' });
+        }
+        
+        const newLora = await loRAModelsDb.createImportedLoRAModel(modelData, userId, importDetails);
+
+        if (!newLora) {
+            return res.status(500).json({ message: 'Failed to create LoRA model record in the database.' });
+        }
+
+        logger.info(`[LorasApi] Successfully imported LoRA '${newLora.name}' (ID: ${newLora._id}) for user ${userId}`);
+
+        // --- NEW: Send admin notification ---
+        sendAdminLoraApprovalRequest(newLora).catch(err => {
+            logger.error(`[LorasApi] Failed to send admin notification for new LoRA ${newLora._id}: ${err.message}`);
+        });
+        // --- END NEW ---
+
+        res.status(200).json({ 
+            message: `✅ Successfully requested import for LoRA: *${newLora.name}*.\n\nIt is now pending admin review. You will be notified upon approval.`,
+            lora: newLora 
+        });
+
+    } catch (error) {
+        logger.error(`[LorasApi] Error in POST /import for URL ${url}:`, error.stack);
+        res.status(500).json({ message: `An error occurred during import: ${error.message}` });
+    }
+});
 
 /**
  * GET /list - Fetch a list of LoRAs based on filters.
@@ -43,10 +175,13 @@ router.get('/list', async (req, res) => {
     if (userId) {
         try {
             MAID = new ObjectId(userId);
-            // If userId is present, adjust query for public OR private+owned
+            // If userId is present, fetch IDs of accessible private LoRAs and combine with public ones.
+            const accessibleLoraPermissions = await loRAPermissionsDb.listAccessibleLoRAs(userId);
+            const accessiblePrivateLoraIds = accessibleLoraPermissions.map(p => p.loraId);
+
             dbQuery.$or = [
                 { visibility: 'public' },
-                { visibility: 'private', ownedBy: MAID }
+                { _id: { $in: accessiblePrivateLoraIds } }
             ];
         } catch (e) {
             return res.status(400).json({ error: 'Invalid userId format for masterAccountId.' });
@@ -194,10 +329,11 @@ router.get('/:loraIdentifier', async (req, res) => {
       if (!MAID) {
         return res.status(403).json({ error: 'Access denied. This LoRA is private and requires user authentication.' });
       }
-      // Ensure lora.ownedBy is defined and MAID is an ObjectId before comparing
-      if (!lora.ownedBy || lora.ownedBy.toString() !== MAID.toString()) {
-        logger.warn(`[LorasApi] Access denied for MAID ${MAID.toString()} to private LoRA ${lora._id.toString()} owned by ${lora.ownedBy ? lora.ownedBy.toString() : 'unknown'}`);
-        return res.status(403).json({ error: 'Access denied to this private LoRA.' });
+      // Check for a specific permission grant instead of just ownership
+      const hasPermission = await loRAPermissionsDb.hasAccess(userId, lora._id.toString());
+      if (!hasPermission) {
+          logger.warn(`[LorasApi] Access denied for MAID ${userId} to private LoRA ${lora._id.toString()}. No permission found.`);
+          return res.status(403).json({ error: 'Access denied to this private LoRA.' });
       }
     }
     // TODO: Implement more granular license-based permission check if lora.permissionType is 'licensed'
@@ -279,15 +415,21 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
       return res.status(500).json({ error: 'ComfyUI deployment configuration error.', details: 'API key missing.' });
     }
 
-    if (!lora.importedFrom?.modelFileUrl || !lora.slug) {
-        logger.error(`[LorasApi] Missing modelFileUrl or slug for LoRA ${loraIdentifier}. Cannot deploy.`);
-        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing modelFileUrl or slug).' });
+    // --- MODIFICATION: Relax modelFileUrl requirement for Civitai ---
+    const source = (lora.importedFrom?.source || 'link').toLowerCase();
+    if (source !== 'civitai' && !lora.importedFrom?.modelFileUrl) {
+        logger.error(`[LorasApi] Missing modelFileUrl for non-Civitai LoRA ${loraIdentifier}. Cannot deploy.`);
+        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing modelFileUrl for non-civitai source).' });
     }
+    if (!lora.slug) {
+        logger.error(`[LorasApi] Missing slug for LoRA ${loraIdentifier}. Cannot deploy.`);
+        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing slug).' });
+    }
+    // --- END MODIFICATION ---
 
     // Assume .safetensors, make more robust if other types are expected or filename is in metadata
     const filename = `${lora.slug}.safetensors`; 
     let deployPayload;
-    const source = (lora.importedFrom?.source || 'link').toLowerCase();
 
     if (source === 'civitai') {
       deployPayload = {
@@ -417,14 +559,20 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
       return res.status(500).json({ error: 'ComfyUI deployment configuration error.', details: 'API key missing.' });
     }
 
-    if (!lora.importedFrom?.modelFileUrl || !lora.slug) {
-        logger.error(`[LorasApi] Missing modelFileUrl or slug for LoRA ${loraIdentifier}. Cannot deploy.`);
-        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing modelFileUrl or slug).' });
+    // --- MODIFICATION: Relax modelFileUrl requirement for Civitai ---
+    const source = (lora.importedFrom?.source || 'link').toLowerCase();
+    if (source !== 'civitai' && !lora.importedFrom?.modelFileUrl) {
+        logger.error(`[LorasApi] Missing modelFileUrl for non-Civitai LoRA ${loraIdentifier} (private approval). Cannot deploy.`);
+        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing modelFileUrl for non-civitai source).' });
     }
+    if (!lora.slug) {
+        logger.error(`[LorasApi] Missing slug for LoRA ${loraIdentifier} (private approval). Cannot deploy.`);
+        return res.status(400).json({ error: 'LoRA data incomplete for deployment (missing slug).' });
+    }
+    // --- END MODIFICATION ---
 
     const filename = `${lora.slug}.safetensors`; 
     let deployPayload;
-    const source = (lora.importedFrom?.source || 'link').toLowerCase();
 
     if (source === 'civitai') {
       deployPayload = {
@@ -477,6 +625,27 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
       return res.status(500).json({ error: 'Failed to deploy LoRA to ComfyUI for private use.', details: errorDetails });
     }
     // --- End ComfyUI Deployment ---
+
+    // -- BEGIN NEW: Grant permission to owner --
+    if (!lora.ownedBy) {
+        logger.error(`[LorasApi] Cannot grant access for privately approved LoRA ${lora._id} because it has no owner (ownedBy is null).`);
+    } else {
+        const ownerIdStr = lora.ownedBy.toString();
+        const loraIdStr = lora._id.toString();
+        const existingPermission = await loRAPermissionsDb.hasAccess(ownerIdStr, loraIdStr);
+        if (!existingPermission) {
+            logger.info(`[LorasApi] Granting private access to owner ${ownerIdStr} for LoRA ${loraIdStr}`);
+            await loRAPermissionsDb.grantAccess({
+                loraId: lora._id,
+                userId: lora.ownedBy,
+                licenseType: 'staff_grant',
+                priceCents: 0,
+                // Using the owner's ID as the granter, as it's a system-granted ownership permission.
+                grantedBy: lora.ownedBy, 
+            });
+        }
+    }
+    // -- END NEW ---
 
     // Update LoRA model in DB
     const updateData = {
@@ -759,5 +928,104 @@ router.get('/store/list', async (req, res) => {
   }
 });
 // -- END NEW STORE LISTING ENDPOINT --
+
+const VALID_CHECKPOINTS = ['SD1.5', 'SDXL', 'FLUX', 'SD3'];
+
+/**
+ * POST /:loraId/checkpoint - Updates the checkpoint for a LoRA model.
+ * Admin-only action.
+ * Body:
+ *  - checkpoint (string): The new checkpoint value (e.g., 'SD1.5', 'SDXL').
+ */
+router.post('/:loraId/checkpoint', async (req, res) => {
+    const { loraId } = req.params;
+    const { checkpoint } = req.body;
+
+    // TODO: Add robust admin authentication/authorization middleware
+    // For now, we assume this endpoint is only callable by trusted services/admins.
+
+    if (!checkpoint || !VALID_CHECKPOINTS.includes(checkpoint)) {
+        return res.status(400).json({ message: `Invalid checkpoint value. Must be one of: ${VALID_CHECKPOINTS.join(', ')}` });
+    }
+
+    let loraObjectId;
+    try {
+        loraObjectId = new ObjectId(loraId);
+    } catch (e) {
+        return res.status(400).json({ message: 'Invalid loraId format.' });
+    }
+    
+    logger.info(`[LorasApi] Admin updating checkpoint for LoRA ID ${loraId} to ${checkpoint}`);
+
+    try {
+        const result = await loRAModelsDb.update(loraObjectId, { checkpoint: checkpoint });
+        
+        if (!result || result.matchedCount === 0) {
+            return res.status(404).json({ message: 'LoRA model not found.' });
+        }
+
+        // Invalidate the cache since a core property has changed.
+        loraTriggerMapApi.refreshPublicLoraCache();
+        logger.info(`[LorasApi] LoRA Trigger Map cache cleared due to checkpoint update for ${loraId}.`);
+
+        res.status(200).json({ message: `Checkpoint for LoRA ${loraId} updated to ${checkpoint}` });
+    } catch (error) {
+        logger.error(`[LorasApi] Error updating checkpoint for LoRA ${loraId}:`, error.stack);
+        res.status(500).json({ message: `An error occurred while updating the checkpoint: ${error.message}` });
+    }
+});
+
+/**
+ * POST /:loraId/grant-owner-access - Manually grants ownership access permission for a LoRA.
+ * Admin-only action. Useful for fixing permissions on older, privately-approved LoRAs.
+ */
+router.post('/:loraId/grant-owner-access', async (req, res) => {
+    const { loraId } = req.params;
+    // Optional: Could take a userId in the body to grant to someone else, but defaults to owner.
+    // const { targetUserId } = req.body; 
+
+    // TODO: Add robust admin authentication/authorization middleware
+    
+    logger.info(`[LorasApi] Admin request to grant owner access for LoRA ID ${loraId}`);
+
+    try {
+        const loraObjectId = new ObjectId(loraId);
+        const lora = await loRAModelsDb.findById(loraObjectId);
+
+        if (!lora) {
+            return res.status(404).json({ message: 'LoRA model not found.' });
+        }
+
+        if (!lora.ownedBy) {
+            return res.status(400).json({ message: 'LoRA has no owner, cannot grant access.' });
+        }
+        
+        const ownerIdStr = lora.ownedBy.toString();
+        const loraIdStr = lora._id.toString();
+
+        const existingPermission = await loRAPermissionsDb.hasAccess(ownerIdStr, loraIdStr);
+        if (existingPermission) {
+            return res.status(200).json({ message: 'Owner already has permission for this LoRA.' });
+        }
+
+        await loRAPermissionsDb.grantAccess({
+            loraId: lora._id,
+            userId: lora.ownedBy,
+            licenseType: 'staff_grant',
+            priceCents: 0,
+            grantedBy: lora.ownedBy, // System-granted ownership permission
+        });
+        
+        logger.info(`[LorasApi] Successfully granted owner permission for LoRA ${loraIdStr} to user ${ownerIdStr}.`);
+        res.status(200).json({ message: `Permission granted successfully to owner.` });
+
+    } catch (error) {
+        logger.error(`[LorasApi] Error in grant-owner-access for LoRA ${loraId}:`, error.stack);
+        if (error.name === 'CastError') {
+            return res.status(400).json({ message: 'Invalid loraId format.' });
+        }
+        res.status(500).json({ message: `An error occurred: ${error.message}` });
+    }
+});
 
 module.exports = router; 

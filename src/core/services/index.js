@@ -17,6 +17,7 @@ const SpellsService = require('./SpellsService');
 const WorkflowExecutionService = require('./WorkflowExecutionService.js');
 const dbService = require('./db');
 const { initializeAPI } = require('../../api');
+const loraResolutionService = require('./loraResolutionService');
 
 /**
  * Initialize all core services
@@ -123,7 +124,8 @@ async function initializeServices(options = {}) {
       workflowExecutionService, // Added workflowExecutionService
       logger,
       appStartTime,
-      toolRegistry // geniusoverhaul: Added toolRegistry to returned services
+      toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
+      loraResolutionService
     };
 
     // DIAGNOSTIC LOGGING REMOVED

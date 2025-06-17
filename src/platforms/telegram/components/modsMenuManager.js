@@ -8,8 +8,15 @@
 // bot, logger
 
 const AVAILABLE_CHECKPOINTS = ['All', 'SDXL', 'SD1.5', 'FLUX']; // Example, could be dynamic
+const VALID_CHECKPOINTS = ['SD1.5', 'SDXL', 'FLUX', 'SD3'];
 const { ObjectId } = require('../../../core/services/db/BaseDB');
-const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
+const { 
+    sendEscapedMessage,
+    editEscapedMessageText,
+    editEscapedMessageCaption,
+    editEscapedMessageMedia,
+    sendPhotoWithEscapedCaption,
+} = require('../utils/messaging');
  
 // Map for shortening callback data to fit within Telegram's 64-byte limit
 const FILTER_SHORTCODE_MAP = {
@@ -179,19 +186,46 @@ Send '/cancel' if you change your mind.`;
         const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
         await displayModAdminMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
         return;
+      } else if (subAction === 'admin_grant_owner_permission') {
+        const [loraId] = params.slice(1);
+        try {
+            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/grant-owner-access`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Owner permission granted!' });
+        } catch(err) {
+            const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+            logger.error(`[ModsMenuManager] Error granting owner permission for lora ${loraId}`, err);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Error: ${errorDetail}`, show_alert: true });
+        }
+        return;
+      } else if (subAction === 'admin_change_checkpoint_menu') {
+        const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
+        await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+        return;
+      } else if (subAction === 'admin_set_checkpoint') {
+        const [loraId, newCheckpoint, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
+        try {
+            await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/checkpoint`, { checkpoint: newCheckpoint });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Checkpoint updated to ${newCheckpoint}!` });
+            // Refresh the change checkpoint menu to show the new state
+            await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+        } catch(err) {
+            const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+            logger.error(`[ModsMenuManager] Error setting checkpoint for lora ${loraId}`, err);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Error updating checkpoint: ${errorDetail}`, show_alert: true });
+        }
+        return;
       } else if (subAction === 'admin_delete_confirm') {
         const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
         const loraResponse = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`);
         const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
-        const text = `Are you sure you want to permanently delete Mod: *${escapeMarkdownV2(loraName)}* \\(ID: \`${loraId}\`\\)?\n\nThis action cannot be undone\\.`;
+        const text = `Are you sure you want to permanently delete Mod: *${loraName}* (ID: \`${loraId}\`)?\n\nThis action cannot be undone.`;
         const keyboard = [[
             { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin_delete_execute:${loraId}` },
             { text: 'Cancel', callback_data: `mods:admin_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }
         ]];
-        await bot.editMessageText(text, {
+        await editEscapedMessageText(bot, text, {
             chat_id: callbackQuery.message.chat.id,
             message_id: callbackQuery.message.message_id,
-            parse_mode: 'MarkdownV2',
             reply_markup: { inline_keyboard: keyboard }
         });
         await bot.answerCallbackQuery(callbackQuery.id);
@@ -200,10 +234,9 @@ Send '/cancel' if you change your mind.`;
         const [loraId] = params.slice(1);
         try {
             await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraId}`);
-            await bot.editMessageText(`Mod with ID \`${loraId}\` has been deleted\\.`, {
+            await editEscapedMessageText(bot, `Mod with ID \`${loraId}\` has been deleted.`, {
                 chat_id: callbackQuery.message.chat.id,
                 message_id: callbackQuery.message.message_id,
-                parse_mode: 'MarkdownV2',
                 reply_markup: { inline_keyboard: [[{text: 'Back to Main Menu', callback_data: 'mods:main_menu'}]] }
             });
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Mod Deleted!' });
@@ -282,52 +315,50 @@ Send '/cancel' if you change your mind.`;
  */
 async function displayModsMainMenu(bot, messageOrQuery, masterAccountId, dependencies, isEdit = false) {
   const { logger } = dependencies;
-  const chatId = isEdit ? messageOrQuery.message.chat.id : messageOrQuery.chat.id;
-  const messageId = isEdit ? messageOrQuery.message.message_id : null;
-
-  const menuMessage = escapeMarkdownV2('Mod Categories \nSelect a category to explore:');
   
-  const inlineKeyboard = [
-    [
-      { text: '🎭 Character', callback_data: `mods:category:${getFilterShortcode('type_character')}:All:1` },
-      { text: '🖼 Style', callback_data: `mods:category:${getFilterShortcode('type_style')}:All:1` }
-    ],
-    [
-      { text: '🔥 Popular', callback_data: `mods:category:${getFilterShortcode('popular')}:All:1` },
-      { text: '⏳ Recent', callback_data: `mods:category:${getFilterShortcode('recent')}:All:1` }
-    ],
-    [
-      { text: '🛍️ Mod Store', callback_data: 'mods_store:main_menu' },
-      { text: '💖 Favorites', callback_data: `mods:category:${getFilterShortcode('favorites')}:All:1` }
-    ],
-    [{ text: '📝 Import Mod', callback_data: 'mods:request_form' }],
-    [{ text: "Ⓧ", callback_data: 'mods:nvm' }]
-  ];
-
   const options = {
-    reply_markup: { inline_keyboard: inlineKeyboard },
-    parse_mode: 'MarkdownV2'
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🎭 Character', callback_data: `mods:category:${getFilterShortcode('type_character')}:All:1` },
+          { text: '🖼 Style', callback_data: `mods:category:${getFilterShortcode('type_style')}:All:1` }
+        ],
+        [
+          { text: '🔥 Popular', callback_data: `mods:category:${getFilterShortcode('popular')}:All:1` },
+          { text: '⏳ Recent', callback_data: `mods:category:${getFilterShortcode('recent')}:All:1` }
+        ],
+        [
+          { text: '🛍️ Mod Store', callback_data: 'mods_store:main_menu' },
+          { text: '💖 Favorites', callback_data: `mods:category:${getFilterShortcode('favorites')}:All:1` }
+        ],
+        [{ text: '📝 Import Mod', callback_data: 'mods:request_form' }],
+        [{ text: "Ⓧ", callback_data: 'mods:nvm' }]
+      ]
+    },
   };
+
+  const menuMessage = 'Mod Categories \nSelect a category to explore:';
 
   try {
     if (isEdit) {
-      await bot.editMessageText(menuMessage, {
-        chat_id: chatId,
-        message_id: messageId,
+      const messageToEdit = messageOrQuery.message || messageOrQuery;
+      await editEscapedMessageText(bot, menuMessage, {
+        chat_id: messageToEdit.chat.id,
+        message_id: messageToEdit.message_id,
         ...options
       });
-    } else {
-      await bot.sendMessage(chatId, menuMessage, { ...options, reply_to_message_id: messageOrQuery.message_id });
-    }
-    if (isEdit && !messageOrQuery.answered) {
+      if (messageOrQuery.id && !messageOrQuery.answered) {
         await bot.answerCallbackQuery(messageOrQuery.id);
+      }
+    } else {
+      await sendEscapedMessage(bot, messageOrQuery.chat.id, menuMessage, { ...options, reply_to_message_id: messageOrQuery.message_id });
     }
   } catch (error) {
     logger.error(`[ModsMenuManager] Error in displayModsMainMenu (MAID: ${masterAccountId}):`, error.response ? error.response.data : error.message, error.stack);
-    if (isEdit && !messageOrQuery.answered) {
+    if (isEdit && messageOrQuery.id && !messageOrQuery.answered) {
         await bot.answerCallbackQuery(messageOrQuery.id, {text: "Error showing Mod menu.", show_alert: true});
     } else if (!isEdit) {
-        await bot.sendMessage(chatId, "Sorry, couldn't open the Mod menu right now.");
+        await sendEscapedMessage(bot, messageOrQuery.chat.id, "Sorry, couldn't open the Mod menu right now.");
     }
   }
 }
@@ -364,10 +395,10 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
   displayFilterName = displayFilterName.charAt(0).toUpperCase() + displayFilterName.slice(1);
 
   // Corrected title construction: Escape dynamic parts individually, build string.
-  let title = `*${escapeMarkdownV2(displayFilterName)} Mods*`;
+  let title = `*${displayFilterName} Mods*`;
   if (currentCheckpoint !== 'All') {
     // Revert the diagnostic change and ensure parentheses are properly escaped
-    title += ` ${escapeMarkdownV2(`(Checkpoint: ${currentCheckpoint})`)}`;
+    title += ` (Checkpoint: ${currentCheckpoint})`;
   }
 
   const keyboard = [];
@@ -380,7 +411,7 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
   })); 
   keyboard.push(checkpointButtons);
 
-  let loraListText = `\n_${escapeMarkdownV2('Fetching Mods...')}_\n`;
+  let loraListText = `\n_Fetching Mods..._\n`;
   let totalPages = 1;
 
   const queryParams = new URLSearchParams({
@@ -407,7 +438,7 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
     if (responseData && responseData.loras) {
       const fetchedLoras = responseData.loras;
       totalPages = responseData.pagination.totalPages || 1;
-      title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+      title += ` - Page ${currentPage}/${totalPages}`;
 
       if (fetchedLoras.length > 0) {
         loraListText = '\n'; 
@@ -423,30 +454,30 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
           } else {
             buttonDisplayName = lora.slug;
           }
-          const escapedButtonText = escapeMarkdownV2(buttonDisplayName);
+          const escapedButtonText = buttonDisplayName;
           // --- End Request 3 ---
           
           // Using name for display, slug for callback
           // const displayName = escapeMarkdownV2(lora.name || lora.slug); // Old logic
           // Callback for detail: mods:detail:SLUG_OR_ID:filterType:checkpoint:page
-          const detailCallback = `mods:detail:${lora.slug || lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
+          const detailCallback = `mods:detail:${lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
           keyboard.push([{ text: escapedButtonText, callback_data: detailCallback }]);
         });
       } else {
-        loraListText = `\n_${escapeMarkdownV2('No Mods found matching your criteria.')}_\n`;
+        loraListText = `\n_No Mods found matching your criteria._\n`;
       }
     } else {
       logger.warn('[ModsMenuManager] Invalid response structure from loras API:', responseData);
-      loraListText = `\n_${escapeMarkdownV2('Error: Could not parse Mod list from server.')}_\n`;
+      loraListText = `\n_Error: Could not parse Mod list from server._\n`;
       if (!title.includes('Page ')) {
-          title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+          title += ` - Page ${currentPage}/${totalPages}`;
       }
     }
   } catch (apiError) {
     logger.error(`[ModsMenuManager] API Error fetching Mods for ${filterType} (Checkpoint: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
-    loraListText = `\n_${escapeMarkdownV2('Sorry, there was an error fetching the Mods. Please try again later.')}_\n`;
+    loraListText = `\n_Sorry, there was an error fetching the Mods. Please try again later._\n`;
     if (!title.includes('Page ')) {
-        title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+        title += ` - Page ${currentPage}/${totalPages}`;
     }
   }
 
@@ -467,11 +498,10 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
   try {
     // If isEdit is true, try to edit. If originalMessageWasPhoto, this might fail if Telegram doesn't allow direct edit from photo to text.
     // If it fails, the catch block should ideally handle sending a new message.
-    await bot.editMessageText(fullMessage, {
+    await editEscapedMessageText(bot, fullMessage, {
       chat_id: chatId,
       message_id: messageId,
       reply_markup: { inline_keyboard: keyboard },
-      parse_mode: 'MarkdownV2'
     });
     if (!callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id);
@@ -482,9 +512,8 @@ async function displayModsByFilterScreen(bot, callbackQuery, masterAccountId, de
     if (isEdit) {
         logger.info(`[ModsMenuManager] Editing failed for filter screen (Filter: ${filterType}), attempting to send as new message.`);
         try {
-            await bot.sendMessage(chatId, fullMessage, {
+            await sendEscapedMessage(bot, chatId, fullMessage, {
                 reply_markup: { inline_keyboard: keyboard },
-                parse_mode: 'MarkdownV2'
             });
             if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
             return; // Sent as new, so we are done.
@@ -506,75 +535,52 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
   const chatId = callbackQuery.message.chat.id;
   const originalMessageId = callbackQuery.message.message_id;
 
-  let messageText = `*Mod Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Fetching details...')}_`;
+  let messageText = `*Mod Detail: ${loraIdentifier}*\n\n_Fetching details..._`;
   const keyboard = [];
   let photoUrl = null;
   const backFilterShortcode = getFilterShortcode(backFilterType);
 
   try {
     logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await dependencies.internal.client.get('/internal/v1/data/loras', {
-      params: {
-        filterType: backFilterType,
-        checkpoint: backCheckpoint,
-        page: backPage,
-        userId: masterAccountId
-      }
+    const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraIdentifier}`, {
+      params: { userId: masterAccountId }
     });
     const lora = response.data.lora;
-    logger.debug(`[ModsMenuManager] Fetched LoRA details for ${loraIdentifier}:`, JSON.stringify(lora, null, 2));
 
     if (lora) {
       let tempName = lora.name || lora.slug;
-      logger.debug(`[ModsMenuManager] Raw name/slug for ${loraIdentifier}: "${tempName}"`);
-      let escapedName = escapeMarkdownV2(tempName);
-      logger.debug(`[ModsMenuManager] Escaped name/slug for ${loraIdentifier}: "${escapedName}"`);
-      messageText = `*${escapedName}*\n`;
+      if (tempName.length > 64) tempName = tempName.substring(0, 61) + '...';
+      messageText = `*${tempName}*\n`;
 
       if (lora.description) {
         const maxLength = 150;
         const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
-        logger.debug(`[ModsMenuManager] Raw description for ${loraIdentifier}: "${desc}"`);
-        let escapedDesc = escapeMarkdownV2(desc);
-        logger.debug(`[ModsMenuManager] Escaped description for ${loraIdentifier}: "${escapedDesc}"`);
-        messageText += `_${escapedDesc}_\n\n`;
+        messageText += `_${desc}_\n\n`;
       }
 
-      let tempCheckpoint = lora.checkpoint || 'N/A';
-      logger.debug(`[ModsMenuManager] Raw checkpoint for ${loraIdentifier}: "${tempCheckpoint}"`);
-      let escapedCheckpoint = escapeMarkdownV2(tempCheckpoint);
-      logger.debug(`[ModsMenuManager] Escaped checkpoint for ${loraIdentifier}: "${escapedCheckpoint}"`);
-      messageText += `*Checkpoint:* ${escapedCheckpoint}\n`;
+      messageText += `*Checkpoint:* ${lora.checkpoint || 'N/A'}\n`;
 
       if (lora.triggerWords && lora.triggerWords.length > 0) {
         let tempTriggers = lora.triggerWords.join(', ');
-        logger.debug(`[ModsMenuManager] Raw triggers for ${loraIdentifier}: "${tempTriggers}"`);
-        let escapedTriggers = escapeMarkdownV2(tempTriggers);
-        logger.debug(`[ModsMenuManager] Escaped triggers for ${loraIdentifier}: "${escapedTriggers}"`);
-        messageText += `*Triggers:* \`${escapedTriggers}\`\n`;
+        if (tempTriggers.length > 100) tempTriggers = tempTriggers.substring(0, 97) + '...';
+        messageText += `*Triggers:* \`${tempTriggers}\`\n`;
       }
 
       // Display cognates if they exist
       if (lora.cognates && lora.cognates.length > 0) {
         const cognateWords = lora.cognates.map(c => c.word).join(', ');
-        const escapedCognates = escapeMarkdownV2(cognateWords);
-        messageText += `*Shortcuts:* \`${escapedCognates}\`\n`;
+        if (cognateWords.length > 100) cognateWords = cognateWords.substring(0, 97) + '...';
+        messageText += `*Shortcuts:* \`${cognateWords}\`\n`;
       }
 
       if (lora.tags && lora.tags.length > 0) {
         let tempTags = lora.tags.slice(0, 5).map(t => t.tag).join(', ');
-        logger.debug(`[ModsMenuManager] Raw tags for ${loraIdentifier}: "${tempTags}"`);
-        let escapedTags = escapeMarkdownV2(tempTags);
-        logger.debug(`[ModsMenuManager] Escaped tags for ${loraIdentifier}: "${escapedTags}"`);
-        messageText += `*Tags:* _${escapedTags}_\n`;
+        if (tempTags.length > 150) tempTags = tempTags.substring(0, 147) + '...';
+        messageText += `*Tags:* _${tempTags}_\n`;
       }
 
       if (lora.defaultWeight) {
-        let tempWeight = String(lora.defaultWeight);
-        logger.debug(`[ModsMenuManager] Raw weight for ${loraIdentifier}: "${tempWeight}"`);
-        let escapedWeight = escapeMarkdownV2(tempWeight);
-        logger.debug(`[ModsMenuManager] Escaped weight for ${loraIdentifier}: "${escapedWeight}"`);
-        messageText += `*Default Weight:* ${escapedWeight}\n`;
+        messageText += `*Default Weight:* ${String(lora.defaultWeight)}\n`;
       }
 
       if (lora.previewImages && lora.previewImages.length > 0) {
@@ -604,13 +610,13 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
           }]);
       }
     } else {
-      messageText = `*Mod Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this Mod.')}_`;
+      messageText = `*Mod Detail: ${loraIdentifier}*\n\n_Could not find details for this Mod._`;
     }
   } catch (apiError) {
     logger.error(`[ModsMenuManager] API Error fetching Mod detail for ${loraIdentifier}:`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
-    messageText = `*Mod Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Sorry, there was an error fetching details. Please try again later.')}_`;
+    messageText = `*Mod Detail: ${loraIdentifier}*\n\n_Sorry, there was an error fetching details. Please try again later._`;
     if (apiError.response && apiError.response.status === 404) {
-      messageText = `*Mod Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('This Mod could not be found.')}_`;
+      messageText = `*Mod Detail: ${loraIdentifier}*\n\n_This Mod could not be found._`;
     }
   }
 
@@ -625,8 +631,8 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
       const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
     if (photoUrl) {
         try {
-          await bot.editMessageMedia(
-            { type: 'photo', media: photoUrl, caption: messageText, parse_mode: 'MarkdownV2' },
+          await editEscapedMessageMedia(bot,
+            { type: 'photo', media: photoUrl, caption: messageText },
             { chat_id: chatId, message_id: originalMessageId, reply_markup: { inline_keyboard: keyboard } }
           );
           logger.info(`[ModsMenuManager] editMessageMedia succeeded for ${originalMessageId}.`);
@@ -635,40 +641,40 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
           if (originalMessageWasPhoto) {
             logger.debug(`[ModsMenuManager] editMessageMedia failed, original was photo. Trying editMessageCaption for ${originalMessageId}.`);
             try {
-              await bot.editMessageCaption(messageText, {
+              await editEscapedMessageCaption(bot, messageText, {
                 chat_id: chatId, message_id: originalMessageId,
-                reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                reply_markup: { inline_keyboard: keyboard },
               });
               logger.info(`[ModsMenuManager] editMessageCaption succeeded for ${originalMessageId}.`);
             } catch (editCaptionError) {
               logger.warn(`[ModsMenuManager] editMessageCaption also failed for ${originalMessageId} (${editCaptionError.message}). Sending new photo.`);
-              await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+              await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
             }
           } else { // Original was text, editMessageMedia failed to convert. Send new photo.
             logger.warn(`[ModsMenuManager] editMessageMedia failed to convert text to photo for ${originalMessageId}. Sending new photo.`);
-            await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+            await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
           }
         }
       } else { // We want to display/update text (photoUrl is null)
         logger.debug(`[ModsMenuManager] Edit Mode: Attempting to show/update text for ${loraIdentifier} on message ${originalMessageId}`);
         try {
-          await bot.editMessageText(messageText, {
+          await editEscapedMessageText(bot, messageText, {
             chat_id: chatId, message_id: originalMessageId,
-            reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+            reply_markup: { inline_keyboard: keyboard },
           });
           logger.info(`[ModsMenuManager] editMessageText succeeded for ${originalMessageId}.`);
         } catch (editTextError) {
           logger.warn(`[ModsMenuManager] editMessageText failed for ${originalMessageId} (${editTextError.message}). Sending new text message.`);
-          await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+          await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
         }
       }
     } else { // Not an edit, send a new message
       if (photoUrl) {
         logger.debug(`[ModsMenuManager] New Message Mode: Sending photo for ${loraIdentifier}.`);
-        await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+        await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
           } else {
         logger.debug(`[ModsMenuManager] New Message Mode: Sending text for ${loraIdentifier}.`);
-        await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+        await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
       }
     }
 
@@ -691,12 +697,12 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
         logger.warn(`[ModsMenuManager] A photo was intended but an error occurred (${error.message}). Attempting to send/edit as text fallback.`);
         try {
           if (isEdit) {
-                 await bot.editMessageText(messageText, { // Try to edit original message to text
+                 await editEscapedMessageText(bot, messageText, { // Try to edit original message to text
                     chat_id: chatId, message_id: originalMessageId,
-                    reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                    reply_markup: { inline_keyboard: keyboard },
                 });
             } else {
-                 await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+                 await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
             }
             if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
             // Exiting here as we've handled the fallback
@@ -731,7 +737,7 @@ async function displayModsStoreMainMenu(bot, callbackQuery, masterAccountId, dep
 
   logger.info(`[ModsMenuManager] Displaying Mod Store main menu for MAID: ${masterAccountId}`);
 
-  const menuMessage = escapeMarkdownV2('🛍️ Mod Store 🛍️\nBrowse user-trained Mods:');
+  const menuMessage = '🛍️ Mod Store 🛍️\nBrowse user-trained Mods:';
   
   const inlineKeyboard = [
     // Placeholder buttons for the store menu
@@ -747,11 +753,10 @@ async function displayModsStoreMainMenu(bot, callbackQuery, masterAccountId, dep
 
   const options = {
     reply_markup: { inline_keyboard: inlineKeyboard },
-    parse_mode: 'MarkdownV2'
   };
 
   try {
-    await bot.editMessageText(menuMessage, {
+    await editEscapedMessageText(bot, menuMessage, {
       chat_id: chatId,
       message_id: messageId,
       ...options
@@ -790,9 +795,9 @@ async function displayStoreModsByFilterScreen(bot, callbackQuery, masterAccountI
   if (filterType === 'price') displayFilterName = 'By Price';
   if (filterType === 'tag') displayFilterName = 'By Tag'; // This will likely need a sub-menu for selecting tags
 
-  let title = `*${escapeMarkdownV2(displayFilterName)} Store Mods*`;
+  let title = `*${displayFilterName} Store Mods*`;
   if (currentCheckpoint !== 'All') {
-    title += ` ${escapeMarkdownV2(`(Checkpoint: ${currentCheckpoint})`)}`;
+    title += ` (Checkpoint: ${currentCheckpoint})`;
   }
 
   const keyboard = [];
@@ -807,7 +812,7 @@ async function displayStoreModsByFilterScreen(bot, callbackQuery, masterAccountI
   keyboard.push(checkpointButtons);
 
   let loraListText = `
-_${escapeMarkdownV2('Fetching Mods from the store...')}_
+_Fetching Mods from the store..._
 `;
   let totalPages = 1;
 
@@ -832,24 +837,24 @@ _${escapeMarkdownV2('Fetching Mods from the store...')}_
         const buttonDisplayName = lora.name || lora.slug;
         // Add price to the button text
         const priceText = lora.monetization?.forSale && lora.monetization?.priceUSD ? `(${lora.monetization.priceUSD} pts)` : '(Price N/A)';
-        const escapedButtonText = `${escapeMarkdownV2(buttonDisplayName)} ${escapeMarkdownV2(priceText)}`;
+        const escapedButtonText = `${buttonDisplayName} ${priceText}`;
         
         // Callback for store detail: mods_store:detail:SLUG_OR_ID:filterType:checkpoint:page
-        const detailCallback = `mods_store:detail:${lora.slug || lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
+        const detailCallback = `mods_store:detail:${lora._id}:${filterShortcode}:${currentCheckpoint}:${currentPage}`;
         keyboard.push([{ text: escapedButtonText, callback_data: detailCallback }]);
       });
     } else {
       loraListText = `
-_${escapeMarkdownV2('No Mods found in the store matching your criteria.')}_
+_No Mods found in the store matching your criteria._
 `;
     }
   } catch (apiError) {
     logger.error(`[ModsMenuManager] API Error fetching Store Mods for ${filterType} (CP: ${currentCheckpoint}, Page: ${currentPage}):`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
     loraListText = `
-_${escapeMarkdownV2('Sorry, there was an error fetching Mods from the store. Please try again.')}_
+_Sorry, there was an error fetching Mods from the store. Please try again._
 `;
     if (!title.includes('Page ')) {
-        title += ` ${escapeMarkdownV2('-')} Page ${currentPage}/${totalPages}`;
+        title += ` - Page ${currentPage}/${totalPages}`;
     }
   }
 
@@ -869,11 +874,10 @@ _${escapeMarkdownV2('Sorry, there was an error fetching Mods from the store. Ple
   const fullMessage = `${title}${loraListText}`;
   logger.debug(`[ModsMenuManager] Full message for store filter (before Telegram ops):\n${fullMessage}`);
   try {
-    await bot.editMessageText(fullMessage, {
+    await editEscapedMessageText(bot, fullMessage, {
             chat_id: chatId,
       message_id: messageId,
             reply_markup: { inline_keyboard: keyboard },
-            parse_mode: 'MarkdownV2'
           });
     if (callbackQuery && !callbackQuery.answered) {
       await bot.answerCallbackQuery(callbackQuery.id);
@@ -883,9 +887,8 @@ _${escapeMarkdownV2('Sorry, there was an error fetching Mods from the store. Ple
     if (isEdit) {
         logger.info(`[ModsMenuManager] Editing failed for store filter screen (Filter: ${filterType}), attempting to send as new message.`);
         try {
-            await bot.sendMessage(chatId, fullMessage, {
+            await sendEscapedMessage(bot, chatId, fullMessage, {
             reply_markup: { inline_keyboard: keyboard },
-            parse_mode: 'MarkdownV2'
           });
             // If we sent a new message, we might want to delete the old one if it was an edit attempt that failed.
             // For now, just send new and acknowledge.
@@ -911,23 +914,19 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
 
   logger.info(`[ModsMenuManager] Displaying Store Mod Detail. LoRA: ${loraIdentifier}, MAID: ${masterAccountId}`);
 
-  let messageText = `*Mod Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Fetching details...')}_`;
+  let messageText = `*Mod Store Detail: ${loraIdentifier}*\n\n_Fetching details..._`;
   const keyboard = [];
   let photoUrl = null;
   let isOwned = false; // Will be determined by API response or permissions check
   const backFilterShortcode = getFilterShortcode(backFilterType);
 
   try {
-    // Use the existing /loras/:loraIdentifier endpoint. 
-    // It should ideally tell us if the MAID owns it, or we might need a separate check.
-    // For now, let's assume the API includes enough info or we add a specific `isPurchased` field or similar to its response.
-    logger.info(`[ModsMenuManager] Store Detail: Calling /internal/v1/data/store/loras/${loraIdentifier}?userId=${masterAccountId}`);
-    const response = await dependencies.internal.client.get('/internal/v1/data/store/loras', {
+    // Use the existing /loras/:loraIdentifier endpoint.
+    logger.info(`[ModsMenuManager] Store Detail: Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
+    const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraIdentifier}`, {
       params: { userId: masterAccountId }
     });
     const lora = response.data.lora;
-    // The general /loras/:loraIdentifier API returns `isFavorite`. We need `isPurchased` for store context.
-    // For now, we'll manually check permissions as a fallback if not directly in lora object.
 
     if (lora) {
       // Check if user owns this LoRA (has permission)
@@ -938,29 +937,26 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
       isOwned = !!permission.data.hasAccess;
 
       let tempName = lora.name || lora.slug;
-      let escapedName = escapeMarkdownV2(tempName);
-      messageText = `*${escapedName}*\n`;
+      if (tempName.length > 64) tempName = tempName.substring(0, 61) + '...';
+      messageText = `*${tempName}*\n`;
 
       if (lora.description) {
         const maxLength = 150;
         const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
-        let escapedDesc = escapeMarkdownV2(desc);
-        messageText += `_${escapedDesc}_\n\n`;
+        messageText += `_${desc}_\n\n`;
       }
 
-      let tempCheckpoint = lora.checkpoint || 'N/A';
-      let escapedCheckpoint = escapeMarkdownV2(tempCheckpoint);
-      messageText += `*Checkpoint:* ${escapedCheckpoint}\n`;
+      messageText += `*Checkpoint:* ${lora.checkpoint || 'N/A'}\n`;
 
       if (lora.triggerWords && lora.triggerWords.length > 0) {
         let tempTriggers = lora.triggerWords.join(', ');
-        let escapedTriggers = escapeMarkdownV2(tempTriggers);
-        messageText += `*Triggers:* \`${escapedTriggers}\`\n`;
+        if (tempTriggers.length > 100) tempTriggers = tempTriggers.substring(0, 97) + '...';
+        messageText += `*Triggers:* \`${tempTriggers}\`\n`;
       }
       
       const price = lora.monetization?.forSale && lora.monetization?.priceUSD ? lora.monetization.priceUSD : null;
       if (price !== null) {
-        messageText += `*Price:* ${escapeMarkdownV2(String(price))} points\n`;
+        messageText += `*Price:* ${String(price)} points\n`;
       } else {
         messageText += `*Price:* Not currently for sale\n`;
       }
@@ -983,40 +979,34 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
         }]);
       } else {
         // Not for sale, or user owns it but price is null (should not happen if forSale is true)
-        messageText = `\n*Status: Not available for purchase at this moment.*\n`;
+        messageText += `\n*Status: Not available for purchase at this moment.*\n`;
       }
 
       // Display cognates if they exist
       if (lora.cognates && lora.cognates.length > 0) {
         const cognateWords = lora.cognates.map(c => c.word).join(', ');
-        const escapedCognates = escapeMarkdownV2(cognateWords);
-        messageText += `*Shortcuts:* \`${escapedCognates}\`\n`;
+        if (cognateWords.length > 100) cognateWords = cognateWords.substring(0, 97) + '...';
+        messageText += `*Shortcuts:* \`${cognateWords}\`\n`;
       }
 
       if (lora.tags && lora.tags.length > 0) {
         let tempTags = lora.tags.slice(0, 5).map(t => t.tag).join(', ');
-        logger.debug(`[ModsMenuManager] Raw tags for ${loraIdentifier}: "${tempTags}"`);
-        let escapedTags = escapeMarkdownV2(tempTags);
-        logger.debug(`[ModsMenuManager] Escaped tags for ${loraIdentifier}: "${escapedTags}"`);
-        messageText += `*Tags:* _${escapedTags}_\n`;
+        if (tempTags.length > 150) tempTags = tempTags.substring(0, 147) + '...';
+        messageText += `*Tags:* _${tempTags}_\n`;
       }
 
       if (lora.defaultWeight) {
-        let tempWeight = String(lora.defaultWeight);
-        logger.debug(`[ModsMenuManager] Raw weight for ${loraIdentifier}: "${tempWeight}"`);
-        let escapedWeight = escapeMarkdownV2(tempWeight);
-        logger.debug(`[ModsMenuManager] Escaped weight for ${loraIdentifier}: "${escapedWeight}"`);
-        messageText += `*Default Weight:* ${escapedWeight}\n`;
+        messageText += `*Default Weight:* ${String(lora.defaultWeight)}\n`;
       }
 
     } else {
-      messageText = `*Mod Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Could not find details for this Mod.')}_`;
+      messageText = `*Mod Store Detail: ${loraIdentifier}*\n\n_Could not find details for this Mod._`;
     }
   } catch (apiError) {
     logger.error(`[ModsMenuManager] API Error fetching Store Mod detail for ${loraIdentifier}:`, apiError.response ? apiError.response.data : apiError.message, apiError.stack);
-    messageText = `*Mod Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('Sorry, there was an error fetching details.')}_`;
+    messageText = `*Mod Store Detail: ${loraIdentifier}*\n\n_Sorry, there was an error fetching details._`;
     if (apiError.response && apiError.response.status === 404) {
-      messageText = `*Mod Store Detail: ${escapeMarkdownV2(loraIdentifier)}*\n\n_${escapeMarkdownV2('This Mod could not be found in the store.')}_`;
+      messageText = `*Mod Store Detail: ${loraIdentifier}*\n\n_This Mod could not be found in the store._`;
     }
   }
 
@@ -1032,43 +1022,43 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
       const originalMessageWasPhoto = callbackQuery.message.photo && callbackQuery.message.photo.length > 0;
       if (photoUrl) { 
         try {
-          await bot.editMessageMedia(
-            { type: 'photo', media: photoUrl, caption: messageText, parse_mode: 'MarkdownV2' },
+          await editEscapedMessageMedia(bot,
+            { type: 'photo', media: photoUrl, caption: messageText },
             { chat_id: chatId, message_id: originalMessageId, reply_markup: { inline_keyboard: keyboard } }
           );
         } catch (editMediaError) {
           logger.warn(`[ModsMenuManager] Store Detail editMessageMedia failed: ${editMediaError.message}. Trying caption or new.`);
           if (originalMessageWasPhoto) {
             try {
-              await bot.editMessageCaption(messageText, {
+              await editEscapedMessageCaption(bot, messageText, {
                 chat_id: chatId, message_id: originalMessageId,
-                reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                reply_markup: { inline_keyboard: keyboard },
               });
             } catch (editCaptionError) {
               logger.warn(`[ModsMenuManager] Store Detail editMessageCaption failed: ${editCaptionError.message}. Sending new photo.`);
-              await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+              await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
             }
           } else { 
             logger.warn(`[ModsMenuManager] Store Detail: Original was text, editMessageMedia failed. Sending new photo.`);
-            await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+            await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
           }
         }
       } else { 
         try {
-          await bot.editMessageText(messageText, {
+          await editEscapedMessageText(bot, messageText, {
             chat_id: chatId, message_id: originalMessageId,
-            reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+            reply_markup: { inline_keyboard: keyboard },
           });
         } catch (editTextError) {
           logger.warn(`[ModsMenuManager] Store Detail editMessageText failed: ${editTextError.message}. Sending new text message.`);
-          await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+          await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
         }
       }
     } else { 
       if (photoUrl) {
-        await bot.sendPhoto(chatId, photoUrl, { caption: messageText, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } });
+        await sendPhotoWithEscapedCaption(bot, chatId, photoUrl, { reply_markup: { inline_keyboard: keyboard } }, messageText);
       } else {
-        await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+        await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
       }
     }
     if (callbackQuery && !callbackQuery.answered) {
@@ -1080,12 +1070,12 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
         logger.warn(`[ModsMenuManager] Store Detail: Photo intended but error occurred (${error.message}). Fallback to text.`);
         try {
             if (isEdit) {
-                 await bot.editMessageText(messageText, { 
+                 await editEscapedMessageText(bot, messageText, { 
                     chat_id: chatId, message_id: originalMessageId,
-                    reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2'
+                    reply_markup: { inline_keyboard: keyboard },
                 });
             } else {
-                 await bot.sendMessage(chatId, messageText, { reply_markup: { inline_keyboard: keyboard }, parse_mode: 'MarkdownV2' });
+                 await sendEscapedMessage(bot, chatId, messageText, { reply_markup: { inline_keyboard: keyboard } });
             }
             if (callbackQuery && !callbackQuery.answered) await bot.answerCallbackQuery(callbackQuery.id);
             return; 
@@ -1124,26 +1114,106 @@ async function displayModAdminMenu(bot, callbackQuery, masterAccountId, dependen
 
     const backFilterType = getFilterFromShortcode(backFilterShortcode);
 
-    const text = `*Admin Menu for Mod* \\(ID: \`${loraId}\`\\)`;
+    const text = `*Admin Menu for Mod* (ID: \`${loraId}\`)`;
     const keyboard = [
         [{ text: '❌ Delete Mod', callback_data: `mods:admin_delete_confirm:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
-        // Placeholder for edit button
-        [{ text: '✏️ Edit Details (Not Implemented)', callback_data: 'mods:admin_edit_nyi' }],
+        [{ text: '✏️ Change Checkpoint', callback_data: `mods:admin_change_checkpoint_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
+        [{ text: '🔧 Fix Owner Permission', callback_data: `mods:admin_grant_owner_permission:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
         [{ text: 'Back to Mod Detail', callback_data: `mods:detail:${loraId}:${backFilterType}:${backCheckpoint}:${backPage}`}]
     ];
 
     try {
-        await bot.editMessageText(text, {
+        await editEscapedMessageText(bot, text, {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'MarkdownV2',
             reply_markup: { inline_keyboard: keyboard }
         });
         await bot.answerCallbackQuery(callbackQuery.id);
     } catch(error) {
         logger.error(`[ModsMenuManager] Error displaying admin menu for Mod ${loraId}:`, error);
-        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing admin menu.', show_alert: true });
+
+        // Fallback for when trying to edit a photo message into a text message.
+        if (error.response && error.response.body && error.response.body.description.includes('there is no text in the message to edit')) {
+            logger.warn(`[ModsMenuManager] Admin menu edit failed (likely photo->text). Sending new message and deleting old one.`);
+            try {
+                // First, send the new menu. Then delete the old one.
+                // This feels safer than deleting first.
+                await sendEscapedMessage(bot, chatId, text, {
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+                await bot.deleteMessage(chatId, messageId);
+
+                if (!callbackQuery.answered) {
+                    await bot.answerCallbackQuery(callbackQuery.id);
+                }
+                return; // Exit as we've successfully handled it.
+            } catch (fallbackError) {
+                logger.error(`[ModsMenuManager] Admin menu fallback (send/delete) also failed for Mod ${loraId}:`, fallbackError);
+                // The original error is more informative, so we'll let the generic handler below deal with it.
+            }
+        }
+        
+        if (!callbackQuery.answered) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing admin menu.', show_alert: true });
+        }
   }
+}
+
+/**
+ * Displays the checkpoint change menu for a single Mod.
+ * @param {Object} bot
+ * @param {Object} callbackQuery
+ * @param {string} masterAccountId
+ * @param {Object} dependencies
+ * @param {boolean} isEdit
+ * @param {string} loraId
+ * @param {string} backFilterShortcode
+ * @param {string} backCheckpoint
+ * @param {number} backPage
+ */
+async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, isEdit, loraId, backFilterShortcode, backCheckpoint, backPage) {
+    const { logger } = dependencies;
+    const chatId = callbackQuery.message.chat.id;
+    const messageId = callbackQuery.message.message_id;
+
+    logger.info(`[ModsMenuManager] Displaying change checkpoint menu for Mod ${loraId}`);
+
+    try {
+        const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`);
+        const lora = response.data.lora;
+        if (!lora) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Could not find this Mod.', show_alert: true });
+            return;
+        }
+
+        const currentLoraCheckpoint = lora.checkpoint || 'Not Set';
+        const text = `*Change Checkpoint for ${lora.name}*\n\nCurrent Checkpoint: \`${currentLoraCheckpoint}\`\n\nSelect a new checkpoint:`;
+
+        const checkpointButtons = VALID_CHECKPOINTS.map(cp => {
+            const buttonText = (cp === currentLoraCheckpoint) ? `✅ ${cp}` : cp;
+            const callbackData = `mods:admin_set_checkpoint:${loraId}:${cp}:${backFilterShortcode}:${backCheckpoint}:${backPage}`;
+            return { text: buttonText, callback_data: callbackData };
+        });
+
+        // Arrange buttons in rows of 2
+        const keyboardRows = [];
+        for (let i = 0; i < checkpointButtons.length; i += 2) {
+            keyboardRows.push(checkpointButtons.slice(i, i + 2));
+        }
+
+        keyboardRows.push([{ text: 'Back to Admin Menu', callback_data: `mods:admin_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }]);
+
+        await editEscapedMessageText(bot, text, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: keyboardRows }
+        });
+        await bot.answerCallbackQuery(callbackQuery.id);
+
+    } catch (error) {
+        logger.error(`[ModsMenuManager] Error displaying change checkpoint menu for Mod ${loraId}:`, error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing checkpoint menu.', show_alert: true });
+    }
 }
 
 /**
@@ -1167,7 +1237,7 @@ async function handleModImportReply(bot, msg, context, dependencies) {
             url: url,
             userId: masterAccountId
         });
-        await bot.sendMessage(chatId, result.data.message, { reply_to_message_id: msg.message_id });
+        await sendEscapedMessage(bot, chatId, result.data.message, { reply_to_message_id: msg.message_id });
 
         // Refresh the menu
         if (msg.reply_to_message && msg.reply_to_message.message_id) {
@@ -1175,8 +1245,11 @@ async function handleModImportReply(bot, msg, context, dependencies) {
         }
     } catch (error) {
         const errorMessage = error.response?.data?.message || 'Failed to import Mod.';
-        logger.error(`[ModsMenu] Error importing Mod from URL ${url} for MAID ${masterAccountId}:`, errorMessage);
-        await bot.sendMessage(chatId, `⚠️ ${errorMessage}`, { reply_to_message_id: msg.message_id });
+        // --- MODIFICATION: Log the full serialized error object ---
+        const fullError = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        logger.error(`[ModsMenu] Error importing Mod from URL ${url} for MAID ${masterAccountId}. Error: ${errorMessage}. Full details: ${fullError}`);
+        // --- END MODIFICATION ---
+        await sendEscapedMessage(bot, chatId, `⚠️ ${errorMessage}`, { reply_to_message_id: msg.message_id });
     }
 }
 
@@ -1222,6 +1295,72 @@ async function modsCallbackHandler(bot, callbackQuery, masterAccountId, dependen
 }
 
 /**
+ * The handler for callback queries related to the lora admin actions.
+ * @param {object} bot - The Telegram bot instance.
+ * @param {object} callbackQuery - The callback query object.
+ * @param {string} masterAccountId - The user's master account ID (of the admin).
+ * @param {object} dependencies - The canonical dependencies object.
+ */
+async function loraAdminCallbackHandler(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal } = dependencies;
+    const data = callbackQuery.data;
+    const [action, subAction, loraId] = data.split(':');
+
+    logger.info(`[ModsMenuManager] loraAdminCallbackHandler triggered with data: ${data}`);
+
+    // Basic security check: ensure the user is an admin.
+    const ADMIN_ID = process.env.TELEGRAM_ADMIN_USER_ID;
+    if (callbackQuery.from.id.toString() !== ADMIN_ID) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'You are not authorized for this action.', show_alert: true });
+        return;
+    }
+    
+    if (!loraId) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Missing LoRA ID.', show_alert: true });
+        return;
+    }
+
+    let resultText = '';
+    let apiEndpoint = '';
+
+    try {
+        if (subAction === 'approve_public') {
+            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-approve`;
+            resultText = '✅ Publicly Approved';
+        } else if (subAction === 'approve_private') {
+            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-approve-private`;
+            resultText = '🔒 Privately Approved';
+        } else if (subAction === 'reject') {
+            apiEndpoint = `/internal/v1/data/loras/${loraId}/admin-reject`;
+            resultText = '❌ Rejected';
+        } else {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: `Unknown admin action: ${subAction}` });
+            return;
+        }
+
+        // Call the internal API
+        await internal.client.post(apiEndpoint);
+
+        // Edit the original message to show the result
+        const originalMessage = callbackQuery.message.text;
+        const newText = `${originalMessage}\n\n*Action Taken: ${resultText} by ${callbackQuery.from.first_name}*`;
+
+        await editEscapedMessageText(bot, newText, {
+            chat_id: callbackQuery.message.chat.id,
+            message_id: callbackQuery.message.message_id,
+            reply_markup: null // Remove buttons
+        });
+
+        await bot.answerCallbackQuery(callbackQuery.id, { text: `LoRA ${resultText}!` });
+
+    } catch (error) {
+        const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message;
+        logger.error(`[ModsMenuManager] Error in loraAdminCallbackHandler for action ${subAction} on LoRA ${loraId}: ${errorMsg}`);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: `Error: ${errorMsg}`, show_alert: true });
+    }
+}
+
+/**
  * Registers all handlers for the mods menu feature.
  * @param {object} dispatcherInstances - The dispatcher instances object.
  * @param {object} dependencies - The canonical dependencies object.
@@ -1235,6 +1374,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
     commandDispatcher.register(/^\/mods(?:@\w+)?/i, modsCommandHandler);
     callbackQueryDispatcher.register('mods', modsCallbackHandler);
     callbackQueryDispatcher.register('mods_store', modsCallbackHandler);
+    callbackQueryDispatcher.register('lora_admin', loraAdminCallbackHandler);
     messageReplyDispatcher.register('mod_import_url', modImportHandler);
 
     logger.info('[ModsMenuManager] All handlers registered.');

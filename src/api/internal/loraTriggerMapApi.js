@@ -173,5 +173,7 @@ router.get('/lora/trigger-map-data', getLoraTriggerMapDataHandler);
 refreshPublicLoraCache();
 
 // Export the refresh function alongside the router
-module.exports = router;
-module.exports.refreshPublicLoraCache = refreshPublicLoraCache; 
+module.exports = {
+    router,
+    refreshPublicLoraCache
+}; 

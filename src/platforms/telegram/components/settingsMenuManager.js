@@ -14,21 +14,22 @@ const ITEMS_PER_PAGE_ALL_TOOLS = 6; // 3 rows of 2 tools
  * Fetches user-specific settings for a tool via the internal API.
  * Corresponds to GET /internal/v1/data/users/:masterAccountId/preferences/:toolId
  * @param {string} masterAccountId
- * @param {string} toolId
+ * @param {string} toolIdentifier - The tool's unique identifier (e.g., displayName).
  * @param {object} dependencies - Must contain { logger, internal: { client } }
  * @returns {Promise<object>}
  */
-async function getToolSettings(masterAccountId, toolId, dependencies) {
+async function getToolSettings(masterAccountId, toolIdentifier, dependencies) {
     const { logger, internal } = dependencies;
     try {
-        const response = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${toolId}`);
+        const encodedIdentifier = encodeURIComponent(toolIdentifier);
+        const response = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`);
         return response.data || {};
     } catch (error) {
         if (error.response && error.response.status === 404) {
-            logger.warn(`[SettingsMenu] getToolSettings: No preferences found for MAID ${masterAccountId}, Tool ${toolId}. Returning empty object.`);
+            logger.warn(`[SettingsMenu] getToolSettings: No preferences found for MAID ${masterAccountId}, Tool ${toolIdentifier}. Returning empty object.`);
             return {};
         }
-        logger.error(`[SettingsMenu] getToolSettings: Error fetching tool settings for MAID ${masterAccountId}, Tool ${toolId}.`, error);
+        logger.error(`[SettingsMenu] getToolSettings: Error fetching tool settings for MAID ${masterAccountId}, Tool ${toolIdentifier}.`, error);
         throw error; // Re-throw for the caller to handle
     }
 }
@@ -37,18 +38,25 @@ async function getToolSettings(masterAccountId, toolId, dependencies) {
  * Saves user-specific settings for a tool via the internal API.
  * Corresponds to PUT /internal/v1/data/users/:masterAccountId/preferences/:toolId
  * @param {string} masterAccountId
- * @param {string} toolId
+ * @param {string} toolIdentifier - The tool's unique identifier (e.g., displayName).
  * @param {object} settingsToUpdate
  * @param {object} dependencies - Must contain { logger, internal: { client } }
  * @returns {Promise<{success: boolean, data?: object, message?: string}>}
  */
-async function saveToolSettings(masterAccountId, toolId, settingsToUpdate, dependencies) {
+async function saveToolSettings(masterAccountId, toolIdentifier, settingsToUpdate, dependencies) {
     const { logger, internal } = dependencies;
     try {
-        const response = await internal.client.put(`/internal/v1/data/users/${masterAccountId}/preferences/${toolId}`, settingsToUpdate);
+        const encodedIdentifier = encodeURIComponent(toolIdentifier);
+        const response = await internal.client.put(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`, settingsToUpdate);
         return { success: true, data: response.data };
     } catch (error) {
-        logger.error(`[SettingsMenu] saveToolSettings: Error saving tool settings for MAID ${masterAccountId}, Tool ${toolId}.`, error);
+        logger.error(`[SettingsMenu] saveToolSettings: Error saving tool settings for MAID ${masterAccountId}, Tool ${toolIdentifier}.`);
+        const simplifiedError = {
+            message: error.message,
+            status: error.response?.status,
+            data: error.response?.data
+        };
+        logger.error(`[SettingsMenu] saveToolSettings: Simplified error object: ${JSON.stringify(simplifiedError)}`);
         return { success: false, message: error.response?.data?.error?.message || error.message || "An unknown error occurred." };
     }
 }
@@ -113,17 +121,32 @@ async function getMostFrequentlyUsedTools(masterAccountId, dependencies) {
                 if (toolDef) {
                     logger.debug(`[SettingsMenu] Found toolDef for display name '${toolUsage.toolId}' (actual ID: ${toolDef.toolId}) using findByDisplayName.`);
                 } else {
-                    logger.warn(`[SettingsMenu] Tool with identifier '${toolUsage.toolId}' not found in ToolRegistry by ID or DisplayName. Skipping.`);
+                    // Fallback to case-insensitive 'includes' search on display name as a lenient measure
+                    const allTools = dependencies.toolRegistry.getAllTools();
+                    const lowerCaseToolIdentifier = toolUsage.toolId.toLowerCase();
+                    toolDef = allTools.find(t => t.displayName.toLowerCase().includes(lowerCaseToolIdentifier));
+                    
+                    if (toolDef) {
+                        logger.debug(`[SettingsMenu] Found toolDef for identifier '${toolUsage.toolId}' (actual ID: ${toolDef.toolId}) using case-insensitive 'includes' search on displayName '${toolDef.displayName}'.`);
+                    } else {
+                        logger.warn(`[SettingsMenu] Tool with identifier '${toolUsage.toolId}' not found in ToolRegistry by ID, DisplayName, or includes-check. Skipping.`);
+                    }
                 }
             }
 
             if (toolDef) {
-                validEnrichedTools.push({
-                    toolId: toolDef.toolId, // Store the canonical toolId
-                    usageCount: toolUsage.usageCount,
-                    displayName: toolDef.displayName || toolDef.toolId // Fallback for display name
-                });
-                logger.debug(`[SettingsMenu] Added valid tool: '${toolDef.toolId}', displayName: '${toolDef.displayName || toolDef.toolId}'`);
+                // Ensure we don't add duplicate tools if different historical IDs map to the same tool.
+                const isAlreadyAdded = validEnrichedTools.some(t => t.toolId === toolDef.toolId);
+                if (!isAlreadyAdded) {
+                    validEnrichedTools.push({
+                        toolId: toolDef.toolId, // Store the canonical toolId
+                        usageCount: toolUsage.usageCount,
+                        displayName: toolDef.displayName || toolDef.toolId // Fallback for display name
+                    });
+                    logger.debug(`[SettingsMenu] Added valid tool: '${toolDef.toolId}', displayName: '${toolDef.displayName || toolDef.toolId}'`);
+                } else {
+                    logger.debug(`[SettingsMenu] Tool '${toolDef.displayName}' (ID: ${toolDef.toolId}) is already in the frequent list. Skipping duplicate.`);
+                }
             }
         }
         logger.info(`[SettingsMenu] Filtered to ${validEnrichedTools.length} valid frequent tools for MAID: ${masterAccountId}`);
@@ -208,7 +231,7 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
             const displayNameFromCallback = data.substring('set_viewtool_'.length);
             const toolDef = dependencies.toolRegistry.findByDisplayName(displayNameFromCallback.replace(/_/g, ' ')); // Convert underscores back to spaces
             if (toolDef) {
-                menu = await buildToolParamsMenu(masterAccountId, toolDef.toolId, dependencies); // Pass canonical toolId
+                menu = await buildToolParamsMenu(masterAccountId, toolDef.displayName, dependencies); // Pass displayName
                 newText = menu.text;
                 newKeyboard = menu.reply_markup;
             } else {
@@ -230,7 +253,7 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
             const paramName = paramData.substring(firstUnderscore + 1);
             const toolDef = toolRegistry.findByDisplayName(displayNameFromCallback);
             if (toolDef) {
-                menu = await buildEditParamMenu(masterAccountId, toolDef.toolId, paramName, dependencies);
+                menu = await buildEditParamMenu(masterAccountId, toolDef.displayName, paramName, dependencies);
                 // This interaction now sends a new message asking for the new value
                 // and sets up a reply context, so we don't edit the original menu here.
                 const sentMessage = await sendEscapedMessage(bot, chatId, menu.text, {
@@ -240,7 +263,7 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
                     const context = {
                         type: 'settings_param_edit',
                         masterAccountId: masterAccountId,
-                        toolId: toolDef.toolId,
+                        toolIdentifier: toolDef.displayName,
                         paramKey: paramName
                     };
                     dependencies.replyContextManager.addContext(sentMessage, context);
@@ -261,7 +284,7 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
             const toolCallbackKey = data.substring('set_back_toolparams_'.length);
             const toolDef = dependencies.toolRegistry.findByDisplayName(toolCallbackKey.replace(/_/g, ' '));
             if (toolDef) {
-                menu = await buildToolParamsMenu(masterAccountId, toolDef.toolId, dependencies);
+                menu = await buildToolParamsMenu(masterAccountId, toolDef.displayName, dependencies);
                 newText = menu.text;
                 newKeyboard = menu.reply_markup;
             } else {
@@ -276,7 +299,9 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
         }
 
         if (newText && newKeyboard) {
-            await editEscapedMessageText(bot, chatId, messageId, newText, {
+            await editEscapedMessageText(bot, newText, {
+                chat_id: chatId,
+                message_id: messageId,
                 reply_markup: newKeyboard
             });
         }
@@ -303,21 +328,23 @@ async function handleSettingsCallback(bot, callbackQuery, masterAccountId, depen
  */
 async function handleSettingsReply(bot, msg, context, dependencies) {
     const { logger, userSettingsService } = dependencies;
-    const { toolId, paramKey, masterAccountId } = context;
+    const { toolIdentifier, paramKey, masterAccountId } = context;
     const newValue = msg.text.trim();
 
-    logger.info(`[SettingsMenu] Received reply for param edit. MAID: ${masterAccountId}, Tool: ${toolId}, Param: ${paramKey}, NewValue: '${newValue}'`);
+    logger.info(`[SettingsMenu] Received reply for param edit. MAID: ${masterAccountId}, Tool: ${toolIdentifier}, Param: ${paramKey}, NewValue: '${newValue}'`);
 
     try {
-        const result = await handleParameterValueReply(masterAccountId, toolId, paramKey, newValue, dependencies);
+        const result = await handleParameterValueReply(masterAccountId, toolIdentifier, paramKey, newValue, dependencies);
         
         if (result.success) {
-            await sendEscapedMessage(bot, msg.chat.id, `✅ Setting updated successfully for ${toolId}!`, { reply_to_message_id: msg.message_id });
+            await sendEscapedMessage(bot, msg.chat.id, `✅ Setting updated successfully for ${toolIdentifier}!`, { reply_to_message_id: msg.message_id });
 
             // Find the original menu message to edit it
             if (msg.reply_to_message && msg.reply_to_message.message_id) {
-                const menu = await buildToolParamsMenu(masterAccountId, toolId, dependencies);
-                await editEscapedMessageText(bot, msg.chat.id, msg.reply_to_message.message_id, menu.text, {
+                const menu = await buildToolParamsMenu(masterAccountId, toolIdentifier, dependencies);
+                await editEscapedMessageText(bot, menu.text, {
+                    chat_id: msg.chat.id, 
+                    message_id: msg.reply_to_message.message_id,
                     reply_markup: menu.reply_markup
                 });
             }
@@ -371,13 +398,13 @@ async function buildMainMenu(masterAccountId, dependencies) {
 /**
  * Builds the tool-specific parameters menu.
  * @param {string} masterAccountId
- * @param {string} toolKey - The canonical toolId.
+ * @param {string} toolKey - The tool's displayName.
  * @param {object} dependencies - { logger, toolRegistry, userSettingsService }
  * @returns {Promise<object>} Menu object { text, reply_markup }
  */
 async function buildToolParamsMenu(masterAccountId, toolKey, dependencies) {
     const { logger, toolRegistry, userSettingsService } = dependencies;
-    const toolDef = toolRegistry.getToolById(toolKey); // toolKey is canonical ID here
+    const toolDef = toolRegistry.findByDisplayName(toolKey); // toolKey is displayName here
 
     if (!toolDef) {
         logger.error(`[SettingsMenu] buildToolParamsMenu: Could not find toolDef for toolKey '${toolKey}'.`);
@@ -438,20 +465,20 @@ async function buildToolParamsMenu(masterAccountId, toolKey, dependencies) {
 /**
  * Builds the parameter editing menu.
  * @param {string} masterAccountId
- * @param {string} canonicalToolId - The canonical toolId (e.g. comfy-xyz)
+ * @param {string} toolIdentifier - The tool's displayName.
  * @param {string} paramName - The name of the parameter to edit.
  * @param {object} dependencies - { logger, toolRegistry, userSettingsService }
  * @returns {Promise<object>} Menu object { text, reply_markup }
  */
-async function buildEditParamMenu(masterAccountId, canonicalToolId, paramName, dependencies) {
+async function buildEditParamMenu(masterAccountId, toolIdentifier, paramName, dependencies) {
     const { logger, toolRegistry, userSettingsService } = dependencies;
-    const toolDef = toolRegistry.getToolById(canonicalToolId);
+    const toolDef = toolRegistry.findByDisplayName(toolIdentifier);
     if (!toolDef) {
-        logger.error(`[SettingsMenu] buildEditParamMenu: Could not find toolDef for canonicalToolId '${canonicalToolId}'.`);
+        logger.error(`[SettingsMenu] buildEditParamMenu: Could not find toolDef for toolIdentifier '${toolIdentifier}'.`);
         return { text: "Error: Could not find tool to edit.", reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: 'set_main' }]] } };
     }
 
-    const toolSettings = await getToolSettings(masterAccountId, canonicalToolId, dependencies);
+    const toolSettings = await getToolSettings(masterAccountId, toolIdentifier, dependencies);
     const paramDef = toolDef.inputSchema[paramName];
     const currentValue = toolSettings[paramName] !== undefined ? toolSettings[paramName] : (paramDef?.default ?? 'Not set');
 
@@ -481,18 +508,18 @@ async function buildEditParamMenu(masterAccountId, canonicalToolId, paramName, d
 /**
  * Handles a user's reply containing a new value for a parameter.
  * @param {string} masterAccountId
- * @param {string} toolId - The canonical toolId of the tool.
+ * @param {string} toolIdentifier - The displayName of the tool.
  * @param {string} paramName - Name of the parameter.
  * @param {string} newValue - The new value provided by the user.
  * @param {object} dependencies - { logger, toolRegistry, userSettingsService }
  * @returns {Promise<{success: boolean, message: string, canonicalToolId?: string}>}
  */
-async function handleParameterValueReply(masterAccountId, toolId, paramName, newValue, dependencies) {
+async function handleParameterValueReply(masterAccountId, toolIdentifier, paramName, newValue, dependencies) {
     const { logger, toolRegistry } = dependencies;
-    const toolDef = toolRegistry.getToolById(toolId);
+    const toolDef = toolRegistry.findByDisplayName(toolIdentifier);
     if (!toolDef) {
-        logger.error(`[SettingsMenu] handleParameterValueReply: ToolDef not found for toolId '${toolId}'.`);
-        return { success: false, message: `Error: Tool with ID '${toolId}' not found.` };
+        logger.error(`[SettingsMenu] handleParameterValueReply: ToolDef not found for toolIdentifier '${toolIdentifier}'.`);
+        return { success: false, message: `Error: Tool with identifier '${toolIdentifier}' not found.` };
     }
 
     const canonicalToolId = toolDef.toolId;
@@ -539,10 +566,10 @@ async function handleParameterValueReply(masterAccountId, toolId, paramName, new
     let saveResult;
 
     try {
-        saveResult = await saveToolSettings(masterAccountId, canonicalToolId, settingsToUpdate, dependencies);
-        logger.info(`[SettingsMenu] Called saveToolSettings for MAID ${masterAccountId}, Tool ${canonicalToolId}. Result: ${JSON.stringify(saveResult)}`);
+        saveResult = await saveToolSettings(masterAccountId, toolIdentifier, settingsToUpdate, dependencies);
+        logger.info(`[SettingsMenu] Called saveToolSettings for MAID ${masterAccountId}, Tool ${toolIdentifier}. Result: ${JSON.stringify(saveResult)}`);
     } catch (err) {
-        logger.error(`[SettingsMenu] Error calling saveToolSettings for MAID ${masterAccountId}, Tool ${canonicalToolId}:`, err);
+        logger.error(`[SettingsMenu] Error calling saveToolSettings for MAID ${masterAccountId}, Tool ${toolIdentifier}:`, { message: err.message, stack: err.stack });
         saveResult = { success: false, message: err.message || "An error occurred while saving your settings." };
     }
 
@@ -561,11 +588,28 @@ async function handleParameterValueReply(masterAccountId, toolId, paramName, new
 
 // Placeholder for "All Tools" menu
 async function buildAllToolsMenu(masterAccountId, username, page = 0, dependencies) {
+    const { logger, toolRegistry } = dependencies;
+    logger.info(`[SettingsMenu] buildAllToolsMenu: Building page ${page} for MAID ${masterAccountId}.`);
+
     const text = "Select a tool to configure its settings (Page " + (page + 1) + "):";
     
-    const allTools = dependencies.toolRegistry.getAllTools()
-        .filter(t => t.platformHints?.supportedClients?.includes('telegram')) // Ensure tool is available on Telegram
+    const allRegisteredTools = toolRegistry.getAllTools();
+    logger.info(`[SettingsMenu] buildAllToolsMenu: Found ${allRegisteredTools.length} total tools in registry.`);
+    if (allRegisteredTools.length > 0) {
+        allRegisteredTools.forEach(t => logger.info(`[SettingsMenu] buildAllToolsMenu: Registered tool: "${t.displayName}" (ID: ${t.toolId}, Clients: ${JSON.stringify(t.platformHints?.supportedClients)})`));
+    }
+
+    const allTools = allRegisteredTools
+        .filter(t => {
+            const isApiOrCookTool = t.displayName.includes('_API') || t.displayName.includes('_COOK');
+            if (isApiOrCookTool) {
+                logger.info(`[SettingsMenu] buildAllToolsMenu: Filtering out internal tool "${t.displayName}".`);
+            }
+            return !isApiOrCookTool;
+        })
         .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+    logger.info(`[SettingsMenu] buildAllToolsMenu: Found ${allTools.length} tools after filtering for internal tools.`);
 
     const totalTools = allTools.length;
     const totalPages = Math.ceil(totalTools / ITEMS_PER_PAGE_ALL_TOOLS);

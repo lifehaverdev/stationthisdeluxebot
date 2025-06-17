@@ -15,7 +15,7 @@ const createGenerationOutputsApiService = require('./generationOutputsApi');
 const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
 const createTeamsApi = require('./teamsApi');
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
-const createLoraTriggerMapApiRouter = require('./loraTriggerMapApi');
+const loraTriggerMapApi = require('./loraTriggerMapApi');
 const lorasApiRouter = require('./lorasApi');
 const createUserPreferencesApiRouter = require('./userPreferencesApi');
 const createUserStatusReportApiService = require('./userStatusReportApi');
@@ -183,27 +183,17 @@ function initializeInternalServices(dependencies = {}) {
     logger.warn('[InternalAPI] userPreferencesApi not imported correctly or is not a function.');
   }
 
-  // BEGIN ADDITION: Mount LoRA Trigger Map API Router
-  let loraTriggerMapRouterImport;
+  // Mount the LoRA Trigger Map API Router
   try {
-    // Correctly assign the imported router module, not calling it as a function
-    loraTriggerMapRouterImport = require('./loraTriggerMapApi'); 
-
-    if (loraTriggerMapRouterImport && typeof loraTriggerMapRouterImport === 'function') {
-      // Check if it's a router by looking for a common router method like .stack
-      if (Array.isArray(loraTriggerMapRouterImport.stack)) { 
-        v1DataRouter.use('/', loraTriggerMapRouterImport); // Mount at root, as it defines /lora/trigger-map-data internally
-        logger.info('[InternalAPI] LoRA Trigger Map API service mounted to /v1/data for path /lora/trigger-map-data');
-      } else {
-        logger.error('[InternalAPI] loraTriggerMapApi.js exported a function, but it does not appear to be a valid Express router (missing .stack). Value:', loraTriggerMapRouterImport);
-      }
+    if (loraTriggerMapApi && loraTriggerMapApi.router) {
+      v1DataRouter.use('/', loraTriggerMapApi.router);
+      logger.info('[InternalAPI] LoRA Trigger Map API service mounted.');
     } else {
-      logger.error('[InternalAPI] loraTriggerMapApi.js did not export a valid router/function. Value received:', loraTriggerMapRouterImport);
+      logger.error('[InternalAPI] LoRA trigger map router not found in ./loraTriggerMapApi');
     }
-  } catch (err) {
-    logger.error('[InternalAPI] Error importing or mounting LoRA Trigger Map API:', err);
+  } catch(e) {
+    logger.error('[InternalAPI] Failed to mount LoRA trigger map router', e);
   }
-  // END ADDITION
 
   // Tool Definition API Service (New)
   let toolDefinitionRouter;

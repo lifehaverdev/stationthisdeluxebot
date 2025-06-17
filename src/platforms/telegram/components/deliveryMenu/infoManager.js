@@ -31,15 +31,29 @@ function registerHandlers(dispatchers, dependencies) {
 
             let infoMessage = `*Generation Info*\\n`;
             let toolId = generationRecord.metadata?.toolId || generationRecord.requestPayload?.invoked_tool_id || generationRecord.requestPayload?.tool_id || generationRecord.serviceName;
-            let toolDisplayName = toolRegistry.getToolById(toolId)?.displayName || toolId;
+            
+            const tool = toolRegistry.getToolById(toolId);
+            let toolDisplayName = tool?.displayName || toolId;
             infoMessage += `Tool: \`${escapeMarkdownV2(String(toolDisplayName))}\`\\n`;
 
             if (generationRecord.requestPayload) {
                 infoMessage += `\\n*Parameters Used:*\\n`;
+                const promptInputKey = tool?.metadata?.telegramPromptInputKey;
+
                 for (const [key, value] of Object.entries(generationRecord.requestPayload)) {
                     if (['invoked_tool_id', 'tool_id'].includes(key)) continue;
                     let displayKey = key.replace('input_', '');
-                    let valueToShow = (key === 'input_prompt' && generationRecord.metadata?.userInputPrompt) ? generationRecord.metadata.userInputPrompt : value;
+                    
+                    let valueToShow = value;
+                    
+                    const isPromptField = promptInputKey 
+                        ? key === promptInputKey 
+                        : key.toLowerCase().includes('prompt');
+                    
+                    if (isPromptField && generationRecord.metadata?.rawPrompt) {
+                        valueToShow = generationRecord.metadata.rawPrompt;
+                    }
+
                     infoMessage += `  • *${escapeMarkdownV2(displayKey)}*: \`${escapeMarkdownV2(String(valueToShow))}\`\\n`;
                 }
             }

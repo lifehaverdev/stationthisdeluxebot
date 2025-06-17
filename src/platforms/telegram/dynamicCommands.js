@@ -63,7 +63,7 @@ class CommandRegistry {
  * @returns {Promise<Array<object>>} - A promise that resolves to the list of commands for API registration.
  */
 async function setupDynamicCommands(commandRegistry, dependencies) {
-  const { workflows, comfyUI, logger, toolRegistry, userSettingsService, openaiService } = dependencies;
+  const { workflows, comfyUI, logger, toolRegistry, userSettingsService, openaiService, loraResolutionService } = dependencies;
   
   // Backwards compatibility for services structure if needed, but prefer flat dependencies.
   const workflowsService = workflows || dependencies.workflowsService;
@@ -225,7 +225,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
       // The handler is now a standalone async function.
       const commandHandler = async (bot, msg, dependencies, match) => {
-        const { internal, comfyUI, userSettingsService, logger } = dependencies;
+        const { internal, comfyUI, userSettingsService, logger, loraResolutionService } = dependencies;
         const comfyuiService = comfyUI; // Alias for clarity
         const chatId = msg.chat.id;
 
@@ -309,31 +309,79 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
         try {
             const textInputKey = tool.metadata.telegramPromptInputKey;
-            
-            // Build initial input payload
-            let inputs = {};
-            if (textInputKey) {
-                inputs[textInputKey] = promptText || (tool.inputSchema[textInputKey]?.default ?? '');
+            const imageInputKey = tool.metadata.telegramImageInputKey;
+
+            // 1. Fetch user preferences for this tool
+            let userPreferences = {};
+            try {
+                const encodedDisplayName = encodeURIComponent(tool.displayName);
+                const preferencesResponse = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedDisplayName}`);
+                if (preferencesResponse.data && typeof preferencesResponse.data === 'object') {
+                    userPreferences = preferencesResponse.data;
+                    logger.info(`[Telegram EXEC /${commandName}] Found user preferences for '${tool.displayName}': ${JSON.stringify(userPreferences)}`);
+                }
+            } catch (error) {
+                if (error.response && error.response.status === 404) {
+                    logger.info(`[Telegram EXEC /${commandName}] No preferences found for '${tool.displayName}'. Using defaults.`);
+                } else {
+                    logger.warn(`[Telegram EXEC /${commandName}] Could not fetch user preferences for '${tool.displayName}': ${error.message}`);
+                }
             }
 
-            // ADR-011: Media Handling - Simplified and Corrected
-            const imageInputKey = tool.metadata.telegramImageInputKey;
-            
+            // 2. Build inputs payload, prioritizing command inputs over user preferences
+            let inputs = { ...userPreferences }; // Start with preferences
+
+            // Command prompt overrides saved prompt
+            if (textInputKey && promptText) {
+                inputs[textInputKey] = promptText.trim();
+            }
+
+            // BEGIN LORA RESOLUTION
+            if (tool.metadata.hasLoraLoader && textInputKey && inputs[textInputKey]) {
+                if (loraResolutionService) {
+                    logger.info(`[Telegram EXEC /${commandName}] LoRA loader detected, resolving triggers for tool '${tool.displayName}'.`);
+                    const originalPrompt = inputs[textInputKey];
+                    const { modifiedPrompt, appliedLoras, warnings } = await loraResolutionService.resolveLoraTriggers(
+                        originalPrompt,
+                        masterAccountId,
+                        tool.metadata.baseModel,
+                        dependencies 
+                    );
+                    
+                    inputs[textInputKey] = modifiedPrompt;
+                    
+                    if (warnings && warnings.length > 0) {
+                        logger.warn(`[Telegram EXEC /${commandName}] LoRA resolution warnings for user ${masterAccountId}: ${JSON.stringify(warnings)}`);
+                    }
+                    if (appliedLoras && appliedLoras.length > 0) {
+                        logger.info(`[Telegram EXEC /${commandName}] Applied ${appliedLoras.length} LoRAs for user ${masterAccountId}: ${JSON.stringify(appliedLoras.map(l => l.slug))}`);
+                        
+                        internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+                            'metadata.appliedLoras': appliedLoras,
+                            'metadata.rawPrompt': originalPrompt,
+                        }).catch(updateErr => logger.error(`[Telegram EXEC /${commandName}] Failed to update generation record with LoRA info: ${updateErr.message}`));
+                    }
+                } else {
+                    logger.warn(`[Telegram EXEC /${commandName}] Tool '${tool.displayName}' has a LoRA loader, but loraResolutionService is not available. Skipping trigger resolution.`);
+                }
+            }
+            // END LORA RESOLUTION
+
+            // Attached/replied-to image overrides saved image
             if (imageInputKey) {
-                // The utility function is designed to find the fileId from the message object itself,
-                // including checking the message it's replying to.
                 const fileUrl = await getTelegramFileUrl(bot, msg);
-                
                 if (fileUrl) {
                     inputs[imageInputKey] = fileUrl;
-                } else if (tool.inputSchema[imageInputKey]?.required) {
-                    // If the tool requires an image and we couldn't find one, abort.
-                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found.`);
-                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image or reply to a message containing one.`, { reply_to_message_id: msg.message_id });
+                } else if (tool.inputSchema[imageInputKey]?.required && !inputs[imageInputKey]) {
+                    // If required, but not in command and not in prefs, then fail.
+                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found in message or preferences.`);
+                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image, reply to a message with one, or set a default image in settings.`, { reply_to_message_id: msg.message_id });
                     await setReaction(bot, chatId, msg.message_id, '😨');
                     return; // Stop execution
                 }
             }
+
+            logger.info(`[Telegram EXEC /${commandName}] Final inputs for submission: ${JSON.stringify(inputs)}`);
             
             // Step 4: Submit job to ComfyUI
             const runId = await comfyuiService.submitRequest({

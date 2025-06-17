@@ -257,6 +257,14 @@ async function startApp() {
         if (platforms.telegram) {
           try {
             logger.info('Setting up Telegram dynamic commands...');
+            // Truncate descriptions before setting up commands
+            const allTools = dependencies.toolRegistry.getAllTools();
+            allTools.forEach(tool => {
+                if (tool.description && tool.description.length > 255) {
+                    logger.warn(`[App] Truncating description for tool "${tool.displayName}" as it exceeds 255 characters.`);
+                    tool.description = tool.description.substring(0, 255);
+                }
+            });
             await platforms.telegram.setupCommands();
             logger.info('Telegram dynamic commands configured');
           } catch (telegramError) {

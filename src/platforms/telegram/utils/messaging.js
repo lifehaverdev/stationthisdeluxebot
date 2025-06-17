@@ -30,23 +30,48 @@ async function sendEscapedMessage(bot, chatId, text, options = {}) {
  * Edits the text of an existing message with automatic MarkdownV2 escaping.
  *
  * @param {object} bot - The node-telegram-bot-api instance.
- * @param {number|string} chatId - The ID of the chat where the message is.
- * @param {number} messageId - The ID of the message to edit.
  * @param {string} text - The new, raw, unescaped text for the message.
- * @param {object} [options={}] - Additional options for the editMessageText call. `parse_mode` will be overwritten.
+ * @param {object} options - Additional options for the editMessageText call. Must contain chat_id and message_id. `parse_mode` will be overwritten.
  * @returns {Promise<object|boolean>} The edited message object or `true` on success.
  */
-async function editEscapedMessageText(bot, chatId, messageId, text, options = {}) {
-    const defaultOptions = {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'MarkdownV2',
-    };
-
-    const finalOptions = { ...options, ...defaultOptions };
+async function editEscapedMessageText(bot, text, options) {
+    const finalOptions = { ...options, parse_mode: 'MarkdownV2' };
     const escapedText = escapeMarkdownV2(text);
-
     return bot.editMessageText(escapedText, finalOptions);
+}
+
+/**
+ * Edits the caption of an existing message with automatic MarkdownV2 escaping.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {string} caption - The new, raw, unescaped caption.
+ * @param {object} options - Options object, must contain chat_id and message_id. `parse_mode` will be overwritten.
+ * @returns {Promise<object|boolean>} The edited message object or `true` on success.
+ */
+async function editEscapedMessageCaption(bot, caption, options) {
+    const escapedCaption = escapeMarkdownV2(caption);
+    const finalOptions = { ...options, parse_mode: 'MarkdownV2' };
+    return bot.editMessageCaption(escapedCaption, finalOptions);
+}
+
+/**
+ * Edits the media of an existing message, escaping the caption if provided.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {object} media - The media object (e.g., { type: 'photo', media: 'url', caption: 'raw_caption' }).
+ * @param {object} options - Options object, must contain chat_id and message_id. `parse_mode` will be overwritten on the media object.
+ * @returns {Promise<object|boolean>} The edited message object or `true` on success.
+ */
+async function editEscapedMessageMedia(bot, media, options) {
+    const mediaWithEscapedCaption = { ...media };
+
+    if (mediaWithEscapedCaption.caption) {
+        mediaWithEscapedCaption.caption = escapeMarkdownV2(mediaWithEscapedCaption.caption);
+    }
+    
+    mediaWithEscapedCaption.parse_mode = 'MarkdownV2';
+
+    return bot.editMessageMedia(mediaWithEscapedCaption, options);
 }
 
 /**
@@ -114,6 +139,8 @@ async function sendVideoWithEscapedCaption(bot, chatId, video, options = {}, cap
 module.exports = {
     sendEscapedMessage,
     editEscapedMessageText,
+    editEscapedMessageCaption,
+    editEscapedMessageMedia,
     sendPhotoWithEscapedCaption,
     sendAnimationWithEscapedCaption,
     sendVideoWithEscapedCaption,
