@@ -484,6 +484,25 @@ router.post('/:loraIdentifier/admin-approve', async (req, res) => {
       const errorPayload = deployError.response?.data || deployError.message;
       logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}):`, JSON.stringify(errorPayload, null, 2));
       const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || errorPayload || 'Unknown deployment error';
+      
+      // Mark the LoRA as failed in the DB
+      const failureUpdateData = {
+        moderation: {
+          ...(lora.moderation || {}),
+          status: 'deployment_failed',
+          reviewNotes: `Deployment failed on ${new Date().toISOString()}: ${JSON.stringify(errorDetails)}`,
+          reviewedBy: adminActor,
+          reviewedAt: new Date()
+        },
+        updatedAt: new Date()
+      };
+      try {
+        await loRAModelsDb.updateModel(lora._id, failureUpdateData);
+        logger.info(`[LorasApi] Marked LoRA ${lora.name} as 'deployment_failed' in the database.`);
+      } catch (dbError) {
+        logger.error(`[LorasApi] CRITICAL: Failed to mark LoRA ${lora.name} as 'deployment_failed' after a deployment error. DB may be inconsistent.`, dbError);
+      }
+      
       return res.status(500).json({ error: 'Failed to deploy LoRA to ComfyUI.', details: errorDetails });
     }
     // --- End ComfyUI Deployment ---
@@ -622,6 +641,25 @@ router.post('/:loraIdentifier/admin-approve-private', async (req, res) => {
       const errorPayload = deployError.response?.data || deployError.message;
       logger.error(`[LorasApi] ComfyUI Deployment Error for LoRA ${lora.name} (File: ${filename}) during private approval:`, JSON.stringify(errorPayload, null, 2));
       const errorDetails = deployError.response?.data?.detail || deployError.response?.data?.error || deployError.response?.data?.message || errorPayload || 'Unknown deployment error';
+
+      // Mark the LoRA as failed in the DB
+      const failureUpdateData = {
+        moderation: {
+          ...(lora.moderation || {}),
+          status: 'deployment_failed',
+          reviewNotes: `Deployment failed on ${new Date().toISOString()}: ${JSON.stringify(errorDetails)}`,
+          reviewedBy: adminActor,
+          reviewedAt: new Date()
+        },
+        updatedAt: new Date()
+      };
+      try {
+        await loRAModelsDb.updateModel(lora._id, failureUpdateData);
+        logger.info(`[LorasApi] Marked private LoRA ${lora.name} as 'deployment_failed' in the database.`);
+      } catch (dbError) {
+        logger.error(`[LorasApi] CRITICAL: Failed to mark private LoRA ${lora.name} as 'deployment_failed' after a deployment error. DB may be inconsistent.`, dbError);
+      }
+
       return res.status(500).json({ error: 'Failed to deploy LoRA to ComfyUI for private use.', details: errorDetails });
     }
     // --- End ComfyUI Deployment ---
