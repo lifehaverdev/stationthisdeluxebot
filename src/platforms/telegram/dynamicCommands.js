@@ -277,7 +277,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             await setReaction(bot, chatId, msg.message_id, '👌');
             // Service map for extensibility
             const serviceMap = {
-                comfyUI: comfyUI,
+                comfyui: comfyUI,
                 openai: openaiService,
                 // Add more mappings as needed for future tool services
             };
