@@ -344,7 +344,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 }
 
                 // Create generation record
-                const generationRecord = await internal.client.post('/internal/v1/data/generations/create', {
+                const generationRecord = await internal.client.post('/internal/v1/data/generations', {
                     masterAccountId: masterAccountId,
                     platform: 'telegram',
                     toolId: tool.toolId,
