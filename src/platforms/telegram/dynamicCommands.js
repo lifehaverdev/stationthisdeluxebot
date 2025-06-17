@@ -319,9 +319,16 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             const getFileUrlFunction = async (fileId) => getTelegramFileUrl(bot, fileId);
 
             // ADR-011: Media Handling
+            let mediaMessage = null;
             if (msg.photo || msg.video || msg.document) {
-                const mediaType = msg.photo ? 'photo' : (msg.video ? 'video' : 'document');
-                const fileId = mediaType === 'photo' ? msg.photo[msg.photo.length - 1].file_id : msg[mediaType].file_id;
+                mediaMessage = msg;
+            } else if (msg.reply_to_message && (msg.reply_to_message.photo || msg.reply_to_message.video || msg.reply_to_message.document)) {
+                mediaMessage = msg.reply_to_message;
+            }
+
+            if (mediaMessage) {
+                const mediaType = mediaMessage.photo ? 'photo' : (mediaMessage.video ? 'video' : 'document');
+                const fileId = mediaType === 'photo' ? mediaMessage.photo[mediaMessage.photo.length - 1].file_id : mediaMessage[mediaType].file_id;
 
                 const mediaInputs = await comfyuiService.handleMediaInput({
                     tool,
@@ -334,18 +341,18 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             }
             
             // Step 4: Submit job to ComfyUI
-            const comfyResponse = await comfyuiService.submitRequest({
+            const runId = await comfyuiService.submitRequest({
                 deploymentId: tool.metadata.deploymentId,
                 inputs: inputs,
             });
 
             // Step 5: IMPORTANT - Update generation record with the run_id and final inputs
             await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
-                'metadata.run_id': comfyResponse.run_id,
+                'metadata.run_id': runId,
                 'requestPayload': inputs, 
             });
 
-            logger.info(`[Telegram EXEC /${commandName}] ComfyUI job submitted. Run ID: ${comfyResponse.run_id}`);
+            logger.info(`[Telegram EXEC /${commandName}] ComfyUI job submitted. Run ID: ${runId}`);
             await setReaction(bot, chatId, msg.message_id, '✅');
 
         } catch (err) {
