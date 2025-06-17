@@ -5,12 +5,10 @@
  */
 
 // Dependencies will be passed in by the main bot.js, typically including:
-// bot, logger, internalApiClient
+// bot, logger
 
 const AVAILABLE_CHECKPOINTS = ['All', 'SDXL', 'SD1.5', 'FLUX']; // Example, could be dynamic
 const { ObjectId } = require('../../../core/services/db/BaseDB');
-// Placeholder for internalApiClient if needed directly, or pass via dependencies
-// const internalApiClient = require('../../../utils/internalApiClient'); 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
  
 // Map for shortening callback data to fit within Telegram's 64-byte limit
@@ -39,7 +37,7 @@ function getFilterFromShortcode(shortcode) {
  * @param {Object} bot - The Telegram bot instance.
  * @param {Object} message - The incoming message object.
  * @param {string} masterAccountId - The user's master account ID.
- * @param {Object} dependencies - Shared dependencies (logger, internalApiClient, etc.).
+ * @param {Object} dependencies - Shared dependencies (logger, etc.).
  */
 async function handleModsCommand(bot, msg, masterAccountId, dependencies) {
   const { logger } = dependencies;

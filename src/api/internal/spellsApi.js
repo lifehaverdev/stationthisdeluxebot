@@ -166,7 +166,7 @@ module.exports = function spellsApi(dependencies) {
   // POST /spells/:spellId/steps - Add a step to a spell
   router.post('/:spellId/steps', async (req, res) => {
     const { spellId } = req.params;
-    const { masterAccountId, toolId, parameters, outputMappings } = req.body;
+    const { masterAccountId, toolIdentifier, parameters, outputMappings } = req.body;
 
     if (!masterAccountId) {
         return res.status(401).json({ error: 'Authentication required.' });
@@ -174,8 +174,8 @@ module.exports = function spellsApi(dependencies) {
     if (!ObjectId.isValid(spellId)) {
         return res.status(400).json({ error: 'Invalid spellId format.' });
     }
-    if (!toolId) {
-        return res.status(400).json({ error: 'toolId is required.' });
+    if (!toolIdentifier) {
+        return res.status(400).json({ error: 'toolIdentifier (the tool\'s unique displayName) is required.' });
     }
 
     try {
@@ -189,8 +189,8 @@ module.exports = function spellsApi(dependencies) {
 
         const newStep = {
             stepId: (spell.steps?.length || 0) + 1,
-            toolId: toolId,
-            parameters: parameters || {},
+            toolIdentifier: toolIdentifier,
+            parameterOverrides: parameters || {}, // Note: frontend sends `parameters`, DB uses `parameterOverrides`
             outputMappings: outputMappings || {}
         };
         
@@ -227,10 +227,74 @@ module.exports = function spellsApi(dependencies) {
     }
   });
 
+  /**
+   * PUT /:spellId/steps/:stepId/parameters
+   * Partially updates the parameterOverrides for a specific step.
+   * Body: { masterAccountId: string, updates: object }
+   */
+  router.put('/:spellId/steps/:stepId/parameters', async (req, res) => {
+    const { spellId, stepId } = req.params;
+    const { masterAccountId, updates } = req.body;
+
+    if (!masterAccountId || !updates) {
+        return res.status(400).json({ error: 'masterAccountId and updates object are required.' });
+    }
+    if (!ObjectId.isValid(spellId) || isNaN(parseInt(stepId, 10))) {
+        return res.status(400).json({ error: 'Invalid spellId or stepId format.' });
+    }
+
+    try {
+        const updatedSpell = await spellsDb.updateStepParameters(spellId, parseInt(stepId, 10), updates, masterAccountId);
+        if (!updatedSpell) {
+            return res.status(404).json({ error: 'Spell or step not found, or you do not have permission to edit.' });
+        }
+        res.status(200).json(updatedSpell);
+    } catch (error) {
+        logger.error(`[SpellsAPI] Error partially updating parameters for step ${stepId} in spell ${spellId}:`, error);
+        res.status(500).json({ error: 'An internal error occurred while updating the spell step parameters.' });
+    }
+  });
+
   // DELETE /spells/:spellId/steps/:stepId - Remove a step from a spell
   router.delete('/:spellId/steps/:stepId', async (req, res) => {
-    // Requires auth: user must be owner of the spell
-    res.status(501).json({ message: 'Not Implemented' });
+    const { spellId, stepId } = req.params;
+    const { masterAccountId } = req.body; // Requester's ID for auth
+
+    if (!masterAccountId) {
+        return res.status(401).json({ error: 'Authentication required.' });
+    }
+    if (!ObjectId.isValid(spellId)) {
+        return res.status(400).json({ error: 'Invalid spellId format.' });
+    }
+    const stepIdInt = parseInt(stepId, 10);
+    if (isNaN(stepIdInt)) {
+        return res.status(400).json({ error: 'Invalid stepId format.' });
+    }
+    
+    try {
+        // First, verify ownership. The `removeStep` method should also do this, but an early check is good.
+        const spell = await spellsDb.findById(spellId);
+        if (!spell) {
+            return res.status(404).json({ error: 'Spell not found.' });
+        }
+        if (spell.ownedBy.toString() !== masterAccountId) {
+            return res.status(403).json({ error: 'You do not have permission to edit this spell.' });
+        }
+        
+        const result = await spellsDb.removeStep(spellId, stepIdInt);
+        
+        if (result.modifiedCount === 0) {
+            return res.status(404).json({ error: 'Step not found in the specified spell.' });
+        }
+        
+        // Return the updated spell so the client can refresh its state
+        const updatedSpell = await spellsDb.findById(spellId);
+        res.status(200).json(updatedSpell);
+
+    } catch (error) {
+        logger.error(`[spellsApi] DELETE /${spellId}/steps/${stepId}: Error removing step: ${error.message}`, error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
   });
 
   logger.info('[spellsApi] Spells API routes initialized.');

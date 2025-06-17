@@ -249,14 +249,65 @@ class SpellsDB extends BaseDB {
     }
   }
 
+  /**
+   * Partially updates the parameterOverrides for a specific step.
+   * This uses dot notation in the update document to set specific fields
+   * within the nested parameterOverrides object.
+   * @param {string} spellId - The ID of the spell to update.
+   * @param {number} stepId - The ID of the step to update.
+   * @param {object} updates - An object where keys are parameter names and values are the new values.
+   * @param {string} masterAccountId - The ID of the user account for ownership verification.
+   * @returns {Promise<object|null>} The updated spell document or null if not found/permission denied.
+   */
+  async updateStepParameters(spellId, stepId, updates, masterAccountId) {
+    this.logger.info(`[SpellsDB] Partially updating parameters for step ${stepId} in spell ${spellId}`);
+    
+    // First, verify ownership
+    const spell = await this.findById(spellId);
+    if (!spell) {
+        this.logger.warn(`[SpellsDB] Spell not found with ID: ${spellId}`);
+        return null;
+    }
+    if (spell.ownedBy.toString() !== masterAccountId) {
+        this.logger.warn(`[SpellsDB] Permission denied for updating step parameters: User ${masterAccountId} is not the owner of spell ${spellId}.`);
+        return null;
+    }
+
+    // Construct the $set operation using dot notation for each key in the updates object.
+    // E.g., { 'input_prompt': 'new value' } becomes { 'steps.$[step].parameterOverrides.input_prompt': 'new value' }
+    const updateFields = {};
+    for (const key in updates) {
+        updateFields[`steps.$[step].parameterOverrides.${key}`] = updates[key];
+    }
+    updateFields.updatedAt = new Date();
+
+    const result = await this.updateOne(
+        { _id: new ObjectId(spellId) },
+        { $set: updateFields },
+        { arrayFilters: [{ 'step.stepId': stepId }] }
+    );
+
+    if (result.modifiedCount > 0) {
+        this.logger.info(`[SpellsDB] Successfully updated parameters for step ${stepId} in spell ${spellId}`);
+        return this.findById(spellId); // Return the full updated document
+    } else {
+        this.logger.warn(`[SpellsDB] Update parameters failed for step ${stepId} in spell ${spellId} (modifiedCount: 0).`);
+        // The step might not exist, or the data was identical. We can still return the spell.
+        return spell;
+    }
+  }
+
   async removeStep(spellId, stepId) {
-      return this.updateOne(
-          { _id: new ObjectId(spellId) },
-          {
-              $pull: { steps: { stepId: stepId } },
-              $set: { updatedAt: new Date() }
-          }
-      );
+    this.logger.info(`[SpellsDB] Removing step ${stepId} from spell ${spellId}`);
+    // This is more complex. It requires pulling the item, then re-normalizing stepIds.
+    // For now, let's just pull it. The stepId ordering might get weird.
+    return this.updateOne(
+        { _id: new ObjectId(spellId) },
+        {
+            $pull: { steps: { stepId: stepId } },
+            $set: { updatedAt: new Date() }
+        }
+    );
   }
 }
 

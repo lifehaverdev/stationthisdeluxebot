@@ -85,6 +85,20 @@ class ToolRegistry {
 
   /**
    * @public
+   * @returns {string[]} An array of unique, sorted tool categories.
+   */
+  getToolCategories() {
+    const categories = new Set();
+    this.tools.forEach(tool => {
+      if (tool.platformHints && tool.platformHints.primaryInput) {
+        categories.add(tool.platformHints.primaryInput);
+      }
+    });
+    return Array.from(categories).sort();
+  }
+
+  /**
+   * @public
    * @param {string} commandName 
    * @returns {ToolDefinition | undefined}
    */

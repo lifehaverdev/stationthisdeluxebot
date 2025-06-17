@@ -40,9 +40,9 @@ class WorkflowExecutionService {
      */
     async _executeStep(spell, stepIndex, pipelineContext, originalContext) {
         const step = spell.steps[stepIndex];
-        const tool = this.toolRegistry.getToolById(step.toolId);
+        const tool = this.toolRegistry.findByDisplayName(step.toolIdentifier);
         if (!tool) {
-            throw new Error(`Tool with ID '${step.toolId}' not found in registry for step ${step.stepId}.`);
+            throw new Error(`Tool with name '${step.toolIdentifier}' not found in registry for step ${step.stepId} of spell "${spell.name}".`);
         }
 
         this.logger.info(`[WorkflowExecution] Found tool for step ${step.stepId}: "${tool.displayName}". Inspecting tool object...`);

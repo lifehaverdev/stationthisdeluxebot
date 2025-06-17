@@ -21,7 +21,7 @@ async function handleSpellCommand(bot, msg, masterAccountId, dependencies) {
             reply_to_message_id: msg.message_id
         });
     } catch (error) {
-        logger.error('[SpellMenu] Error in handleSpellCommand:', error);
+        logger.error(`[SpellMenu] Error in handleSpellCommand: ${error.stack || error}`);
         await sendEscapedMessage(bot, chatId, "Sorry, I couldn't open the spellbook right now. Please try again later.", { reply_to_message_id: msg.message_id });
     }
 }
@@ -55,7 +55,7 @@ async function buildMainMenu(masterAccountId, username, dependencies) {
             });
         }
     } catch (error) {
-        logger.error(`[SpellMenu] Failed to fetch spells for MAID ${masterAccountId}:`, error);
+        logger.error(`[SpellMenu] Failed to fetch spells for MAID ${masterAccountId}: ${error.stack || error}`);
         // Do not add any spell buttons, the "Create" button will still be there.
     }
 
@@ -126,7 +126,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 const spell = response.data;
 
                 if (!spell || spell.error) {
-                    logger.error(`[SpellMenu] Callback 'spell_manage_': Could not find spell with slug: ${spellSlug}. Response:`, response.data);
+                    logger.error(`[SpellMenu] Callback 'spell_manage_': Could not find spell with slug: ${spellSlug}. Response: ${JSON.stringify(response.data)}`);
                     await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Spell not found.', show_alert: true });
                     return;
                 }
@@ -138,13 +138,13 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                         reply_markup: menu.reply_markup
                     });
                 } catch (menuError) {
-                    logger.error(`[SpellMenu] Error building or sending spell editor menu for slug '${spellSlug}':`, menuError.stack || menuError);
+                    logger.error(`[SpellMenu] Error building or sending spell editor menu for slug '${spellSlug}': ${menuError.stack || menuError}`);
                     await bot.answerCallbackQuery(callbackQuery.id, { text: "Error displaying spell editor.", show_alert: true });
                     return;
                 }
 
             } catch (error) {
-                logger.error(`[SpellMenu] Error fetching spell by slug '${spellSlug}':`, error.response?.data || error.message);
+                logger.error(`[SpellMenu] Error fetching spell by slug '${spellSlug}': ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Sorry, couldn't load that spell.", show_alert: true });
                 return;
             }
@@ -186,7 +186,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                  await bot.answerCallbackQuery(callbackQuery.id, {text: `Error: Tool not found.`, show_alert: true});
                  return;
              }
-             const toolId = tool.toolId;
+             const toolIdentifier = tool.displayName;
 
             try {
                 // Fetch spell by slug to get its ID for the API call
@@ -199,8 +199,8 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 }
                 const spellId = spell._id;
 
-                await dependencies.internal.client.post(`/internal/v1/data/spells/${spellId}/steps`, { toolId, masterAccountId });
-                logger.info(`[SpellMenu] Successfully added tool '${toolId}' to spell '${spellId}'.`);
+                await dependencies.internal.client.post(`/internal/v1/data/spells/${spellId}/steps`, { toolIdentifier, masterAccountId });
+                logger.info(`[SpellMenu] Successfully added tool '${toolIdentifier}' to spell '${spellId}'.`);
                 await bot.answerCallbackQuery(callbackQuery.id, {text: `Added tool!`});
 
                 // Re-fetch the spell to get updated steps for the menu
@@ -212,7 +212,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 });
 
             } catch (error) {
-                logger.error(`[SpellMenu] Failed to add tool '${toolId}' to spell with slug '${spellSlug}':`, error.response?.data || error.message);
+                logger.error(`[SpellMenu] Failed to add tool '${toolIdentifier}' to spell with slug '${spellSlug}': ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
                 await bot.answerCallbackQuery(callbackQuery.id, {text: `Error adding tool. Please try again.`, show_alert: true});
                 // On error, just go back to the spell editor without changes
                 const spellResponse = await dependencies.internal.client.get(`/internal/v1/data/spells/${spellSlug}`, { params: { masterAccountId } });
@@ -250,9 +250,44 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 });
 
             } catch (error) {
-                logger.error(`[SpellMenu] Failed to delete spell with slug '${spellSlug}':`, error.response?.data || error.message);
+                logger.error(`[SpellMenu] Failed to delete spell with slug '${spellSlug}': ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
                 await bot.answerCallbackQuery(callbackQuery.id, {text: `Error deleting spell.`, show_alert: true});
                 return;
+            }
+            return;
+        }
+
+        if (data.startsWith('spell_remove_step_')) {
+            const dataString = data.substring('spell_remove_step_'.length);
+            const [spellSlug, stepIdStr] = dataString.split('_');
+            const stepId = parseInt(stepIdStr, 10);
+            
+            try {
+                // API requires spell ID for the endpoint
+                const spellResponse = await dependencies.internal.client.get(`/internal/v1/data/spells/${spellSlug}`, { params: { masterAccountId } });
+                const spell = spellResponse.data;
+                if (!spell) {
+                    logger.error(`[SpellMenu] 'spell_remove_step_': Could not find spell with slug: ${spellSlug}`);
+                    await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Spell not found.', show_alert: true });
+                    return;
+                }
+                const spellId = spell._id;
+
+                // Call the API to delete the specific step
+                const deleteResponse = await dependencies.internal.client.delete(`/internal/v1/data/spells/${spellId}/steps/${stepId}`, { data: { masterAccountId } });
+                logger.info(`[SpellMenu] Successfully removed step ${stepId} from spell '${spellId}'.`);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Step removed.` });
+
+                // Refresh the main spell editor menu to show the change
+                const updatedSpell = deleteResponse.data; // The API now returns the updated spell
+                const menu = await buildSpellEditorMenu(masterAccountId, updatedSpell, dependencies);
+                 await editEscapedMessageText(bot, chatId, messageId, menu.text, {
+                    reply_markup: menu.reply_markup
+                });
+
+            } catch (error) {
+                logger.error(`[SpellMenu] Failed to remove step ${stepId} from spell '${spellSlug}': ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Error removing step.`, show_alert: true });
             }
             return;
         }
@@ -265,7 +300,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
             logger.info(`[SpellMenu] User wants to edit step ${stepId} of spell ${spellSlug}.`);
 
             try {
-                const response = await internalApiClient.get(`/spells/${spellSlug}`, { params: { masterAccountId } });
+                const response = await dependencies.internal.client.get(`/internal/v1/data/spells/${spellSlug}`, { params: { masterAccountId } });
                 const spell = response.data;
                 const step = spell.steps.find(s => s.stepId === stepId);
 
@@ -282,7 +317,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 await bot.answerCallbackQuery(callbackQuery.id);
 
             } catch (error) {
-                logger.error(`[SpellMenu] Error building step editor for ${spellSlug}, step ${stepId}:`, error.response?.data || error.message);
+                logger.error(`[SpellMenu] Error building step editor for ${spellSlug}, step ${stepId}: ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Sorry, couldn't open the step editor.", show_alert: true });
             }
             return;
@@ -297,10 +332,10 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
             const stepId = parseInt(stepIdStr, 10);
 
             try {
-                const spellResponse = await internalApiClient.get(`/spells/${spellSlug}`, { params: { masterAccountId } });
+                const spellResponse = await dependencies.internal.client.get(`/internal/v1/data/spells/${spellSlug}`, { params: { masterAccountId } });
                 const spell = spellResponse.data;
                 const step = spell.steps.find(s => s.stepId === stepId);
-                const tool = toolRegistry.getToolById(step.toolId);
+                const tool = toolRegistry.findByDisplayName(step.toolIdentifier);
                 const paramDef = tool.inputSchema[paramName];
 
                 let promptText = `Please reply to this message with the new value for ${paramName.replace('input_', '')}.`;
@@ -327,7 +362,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
                 logger.info(`[SpellMenu] Stored reply context for 'spell_param_value' for param '${paramName}'.`);
 
             } catch (error) {
-                 logger.error(`[SpellMenu] Error processing spell_param_edit for ${spellSlug}, step ${stepId}, param ${paramName}:`, error.response?.data || error.message);
+                 logger.error(`[SpellMenu] Error processing spell_param_edit for ${spellSlug}, step ${stepId}, param ${paramName}: ${error.response?.data ? JSON.stringify(error.response.data) : (error.stack || error.message)}`);
                 await bot.answerCallbackQuery(callbackQuery.id, { text: "Sorry, couldn't open the parameter editor.", show_alert: true });
             }
             
@@ -338,7 +373,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
         await bot.answerCallbackQuery(callbackQuery.id, { text: "This feature is not yet complete." });
 
     } catch (error) {
-        logger.error('[SpellMenu] Error in handleSpellCallback:', error);
+        logger.error(`[SpellMenu] Error in handleSpellCallback: ${error.stack || error}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: "An error occurred." });
     }
 }
@@ -351,7 +386,7 @@ async function handleSpellCallback(bot, callbackQuery, masterAccountId, dependen
  * @param {object} dependencies - The canonical dependencies object.
  */
 async function handleNewSpellNameReply(bot, msg, context, dependencies) {
-    const { logger, internalApiClient } = dependencies;
+    const { logger } = dependencies;
     const chatId = msg.chat.id;
     const { masterAccountId } = context;
     const spellName = msg.text.trim();
@@ -360,7 +395,7 @@ async function handleNewSpellNameReply(bot, msg, context, dependencies) {
     logger.info(`[SpellMenu] Received reply for new spell name. MAID: ${masterAccountId}, Name: '${spellName}'`);
 
     try {
-        const response = await internalApiClient.post('/spells', {
+        const response = await dependencies.internal.client.post('/internal/v1/data/spells', {
             name: spellName,
             creatorId: masterAccountId,
             ownedBy: masterAccountId
@@ -381,7 +416,7 @@ async function handleNewSpellNameReply(bot, msg, context, dependencies) {
         }
     } catch (error) {
         const errorMessage = error.response?.data?.message || `Sorry, could not create spell "${spellName}".`;
-        logger.error(`[SpellMenu] Error in handleNewSpellNameReply for MAID ${masterAccountId}:`, error);
+        logger.error(`[SpellMenu] Error in handleNewSpellNameReply for MAID ${masterAccountId}: ${error.stack || error}`);
         await sendEscapedMessage(bot, chatId, `⚠️ ${errorMessage}`, {
             reply_to_message_id: msg.message_id
         });
@@ -396,40 +431,42 @@ async function handleNewSpellNameReply(bot, msg, context, dependencies) {
  * @param {object} dependencies - The canonical dependencies object.
  */
 async function handleStepParameterValueReply(bot, msg, context, dependencies) {
-    const { logger, internalApiClient } = dependencies;
+    const { logger } = dependencies;
     const chatId = msg.chat.id;
-    const { masterAccountId, spellSlug, stepId, paramKey } = context;
-    const newValue = msg.text;
+    const { masterAccountId, spellSlug, stepId, paramName } = context;
+    const newValue = msg.text.trim();
 
-    logger.info(`[SpellMenu] Received reply for spell param. MAID: ${masterAccountId}, SpellSlug: ${spellSlug}, StepID: ${stepId}, Param: ${paramKey}, Value: '${newValue}'`);
+    logger.info(`[SpellMenu] Received reply for spell param. MAID: ${masterAccountId}, SpellSlug: ${spellSlug}, StepID: ${stepId}, Param: ${paramName}, Value: '${newValue}'`);
 
     try {
-        const spellResponse = await internalApiClient.get(`/spells/${spellSlug}`, { params: { masterAccountId } });
+        const spellResponse = await dependencies.internal.client.get(`/internal/v1/data/spells/${spellSlug}`, { params: { masterAccountId } });
         const spell = spellResponse.data;
         if (!spell) throw new Error(`Spell with slug ${spellSlug} not found.`);
         const spellId = spell._id;
 
-        await internalApiClient.put(`/spells/${spellId}/steps/${stepId}/parameters`, {
+        await dependencies.internal.client.put(`/internal/v1/data/spells/${spellId}/steps/${stepId}/parameters`, {
             masterAccountId,
-            updates: { [paramKey]: newValue }
+            updates: { [paramName]: newValue }
         });
 
-        await sendEscapedMessage(bot, chatId, `✅ Parameter '${paramKey}' updated!`, {
+        await sendEscapedMessage(bot, chatId, `✅ Parameter '${paramName.replace('input_', '')}' updated!`, {
             reply_to_message_id: msg.message_id
         });
 
         // Refresh the spell editor menu
         if (msg.reply_to_message && msg.reply_to_message.message_id) {
-            const response = await internalApiClient.get(`/spells/${spell.slug}`, { params: { masterAccountId } });
+            const response = await dependencies.internal.client.get(`/internal/v1/data/spells/${spell.slug}`, { params: { masterAccountId } });
             const updatedSpell = response.data;
-            const menu = await buildSpellEditorMenu(masterAccountId, updatedSpell, dependencies);
+            // Go back to the STEP editor, not the main spell editor
+            const step = updatedSpell.steps.find(s => s.stepId === stepId);
+            const menu = await buildStepEditorMenu(updatedSpell, step, dependencies);
             await editEscapedMessageText(bot, chatId, msg.reply_to_message.message_id, menu.text, {
                 reply_markup: menu.reply_markup,
             });
         }
     } catch (error) {
         const errorMessage = error.response?.data?.message || 'Sorry, a critical error occurred while updating the parameter.';
-        logger.error(`[SpellMenu] Error in handleStepParameterValueReply for MAID ${masterAccountId}:`, error);
+        logger.error(`[SpellMenu] Error in handleStepParameterValueReply for MAID ${masterAccountId}: ${error.stack || error}`);
         await sendEscapedMessage(bot, chatId, `⚠️ ${errorMessage}`, {
             reply_to_message_id: msg.message_id
         });
@@ -453,8 +490,8 @@ async function buildSpellEditorMenu(masterAccountId, spell, dependencies) {
         if (spell.steps && spell.steps.length > 0) {
             text += 'Current steps:';
             spell.steps.forEach(step => {
-                const tool = toolRegistry.getToolById(step.toolId);
-                const displayName = tool ? tool.displayName : step.toolId;
+                const tool = toolRegistry.findByDisplayName(step.toolIdentifier);
+                const displayName = tool ? tool.displayName : `⚠️ Missing Tool (${step.toolIdentifier})`;
                 const callbackData = `spell_edit_step_${spell.slug}_${step.stepId}`;
                 logger.info(`[SpellMenu] BuildSpellEditorMenu: Generating button with data: "${callbackData}" (Length: ${Buffer.from(callbackData).length} bytes)`);
                 keyboard.push([{ text: `Step ${step.stepId}: ${displayName}`, callback_data: callbackData }]);
@@ -477,7 +514,7 @@ async function buildSpellEditorMenu(masterAccountId, spell, dependencies) {
             reply_markup: { inline_keyboard: keyboard }
         };        
     } catch (error) {
-        logger.error(`[SpellMenu] Error in buildSpellEditorMenu: ${error}`);
+        logger.error(`[SpellMenu] Error in buildSpellEditorMenu: ${error.stack || error}`);
         return { text: "Error: Could not build spell editor menu.", reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `spell_main` }]] } };
     }
     
@@ -492,13 +529,26 @@ async function buildSpellEditorMenu(masterAccountId, spell, dependencies) {
  */
 async function buildStepEditorMenu(spell, step, dependencies) {
     const { logger, toolRegistry } = dependencies;
-    const tool = toolRegistry.getToolById(step.toolId);
+    const tool = toolRegistry.findByDisplayName(step.toolIdentifier);
     if (!tool) {
-        logger.error(`[SpellMenu] buildStepEditorMenu: Could not find tool with ID '${step.toolId}' in registry.`);
-        return { text: "Error: Tool definition not found.", reply_markup: { inline_keyboard: [[{ text: "⬅️ Back", callback_data: `spell_manage_${spell.slug}` }]] } };
+        logger.error(`[SpellMenu] buildStepEditorMenu: Could not find tool with identifier '${step.toolIdentifier}' in registry.`);
+        
+        let text = `*Error: Tool Not Found*\\n\\n`;
+        text += `The tool named \`${step.toolIdentifier}\` associated with this step could not be found.\\n\\n`;
+        text += `This can happen if the tool was renamed or deleted. Please remove this broken step and add the correct tool again.`;
+        
+        const keyboard = [];
+        const removeCallbackData = `spell_remove_step_${spell.slug}_${step.stepId}`;
+        keyboard.push([{ text: `🗑️ Remove Broken Step`, callback_data: removeCallbackData }]);
+        keyboard.push([{ text: "⬅️ Back to Spell", callback_data: `spell_manage_${spell.slug}` }]);
+
+        return {
+            text,
+            reply_markup: { inline_keyboard: keyboard }
+        };
     }
 
-    let text = `Editing Step ${step.stepId}: ${tool.displayName}\n\n`;
+    let text = `Editing Step ${step.stepId}: ${tool.displayName}\\n\\n`;
     text += `Configure the parameters for this tool.`;
 
     const keyboard = [];
@@ -521,7 +571,7 @@ async function buildStepEditorMenu(spell, step, dependencies) {
     }
 
     if (keyboard.length === 0) {
-        text += '\n\nThis tool has no configurable parameters. You can still change its position in the spell.';
+        text += '\\n\\nThis tool has no configurable parameters.';
     }
     
     keyboard.push([{ text: "⬅️ Back to Spell", callback_data: `spell_manage_${spell.slug}` }]);
@@ -649,7 +699,7 @@ async function spellCommandHandler(bot, msg, dependencies) {
         const masterAccountId = findOrCreateResponse.data.masterAccountId;
         await handleSpellCommand(bot, msg, masterAccountId, dependencies);
     } catch (error) {
-        logger.error(`[SpellMenu] Critical error in spellCommandHandler for ${username}:`, error.stack || error);
+        logger.error(`[SpellMenu] Critical error in spellCommandHandler for ${username}: ${error.stack || error}`);
         await sendEscapedMessage(bot, msg.chat.id, "A critical error occurred while handling your command.");
     }
 }
@@ -668,13 +718,13 @@ async function spellCallbackHandler(bot, callbackQuery, masterAccountId, depende
     try {
         await handleSpellCallback(bot, callbackQuery, masterAccountId, dependencies);
     } catch (error) {
-        logger.error(`[SpellMenu] Critical error in spellCallbackHandler for ${username}:`, error.stack || error);
+        logger.error(`[SpellMenu] Critical error in spellCallbackHandler for ${username}: ${error.stack || error}`);
         // Avoid double-answering
         if (!callbackQuery.answered) {
           try {
             await bot.answerCallbackQuery(callbackQuery.id, { text: "A critical error occurred.", show_alert: true });
           } catch (e) {
-            logger.error(`[SpellMenu] CRITICAL: Failed to answer callback query in error handler:`, e);
+            logger.error(`[SpellMenu] CRITICAL: Failed to answer callback query in error handler: ${e.stack || e}`);
           }
         }
     }
@@ -700,7 +750,7 @@ function registerHandlers(dispatcherInstances, dependencies) {
 
     // Message replies for spell creation/configuration
     messageReplyDispatcher.register('spell_create_name', newSpellNameHandler);
-    messageReplyDispatcher.register('spell_set_step_param', stepParameterValueHandler);
+    messageReplyDispatcher.register('spell_param_value', stepParameterValueHandler);
 
     // Register a handler for the /cast command
     commandDispatcher.register(/^\/cast(?:@\w+)?(?:\s+(.*))?$/i, async (bot, msg, dependencies, match) => {
@@ -804,7 +854,10 @@ function registerHandlers(dispatcherInstances, dependencies) {
             await bot.sendMessage(chatId, `✅ Spell '${spellSlug}' cast successfully!`, { reply_to_message_id: msg.message_id });
         } catch (error) {
             logger.error(`[SpellMenu] /cast error for slug '${spellSlug}': ${error.stack || error}`);
-            await bot.sendMessage(chatId, `❌ Failed to cast spell '${spellSlug}': ${error.message || error}`, { reply_to_message_id: msg.message_id });
+            const errorMessage = error.message.includes('starting with') 
+                ? error.message 
+                : `❌ Failed to cast spell '${spellSlug}': ${error.message || error}`;
+            await sendEscapedMessage(bot, chatId, errorMessage, { reply_to_message_id: msg.message_id });
         }
     });
 
