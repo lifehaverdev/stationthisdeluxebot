@@ -190,6 +190,9 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
        await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
        logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
 
+      // The generationOutputsApi now handles emitting the event on status change.
+      // We no longer need to emit from here, preventing duplicate notifications.
+      /*
       // Fetch the full, updated record to dispatch it
       try {
         const getRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
@@ -198,12 +201,12 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
         if (updatedRecordResponse.data) {
             logger.info(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId}`);
             notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
-        } else {
-            logger.error(`[Webhook Processor] Could not find generation record ${generationId} after update, cannot emit event.`);
         }
-      } catch (fetchErr) {
-          logger.error(`[Webhook Processor] Error fetching generation record ${generationId} for event emission:`, fetchErr.message);
+      } catch (getError) {
+        logger.error(`[Webhook Processor] Failed to fetch updated generation record ${generationId} for event dispatch after update. Error: ${getError.message}`);
       }
+      */
+
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
        const errStatus = err.response ? err.response.status : 500;

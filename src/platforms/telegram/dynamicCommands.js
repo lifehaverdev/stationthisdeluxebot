@@ -348,7 +348,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             });
 
             logger.info(`[Telegram EXEC /${commandName}] ComfyUI job submitted. Run ID: ${runId}`);
-            await setReaction(bot, chatId, msg.message_id, '✅');
+            await setReaction(bot, chatId, msg.message_id, '👌');
 
         } catch (err) {
             const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
