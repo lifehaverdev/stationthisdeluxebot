@@ -1000,6 +1000,12 @@ class WorkflowCacheManager {
       }
     }
 
+    // Infer outputType if unknown
+    let finalOutputType = structureInfo?.outputType || 'unknown';
+    if (finalOutputType === 'unknown' && structureInfo?.nodeTypes?.includes('ComfyDeployOutputText')) {
+        finalOutputType = 'text';
+    }
+  
     toolDefinition.platformHints = {
       primaryInput: structureInfo?.primaryInput || 'text',
       supportsFileCaption: structureInfo?.hasRequiredImageOrVideoInput || false,
@@ -1011,7 +1017,7 @@ class WorkflowCacheManager {
     toolDefinition.metadata = {
       deploymentId: actualDeploymentId,
       workflowApiId: workflowSummaryIfNoDeployment?.id || workflowData?.workflow_id || null,
-      outputType: structureInfo?.outputType || 'unknown',
+      outputType: finalOutputType,
       hasPromptNode: structureInfo?.hasPromptNode || false,
       hasKSamplerNode: structureInfo?.hasKSamplerNode || false,
       hasLoraLoader: hasLoraLoader,

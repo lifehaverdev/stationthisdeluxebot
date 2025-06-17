@@ -6,6 +6,7 @@ const {
     sendAnimationWithEscapedCaption, 
     sendVideoWithEscapedCaption 
 } = require('./utils/messaging');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // Placeholder for actual Telegram message sending utilities
 // These might come from a central bot service or utils like '../../utils/utils.js'
@@ -72,32 +73,45 @@ class TelegramNotifier {
       let textOutputs = [];
 
       if (generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload)) {
-          generationRecord.responsePayload.forEach(output => {
-              if (!output.data) return;
+        for (const output of generationRecord.responsePayload) {
+            if (!output.data) continue;
 
-              // Collect Text
-              if (output.data.text && Array.isArray(output.data.text)) {
-                  textOutputs.push(...output.data.text);
-              }
+            // Collect Text
+            if (output.data.text && Array.isArray(output.data.text)) {
+                textOutputs.push(...output.data.text);
+            }
 
-              // Collect Images
-              if (output.data.images && Array.isArray(output.data.images)) {
-                  output.data.images.forEach(image => {
-                      if (image.url) mediaToSend.push({ type: 'photo', url: image.url, caption: '' });
-                  });
-              }
+            // Collect Images
+            if (output.data.images && Array.isArray(output.data.images)) {
+                output.data.images.forEach(image => {
+                    if (image.url) mediaToSend.push({ type: 'photo', url: image.url, caption: '' });
+                });
+            }
 
-              // Collect Videos/Animations from 'files'
-              if (output.data.files && Array.isArray(output.data.files)) {
-                  output.data.files.forEach(file => {
-                      if (file.url && file.format && file.format.startsWith('video/')) {
-                          // Simple distinction: use 'animation' for looping GIFs/short MP4s, 'video' for others.
-                          // For now, we'll treat all videos from this payload as 'video'.
-                          mediaToSend.push({ type: 'video', url: file.url, caption: '' });
-                      }
-                  });
-              }
-          });
+            // Collect Videos/Animations from 'files'
+            if (output.data.files && Array.isArray(output.data.files)) {
+                for (const file of output.data.files) {
+                    if (!file.url) continue;
+
+                    if (file.format && file.format.startsWith('video/')) {
+                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+                    } else if (file.filename && (file.filename.endsWith('.txt') || file.format === 'text/plain')) {
+                        try {
+                            this.logger.info(`[TelegramNotifier] Fetching text content from ${file.url}`);
+                            const response = await fetch(file.url);
+                            if (response.ok) {
+                                const textContent = await response.text();
+                                textOutputs.push(textContent);
+                            } else {
+                                this.logger.warn(`[TelegramNotifier] Failed to fetch text from ${file.url}, status: ${response.status}`);
+                            }
+                        } catch (e) {
+                            this.logger.error(`[TelegramNotifier] Error fetching text content from ${file.url}: ${e.message}`);
+                        }
+                    }
+                }
+            }
+        }
       }
       
       // If after processing there's no media but there is text, send the text.

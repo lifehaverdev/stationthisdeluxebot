@@ -1,5 +1,7 @@
 // src/core/services/comfydeploy/webhookProcessor.js
 
+const notificationEvents = require('../../events/notificationEvents');
+
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
 
@@ -187,6 +189,21 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
       };
        await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload, putRequestOptions);
        logger.info(`[Webhook Processor] Successfully updated generation record ${generationId} for run_id ${run_id}.`);
+
+      // Fetch the full, updated record to dispatch it
+      try {
+        const getRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+        const updatedRecordResponse = await internalApiClient.get(`/internal/v1/data/generations/${generationId}`, getRequestOptions);
+        
+        if (updatedRecordResponse.data) {
+            logger.info(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId}`);
+            notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
+        } else {
+            logger.error(`[Webhook Processor] Could not find generation record ${generationId} after update, cannot emit event.`);
+        }
+      } catch (fetchErr) {
+          logger.error(`[Webhook Processor] Error fetching generation record ${generationId} for event emission:`, fetchErr.message);
+      }
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);
        const errStatus = err.response ? err.response.status : 500;
