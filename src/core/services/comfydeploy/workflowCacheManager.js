@@ -920,7 +920,7 @@ class WorkflowCacheManager {
     let hasLoraLoader = false;
     if (workflowJson && workflowJson.nodes && Array.isArray(workflowJson.nodes)) {
       for (const node of workflowJson.nodes) {
-        if (node && node.type && typeof node.type === 'string' && node.type.startsWith('MultiLoraLoader-')) {
+        if (node && node.type && typeof node.type === 'string' && node.type.startsWith('MultiLoraLoader')) {
           hasLoraLoader = true;
           if (DEBUG_LOGGING_ENABLED_MULTILORA) {
             this.logger.info(`[WorkflowCacheManager] MultiLoraLoader node detected in workflow ${toolDefinition.toolId}.`);
@@ -984,16 +984,29 @@ class WorkflowCacheManager {
                  !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
         // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
         // This is a weaker assumption and might need refinement based on actual checkpoint names or other cues.
-        // Special case: quick- workflows get SD1.5-XL
+        // Special case: quick- workflows get SD1.5-XL. We are now upgrading all SD1.5 to SD1.5-XL.
         const displayName = toolDefinition.displayName?.toLowerCase() || '';
         if (displayName.includes('quick')) {
           detectedBaseModel = 'SD1.5-XL';
         } else {
-          detectedBaseModel = 'SD1.5'; 
+          detectedBaseModel = 'SD1.5-XL'; // Changed from 'SD1.5' to 'SD1.5-XL'
         }
       }
       // Add checks for SD3, BAGEL, etc. here with their specific node types
       // else if (nodeTypes.has('SomeSD3Node')) { detectedBaseModel = 'SD3'; }
+
+      // Override based on checkpoint name if detection is weak (SD1.5)
+      if (detectedBaseModel === 'SD1.5') {
+        if (toolDefinition.inputSchema) {
+          for (const key in toolDefinition.inputSchema) {
+            const input = toolDefinition.inputSchema[key];
+            if (input.name.toLowerCase().includes('checkpoint') && input.default && typeof input.default === 'string' && input.default.toLowerCase().includes('xl')) {
+              detectedBaseModel = 'SDXL'; // Upgrade from SD1.5 to SDXL
+              break;
+            }
+          }
+        }
+      }
 
       if (DEBUG_LOGGING_ENABLED_MULTILORA) { // Re-use existing debug flag for related features
         this.logger.info(`[WorkflowCacheManager] Base model detection for ${toolDefinition.toolId}: Found node types: [${Array.from(nodeTypes).join(', ')}]. Detected base model: ${detectedBaseModel}`);

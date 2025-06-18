@@ -49,12 +49,29 @@ function slugify(text) {
  * @returns {string} The escaped text, or an empty string if input is null/undefined.
  */
 function escapeMarkdownV2(text) {
-  if (text === null || text === undefined) return '';
-  return String(text).replace(/([_*[\]()~`>#+\-=|{}.!])/g, '\\$1');
+    if (typeof text !== 'string') {
+        return '';
+    }
+    // Escape all characters that have a special meaning in MarkdownV2.
+    // Chars to escape: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    return text.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+}
+
+/**
+ * Strips HTML tags from a string.
+ * @param {string} str - The string to strip.
+ * @returns {string} The string with HTML tags removed.
+ */
+function stripHtml(str) {
+    if (typeof str !== 'string') {
+        return '';
+    }
+    return str.replace(/<[^>]*>/g, '');
 }
 
 module.exports = {
     sanitizeCommandName,
     slugify,
-    escapeMarkdownV2
+    escapeMarkdownV2,
+    stripHtml,
 };

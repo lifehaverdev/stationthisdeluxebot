@@ -199,16 +199,27 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
         const initialCount = potentialLoras.length;
         // Debug log to show all potential LoRAs for this trigger before filtering
         logger.info(`[LoRAResolutionService][DEBUG] All potential LoRAs for trigger '${baseToken}':`, potentialLoras.map(l => ({slug: l.slug, checkpoint: l.checkpoint})));
-        // Updated: Use lora.checkpoint for model type filtering, case-insensitive
-        if (toolBaseModel === 'SD1.5-XL') {
+        
+        const upperCaseToolBaseModel = toolBaseModel.toUpperCase();
+
+        // Updated logic for flexible LoRA compatibility
+        if (upperCaseToolBaseModel === 'SD1.5-XL' || upperCaseToolBaseModel === 'SDXL') {
+          // SDXL-based models can often handle both SDXL and SD1.5 LoRAs.
           potentialLoras = potentialLoras.filter(lora =>
             lora.checkpoint && ['SD1.5', 'SDXL'].includes(lora.checkpoint.toUpperCase())
           );
-        } else {
+        } else if (upperCaseToolBaseModel === 'SD1.5') {
+          // SD1.5 models can only handle SD1.5 LoRAs.
           potentialLoras = potentialLoras.filter(lora =>
-            lora.checkpoint && lora.checkpoint.toUpperCase() === toolBaseModel.toUpperCase()
+            lora.checkpoint && lora.checkpoint.toUpperCase() === 'SD1.5'
+          );
+        } else {
+          // For other models (e.g., FLUX, SD3), require an exact match.
+          potentialLoras = potentialLoras.filter(lora =>
+            lora.checkpoint && lora.checkpoint.toUpperCase() === upperCaseToolBaseModel
           );
         }
+
         if (potentialLoras.length < initialCount) {
             logger.info(`[LoRAResolutionService] Filtered ${initialCount - potentialLoras.length} LoRAs from trigger '${baseToken}' due to toolBaseModel/checkpoint mismatch (tool wants ${toolBaseModel}).`);
         }

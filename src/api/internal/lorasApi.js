@@ -36,16 +36,21 @@ async function getCivitaiModelData(url) {
         throw new Error('Could not extract modelId or modelVersionId from Civitai URL.');
     }
 
-    let versionData;
+    let modelJson;
+    let versionJson;
+
     try {
         if (versionId) {
-            const response = await axios.get(`https://civitai.com/api/v1/model-versions/${versionId}`);
-            versionData = response.data;
-        } else {
+            const versionResponse = await axios.get(`https://civitai.com/api/v1/model-versions/${versionId}`);
+            versionJson = versionResponse.data;
+            modelJson = versionJson.model; // The model object is nested inside the version response
+        } else { // We have a modelId, but not a versionId
             const modelResponse = await axios.get(`https://civitai.com/api/v1/models/${modelId}`);
-            if (modelResponse.data && modelResponse.data.modelVersions && modelResponse.data.modelVersions.length > 0) {
-                versionData = modelResponse.data.modelVersions[0];
+            modelJson = modelResponse.data;
+            if (!modelJson.modelVersions || modelJson.modelVersions.length === 0) {
+                throw new Error(`No model versions found for modelId ${modelId}`);
             }
+            versionJson = modelJson.modelVersions[0]; // Get the latest version
         }
     } catch (apiError) {
         const errorMsg = apiError.response ? JSON.stringify(apiError.response.data) : apiError.message;
@@ -53,31 +58,36 @@ async function getCivitaiModelData(url) {
         throw new Error(`Civitai API request failed: ${errorMsg}`);
     }
 
-    if (!versionData) {
+    if (!versionJson) {
         logger.error(`[LorasApi] No version data found on Civitai for url: ${url}`);
         throw new Error('No version data found on Civitai for the provided URL.');
     }
 
-    const modelFile = versionData.files.find(f => f.type === 'Model' && f.metadata?.format?.toLowerCase() === 'safetensors');
+    if (!modelJson) {
+        logger.error(`[LorasApi] No parent model data found for Civitai version ${versionJson.id}`);
+        throw new Error(`Could not find parent model data for version ${versionJson.id}`);
+    }
+
+    const modelFile = versionJson.files.find(f => f.type === 'Model' && f.metadata?.format?.toLowerCase() === 'safetensors');
     
     if (!modelFile) {
-        logger.warn(`[LorasApi] No SafeTensors model file found for Civitai model version ${versionData.id}. Proceeding without a direct modelFileUrl.`);
+        logger.warn(`[LorasApi] No SafeTensors model file found for Civitai model version ${versionJson.id}. Proceeding without a direct modelFileUrl.`);
     }
     
     const modelData = {
-        name: versionData.model.name,
-        description: versionData.description || versionData.model.description || '',
-        triggerWords: versionData.trainedWords || [],
-        checkpoint: versionData.baseModel,
-        tags: (versionData.model.tags || []).map(tag => ({ tag: tag, source: 'civitai' })),
-        previewImages: (versionData.images || []).filter(img => img.url).map(img => img.url),
+        name: modelJson.name,
+        description: versionJson.description || modelJson.description || '',
+        triggerWords: versionJson.trainedWords || [],
+        checkpoint: versionJson.baseModel,
+        tags: (modelJson.tags || []).map(tag => ({ tag: tag, source: 'civitai' })),
+        previewImages: (versionJson.images || []).filter(img => img.url).map(img => img.url),
         defaultWeight: 1.0,
     };
 
     const importDetails = {
         source: 'civitai',
         url: url,
-        originalAuthor: versionData.model.creator?.username || null,
+        originalAuthor: modelJson.creator?.username || null,
         modelFileUrl: modelFile ? modelFile.downloadUrl : null,
     };
     
@@ -280,11 +290,12 @@ router.get('/list', async (req, res) => {
  *  - loraIdentifier (string): The LoRA's slug or MongoDB _id.
  * Query Parameters:
  *  - userId (string, optional): masterAccountId for permission checks (e.g., for private LoRAs).
+ *  - isAdmin (boolean, optional): Flag to bypass standard permission checks for private LoRAs.
  */
 router.get('/:loraIdentifier', async (req, res) => {
   try {
     const { loraIdentifier } = req.params;
-    const { userId } = req.query; // This is masterAccountId string
+    const { userId, isAdmin } = req.query; // isAdmin flag for bypassing permission checks.
     let MAID = null;
     if (userId) {
         try {
@@ -324,8 +335,8 @@ router.get('/:loraIdentifier', async (req, res) => {
       isFavorite = userFavoriteIds.includes(lora._id.toString());
     }
 
-    // Permission check for private LoRAs
-    if (lora.visibility === 'private') {
+    // Permission check for private LoRAs, bypassed for admins
+    if (lora.visibility === 'private' && !isAdmin) {
       if (!MAID) {
         return res.status(403).json({ error: 'Access denied. This LoRA is private and requires user authentication.' });
       }
@@ -333,7 +344,7 @@ router.get('/:loraIdentifier', async (req, res) => {
       const hasPermission = await loRAPermissionsDb.hasAccess(userId, lora._id.toString());
       if (!hasPermission) {
           logger.warn(`[LorasApi] Access denied for MAID ${userId} to private LoRA ${lora._id.toString()}. No permission found.`);
-          return res.status(403).json({ error: 'Access denied to this private LoRA.' });
+        return res.status(403).json({ error: 'Access denied to this private LoRA.' });
       }
     }
     // TODO: Implement more granular license-based permission check if lora.permissionType is 'licensed'
@@ -996,7 +1007,7 @@ router.post('/:loraId/checkpoint', async (req, res) => {
     logger.info(`[LorasApi] Admin updating checkpoint for LoRA ID ${loraId} to ${checkpoint}`);
 
     try {
-        const result = await loRAModelsDb.update(loraObjectId, { checkpoint: checkpoint });
+        const result = await loRAModelsDb.updateModel(loraObjectId, { checkpoint: checkpoint });
         
         if (!result || result.matchedCount === 0) {
             return res.status(404).json({ message: 'LoRA model not found.' });

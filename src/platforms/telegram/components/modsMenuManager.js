@@ -17,6 +17,7 @@ const {
     editEscapedMessageMedia,
     sendPhotoWithEscapedCaption,
 } = require('../utils/messaging');
+const { stripHtml } = require('../../../utils/stringUtils');
  
 // Map for shortening callback data to fit within Telegram's 64-byte limit
 const FILTER_SHORTCODE_MAP = {
@@ -28,6 +29,17 @@ const FILTER_SHORTCODE_MAP = {
 };
 // Create reverse map for easy lookup
 const FILTER_FROM_SHORTCODE_MAP = Object.fromEntries(Object.entries(FILTER_SHORTCODE_MAP).map(([key, value]) => [value, key]));
+
+const ADMIN_ACTION_SHORTCODE_MAP = {
+  'menu': 'm',
+  'change_checkpoint_menu': 'ccm',
+  'set_checkpoint': 'sc',
+  'delete_confirm': 'delc',
+  'delete_execute': 'dele',
+  'grant_owner_permission': 'gop',
+  'edit_nyi': 'nyi',
+};
+const ADMIN_ACTION_FROM_SHORTCODE_MAP = Object.fromEntries(Object.entries(ADMIN_ACTION_SHORTCODE_MAP).map(([key, value]) => [value, key]));
 
 function getFilterShortcode(filterType) {
   return FILTER_SHORTCODE_MAP[filterType] || filterType;
@@ -182,6 +194,77 @@ Send '/cancel' if you change your mind.`;
         await displayModsMainMenu(bot, callbackQuery, masterAccountId, dependencies, true);
         // displayModsMainMenu will call answerCallbackQuery
         return;
+      } else if (subAction === 'admin') {
+        const adminActionShortcode = params[1];
+        const adminAction = ADMIN_ACTION_FROM_SHORTCODE_MAP[adminActionShortcode];
+        logger.info(`[ModsMenuManager] Processing admin action: ${adminAction} (shortcode: ${adminActionShortcode})`);
+
+        if (adminAction === 'menu') {
+            const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
+            await displayModAdminMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+        } else if (adminAction === 'grant_owner_permission') {
+            const [loraId] = params.slice(2);
+            try {
+                await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/grant-owner-access`);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Owner permission granted!' });
+            } catch(err) {
+                const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+                logger.error(`[ModsMenuManager] Error granting owner permission for lora ${loraId}`, err);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Error: ${errorDetail}`, show_alert: true });
+            }
+        } else if (adminAction === 'change_checkpoint_menu') {
+            const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
+            await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+        } else if (adminAction === 'set_checkpoint') {
+            const [loraId, newCheckpoint, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
+            try {
+                await dependencies.internal.client.post(`/internal/v1/data/loras/${loraId}/checkpoint`, { checkpoint: newCheckpoint });
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Checkpoint updated to ${newCheckpoint}!` });
+                await displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
+            } catch(err) {
+                const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+                logger.error(`[ModsMenuManager] Error setting checkpoint for lora ${loraId}`, err);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Error updating checkpoint: ${errorDetail}`, show_alert: true });
+            }
+        } else if (adminAction === 'delete_confirm') {
+            const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(2);
+            const loraResponse = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`, {
+                params: { isAdmin: true }
+            });
+            const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
+            const text = `Are you sure you want to permanently delete Mod: *${loraName}* (ID: \`${loraId}\`)?\n\nThis action cannot be undone.`;
+            const keyboard = [[
+                { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.delete_execute}:${loraId}` },
+                { text: 'Cancel', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.menu}:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }
+            ]];
+            await editEscapedMessageText(bot, text, {
+                chat_id: callbackQuery.message.chat.id,
+                message_id: callbackQuery.message.message_id,
+                reply_markup: { inline_keyboard: keyboard }
+            });
+            await bot.answerCallbackQuery(callbackQuery.id);
+        } else if (adminAction === 'delete_execute') {
+            const [loraId] = params.slice(2);
+            try {
+                await dependencies.internal.client.delete(`/internal/v1/data/loras/${loraId}`);
+                await editEscapedMessageText(bot, `Mod with ID \`${loraId}\` has been deleted.`, {
+                    chat_id: callbackQuery.message.chat.id,
+                    message_id: callbackQuery.message.message_id,
+                    reply_markup: { inline_keyboard: [[{text: 'Back to Main Menu', callback_data: 'mods:main_menu'}]] }
+                });
+                await bot.answerCallbackQuery(callbackQuery.id, { text: 'Mod Deleted!' });
+            } catch(err) {
+                const errorDetail = err.response?.data?.details || err.response?.data?.error || err.message;
+                logger.error(`[ModsMenuManager] Error deleting lora ${loraId}`, err);
+                await bot.answerCallbackQuery(callbackQuery.id, { text: `Error deleting Mod: ${errorDetail}`, show_alert: true });
+            }
+        } else if (adminAction === 'edit_nyi') {
+             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Edit functionality is not yet implemented.', show_alert: true });
+        } else {
+            logger.warn(`[ModsMenuManager] Unknown admin action shortcode: ${adminActionShortcode}`);
+            await bot.answerCallbackQuery(callbackQuery.id);
+        }
+        return;
       } else if (subAction === 'admin_menu') {
         const [loraId, backFilterShortcode, backCheckpoint, backPage] = params.slice(1);
         await displayModAdminMenu(bot, callbackQuery, masterAccountId, dependencies, true, loraId, backFilterShortcode, backCheckpoint, backPage);
@@ -220,8 +303,8 @@ Send '/cancel' if you change your mind.`;
         const loraName = loraResponse.data?.lora?.name || 'Unknown Mod';
         const text = `Are you sure you want to permanently delete Mod: *${loraName}* (ID: \`${loraId}\`)?\n\nThis action cannot be undone.`;
         const keyboard = [[
-            { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin_delete_execute:${loraId}` },
-            { text: 'Cancel', callback_data: `mods:admin_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }
+            { text: '❌ Yes, Delete Permanently ❌', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.delete_execute}:${loraId}` },
+            { text: 'Cancel', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.menu}:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }
         ]];
         await editEscapedMessageText(bot, text, {
             chat_id: callbackQuery.message.chat.id,
@@ -554,7 +637,8 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
 
       if (lora.description) {
         const maxLength = 150;
-        const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
+        const cleanedDesc = stripHtml(lora.description); // Sanitize the description
+        const desc = cleanedDesc.length > maxLength ? cleanedDesc.substring(0, maxLength) + '...' : cleanedDesc;
         messageText += `_${desc}_\n\n`;
       }
 
@@ -606,7 +690,7 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
       if (callbackQuery.from.id === ADMIN_TELEGRAM_USER_ID) {
           keyboard.push([{ 
               text: '⚙️ Admin Actions', 
-              callback_data: `mods:admin_menu:${lora._id}:${backFilterShortcode}:${backCheckpoint}:${backPage}`
+              callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.menu}:${lora._id}:${backFilterShortcode}:${backCheckpoint}:${backPage}`
           }]);
       }
     } else {
@@ -942,7 +1026,8 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
 
       if (lora.description) {
         const maxLength = 150;
-        const desc = lora.description.length > maxLength ? lora.description.substring(0, maxLength) + '...' : lora.description;
+        const cleanedDesc = stripHtml(lora.description); // Sanitize the description
+        const desc = cleanedDesc.length > maxLength ? cleanedDesc.substring(0, maxLength) + '...' : cleanedDesc;
         messageText += `_${desc}_\n\n`;
       }
 
@@ -1116,9 +1201,9 @@ async function displayModAdminMenu(bot, callbackQuery, masterAccountId, dependen
 
     const text = `*Admin Menu for Mod* (ID: \`${loraId}\`)`;
     const keyboard = [
-        [{ text: '❌ Delete Mod', callback_data: `mods:admin_delete_confirm:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
-        [{ text: '✏️ Change Checkpoint', callback_data: `mods:admin_change_checkpoint_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
-        [{ text: '🔧 Fix Owner Permission', callback_data: `mods:admin_grant_owner_permission:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
+        [{ text: '❌ Delete Mod', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.delete_confirm}:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
+        [{ text: '✏️ Change Checkpoint', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.change_checkpoint_menu}:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }],
+        [{ text: '🔧 Fix Owner Permission', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.grant_owner_permission}:${loraId}` }],
         [{ text: 'Back to Mod Detail', callback_data: `mods:detail:${loraId}:${backFilterType}:${backCheckpoint}:${backPage}`}]
     ];
 
@@ -1179,7 +1264,9 @@ async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, 
     logger.info(`[ModsMenuManager] Displaying change checkpoint menu for Mod ${loraId}`);
 
     try {
-        const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`);
+        const response = await dependencies.internal.client.get(`/internal/v1/data/loras/${loraId}`, {
+            params: { isAdmin: true } // Pass admin flag to bypass permission checks
+        });
         const lora = response.data.lora;
         if (!lora) {
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error: Could not find this Mod.', show_alert: true });
@@ -1191,7 +1278,7 @@ async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, 
 
         const checkpointButtons = VALID_CHECKPOINTS.map(cp => {
             const buttonText = (cp === currentLoraCheckpoint) ? `✅ ${cp}` : cp;
-            const callbackData = `mods:admin_set_checkpoint:${loraId}:${cp}:${backFilterShortcode}:${backCheckpoint}:${backPage}`;
+            const callbackData = `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.set_checkpoint}:${loraId}:${cp}:${backFilterShortcode}:${backCheckpoint}:${backPage}`;
             return { text: buttonText, callback_data: callbackData };
         });
 
@@ -1201,7 +1288,7 @@ async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, 
             keyboardRows.push(checkpointButtons.slice(i, i + 2));
         }
 
-        keyboardRows.push([{ text: 'Back to Admin Menu', callback_data: `mods:admin_menu:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }]);
+        keyboardRows.push([{ text: 'Back to Admin Menu', callback_data: `mods:admin:${ADMIN_ACTION_SHORTCODE_MAP.menu}:${loraId}:${backFilterShortcode}:${backCheckpoint}:${backPage}` }]);
 
         await editEscapedMessageText(bot, text, {
             chat_id: chatId,
@@ -1211,7 +1298,9 @@ async function displayChangeCheckpointMenu(bot, callbackQuery, masterAccountId, 
         await bot.answerCallbackQuery(callbackQuery.id);
 
     } catch (error) {
-        logger.error(`[ModsMenuManager] Error displaying change checkpoint menu for Mod ${loraId}:`, error);
+        // Correctly log the error without circular dependencies
+        const errorMsg = error.response?.data?.message || error.message;
+        logger.error(`[ModsMenuManager] Error displaying change checkpoint menu for Mod ${loraId}: ${errorMsg}`, { stack: error.stack });
         await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error showing checkpoint menu.', show_alert: true });
     }
 }
