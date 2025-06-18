@@ -7,6 +7,7 @@ const { ObjectId } = require('../../core/services/db/BaseDB');
 const axios = require('axios'); // For ComfyUI Deploy API call
 const loraTriggerMapApi = require('./loraTriggerMapApi');
 const { sendAdminLoraApprovalRequest } = require('../../core/services/notifications/telegramNotifier');
+const crypto = require('crypto');
 
 // Mount the trigger map router
 router.use(loraTriggerMapApi.router);
@@ -74,10 +75,19 @@ async function getCivitaiModelData(url) {
         logger.warn(`[LorasApi] No SafeTensors model file found for Civitai model version ${versionJson.id}. Proceeding without a direct modelFileUrl.`);
     }
     
+    let trainedWords = versionJson.trainedWords || [];
+    if (trainedWords.length === 0) {
+        logger.info(`[LorasApi] No trigger words found for Civitai model '${modelJson.name}'. Generating a hash-based trigger.`);
+        const hash = crypto.createHash('sha256').update(modelJson.name).digest('hex');
+        const generatedTrigger = `lorahash_${hash.substring(0, 16)}`;
+        trainedWords.push(generatedTrigger);
+        logger.info(`[LorasApi] Generated trigger for '${modelJson.name}': ${generatedTrigger}`);
+    }
+    
     const modelData = {
         name: modelJson.name,
         description: versionJson.description || modelJson.description || '',
-        triggerWords: versionJson.trainedWords || [],
+        triggerWords: trainedWords,
         checkpoint: versionJson.baseModel,
         tags: (modelJson.tags || []).map(tag => ({ tag: tag, source: 'civitai' })),
         previewImages: (versionJson.images || []).filter(img => img.url).map(img => img.url),

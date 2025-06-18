@@ -206,15 +206,20 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
         if (upperCaseToolBaseModel === 'SD1.5-XL' || upperCaseToolBaseModel === 'SDXL') {
           // SDXL-based models can often handle both SDXL and SD1.5 LoRAs.
           potentialLoras = potentialLoras.filter(lora =>
-            lora.checkpoint && ['SD1.5', 'SDXL'].includes(lora.checkpoint.toUpperCase())
+            lora.checkpoint && ['SD1.5', 'SDXL', 'ILLUSTRIOUS'].includes(lora.checkpoint.toUpperCase())
           );
         } else if (upperCaseToolBaseModel === 'SD1.5') {
           // SD1.5 models can only handle SD1.5 LoRAs.
           potentialLoras = potentialLoras.filter(lora =>
             lora.checkpoint && lora.checkpoint.toUpperCase() === 'SD1.5'
           );
+        } else if (upperCaseToolBaseModel === 'FLUX') {
+          // FLUX models can have variations like FLUX.1, FLUX1-D etc.
+          potentialLoras = potentialLoras.filter(lora =>
+            lora.checkpoint && lora.checkpoint.toUpperCase().startsWith('FLUX')
+          );
         } else {
-          // For other models (e.g., FLUX, SD3), require an exact match.
+          // For other models (e.g., SD3), require an exact match.
           potentialLoras = potentialLoras.filter(lora =>
             lora.checkpoint && lora.checkpoint.toUpperCase() === upperCaseToolBaseModel
           );
@@ -250,38 +255,45 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
         }
       }
 
-      if (selectedLora && !lorasAppliedThisRun.has(selectedLora.slug)) {
-        const weightToApply = userSpecifiedWeight !== null ? userSpecifiedWeight : selectedLora.defaultWeight;
-
-        if (weightToApply === 0.0) { // Double check, though handled above
-            finalPromptParts.push(originalSegmentForPush);
-            continue;
+      if (selectedLora) {
+        if (lorasAppliedThisRun.has(selectedLora.slug)) {
+          // This LoRA has already been applied, so just remove the trigger word.
+          logger.info(`[LoRAResolutionService] LoRA with slug ${selectedLora.slug} already applied. Removing duplicate trigger '${baseToken}'.`);
+          finalPromptParts.push(trailingPunctuation);
+          continue;
         }
 
-        const loraTag = `<lora:${selectedLora.slug}:${weightToApply}>`;
-        // ADR Q5: "the trigger becomes <lora:slug:1> trigger"
-        // The 'baseTrigger' field in loraDataForMap is the original trigger word form from loraModels.triggerWords
-        // If it's a cognate, API provides `replaceWithBaseTrigger`.
-        const replacementWordSegment = selectedLora.isCognate && selectedLora.replaceWithBaseTrigger 
-                                        ? selectedLora.replaceWithBaseTrigger 
-                                        : selectedLora.baseTrigger || baseToken; // Fallback to baseToken if baseTrigger is missing
+        const weight = userSpecifiedWeight !== null ? userSpecifiedWeight : (selectedLora.defaultWeight || 1.0);
+        const loraTag = `<lora:${selectedLora.slug}:${weight}>`;
 
-        finalPromptParts.push(`${loraTag} ${replacementWordSegment}${trailingPunctuation}`);
-        
         appliedLoras.push({
           slug: selectedLora.slug,
-          weight: weightToApply,
-          originalWord: segment, // The original segment from the prompt
-          replacedWord: `${loraTag} ${replacementWordSegment}`,
-          modelId: selectedLora.modelId,
-          checkpoint: selectedLora.checkpoint
+          weight: weight,
+          originalWord: segment,
+          replacedWord: loraTag,
+          modelId: selectedLora.modelId
         });
         lorasAppliedThisRun.add(selectedLora.slug);
+
+        // Add the LoRA tag for reconstruction.
+        finalPromptParts.push(loraTag);
+
+        // If the trigger was a generated hash, we are done with this segment.
+        // If it was a normal trigger, add the original text back to preserve user phrasing.
+        if (!baseToken.startsWith('lorahash_')) {
+          finalPromptParts.push(baseToken);
+        }
+
+        // Always add any trailing punctuation back.
+        finalPromptParts.push(trailingPunctuation);
+
       } else {
-        finalPromptParts.push(originalSegmentForPush); // No suitable LoRA or already applied
+        // No *valid* LoRA for this trigger (e.g., filtered out), so add the original segment back.
+        finalPromptParts.push(originalSegmentForPush);
       }
     } else {
-      finalPromptParts.push(originalSegmentForPush); // Not a trigger
+      // Not a trigger, just add the segment back
+      finalPromptParts.push(segment);
     }
   }
   
