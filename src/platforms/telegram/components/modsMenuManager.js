@@ -647,7 +647,9 @@ async function displayModDetailScreen(bot, callbackQuery, masterAccountId, depen
       if (lora.triggerWords && lora.triggerWords.length > 0) {
         let tempTriggers = lora.triggerWords.join(', ');
         if (tempTriggers.length > 100) tempTriggers = tempTriggers.substring(0, 97) + '...';
-        messageText += `*Triggers:* \`${tempTriggers}\`\n`;
+        // Unescape characters for display within a code block, as the block itself prevents parsing.
+        const unescapedTriggers = tempTriggers.replace(/\\([_*\[\]()~`>#+\-=|{}.!])/g, '$1');
+        messageText += `*Triggers:* \`${unescapedTriggers}\`\n`;
       }
 
       // Display cognates if they exist
@@ -1036,7 +1038,9 @@ async function displayStoreModDetailScreen(bot, callbackQuery, masterAccountId, 
       if (lora.triggerWords && lora.triggerWords.length > 0) {
         let tempTriggers = lora.triggerWords.join(', ');
         if (tempTriggers.length > 100) tempTriggers = tempTriggers.substring(0, 97) + '...';
-        messageText += `*Triggers:* \`${tempTriggers}\`\n`;
+        // Unescape characters for display within a code block, as the block itself prevents parsing.
+        const unescapedTriggers = tempTriggers.replace(/\\([_*\[\]()~`>#+\-=|{}.!])/g, '$1');
+        messageText += `*Triggers:* \`${unescapedTriggers}\`\n`;
       }
       
       const price = lora.monetization?.forSale && lora.monetization?.priceUSD ? lora.monetization.priceUSD : null;
