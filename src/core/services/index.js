@@ -19,6 +19,13 @@ const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 const loraResolutionService = require('./loraResolutionService');
 
+// Import new Alchemy/Ethereum services
+const EthereumService = require('./alchemy/ethereumService');
+const CreditService = require('./alchemy/creditService');
+const PriceFeedService = require('./alchemy/priceFeedService');
+const DexService = require('./alchemy/dexService');
+const TokenRiskEngine = require('./alchemy/tokenRiskEngine');
+
 /**
  * Initialize all core services
  * @param {Object} options - Configuration options
@@ -69,6 +76,54 @@ async function initializeServices(options = {}) {
     }
     const initializedDbServices = dbService.initializeDbServices(logger);
     logger.info('Database services initialized.');
+
+    // --- Initialize On-Chain Services ---
+    let ethereumService;
+    let creditService;
+    try {
+      logger.info('Initializing on-chain services (Ethereum, Credit)...');
+      // 1. Initialize EthereumService
+      const ethereumConfig = {
+        rpcUrl: process.env.ETHEREUM_RPC_URL,
+        privateKey: process.env.ETHEREUM_SIGNER_PRIVATE_KEY,
+      };
+      if (!ethereumConfig.rpcUrl || !ethereumConfig.privateKey) {
+        logger.warn('[EthereumService] Not initialized: ETHEREUM_RPC_URL or ETHEREUM_SIGNER_PRIVATE_KEY is missing from .env. On-chain features will be disabled.');
+      } else {
+        ethereumService = new EthereumService(ethereumConfig, logger);
+
+        // 2. Initialize supporting on-chain services
+        const priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_API_KEY }, logger);
+        const dexService = new DexService({ ethereumService }, logger);
+        const tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
+
+        // 3. Initialize CreditService (depends on EthereumService and supporting services)
+        const creditServiceConfig = {
+          creditVaultAddress: process.env.CREDIT_VAULT_ADDRESS,
+          creditVaultAbi: JSON.parse(process.env.CREDIT_VAULT_ABI || '[]'),
+        };
+        
+        if (!creditServiceConfig.creditVaultAddress || creditServiceConfig.creditVaultAbi.length === 0) {
+            logger.warn('[CreditService] Not initialized: CREDIT_VAULT_ADDRESS or CREDIT_VAULT_ABI is missing from .env. Credit service will be disabled.');
+        } else {
+            const creditServiceDependencies = {
+                ethereumService,
+                creditLedgerDb: initializedDbServices.data.creditLedger, // Assuming db/index wires this up
+                systemStateDb: initializedDbServices.data.systemState, // Assuming db/index wires this up
+                userCoreDb: initializedDbServices.data.userCore,
+                userEconomyDb: initializedDbServices.data.userEconomy,
+                priceFeed: priceFeedService, // Use the real service instance
+                tokenRiskEngine, // Pass the risk engine
+            };
+            creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
+        }
+        logger.info('On-chain services initialized.');
+      }
+    } catch (error) {
+        logger.error('Failed to initialize on-chain services:', error);
+        // Continue without on-chain features
+    }
+    // --- End On-Chain Services ---
 
     // Initialize API services
     const apiServices = initializeAPI({
@@ -122,6 +177,11 @@ async function initializeServices(options = {}) {
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService
+      ethereumService, // Add new service
+      creditService, // Add new service
+      priceFeedService, // Add new service
+      dexService, // Add new service
+      tokenRiskEngine, // Add new service
       logger,
       appStartTime,
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
@@ -148,5 +208,11 @@ module.exports = {
   OpenAIService,
   WorkflowExecutionService,
   initializeServices,
-  ToolRegistry // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
+  ToolRegistry, // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
+  // Export new services
+  EthereumService,
+  CreditService,
+  PriceFeedService,
+  DexService,
+  TokenRiskEngine,
 }; 

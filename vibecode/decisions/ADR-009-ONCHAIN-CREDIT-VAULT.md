@@ -19,7 +19,41 @@ We will adopt a two-service architecture to separate blockchain interaction from
     *   **Responsibilities**: Manages the connection to an Ethereum node via Alchemy, securely handles the application's signer wallet, loads smart contracts via ABI, and provides generic, reusable functions for reading from and writing to the blockchain (e.g., `readContract`, `writeContract`). It will not contain any business-specific logic.
 
 2.  **`CreditService`**: A new high-level service containing the specific business logic for the credit vault.
-    *   **Responsibilities**: Implements the deposit and withdrawal flows, uses the `EthereumService` for on-chain actions, queries Alchemy's price feed, performs withdrawal calculations, and manages the mapping between application users and their credits.
+    *   **Responsibilities**: Manages the end-to-end credit lifecycle, including assessing collateral risk, confirming deposits, monitoring collateral value against user debt, executing on-chain liquidations, and triggering treasury management swaps.
+
+### Credit Lifecycle and Risk Management
+The `CreditService` manages a sophisticated lifecycle for user collateral, which extends far beyond simple deposits and withdrawals. It functions as a collateralized debt and risk management engine.
+
+1.  **Ingestion & Onboarding (Credit Adding)**: This is the entry point for user funds.
+    *   **Event Detection**: Monitors for `Deposit` (from the main vault) and `AccountDeposit` (from referral vaults) events.
+    *   **Collateral Risk Assessment**: Before processing a deposit, the `TokenRiskEngine` is used to analyze the asset. It checks liquidity, volatility, and other on-chain metrics to determine if the token is acceptable collateral and at what liquidation threshold.
+    *   **Value Calculation**: For an approved token, the `PriceFeedService` gets its real-time USD value.
+    *   **On-Chain Custody**: The service executes a `confirmCredit` transaction on-chain. This is a critical step that moves the funds from user control to application control, collateralizing the credit we are about to issue.
+    *   **Internal Credit Issuance**: The USD value is converted into internal points (e.g., 1 point = 1 second of A10G GPU time at a fixed USD rate) and added to the user's off-chain account balance.
+
+2.  **Consumption & Monitoring (Credit Subtraction)**: This is the day-to-day operation.
+    *   An internal API allows other services to deduct points as they are consumed (e.g., upon successful AI generation).
+    *   The service continuously monitors the real-time value of the user's on-chain collateral against their outstanding (consumed) credit. If the collateral value drops perilously close to the value of the credit issued, a liquidation is triggered.
+
+3.  **Settlement (Liquidation)**: This is the automated intervention to prevent system losses.
+    *   When a liquidation threshold is breached (e.g., collateral value falls to 120% of debt), the service executes an on-chain transaction to seize the collateral, settling the user's debt.
+    *   The user's internal point balance is zeroed out, and the `credit_ledger` is updated to reflect the settlement.
+
+4.  **Asset Management (Post-Liquidation)**: This is the system's treasury management function.
+    *   After seizing a volatile asset, the `CreditService` instructs the `DexService` to immediately swap the asset for a stablecoin (e.g., USDC) to eliminate further price risk to the treasury.
+
+### Supporting Services
+To handle this complexity, the `CreditService` relies on several new, specialized services:
+
+-   **`TokenRiskEngine`**: Analyzes tokens to determine their viability as collateral. It checks on-chain liquidity depth on DEXs, price volatility, contract verification status, and other heuristics to generate a risk profile.
+-   **`PriceFeedService`**: A dedicated service for fetching reliable, real-time token prices from sources like Alchemy or Chainlink.
+-   **`DexService`**: An abstraction layer for interacting with a decentralized exchange protocol (e.g., Uniswap v3) to programmatically swap assets. The `DexService` provides read-only quotes and executes write transactions for swaps.
+
+### Referral System via `VaultAccount` Sub-Contracts
+To facilitate referral tracking, we will employ a factory pattern. The main `CreditVault` contract contains a `createVaultAccount` function, callable only by our backend. This function deploys a unique, secondary `VaultAccount` contract for each user who generates a referral link.
+
+-   **Deterministic Addresses**: The creation uses `CREATE2`, allowing us to provide a `salt`. This enables the backend to "mine" a salt that results in a vanity contract address (e.g., starting with `0x1152...`) for easy on-chain identification.
+-   **Deposit Tracking**: Deposits made to these `VaultAccount` addresses will emit their own `AccountDeposit` event. The `CreditService` will monitor for these events across all created vault accounts to attribute deposits to the correct referrer. The `credit_ledger` in the database will store which type of vault received the funds.
 
 ### User Wallet Linking Strategy
 We will support two methods for linking user wallets to their application accounts, accommodating different platform capabilities:
@@ -46,6 +80,9 @@ We will use a secrets manager, such as HashiCorp Vault, to securely manage the E
 ## Alternatives Considered
 -   **Centralized Ledger**: Using our existing database to manage credits. This was rejected to prioritize the security, user ownership, and transparency that a blockchain-based solution provides.
 -   **On-Chain Event Polling**: Continuously polling the blockchain for new events instead of using webhooks. This was rejected as it is less efficient, introduces latency, and increases infrastructure load compared to the real-time, push-based approach of webhooks.
+-   **New Internal Services**: `PriceFeedService`, `TokenRiskEngine`, and `DexService` must be designed, built, and maintained.
+-   **Economic Risk**: The application's treasury is now directly exposed to market volatility from the collateral it holds and the smart contract risk of the DEXs it interacts with during asset swaps.
+-   **Asynchronous Complexity**: The architecture becomes significantly more complex and event-driven, requiring robust error handling, transaction monitoring, and potential retry logic for all on-chain operations.
 
 ## Open Questions & Next Steps
 1.  **Contract Details**: What is the deployed address and the Application Binary Interface (ABI) for the credit vault smart contract?
@@ -56,4 +93,9 @@ We will use a secrets manager, such as HashiCorp Vault, to securely manage the E
 6.  **Gas Management**: How will gas fees for confirmation and withdrawal transactions be handled and paid for?
 7.  **Error Handling**: What is the recovery strategy if a confirmation transaction fails? How do we notify the user or admin?
 8.  **Secrets Management Setup**: Configure HashiCorp Vault (or a similar service) to securely manage the Ethereum signer's private key.
-9.  **Database Design**: Design a database schema to store transaction receipts and other relevant data for tracking and auditing. 
+9.  **Database Design**: Design a database schema to store transaction receipts and other relevant data for tracking and auditing.
+
+## Alternatives Considered
+-   **Simple Credit Model**: A model without liquidation or risk assessment where we take immediate ownership of any deposited asset. This was rejected as it would expose the system to unacceptable losses from volatile assets and offer a poor user experience.
+-   **Centralized Ledger**: Using our existing database to manage credits. This was rejected to prioritize the security, user ownership, and transparency that a blockchain-based solution provides.
+-   **On-Chain Event Polling**: Continuously polling the blockchain for new events instead of using webhooks. This was rejected as it is less efficient, introduces latency, and increases infrastructure load compared to the real-time, push-based approach of webhooks. 

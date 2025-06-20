@@ -82,6 +82,15 @@ async function startApp() {
     } else {
       logger.warn('WorkflowsService not found or does not have an initialize method.');
     }
+
+    // Initialize CreditService to reconcile with the blockchain
+    if (services.creditService && typeof services.creditService.initialize === 'function') {
+        logger.info('Initializing CreditService to sync with on-chain state...');
+        await services.creditService.initialize();
+        logger.info('CreditService sync complete.');
+    } else {
+        logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
+    }
     
     // Debug log to verify internal services are available
     logger.debug('DEBUG: Internal API services available:', {
