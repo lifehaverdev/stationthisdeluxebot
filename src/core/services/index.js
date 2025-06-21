@@ -18,6 +18,7 @@ const WorkflowExecutionService = require('./WorkflowExecutionService.js');
 const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 const loraResolutionService = require('./loraResolutionService');
+const internalApiClient = require('../../utils/internalApiClient'); // Import the singleton client
 
 // Import new Alchemy/Ethereum services
 const EthereumService = require('./alchemy/ethereumService');
@@ -86,23 +87,27 @@ async function initializeServices(options = {}) {
     let tokenRiskEngine;
     try {
       logger.info('Initializing on-chain services (Ethereum, Credit)...');
-      // 1. Initialize EthereumService
-      const ethereumConfig = {
+      
+      const ethConfig = {
         rpcUrl: process.env.ETHEREUM_RPC_URL,
-        privateKey: process.env.ETHEREUM_SIGNER_PRIVATE_KEY,
         chainId: process.env.ETHEREUM_CHAIN_ID,
       };
-      if (!ethereumConfig.rpcUrl || !ethereumConfig.privateKey) {
+
+      if (!ethConfig.rpcUrl || !process.env.ETHEREUM_SIGNER_PRIVATE_KEY) {
         logger.warn('[EthereumService] Not initialized: ETHEREUM_RPC_URL or ETHEREUM_SIGNER_PRIVATE_KEY is missing from .env. On-chain features will be disabled.');
       } else {
-        ethereumService = new EthereumService(ethereumConfig, logger);
-
-        // 2. Initialize supporting on-chain services
+        // 1. Initialize services with no dependencies first.
         priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
+
+        // 2. Initialize EthereumService, which now requires priceFeedService for gas estimates.
+        const ethereumServiceDependencies = { priceFeedService };
+        ethereumService = new EthereumService(ethConfig, ethereumServiceDependencies, logger);
+
+        // 3. Initialize remaining services that depend on the above.
         dexService = new DexService({ ethereumService }, logger);
         tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
 
-        // 3. Initialize CreditService (depends on EthereumService and supporting services)
+        // 4. Initialize CreditService
         const networkName = getNetworkName(ethereumService.chainId);
         const creditServiceConfig = {
           creditVaultAddress: contracts.creditVault.addresses[networkName],
@@ -114,12 +119,10 @@ async function initializeServices(options = {}) {
         } else {
             const creditServiceDependencies = {
                 ethereumService,
-                creditLedgerDb: initializedDbServices.data.creditLedger, // Assuming db/index wires this up
-                systemStateDb: initializedDbServices.data.systemState, // Assuming db/index wires this up
-                userCoreDb: initializedDbServices.data.userCore,
-                userEconomyDb: initializedDbServices.data.userEconomy,
-                priceFeedService: priceFeedService, // Use the real service instance
-                tokenRiskEngine, // Pass the risk engine
+                creditLedgerDb: initializedDbServices.data.creditLedger,
+                systemStateDb: initializedDbServices.data.systemState,
+                priceFeedService, // Pass the price feed service
+                tokenRiskEngine,
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
         }
@@ -131,23 +134,27 @@ async function initializeServices(options = {}) {
     }
     // --- End On-Chain Services ---
 
-    // Initialize API services
-    const apiServices = initializeAPI({
-      logger, 
-      appStartTime,
-      version: options.version,
-      db: initializedDbServices, // Pass the INSTANTIATED services
-      toolRegistry, // Pass toolRegistry to API initialization
-      openai: openAIService // Pass the newly instantiated openai service
-    });
-    
-    // Initialize UserSettingsService after API client and toolRegistry are available
-    const userSettingsService = getUserSettingsService({ 
-      logger, 
-      toolRegistry, 
-      internalApiClient: apiServices.internal?.client 
+    // Initialize UserSettingsService before the API so it can be injected.
+    const userSettingsService = getUserSettingsService({
+      logger,
+      toolRegistry,
+      internalApiClient // Use the directly imported singleton
     });
     logger.info('UserSettingsService initialized globally in core services.');
+
+    // Initialize API services, now with userSettingsService
+    const apiServices = initializeAPI({
+      logger,
+      appStartTime,
+      version: options.version,
+      db: initializedDbServices,
+      toolRegistry,
+      openai: openAIService,
+      userSettingsService // Pass the service to the API layer
+    });
+    
+    // The internalApiClient is a singleton utility, not from apiServices.
+    // The old logic to extract it from apiServices is removed.
     
     // Initialize WorkflowExecutionService
     const workflowExecutionService = new WorkflowExecutionService({
@@ -157,6 +164,7 @@ async function initializeServices(options = {}) {
       internalApiClient: apiServices.internal?.client,
       db: initializedDbServices.data,
       workflowsService: workflowsService,
+      userSettingsService, // Added userSettingsService
     });
     logger.info('WorkflowExecutionService initialized.');
 

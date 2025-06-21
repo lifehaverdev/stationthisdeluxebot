@@ -7,22 +7,19 @@ const LoRAModelsDB = require('../../core/services/db/loRAModelDb'); // For valid
 
 // This function initializes the routes for the User Preferences API
 module.exports = function userPreferencesApi(dependencies) {
-  const { logger, db, toolRegistry, internalApiClient } = dependencies; // Added toolRegistry and internalApiClient for UserSettingsService
+  const { logger, db, toolRegistry, userSettingsService } = dependencies; // Use the injected userSettingsService
   const userPreferencesDb = new UserPreferencesDB(logger);
   const loRAModelsDb = new LoRAModelsDB(logger); // For validating LoRA existence
   // Use mergeParams to access masterAccountId from the parent router (userCoreApi)
   const router = express.Router({ mergeParams: true }); 
 
-  // Instantiate UserSettingsService
-  // It's better if UserSettingsService is initialized once and passed in dependencies.
-  // For now, creating an instance here. Consider passing as 'userSettingsService' in dependencies.
-  const userSettingsService = getUserSettingsService({ toolRegistry, internalApiClient });
-
-  // Check for essential dependencies
-  if (!db || !db.userPreferences) {
-    logger.error('[userPreferencesApi] Critical dependency failure: db.userPreferences service is missing!');
+  // The UserSettingsService is now injected directly via dependencies.
+  // The call to getUserSettingsService() is no longer needed here.
+  if (!userSettingsService) {
+    logger.error('[userPreferencesApi] Critical dependency failure: userSettingsService is missing!');
+    // Return a router that always errors out
     return (req, res, next) => {
-        res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserPreferences database service is not available.' } });
+        res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserSettingsService is not available.' } });
     };
   }
 

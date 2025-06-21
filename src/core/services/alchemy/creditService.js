@@ -1,4 +1,4 @@
-const { ethers, formatEther } = require('ethers');
+const { ethers, formatEther, keccak256, toUtf8Bytes } = require('ethers');
 const CreditLedgerDB = require('../db/alchemy/creditLedgerDb');
 const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
@@ -51,37 +51,33 @@ class CreditService {
     this.logger.info(`[CreditService] Configured to use CreditVault at address: ${this.contractConfig.address}`);
     this.logger.info('[CreditService] Initialized.');
 
-    // DEBUG: Forcing reconciliation logic to run from the constructor
-    // to bypass issues with the start() method call in app.js.
-    (async () => {
-        try {
-            this.logger.info('[CreditService] Starting service directly from constructor for debug...');
-            this.logger.warn('[CreditService] Clearing credit ledger for testing...');
-            await this.creditLedgerDb.clearCollection();
-            this.logger.warn('[CreditService] Clearing system state for testing...');
-            await this.systemStateDb.clearCollection();
-            this.logger.info('[CreditService] Credit ledger and system state cleared.');
-            await this.reconcileMissedEvents();
-        } catch (error) {
-            this.logger.error('[CreditService] CRITICAL: Reconciliation process failed during constructor startup.', error);
-        }
-    })();
+    // The start() method is now the primary entry point.
+    // The constructor no longer runs the reconciliation logic directly.
   }
 
   /**
    * Starts the service.
-   * Clears the ledger for testing, then runs the startup reconciliation for missed events.
+   * Runs the startup reconciliation for missed events and processes the pending queue.
    */
   async start() {
-    this.logger.warn('[CreditService] start() method is currently bypassed for debugging. Reconciliation logic is running from the constructor.');
-    // The original logic is now in the constructor.
+    this.logger.info('[CreditService] Starting service...');
+    try {
+        // No longer clearing collections on startup to maintain state.
+        this.logger.info('[CreditService] Stage 1: Acknowledging new deposit events...');
+        await this.acknowledgeNewEvents();
+        this.logger.info('[CreditService] Stage 2: Processing pending confirmations...');
+        await this.processPendingConfirmations();
+        this.logger.info('[CreditService] Startup processing complete.');
+    } catch (error) {
+        this.logger.error('[CreditService] CRITICAL: Reconciliation or processing failed during startup.', error);
+    }
   }
 
   /**
-   * Scans for and processes any `DepositRecorded` events missed since the last run.
+   * STAGE 1: Scans for and acknowledges any `DepositRecorded` events not yet in our database.
    */
-  async reconcileMissedEvents() {
-    this.logger.info('[CreditService] Starting reconciliation of missed deposit events...');
+  async acknowledgeNewEvents() {
+    this.logger.info('[CreditService] Starting acknowledgment of new deposit events...');
     const fromBlock = (await this.systemStateDb.getLastSyncedBlock(CONTRACT_DEPLOYMENT_BLOCK)) + 1;
     const toBlock = await this.ethereumService.getLatestBlock();
 
@@ -99,90 +95,167 @@ class CreditService {
       toBlock,
     );
 
-    this.logger.info(`[CreditService] Found ${pastDepositEvents.length} missed 'DepositRecorded' events. Processing...`);
+    this.logger.info(`[CreditService] Found ${pastDepositEvents.length} new 'DepositRecorded' events. Acknowledging...`);
 
     for (const event of pastDepositEvents) {
-      await this._processDeposit(event);
+        const { transactionHash, logIndex, blockNumber, args } = event;
+        let { vaultAccount } = args;
+        const { user, token, amount } = args;
+
+        // If vaultAccount is not in the event args, it's a deposit to the main vault.
+        // In this case, the vaultAccount IS the main contract address.
+        if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
+            this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in event args for tx ${transactionHash}. Assuming deposit to main vault.`);
+            vaultAccount = this.contractConfig.address;
+        }
+
+        const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
+        if (existingEntry) {
+            this.logger.debug(`[CreditService] Skipping event for tx ${transactionHash} as it's already acknowledged.`);
+            continue;
+        }
+
+        this.logger.info(`[CreditService] Acknowledging new deposit: ${transactionHash}`);
+        await this.creditLedgerDb.createLedgerEntry({
+            deposit_tx_hash: transactionHash,
+            deposit_log_index: logIndex,
+            deposit_block_number: blockNumber,
+            vault_account: vaultAccount,
+            depositor_address: user,
+            token_address: token,
+            deposit_amount_wei: amount.toString(),
+            status: 'PENDING_CONFIRMATION', // Initial status
+        });
     }
 
-    this.logger.info('[CreditService] Reconciliation process completed.');
+    this.logger.info('[CreditService] Event acknowledgment process completed.');
     await this.systemStateDb.setLastSyncedBlock(toBlock);
+  }
+  
+  /**
+   * STAGE 2: Processes all deposits that are in a 'PENDING_CONFIRMATION' state.
+   */
+  async processPendingConfirmations() {
+      this.logger.info(`[CreditService] Checking for deposits pending confirmation or in error state...`);
+      const pendingDeposits = await this.creditLedgerDb.findProcessableEntries();
+
+      if (pendingDeposits.length === 0) {
+          this.logger.info('[CreditService] No deposits are pending confirmation or in error state.');
+          return;
+      }
+
+      this.logger.info(`[CreditService] Found ${pendingDeposits.length} deposits to process. Processing...`);
+      for (const deposit of pendingDeposits) {
+          await this._processSingleConfirmation(deposit);
+      }
   }
 
   /**
-   * Private method to process a single deposit event.
-   * @param {ethers.EventLog} event - The ethers.js event log object.
+   * Private method to process a single pending confirmation.
+   * This contains the logic previously in _processDeposit.
+   * @param {object} deposit - The ledger entry document from the database.
    * @private
    */
-  async _processDeposit(event) {
-    const { transactionHash, logIndex, blockNumber, args } = event;
-    const { vaultAccount, user, token, amount } = args;
+  async _processSingleConfirmation(deposit) {
+    const { deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, vault_account: vaultAccount, depositor_address: user, token_address: token, deposit_amount_wei } = deposit;
+    const amount = ethers.getBigInt(deposit_amount_wei);
 
-    // For now, we only care about native ETH deposits.
+    this.logger.info(`[CreditService] Processing confirmation for tx ${transactionHash}`);
+    
+    // For now, we only care about native ETH deposits. This can be expanded.
     if (token.toLowerCase() !== NATIVE_ETH_ADDRESS.toLowerCase()) {
         this.logger.debug(`[CreditService] Skipping non-ETH deposit in tx ${transactionHash} for token ${token}.`);
+        // TODO: Update status to 'SKIPPED' or similar?
         return;
     }
 
-    this.logger.info(`[CreditService] Processing ETH deposit from ${user} for amount ${amount.toString()} in tx ${transactionHash}`);
-
     try {
-      const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
-      if (existingEntry) {
-        this.logger.warn(`[CreditService] Deposit event for tx ${transactionHash} already processed. Skipping.`);
-        return;
-      }
+      // ON-CHAIN VERIFICATION VIA EVENT QUERY
+      // We create a unique ID for the original deposit event to check if it's been confirmed.
+      const uniqueEventArgs = [vaultAccount, user, token, amount];
+      this.logger.info(`[CreditService] Verifying on-chain confirmation status for deposit: ${transactionHash}`);
+
+      // Query for past CreditConfirmed events that match our deposit details
+      const confirmedEvents = await this.ethereumService.getPastEvents(
+        this.contractConfig.address,
+        this.contractConfig.abi,
+        'CreditConfirmed',
+        blockNumber, // Start searching from the block of the deposit
+        'latest',
+        [vaultAccount, user, token] // Filter by indexed event params
+      );
       
+      const alreadyConfirmed = confirmedEvents.some(event => event.args.amount.toString() === amount.toString());
+
+      if (alreadyConfirmed) {
+          this.logger.warn(`[CreditService] Found CreditConfirmed event for deposit ${transactionHash}. Updating status and skipping transaction.`);
+          const confirmedEvent = confirmedEvents.find(event => event.args.amount.toString() === amount.toString());
+          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', { 
+            failure_reason: 'Confirmed in a previous run.',
+            confirmation_tx_hash: confirmedEvent.transactionHash
+          });
+          return;
+      }
+      this.logger.info(`[CreditService] No 'CreditConfirmed' event found. Proceeding with processing.`);
+
+      // --- Full validation logic from the old _processDeposit method ---
       this.logger.info(`[CreditService] Assessing collateral for token ${token}...`);
       const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
 
       if (!riskAssessment.isSafe) {
-          this.logger.error(`[CreditService] Collateral assessment failed for tx ${transactionHash}. Reason: ${riskAssessment.reason}. Halting processing for this deposit.`);
-          // Optionally, create a ledger entry with 'FAILED' status
-          await this.creditLedgerDb.createLedgerEntry({
-              deposit_tx_hash: transactionHash,
-              deposit_log_index: logIndex,
-              deposit_block_number: blockNumber,
-              depositor_address: user,
-              token_address: token,
-              deposit_amount_wei: amount.toString(),
-              status: 'FAILED_RISK_ASSESSMENT',
-              failure_reason: riskAssessment.reason,
-          });
+          this.logger.error(`[CreditService] Collateral assessment failed for tx ${transactionHash}. Reason: ${riskAssessment.reason}.`);
+          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
           return;
       }
       this.logger.info(`[CreditService] Collateral assessment passed for tx ${transactionHash}.`);
 
       const priceInUsd = riskAssessment.price;
       if (!priceInUsd || priceInUsd <= 0) {
-          this.logger.error(`[CreditService] Could not retrieve a valid price for token ${token} from risk assessment in tx ${transactionHash}.`);
+          this.logger.error(`[CreditService] Could not retrieve a valid price for token ${token} in tx ${transactionHash}.`);
+          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { failure_reason: 'Invalid price retrieved.' });
           return;
       }
 
       const amountInNative = formatEther(amount);
       const depositValueUsd = parseFloat(amountInNative) * priceInUsd;
-      const creditPoints = depositValueUsd / USD_TO_POINTS_CONVERSION_RATE;
-
-      this.logger.info(`[CreditService] Deposit value: $${depositValueUsd.toFixed(2)} (Amount: ${amountInNative} ETH, Price: $${priceInUsd}). Awarding ${creditPoints.toFixed(0)} points.`);
       
-      // --- DIAGNOSTIC: Read escrow state before confirming ---
+      this.logger.info(`[CreditService] Performing pre-flight gas profitability check...`);
       try {
-        const custodyKey = getCustodyKey(user, token);
-        this.logger.info(`[CreditService] DIAGNOSTIC: Reading custody for key ${custodyKey} in vault ${vaultAccount}`);
-        const packedBalance = await this.ethereumService.read(
-            this.contractConfig.address,
-            this.contractConfig.abi,
-            'custody',
-            vaultAccount,
-            custodyKey
+        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(
+          this.contractConfig.address,
+          this.contractConfig.abi,
+          'confirmCredit',
+          vaultAccount,
+          user,
+          token,
+          amount,
+          0,      // fee
+          '0x'    // metadata
         );
-        const { userOwned, escrow } = splitCustodyAmount(packedBalance);
-        this.logger.info(`[CreditService] DIAGNOSTIC: On-chain balance is: userOwned=${userOwned.toString()}, escrow=${escrow.toString()}`);
-        this.logger.info(`[CreditService] DIAGNOSTIC: Comparing with event amount: ${amount.toString()}`);
-      } catch (diagError) {
-          this.logger.error('[CreditService] DIAGNOSTIC: Failed to read custody state.', diagError);
+
+        if (estimatedGasCostUsd >= depositValueUsd) {
+          this.logger.warn(`[CreditService] Deposit for tx ${transactionHash} is not profitable. Rejecting.`);
+          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'REJECTED_UNPROFITABLE', {
+              deposit_value_usd: depositValueUsd,
+              failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded deposit value ($${depositValueUsd.toFixed(2)}).`
+          });
+          return;
+        }
+      } catch (error) {
+        const errorMessage = error.message || 'An unknown error occurred';
+        this.logger.error(`[CreditService] Gas estimation failed for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
+        
+        const failureReason = "Gas estimation failed, transaction would revert.";
+        const detailedError = `The operator wallet may not be an authorized 'backend' on the CreditVault contract. Raw Error: ${errorMessage}`;
+        
+        await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { 
+          failure_reason: failureReason,
+          error_details: detailedError
+        });
+        return; // Stop processing this deposit
       }
-      // --- END DIAGNOSTIC ---
+      
+      this.logger.info(`[CreditService] Gas profitability check passed.`);
       
       this.logger.info(`[CreditService] Executing on-chain credit confirmation for tx ${transactionHash}...`);
       
@@ -194,40 +267,45 @@ class CreditService {
           user,
           token,
           amount,
-          0, // fee
-          '0x' // metadata
+          0,      // fee
+          '0x'    // metadata
       );
       
       this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.transactionHash}`);
 
-      await this.creditLedgerDb.createLedgerEntry({
-        deposit_tx_hash: transactionHash,
-        deposit_log_index: logIndex,
-        deposit_block_number: blockNumber,
+      const actualGasUsed = confirmationReceipt.gasUsed;
+      const effectiveGasPrice = confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice;
+      const actualGasCostEth = actualGasUsed * effectiveGasPrice;
+      const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
+      const netDepositValueUsd = depositValueUsd - actualGasCostUsd;
+      const creditPoints = netDepositValueUsd > 0 ? (netDepositValueUsd / USD_TO_POINTS_CONVERSION_RATE) : 0;
+      
+      this.logger.info(`[CreditService] Debited gas cost. Net value: $${netDepositValueUsd.toFixed(2)}. Awarding ${creditPoints.toFixed(0)} points.`);
+      
+      await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', {
         deposit_event_name: 'DepositRecorded',
-        depositor_address: user,
-        token_address: token,
-        deposit_amount_wei: amount.toString(),
         deposit_value_usd: depositValueUsd,
+        gas_cost_usd: actualGasCostUsd,
+        net_value_usd: netDepositValueUsd,
         credit_points_awarded: creditPoints,
         confirmation_tx_hash: confirmationReceipt.transactionHash,
-        status: 'CONFIRMED', 
       });
 
       this.logger.info(`[CreditService] Successfully recorded and confirmed deposit for tx ${transactionHash}`);
 
     } catch (error) {
-      this.logger.error(`[CreditService] Failed to process deposit for tx ${transactionHash}:`, error);
-      // Here you might want to create a ledger entry with 'ERROR' status
-      // to avoid retrying a transaction that will consistently fail.
-      await this.creditLedgerDb.createLedgerEntry({
-          deposit_tx_hash: transactionHash,
-          logIndex,
-          blockNumber,
-          status: 'ERROR',
-          failure_reason: error.message,
-      }).catch(dbError => {
-          this.logger.error(`[CreditService] CRITICAL: Failed to even write error state to DB for tx ${transactionHash}`, dbError);
+      const errorMessage = error.message || 'An unknown error occurred';
+      this.logger.error(`[CreditService] Gas estimation failed for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
+
+      // If gas estimation fails, it means the transaction would revert.
+      // This is not a profitability issue, but a fundamental problem with the transaction.
+      // Let's mark it as an error and log the details.
+      const failureReason = "Gas estimation failed, transaction would revert.";
+      const detailedError = `The operator wallet may not be an authorized 'backend' on the CreditVault contract. Raw Error: ${errorMessage}`;
+      
+      await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { 
+        rejectionReason: failureReason,
+        errorDetails: detailedError
       });
     }
   }

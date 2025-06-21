@@ -1,5 +1,6 @@
 const DEBUG_LOGGING_ENABLED = false; // Set to true to enable detailed logging
-const DEBUG_LOGGING_ENABLED_MULTILORA = true; // Set to true to enable detailed logging
+const DEBUG_LOGGING_ENABLED_MULTILORA = false; // Set to true to enable detailed logging
+const DEBUG_BUILD_INDEXES = false; // Set to true to enable detailed logging
 
 const { 
   DEFAULT_TIMEOUT, // Keep for potential future use within manager
@@ -635,7 +636,7 @@ class WorkflowCacheManager {
       if (deployment && deployment.id) {
         this.cache.byDeploymentId.set(deployment.id, deployment);
       } else {
-        this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping deployment indexing due to missing ID: ${JSON.stringify(deployment)}`);
+        if (DEBUG_BUILD_INDEXES) this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping deployment indexing due to missing ID: ${JSON.stringify(deployment)}`);
       }
     });
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byDeploymentId.size} deployments by ID.`);
@@ -656,7 +657,7 @@ class WorkflowCacheManager {
         }
             this.cache.byName.set(standardName, tool);
       } else {
-            this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing by displayName due to missing displayName or object: ${JSON.stringify(tool)}`);
+            if (DEBUG_BUILD_INDEXES) this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing by displayName due to missing displayName or object: ${JSON.stringify(tool)}`);
       }
 
       // ALSO INDEX BY TOOL ID
@@ -667,12 +668,12 @@ class WorkflowCacheManager {
             // Or if a toolId was accidentally used as a displayName.
             // Log a warning if we are overwriting something that isn't the same tool object.
             if (existingTool.toolId !== tool.toolId) {
-                 this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Collision in byName cache for key "${tool.toolId}". This key (a toolId) is about to overwrite an existing entry that might have been a displayName. Existing tool: ${existingTool.displayName} (ID: ${existingTool.toolId}), New tool: ${tool.displayName} (ID: ${tool.toolId}).`);
+                if (DEBUG_BUILD_INDEXES) this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Collision in byName cache for key "${tool.toolId}". This key (a toolId) is about to overwrite an existing entry that might have been a displayName. Existing tool: ${existingTool.displayName} (ID: ${existingTool.toolId}), New tool: ${tool.displayName} (ID: ${tool.toolId}).`);
             }
         }
         this.cache.byName.set(tool.toolId, tool);
       } else {
-        this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing by toolId due to missing toolId: ${JSON.stringify(tool)}`);
+        if (DEBUG_BUILD_INDEXES) this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Skipping tool indexing by toolId due to missing toolId: ${JSON.stringify(tool)}`);
       }
     });
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Indexed ${this.cache.byName.size} tools by standardized name and toolId.`);
@@ -694,7 +695,7 @@ class WorkflowCacheManager {
               linkedCount++;
             }
         } else {
-             this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Could not find tool with metadata.workflowId "${deployment.workflow_id}" in cache to link deployment "${deployment.id}".`);
+            if (DEBUG_BUILD_INDEXES) this.logger.warn(`[WorkflowCacheManager:_buildIndexes] Could not find tool with metadata.workflowId "${deployment.workflow_id}" in cache to link deployment "${deployment.id}".`);
         }
     });
     if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowCacheManager:_buildIndexes] Successfully linked ${linkedCount} deployment IDs to tools.`);

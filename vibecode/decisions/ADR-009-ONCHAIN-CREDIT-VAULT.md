@@ -24,12 +24,19 @@ We will adopt a two-service architecture to separate blockchain interaction from
 ### Credit Lifecycle and Risk Management
 The `CreditService` manages a sophisticated lifecycle for user collateral, which extends far beyond simple deposits and withdrawals. It functions as a collateralized debt and risk management engine.
 
-1.  **Ingestion & Onboarding (Credit Adding)**: This is the entry point for user funds.
-    *   **Event Detection**: Monitors for `Deposit` (from the main vault) and `AccountDeposit` (from referral vaults) events.
-    *   **Collateral Risk Assessment**: Before processing a deposit, the `TokenRiskEngine` is used to analyze the asset. It checks liquidity, volatility, and other on-chain metrics to determine if the token is acceptable collateral and at what liquidation threshold.
-    *   **Value Calculation**: For an approved token, the `PriceFeedService` gets its real-time USD value.
-    *   **On-Chain Custody**: The service executes a `confirmCredit` transaction on-chain. This is a critical step that moves the funds from user control to application control, collateralizing the credit we are about to issue.
-    *   **Internal Credit Issuance**: The USD value is converted into internal points (e.g., 1 point = 1 second of A10G GPU time at a fixed USD rate) and added to the user's off-chain account balance.
+1.  **Ingestion & Onboarding (Credit Adding)**: This is a robust, two-stage process designed to be fault-tolerant and prevent duplicate transaction processing, even in the event of an application crash.
+
+    *   **Stage 1: Event Acknowledgment (Read-Only)**
+        *   The `CreditService` reconciliation process scans the blockchain for `Deposit` events it has not yet seen.
+        *   For each new event, it *immediately* creates a record in the `credit_ledger` database with a status of `PENDING_CONFIRMATION`. 
+        *   This step is lightweight and acts as an idempotency key. By creating a record first, we ensure that if the service restarts, it will not attempt to re-process an event it has already acknowledged.
+
+    *   **Stage 2: Confirmation Processing (State-Changing)**
+        *   A separate process queries the database for all ledger entries with a `PENDING_CONFIRMATION` status.
+        *   For each pending entry, the service performs the full validation logic: collateral risk assessment, value calculation, and gas profitability checks.
+        *   **On-Chain Verification:** Before sending any transaction, the service performs a read-only call to the smart contract (e.g., `isDepositConfirmed(depositId)`) to verify that the deposit has not already been confirmed on-chain in a previous, interrupted run.
+        *   If the deposit is not yet confirmed, the service executes the `confirmCredit` write transaction.
+        *   Upon successful on-chain confirmation, the corresponding `credit_ledger` record is updated to `status: 'CONFIRMED'`, and all relevant financial data (gas cost, net value, confirmation hash) is stored.
 
 2.  **Consumption & Monitoring (Credit Subtraction)**: This is the day-to-day operation.
     *   An internal API allows other services to deduct points as they are consumed (e.g., upon successful AI generation).
@@ -46,7 +53,8 @@ The `CreditService` manages a sophisticated lifecycle for user collateral, which
 To handle this complexity, the `CreditService` relies on several new, specialized services:
 
 -   **`TokenRiskEngine`**: Analyzes tokens to determine their viability as collateral. It checks on-chain liquidity depth on DEXs, price volatility, contract verification status, and other heuristics to generate a risk profile.
--   **`PriceFeedService`**: A dedicated service for fetching reliable, real-time token prices from sources like Alchemy or Chainlink.
+-   **`PriceFeedService`**: A dedicated service for fetching reliable, real-time token prices for fungible (ERC20) tokens from sources like Alchemy or Chainlink.
+-   **`NftPriceService` (New)**: A dedicated service for pricing non-fungible tokens (NFTs). Its responsibilities include maintaining a whitelist of acceptable NFT collection contracts and fetching their floor prices from a provider like Alchemy's NFT API. `CreditService` and `TokenRiskEngine` will use this service to value and assess risk for NFT deposits.
 -   **`DexService`**: An abstraction layer for interacting with a decentralized exchange protocol (e.g., Uniswap v3) to programmatically swap assets. The `DexService` provides read-only quotes and executes write transactions for swaps.
 
 ### Referral System via `VaultAccount` Sub-Contracts
@@ -63,16 +71,22 @@ We will support two methods for linking user wallets to their application accoun
 
 To bridge the gap, a Telegram user will be given a unique, single-use link to our web app to perform the secure SiWE connection flow, associating their verified wallet with their Telegram ID.
 
-### Gas Strategy
-We will implement EIP-1559 for all transactions, allowing us to set different priority levels for the priority fee (tip) based on the transaction's urgency. This will help manage costs while ensuring critical transactions are processed quickly.
+### Gas Strategy & Cost Accounting
+We will implement EIP-1559 for all transactions. To ensure economic sustainability, the system will adhere to two strict rules regarding gas fees:
+
+1.  **Pre-flight Profitability Check**: Before executing any on-chain transaction that incurs a cost (e.g., `confirmCredit`), the `CreditService` must perform a profitability check. It will use a helper function in `EthereumService` to estimate the gas cost in USD. If the estimated cost is greater than the USD value of the user's deposit, the transaction will be rejected, and the ledger entry will be marked with a status like `REJECTED_INSUFFICIENT_VALUE`.
+2.  **Debiting Gas Fees**: For every on-chain transaction the application performs on a user's behalf, the *actual* gas cost will be calculated from the transaction receipt. This cost will be deducted from the deposit's value before credit points are awarded. The `credit_ledger` database schema will be updated to include fields like `gas_cost_usd` and `net_value_usd` to ensure full auditability.
 
 ### Secure Private Key Management
-We will use a secrets manager, such as HashiCorp Vault, to securely manage the Ethereum signer's private key. The key will be fetched at runtime and held only in memory, never written to disk.
+We will use a secrets manager to securely manage the Ethereum signer's private key. The key will be fetched at runtime and held only in memory, never written to disk or logged.
+
+-   **Production (Docker on DigitalOcean)**: The application will use **DigitalOcean App Platform Secrets**. On startup, the service will be granted a temporary, role-based credential to authenticate and fetch the private key directly into the application's memory.
+-   **Local Development**: To avoid security risks, a local `.env` file (which must be included in `.gitignore`) will be used to store the private key. A library like `dotenv` will load this variable into the application's process environment at startup, preventing the key from being exposed in shell history or version control.
 
 ## Consequences
--   **New Services**: Two services will be created: `EthereumService.js` and `CreditService.js` in `src/core/services/`.
--   **Wallet Management**: The application will require a securely managed Ethereum wallet (private key) to sign and send transactions. Initially, this will be managed via environment variables.
--   **External Dependencies**: The system will now depend on Alchemy for node access, event notifications, and its price feed API.
+-   **New Services**: Three services will be created: `EthereumService.js`, `CreditService.js`, and `NftPriceService.js` in `src/core/services/`.
+-   **Wallet Management**: The application will require a securely managed Ethereum wallet (private key) to sign and send transactions. This will be managed via environment variables locally and DigitalOcean App Platform Secrets in production.
+-   **External Dependencies**: The system will now depend on Alchemy for node access, event notifications, its ERC20 price feed API, and its NFT floor price API.
 -   **New API Endpoint**: A new route must be added to the web platform to handle incoming webhooks from Alchemy.
 -   **User-Wallet Mapping**: A mechanism to link application user IDs to their corresponding Ethereum wallet addresses must be implemented, likely within our user database schema.
 -   **Asynchronous Complexity**: The architecture will become more event-driven, requiring robust error handling, transaction monitoring, and potential retry logic for failed on-chain operations.

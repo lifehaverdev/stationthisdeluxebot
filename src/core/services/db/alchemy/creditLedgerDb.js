@@ -72,12 +72,14 @@ class CreditLedgerDB extends BaseDB {
   }
 
   /**
-   * Finds all ledger entries that are pending confirmation.
+   * Finds all ledger entries that are pending processing (pending confirmation or errored).
    * Useful for reconciliation or retrying failed confirmations.
-   * @returns {Promise<Array<Object>>} A list of pending ledger entries.
+   * @returns {Promise<Array<Object>>} A list of entries to be processed.
    */
-  async findPendingEntries() {
-    return this.findMany({ status: 'PENDING_CONFIRMATION' });
+  async findProcessableEntries() {
+    return this.findMany({ 
+      status: { $in: ['PENDING_CONFIRMATION', 'ERROR'] } 
+    });
   }
 }
 

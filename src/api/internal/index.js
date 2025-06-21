@@ -70,6 +70,7 @@ function initializeInternalServices(dependencies = {}) {
       appStartTime: dependencies.appStartTime,
       version: dependencies.version,
       toolRegistry: dependencies.toolRegistry || require('../../core/tools/ToolRegistry').ToolRegistry.getInstance(), // Ensure toolRegistry is available
+      userSettingsService: dependencies.userSettingsService, // Pass through the service
       // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
       // internalApiClient: apiClient, (defined later in this function)
   };
