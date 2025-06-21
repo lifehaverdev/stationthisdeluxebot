@@ -1,4 +1,4 @@
-const { ethers } = require('ethers');
+const { ethers, JsonRpcProvider, Contract } = require('ethers');
 const { contracts } = require('../../contracts'); // Import contract details
 
 /**
@@ -20,24 +20,43 @@ class DexService {
     if (!ethereumService) {
       throw new Error('DexService: Missing required EthereumService.');
     }
-    this.ethereumService = ethereumService;
+    // Keep the original service to know the transactional network (e.g., Sepolia).
+    this.ethereumService = ethereumService; 
     
-    // Get the network name and quoter address based on the EthereumService's chainId
-    const networkName = this._getNetworkName(this.ethereumService.chainId);
-    if (!networkName) {
-      throw new Error(`DexService: Unsupported chainId: ${this.ethereumService.chainId}`);
-    }
-    const quoterAddress = contracts.uniswapV3QuoterV2.addresses[networkName];
-    if (!quoterAddress) {
-        throw new Error(`DexService: No Uniswap V3 QuoterV2 address found for network: ${networkName}`);
+    // For quoting, we ALWAYS use mainnet as it has the real liquidity pools.
+    const quoteNetwork = 'mainnet';
+    let mainnetRpcUrl = process.env.ETHEREUM_MAINNET_RPC_URL;
+    
+    // If the specific mainnet RPC URL isn't set, try to construct it from the Alchemy secret.
+    if (!mainnetRpcUrl && process.env.ALCHEMY_SECRET) {
+      mainnetRpcUrl = `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_SECRET}`;
+      this.logger.info('[DexService] Constructed mainnet RPC URL from ALCHEMY_SECRET.');
     }
 
-    this.quoterContract = this.ethereumService.getContract(
+    if (!mainnetRpcUrl) {
+      this.logger.error('[DexService] ETHEREUM_MAINNET_RPC_URL or ALCHEMY_SECRET is not set in .env. Quoting will be disabled.');
+      // Allow the service to start but log that it can't quote.
+      this.quoterContract = null; 
+      return;
+    }
+
+    this.quoteProvider = new JsonRpcProvider(mainnetRpcUrl);
+
+    const quoterAddress = contracts.uniswapV3QuoterV2.addresses[quoteNetwork];
+    if (!quoterAddress) {
+        throw new Error(`DexService: No Uniswap V3 QuoterV2 address found for network: ${quoteNetwork}`);
+    }
+
+    // Create the quoter contract instance using the mainnet provider.
+    this.quoterContract = new Contract(
         quoterAddress,
-        contracts.uniswapV3QuoterV2.abi
+        contracts.uniswapV3QuoterV2.abi,
+        this.quoteProvider
     );
 
-    this.logger.info(`[DexService] Initialized for network ${networkName} with Quoter at ${quoterAddress}`);
+    const transactionalNetworkName = this._getNetworkName(this.ethereumService.chainId);
+    this.logger.info(`[DexService] Initialized for on-chain TX on network ${transactionalNetworkName}.`);
+    this.logger.info(`[DexService] Configured for swap quoting on ${quoteNetwork} with Quoter at ${quoterAddress}`);
   }
 
   /**
@@ -67,7 +86,12 @@ class DexService {
    * @returns {Promise<ethers.BigNumber>} The amount of tokenOut that would be received.
    */
   async getSwapQuote(tokenInAddress, tokenOutAddress, amountIn, fee) {
-    this.logger.info(`[DexService] Getting swap quote for ${amountIn} of ${tokenInAddress} -> ${tokenOutAddress}`);
+    this.logger.info(`[DexService] Getting swap quote for ${amountIn} of ${tokenInAddress} -> ${tokenOutAddress} on mainnet`);
+
+    if (!this.quoterContract) {
+      this.logger.error('[DexService] Quoting is disabled because no mainnet RPC URL is configured.');
+      return BigInt(0);
+    }
 
     // TODO: IMPROVE QUOTING LOGIC.
     // The current implementation is a single-hop quote using the V3 QuoterV2 contract.
@@ -81,9 +105,6 @@ class DexService {
     // 3. Comparing the results to find the best possible quote.
     // This could be implemented using the Uniswap Universal Router or by building a path-finding logic.
 
-    // This implementation now uses a real contract instance.
-    // It will fail if the quoterAddress in the config is incorrect or
-    // if a liquidity pool for the given pair and fee does not exist.
     try {
       const quoteParams = {
         tokenIn: tokenInAddress,
@@ -93,15 +114,11 @@ class DexService {
         sqrtPriceLimitX96: 0, // 0 for no limit
       };
       
-      this.logger.debug('[DexService] Calling quoter with params:', quoteParams);
+      this.logger.debug('[DexService] Calling mainnet quoter with params:', quoteParams);
 
       // Use callStatic for read-only calls to get the return value without sending a transaction.
-      const amountOut = await this.quoterContract.callStatic.quoteExactInputSingle(
-          quoteParams.tokenIn,
-          quoteParams.tokenOut,
-          quoteParams.fee,
-          quoteParams.amountIn,
-          quoteParams.sqrtPriceLimitX96
+      const { 0: amountOut } = await this.quoterContract.quoteExactInputSingle.staticCall(
+          quoteParams
       );
       
       return amountOut;

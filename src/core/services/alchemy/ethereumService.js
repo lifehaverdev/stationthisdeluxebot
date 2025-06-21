@@ -128,12 +128,26 @@ class EthereumService {
    */
   async getPastEvents(contractAddress, abi, eventName, fromBlock, toBlock) {
     this.logger.info(`[EthereumService] Fetching past '${eventName}' events from block ${fromBlock} to ${toBlock}`);
+    const contract = this.getContract(contractAddress, abi);
+    
+    // Node providers often limit the block range for event queries.
+    // We will chunk the requests to stay within common limits (e.g., 500 blocks for Alchemy).
+    const MAX_BLOCK_RANGE = 499;
+    let allEvents = [];
+    
     try {
-      const contract = this.getContract(contractAddress, abi);
       const eventFilter = contract.filters[eventName]();
-      const events = await contract.queryFilter(eventFilter, fromBlock, toBlock);
-      this.logger.info(`[EthereumService] Found ${events.length} '${eventName}' events.`);
-      return events;
+      let currentBlock = fromBlock;
+      while (currentBlock <= toBlock) {
+        const endBlock = Math.min(currentBlock + MAX_BLOCK_RANGE, toBlock);
+        this.logger.debug(`[EthereumService] Querying chunk for '${eventName}' from ${currentBlock} to ${endBlock}`);
+        const events = await contract.queryFilter(eventFilter, currentBlock, endBlock);
+        allEvents = allEvents.concat(events);
+        currentBlock = endBlock + 1;
+      }
+      
+      this.logger.info(`[EthereumService] Found ${allEvents.length} total '${eventName}' events across all chunks.`);
+      return allEvents;
     } catch (error) {
       this.logger.error(`[EthereumService] Error fetching past events '${eventName}':`, error);
       throw error;

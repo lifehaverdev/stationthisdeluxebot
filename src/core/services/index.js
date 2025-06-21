@@ -25,6 +25,7 @@ const CreditService = require('./alchemy/creditService');
 const PriceFeedService = require('./alchemy/priceFeedService');
 const DexService = require('./alchemy/dexService');
 const TokenRiskEngine = require('./alchemy/tokenRiskEngine');
+const { contracts, getNetworkName } = require('../contracts');
 
 /**
  * Initialize all core services
@@ -80,12 +81,16 @@ async function initializeServices(options = {}) {
     // --- Initialize On-Chain Services ---
     let ethereumService;
     let creditService;
+    let priceFeedService;
+    let dexService;
+    let tokenRiskEngine;
     try {
       logger.info('Initializing on-chain services (Ethereum, Credit)...');
       // 1. Initialize EthereumService
       const ethereumConfig = {
         rpcUrl: process.env.ETHEREUM_RPC_URL,
         privateKey: process.env.ETHEREUM_SIGNER_PRIVATE_KEY,
+        chainId: process.env.ETHEREUM_CHAIN_ID,
       };
       if (!ethereumConfig.rpcUrl || !ethereumConfig.privateKey) {
         logger.warn('[EthereumService] Not initialized: ETHEREUM_RPC_URL or ETHEREUM_SIGNER_PRIVATE_KEY is missing from .env. On-chain features will be disabled.');
@@ -93,18 +98,19 @@ async function initializeServices(options = {}) {
         ethereumService = new EthereumService(ethereumConfig, logger);
 
         // 2. Initialize supporting on-chain services
-        const priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_API_KEY }, logger);
-        const dexService = new DexService({ ethereumService }, logger);
-        const tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
+        priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
+        dexService = new DexService({ ethereumService }, logger);
+        tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
 
         // 3. Initialize CreditService (depends on EthereumService and supporting services)
+        const networkName = getNetworkName(ethereumService.chainId);
         const creditServiceConfig = {
-          creditVaultAddress: process.env.CREDIT_VAULT_ADDRESS,
-          creditVaultAbi: JSON.parse(process.env.CREDIT_VAULT_ABI || '[]'),
+          creditVaultAddress: contracts.creditVault.addresses[networkName],
+          creditVaultAbi: contracts.creditVault.abi,
         };
         
-        if (!creditServiceConfig.creditVaultAddress || creditServiceConfig.creditVaultAbi.length === 0) {
-            logger.warn('[CreditService] Not initialized: CREDIT_VAULT_ADDRESS or CREDIT_VAULT_ABI is missing from .env. Credit service will be disabled.');
+        if (!creditServiceConfig.creditVaultAddress || !creditServiceConfig.creditVaultAbi || creditServiceConfig.creditVaultAbi.length === 0) {
+            logger.warn(`[CreditService] Not initialized: Could not find contract address or ABI for network '${networkName}'. Credit service will be disabled.`);
         } else {
             const creditServiceDependencies = {
                 ethereumService,
@@ -112,7 +118,7 @@ async function initializeServices(options = {}) {
                 systemStateDb: initializedDbServices.data.systemState, // Assuming db/index wires this up
                 userCoreDb: initializedDbServices.data.userCore,
                 userEconomyDb: initializedDbServices.data.userEconomy,
-                priceFeed: priceFeedService, // Use the real service instance
+                priceFeedService: priceFeedService, // Use the real service instance
                 tokenRiskEngine, // Pass the risk engine
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
@@ -179,9 +185,9 @@ async function initializeServices(options = {}) {
       workflowExecutionService, // Added workflowExecutionService
       ethereumService, // Add new service
       creditService, // Add new service
-      priceFeedService, // Add new service
-      dexService, // Add new service
-      tokenRiskEngine, // Add new service
+      priceFeedService,
+      dexService,
+      tokenRiskEngine,
       logger,
       appStartTime,
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services

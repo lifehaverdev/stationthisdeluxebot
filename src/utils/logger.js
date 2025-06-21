@@ -13,13 +13,21 @@ const config = require('../config');
  * @returns {object} Configured winston logger instance
  */
 function createLogger(module) {
+  // Custom replacer function for JSON.stringify to handle BigInts
+  const jsonReplacer = (key, value) => {
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return value;
+  };
+
   // Define log format
   const logFormat = winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
     winston.format.printf(({ level, message, module, timestamp, ...meta }) => {
       const metaString = Object.keys(meta).length ? 
-        ` | ${JSON.stringify(meta)}` : '';
+        ` | ${JSON.stringify(meta, jsonReplacer)}` : '';
       return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}${metaString}`;
     })
   );

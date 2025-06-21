@@ -33,13 +33,13 @@ class TokenRiskEngine {
 
     // Define USDC as the stablecoin for liquidity checks.
     // This could be made configurable later if needed.
-    const network = this.dexService._getNetworkName(this.dexService.ethereumService.chainId);
+    const network = 'mainnet';
     this.usdcAddress = contracts.USDC.addresses[network];
     if (!this.usdcAddress) {
         throw new Error(`TokenRiskEngine: No USDC address found for network: ${network}`);
     }
 
-    this.logger.info(`[TokenRiskEngine] Initialized for network ${network}.`);
+    this.logger.info(`[TokenRiskEngine] Initialized for liquidity checks against mainnet USDC.`);
   }
 
   /**
@@ -93,6 +93,13 @@ class TokenRiskEngine {
     this.logger.info(`[TokenRiskEngine] Assessing collateral for token: ${tokenAddress}`);
     const normalizedAddress = tokenAddress.toLowerCase();
 
+    // 0. Check if it's native ETH
+    if (normalizedAddress === '0x0000000000000000000000000000000000000000') {
+      this.logger.info(`[TokenRiskEngine] Detected native ETH. Bypassing liquidity checks.`);
+      const price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
+      return { isSafe: true, reason: 'NATIVE_ASSET', price, liquidationThreshold: 0.85 }; // High LTV for ETH
+    }
+
     // 1. Whitelist Check (Fast Path)
     if (TOKEN_WHITELIST.includes(normalizedAddress)) {
       this.logger.info(`[TokenRiskEngine] Token ${normalizedAddress} is on the whitelist. Accepting.`);
@@ -121,7 +128,7 @@ class TokenRiskEngine {
         feeTier
     );
     
-    if (quotedUsdcOut.isZero()) {
+    if (quotedUsdcOut === 0n) {
         return { isSafe: false, reason: 'NO_LIQUIDITY_POOL', price, liquidationThreshold: 0 };
     }
 

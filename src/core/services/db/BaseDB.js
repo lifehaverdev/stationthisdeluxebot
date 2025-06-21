@@ -217,22 +217,15 @@ class BaseDB {
 
     async clearCollection(priority = PRIORITY.MEDIUM) {
         return dbQueue.enqueue(async () => {
-            const client = await getCachedClient();
-            const db = client.db(this.dbName);
-            const collection = db.collection(this.collectionName);
             try {
-                // More robust way to check for collection existence first
-                const collections = await db.listCollections({ name: this.collectionName }).toArray();
-                if (collections.length > 0) {
-                    await collection.drop();
-                    console.log(`[BaseDB] Collection ${this.collectionName} dropped successfully.`);
-                    return { ok: 1 };
-                } else {
-                    console.log(`[BaseDB] Collection ${this.collectionName} not found, no need to drop.`);
-                    return { ok: 1, message: 'Collection not found' };
-                }
+                const client = await getCachedClient();
+                const collection = client.db(this.dbName).collection(this.collectionName);
+                this.logger.info(`[BaseDB] Clearing all documents from collection: ${this.collectionName}`);
+                const result = await collection.deleteMany({});
+                this.logger.info(`[BaseDB] Cleared ${result.deletedCount} documents from ${this.collectionName}.`);
+                return result;
             } catch (error) {
-                console.error(`[BaseDB] Error dropping collection ${this.collectionName}:`, error);
+                this.logger.error(`[BaseDB] Error clearing collection ${this.collectionName}:`, error);
                 throw error;
             }
         }, priority);

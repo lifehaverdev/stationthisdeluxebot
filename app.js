@@ -84,9 +84,9 @@ async function startApp() {
     }
 
     // Initialize CreditService to reconcile with the blockchain
-    if (services.creditService && typeof services.creditService.initialize === 'function') {
+    if (services.creditService && typeof services.creditService.start === 'function') {
         logger.info('Initializing CreditService to sync with on-chain state...');
-        await services.creditService.initialize();
+        await services.creditService.start();
         logger.info('CreditService sync complete.');
     } else {
         logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
