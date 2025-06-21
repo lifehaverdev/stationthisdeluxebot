@@ -7,7 +7,7 @@ const contracts = {
     abi: creditVaultAbi,
     addresses: {
       // e.g., mainnet: '0x...',
-      sepolia: process.env.CREDIT_VAULT_ADDRESS || '',
+      sepolia: process.env.CREDIT_VAULT_ADDRESS || '0x011528b1d5822B3269d919e38872cC33bdec6d17',
     }
   },
   creditVaultAccount: {
@@ -20,6 +20,24 @@ const contracts = {
     addresses: {
       mainnet: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
       sepolia: '0xEd1f6473345F45b75F8179591dd5bA1888cf2FB3', // Example, needs verification
+    }
+  },
+  USDC: {
+    abi: [], // Using a generic ERC20 ABI is recommended for full functionality
+    addresses: {
+      mainnet: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    }
+  },
+  DAI: {
+    abi: [],
+    addresses: {
+      mainnet: '0x6b175474e89094c44da98b954eedeac495271d0f',
+    }
+  },
+  WETH: {
+    abi: [],
+    addresses: {
+      mainnet: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
     }
   }
 };

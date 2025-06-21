@@ -1,4 +1,4 @@
-require('dotenv')
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const { ethers } = require('ethers');
 const EthereumService = require('../src/core/services/alchemy/ethereumService');
 const PriceFeedService = require('../src/core/services/alchemy/priceFeedService');
@@ -17,35 +17,49 @@ const logger = {
 async function main() {
   logger.info('--- Starting Token Risk Engine Test Script ---');
 
-  
-  if (!process.env.ETHEREUM_RPC_URL || !process.env.ETHEREUM_SIGNER_PRIVATE_KEY || !process.env.ALCHEMY_SECRET) {
-    logger.error('Missing required environment variables: ETHEREUM_RPC_URL, ETHEREUM_SIGNER_PRIVATE_KEY, or ALCHEMY_SECRET.');
+
+  if (!process.env.ETHEREUM_SIGNER_PRIVATE_KEY) {
+    logger.error('Missing required environment variable: ETHEREUM_SIGNER_PRIVATE_KEY.');
+    process.exit(1);
+  }
+  if (!process.env.ALCHEMY_SECRET) {
+    logger.error('Missing required environment variable: ALCHEMY_SECRET.');
+    process.exit(1);
+  }
+  if (!process.env.ETHEREUM_RPC_URL) {
+    logger.error('Missing required environment variable: ETHEREUM_RPC_URL.');
     process.exit(1);
   }
 
   try {
     // Manually initialize only the required services
-    logger.info('Initializing required services in isolation...');
+    logger.info('Initializing required services in isolation for MAINNET...');
 
     // 1. EthereumService
+    logger.info('[test-script] Creating EthereumService for Mainnet...');
+    logger.warn('[test-script] Make sure your .env file has a MAINNET_RPC_URL for this test.');
     const ethereumConfig = {
-        rpcUrl: process.env.ETHEREUM_RPC_URL,
+        rpcUrl: process.env.MAINNET_RPC_URL || process.env.ETHEREUM_RPC_URL,
         privateKey: process.env.ETHEREUM_SIGNER_PRIVATE_KEY,
+        chainId: 1 // Force Mainnet for this liquidity test
     };
     const ethereumService = new EthereumService(ethereumConfig, logger);
-    logger.info('[EthereumService] Initialized.');
+    logger.info('[test-script] EthereumService created.');
 
     // 2. PriceFeedService (using ALCHEMY_SECRET)
+    logger.info('[test-script] Creating PriceFeedService...');
     const priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
-    logger.info('[PriceFeedService] Initialized.');
+    logger.info('[test-script] PriceFeedService created.');
 
     // 3. DexService
+    logger.info('[test-script] Creating DexService...');
     const dexService = new DexService({ ethereumService }, logger);
-    logger.info('[DexService] Initialized.');
+    logger.info('[test-script] DexService created.');
 
     // 4. TokenRiskEngine
+    logger.info('[test-script] Creating TokenRiskEngine...');
     const tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
-    logger.info('[TokenRiskEngine] Initialized.');
+    logger.info('[test-script] TokenRiskEngine created.');
     
     // --- Test Cases ---
     const network = dexService._getNetworkName(dexService.ethereumService.chainId);
@@ -73,12 +87,14 @@ async function main() {
                 logger.warn(`🔶 SKIPPED: ${name} has insufficient liquidity or no direct pool. This is expected for some tokens.`);
             }
         } catch (error) {
-            logger.error(`❌ FAILED: Error assessing ${name}:`, error.message);
+            logger.error(`❌ FAILED: Error assessing ${name}:`);
+            console.error(error);
         }
     }
 
   } catch (error) {
-    logger.error('An error occurred during the test script execution:', error);
+    logger.error('An error occurred during the test script execution:');
+    console.error(error);
     process.exit(1);
   } finally {
     logger.info('\n--- Test Script Finished ---');

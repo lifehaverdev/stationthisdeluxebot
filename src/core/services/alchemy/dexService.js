@@ -69,6 +69,18 @@ class DexService {
   async getSwapQuote(tokenInAddress, tokenOutAddress, amountIn, fee) {
     this.logger.info(`[DexService] Getting swap quote for ${amountIn} of ${tokenInAddress} -> ${tokenOutAddress}`);
 
+    // TODO: IMPROVE QUOTING LOGIC.
+    // The current implementation is a single-hop quote using the V3 QuoterV2 contract.
+    // This is simple but has a major limitation: it will fail to find a quote if a direct
+    // liquidity pool for the exact tokenIn -> tokenOut pair at the specified fee does not exist.
+    // For many tokens (like PEPE/USDC), a direct pool is not the most liquid path.
+    //
+    // A robust solution requires a multi-hop routing capability. This would involve:
+    // 1. Identifying common base pairs (e.g., WETH).
+    // 2. Checking for quotes along different paths (e.g., TokenA -> WETH -> TokenB).
+    // 3. Comparing the results to find the best possible quote.
+    // This could be implemented using the Uniswap Universal Router or by building a path-finding logic.
+
     // This implementation now uses a real contract instance.
     // It will fail if the quoterAddress in the config is incorrect or
     // if a liquidity pool for the given pair and fee does not exist.
@@ -96,7 +108,7 @@ class DexService {
     } catch (error) {
       this.logger.error(`[DexService] Failed to get quote from Uniswap V3 Quoter:`, error.message);
       // If the quote fails, it often means no liquidity pool exists. Return 0.
-      return ethers.BigNumber.from(0);
+      return BigInt(0);
     }
   }
 }

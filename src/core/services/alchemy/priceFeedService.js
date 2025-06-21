@@ -29,6 +29,55 @@ class PriceFeedService {
   }
 
   /**
+   * Fetches metadata for a given token, such as its name, symbol, and decimals.
+   * @param {string} tokenAddress - The address of the ERC20 token contract.
+   * @returns {Promise<{name: string, symbol: string, decimals: number}>} An object with token metadata.
+   */
+  async getMetadata(tokenAddress) {
+    this.logger.info(`[PriceFeedService] Fetching metadata for token: ${tokenAddress}`);
+    // Note: This uses the public Alchemy RPC endpoint format.
+    const fetchURL = `https://eth-mainnet.g.alchemy.com/v2/${this.alchemyApiKey}`;
+
+    const requestBody = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'alchemy_getTokenMetadata',
+      params: [tokenAddress]
+    };
+
+    try {
+      const response = await fetch(fetchURL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status} ${await response.text()}`);
+      }
+
+      const json = await response.json();
+      
+      this.logger.info(`[PriceFeedService] Full metadata response for ${tokenAddress}: ${JSON.stringify(json, null, 2)}`);
+
+      if (json.error) {
+        throw new Error(`Alchemy API Error: ${json.error.message}`);
+      }
+
+      const { name, symbol, decimals } = json.result;
+      if (decimals === null || decimals === undefined) {
+          throw new Error(`Could not parse metadata for ${tokenAddress} from Alchemy response.`);
+      }
+
+      this.logger.info(`[PriceFeedService] Found metadata for ${symbol}: ${decimals} decimals.`);
+      return { name, symbol, decimals };
+    } catch (error) {
+      this.logger.error(`[PriceFeedService] Failed to fetch metadata for ${tokenAddress}:`, error);
+      throw error; // Re-throw the error to be caught by the caller
+    }
+  }
+
+  /**
    * Fetches the current USD price for a given token contract address.
    * @param {string} tokenAddress - The address of the ERC20 token contract, or the zero address for native ETH.
    * @returns {Promise<number>} The price of the token in USD. Returns 0 if no price can be found.

@@ -24,8 +24,9 @@ class EthereumService {
 
     this.provider = new JsonRpcProvider(config.rpcUrl);
     this.signer = new Wallet(config.privateKey, this.provider);
+    this.chainId = config.chainId; // Allow chainId to be passed in.
 
-    this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address}`);
+    this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
   }
 
   /**

@@ -55,7 +55,7 @@ class TokenRiskEngine {
 
     // First, get the token's price and decimals to calculate the amount in its smallest unit.
     const tokenMetadata = await this.priceFeedService.getMetadata(tokenAddress);
-    const amountInSmallestUnit = ethers.utils.parseUnits(amountInHuman, tokenMetadata.decimals);
+    const amountInSmallestUnit = ethers.parseUnits(amountInHuman, tokenMetadata.decimals);
 
     // Get a quote for swapping the token to USDC.
     const quote = await this.dexService.getSwapQuote(
@@ -66,9 +66,9 @@ class TokenRiskEngine {
     );
 
     // If the quote is zero, it's a strong indicator of no liquidity.
-    const hasSufficientLiquidity = !quote.isZero();
+    const hasSufficientLiquidity = quote !== 0n;
 
-    const amountOutHuman = ethers.utils.formatUnits(quote, 6); // USDC has 6 decimals
+    const amountOutHuman = ethers.formatUnits(quote, 6); // USDC has 6 decimals
 
     this.logger.info(`[TokenRiskEngine] Liquidity assessment for ${tokenAddress}: Test swap of ${amountInHuman} yielded ${amountOutHuman} USDC. Sufficient liquidity: ${hasSufficientLiquidity}`);
 
@@ -108,7 +108,7 @@ class TokenRiskEngine {
     // 3. Liquidity & Price Impact Check
     // We simulate selling a fixed USD value of the token (e.g., $100) to check liquidity.
     const testAmountUsd = 100;
-    const testAmountTokenWei = ethers.utils.parseUnits(String(testAmountUsd / price), 18); // Assumes 18 decimals for simplicity
+    const testAmountTokenWei = ethers.parseUnits(String(testAmountUsd / price), 18); // Assumes 18 decimals for simplicity
     
     // We need a stablecoin address to quote against, e.g., USDC
     const usdcAddress = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
@@ -126,7 +126,7 @@ class TokenRiskEngine {
     }
 
     // 4. Calculate Price Impact
-    const expectedUsdcOut = ethers.utils.parseUnits(String(testAmountUsd), 6); // USDC has 6 decimals
+    const expectedUsdcOut = ethers.parseUnits(String(testAmountUsd), 6); // USDC has 6 decimals
     const priceImpact = (expectedUsdcOut.sub(quotedUsdcOut)).mul(100).div(expectedUsdcOut); // In percentage
     
     this.logger.info(`[TokenRiskEngine] Price impact for selling $${testAmountUsd} of ${normalizedAddress}: ${priceImpact.toString()}%`);
