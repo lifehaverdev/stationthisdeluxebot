@@ -200,8 +200,7 @@ class EthereumService {
 
     } catch (error) {
         this.logger.error(`[EthereumService] Error during gas estimation for '${functionName}':`, error);
-        // Return a high number to prevent proceeding with a failing transaction
-        return Infinity;
+        throw error;
     }
   }
 }

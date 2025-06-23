@@ -172,8 +172,8 @@ class CreditService {
         this.logger.info(`[CreditService] Step 1: Verifying user account for depositor ${user}...`);
         let masterAccountId;
         try {
-            const response = await this.internalApiClient.get(`/wallets/lookup?address=${user}`);
-            masterAccountId = response.masterAccountId;
+            const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${user}`);
+            masterAccountId = response.data.masterAccountId;
             this.logger.info(`[CreditService] User found. MasterAccountId: ${masterAccountId}`);
         } catch (error) {
             if (error.response && error.response.status === 404) {
@@ -215,11 +215,33 @@ class CreditService {
 
         // Calculate the fee in WEI to pass to the smart contract
         const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
-        const feeInWei = ethers.parseEther(estimatedGasCostEth.toString());
+        // FIX: The calculated ETH cost can have more than 18 decimal places, which `parseEther` rejects.
+        // Truncate the string representation to 18 decimal places to prevent an underflow error.
+        const feeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
+
+        // The amount to be credited to the user's escrow, which is the total deposit minus our fee.
+        const escrowAmountForContract = amount - feeInWei;
+
+        // Final safety check. This case should be prevented by the profitability check, but ensures we don't send invalid values.
+        if (escrowAmountForContract < 0n) {
+            this.logger.error(`[CreditService] Calculated escrow amount is negative. Fee (${feeInWei}) exceeds deposit (${amount}). Aborting.`);
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'REJECTED_UNPROFITABLE', { deposit_value_usd: depositValueUsd, failure_reason: `Fee exceeded deposit value.` });
+            return;
+        }
 
         // 4. EXECUTE ON-CHAIN CONFIRMATION
-        this.logger.info(`[CreditService] Step 4: Executing on-chain credit confirmation for tx ${transactionHash}...`);
-        const confirmationReceipt = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, amount, feeInWei, '0x');
+        this.logger.info(`[CreditService] Step 4: Executing on-chain credit confirmation for tx ${transactionHash}. Net Escrow: ${escrowAmountForContract}, Fee: ${feeInWei}`);
+        const confirmationReceipt = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, feeInWei, '0x');
+        
+        // FIX: Add validation to ensure we have a valid receipt and transaction hash before proceeding.
+        if (!confirmationReceipt || !confirmationReceipt.transactionHash) {
+            this.logger.error(`[CreditService] CRITICAL: On-chain transaction may have succeeded but we failed to receive a valid receipt. Manual verification required for original tx: ${transactionHash}`);
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR_INVALID_RECEIPT', {
+                failure_reason: 'Transaction was sent but an invalid receipt was returned by the provider.'
+            });
+            return; // Halt processing
+        }
+
         this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.transactionHash}`);
 
         const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
@@ -229,7 +251,8 @@ class CreditService {
         // 5. OFF-CHAIN CREDIT APPLICATION
         this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Net value: $${netDepositValueUsd.toFixed(2)}.`);
         try {
-            await this.internalApiClient.post(`/users/${masterAccountId}/economy/credit`, {
+            // FIX: The URL path was incorrect. It needs the full internal API prefix.
+            await this.internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/credit`, {
                 amountUsd: netDepositValueUsd,
                 transactionType: 'ONCHAIN_DEPOSIT',
                 description: `Credit from on-chain deposit. Confirmed in tx: ${confirmationReceipt.transactionHash}`,

@@ -83,15 +83,6 @@ async function startApp() {
       logger.warn('WorkflowsService not found or does not have an initialize method.');
     }
 
-    // Initialize CreditService to reconcile with the blockchain
-    if (services.creditService && typeof services.creditService.start === 'function') {
-        logger.info('Initializing CreditService to sync with on-chain state...');
-        await services.creditService.start();
-        logger.info('CreditService sync complete.');
-    } else {
-        logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
-    }
-    
     // Debug log to verify internal services are available
     logger.debug('DEBUG: Internal API services available:', {
       internalAvailable: services.internal ? 'Yes' : 'No',
@@ -213,6 +204,7 @@ async function startApp() {
       }
 
       const validKeys = [
+        process.env.INTERNAL_API_KEY_SYSTEM, // Added for system-level services
         process.env.INTERNAL_API_KEY_TELEGRAM,
         process.env.INTERNAL_API_KEY_DISCORD,
         process.env.INTERNAL_API_KEY_WEB,
@@ -261,6 +253,21 @@ async function startApp() {
         logger.info(`Starting Web platform on port ${port}...`);
         await platforms.web.start(port);
         logger.info(`Web platform running on port ${port}`);
+        
+        // --- Credit Service Startup ---
+        // This is now started AFTER the web platform is running to ensure
+        // the internal API is ready to receive requests from the service.
+        if (services.creditService && typeof services.creditService.start === 'function') {
+            logger.info('Starting CreditService to sync with on-chain state...');
+            // We do not await this, as it can be a long-running process.
+            // It will run in the background.
+            services.creditService.start().catch(err => {
+                logger.error('CreditService failed to start or encountered a runtime error:', err);
+            });
+            logger.info('CreditService sync process has been initiated.');
+        } else {
+            logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
+        }
         
         // Now setup Telegram commands AFTER web routes are initialized
         if (platforms.telegram) {
