@@ -230,11 +230,17 @@ class CreditService {
         }
 
         // 4. EXECUTE ON-CHAIN CONFIRMATION
-        this.logger.info(`[CreditService] Step 4: Executing on-chain credit confirmation for tx ${transactionHash}. Net Escrow: ${escrowAmountForContract}, Fee: ${feeInWei}`);
-        const confirmationReceipt = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, feeInWei, '0x');
+        this.logger.info(`[CreditService] Step 4: Sending on-chain credit confirmation for tx ${transactionHash}. Net Escrow: ${escrowAmountForContract}, Fee: ${feeInWei}`);
+        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, feeInWei, '0x');
         
+        // Log the hash immediately after sending
+        this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
+
+        // Now, wait for the transaction to be confirmed.
+        const confirmationReceipt = await this.ethereumService.waitForConfirmation(txResponse);
+
         // FIX: Add validation to ensure we have a valid receipt and transaction hash before proceeding.
-        if (!confirmationReceipt || !confirmationReceipt.transactionHash) {
+        if (!confirmationReceipt || !confirmationReceipt.hash) {
             this.logger.error(`[CreditService] CRITICAL: On-chain transaction may have succeeded but we failed to receive a valid receipt. Manual verification required for original tx: ${transactionHash}`);
             await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR_INVALID_RECEIPT', {
                 failure_reason: 'Transaction was sent but an invalid receipt was returned by the provider.'
@@ -242,7 +248,7 @@ class CreditService {
             return; // Halt processing
         }
 
-        this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.transactionHash}`);
+        this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.hash}`);
 
         const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
         const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
@@ -255,8 +261,8 @@ class CreditService {
             await this.internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/credit`, {
                 amountUsd: netDepositValueUsd,
                 transactionType: 'ONCHAIN_DEPOSIT',
-                description: `Credit from on-chain deposit. Confirmed in tx: ${confirmationReceipt.transactionHash}`,
-                externalTransactionId: confirmationReceipt.transactionHash,
+                description: `Credit from on-chain deposit. Confirmed in tx: ${confirmationReceipt.hash}`,
+                externalTransactionId: confirmationReceipt.hash,
             });
             this.logger.info(`[CreditService] Successfully applied credit to masterAccountId ${masterAccountId}.`);
         } catch (error) {
@@ -264,7 +270,7 @@ class CreditService {
             // Update status to a special state indicating on-chain success but off-chain failure
             await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'NEEDS_MANUAL_CREDIT', {
                 master_account_id: masterAccountId,
-                confirmation_tx_hash: confirmationReceipt.transactionHash,
+                confirmation_tx_hash: confirmationReceipt.hash,
                 net_value_usd: netDepositValueUsd,
                 failure_reason: 'Off-chain credit application failed via internal API.',
                 error_details: error.message
@@ -279,17 +285,24 @@ class CreditService {
             deposit_value_usd: depositValueUsd,
             gas_cost_usd: actualGasCostUsd,
             net_value_usd: netDepositValueUsd,
-            confirmation_tx_hash: confirmationReceipt.transactionHash,
+            confirmation_tx_hash: confirmationReceipt.hash,
         });
 
         this.logger.info(`[CreditService] Successfully processed deposit for tx ${transactionHash}`);
 
     } catch (error) {
       const errorMessage = error.message || 'An unknown error occurred';
-      this.logger.error(`[CreditService] Unhandled error during confirmation for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
+      this.logger.error(`[CreditService] Unhandled error during confirmation for original deposit tx ${transactionHash}.`);
+      this.logger.error('[CreditService] --- DETAILED ERROR ---');
+      this.logger.error(`[CreditService] Error Message: ${errorMessage}`);
+      this.logger.error(`[CreditService] Error Code: ${error.code || 'N/A'}`);
+      this.logger.error(`[CreditService] Error Stack:`, error.stack);
+      this.logger.error('[CreditService] --- END DETAILED ERROR ---');
+
       await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { 
         failure_reason: 'An unexpected error occurred during processing.',
-        error_details: errorMessage
+        error_details: errorMessage,
+        error_stack: error.stack // Also save the stack to the DB
       });
     }
   }

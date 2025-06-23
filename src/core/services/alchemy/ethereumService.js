@@ -86,26 +86,49 @@ class EthereumService {
   }
 
   /**
-   * Executes a state-changing (write) contract function.
-   * Handles the full transaction lifecycle.
+   * Executes a state-changing (write) contract function and returns the response immediately.
+   * Does NOT wait for the transaction to be mined.
    * @param {string} contractAddress - The address of the smart contract.
    * @param {Array} abi - The ABI of the smart contract.
    * @param {string} functionName - The name of the function to execute.
    * @param {Array} args - The arguments to pass to the function.
-   * @returns {Promise<import('ethers').TransactionReceipt>} The transaction receipt after it's confirmed.
+   * @returns {Promise<import('ethers').TransactionResponse>} The initial transaction response.
    */
   async write(contractAddress, abi, functionName, ...args) {
-    this.logger.info(`[EthereumService] Executing write operation: ${functionName} on ${contractAddress}`);
+    this.logger.info(`[EthereumService] Sending write transaction: ${functionName} on ${contractAddress}`);
     try {
       const contract = this.getContract(contractAddress, abi, true);
       const txResponse = await contract[functionName](...args);
-      this.logger.info(`[EthereumService] Transaction sent: ${txResponse.hash}. Waiting for confirmation...`);
+      this.logger.info(`[EthereumService] Transaction sent with hash: ${txResponse.hash}.`);
+      return txResponse;
+    } catch (error) {
+      this.logger.error(`[EthereumService] Error sending transaction '${functionName}':`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Waits for a transaction to be confirmed and returns the receipt.
+   * @param {import('ethers').TransactionResponse} txResponse - The response object from a `write` call.
+   * @returns {Promise<import('ethers').TransactionReceipt>} The transaction receipt after it's confirmed.
+   */
+  async waitForConfirmation(txResponse) {
+    if (!txResponse || typeof txResponse.wait !== 'function') {
+      this.logger.error('[EthereumService] waitForConfirmation received an invalid transaction response object.');
+      throw new Error('Invalid input: txResponse must be a valid TransactionResponse object.');
+    }
+    this.logger.info(`[EthereumService] Waiting for confirmation of tx: ${txResponse.hash}...`);
+    try {
       const receipt = await txResponse.wait();
-      this.logger.info(`[EthereumService] Transaction confirmed in block: ${receipt.blockNumber}`);
+      this.logger.info(`[EthereumService] Transaction ${txResponse.hash} confirmed in block: ${receipt.blockNumber}`);
+      if (!receipt || !receipt.hash) {
+          this.logger.error(`[EthereumService] CRITICAL: Received an invalid receipt for a confirmed transaction! Hash: ${txResponse.hash}`, { receipt });
+          throw new Error(`Invalid receipt received for transaction ${txResponse.hash}`);
+      }
       return receipt;
     } catch (error) {
-      this.logger.error(`[EthereumService] Error during write operation '${functionName}':`, error);
-      throw error;
+        this.logger.error(`[EthereumService] Error waiting for confirmation of tx ${txResponse.hash}:`, error);
+        throw error;
     }
   }
 
@@ -196,6 +219,7 @@ class EthereumService {
         const estimatedCostUsd = parseFloat(formatEther(estimatedCostEth)) * ethPriceUsd;
 
         this.logger.info(`[EthereumService] Gas estimation complete. Est. Gas: ${gasEstimate}, Est. Cost: ~${estimatedCostUsd.toFixed(4)} USD`);
+        this.logger.debug('[EthereumService] Note: Gas estimation is a simulation and does not produce a transaction hash.');
         return estimatedCostUsd;
 
     } catch (error) {
