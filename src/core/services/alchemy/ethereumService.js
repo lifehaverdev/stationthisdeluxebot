@@ -18,7 +18,7 @@ class EthereumService {
   constructor(config, services, logger) {
     this.logger = logger || console;
     
-    const privateKey = process.env.PRIVATE_KEY;
+    const privateKey = process.env.ETHEREUM_SIGNER_PRIVATE_KEY;
 
     if (!config || !config.rpcUrl || !privateKey) {
       this.logger.error('[EthereumService] RPC URL and a PRIVATE_KEY environment variable are required.');

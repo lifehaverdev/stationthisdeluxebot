@@ -121,8 +121,9 @@ async function initializeServices(options = {}) {
                 ethereumService,
                 creditLedgerDb: initializedDbServices.data.creditLedger,
                 systemStateDb: initializedDbServices.data.systemState,
-                priceFeedService, // Pass the price feed service
+                priceFeedService,
                 tokenRiskEngine,
+                internalApiClient,
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
         }

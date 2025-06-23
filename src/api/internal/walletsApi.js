@@ -30,8 +30,59 @@ module.exports = function initializeWalletsApi(dependencies) {
     return new ObjectId(masterAccountIdStr);
   };
 
+  // NEW ENDPOINT: Find User by Wallet Address
+  // This is a top-level route on the main app router, not the user-specific one.
+  // We will add it here for co-location of wallet logic but it needs to be mounted differently.
+  // Let's adjust the export of this file to handle this.
+
+  const walletsRouter = express.Router();
+
+  // GET /lookup?address=<wallet_address>
+  walletsRouter.get('/lookup', async (req, res) => {
+    const requestId = uuidv4();
+    const { address } = req.query;
+
+    logger.info(`[userWalletsApi] GET /wallets/lookup called with address: ${address}, requestId: ${requestId}`);
+
+    if (!address || typeof address !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+        logger.warn(`[userWalletsApi] GET /wallets/lookup: Invalid or missing 'address' query parameter. Address: ${address}, requestId: ${requestId}`);
+        return res.status(400).json({
+            error: { code: 'INVALID_INPUT', message: "Invalid or missing 'address' query parameter. Must be a valid Ethereum address.", details: { address }, requestId },
+        });
+    }
+
+    try {
+        const normalizedAddress = address.toLowerCase();
+        // Find a user where the 'wallets' array contains an element with the matching address
+        const user = await db.userCore.findOne({ 'wallets.address': normalizedAddress });
+
+        if (!user) {
+            logger.warn(`[userWalletsApi] GET /wallets/lookup: No user found for address ${normalizedAddress}. requestId: ${requestId}`);
+            return res.status(404).json({
+                error: { code: 'NOT_FOUND', message: 'No user found with the specified wallet address.', details: { address: normalizedAddress }, requestId },
+            });
+        }
+
+        logger.info(`[userWalletsApi] GET /wallets/lookup: Found user for address ${normalizedAddress}. MasterAccountId: ${user._id}. requestId: ${requestId}`);
+        res.status(200).json({
+            masterAccountId: user._id.toString(),
+            // Optionally return other details, but masterAccountId is the key
+        });
+
+    } catch (error) {
+        logger.error(`[userWalletsApi] GET /wallets/lookup: Error looking up user by wallet. Address: ${address}. Error: ${error.message}. requestId: ${requestId}`, error);
+        res.status(500).json({
+            error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while looking up user by wallet.', requestId },
+        });
+    }
+  });
+
+
+  // This router is for user-specific wallet management, e.g., /users/{masterAccountId}/wallets
+  const userScopedRouter = express.Router({ mergeParams: true });
+
   // GET / - List wallets for the user
-  router.get('/', async (req, res) => {
+  userScopedRouter.get('/', async (req, res) => {
         const requestId = uuidv4();
         const masterAccountId = getMasterAccountId(req, res);
         if (!masterAccountId) return;
@@ -71,7 +122,7 @@ module.exports = function initializeWalletsApi(dependencies) {
     });
 
   // POST / - Adds a wallet
-  router.post('/', async (req, res) => {
+  userScopedRouter.post('/', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -135,7 +186,7 @@ module.exports = function initializeWalletsApi(dependencies) {
   });
 
   // GET /:address - Get a specific wallet by address
-  router.get('/:address', async (req, res) => {
+  userScopedRouter.get('/:address', async (req, res) => {
         const requestId = uuidv4();
         const masterAccountId = getMasterAccountId(req, res);
         if (!masterAccountId) return;
@@ -190,7 +241,7 @@ module.exports = function initializeWalletsApi(dependencies) {
     });
 
   // PUT /:address - Updates a specific wallet
-  router.put('/:address', async (req, res) => {
+  userScopedRouter.put('/:address', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -248,58 +299,63 @@ module.exports = function initializeWalletsApi(dependencies) {
 
     if (!hasValidUpdateField) {
       return res.status(400).json({
-        error: { code: 'NO_UPDATABLE_FIELDS', message: `Request body must contain at least one updatable field: ${allowedUpdateFields.join(', ')}.`, requestId },
+        error: {
+            code: 'NO_VALID_UPDATE_FIELDS',
+            message: `The update payload did not contain any of the allowed fields to update: [${allowedUpdateFields.join(', ')}]`,
+            requestId,
+        },
       });
     }
     
+    // Add the timestamp for the update
     setOperations['wallets.$[elem].updatedAt'] = new Date();
 
-    const updateOptions = {
-         arrayFilters: [{ 'elem.address': walletAddressToUpdate }],
-    };
+    try {
+      if (updatePayload.isPrimary === true) {
+        // If setting a wallet to primary, first unset any other primary wallet for this user.
+        await db.userCore.updateUserCore(
+            masterAccountId,
+            { $set: { 'wallets.$[].isPrimary': false } },
+            // No array filters here, apply to all wallets for the user
+        );
+      }
 
-    const updateResult = await db.userCore.updateUserCore(
-        masterAccountId, 
-        { $set: setOperations }, 
-        updateOptions
-    );
+      const updatedUser = await db.userCore.updateUserCore(
+          masterAccountId,
+          { $set: setOperations },
+          { arrayFilters: [{ 'elem.address': walletAddressToUpdate }] }
+      );
 
-    if (!updateResult || updateResult.matchedCount === 0) {
-      logger.warn(`[userWalletsApi] PUT .../wallets/${walletAddressToUpdate}: Wallet not found or update failed. requestId: ${requestId}`);
-      return res.status(404).json({
-        error: { code: 'WALLET_NOT_FOUND', message: 'Wallet not found for update.', details: { masterAccountId: masterAccountIdStr, walletAddress: walletAddressToUpdate }, requestId },
+      if (!updatedUser) {
+        return res.status(404).json({
+          error: { code: 'USER_OR_WALLET_NOT_FOUND', message: 'User not found, or no wallet matched the specified address for this user.', details: { masterAccountId: masterAccountIdStr, walletAddressToUpdate }, requestId },
+        });
+      }
+
+      const updatedWallet = updatedUser.wallets.find(w => w.address === walletAddressToUpdate);
+      const responseWallet = updatedWallet ? {
+            address: updatedWallet.address,
+            name: updatedWallet.name,
+            tag: updatedWallet.tag,
+            isPrimary: updatedWallet.isPrimary,
+            verified: updatedWallet.verified,
+            addedAt: updatedWallet.addedAt ? updatedWallet.addedAt.toISOString() : null,
+            updatedAt: updatedWallet.updatedAt ? updatedWallet.updatedAt.toISOString() : null,
+         } : null;
+
+      logger.info(`[userWalletsApi] PUT .../wallets/${walletAddressToUpdate}: Wallet updated successfully. requestId: ${requestId}`);
+      res.status(200).json(responseWallet);
+
+    } catch (error) {
+      logger.error(`[userWalletsApi] PUT .../wallets/${walletAddressToUpdate}: Error updating wallet. Error: ${error.message}. requestId: ${requestId}`, error);
+      res.status(500).json({
+        error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while updating the wallet.', requestId },
       });
     }
-
-    // Fetch the updated wallet to return it
-    const updatedUserDoc = await db.userCore.findOne(
-        { _id: masterAccountId, 'wallets.address': walletAddressToUpdate },
-        { projection: { 'wallets.$': 1 } },
-        PRIORITY.HIGH
-    );
-
-    if (!updatedUserDoc || !updatedUserDoc.wallets || updatedUserDoc.wallets.length === 0) {
-       logger.error(`[userWalletsApi] PUT .../wallets/${walletAddressToUpdate}: Failed to fetch updated wallet after successful update. requestId: ${requestId}`);
-       return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to retrieve wallet data after update.', requestId }});
-    }
-
-    const updatedWallet = updatedUserDoc.wallets[0];
-     const responseWallet = {
-        address: updatedWallet.address,
-        name: updatedWallet.name,
-        tag: updatedWallet.tag,
-        isPrimary: updatedWallet.isPrimary,
-        verified: updatedWallet.verified,
-        addedAt: updatedWallet.addedAt ? updatedWallet.addedAt.toISOString() : null,
-        updatedAt: updatedWallet.updatedAt ? updatedWallet.updatedAt.toISOString() : null,
-    };
-
-    res.status(200).json(responseWallet);
-
   });
 
-  // DELETE /:address - Removes a wallet
-  router.delete('/:address', async (req, res) => {
+  // DELETE /:address - Deletes a wallet
+  userScopedRouter.delete('/:address', async (req, res) => {
     const requestId = uuidv4();
     const masterAccountId = getMasterAccountId(req, res);
     if (!masterAccountId) return;
@@ -309,79 +365,36 @@ module.exports = function initializeWalletsApi(dependencies) {
 
     logger.info(`[userWalletsApi] DELETE /users/${masterAccountIdStr}/wallets/${walletAddressToDelete} called, requestId: ${requestId}`);
 
-    if (!walletAddressToDelete || typeof walletAddressToDelete !== 'string' || walletAddressToDelete.trim() === '') {
+     if (!walletAddressToDelete || typeof walletAddressToDelete !== 'string' || walletAddressToDelete.trim() === '') {
       return res.status(400).json({
         error: { code: 'INVALID_WALLET_ADDRESS_PARAM', message: 'Wallet address in path parameter must be a non-empty string.', details: { value: walletAddressToDelete }, requestId },
       });
     }
 
     try {
-      // Pre-check user and wallet
-       const initialUser = await db.userCore.findOne(
-           { _id: masterAccountId, 'wallets.address': walletAddressToDelete },
-           {}, 
-           PRIORITY.HIGH
-       );
-
-       if (!initialUser) {
-            logger.warn(`[userWalletsApi] DELETE .../${walletAddressToDelete}: User or wallet not found. requestId: ${requestId}`);
-            return res.status(404).json({
-                error: { code: 'WALLET_NOT_FOUND', message: 'Wallet with the specified address not found for this user.', details: { masterAccountId: masterAccountIdStr, walletAddress: walletAddressToDelete }, requestId },
-            });
-        }
-
-
-      const updatedUser = await db.userCore.deleteWallet(masterAccountId, walletAddressToDelete);
+      const updatedUser = await db.userCore.removeWallet(masterAccountId, walletAddressToDelete);
 
       if (!updatedUser) {
-        // This case implies user existed but deleteWallet failed (e.g. concurrent deletion of user)
-        logger.warn(`[userWalletsApi] DELETE .../${walletAddressToDelete}: deleteWallet returned null after successful pre-check. User likely deleted concurrently. requestId: ${requestId}`);
         return res.status(404).json({
-          error: { code: 'USER_NOT_FOUND_DURING_DELETE', message: 'User not found during wallet deletion attempt.', details: { masterAccountId: masterAccountIdStr }, requestId },
+          error: { code: 'USER_OR_WALLET_NOT_FOUND', message: 'User not found, or no wallet matched the specified address to delete.', details: { masterAccountId: masterAccountIdStr, walletAddressToDelete }, requestId },
         });
       }
 
-      // Verify wallet was actually removed
-      const walletStillExists = updatedUser.wallets && updatedUser.wallets.some(w => w.address === walletAddressToDelete);
-      if (walletStillExists) {
-        logger.error(`[userWalletsApi] DELETE .../${walletAddressToDelete}: Wallet still found after delete operation. Unexpected. requestId: ${requestId}`);
-        return res.status(500).json({ error: { code: 'WALLET_DELETION_VERIFICATION_FAILED', message: 'Wallet deletion verification failed.', requestId } });
-      }
-
-      logger.info(`[userWalletsApi] DELETE .../${walletAddressToDelete}: Wallet deleted successfully. requestId: ${requestId}`);
-      res.status(204).send(); 
+      logger.info(`[userWalletsApi] DELETE .../wallets/${walletAddressToDelete}: Wallet deleted successfully. requestId: ${requestId}`);
+      res.status(204).send(); // 204 No Content is standard for successful deletions
 
     } catch (error) {
-      logger.error(`[userWalletsApi] DELETE .../${walletAddressToDelete}: Error deleting wallet. Error: ${error.message}. requestId: ${requestId}`, error);
+      logger.error(`[userWalletsApi] DELETE .../wallets/${walletAddressToDelete}: Error deleting wallet. Error: ${error.message}. requestId: ${requestId}`, error);
       res.status(500).json({
         error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while deleting the wallet.', requestId },
       });
     }
   });
 
-  // Error handling middleware specific to this router
-  router.use((err, req, res, next) => {
-    const masterAccountId = req.params.masterAccountId;
-    const walletAddress = req.params.address;
-    logger.error(`[userWalletsApi] Error in wallet route for user ${masterAccountId}, wallet ${walletAddress || 'N/A'}: ${err.message}`, { 
-        stack: err.stack, 
-        masterAccountId: masterAccountId, 
-        walletAddress: walletAddress,
-        requestId: req.id // Assuming a request ID middleware adds req.id
-    });
-    
-    if (res.headersSent) {
-      return next(err);
-    }
-
-    res.status(err.status || 500).json({
-      error: {
-        code: err.code || 'INTERNAL_SERVER_ERROR',
-        message: err.message || 'An unexpected error occurred in the wallets API.'
-      }
-    });
-  });
-
-  logger.info('[userWalletsApi] User Wallets API routes initialized.');
-  return router;
+  logger.info('[userWalletsApi] User Wallets API routes configured.');
+  
+  return {
+    walletsRouter, // for /wallets/lookup
+    userScopedRouter // for /users/{masterAccountId}/wallets
+  };
 };

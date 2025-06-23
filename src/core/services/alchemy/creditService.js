@@ -14,7 +14,7 @@ const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 
 /**
  * @class CreditService
- * @description Manages the credit lifecycle, starting with deposit reconciliation.
+ * @description Manages the credit lifecycle, from event detection to off-chain accounting.
  */
 class CreditService {
   /**
@@ -24,6 +24,7 @@ class CreditService {
    * @param {SystemStateDB} services.systemStateDb - Instance of SystemStateDB.
    * @param {PriceFeedService} services.priceFeedService - Service for fetching token prices.
    * @param {TokenRiskEngine} services.tokenRiskEngine - Service for assessing collateral risk.
+   * @param {InternalApiClient} services.internalApiClient - Client for internal API communication.
    * @param {object} config - Configuration object.
    * @param {string} config.creditVaultAddress - The address of the on-chain Credit Vault contract.
    * @param {Array} config.creditVaultAbi - The ABI of the Credit Vault contract.
@@ -32,8 +33,8 @@ class CreditService {
   constructor(services, config, logger) {
     this.logger = logger || console;
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine } = services;
-    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine) {
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient } = services;
+    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient) {
       throw new Error('CreditService: Missing one or more required services.');
     }
     this.ethereumService = ethereumService;
@@ -41,6 +42,7 @@ class CreditService {
     this.systemStateDb = systemStateDb;
     this.priceFeedService = priceFeedService;
     this.tokenRiskEngine = tokenRiskEngine;
+    this.internalApiClient = internalApiClient;
     
     const { creditVaultAddress, creditVaultAbi } = config;
     if (!creditVaultAddress || !creditVaultAbi) {
@@ -113,7 +115,7 @@ class CreditService {
         if (existingEntry) {
             this.logger.debug(`[CreditService] Skipping event for tx ${transactionHash} as it's already acknowledged.`);
             continue;
-        }
+    }
 
         this.logger.info(`[CreditService] Acknowledging new deposit: ${transactionHash}`);
         await this.creditLedgerDb.createLedgerEntry({
@@ -131,9 +133,9 @@ class CreditService {
     this.logger.info('[CreditService] Event acknowledgment process completed.');
     await this.systemStateDb.setLastSyncedBlock(toBlock);
   }
-  
+
   /**
-   * STAGE 2: Processes all deposits that are in a 'PENDING_CONFIRMATION' state.
+   * STAGE 2: Processes all deposits that are in a 'PENDING_CONFIRMATION' or 'ERROR' state.
    */
   async processPendingConfirmations() {
       this.logger.info(`[CreditService] Checking for deposits pending confirmation or in error state...`);
@@ -151,161 +153,120 @@ class CreditService {
   }
 
   /**
-   * Private method to process a single pending confirmation.
-   * This contains the logic previously in _processDeposit.
+   * Processes a single pending confirmation, following the full validation and crediting flow.
    * @param {object} deposit - The ledger entry document from the database.
    * @private
    */
   async _processSingleConfirmation(deposit) {
-    const { deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, vault_account: vaultAccount, depositor_address: user, token_address: token, deposit_amount_wei } = deposit;
-    const amount = ethers.getBigInt(deposit_amount_wei);
-
+    const { deposit_tx_hash: transactionHash, deposit_block_number: blockNumber, vault_account: vaultAccount, depositor_address: user, token_address: token } = deposit;
+    const amount = ethers.getBigInt(deposit.deposit_amount_wei);
     this.logger.info(`[CreditService] Processing confirmation for tx ${transactionHash}`);
-    
-    // For now, we only care about native ETH deposits. This can be expanded.
+
     if (token.toLowerCase() !== NATIVE_ETH_ADDRESS.toLowerCase()) {
         this.logger.debug(`[CreditService] Skipping non-ETH deposit in tx ${transactionHash} for token ${token}.`);
-        // TODO: Update status to 'SKIPPED' or similar?
         return;
     }
 
     try {
-      // ON-CHAIN VERIFICATION VIA EVENT QUERY
-      // We create a unique ID for the original deposit event to check if it's been confirmed.
-      const uniqueEventArgs = [vaultAccount, user, token, amount];
-      this.logger.info(`[CreditService] Verifying on-chain confirmation status for deposit: ${transactionHash}`);
-
-      // Query for past CreditConfirmed events that match our deposit details
-      const confirmedEvents = await this.ethereumService.getPastEvents(
-        this.contractConfig.address,
-        this.contractConfig.abi,
-        'CreditConfirmed',
-        blockNumber, // Start searching from the block of the deposit
-        'latest',
-        [vaultAccount, user, token] // Filter by indexed event params
-      );
-      
-      const alreadyConfirmed = confirmedEvents.some(event => event.args.amount.toString() === amount.toString());
-
-      if (alreadyConfirmed) {
-          this.logger.warn(`[CreditService] Found CreditConfirmed event for deposit ${transactionHash}. Updating status and skipping transaction.`);
-          const confirmedEvent = confirmedEvents.find(event => event.args.amount.toString() === amount.toString());
-          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', { 
-            failure_reason: 'Confirmed in a previous run.',
-            confirmation_tx_hash: confirmedEvent.transactionHash
-          });
-          return;
-      }
-      this.logger.info(`[CreditService] No 'CreditConfirmed' event found. Proceeding with processing.`);
-
-      // --- Full validation logic from the old _processDeposit method ---
-      this.logger.info(`[CreditService] Assessing collateral for token ${token}...`);
-      const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
-
-      if (!riskAssessment.isSafe) {
-          this.logger.error(`[CreditService] Collateral assessment failed for tx ${transactionHash}. Reason: ${riskAssessment.reason}.`);
-          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
-          return;
-      }
-      this.logger.info(`[CreditService] Collateral assessment passed for tx ${transactionHash}.`);
-
-      const priceInUsd = riskAssessment.price;
-      if (!priceInUsd || priceInUsd <= 0) {
-          this.logger.error(`[CreditService] Could not retrieve a valid price for token ${token} in tx ${transactionHash}.`);
-          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { failure_reason: 'Invalid price retrieved.' });
-          return;
-      }
-
-      const amountInNative = formatEther(amount);
-      const depositValueUsd = parseFloat(amountInNative) * priceInUsd;
-      
-      this.logger.info(`[CreditService] Performing pre-flight gas profitability check...`);
-      try {
-        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(
-          this.contractConfig.address,
-          this.contractConfig.abi,
-          'confirmCredit',
-          vaultAccount,
-          user,
-          token,
-          amount,
-          0,      // fee
-          '0x'    // metadata
-        );
-
-        if (estimatedGasCostUsd >= depositValueUsd) {
-          this.logger.warn(`[CreditService] Deposit for tx ${transactionHash} is not profitable. Rejecting.`);
-          await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'REJECTED_UNPROFITABLE', {
-              deposit_value_usd: depositValueUsd,
-              failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded deposit value ($${depositValueUsd.toFixed(2)}).`
-          });
-          return;
+        // 1. USER ACCOUNT VERIFICATION
+        this.logger.info(`[CreditService] Step 1: Verifying user account for depositor ${user}...`);
+        let masterAccountId;
+        try {
+            const response = await this.internalApiClient.get(`/wallets/lookup?address=${user}`);
+            masterAccountId = response.masterAccountId;
+            this.logger.info(`[CreditService] User found. MasterAccountId: ${masterAccountId}`);
+        } catch (error) {
+            if (error.response && error.response.status === 404) {
+                this.logger.warn(`[CreditService] No user account found for address ${user}. Rejecting deposit.`);
+                await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'REJECTED_UNKNOWN_USER', { failure_reason: 'No corresponding user account found for the depositor address.' });
+            } else {
+                this.logger.error(`[CreditService] Error looking up user by wallet: ${error.message}. Halting processing for this deposit.`);
+                await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { failure_reason: 'Failed to lookup user due to an internal API error.', error_details: error.message });
+            }
+            return;
         }
-      } catch (error) {
-        const errorMessage = error.message || 'An unknown error occurred';
-        this.logger.error(`[CreditService] Gas estimation failed for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
+
+        // 2. ON-CHAIN VERIFICATION
+        this.logger.info(`[CreditService] Step 2: Verifying on-chain confirmation status for deposit...`);
+        const confirmedEvents = await this.ethereumService.getPastEvents(this.contractConfig.address, this.contractConfig.abi, 'CreditConfirmed', blockNumber, 'latest', [vaultAccount, user, token]);
+        const alreadyConfirmed = confirmedEvents.some(event => event.args.amount.toString() === amount.toString());
+        if (alreadyConfirmed) {
+            this.logger.warn(`[CreditService] Deposit ${transactionHash} already has a 'CreditConfirmed' event. Marking as confirmed and skipping.`);
+            const confirmedEvent = confirmedEvents.find(event => event.args.amount.toString() === amount.toString());
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', { failure_reason: 'Confirmed in a previous run.', confirmation_tx_hash: confirmedEvent.transactionHash, master_account_id: masterAccountId });
+            return;
+        }
+
+        // 3. COLLATERAL & PROFITABILITY CHECKS
+        this.logger.info(`[CreditService] Step 3: Assessing collateral and profitability...`);
+        const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
+        if (!riskAssessment.isSafe) {
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
+            return;
+        }
+        const priceInUsd = riskAssessment.price;
+        const depositValueUsd = parseFloat(formatEther(amount)) * priceInUsd;
         
-        const failureReason = "Gas estimation failed, transaction would revert.";
-        const detailedError = `The operator wallet may not be an authorized 'backend' on the CreditVault contract. Raw Error: ${errorMessage}`;
+        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, amount, 0, '0x');
+        if (estimatedGasCostUsd >= depositValueUsd) {
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'REJECTED_UNPROFITABLE', { deposit_value_usd: depositValueUsd, failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded deposit value ($${depositValueUsd.toFixed(2)}).` });
+            return;
+        }
+
+        // Calculate the fee in WEI to pass to the smart contract
+        const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
+        const feeInWei = ethers.parseEther(estimatedGasCostEth.toString());
+
+        // 4. EXECUTE ON-CHAIN CONFIRMATION
+        this.logger.info(`[CreditService] Step 4: Executing on-chain credit confirmation for tx ${transactionHash}...`);
+        const confirmationReceipt = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, amount, feeInWei, '0x');
+        this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.transactionHash}`);
+
+        const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
+        const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
+        const netDepositValueUsd = depositValueUsd - actualGasCostUsd;
+
+        // 5. OFF-CHAIN CREDIT APPLICATION
+        this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Net value: $${netDepositValueUsd.toFixed(2)}.`);
+        try {
+            await this.internalApiClient.post(`/users/${masterAccountId}/economy/credit`, {
+                amountUsd: netDepositValueUsd,
+                transactionType: 'ONCHAIN_DEPOSIT',
+                description: `Credit from on-chain deposit. Confirmed in tx: ${confirmationReceipt.transactionHash}`,
+                externalTransactionId: confirmationReceipt.transactionHash,
+            });
+            this.logger.info(`[CreditService] Successfully applied credit to masterAccountId ${masterAccountId}.`);
+        } catch (error) {
+            this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for ${masterAccountId} after successful on-chain confirmation! Requires manual intervention. Error: ${error.message}`);
+            // Update status to a special state indicating on-chain success but off-chain failure
+            await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'NEEDS_MANUAL_CREDIT', {
+                master_account_id: masterAccountId,
+                confirmation_tx_hash: confirmationReceipt.transactionHash,
+                net_value_usd: netDepositValueUsd,
+                failure_reason: 'Off-chain credit application failed via internal API.',
+                error_details: error.message
+            });
+            return; // Halt further processing
+        }
         
-        await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { 
-          failure_reason: failureReason,
-          error_details: detailedError
+        // 6. FINAL LEDGER UPDATE
+        this.logger.info(`[CreditService] Step 6: Finalizing ledger entry for tx ${transactionHash}.`);
+        await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', {
+            master_account_id: masterAccountId,
+            deposit_value_usd: depositValueUsd,
+            gas_cost_usd: actualGasCostUsd,
+            net_value_usd: netDepositValueUsd,
+            confirmation_tx_hash: confirmationReceipt.transactionHash,
         });
-        return; // Stop processing this deposit
-      }
-      
-      this.logger.info(`[CreditService] Gas profitability check passed.`);
-      
-      this.logger.info(`[CreditService] Executing on-chain credit confirmation for tx ${transactionHash}...`);
-      
-      const confirmationReceipt = await this.ethereumService.write(
-          this.contractConfig.address,
-          this.contractConfig.abi,
-          'confirmCredit',
-          vaultAccount,
-          user,
-          token,
-          amount,
-          0,      // fee
-          '0x'    // metadata
-      );
-      
-      this.logger.info(`[CreditService] On-chain credit confirmation successful. Tx: ${confirmationReceipt.transactionHash}`);
 
-      const actualGasUsed = confirmationReceipt.gasUsed;
-      const effectiveGasPrice = confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice;
-      const actualGasCostEth = actualGasUsed * effectiveGasPrice;
-      const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
-      const netDepositValueUsd = depositValueUsd - actualGasCostUsd;
-      const creditPoints = netDepositValueUsd > 0 ? (netDepositValueUsd / USD_TO_POINTS_CONVERSION_RATE) : 0;
-      
-      this.logger.info(`[CreditService] Debited gas cost. Net value: $${netDepositValueUsd.toFixed(2)}. Awarding ${creditPoints.toFixed(0)} points.`);
-      
-      await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED', {
-        deposit_event_name: 'DepositRecorded',
-        deposit_value_usd: depositValueUsd,
-        gas_cost_usd: actualGasCostUsd,
-        net_value_usd: netDepositValueUsd,
-        credit_points_awarded: creditPoints,
-        confirmation_tx_hash: confirmationReceipt.transactionHash,
-      });
-
-      this.logger.info(`[CreditService] Successfully recorded and confirmed deposit for tx ${transactionHash}`);
+        this.logger.info(`[CreditService] Successfully processed deposit for tx ${transactionHash}`);
 
     } catch (error) {
       const errorMessage = error.message || 'An unknown error occurred';
-      this.logger.error(`[CreditService] Gas estimation failed for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
-
-      // If gas estimation fails, it means the transaction would revert.
-      // This is not a profitability issue, but a fundamental problem with the transaction.
-      // Let's mark it as an error and log the details.
-      const failureReason = "Gas estimation failed, transaction would revert.";
-      const detailedError = `The operator wallet may not be an authorized 'backend' on the CreditVault contract. Raw Error: ${errorMessage}`;
-      
+      this.logger.error(`[CreditService] Unhandled error during confirmation for tx ${transactionHash}: ${errorMessage}`, { error: error.stack });
       await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'ERROR', { 
-        rejectionReason: failureReason,
-        errorDetails: detailedError
+        failure_reason: 'An unexpected error occurred during processing.',
+        error_details: errorMessage
       });
     }
   }

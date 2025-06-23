@@ -3,7 +3,6 @@ const { v4: uuidv4 } = require('uuid'); // Added for request IDs in errors
 const { ObjectId, Decimal128 } = require('mongodb'); // Added for ObjectId validation & Decimal128
 const { PRIORITY, getCachedClient } = require('../../core/services/db/utils/queue'); // Import PRIORITY and getCachedClient
 const createUserPreferencesApiService = require('./userPreferencesApi'); // Import the new preferences service
-const initializeWalletsApi = require('./walletsApi'); // Import the new wallets service
 const initializeApiKeysApi = require('./apiKeysApi'); // Import the new API keys service
 const initializeUserEconomyApi = require('./userEconomyApi.js'); // Import the new economy service (fixed)
 const { createUserToolsApiRouter } = require('./userToolsApi'); // Import the new user tools service
@@ -495,9 +494,12 @@ function createUserCoreApiService(dependencies) {
   logger.info(`[userCoreApi] User Preferences API routes mounted under /:masterAccountId/preferences.`);
 
   // User Wallets API (mounted at /:masterAccountId/wallets)
-  const userWalletsApiRouter = initializeWalletsApi(dependencies); 
-  router.use('/:masterAccountId/wallets', userWalletsApiRouter);
-  logger.info(`[userCoreApi] User Wallets API routes mounted under /:masterAccountId/wallets.`);
+  if (dependencies.userScopedWalletsRouter) {
+    router.use('/:masterAccountId/wallets', dependencies.userScopedWalletsRouter);
+    logger.info(`[userCoreApi] User Wallets API routes mounted under /:masterAccountId/wallets.`);
+  } else {
+    logger.error('[userCoreApi] userScopedWalletsRouter not found in dependencies, skipping wallet routes.');
+  }
 
   // User API Keys API (mounted at /:masterAccountId/apikeys)
   const { managementRouter: apiKeysManagementRouter, performApiKeyValidation } = initializeApiKeysApi(dependencies);

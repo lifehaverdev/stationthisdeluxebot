@@ -33,10 +33,27 @@ The `CreditService` manages a sophisticated lifecycle for user collateral, which
 
     *   **Stage 2: Confirmation Processing (State-Changing)**
         *   A separate process queries the database for all ledger entries with a `PENDING_CONFIRMATION` status.
-        *   For each pending entry, the service performs the full validation logic: collateral risk assessment, value calculation, and gas profitability checks.
-        *   **On-Chain Verification:** Before sending any transaction, the service performs a read-only call to the smart contract (e.g., `isDepositConfirmed(depositId)`) to verify that the deposit has not already been confirmed on-chain in a previous, interrupted run.
-        *   If the deposit is not yet confirmed, the service executes the `confirmCredit` write transaction.
+        *   For each pending entry, the service performs the full validation logic, starting with user verification.
+        *
+        *   **1. User Account Verification (NEW STEP):** Before any other checks, the service must verify the deposit belongs to a known user.
+        *       - It takes the depositor's address from the event payload.
+        *       - It calls a new internal API endpoint, `GET /internal/v1/data/wallets/lookup?address={address}`, to find a matching user account.
+        *       - **If a user is found:** The `masterAccountId` is retrieved and stored on the `credit_ledger` record. The process continues to the next step.
+        *       - **If no user is found (404):** The service checks if the deposit corresponds to a pending "magic amount" verification. If so, it links the wallet to the user and proceeds.
+        *       - **If the wallet is truly unknown:** The process STOPS here. The ledger record is updated to `status: 'REJECTED_UNKNOWN_USER'`. The service will **not** spend gas confirming a credit for an unidentified address.
+        *
+        *   **2. On-Chain Verification:** Before sending any transaction, the service performs a read-only call to the smart contract (e.g., `isDepositConfirmed(depositId)`) to verify that the deposit has not already been confirmed on-chain in a previous, interrupted run.
+        *
+        *   **3. Collateral & Profitability Checks:** The service then performs the collateral risk assessment, value calculation, and gas profitability checks as originally designed.
+        *
+        *   If all checks pass, the service executes the `confirmCredit` write transaction.
         *   Upon successful on-chain confirmation, the corresponding `credit_ledger` record is updated to `status: 'CONFIRMED'`, and all relevant financial data (gas cost, net value, confirmation hash) is stored.
+        *
+        *   **4. Off-Chain Credit Application (NEW STEP):** Once the on-chain transaction is confirmed and the net USD value is calculated (deposit value - gas cost), the service applies this credit to the user's off-chain account.
+        *       - The service makes a `POST` request to the internal API endpoint: `/internal/v1/data/users/{masterAccountId}/economy/credit`.
+        *       - The request payload includes the `amountUsd` (the calculated net value), a `transactionType` (e.g., 'ONCHAIN_DEPOSIT'), `externalTransactionId` (the on-chain confirmation hash), and a `description`.
+        *       - This API call updates the user's `usdCredit` balance in the `userEconomy` database and creates a corresponding transaction record for full auditability.
+        *       - The concept of "points" (`1 point = $0.000337`) is handled during consumption/debiting, where spent `usdCredit` is converted to `exp` (experience points), as handled by other parts of the system. A deposit directly credits the user's USD balance.
 
 2.  **Consumption & Monitoring (Credit Subtraction)**: This is the day-to-day operation.
     *   An internal API allows other services to deduct points as they are consumed (e.g., upon successful AI generation).
@@ -87,7 +104,7 @@ We will use a secrets manager to securely manage the Ethereum signer's private k
 -   **New Services**: Three services will be created: `EthereumService.js`, `CreditService.js`, and `NftPriceService.js` in `src/core/services/`.
 -   **Wallet Management**: The application will require a securely managed Ethereum wallet (private key) to sign and send transactions. This will be managed via environment variables locally and DigitalOcean App Platform Secrets in production.
 -   **External Dependencies**: The system will now depend on Alchemy for node access, event notifications, its ERC20 price feed API, and its NFT floor price API.
--   **New API Endpoint**: A new route must be added to the web platform to handle incoming webhooks from Alchemy.
+-   **New API Endpoint**: A new route must be added to the web platform to handle incoming webhooks from Alchemy. A second, internal-only endpoint (`GET /internal/v1/data/wallets/lookup`) must be created in `walletsApi.js` to support user lookups by wallet address.
 -   **User-Wallet Mapping**: A mechanism to link application user IDs to their corresponding Ethereum wallet addresses must be implemented, likely within our user database schema.
 -   **Asynchronous Complexity**: The architecture will become more event-driven, requiring robust error handling, transaction monitoring, and potential retry logic for failed on-chain operations.
 

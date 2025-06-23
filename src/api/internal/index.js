@@ -25,6 +25,7 @@ const createSpellsApi = require('./spellsApi'); // Import the new spells API
 const { initializeLlmApi } = require('./llm');
 const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
+const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -105,6 +106,24 @@ function initializeInternalServices(dependencies = {}) {
   }
 
   // --- Initialize and Mount New Data API Services ---
+
+  // Wallets API Service (for top-level lookups):
+  // Initialize once and get both routers.
+  const { walletsRouter, userScopedRouter: userScopedWalletsRouter } = initializeWalletsApi(apiDependencies);
+
+  if (walletsRouter) {
+    v1DataRouter.use('/wallets', walletsRouter);
+    logger.info('[InternalAPI] Wallets Lookup API service mounted to /v1/data/wallets');
+  } else {
+    logger.error('[InternalAPI] Failed to create Wallets Lookup API router.');
+  }
+
+  // Pass the user-scoped router to the UserCore service via dependencies.
+  if (userScopedWalletsRouter) {
+    apiDependencies.userScopedWalletsRouter = userScopedWalletsRouter;
+  } else {
+    logger.error('[InternalAPI] Failed to get userScopedWalletsRouter.');
+  }
 
   // User Core API Service:
   const userCoreApiRouter = createUserCoreApi(apiDependencies);
