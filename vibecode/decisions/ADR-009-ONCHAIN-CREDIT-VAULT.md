@@ -31,29 +31,21 @@ The `CreditService` manages a sophisticated lifecycle for user collateral, which
         *   For each new event, it *immediately* creates a record in the `credit_ledger` database with a status of `PENDING_CONFIRMATION`. 
         *   This step is lightweight and acts as an idempotency key. By creating a record first, we ensure that if the service restarts, it will not attempt to re-process an event it has already acknowledged.
 
-    *   **Stage 2: Confirmation Processing (State-Changing)**
-        *   A separate process queries the database for all ledger entries with a `PENDING_CONFIRMATION` status.
-        *   For each pending entry, the service performs the full validation logic, starting with user verification.
+    *   **Stage 2: Grouped Confirmation Processing (State-Changing)**
+        *   To enhance gas efficiency and solve issues with small, unprofitable deposits, we have moved from a 1-to-1 processing model to a **group-based** model.
+        *   A separate process queries the database for all ledger entries with a `PENDING_CONFIRMATION` or `ERROR` status.
+        *   These entries are then **grouped by their unique `(depositor_address, token_address)` pair**.
+        *   The system processes one unique group at a time.
         *
-        *   **1. User Account Verification (NEW STEP):** Before any other checks, the service must verify the deposit belongs to a known user.
-        *       - It takes the depositor's address from the event payload.
-        *       - It calls a new internal API endpoint, `GET /internal/v1/data/wallets/lookup?address={address}`, to find a matching user account.
-        *       - **If a user is found:** The `masterAccountId` is retrieved and stored on the `credit_ledger` record. The process continues to the next step.
-        *       - **If no user is found (404):** The service checks if the deposit corresponds to a pending "magic amount" verification. If so, it links the wallet to the user and proceeds.
-        *       - **If the wallet is truly unknown:** The process STOPS here. The ledger record is updated to `status: 'REJECTED_UNKNOWN_USER'`. The service will **not** spend gas confirming a credit for an unidentified address.
+        *   **1. Read On-Chain Source of Truth:** For each group, the service constructs a `bytes32` key using `keccak256(user, token)`. It uses this key to read the `custody` mapping directly from the smart contract. The returned `userOwned` value represents the **total accumulated, unconfirmed balance** for that user and token. This is the definitive amount to be confirmed, not the sum of individual deposit events.
         *
-        *   **2. On-Chain Verification:** Before sending any transaction, the service performs a read-only call to the smart contract (e.g., `isDepositConfirmed(depositId)`) to verify that the deposit has not already been confirmed on-chain in a previous, interrupted run.
+        *   **2. User Account Verification:** The depositor's address is used to call the internal API endpoint, `GET /internal/v1/data/wallets/lookup`, to find a matching user account and retrieve the `masterAccountId`. If no user is found, the entire group of deposits is marked as `REJECTED_UNKNOWN_USER`, and the system does not spend gas.
         *
-        *   **3. Collateral & Profitability Checks:** The service then performs the collateral risk assessment, value calculation, and gas profitability checks as originally designed.
+        *   **3. Collateral & Profitability Checks:** The service performs its risk assessment and profitability checks using the **total `userOwned` balance** read from the contract. This prevents the system from rejecting small individual deposits that, when combined, are profitable to confirm.
         *
-        *   If all checks pass, the service executes the `confirmCredit` write transaction.
-        *   Upon successful on-chain confirmation, the corresponding `credit_ledger` record is updated to `status: 'CONFIRMED'`, and all relevant financial data (gas cost, net value, confirmation hash) is stored.
+        *   **4. Single Confirmation Transaction:** If all checks pass, the service executes **one single** `confirmCredit` write transaction for the entire group, passing the total `userOwned` amount.
         *
-        *   **4. Off-Chain Credit Application (NEW STEP):** Once the on-chain transaction is confirmed and the net USD value is calculated (deposit value - gas cost), the service applies this credit to the user's off-chain account.
-        *       - The service makes a `POST` request to the internal API endpoint: `/internal/v1/data/users/{masterAccountId}/economy/credit`.
-        *       - The request payload includes the `amountUsd` (the calculated net value), a `transactionType` (e.g., 'ONCHAIN_DEPOSIT'), `externalTransactionId` (the on-chain confirmation hash), and a `description`.
-        *       - This API call updates the user's `usdCredit` balance in the `userEconomy` database and creates a corresponding transaction record for full auditability.
-        *       - The concept of "points" (`1 point = $0.000337`) is handled during consumption/debiting, where spent `usdCredit` is converted to `exp` (experience points), as handled by other parts of the system. A deposit directly credits the user's USD balance.
+        *   **5. Off-Chain Credit & Bulk Update:** Upon successful on-chain confirmation, the service applies the total net credit value to the user's off-chain balance via a `POST` to `/internal/v1/data/users/{masterAccountId}/economy/credit`. It then updates **all** of the individual `credit_ledger` records within the processed group to `CONFIRMED`, storing the single confirmation hash in each one. This ensures full auditability while maintaining efficiency.
 
 2.  **Consumption & Monitoring (Credit Subtraction)**: This is the day-to-day operation.
     *   An internal API allows other services to deduct points as they are consumed (e.g., upon successful AI generation).
