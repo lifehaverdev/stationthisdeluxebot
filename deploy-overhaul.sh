@@ -104,7 +104,7 @@ echo "Starting new container..."
 #    ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
 
 docker run -d \
-  --env ETH_SIGNER_PRIVATE_KEY="$PRIVATE_KEY" \
+  --env ETHEREUM_SIGNER_PRIVATE_KEY="$PRIVATE_KEY" \
   --env-file .env \
   --network ${NETWORK_NAME} \
   --network-alias ${CONTAINER_ALIAS}_new \

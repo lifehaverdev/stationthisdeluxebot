@@ -36,10 +36,9 @@ function createLogger(module) {
       }
 
       // If there's any other metadata, stringify and append it.
-      const metaString = Object.keys(meta).length ? 
-        `\n${JSON.stringify(meta, jsonReplacer, 2)}` : '';
-      
-      log += metaString;
+      if (Object.keys(meta).length > 0) {
+        log += ' ' + JSON.stringify(meta, jsonReplacer);
+      }
 
       return log;
     })
