@@ -85,28 +85,10 @@ echo "✅ Caddy reverse proxy running and serving HTTPS for noema.art"
 
 # --- 🔐 LOAD PRIVATE KEY FROM KEYSTORE ---
 
-# Prompt for keystore password (quietly)
-read -s -p "Enter keystore password: " KEYSTORE_PASSWORD
-echo
+# Prompt once for the PRIVATE_KEY using the existing helper
+PRIVATE_KEY=$(node scripts/local_dev_helpers/loadKeystore.js --path /etc/account/STATIONTHIS < /dev/tty)
 
-# Decrypt the keystore using your existing Node.js logic
-PRIVATE_KEY=$(node -e "
-  const fs = require('fs');
-  const { Wallet } = require('ethers');
-  const password = process.env.KEYSTORE_PASSWORD;
-  const encryptedJson = fs.readFileSync('/etc/account/STATIONTHIS', 'utf8');
-  Wallet.fromEncryptedJson(encryptedJson, password).then(wallet => {
-    console.log(wallet.privateKey);
-  }).catch(err => {
-    console.error('❌ Failed to decrypt keystore:', err.message);
-    process.exit(1);
-  });
-" 2>/dev/null)
-
-# Unset password after use
-unset KEYSTORE_PASSWORD
-
-# If private key is empty, abort
+# If the key is empty or the script failed, exit
 if [ -z "$PRIVATE_KEY" ]; then
   echo "❌ Private key could not be loaded. Aborting deployment."
   exit 1
@@ -133,7 +115,6 @@ docker run -d \
 
 # Unset the private key and password
 unset PRIVATE_KEY
-unset KEYSTORE_PASSWORD
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
