@@ -9,7 +9,7 @@ OLD_IMAGE_NAME="${IMAGE_NAME}_old"
 # Caddy container
 CADDY_CONTAINER="caddy_proxy_overhaul"
 CADDY_IMAGE="caddy:latest"
-CADDYFILE_PATH="/Caddyfile"
+CADDYFILE_PATH="$(pwd)/Caddyfile"
 
 # Networking
 NETWORK_NAME="bot_network_overhaul"
