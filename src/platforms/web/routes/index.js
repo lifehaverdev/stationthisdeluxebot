@@ -828,6 +828,43 @@ async function initializeRoutes(app, services) {
     }
   });
   // --- END NEW Webhook Handler ---
+
+  // --- NEW Alchemy Webhook Handler for CreditService ---
+  app.post('/api/webhook/alchemy', async (req, res, next) => {
+    const routeLogger = services.logger || console;
+    routeLogger.info('[Webhook Route] Received POST request on /api/webhook/alchemy');
+
+    // SECURITY TODO: Verify the webhook signature from Alchemy to ensure the request is authentic.
+    // Example: const isValid = alchemy.webhooks.isValidSignature(req.headers['x-alchemy-signature'], req.body);
+    // if (!isValid) {
+    //   routeLogger.warn('[Webhook Route] Invalid signature on Alchemy webhook.');
+    //   return res.status(401).json({ message: 'error', error: 'Invalid signature.' });
+    // }
+
+    if (!services.creditService) {
+        routeLogger.error('[Webhook Route] CreditService is not available on the services object.');
+        // Use next() to pass to the default error handler
+        return next(new Error('Server configuration error: CreditService not initialized.'));
+    }
+
+    try {
+        const result = await services.creditService.handleDepositEventWebhook(req.body);
+
+        if (result.success) {
+            routeLogger.info(`[Webhook Route] Alchemy event processed successfully: ${result.message}`);
+            res.status(200).json({ status: 'success', message: result.message, detail: result.detail });
+        } else {
+            // Distinguish between a client-side error (e.g., bad payload) and a server-side one.
+            // For now, we'll treat all failures from the service as internal issues.
+            routeLogger.error(`[Webhook Route] Failed to process Alchemy event: ${result.message}`, { detail: result.detail });
+            res.status(500).json({ status: 'error', message: result.message, detail: result.detail });
+        }
+    } catch (error) {
+        routeLogger.error('[Webhook Route] Unhandled exception in Alchemy webhook handler:', error);
+        next(error); // Pass to the default error handler
+    }
+  });
+  // --- END Alchemy Webhook Handler ---
 }
 
 module.exports = {

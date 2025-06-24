@@ -135,6 +135,82 @@ class CreditService {
   }
 
   /**
+   * Handles a single DepositRecorded event received from an Alchemy webhook.
+   * It acknowledges the event by creating a ledger entry and then immediately
+   * triggers the confirmation processing pipeline.
+   * @param {object} webhookPayload - The raw payload from the Alchemy webhook.
+   * @returns {Promise<{success: boolean, message: string, detail: object|null}>}
+   */
+  async handleDepositEventWebhook(webhookPayload) {
+    this.logger.info('[CreditService] Received webhook for a potential deposit event.');
+
+    // Basic validation of the payload structure
+    if (webhookPayload.type !== 'EVENT' || !webhookPayload.event || !webhookPayload.event.data || !webhookPayload.event.data.log) {
+        this.logger.warn('[CreditService] Webhook payload is not a valid event log notification or is malformed.', { payload: webhookPayload });
+        return { success: false, message: 'Invalid payload structure.', detail: null };
+    }
+    
+    // Extract the core log data
+    const { log } = webhookPayload.event.data;
+    const { transactionHash, logIndex, blockNumber, topics, data } = log;
+
+    try {
+        // Decode the event using the contract ABI. This ensures it's our 'DepositRecorded' event.
+        const eventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
+        if (!eventFragment) {
+            this.logger.error("[CreditService] 'DepositRecorded' event fragment not found in ABI.");
+            return { success: false, message: "Server configuration error: ABI issue.", detail: null };
+        }
+
+        // The first topic is the event signature hash. We can use this for a quick check.
+        const eventSignatureHash = this.ethereumService.getEventTopic(eventFragment);
+        if (topics[0] !== eventSignatureHash) {
+            this.logger.info(`[CreditService] Webhook event is not a 'DepositRecorded' event. Skipping. Topic was: ${topics[0]}`);
+            return { success: true, message: 'Event is not a DepositRecorded event, skipped.', detail: null };
+        }
+        
+        const decodedLog = this.ethereumService.decodeEventLog(eventFragment, data, topics, this.contractConfig.abi);
+        let { vaultAccount, user, token, amount } = decodedLog;
+
+        this.logger.info(`[CreditService] Webhook decoded a 'DepositRecorded' event in tx: ${transactionHash}`);
+
+        if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
+            this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);
+            vaultAccount = this.contractConfig.address;
+        }
+
+        const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
+        if (existingEntry) {
+            this.logger.info(`[CreditService] Skipping webhook event for tx ${transactionHash} as it's already acknowledged.`);
+            return { success: true, message: 'Event already acknowledged.', detail: { transactionHash } };
+        }
+
+        this.logger.info(`[CreditService] Acknowledging new deposit from webhook: ${transactionHash}`);
+        await this.creditLedgerDb.createLedgerEntry({
+            deposit_tx_hash: transactionHash,
+            deposit_log_index: parseInt(logIndex, 16), // logIndex is hex
+            deposit_block_number: parseInt(blockNumber, 16), // blockNumber is hex
+            vault_account: vaultAccount,
+            depositor_address: user,
+            token_address: token,
+            deposit_amount_wei: amount.toString(),
+            status: 'PENDING_CONFIRMATION',
+        });
+
+        // Immediately trigger the processing for pending confirmations.
+        this.logger.info(`[CreditService] Webhook acknowledged. Triggering immediate processing of pending queue...`);
+        await this.processPendingConfirmations();
+        this.logger.info(`[CreditService] Immediate processing triggered by webhook is complete.`);
+
+        return { success: true, message: 'Webhook processed and confirmation triggered.', detail: { transactionHash } };
+
+    } catch (error) {
+        this.logger.error(`[CreditService] Error processing webhook event for tx ${transactionHash}:`, error);
+        return { success: false, message: 'Internal error processing webhook.', detail: { transactionHash, error: error.message }};
+    }
+  }
+
+  /**
    * STAGE 2: Processes all deposits that are in a 'PENDING_CONFIRMATION' or 'ERROR' state
    * by grouping them by user and token to perform a single, aggregate confirmation.
    */

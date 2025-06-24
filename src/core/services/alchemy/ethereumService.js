@@ -1,4 +1,4 @@
-const { JsonRpcProvider, Wallet, Contract, formatEther } = require('ethers');
+const { JsonRpcProvider, Wallet, Contract, formatEther, Interface } = require('ethers');
 
 /**
  * @class EthereumService
@@ -33,8 +33,24 @@ class EthereumService {
     this.provider = new JsonRpcProvider(config.rpcUrl);
     this.signer = new Wallet(privateKey, this.provider);
     this.chainId = config.chainId; // Allow chainId to be passed in.
+    this.interfaceCache = new Map(); // For caching ethers.Interface objects
 
     this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
+  }
+
+  /**
+   * Helper to get or create a cached Interface object from an ABI.
+   * @param {Array} abi - The contract ABI.
+   * @returns {import('ethers').Interface}
+   * @private
+   */
+  _getInterface(abi) {
+    const abiString = JSON.stringify(abi); // Use stringified ABI as a key
+    if (!this.interfaceCache.has(abiString)) {
+        this.logger.debug('[EthereumService] Caching new ethers.Interface for a given ABI.');
+        this.interfaceCache.set(abiString, new Interface(abi));
+    }
+    return this.interfaceCache.get(abiString);
   }
 
   /**
@@ -226,6 +242,40 @@ class EthereumService {
         this.logger.error(`[EthereumService] Error during gas estimation for '${functionName}':`, error);
         throw error;
     }
+  }
+
+  /**
+   * Retrieves an event fragment (metadata) from a contract's ABI.
+   * @param {string} eventName - The name of the event.
+   * @param {Array} abi - The contract's ABI.
+   * @returns {import('ethers').EventFragment | null} The event fragment or null if not found.
+   */
+  getEventFragment(eventName, abi) {
+    const iface = this._getInterface(abi);
+    return iface.getEvent(eventName);
+  }
+
+  /**
+   * Calculates the topic hash for a given event fragment.
+   * @param {import('ethers').EventFragment} eventFragment - The event fragment.
+   * @returns {string} The topic hash (event signature).
+   */
+  getEventTopic(eventFragment) {
+    if (!eventFragment) return null;
+    return eventFragment.topicHash;
+  }
+
+  /**
+   * Decodes the data and topics of an event log.
+   * @param {import('ethers').EventFragment} eventFragment - The fragment for the event to decode.
+   * @param {string} data - The data field from the raw event log.
+   * @param {Array<string>} topics - The topics from the raw event log.
+   * @param {Array} abi - The contract ABI, needed to get the interface.
+   * @returns {import('ethers').Result} The decoded log arguments.
+   */
+  decodeEventLog(eventFragment, data, topics, abi) {
+    const iface = this._getInterface(abi);
+    return iface.decodeEventLog(eventFragment, data, topics);
   }
 }
 
