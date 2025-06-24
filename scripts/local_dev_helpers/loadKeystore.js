@@ -51,22 +51,29 @@ function ask(query, isPassword = false) {
  *    environment variable for your current session without being logged or displayed.
  */
 async function main() {
+  const defaultPath = '/etc/account/STATIONTHIS';
+  const cliArgPath = process.argv.includes('--path') ? process.argv[process.argv.indexOf('--path') + 1] : null;
+
   if (!process.stdin.isTTY) {
     console.error(`
 This script is interactive and requires a TTY (terminal) for input.
 It seems you are running it in a subshell or piping input to it.
 
 To make it work, please run it like this:
-  export PRIVATE_KEY=$(node ${process.argv[1]} < /dev/tty)
+  export PRIVATE_KEY=$(node ${process.argv[1]} --path /etc/account/STATIONTHIS < /dev/tty)
 `);
     process.exit(1);
   }
 
   try {
-    const keystorePathInput = await ask('Enter the path to your encrypted JSON keystore file (default: ./keystore.json): ');
-    let keystorePath = keystorePathInput.trim() || './keystore.json';
+    let keystorePath = cliArgPath;
 
-    // Expand tilde to home directory.
+    if (!keystorePath) {
+      const keystorePathInput = await ask('Enter the path to your encrypted JSON keystore file (default: /etc/account/STATIONTHIS): ');
+      keystorePath = keystorePathInput.trim() || defaultPath;
+    }
+
+    // Expand ~
     if (keystorePath.startsWith('~')) {
       keystorePath = path.join(os.homedir(), keystorePath.slice(1));
     }
@@ -74,33 +81,28 @@ To make it work, please run it like this:
     const resolvedPath = path.resolve(keystorePath);
     if (!fs.existsSync(resolvedPath)) {
       console.error(`\nError: File not found at the resolved path: ${resolvedPath}`);
-      console.error('Please use an absolute path, a path relative to the current directory, or a path starting with "~/".');
       process.exit(1);
     }
-    
+
     const password = await ask('Enter your keystore password: ', true);
 
-    if (!keystorePath || !password) {
+    if (!password) {
       console.error('\nOperation cancelled by user.');
       process.exit(1);
     }
 
-    // Read the encrypted JSON file
     const encryptedJson = fs.readFileSync(resolvedPath, 'utf8');
-
-    // Decrypt the wallet in memory
     const wallet = Wallet.fromEncryptedJsonSync(encryptedJson, password);
 
-    // Output the private key directly to stdout.
     process.stdout.write(wallet.privateKey);
 
   } catch (error) {
     if (error.message.includes('invalid password')) {
-        console.error('\nDecryption failed: Invalid password.');
+      console.error('\nDecryption failed: Invalid password.');
     } else if (error.code === 'ENOENT') {
-        console.error(`\nError: Keystore file not found at '${error.path}'.`);
+      console.error(`\nError: Keystore file not found at '${error.path}'.`);
     } else {
-        console.error('\nAn unexpected error occurred:', error.message);
+      console.error('\nAn unexpected error occurred:', error.message);
     }
     process.exit(1);
   }
