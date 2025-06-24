@@ -27,10 +27,23 @@ async function startApplication() {
     logger.info('Initializing platform adapters...');
     const platforms = initializePlatforms(services, {
       enableTelegram: true,
+      enableWeb: true, // Explicitly enable the web platform
       telegram: {
         // Any telegram-specific options
+      },
+      web: {
+        // Web-specific options could go here in the future
       }
     });
+    
+    // Start the web platform if it was initialized
+    if (platforms.web) {
+      logger.info('Web platform is enabled, initializing routes...');
+      await platforms.web.initializeRoutes(); // Await the async route initialization
+      logger.info('Web routes initialized. Starting web server...');
+      const port = process.env.PORT || 3000;
+      await platforms.web.start(port);
+    }
     
     logger.info('StationThis Bot is running!');
     logger.info('Press Ctrl+C to stop');

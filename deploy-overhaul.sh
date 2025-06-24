@@ -5,10 +5,20 @@ OLD_CONTAINER="deluxebotcontained_overhaul"
 NEW_CONTAINER="deluxebotcontained_overhaul_new"
 IMAGE_NAME="deluxebotdocked_overhaul"
 OLD_IMAGE_NAME="${IMAGE_NAME}_old"
+
+# Caddy container
+CADDY_CONTAINER="caddy_proxy_overhaul"
+CADDY_IMAGE="caddy:latest"
+CADDYFILE_PATH="${pwd}/Caddyfile"
+
+# Networking
 NETWORK_NAME="bot_network_overhaul"
 CONTAINER_ALIAS="deluxebot_overhaul"
-LOG_DIR="/var/log/deluxebot"
-LOG_FILE="${LOG_DIR}/deluxebot-overhaul.log"
+
+# Logging
+LOG_DIR="/var/log/hyperbot"
+LOG_FILE="${LOG_DIR}/hyperbot.log"
+CADDY_LOG_FILE="${LOG_DIR}/caddy.log"
 
 # Function to check if a container is running
 is_container_running() {
@@ -53,7 +63,11 @@ fi
 
 # Run the new container
 echo "Starting new container..."
-docker run -d -p 81:4000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+docker run -d \
+    --network ${NETWORK_NAME} \
+    --network-alias ${CONTAINER_ALIAS}_new \
+    --name ${NEW_CONTAINER} \
+    ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
@@ -89,6 +103,28 @@ else
 
 
 fi
+
+
+# --- CADDY DEPLOYMENT ---
+
+echo "🔐 Setting up HTTPS reverse proxy with Caddy..."
+
+docker rm -f "${CADDY_CONTAINER}" >> "${CADDY_LOG_FILE}" 2>&1 || true
+
+docker volume create caddy_data >/dev/null 2>&1 || true
+docker volume create caddy_config >/dev/null 2>&1 || true
+
+docker run -d \
+  --name "${CADDY_CONTAINER}" \
+  --network "${NETWORK_NAME}" \
+  -p 80:80 \
+  -p 443:443 \
+  -v "${CADDYFILE_PATH}":/etc/caddy/Caddyfile \
+  -v caddy_data:/data \
+  -v caddy_config:/config \
+  "${CADDY_IMAGE}" >> "${CADDY_LOG_FILE}" 2>&1
+
+echo "✅ Caddy reverse proxy running and serving HTTPS for noema.art"
 
 # Print out the log file path for easy access
 echo "Deployment logs can be found at ${LOG_FILE}" 

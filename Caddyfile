@@ -1,0 +1,3 @@
+noema.art, www.noema.art {
+    reverse_proxy deluxebot_overhaul:4000
+}
