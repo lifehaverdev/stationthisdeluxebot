@@ -9,7 +9,7 @@ OLD_IMAGE_NAME="${IMAGE_NAME}_old"
 # Caddy container
 CADDY_CONTAINER="caddy_proxy_overhaul"
 CADDY_IMAGE="caddy:latest"
-CADDYFILE_PATH="${pwd}/Caddyfile"
+CADDYFILE_PATH="$/Caddyfile"
 
 # Networking
 NETWORK_NAME="bot_network_overhaul"
@@ -61,6 +61,29 @@ else
     docker rm ${OLD_CONTAINER} >> ${LOG_FILE} 2>&1 || true
 fi
 
+
+# --- CADDY DEPLOYMENT ---
+
+echo "🔐 Setting up HTTPS reverse proxy with Caddy..."
+
+docker rm -f "${CADDY_CONTAINER}" >> "${CADDY_LOG_FILE}" 2>&1 || true
+
+docker volume create caddy_data >/dev/null 2>&1 || true
+docker volume create caddy_config >/dev/null 2>&1 || true
+
+docker run -d \
+  --name "${CADDY_CONTAINER}" \
+  --network "${NETWORK_NAME}" \
+  -p 80:80 \
+  -p 443:443 \
+  -v "${CADDYFILE_PATH}":/etc/caddy/Caddyfile \
+  -v caddy_data:/data \
+  -v caddy_config:/config \
+  "${CADDY_IMAGE}" >> "${CADDY_LOG_FILE}" 2>&1
+
+echo "✅ Caddy reverse proxy running and serving HTTPS for noema.art"
+
+
 # Run the new container
 echo "Starting new container..."
 docker run -d \
@@ -104,27 +127,6 @@ else
 
 fi
 
-
-# --- CADDY DEPLOYMENT ---
-
-echo "🔐 Setting up HTTPS reverse proxy with Caddy..."
-
-docker rm -f "${CADDY_CONTAINER}" >> "${CADDY_LOG_FILE}" 2>&1 || true
-
-docker volume create caddy_data >/dev/null 2>&1 || true
-docker volume create caddy_config >/dev/null 2>&1 || true
-
-docker run -d \
-  --name "${CADDY_CONTAINER}" \
-  --network "${NETWORK_NAME}" \
-  -p 80:80 \
-  -p 443:443 \
-  -v "${CADDYFILE_PATH}":/etc/caddy/Caddyfile \
-  -v caddy_data:/data \
-  -v caddy_config:/config \
-  "${CADDY_IMAGE}" >> "${CADDY_LOG_FILE}" 2>&1
-
-echo "✅ Caddy reverse proxy running and serving HTTPS for noema.art"
 
 # Print out the log file path for easy access
 echo "Deployment logs can be found at ${LOG_FILE}" 
