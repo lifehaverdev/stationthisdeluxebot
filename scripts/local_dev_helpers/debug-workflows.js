@@ -1,9 +1,10 @@
-require('dotenv').config();
+// require('dotenv').config();
 const { MongoClient } = require('mongodb');
 const { Logger } = require('./src/utils/logger');
 const WorkflowDB = require('./db/models/workflows');
 const { WorkflowRepository } = require('./src/db/repositories/workflowRepository');
 const { DatabaseService } = require('./src/db/dbService');
+
 
 // Create a logger
 const logger = new Logger({

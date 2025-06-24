@@ -1,4 +1,3 @@
-require('dotenv').config({ path: '../../.env' });
 
 const PriceFeedService = require('../../src/core/services/alchemy/priceFeedService');
 const { createLogger } = require('../../src/utils/logger');

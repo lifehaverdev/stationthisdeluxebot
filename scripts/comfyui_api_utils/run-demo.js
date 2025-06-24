@@ -5,8 +5,7 @@
  * using environment variables from the .env file.
  */
 
-// Load environment variables from .env
-require('dotenv').config();
+
 
 // Process command line arguments
 const args = process.argv.slice(2);

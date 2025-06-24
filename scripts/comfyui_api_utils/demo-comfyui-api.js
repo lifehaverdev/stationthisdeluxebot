@@ -5,9 +5,6 @@
  * ComfyUI Deploy API without any database dependencies.
  */
 
-// Load environment variables from .env file
-require('dotenv').config();
-
 // Import the core services
 const WorkflowsService = require('./src/core/services/workflows');
 const ComfyUIService = require('./src/core/services/comfyui');

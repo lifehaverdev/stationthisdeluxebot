@@ -1,4 +1,3 @@
-require('dotenv').config({ path: '../../.env' }); // Adjust path to root .env file
 
 const EthereumService = require('../../src/core/services/alchemy/ethereumService');
 const { createLogger } = require('../../src/utils/logger');

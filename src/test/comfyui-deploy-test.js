@@ -5,7 +5,7 @@
  * It exercises the basic functionality of the WorkflowsService and ComfyUIService.
  */
 
-require('dotenv').config();
+
 const WorkflowsService = require('../core/services/workflows');
 const ComfyUIService = require('../core/services/comfyui');
 

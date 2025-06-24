@@ -6,7 +6,6 @@
 
 const express = require('express');
 const path = require('path');
-require('dotenv').config();
 const { v4: uuidv4 } = require('uuid'); // For request IDs in errors
 
 // Store application start time

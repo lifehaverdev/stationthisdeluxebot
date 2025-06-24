@@ -5,9 +5,6 @@
  * instead of expected JSON from the API endpoints.
  */
 
-// Load environment variables from .env file
-require('dotenv').config();
-
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const fs = require('fs');
 const path = require('path');

@@ -1,4 +1,4 @@
-require('dotenv').config();
+
 
 async function getTelegramFileUrl(bot, message) {
   let fileId;

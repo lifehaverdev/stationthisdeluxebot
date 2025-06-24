@@ -6,10 +6,7 @@
  * Use this to debug API connectivity issues.
  */
 
-// Load environment variables from .env
-require('dotenv').config();
 
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const fs = require('fs');
 
 // Get API key from environment
@@ -20,6 +17,8 @@ if (!API_KEY) {
   console.error('ERROR: COMFY_DEPLOY_API_KEY not found in .env file');
   process.exit(1);
 }
+
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 /**
  * Make a request to an API endpoint and process the response

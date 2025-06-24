@@ -4,8 +4,6 @@
  * Initializes services and platform adapters
  */
 
-require('dotenv').config(); // Load environment variables from .env file
-
 // Import core services
 const { initializeServices } = require('./core/services');
 
@@ -14,6 +12,8 @@ const { initializePlatforms } = require('./platforms');
 
 // Initialize logger
 const logger = console;
+
+const { startApp } = require('../app');
 
 async function startApplication() {
   try {
@@ -61,4 +61,7 @@ async function startApplication() {
 }
 
 // Start the application
-startApplication(); 
+startApp().catch(error => {
+  console.error('Application failed to start:', error);
+  process.exit(1);
+}); 

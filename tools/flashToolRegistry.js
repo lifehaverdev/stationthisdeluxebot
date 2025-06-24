@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+
 
 // Adjust paths based on your project structure
 // Assuming this script is run from the root of the project, or paths are adjusted accordingly.

@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+// require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const { ethers } = require('ethers');
 const EthereumService = require('../src/core/services/alchemy/ethereumService');
 const PriceFeedService = require('../src/core/services/alchemy/priceFeedService');

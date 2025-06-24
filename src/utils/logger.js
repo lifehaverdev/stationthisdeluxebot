@@ -26,10 +26,22 @@ function createLogger(module) {
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
-    winston.format.printf(({ level, message, module, timestamp, ...meta }) => {
+    winston.format.printf(({ level, message, module, timestamp, stack, ...meta }) => {
+      // Start with the basic log message
+      let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
+      
+      // If there's a stack trace from an error, append it. It's already formatted as a string.
+      if (stack) {
+        log += `\n${stack}`;
+      }
+
+      // If there's any other metadata, stringify and append it.
       const metaString = Object.keys(meta).length ? 
         `\n${JSON.stringify(meta, jsonReplacer, 2)}` : '';
-      return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}${metaString}`;
+      
+      log += metaString;
+
+      return log;
     })
   );
   

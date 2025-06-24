@@ -1,5 +1,5 @@
 // inspect_specific_event_types.js
-require('dotenv').config();
+// require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
 async function inspectSpecificEventTypes() {

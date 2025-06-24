@@ -1,4 +1,4 @@
-require('dotenv').config(); // To load MONGO_PASS
+// require('dotenv').config(); // To load MONGO_PASS
 const { MongoClient } = require('mongodb');
 const { transformUserDataForNoema } = require('./transformUserData.js');
 

@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { MongoClient } = require('mongodb');
-require('dotenv').config();
+
 
 const INPUT_FILE = path.join(__dirname, '../../reports/user_sessions_output.json');
 const OUTPUT_FILE = path.join(__dirname, '../../reports/enriched_user_sessions.json');

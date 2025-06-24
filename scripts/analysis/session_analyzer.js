@@ -1,12 +1,7 @@
 // /vibecode/scripts/analysis/session_analyzer.js
 // Standalone script for User Session Analysis and Refinement
 
-// require('dotenv').config({ path: '../../../.env' }); // Adjust path to .env if necessary
-const dotenv = require('dotenv');
-console.log('dotenv module loaded:', typeof dotenv, typeof dotenv.config);
-// dotenv.config({ path: '../../../.env' }); // Adjust path to .env if necessary
-dotenv.config(); // RELY ON DEFAULT BEHAVIOR (process.cwd()/.env)
-console.log('After dotenv.config(), BOT_NAME is:', process.env.BOT_NAME); // ADDED LINE FOR DEBUGGING
+
 
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto'); // For generating session IDs

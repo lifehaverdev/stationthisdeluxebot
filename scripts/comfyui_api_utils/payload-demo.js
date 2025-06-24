@@ -8,7 +8,7 @@
  * 4. Complete payload preparation for workflow execution
  */
 
-require('dotenv').config();
+
 const WorkflowsService = require('./src/core/services/workflows');
 
 async function main() {

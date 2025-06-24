@@ -1,4 +1,4 @@
-require('dotenv').config();
+// require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
 const dbName = process.env.BOT_NAME;

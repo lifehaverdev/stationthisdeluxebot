@@ -3,9 +3,6 @@
  * using our updated API endpoints
  */
 
-// Load environment variables
-require('dotenv').config();
-
 // Import core services
 const WorkflowsService = require('./src/core/services/workflows');
 const ComfyUIService = require('./src/core/services/comfyui');

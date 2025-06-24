@@ -1,5 +1,5 @@
 // inspect_gens.js
-require('dotenv').config();
+// require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
 async function inspectGensCollection() {

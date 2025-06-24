@@ -8,8 +8,7 @@
  * 4. Extract and analyze workflow input/output requirements
  */
 
-// Load environment variables
-require('dotenv').config();
+
 
 const WorkflowsService = require('./src/core/services/workflows');
 const ComfyUIService = require('./src/core/services/comfyui');

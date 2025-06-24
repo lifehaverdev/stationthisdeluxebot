@@ -1,5 +1,5 @@
 // inspect_history_events.js
-require('dotenv').config();
+// require('dotenv').config();
 const { MongoClient, ObjectId } = require('mongodb'); // ObjectId might be useful if we need to inspect specific docs later
 
 async function inspectHistoryEvents() {

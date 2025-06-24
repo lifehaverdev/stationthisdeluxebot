@@ -5,8 +5,8 @@
  */
 
 const { MongoClient } = require('mongodb');
+const { v4: uuidv4 } = require('uuid');
 //const { logThis } = require('../../utils/utils');
-require('dotenv').config();
 
 // Import our custom logger
 const { createLogger } = require('../../../../utils/logger');
@@ -23,6 +23,9 @@ const PRIORITY = {
 
 let cachedClient = null;
 let connectionInProgress = null;
+
+const MONGO_URI = process.env.MONGO_URI;
+const DB_NAME = process.env.MONGO_DB_NAME || 'station';
 
 class DatabaseQueue {
     constructor() {

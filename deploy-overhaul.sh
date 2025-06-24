@@ -83,14 +83,57 @@ docker run -d \
 
 echo "✅ Caddy reverse proxy running and serving HTTPS for noema.art"
 
+# --- 🔐 LOAD PRIVATE KEY FROM KEYSTORE ---
+
+# Prompt for keystore password (quietly)
+read -s -p "Enter keystore password: " KEYSTORE_PASSWORD
+echo
+
+# Decrypt the keystore using your existing Node.js logic
+PRIVATE_KEY=$(node -e "
+  const fs = require('fs');
+  const { Wallet } = require('ethers');
+  const password = process.env.KEYSTORE_PASSWORD;
+  const encryptedJson = fs.readFileSync('/etc/account/STATIONTHIS', 'utf8');
+  Wallet.fromEncryptedJson(encryptedJson, password).then(wallet => {
+    console.log(wallet.privateKey);
+  }).catch(err => {
+    console.error('❌ Failed to decrypt keystore:', err.message);
+    process.exit(1);
+  });
+" 2>/dev/null)
+
+# Unset password after use
+unset KEYSTORE_PASSWORD
+
+# If private key is empty, abort
+if [ -z "$PRIVATE_KEY" ]; then
+  echo "❌ Private key could not be loaded. Aborting deployment."
+  exit 1
+fi
+
 
 # Run the new container
 echo "Starting new container..."
+#docker run -d \
+#    --network ${NETWORK_NAME} \
+#    --network-alias ${CONTAINER_ALIAS}_new \
+#    --name ${NEW_CONTAINER} \
+#    ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+
 docker run -d \
-    --network ${NETWORK_NAME} \
-    --network-alias ${CONTAINER_ALIAS}_new \
-    --name ${NEW_CONTAINER} \
-    ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+  --env ETH_SIGNER_PRIVATE_KEY="$PRIVATE_KEY" \
+  --env-file .env \
+  --network ${NETWORK_NAME} \
+  --network-alias ${CONTAINER_ALIAS}_new \
+  --name ${NEW_CONTAINER} \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+
+# Unset the private key and password
+unset PRIVATE_KEY
+unset KEYSTORE_PASSWORD
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then

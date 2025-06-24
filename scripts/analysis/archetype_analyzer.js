@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config(); // For configurable thresholds via .env file
+
 
 const INPUT_FILE = path.join(__dirname, '../../reports/user_aggregated_features.json');
 const OUTPUT_DIR = path.join(__dirname, '../../reports'); // For potential future output files
