@@ -3,3 +3,5 @@
 .env
 .env.*
 !.env.example 
+scripts/local_dev_helpers/node_modules
+scripts/local_dev_helpers/package-lock.json

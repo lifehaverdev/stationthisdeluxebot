@@ -6,8 +6,7 @@
  */
 
 const path = require('path');
-const { createLogger } = require('./utils/logger'); // Assuming logger is now in utils
-const logger = createLogger('config');
+
 
 // Load environment variables early
 // require('dotenv').config(); // This is now handled at the entry point (app.js)
