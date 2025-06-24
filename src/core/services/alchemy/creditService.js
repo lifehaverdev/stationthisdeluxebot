@@ -173,6 +173,13 @@ class CreditService {
         let { vaultAccount, user, token, amount } = decodedLog;
 
         this.logger.info(`[CreditService] Webhook decoded a 'DepositRecorded' event in tx: ${transactionHash}`);
+        this.logger.info(`[CreditService] Decoded event data:`, {
+            vaultAccount,
+            user,
+            token,
+            amount: amount.toString(),
+            transactionHash
+        });
 
         if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
             this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);

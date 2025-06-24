@@ -25,9 +25,10 @@ function createLogger(module) {
   const logFormat = winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
+    winston.format.splat(),
     winston.format.printf(({ level, message, module, timestamp, ...meta }) => {
       const metaString = Object.keys(meta).length ? 
-        ` | ${JSON.stringify(meta, jsonReplacer)}` : '';
+        `\n${JSON.stringify(meta, jsonReplacer, 2)}` : '';
       return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}${metaString}`;
     })
   );

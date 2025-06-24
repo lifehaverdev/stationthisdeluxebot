@@ -833,6 +833,7 @@ async function initializeRoutes(app, services) {
   app.post('/api/webhook/alchemy', async (req, res, next) => {
     const routeLogger = services.logger || console;
     routeLogger.info('[Webhook Route] Received POST request on /api/webhook/alchemy');
+    routeLogger.info(`[Webhook Route] Incoming Alchemy payload body:`, JSON.stringify(req.body, null, 2));
 
     // SECURITY TODO: Verify the webhook signature from Alchemy to ensure the request is authentic.
     // Example: const isValid = alchemy.webhooks.isValidSignature(req.headers['x-alchemy-signature'], req.body);
