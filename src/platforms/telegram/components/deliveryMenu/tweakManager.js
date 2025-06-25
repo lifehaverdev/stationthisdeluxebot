@@ -1,112 +1,282 @@
 /**
  * @file tweakManager.js
- * @description Handles all logic related to tweaking generations.
+ * @description Handles callbacks for tweaking a generation's parameters.
+ * This manager introduces a temporary, in-memory session to hold parameter changes.
  */
-const { v4: uuidv4 } = require('uuid');
-const { buildTweakUIMenu } = require('../settingsMenuManager.js');
 
+const { escapeMarkdownV2, stripHtml } = require('../../../../utils/stringUtils');
+const { v4: uuidv4 } = require('uuid');
+
+// In-memory store for pending tweaks. Key: `generationId_masterAccountId`
 const pendingTweaks = {};
+
+// --- UI Builder ---
+
+/**
+ * Builds the text and keyboard for the Tweak UI menu.
+ * @param {string} generationId - The original generation ID.
+ * @param {object} currentParams - The current state of parameters for the tweak.
+ * @param {object} dependencies - Shared dependencies.
+ * @returns {object} - { text, reply_markup }
+ */
+function buildTweakUIMenu(generationId, masterAccountId, currentParams, dependencies) {
+    const { logger } = dependencies;
+    const sessionKey = `${generationId}_${masterAccountId}`;
+
+    let text = '*Tweak Generation Parameters*\\n\\n';
+    text += 'Modify the parameters below and then click Apply\\. \\n';
+    
+    const prompt = currentParams.input_prompt || '(No prompt)';
+    const seed = currentParams.input_seed || '(Random)';
+    
+    text += `*Prompt:* \`\`\`\n${escapeMarkdownV2(prompt)}\n\`\`\`\n`;
+    text += `*Seed:* \`${escapeMarkdownV2(String(seed))}\`\\n`;
+
+    const keyboard = [
+        [
+            { text: '✏️ Edit Prompt', callback_data: `tweak_param_edit_start:${sessionKey}:input_prompt` },
+            { text: '🎲 Edit Seed', callback_data: `tweak_param_edit_start:${sessionKey}:input_seed` }
+        ],
+        [
+            { text: '✅ Apply Tweaks', callback_data: `tweak_apply:${sessionKey}` },
+            { text: '❌ Close Menu', callback_data: `hide_menu` }
+        ]
+    ];
+
+    return { text, reply_markup: { inline_keyboard: keyboard } };
+}
+
+
+// --- Action-specific Logic Functions ---
+
+async function handleRenderTweakMenuCallback(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal } = dependencies;
+    const { data, message } = callbackQuery;
+
+    const parts = data.split(':');
+    const generationId = parts[1];
+    const sessionKey = `${generationId}_${masterAccountId}`;
+
+    logger.info(`[TweakManager] Tweak menu render request for GenID: ${generationId}`);
+
+    try {
+        const currentTweaks = pendingTweaks[sessionKey];
+
+        if (!currentTweaks) {
+            logger.warn(`[TweakManager] No pending tweak session found for key ${sessionKey}. Re-initiating from original.`);
+        }
+        
+        // Always fetch the original generation to get the most reliable metadata
+        const genResponse = await internal.client.get(`/internal/v1/data/generations/${generationId}`);
+        const generationRecord = genResponse.data;
+        if (!generationRecord) throw new Error(`Original generation ${generationId} not found.`);
+
+        // If the session was lost, re-initialize it from the record
+        if (!currentTweaks) {
+            const userFacingPrompt = generationRecord.metadata?.userInputPrompt || generationRecord.requestPayload?.input_prompt;
+            pendingTweaks[sessionKey] = { 
+                ...(generationRecord.requestPayload || {}),
+                input_prompt: userFacingPrompt,
+             };
+            logger.info(`[TweakManager] Re-initialized lost session: ${sessionKey}`);
+        }
+
+        const refreshedMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[sessionKey], dependencies);
+
+        await bot.editMessageText(refreshedMenu.text, {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            reply_markup: refreshedMenu.reply_markup,
+            parse_mode: 'MarkdownV2'
+        });
+
+        await bot.answerCallbackQuery(callbackQuery.id);
+
+    } catch (error) {
+        logger.error(`[TweakManager] Error in handleRenderTweakMenuCallback for ${generationId}:`, error.stack);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: "Error refreshing tweak menu.", show_alert: true });
+    }
+}
+
+async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal, services } = dependencies;
+    const { data, message } = callbackQuery;
+
+    const parts = data.split(':');
+    const sessionKey = parts[1];
+    const [generationId] = sessionKey.split('_');
+
+    const finalTweakedParams = pendingTweaks[sessionKey];
+    logger.info(`[TweakManager] Applying tweaks for session: ${sessionKey}`);
+
+    if (!finalTweakedParams) {
+        logger.warn(`[TweakManager] tweak_apply: No pending tweak session found.`);
+        await bot.editMessageText("Error: Your tweak session has expired.", {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            reply_markup: null
+        });
+        await bot.answerCallbackQuery(callbackQuery.id, { text: "Session expired.", show_alert: true });
+        return;
+    }
+
+    try {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: "Applying tweaks..." });
+
+        const genResponse = await internal.client.get(`/internal/v1/data/generations/${generationId}`);
+        const originalRecord = genResponse.data;
+        if (!originalRecord) throw new Error(`Original generation record ${generationId} not found.`);
+
+        const toolId = finalTweakedParams.__canonicalToolId__ || originalRecord.metadata?.toolId;
+        if (!toolId) throw new Error(`Could not resolve toolId for tweaked generation.`);
+
+        const { telegramMessageId, telegramChatId, platformContext, initiatingEventId } = originalRecord.metadata;
+
+        const servicePayload = { ...finalTweakedParams };
+        delete servicePayload.__canonicalToolId__;
+
+        const newGenMetadata = {
+            telegramMessageId, telegramChatId, platformContext,
+            parentGenerationId: generationId,
+            isTweaked: true,
+            initiatingEventId: initiatingEventId || uuidv4(),
+            toolId,
+            userInputPrompt: finalTweakedParams.input_prompt,
+        };
+
+        const newGenPayload = {
+            toolId,
+            requestPayload: servicePayload,
+            masterAccountId,
+            platform: 'telegram',
+            status: 'pending',
+            deliveryStatus: 'pending',
+            notificationPlatform: 'telegram',
+            serviceName: originalRecord.serviceName,
+            metadata: newGenMetadata
+        };
+
+        const newGenResponse = await internal.client.post('/internal/v1/data/generations', newGenPayload);
+        const newGeneratedId = newGenResponse.data._id;
+        logger.info(`[TweakManager] New tweaked generation logged with ID: ${newGeneratedId}`);
+
+        let deploymentId = originalRecord.metadata?.deploymentId || toolId;
+        if (deploymentId.startsWith('comfy-')) deploymentId = deploymentId.substring(6);
+
+        const submissionResult = await services.comfyui.submitRequest({ deploymentId, inputs: servicePayload });
+        const run_id = submissionResult?.run_id;
+        if (!run_id) throw new Error(`ComfyUI submission failed. Reason: ${submissionResult?.error || 'Unknown'}`);
+
+        await internal.client.put(`/internal/v1/data/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
+        logger.info(`[TweakManager] ComfyUI submission successful for tweaked GenID ${newGeneratedId}.`);
+
+        await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
+            chat_id: message.chat.id,
+            message_id: message.message_id,
+            reply_markup: null
+        });
+        
+        delete pendingTweaks[sessionKey];
+        logger.info(`[TweakManager] Cleared pendingTweaks for sessionKey: ${sessionKey}`);
+
+    } catch (error) {
+        logger.error(`[TweakManager] Error in tweak_apply for session ${sessionKey}:`, error.stack);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: "Error applying tweaks.", show_alert: true });
+    }
+}
+
+// --- Main Callback Handler ---
+
+async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal, toolRegistry } = dependencies;
+    const { data, message } = callbackQuery;
+
+    logger.info(`[TweakManager] handleTweakGenCallback triggered with data: ${data}`);
+
+    try {
+        if (data.startsWith('tweak_gen_menu_render:')) {
+            // This is for refreshing the menu, not implemented via this handler yet.
+            // Let's forward to the main logic which can handle session loss.
+        }
+
+        const parts = data.split(':');
+        const generationId = parts[1];
+
+        // 1. Fetch the original generation record
+        const genResponse = await internal.client.get(`/internal/v1/data/generations/${generationId}`);
+        const generationRecord = genResponse.data;
+        if (!generationRecord) throw new Error(`Generation record ${generationId} not found.`);
+
+        // 2. Extract necessary info
+        const originalParams = generationRecord.requestPayload || {};
+        const toolId = generationRecord.metadata?.toolId || originalParams.invoked_tool_id || originalParams.tool_id || generationRecord.serviceName;
+        const originalUserCommandMessageId = generationRecord.metadata?.telegramMessageId;
+        const originalUserCommandChatId = generationRecord.metadata?.telegramChatId;
+
+        if (!originalUserCommandMessageId || !originalUserCommandChatId) {
+            throw new Error(`Original command context missing in metadata for ${generationId}.`);
+        }
+
+        // 3. Initialize pendingTweaks for this session
+        const tweakSessionKey = `${generationId}_${masterAccountId}`;
+        const userFacingPrompt = generationRecord.metadata?.userInputPrompt || originalParams.input_prompt;
+        
+        pendingTweaks[tweakSessionKey] = { 
+            ...originalParams,
+            input_prompt: userFacingPrompt,
+        }; 
+        logger.info(`[TweakManager] Initialized pendingTweaks for sessionKey: ${tweakSessionKey}`);
+
+        // 4. Build and send the Tweak UI Menu
+        const tweakMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[tweakSessionKey], dependencies);
+
+        if (tweakMenu && tweakMenu.text && tweakMenu.reply_markup) {
+            await bot.sendMessage(originalUserCommandChatId, tweakMenu.text, { 
+                parse_mode: 'MarkdownV2',
+                reply_markup: tweakMenu.reply_markup,
+                reply_to_message_id: originalUserCommandMessageId 
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Opening tweak menu..." });
+        } else {
+            delete pendingTweaks[tweakSessionKey];
+            throw new Error('Failed to build tweak UI menu.');
+        }
+
+    } catch (error) {
+        logger.error(`[TweakManager] Error in handleTweakGenCallback for data ${data}:`, error.stack);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: "Error initiating tweak mode.", show_alert: true });
+    }
+}
+
 
 function registerHandlers(dispatchers, dependencies) {
     const { callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
-    const { logger, internalApiClient, toolRegistry, userSettingsService, comfyuiService, workflowsService } = dependencies;
-    const depsWithTweaks = { ...dependencies, pendingTweaks };
+    const { logger } = dependencies;
 
-    callbackQueryDispatcher.register('tweak_gen:', async (bot, cbq, maid) => {
-        const generationId = cbq.data.split(':')[1];
-        try {
-            const genRes = await internalApiClient.get(`/generations/${generationId}`);
-            const genRec = genRes.data;
-            const { toolId, telegramMessageId, telegramChatId, userInputPrompt } = genRec.metadata;
-            const originalParams = genRec.requestPayload || {};
-            if (!toolId || !telegramMessageId || !telegramChatId) throw new Error("Missing critical context.");
-
-            const sessionKey = `${generationId}_${maid}`;
-            pendingTweaks[sessionKey] = { ...originalParams, input_prompt: userInputPrompt || originalParams.input_prompt, __canonicalToolId__: toolId };
-
-            const menu = await buildTweakUIMenu(maid, toolId, pendingTweaks[sessionKey], telegramMessageId, telegramChatId, generationId, depsWithTweaks);
-            await bot.sendMessage(telegramChatId, menu.text, { parse_mode: 'MarkdownV2', reply_markup: menu.reply_markup, reply_to_message_id: telegramMessageId });
-            await bot.answerCallbackQuery(cbq.id, { text: "Opening tweak menu..." });
-        } catch (e) {
-            logger.error(`[TweakManager] Error in tweak_gen for ${generationId}:`, e);
-            await bot.answerCallbackQuery(cbq.id, { text: "Error initiating tweak mode.", show_alert: true });
-        }
-    });
+    callbackQueryDispatcher.register('tweak_gen:', handleTweakGenCallback);
+    callbackQueryDispatcher.register('tweak_gen_menu_render:', (bot, cbq, maid) => handleRenderTweakMenuCallback(bot, cbq, maid, dependencies));
     
-    callbackQueryDispatcher.register('tweak_apply:', async (bot, cbq, maid) => {
-        const generationId = cbq.data.split(':')[1];
-        const sessionKey = `${generationId}_${maid}`;
-        const finalParams = pendingTweaks[sessionKey];
-        if (!finalParams) {
-            await bot.editMessageText("Error: Your tweak session has expired.", { chat_id: cbq.message.chat.id, message_id: cbq.message.message_id, reply_markup: null });
-            await bot.answerCallbackQuery(cbq.id, { text: "Session expired.", show_alert: true });
-            return;
-        }
-        
-        try {
-            const genRes = await internalApiClient.get(`/generations/${generationId}`);
-            const originalRec = genRes.data;
-            const toolId = originalRec.metadata?.toolId;
-            if (!toolId) throw new Error("Original generation has no toolId in metadata.");
-            
-            const { telegramMessageId, telegramChatId, platformContext } = originalRec.metadata;
-            const initiatingEventId = originalRec.metadata.initiatingEventId || uuidv4();
+    // Stubs for future logic
+    callbackQueryDispatcher.register('tweak_param_edit_start:', async (bot, cbq) => {
+        logger.warn(`[TweakManager] 'tweak_param_edit_start' not fully implemented.`);
+        await bot.answerCallbackQuery(cbq.id, {text: "Editing not implemented yet.", show_alert: true});
+    });
+    callbackQueryDispatcher.register('tweak_apply:', (bot, cbq, maid) => handleApplyTweaks(bot, cbq, maid, dependencies));
+    callbackQueryDispatcher.register('tweak_cancel:', async (bot, callbackQuery, masterAccountId, dependencies) => {
+        const { data } = callbackQuery;
+        const parts = data.split(':');
+        const sessionKey = parts[1];
+        const [generationId] = sessionKey.split('_');
 
-            const newGenPayload = {
-                toolId,
-                requestPayload: { ...finalParams },
-                masterAccountId: maid,
-                platform: 'telegram',
-                metadata: {
-                    telegramMessageId, telegramChatId, platformContext, toolId,
-                    parentGenerationId: generationId,
-                    isTweaked: true,
-                    initiatingEventId,
-                    userInputPrompt: finalParams.input_prompt,
-                }
-            };
-            
-            const newGenRes = await internalApiClient.post('/generations', newGenPayload);
-            const newGenId = newGenRes.data._id;
-            
-            let deploymentId = originalRec.metadata?.deploymentId || toolId;
-            if (deploymentId.startsWith('comfy-')) deploymentId = deploymentId.substring(6);
-
-            const submissionResult = await comfyuiService.submitRequest({ deploymentId, inputs: finalParams });
-            const run_id = submissionResult?.run_id;
-            if (!run_id) throw new Error("ComfyUI submission failed.");
-
-            await internalApiClient.put(`/generations/${newGenId}`, { "metadata.run_id": run_id, status: 'processing' });
-            
-            await bot.editMessageText("🚀 Your tweaked generation is on its way!", { chat_id: cbq.message.chat.id, message_id: cbq.message.message_id, reply_markup: null });
-            await bot.answerCallbackQuery(cbq.id, { text: "Tweaked generation sent!" });
-            delete pendingTweaks[sessionKey];
-        } catch(e) {
-             logger.error(`[TweakManager] Error in tweak_apply for ${generationId}:`, e);
-             await bot.answerCallbackQuery(cbq.id, { text: "Error applying tweaks.", show_alert: true });
-        }
+        // Re-route to the render function to show the main menu again
+        const renderData = `tweak_gen_menu_render:${generationId}`;
+        const newCallbackQuery = { ...callbackQuery, data: renderData };
+        await handleRenderTweakMenuCallback(bot, newCallbackQuery, masterAccountId, dependencies);
     });
 
-    messageReplyDispatcher.register('tweak_param_edit', async (bot, message, context, deps) => {
-        const { generationId, masterAccountId, canonicalToolId, paramName } = context;
-        const sessionKey = `${generationId}_${masterAccountId}`;
-        const currentTweaks = pendingTweaks[sessionKey];
-        if (!currentTweaks) {
-            await bot.sendMessage(message.chat.id, "Error: Your tweak session has expired.", { reply_to_message_id: message.message_id });
-            return;
-        }
-        
-        // Basic validation placeholder
-        currentTweaks[paramName] = message.text;
-        
-        await bot.deleteMessage(message.chat.id, message.message_id);
-
-        const genRes = await internalApiClient.get(`/generations/${generationId}`);
-        const { telegramMessageId, telegramChatId } = genRes.data.metadata;
-        const refreshedMenu = await buildTweakUIMenu(masterAccountId, canonicalToolId, currentTweaks, telegramMessageId, telegramChatId, generationId, depsWithTweaks);
-        
-        await bot.editMessageText(refreshedMenu.text, { chat_id: message.reply_to_message.chat.id, message_id: message.reply_to_message.message_id, reply_markup: refreshedMenu.reply_markup, parse_mode: 'MarkdownV2' });
-    });
+    logger.info('[TweakManager] All handlers registered.');
 }
 
-module.exports = { registerHandlers }; 
+module.exports = {
+    registerHandlers,
+}; 

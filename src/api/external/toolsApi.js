@@ -1,6 +1,6 @@
 const express = require('express');
-const internalApiClient = require('../../../utils/internalApiClient');
-const { createLogger } = require('../../../utils/logger');
+const internalApiClient = require('../../utils/internalApiClient');
+const { createLogger } = require('../../utils/logger');
 
 const logger = createLogger('ExternalToolsApi');
 
