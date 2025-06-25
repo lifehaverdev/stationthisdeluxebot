@@ -4,24 +4,23 @@ FROM node:20
 # Create and change to the app directory.
 WORKDIR /usr/src/app
 
-USER node  # or add a safer custom user
-
-# Optional hardening
-# RUN useradd -m appuser && chown -R appuser /usr/src/app
-# USER appuser
-
-# Install git and ffmpeg
+# Install git and ffmpeg first in a separate layer
 RUN apt-get update \
   && apt-get install -y git ffmpeg \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy local code to the container image.
-COPY . .
-
-# Install dependencies
+# Copy package files and install dependencies first
+# This layer is only invalidated if package.json or package-lock.json changes
+COPY package*.json ./
 RUN npm install -g pm2 \
     && npm install
+
+# Copy the rest of the application code
+COPY . .
+
+# Set user after all root-level operations are done
+USER node
 
 # Set environment variable for the port the app should listen on internally
 ENV WEB_PORT=4000
