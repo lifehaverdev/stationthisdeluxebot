@@ -26,13 +26,22 @@ function createLogger(module) {
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
     winston.format.splat(),
-    winston.format.printf(({ level, message, module, timestamp, stack, ...meta }) => {
+    winston.format.printf((info) => {
+      const { level, message, module, timestamp, stack } = info;
       // Start with the basic log message
       let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
       
-      // If there's other metadata, stringify and pretty-print it on a new line.
-      if (meta && Object.keys(meta).length > 0) {
-        log += `\n${JSON.stringify(meta, jsonReplacer, 2)}`;
+      // Access the splat symbol to get all additional arguments
+      const splat = info[Symbol.for('splat')];
+      
+      // If there are any splatted arguments, stringify them
+      if (splat) {
+        // If there's only one argument and it's an object, we can make it look nicer
+        if (splat.length === 1 && typeof splat[0] === 'object' && splat[0] !== null) {
+          log += `\n${JSON.stringify(splat[0], jsonReplacer, 2)}`;
+        } else {
+          log += ` ${splat.map(item => JSON.stringify(item, jsonReplacer)).join(' ')}`;
+        }
       }
 
       // If there's a stack trace from an error, append it last for clarity.
