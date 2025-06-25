@@ -30,14 +30,14 @@ function createLogger(module) {
       // Start with the basic log message
       let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
       
-      // If there's a stack trace from an error, append it. It's already formatted as a string.
-      if (stack) {
-        log += `\n${stack}`;
+      // If there's other metadata, stringify and pretty-print it on a new line.
+      if (meta && Object.keys(meta).length > 0) {
+        log += `\n${JSON.stringify(meta, jsonReplacer, 2)}`;
       }
 
-      // If there's any other metadata, stringify and append it.
-      if (Object.keys(meta).length > 0) {
-        log += ' ' + JSON.stringify(meta, jsonReplacer);
+      // If there's a stack trace from an error, append it last for clarity.
+      if (stack) {
+        log += `\n${stack}`;
       }
 
       return log;

@@ -142,78 +142,80 @@ class CreditService {
    * @returns {Promise<{success: boolean, message: string, detail: object|null}>}
    */
   async handleDepositEventWebhook(webhookPayload) {
-    this.logger.info('[CreditService] Received webhook for a potential deposit event.');
+    this.logger.info('[CreditService] Processing incoming Alchemy webhook...');
 
-    // Basic validation of the payload structure
-    if (webhookPayload.type !== 'EVENT' || !webhookPayload.event || !webhookPayload.event.data || !webhookPayload.event.data.log) {
-        this.logger.warn('[CreditService] Webhook payload is not a valid event log notification or is malformed.', { payload: webhookPayload });
-        return { success: false, message: 'Invalid payload structure.', detail: null };
+    if (webhookPayload.type !== 'GRAPHQL' || !webhookPayload.event?.data?.block?.logs) {
+      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payload: webhookPayload });
+      return { success: false, message: 'Invalid payload structure. Expected GraphQL block logs.', detail: null };
     }
-    
-    // Extract the core log data
-    const { log } = webhookPayload.event.data;
-    const { transactionHash, logIndex, blockNumber, topics, data } = log;
 
-    try {
-        // Decode the event using the contract ABI. This ensures it's our 'DepositRecorded' event.
-        const eventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
-        if (!eventFragment) {
-            this.logger.error("[CreditService] 'DepositRecorded' event fragment not found in ABI.");
-            return { success: false, message: "Server configuration error: ABI issue.", detail: null };
+    const logs = webhookPayload.event.data.block.logs;
+    this.logger.info(`[CreditService] Webhook contains ${logs.length} event logs to process.`);
+
+    const eventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
+    if (!eventFragment) {
+      this.logger.error("[CreditService] 'DepositRecorded' event fragment not found in ABI. Cannot process webhook.");
+      return { success: false, message: "Server configuration error: ABI issue.", detail: null };
+    }
+    const eventSignatureHash = this.ethereumService.getEventTopic(eventFragment);
+    let processedCount = 0;
+
+    for (const log of logs) {
+      const { transaction, topics, data, index: logIndex } = log;
+      const { hash: transactionHash, blockNumber } = transaction;
+
+      if (topics[0] !== eventSignatureHash) {
+        this.logger.debug(`[CreditService] Skipping a log in tx ${transactionHash} as it's not a 'DepositRecorded' event.`);
+        continue;
+      }
+      
+      this.logger.info(`[CreditService] Found a 'DepositRecorded' event in tx: ${transactionHash}`);
+
+      try {
+        const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
+        if (existingEntry) {
+          this.logger.info(`[CreditService] Skipping event for tx ${transactionHash} as it's already acknowledged.`);
+          continue;
         }
 
-        // The first topic is the event signature hash. We can use this for a quick check.
-        const eventSignatureHash = this.ethereumService.getEventTopic(eventFragment);
-        if (topics[0] !== eventSignatureHash) {
-            this.logger.info(`[CreditService] Webhook event is not a 'DepositRecorded' event. Skipping. Topic was: ${topics[0]}`);
-            return { success: true, message: 'Event is not a DepositRecorded event, skipped.', detail: null };
-        }
-        
         const decodedLog = this.ethereumService.decodeEventLog(eventFragment, data, topics, this.contractConfig.abi);
         let { vaultAccount, user, token, amount } = decodedLog;
 
-        this.logger.info(`[CreditService] Webhook decoded a 'DepositRecorded' event in tx: ${transactionHash}`);
-        this.logger.info(`[CreditService] Decoded event data:`, {
-            vaultAccount,
-            user,
-            token,
-            amount: amount.toString(),
-            transactionHash
-        });
+        this.logger.info(`[CreditService] Decoded event data:`, { vaultAccount, user, token, amount: amount.toString(), transactionHash });
 
         if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
-            this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);
-            vaultAccount = this.contractConfig.address;
+          this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);
+          vaultAccount = this.contractConfig.address;
         }
 
-        const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
-        if (existingEntry) {
-            this.logger.info(`[CreditService] Skipping webhook event for tx ${transactionHash} as it's already acknowledged.`);
-            return { success: true, message: 'Event already acknowledged.', detail: { transactionHash } };
-        }
-
-        this.logger.info(`[CreditService] Acknowledging new deposit from webhook: ${transactionHash}`);
         await this.creditLedgerDb.createLedgerEntry({
-            deposit_tx_hash: transactionHash,
-            deposit_log_index: parseInt(logIndex, 16), // logIndex is hex
-            deposit_block_number: parseInt(blockNumber, 16), // blockNumber is hex
-            vault_account: vaultAccount,
-            depositor_address: user,
-            token_address: token,
-            deposit_amount_wei: amount.toString(),
-            status: 'PENDING_CONFIRMATION',
+          deposit_tx_hash: transactionHash,
+          deposit_log_index: logIndex,
+          deposit_block_number: blockNumber,
+          vault_account: vaultAccount,
+          depositor_address: user,
+          token_address: token,
+          deposit_amount_wei: amount.toString(),
+          status: 'PENDING_CONFIRMATION',
         });
 
-        // Immediately trigger the processing for pending confirmations.
-        this.logger.info(`[CreditService] Webhook acknowledged. Triggering immediate processing of pending queue...`);
-        await this.processPendingConfirmations();
-        this.logger.info(`[CreditService] Immediate processing triggered by webhook is complete.`);
+        this.logger.info(`[CreditService] Successfully acknowledged new deposit from webhook: ${transactionHash}`);
+        processedCount++;
 
-        return { success: true, message: 'Webhook processed and confirmation triggered.', detail: { transactionHash } };
+      } catch (error) {
+        this.logger.error(`[CreditService] Error processing a specific log from webhook tx ${transactionHash}:`, error);
+        // Continue to the next log, do not stop the loop
+      }
+    }
 
-    } catch (error) {
-        this.logger.error(`[CreditService] Error processing webhook event for tx ${transactionHash}:`, error);
-        return { success: false, message: 'Internal error processing webhook.', detail: { transactionHash, error: error.message }};
+    if (processedCount > 0) {
+      this.logger.info(`[CreditService] Acknowledged ${processedCount} new deposits. Triggering immediate processing of pending queue...`);
+      await this.processPendingConfirmations();
+      this.logger.info(`[CreditService] Immediate processing triggered by webhook is complete.`);
+      return { success: true, message: `Webhook processed and acknowledged ${processedCount} new deposits.`, detail: null };
+    } else {
+      this.logger.info('[CreditService] Webhook processed, but no new, relevant events were found to acknowledge.');
+      return { success: true, message: 'Webhook received, but no new events to process.', detail: null };
     }
   }
 
