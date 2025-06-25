@@ -2,6 +2,8 @@ const { ethers, formatEther, keccak256, toUtf8Bytes } = require('ethers');
 const CreditLedgerDB = require('../db/alchemy/creditLedgerDb');
 const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
+const WalletLinkingRequestDB = require('../db/alchemy/walletLinkingRequestDb');
+const WalletLinkingService = require('../services/alchemy/walletLinkingService');
 // const NoemaUserCoreDB = require('../db/noemaUserCoreDb'); // To be implemented
 // const NoemaUserEconomyDB = require('../db/noemaUserEconomyDb'); // To be implemented
 
@@ -27,6 +29,7 @@ class CreditService {
    * @param {InternalApiClient} services.internalApiClient - Client for internal API communication.
    * @param {UserCoreDB} services.userCoreDb - Service for core user data.
    * @param {WalletLinkingRequestDB} services.walletLinkingRequestDb - Service for magic amount requests.
+   * @param {WalletLinkingService} services.walletLinkingService - Service for handling linking logic.
    * @param {object} config - Configuration object.
    * @param {string} config.creditVaultAddress - The address of the on-chain Credit Vault contract.
    * @param {Array} config.creditVaultAbi - The ABI of the Credit Vault contract.
@@ -35,8 +38,8 @@ class CreditService {
   constructor(services, config, logger) {
     this.logger = logger || console;
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb } = services;
-    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb) {
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService } = services;
+    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService) {
       throw new Error('CreditService: Missing one or more required services.');
     }
     this.ethereumService = ethereumService;
@@ -47,6 +50,7 @@ class CreditService {
     this.internalApiClient = internalApiClient;
     this.userCoreDb = userCoreDb;
     this.walletLinkingRequestDb = walletLinkingRequestDb;
+    this.walletLinkingService = walletLinkingService;
     
     const { creditVaultAddress, creditVaultAbi } = config;
     if (!creditVaultAddress || !creditVaultAbi) {
@@ -426,7 +430,7 @@ class CreditService {
         if (linkingRequest) {
             this.logger.info(`[CreditService] Detected "Magic Amount" deposit for wallet linking. Request ID: ${linkingRequest._id}`);
             
-            const { master_account_id: masterAccountId } = linkingRequest;
+            const { _id: requestId, master_account_id: masterAccountId } = linkingRequest;
 
             // Add the wallet to the user's core document
             await this.userCoreDb.addWallet(masterAccountId, {
@@ -436,12 +440,15 @@ class CreditService {
                 linkedAt: new Date(),
             });
 
-            // Mark the linking request as completed
-            await this.walletLinkingRequestDb.updateRequestStatus(linkingRequest._id, 'COMPLETED', {
+            // Mark the linking request as completed in the DB
+            await this.walletLinkingRequestDb.updateRequestStatus(requestId, 'COMPLETED', {
                 linked_wallet_address: depositorAddress
             });
 
-            this.logger.info(`[CreditService] Successfully linked wallet ${depositorAddress} to master account ${masterAccountId}.`);
+            // Trigger the service to generate and cache the API key
+            await this.walletLinkingService.completeLinkingAndGenerateFirstApiKey(masterAccountId, requestId);
+
+            this.logger.info(`[CreditService] Successfully linked wallet ${depositorAddress} to master account ${masterAccountId}. Key generation triggered.`);
         }
     } catch (error) {
         this.logger.error(`[CreditService] Error during magic amount linking check for address ${depositorAddress}:`, error);

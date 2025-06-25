@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const { createToolsApiRouter } = require('./toolsApi');
+const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
 
 /**
  * Initializes the External API layer.
@@ -101,6 +102,11 @@ function initializeExternalApi(dependencies) {
   const toolsRouter = createToolsApiRouter(dependencies);
   externalApiRouter.use('/tools', toolsRouter);
   logger.info('External Tools API router mounted at /tools. (Public)');
+
+  // Mount the Wallet Connection API router (Publicly Accessible)
+  const walletConnectionRouter = createWalletConnectionApiRouter(dependencies);
+  externalApiRouter.use('/wallets/connect', walletConnectionRouter);
+  logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
 
   // Example of a future protected route:
   // const generationsRouter = createGenerationsRouter(dependencies);
