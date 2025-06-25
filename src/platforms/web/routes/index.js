@@ -791,26 +791,33 @@ async function initializeRoutes(app, services) {
       // The new processor function handles its own logging of the hit and payload.
 
       // Log the services object to check for internalApiClient
-      const routeLogger = services.logger || console; // Use existing logger or fallback
-      routeLogger.info('[Routes/Index] Checking services object before creating dependencies for webhookProcessor:', {
-        hasInternalApiClientProperty: !!services.internalApiClient, // This should now be true
-        isInternalApiClientGetFunction: typeof services.internalApiClient?.get === 'function', // This should now be true
-        hasInternalProperty: !!services.internal, 
-        hasLogger: !!services.logger,
-        serviceKeys: services ? Object.keys(services) : 'services_is_undefined_or_null'
+      const routeLogger = services.logger || console;
+
+      // Log summary of services
+      routeLogger.info('[Routes/Index] Validating service bindings', {
+        serviceKeys: Object.keys(services || {}),
+        internalApiClient: {
+          exists: Boolean(services.internalApiClient),
+          hasGet: typeof services.internalApiClient?.get === 'function'
+        },
+        internal: Boolean(services.internal),
+        loggerAttached: Boolean(services.logger)
       });
-
-      // Dependencies for the processor
+      
+      // Prepare dependencies
       const dependencies = {
-        internalApiClient: services.internal.client, // Corrected to use services.internal.client
-        telegramNotifier: services.telegramNotifier, 
-        logger: services.logger || console 
+        internalApiClient: services.internal?.client, // safe access
+        telegramNotifier: services.telegramNotifier,
+        logger: services.logger || console
       };
-
-      routeLogger.info('[Routes/Index] Dependencies object created for webhookProcessor:', {
-        hasInternalApiClientInDeps: !!dependencies.internalApiClient,
-        isInternalApiClientInDepsFunction: typeof dependencies.internalApiClient?.get === 'function',
-        hasLoggerInDeps: !!dependencies.logger
+      
+      // Log summary of dependencies
+      routeLogger.info('[Routes/Index] Dependencies prepared for webhookProcessor', {
+        internalApiClient: {
+          exists: Boolean(dependencies.internalApiClient),
+          hasGet: typeof dependencies.internalApiClient?.get === 'function'
+        },
+        loggerAttached: Boolean(dependencies.logger)
       });
 
       const result = await processComfyDeployWebhook(req.body, dependencies);

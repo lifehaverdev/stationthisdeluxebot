@@ -23,7 +23,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
     });
   }
 
-  logger.info('~~⚡~~ [Webhook Processor] Processing Body:', JSON.stringify(payload, null, 2));
+  logger.info({payload}, '~~⚡~~ [Webhook Processor] Processing Body:');
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
 
