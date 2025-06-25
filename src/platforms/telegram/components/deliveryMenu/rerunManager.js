@@ -28,8 +28,18 @@ async function handleRerunGenCallback(bot, callbackQuery, masterAccountId, depen
     try {
         const genResponse = await internal.client.get(`/internal/v1/data/generations/${originalGenerationId}`);
         const originalRecord = genResponse.data;
+
+        // Add logging to inspect the fetched record for easier debugging.
+        logger.debug({ originalRecord }, '[RerunManager] Fetched original generation record for rerun.');
+
         if (!originalRecord || !originalRecord.requestPayload) {
-            throw new Error("Original generation details missing for rerun.");
+            throw new Error("Original generation details or requestPayload are missing for rerun.");
+        }
+
+        // Critical Check: Ensure metadata exists before trying to destructure it.
+        if (!originalRecord.metadata) {
+            logger.error({ originalRecord }, "Original generation record is missing the 'metadata' object, which is required for a rerun.");
+            throw new Error("Original generation record is missing the 'metadata' object.");
         }
 
         // Robustly resolve toolId
@@ -110,7 +120,14 @@ async function handleRerunGenCallback(bot, callbackQuery, masterAccountId, depen
         await bot.answerCallbackQuery(callbackQuery.id, { text: "Rerun initiated!" });
 
     } catch (error) {
-        logger.error(`[RerunManager] Error in rerun_gen for GenID ${originalGenerationId}:`, error.response?.data || error.message, error.stack);
+        // Structured error logging for better diagnostics.
+        logger.error({ 
+            err: { 
+                message: error.message, 
+                stack: error.stack, 
+                response: error.response?.data 
+            } 
+        }, `[RerunManager] Error in rerun_gen for GenID ${originalGenerationId}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
     }
 }

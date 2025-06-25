@@ -19,6 +19,74 @@ function createToolDefinitionApiRouter(services) {
   // router.use(authenticateInternalKey); // Example: ensure only internal services can call
 
   /**
+   * GET /internal/v1/data/tools
+   * Returns a list of all available tools.
+   */
+  router.get('/', (req, res) => {
+    logger.info('[ToolDefinitionApi] GET / - Request received to list all tools');
+    try {
+      const allTools = toolRegistry.getAllTools();
+      // We should format this to be a clean public contract, not just an internal dump
+      const toolList = allTools.map(tool => ({
+        id: tool.id,
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema, // Or a subset if we don't want to expose everything
+      }));
+      res.status(200).json(toolList);
+    } catch (error) {
+      logger.error(`[ToolDefinitionApi] GET / - Error: ${error.message}`, error);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected error occurred while listing tools.',
+        },
+      });
+    }
+  });
+
+  /**
+   * GET /internal/v1/data/tools/:toolId
+   * Returns the definition for a specific tool.
+   */
+  router.get('/:toolId', (req, res) => {
+    const { toolId } = req.params;
+    logger.info(`[ToolDefinitionApi] GET /${toolId} - Request received`);
+
+    try {
+      const tool = toolRegistry.getToolById(toolId);
+
+      if (!tool) {
+        logger.warn(`[ToolDefinitionApi] GET /${toolId} - Tool not found`);
+        return res.status(404).json({
+          error: {
+            code: 'TOOL_NOT_FOUND',
+            message: `Tool with ID '${toolId}' not found.`,
+          },
+        });
+      }
+
+      // Format for public contract
+      const toolDefinition = {
+        id: tool.id,
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      };
+
+      res.status(200).json(toolDefinition);
+    } catch (error) {
+      logger.error(`[ToolDefinitionApi] GET /${toolId} - Error: ${error.message}`, error);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'An unexpected error occurred while retrieving the tool definition.',
+        },
+      });
+    }
+  });
+
+  /**
    * GET /internal/v1/data/tools/:toolId/input-schema
    * Returns the inputSchema for a specific tool.
    */
