@@ -299,7 +299,7 @@ class CreditService {
                 this.logger.warn(`[CreditService] No user account found for address ${user}. Rejecting deposit group.`);
                 for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNKNOWN_USER', { failure_reason: 'No corresponding user account found.' });
             } else {
-                this.logger.error(`[CreditService] Error looking up user for group: ${error.message}.`);
+                this.logger.error(`[CreditService] Error looking up user for group.`, error);
                 for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', { failure_reason: 'Failed to lookup user due to an internal API error.', error_details: error.message });
             }
             return;
@@ -367,7 +367,7 @@ class CreditService {
             });
             this.logger.info(`[CreditService] Successfully applied batch credit to masterAccountId ${masterAccountId}.`);
         } catch (error) {
-            this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for group confirmation! Requires manual intervention. Error: ${error.message}`);
+            this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for group confirmation! Requires manual intervention.`, error);
             const reason = { master_account_id: masterAccountId, confirmation_tx_hash: confirmationTxHash, net_value_usd: netDepositValueUsd, failure_reason: 'Off-chain credit application failed.', error_details: error.message };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'NEEDS_MANUAL_CREDIT', reason);
             return;
@@ -390,12 +390,7 @@ class CreditService {
 
     } catch (error) {
       const errorMessage = error.message || 'An unknown error occurred';
-      this.logger.error(`[CreditService] Unhandled error during confirmation for group (User: ${user}, Token: ${token}).`);
-      this.logger.error('[CreditService] --- DETAILED ERROR ---');
-      this.logger.error(`[CreditService] Error Message: ${errorMessage}`);
-      this.logger.error(`[CreditService] Error Code: ${error.code || 'N/A'}`);
-      this.logger.error(`[CreditService] Error Stack:`, error.stack);
-      this.logger.error('[CreditService] --- END DETAILED ERROR ---');
+      this.logger.error(`[CreditService] Unhandled error during confirmation for group (User: ${user}, Token: ${token}).`, error);
 
       const reason = { failure_reason: 'An unexpected error occurred during group processing.', error_details: errorMessage, error_stack: error.stack };
       for (const deposit of deposits) {

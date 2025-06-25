@@ -29,18 +29,14 @@ function createLogger(module) {
     winston.format.splat(),
     winston.format.printf((info) => {
       const { level, message, module, timestamp, stack } = info;
-      // Start with the basic log message
       let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
-      
-      // Access the splat symbol to get all additional arguments
+
       const splat = info[Symbol.for('splat')];
-      
-      // Use util.inspect for robust object logging
       if (splat && splat.length > 0) {
-        log += splat.map(item => `\n${util.inspect(item, { depth: 10, colors: false })}`).join('');
+          const formattedSplat = util.inspect(splat.length === 1 ? splat[0] : splat, { depth: 10, colors: false });
+          log += `\n${formattedSplat}`;
       }
 
-      // If there's a stack trace from an error, append it last for clarity.
       if (stack) {
         log += `\n${stack}`;
       }
