@@ -5,6 +5,7 @@
  */
 
 const initializeInternalServices = require('./internal');
+const { initializeExternalApi } = require('./external');
 
 /**
  * Initialize all API services
@@ -14,9 +15,13 @@ const initializeInternalServices = require('./internal');
 function initializeAPI(options = {}) {
   // Initialize internal API services. Pass all options down.
   const internalServices = initializeInternalServices(options);
+  const externalApiRouter = initializeExternalApi({ internal: internalServices });
   
   return {
-    internal: internalServices
+    internal: internalServices,
+    external: {
+      router: externalApiRouter
+    }
   };
 }
 

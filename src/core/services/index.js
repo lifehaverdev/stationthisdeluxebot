@@ -124,6 +124,8 @@ async function initializeServices(options = {}) {
                 priceFeedService,
                 tokenRiskEngine,
                 internalApiClient,
+                userCoreDb: initializedDbServices.data.userCore,
+                walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
         }
@@ -189,6 +191,7 @@ async function initializeServices(options = {}) {
       openai: openAIService,
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
+      external: apiServices.external, // This contains the external router
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService

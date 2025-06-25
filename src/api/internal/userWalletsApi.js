@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { ObjectId } = require('mongodb');
 const { PRIORITY } = require('../../core/services/db/utils/queue'); // Import PRIORITY if needed for findOne
+const crypto = require('crypto');
 
 // This function initializes the routes for the User Wallets API
 module.exports = function userWalletsApi(dependencies) {
@@ -34,6 +35,58 @@ module.exports = function userWalletsApi(dependencies) {
   // --- Wallet Endpoints --- 
   // Mounted at /users/:masterAccountId/wallets
   //-------------------------------------------------------------------------
+
+  // POST /requests/magic-amount - Creates a new wallet linking request
+  router.post('/requests/magic-amount', async (req, res) => {
+    const requestId = uuidv4();
+    const masterAccountId = getMasterAccountId(req, res);
+    if (!masterAccountId) return;
+
+    const { tokenAddress, expiresInSeconds } = req.body;
+    const masterAccountIdStr = masterAccountId.toString();
+
+    logger.info(`[userWalletsApi] POST /users/${masterAccountIdStr}/wallets/requests/magic-amount called, requestId: ${requestId}`);
+
+    if (!tokenAddress) {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'tokenAddress is a required field.' } });
+    }
+
+    try {
+        // Generate a cryptographically secure random number and format it as a wei string
+        // This generates a 6-byte random buffer, giving us 2^48 possibilities,
+        // which is sufficient to avoid collisions for this purpose.
+        const randomBuffer = crypto.randomBytes(6);
+        const magicAmountWei = BigInt('0x' + randomBuffer.toString('hex')).toString();
+
+        const requestData = {
+            masterAccountId,
+            magicAmountWei,
+            tokenAddress,
+            expiresInSeconds
+        };
+
+        const newRequest = await db.walletLinkingRequests.createRequest(requestData);
+
+        if (!newRequest) {
+            // This could happen due to a magic amount collision, which is extremely rare.
+            // A more robust implementation might retry a few times.
+            logger.error(`[userWalletsApi] Failed to create magic amount request, possibly due to a collision. requestId: ${requestId}`);
+            return res.status(500).json({ error: { code: 'REQUEST_CREATION_FAILED', message: 'Failed to generate a unique wallet linking request. Please try again.' } });
+        }
+        
+        logger.info(`[userWalletsApi] Successfully created magic amount request for user ${masterAccountIdStr}. Amount: ${magicAmountWei}, requestId: ${requestId}`);
+        res.status(201).json({
+            message: 'Wallet linking request created successfully.',
+            magicAmountWei: newRequest.magic_amount_wei,
+            tokenAddress: newRequest.token_address,
+            expiresAt: newRequest.expires_at,
+        });
+
+    } catch (error) {
+        logger.error(`[userWalletsApi] Error creating magic amount request for user ${masterAccountIdStr}: ${error.message}`, error);
+        res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred.' } });
+    }
+  });
 
   // POST / - Adds a wallet
   router.post('/', async (req, res) => {

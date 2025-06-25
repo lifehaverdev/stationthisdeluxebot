@@ -33,7 +33,9 @@ The `CreditService` manages a sophisticated lifecycle for user collateral, which
 
     *   **Stage 2: Grouped Confirmation Processing (State-Changing)**
         *   To enhance gas efficiency and solve issues with small, unprofitable deposits, we have moved from a 1-to-1 processing model to a **group-based** model.
-        *   A separate process queries the database for all ledger entries with a `PENDING_CONFIRMATION` or `ERROR` status.
+        *   The confirmation process is triggered in two distinct ways:
+        *     1. **Immediate (Live Deposits):** When the Alchemy webhook delivers a single new deposit event, the processing pipeline is triggered **immediately** for that transaction to ensure a responsive user experience.
+        *     2. **Batch (Reconciliation):** A separate reconciliation process runs on service startup. It queries the database for all ledger entries with a `PENDING_CONFIRMATION` or `ERROR` status and processes them in batches. This ensures fault tolerance and cost efficiency for any accumulated deposits.
         *   These entries are then **grouped by their unique `(depositor_address, token_address)` pair**.
         *   The system processes one unique group at a time.
         *

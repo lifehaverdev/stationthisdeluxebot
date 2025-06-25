@@ -25,6 +25,8 @@ class CreditService {
    * @param {PriceFeedService} services.priceFeedService - Service for fetching token prices.
    * @param {TokenRiskEngine} services.tokenRiskEngine - Service for assessing collateral risk.
    * @param {InternalApiClient} services.internalApiClient - Client for internal API communication.
+   * @param {UserCoreDB} services.userCoreDb - Service for core user data.
+   * @param {WalletLinkingRequestDB} services.walletLinkingRequestDb - Service for magic amount requests.
    * @param {object} config - Configuration object.
    * @param {string} config.creditVaultAddress - The address of the on-chain Credit Vault contract.
    * @param {Array} config.creditVaultAbi - The ABI of the Credit Vault contract.
@@ -33,8 +35,8 @@ class CreditService {
   constructor(services, config, logger) {
     this.logger = logger || console;
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient } = services;
-    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient) {
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb } = services;
+    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb) {
       throw new Error('CreditService: Missing one or more required services.');
     }
     this.ethereumService = ethereumService;
@@ -43,6 +45,8 @@ class CreditService {
     this.priceFeedService = priceFeedService;
     this.tokenRiskEngine = tokenRiskEngine;
     this.internalApiClient = internalApiClient;
+    this.userCoreDb = userCoreDb;
+    this.walletLinkingRequestDb = walletLinkingRequestDb;
     
     const { creditVaultAddress, creditVaultAbi } = config;
     if (!creditVaultAddress || !creditVaultAbi) {
@@ -103,6 +107,10 @@ class CreditService {
         const { transactionHash, logIndex, blockNumber, args } = event;
         let { vaultAccount } = args;
         const { user, token, amount } = args;
+
+        // --- MAGIC AMOUNT WALLET LINKING ---
+        await this._handleMagicAmountLinking(user, token, amount.toString());
+        // --- END MAGIC AMOUNT ---
 
         // If vaultAccount is not in the event args, it's a deposit to the main vault.
         // In this case, the vaultAccount IS the main contract address.
@@ -185,6 +193,10 @@ class CreditService {
         let { vaultAccount, user, token, amount } = decodedLog;
 
         this.logger.info(`[CreditService] Decoded event data:`, { vaultAccount, user, token, amount: amount.toString(), transactionHash });
+
+        // --- MAGIC AMOUNT WALLET LINKING ---
+        await this._handleMagicAmountLinking(user, token, amount.toString());
+        // --- END MAGIC AMOUNT ---
 
         if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
           this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);
@@ -396,6 +408,44 @@ class CreditService {
       for (const deposit of deposits) {
          await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', reason);
       }
+    }
+  }
+
+  /**
+   * Checks if a deposit corresponds to a pending "magic amount" wallet linking request.
+   * If it matches, it links the wallet to the user account and completes the request.
+   * @param {string} depositorAddress - The address that made the deposit.
+   * @param {string} tokenAddress - The token contract address.
+   * @param {string} amountWei - The amount deposited, in Wei.
+   * @private
+   */
+  async _handleMagicAmountLinking(depositorAddress, tokenAddress, amountWei) {
+    try {
+        const linkingRequest = await this.walletLinkingRequestDb.findPendingRequestByAmount(amountWei, tokenAddress);
+
+        if (linkingRequest) {
+            this.logger.info(`[CreditService] Detected "Magic Amount" deposit for wallet linking. Request ID: ${linkingRequest._id}`);
+            
+            const { master_account_id: masterAccountId } = linkingRequest;
+
+            // Add the wallet to the user's core document
+            await this.userCoreDb.addWallet(masterAccountId, {
+                address: depositorAddress,
+                verified: true,
+                tag: 'magic-link-deposit',
+                linkedAt: new Date(),
+            });
+
+            // Mark the linking request as completed
+            await this.walletLinkingRequestDb.updateRequestStatus(linkingRequest._id, 'COMPLETED', {
+                linked_wallet_address: depositorAddress
+            });
+
+            this.logger.info(`[CreditService] Successfully linked wallet ${depositorAddress} to master account ${masterAccountId}.`);
+        }
+    } catch (error) {
+        this.logger.error(`[CreditService] Error during magic amount linking check for address ${depositorAddress}:`, error);
+        // We don't re-throw, as this shouldn't block the main credit processing flow.
     }
   }
 }

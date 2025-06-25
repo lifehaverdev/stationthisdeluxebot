@@ -26,6 +26,7 @@ const { initializeLlmApi } = require('./llm');
 const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
+const { createAuthApi } = require('./authApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 

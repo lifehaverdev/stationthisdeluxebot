@@ -251,6 +251,24 @@ class UserCoreDB extends BaseDB {
   }
 
   /**
+   * Finds a userCore document by an API key prefix.
+   * Since multiple users could theoretically have keys with the same prefix (highly unlikely with good generation),
+   * this method is designed to return the first one found. The application logic should handle the rest.
+   * @param {string} keyPrefix - The prefix of the API key.
+   * @returns {Promise<Object|null>} The userCore document or null if not found.
+   */
+  async findUserByApiKeyPrefix(keyPrefix) {
+    if (!keyPrefix) {
+      this.logger.warn('[UserCoreDB] findUserByApiKeyPrefix called with no prefix.');
+      return null;
+    }
+    // This query finds a document where the apiKeys array contains at least one element
+    // that has a keyPrefix matching the provided one.
+    const query = { 'apiKeys.keyPrefix': keyPrefix };
+    return this.findOne(query, PRIORITY.HIGH);
+  }
+
+  /**
    * Deletes a wallet from a user's wallets array by its address.
    * @param {ObjectId | string} masterAccountId - The masterAccountId of the user.
    * @param {string} walletAddress - The address of the wallet to delete.
