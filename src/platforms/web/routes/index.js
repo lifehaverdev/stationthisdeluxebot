@@ -853,12 +853,13 @@ async function initializeRoutes(app, services) {
 
         if (result.success) {
             routeLogger.info(`[Webhook Route] Alchemy event processed successfully: ${result.message}`);
-            res.status(200).json({ status: 'success', message: result.message, detail: result.detail });
+            res.status(200).json({ status: 'received_and_processed', message: result.message, detail: result.detail });
         } else {
-            // Distinguish between a client-side error (e.g., bad payload) and a server-side one.
-            // For now, we'll treat all failures from the service as internal issues.
-            routeLogger.error(`[Webhook Route] Failed to process Alchemy event: ${result.message}`, { detail: result.detail });
-            res.status(500).json({ status: 'error', message: result.message, detail: result.detail });
+            // IMPORTANT: We return a 200 OK to Alchemy to prevent them from disabling the webhook.
+            // The error has already been logged internally by the service. The response body
+            // indicates that while we received the event, we couldn't fully process it.
+            routeLogger.error(`[Webhook Route] Acknowledged, but failed to process Alchemy event: ${result.message}`, { detail: result.detail });
+            res.status(200).json({ status: 'received_with_processing_error', message: result.message, detail: result.detail });
         }
     } catch (error) {
         routeLogger.error('[Webhook Route] Unhandled exception in Alchemy webhook handler:', error);
