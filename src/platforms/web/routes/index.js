@@ -830,41 +830,32 @@ async function initializeRoutes(app, services) {
   // --- END NEW Webhook Handler ---
 
   // --- NEW Alchemy Webhook Handler for CreditService ---
-  app.post('/api/webhook/alchemy', async (req, res, next) => {
-    const routeLogger = services.logger || console;
-    routeLogger.info('[Webhook Route] Received POST request on /api/webhook/alchemy');
-    routeLogger.info(`[Webhook Route] Incoming Alchemy payload body:`, req.body);
-
-    // SECURITY TODO: Verify the webhook signature from Alchemy to ensure the request is authentic.
-    // Example: const isValid = alchemy.webhooks.isValidSignature(req.headers['x-alchemy-signature'], req.body);
-    // if (!isValid) {
-    //   routeLogger.warn('[Webhook Route] Invalid signature on Alchemy webhook.');
-    //   return res.status(401).json({ message: 'error', error: 'Invalid signature.' });
-    // }
-
+  app.post('/api/webhook/alchemy', async (req, res) => {
+    logger.info(`[Webhook Route] Received a request on the Alchemy endpoint.`);
+    
     if (!services.creditService) {
-        routeLogger.error('[Webhook Route] CreditService is not available on the services object.');
-        // Use next() to pass to the default error handler
-        return next(new Error('Server configuration error: CreditService not initialized.'));
+      logger.error('[Webhook Route] CreditService is not available.');
+      // Always return 200 to Alchemy, even on critical internal errors,
+      // to prevent them from disabling the webhook.
+      return res.status(200).json({ status: 'error', message: 'Internal server error: Service not configured.' });
     }
 
     try {
-        const result = await services.creditService.handleDepositEventWebhook(req.body);
+      logger.info(`[Webhook Route] Processing Alchemy event...`, { body: req.body });
+      const result = await services.creditService.handleDepositEventWebhook(req.body);
+      
+      if (!result.success) {
+        logger.warn(`[Webhook Route] Failed to process Alchemy event: ${result.message}`, { detail: result.detail });
+      } else {
+        logger.info(`[Webhook Route] Successfully processed Alchemy event: ${result.message}`);
+      }
 
-        if (result.success) {
-            routeLogger.info(`[Webhook Route] Alchemy event processed successfully: ${result.message}`);
-            res.status(200).json({ status: 'received_and_processed', message: result.message, detail: result.detail });
-        } else {
-            // IMPORTANT: We return a 200 OK to Alchemy to prevent them from disabling the webhook.
-            // The error has already been logged internally by the service. The response body
-            // indicates that while we received the event, we couldn't fully process it.
-            routeLogger.error(`[Webhook Route] Acknowledged, but failed to process Alchemy event: ${result.message}`, { detail: result.detail });
-            res.status(200).json({ status: 'received_with_processing_error', message: result.message, detail: result.detail });
-        }
     } catch (error) {
-        routeLogger.error('[Webhook Route] Unhandled exception in Alchemy webhook handler:', error);
-        next(error); // Pass to the default error handler
+      logger.error('[Webhook Route] An unexpected error occurred processing the Alchemy webhook.', error);
     }
+    
+    // Always acknowledge the webhook to prevent Alchemy from disabling it.
+    res.status(200).json({ status: 'received' });
   });
   // --- END Alchemy Webhook Handler ---
 }

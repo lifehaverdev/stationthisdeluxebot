@@ -144,12 +144,15 @@ class CreditService {
   async handleDepositEventWebhook(webhookPayload) {
     this.logger.info('[CreditService] Processing incoming Alchemy webhook...');
 
-    if (webhookPayload.type !== 'GRAPHQL' || !webhookPayload.event?.data?.block?.logs) {
-      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payload: webhookPayload });
+    // Handle cases where the relevant data might be nested inside a 'payload' property.
+    const eventPayload = webhookPayload.payload || webhookPayload;
+
+    if (eventPayload.type !== 'GRAPHQL' || !eventPayload.event?.data?.block?.logs) {
+      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payload: eventPayload });
       return { success: false, message: 'Invalid payload structure. Expected GraphQL block logs.', detail: null };
     }
 
-    const logs = webhookPayload.event.data.block.logs;
+    const logs = eventPayload.event.data.block.logs;
     this.logger.info(`[CreditService] Webhook contains ${logs.length} event logs to process.`);
 
     const eventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
