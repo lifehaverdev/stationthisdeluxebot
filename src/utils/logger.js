@@ -6,6 +6,7 @@
 
 const winston = require('winston');
 const config = require('../config');
+const util = require('util'); // Import the 'util' module
 
 /**
  * Create a configured logger instance for a specific module
@@ -34,14 +35,9 @@ function createLogger(module) {
       // Access the splat symbol to get all additional arguments
       const splat = info[Symbol.for('splat')];
       
-      // If there are any splatted arguments, stringify them
-      if (splat) {
-        // If there's only one argument and it's an object, we can make it look nicer
-        if (splat.length === 1 && typeof splat[0] === 'object' && splat[0] !== null) {
-          log += `\n${JSON.stringify(splat[0], jsonReplacer, 2)}`;
-        } else {
-          log += ` ${splat.map(item => JSON.stringify(item, jsonReplacer)).join(' ')}`;
-        }
+      // Use util.inspect for robust object logging
+      if (splat && splat.length > 0) {
+        log += splat.map(item => `\n${util.inspect(item, { depth: 10, colors: false })}`).join('');
       }
 
       // If there's a stack trace from an error, append it last for clarity.
