@@ -35,16 +35,9 @@ function createLogger(module) {
       // Access the splat symbol to get all additional arguments
       const splat = info[Symbol.for('splat')];
       
-      // Handle additional arguments from splat
+      // Use util.inspect for robust object logging
       if (splat && splat.length > 0) {
-        log += splat.map(item => {
-          // If the item is a simple string, just append it.
-          if (typeof item === 'string') {
-            return ` ${item}`;
-          }
-          // For objects, errors, etc., use util.inspect for detailed view on a new line.
-          return `\n${util.inspect(item, { depth: 10, colors: false })}`;
-        }).join('');
+        log += splat.map(item => `\n${util.inspect(item, { depth: 10, colors: false })}`).join('');
       }
 
       // If there's a stack trace from an error, append it last for clarity.

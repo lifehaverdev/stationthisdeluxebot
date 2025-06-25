@@ -840,7 +840,14 @@ async function initializeRoutes(app, services) {
   app.post('/api/webhook/alchemy', async (req, res) => {
     // Use the pino logger attached to the request object by the new middleware
     const logger = req.log; 
-    logger.info({ payload: req.body }, `[Webhook Route] Received a request on the Alchemy endpoint.`);
+    
+    // Create a concise summary of the payload for logging
+    const payloadSummary = {
+      hasBody: !!req.body,
+      type: req.body?.type,
+      logCount: req.body?.event?.data?.block?.logs?.length ?? req.body?.payload?.event?.data?.block?.logs?.length ?? 'N/A'
+    };
+    logger.info({ payloadSummary }, `[Webhook Route] Received a request on the Alchemy endpoint.`);
     
     if (!services.creditService) {
       logger.error('[Webhook Route] CreditService is not available.');

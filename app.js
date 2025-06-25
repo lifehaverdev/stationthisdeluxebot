@@ -106,17 +106,17 @@ async function startApp() {
     }
     
     // Log data availability regardless of status
-    logger.info('- Burns data records:', initResults.data.burns);
-    logger.info('- Rooms/Groups:', initResults.data.rooms);
-    logger.info('- Workflows:', initResults.data.workflows);
-    logger.info('- Lora Triggers:', initResults.data.loras);
-    logger.info('- ComfyUI API:', initResults.data.comfyUI.connected ? 'Connected' : 'Failed');
+    logger.info(`- Burns data records: ${initResults.data.burns}`);
+    logger.info(`- Rooms/Groups: ${initResults.data.rooms}`);
+    logger.info(`- Workflows: ${initResults.data.workflows}`);
+    logger.info(`- Lora Triggers: ${initResults.data.loras}`);
+    logger.info(`- ComfyUI API: ${initResults.data.comfyUI.connected ? 'Connected' : 'Failed'}`);
     
     if (initResults.data.comfyUI.connected) {
-      logger.info('  - Available workflows:', initResults.data.comfyUI.workflows);
-      logger.info('  - Available deployments:', initResults.data.comfyUI.deployments);
-      logger.info('  - Available machines:', initResults.data.comfyUI.machines);
-      logger.info('  - Ready machines:', initResults.data.comfyUI.readyMachines);
+      logger.info(`  - Available workflows: ${JSON.stringify(initResults.data.comfyUI.workflows)}`);
+      logger.info(`  - Available deployments: ${JSON.stringify(initResults.data.comfyUI.deployments)}`);
+      logger.info(`  - Available machines: ${JSON.stringify(initResults.data.comfyUI.machines)}`);
+      logger.info(`  - Ready machines: ${JSON.stringify(initResults.data.comfyUI.readyMachines)}`);
     }
     
     logger.info('\nProceeding to platform initialization...\n');

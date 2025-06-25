@@ -20,9 +20,9 @@ function initializePlatforms(dependencies, options = {}) {
   const logger = dependencies.logger || console;
   
   // Debug log for internal services
-  logger.info('DEBUG: Platforms - Internal services:', 
-    dependencies.internal ? 'exists' : 'missing',
-    dependencies.internal?.status ? 'status service exists' : 'status service missing');
+  const internalStatus = dependencies.internal ? 'exists' : 'missing';
+  const statusServiceStatus = dependencies.internal?.status ? 'status service exists' : 'status service missing';
+  logger.info(`DEBUG: Platforms - Internal services: ${internalStatus}, ${statusServiceStatus}`);
   
   // Initialize platforms based on configuration
   if (options.enableTelegram !== false) {

@@ -148,7 +148,7 @@ class CreditService {
     const eventPayload = webhookPayload.payload || webhookPayload;
 
     if (eventPayload.type !== 'GRAPHQL' || !eventPayload.event?.data?.block?.logs) {
-      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payload: eventPayload });
+      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payloadKeys: Object.keys(eventPayload || {}) });
       return { success: false, message: 'Invalid payload structure. Expected GraphQL block logs.', detail: null };
     }
 
