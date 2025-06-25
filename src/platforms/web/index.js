@@ -24,6 +24,10 @@ function initializeWebPlatform(services, options = {}) {
   const app = express();
   const logger = services.logger || console; // Get logger from services, fallback to console
   
+  // Trust the first proxy in front of the app. This is required for express-rate-limit to work correctly
+  // when the app is behind a reverse proxy (like Caddy, Nginx, or a load balancer).
+  app.set('trust proxy', 1);
+
   // Set up middleware
   logger.info('[WebPlatform] Initializing middleware...');
   app.use(httpLogger); // Use the centralized, correctly configured HTTP logger
