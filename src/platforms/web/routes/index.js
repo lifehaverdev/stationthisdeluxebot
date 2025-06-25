@@ -841,7 +841,6 @@ async function initializeRoutes(app, services) {
     }
 
     try {
-      logger.info(`[Webhook Route] Processing Alchemy event...`, { body: req.body });
       const result = await services.creditService.handleDepositEventWebhook(req.body);
       
       if (!result.success) {

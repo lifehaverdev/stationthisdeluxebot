@@ -7,6 +7,9 @@
 
 const express = require('express');
 const path = require('path');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const httpLogger = require('../../utils/pino'); // Import the centralized pino-http logger
 const { initializeRoutes } = require('./routes');
 const { setupMiddleware } = require('./middleware');
 const fs = require('fs');
@@ -22,7 +25,15 @@ function initializeWebPlatform(services, options = {}) {
   const logger = services.logger || console; // Get logger from services, fallback to console
   
   // Set up middleware
-  setupMiddleware(app, logger); // Pass the logger
+  logger.info('[WebPlatform] Initializing middleware...');
+  app.use(httpLogger); // Use the centralized, correctly configured HTTP logger
+  app.use(cors({
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    credentials: true
+  }));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
   
   // Initialize API routes (now async)
   // We need to wrap the rest of the setup in an async IIFE or make initializeWebPlatform async
