@@ -41,7 +41,7 @@ git pull origin codebase-overhaul >> ${LOG_FILE} 2>&1
 
 # Build the new Docker image
 echo "Building new Docker image..."
-docker build --no-cache -t ${IMAGE_NAME} . >> ${LOG_FILE} 2>&1
+docker build -t ${IMAGE_NAME} . >> ${LOG_FILE} 2>&1
 
 # Create a Docker network if it doesn't exist
 echo "Ensuring network ${NETWORK_NAME} exists..."
