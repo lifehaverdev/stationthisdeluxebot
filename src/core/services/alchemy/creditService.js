@@ -2,8 +2,8 @@ const { ethers, formatEther, keccak256, toUtf8Bytes } = require('ethers');
 const CreditLedgerDB = require('../db/alchemy/creditLedgerDb');
 const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
-const WalletLinkingRequestDB = require('../db/alchemy/walletLinkingRequestDb');
-const WalletLinkingService = require('../services/alchemy/walletLinkingService');
+const WalletLinkingRequestDB = require('../db/walletLinkingRequestDb');
+const WalletLinkingService = require('../walletLinkingService');
 // const NoemaUserCoreDB = require('../db/noemaUserCoreDb'); // To be implemented
 // const NoemaUserEconomyDB = require('../db/noemaUserEconomyDb'); // To be implemented
 
