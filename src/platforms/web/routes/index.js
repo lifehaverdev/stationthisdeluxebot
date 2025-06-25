@@ -831,7 +831,9 @@ async function initializeRoutes(app, services) {
 
   // --- NEW Alchemy Webhook Handler for CreditService ---
   app.post('/api/webhook/alchemy', async (req, res) => {
-    logger.info(`[Webhook Route] Received a request on the Alchemy endpoint.`);
+    // Use the pino logger attached to the request object by the new middleware
+    const logger = req.log; 
+    logger.info({ payload: req.body }, `[Webhook Route] Received a request on the Alchemy endpoint.`);
     
     if (!services.creditService) {
       logger.error('[Webhook Route] CreditService is not available.');
@@ -844,13 +846,13 @@ async function initializeRoutes(app, services) {
       const result = await services.creditService.handleDepositEventWebhook(req.body);
       
       if (!result.success) {
-        logger.warn(`[Webhook Route] Failed to process Alchemy event: ${result.message}`, { detail: result.detail });
+        logger.warn({ detail: result.detail }, `[Webhook Route] Failed to process Alchemy event: ${result.message}`);
       } else {
         logger.info(`[Webhook Route] Successfully processed Alchemy event: ${result.message}`);
       }
 
     } catch (error) {
-      logger.error('[Webhook Route] An unexpected error occurred processing the Alchemy webhook.', error);
+      logger.error({ err: error }, '[Webhook Route] An unexpected error occurred processing the Alchemy webhook.');
     }
     
     // Always acknowledge the webhook to prevent Alchemy from disabling it.
