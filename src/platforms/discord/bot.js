@@ -7,7 +7,7 @@
 
 const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const { settings } = require('../../workflows');
-const createMakeImageCommandHandler = require('./commands/makeImageCommand');
+
 const createUpscaleCommandHandler = require('./commands/upscaleCommand');
 const createSettingsCommandHandler = require('./commands/settingsCommand');
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');

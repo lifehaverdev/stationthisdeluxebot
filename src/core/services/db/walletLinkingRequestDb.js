@@ -16,22 +16,6 @@ class WalletLinkingRequestDB extends BaseDB {
     } else {
       this.logger = logger;
     }
-    this.ensureIndexes();
-  }
-
-  /**
-   * Ensures the necessary indexes are created on the collection.
-   */
-  async ensureIndexes() {
-    try {
-      await this.collection.createIndex({ master_account_id: 1 });
-      await this.collection.createIndex({ status: 1 });
-      await this.collection.createIndex({ magic_amount_wei: 1, token_address: 1 }, { unique: true, partialFilterExpression: { status: "PENDING" } });
-      await this.collection.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
-      this.logger.info('[WalletLinkingRequestDB] Indexes ensured.');
-    } catch (error) {
-      this.logger.error('[WalletLinkingRequestDB] Error creating indexes:', error);
-    }
   }
 
   /**

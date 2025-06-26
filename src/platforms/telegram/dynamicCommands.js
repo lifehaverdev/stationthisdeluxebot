@@ -289,6 +289,15 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                     ...tool.metadata,
                     displayName: tool.displayName,
                     toolId: tool.toolId,
+                    // Add direct context for rerunManager compatibility
+                    telegramChatId: msg.chat.id,
+                    telegramMessageId: msg.message_id,
+                    userInputPrompt: msg.text || msg.caption || '',
+                    platformContext: {
+                        firstName: msg.from?.first_name,
+                        username: msg.from?.username,
+                    },
+                    // Keep notificationContext for the notification service
                     notificationContext: {
                         chatId: msg.chat.id,
                         messageId: msg.message_id,

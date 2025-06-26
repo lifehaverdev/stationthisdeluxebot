@@ -1,5 +1,6 @@
 const { createLogger } = require('../../utils/logger');
 const { generateApiKey } = require('./apiKeyService');
+const { ObjectId } = require('mongodb');
 
 /**
  * @class WalletLinkingService
@@ -8,14 +9,15 @@ const { generateApiKey } = require('./apiKeyService');
 class WalletLinkingService {
   constructor(dependencies) {
     this.logger = dependencies.logger || createLogger('WalletLinkingService');
-    const { userCoreDb, walletLinkingRequestDb, redisCache } = dependencies.db;
+    const { userCore: userCoreDb, walletLinkingRequests: walletLinkingRequestDb } = dependencies.db;
 
-    if (!userCoreDb || !walletLinkingRequestDb || !redisCache) {
-      throw new Error('WalletLinkingService: Missing required database dependencies (userCoreDb, walletLinkingRequestDb, redisCache).');
+    if (!userCoreDb || !walletLinkingRequestDb) {
+      throw new Error('WalletLinkingService: Missing required database dependencies (userCoreDb, walletLinkingRequestDb).');
     }
     this.userCoreDb = userCoreDb;
     this.walletLinkingRequestDb = walletLinkingRequestDb;
-    this.redisCache = redisCache; // For temporarily storing the raw API key
+    // Use a simple in-memory Map to temporarily store the raw API key for claiming.
+    this.apiKeyClaimCache = new Map();
     this.logger.info('[WalletLinkingService] Initialized.');
   }
 
@@ -113,7 +115,15 @@ class WalletLinkingService {
 
     // 4. Cache the raw API key so it can be claimed, with a short expiry.
     const claimKey = `api_key_claim:${requestId}`;
-    await this.redisCache.set(claimKey, apiKey, { EX: 300 }); // 5-minute expiry to claim the key
+    this.apiKeyClaimCache.set(claimKey, apiKey);
+
+    // Set a timeout to automatically remove the key from the cache after 5 minutes
+    setTimeout(() => {
+      if (this.apiKeyClaimCache.has(claimKey)) {
+        this.apiKeyClaimCache.delete(claimKey);
+        this.logger.info(`[WalletLinkingService] Claim key for request ${requestId} expired from cache.`);
+      }
+    }, 300 * 1000); // 5 minutes
 
     this.logger.info(`[WalletLinkingService] First API key generated and cached for claiming by masterAccountId ${masterAccountId}.`);
   }
@@ -128,6 +138,10 @@ class WalletLinkingService {
     if (!linkingRequest || linkingRequest.status === 'EXPIRED') {
       return { status: 'EXPIRED', apiKey: null };
     }
+
+    if (linkingRequest.status === 'DELIVERED') {
+      return { status: 'ALREADY_CLAIMED', apiKey: null };
+    }
     
     if (linkingRequest.status === 'PENDING') {
       return { status: 'PENDING', apiKey: null };
@@ -135,15 +149,23 @@ class WalletLinkingService {
 
     if (linkingRequest.status === 'COMPLETED') {
       const claimKey = `api_key_claim:${requestId}`;
-      // Use DEL to fetch and delete the key atomically, ensuring it's only claimed once.
-      const apiKey = await this.redisCache.del(claimKey);
+      
+      // Check if the key is in our in-memory cache
+      if (this.apiKeyClaimCache.has(claimKey)) {
+        const apiKey = this.apiKeyClaimCache.get(claimKey);
+        this.apiKeyClaimCache.delete(claimKey); // Key is claimed, delete it.
+        
+        // Mark as delivered in the DB to prevent replay issues
+        await this.walletLinkingRequestDb.updateRequestStatus(requestId, 'DELIVERED');
 
-      if (apiKey) {
-        this.logger.info(`[WalletLinkingService] API key for request ${requestId} has been successfully claimed.`);
+        this.logger.info(`[WalletLinkingService] API key for request ${requestId} has been successfully claimed and marked as DELIVERED.`);
         return { status: 'COMPLETED', apiKey: apiKey };
       } else {
-        this.logger.warn(`[WalletLinkingService] Attempted to claim key for completed request ${requestId}, but key was already claimed or expired from cache.`);
-        return { status: 'ALREADY_CLAIMED', apiKey: null };
+        // This is the edge case: the request is complete, but the key isn't in our cache.
+        // This can happen if the server restarted after the key was generated but before it was claimed.
+        // The raw key is lost. We should not auto-reissue. We'll return a special status.
+        this.logger.warn(`[WalletLinkingService] Attempted to claim key for completed request ${requestId}, but key was not in cache. This may require manual intervention.`);
+        return { status: 'NEEDS_ASSISTANCE', apiKey: null };
       }
     }
 
