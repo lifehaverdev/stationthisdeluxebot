@@ -27,6 +27,9 @@ class WalletLinkingService {
    * @returns {Promise<{requestId: string, magicAmountWei: string, tokenAddress: string, expiresAt: Date}>}
    */
   async initiateLinking() {
+    // Define the token address, defaulting to the zero address for native ETH.
+    const tokenAddress = process.env.WRAPPED_NATIVE_TOKEN_ADDRESS || '0x0000000000000000000000000000000000000000';
+
     // 1. Create a temporary user account
     const newUser = await this.userCoreDb.createUserCore({
       status: 'PENDING_VERIFICATION',
@@ -44,7 +47,7 @@ class WalletLinkingService {
       const randomPart = Math.floor(10000000000000 + Math.random() * 90000000000000); // e.g., 0.00010000... to 0.00099999...
       magicAmountWei = randomPart.toString();
       
-      const existingRequest = await this.walletLinkingRequestDb.findPendingRequestByAmount(magicAmountWei, process.env.WRAPPED_NATIVE_TOKEN_ADDRESS);
+      const existingRequest = await this.walletLinkingRequestDb.findPendingRequestByAmount(magicAmountWei, tokenAddress);
       if (!existingRequest) {
         isUnique = true;
       }
@@ -60,7 +63,6 @@ class WalletLinkingService {
     }
 
     // 3. Create the linking request in the database
-    const tokenAddress = process.env.WRAPPED_NATIVE_TOKEN_ADDRESS; // Assuming WETH or native equivalent
     const expiresInSeconds = 900; // 15 minutes
     const linkingRequest = await this.walletLinkingRequestDb.createRequest({
       masterAccountId,
