@@ -86,7 +86,8 @@ async function initializeServices(options = {}) {
     let priceFeedService;
     let dexService;
     let tokenRiskEngine;
-    let walletLinkingService;
+    let walletLinkingService = new WalletLinkingService({ logger, db: initializedDbServices.data });
+
     try {
       logger.info('Initializing on-chain services (Ethereum, Credit)...');
       
@@ -98,9 +99,6 @@ async function initializeServices(options = {}) {
       if (!ethConfig.rpcUrl || !process.env.ETHEREUM_SIGNER_PRIVATE_KEY) {
         logger.warn('[EthereumService] Not initialized: ETHEREUM_RPC_URL or ETHEREUM_SIGNER_PRIVATE_KEY is missing from .env. On-chain features will be disabled.');
       } else {
-        // 0. Initialize services with no external dependencies first.
-        walletLinkingService = new WalletLinkingService({ logger, db: initializedDbServices.data });
-        
         // 1. Initialize services with no dependencies first.
         priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
 
@@ -166,7 +164,8 @@ async function initializeServices(options = {}) {
       db: initializedDbServices,
       toolRegistry,
       openai: openAIService,
-      userSettingsService // Pass the service to the API layer
+      userSettingsService, // Pass the service to the API layer
+      walletLinkingService,
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -213,7 +212,7 @@ async function initializeServices(options = {}) {
       priceFeedService,
       dexService,
       tokenRiskEngine,
-      walletLinkingService, // Add new service
+      walletLinkingService,
       logger,
       appStartTime,
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
