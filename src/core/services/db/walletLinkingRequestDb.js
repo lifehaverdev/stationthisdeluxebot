@@ -95,6 +95,20 @@ class WalletLinkingRequestDB extends BaseDB {
     };
     return this.updateOne({ _id: new ObjectId(requestId) }, { $set: updateData });
   }
+
+  /**
+   * Finds a request by its unique ID.
+   * @param {ObjectId|string} requestId - The ID of the request.
+   * @returns {Promise<object|null>} The request document, or null if not found.
+   */
+  async findById(requestId) {
+    if (!requestId) {
+      return null;
+    }
+    // Ensure we're searching by ObjectId
+    const objectId = typeof requestId === 'string' ? new ObjectId(requestId) : requestId;
+    return this.findOne({ _id: objectId });
+  }
 }
 
 module.exports = WalletLinkingRequestDB; 

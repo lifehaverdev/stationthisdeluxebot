@@ -113,7 +113,11 @@ class CreditService {
         const { user, token, amount } = args;
 
         // --- MAGIC AMOUNT WALLET LINKING ---
-        await this._handleMagicAmountLinking(user, token, amount.toString());
+        const wasHandledByLinking = await this._handleMagicAmountLinking(user, token, amount.toString());
+        if (wasHandledByLinking) {
+            this.logger.info(`[CreditService] Deposit from tx ${transactionHash} was a magic amount and has been fully processed. Skipping credit ledger entry.`);
+            continue; // Skip to the next event.
+        }
         // --- END MAGIC AMOUNT ---
 
         // If vaultAccount is not in the event args, it's a deposit to the main vault.
@@ -199,7 +203,12 @@ class CreditService {
         this.logger.info(`[CreditService] Decoded event data:`, { vaultAccount, user, token, amount: amount.toString(), transactionHash });
 
         // --- MAGIC AMOUNT WALLET LINKING ---
-        await this._handleMagicAmountLinking(user, token, amount.toString());
+        const wasHandledByLinking = await this._handleMagicAmountLinking(user, token, amount.toString());
+        if (wasHandledByLinking) {
+            this.logger.info(`[CreditService] Deposit from tx ${transactionHash} was a magic amount and has been fully processed. Skipping credit ledger entry.`);
+            processedCount++; // Still count it as processed for the webhook response.
+            continue; // Skip to the next log.
+        }
         // --- END MAGIC AMOUNT ---
 
         if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
@@ -449,10 +458,13 @@ class CreditService {
             await this.walletLinkingService.completeLinkingAndGenerateFirstApiKey(masterAccountId, requestId);
 
             this.logger.info(`[CreditService] Successfully linked wallet ${depositorAddress} to master account ${masterAccountId}. Key generation triggered.`);
+            return true; // Indicate that the deposit was handled.
         }
+        return false; // No matching request found.
     } catch (error) {
         this.logger.error(`[CreditService] Error during magic amount linking check for address ${depositorAddress}:`, error);
         // We don't re-throw, as this shouldn't block the main credit processing flow.
+        return false;
     }
   }
 }
