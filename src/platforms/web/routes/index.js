@@ -31,6 +31,9 @@ const { ToolRegistry } = require('../../../core/tools/ToolRegistry.js');
 // Import new user status API routes
 const createUserStatusApiRoutes = require('./api/userStatus.js');
 
+// Import the new tools route
+const createToolsApiRoutes = require('./api/tools');
+
 /**
  * Initialize all routes for the web platform
  * @param {Express} app - Express application instance

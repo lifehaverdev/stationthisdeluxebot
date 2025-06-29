@@ -1,0 +1,14 @@
+/* 
+  components/index.css
+  This file aggregates all individual component stylesheets.
+*/
+
+@import url('panel.css');
+@import url('header.css');
+@import url('hero.css');
+@import url('buttons.css');
+@import url('modal.css');
+@import url('features.css');
+@import url('reviews.css');
+@import url('usedby.css');
+@import url('about.css'); 

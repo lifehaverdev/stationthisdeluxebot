@@ -1,0 +1,82 @@
+/*
+  base.css
+  This file sets the foundational, page-wide styles.
+  It defines the default look for the body, headings, and links.
+*/
+
+/*
+  FONT SETUP:
+  When you find your custom font, do the following:
+  1. Create a /public/fonts/ directory.
+  2. Place your font files (e.g., your-font.woff2) inside.
+  3. Uncomment the @font-face rule below and update the font-family and src path.
+*/
+
+/*
+@font-face {
+  font-family: 'Your-Custom-Sans-Font';
+  src: url('/fonts/your-custom-sans-font.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Your-Custom-Mono-Font';
+  src: url('/fonts/your-custom-mono-font.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 0 var(--space-4);
+  color: var(--color-steel-text);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  
+  /* The "Ambient Cognition Field" Background */
+  background: linear-gradient(-45deg, var(--color-peach), var(--color-pink), var(--color-mist), var(--color-teal));
+  background-size: 400% 400%;
+  animation: gradient-flow 15s ease infinite;
+}
+
+@keyframes gradient-flow {
+	0% {
+		background-position: 0% 50%;
+	}
+	50% {
+		background-position: 100% 50%;
+	}
+	100% {
+		background-position: 0% 50%;
+	}
+}
+
+h1, h2, h3, h4, h5 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  margin: var(--space-6) 0;
+}
+
+h1 { font-size: 3em; }
+h2 { font-size: 2.25em; }
+h3 { font-size: 1.75em; }
+
+a {
+  color: var(--color-teal);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+} 

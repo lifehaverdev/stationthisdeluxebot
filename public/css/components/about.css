@@ -1,0 +1,82 @@
+/* About Section */
+.about-panel .about-content {
+  text-align: left;
+}
+
+.about-panel .intro-paragraph {
+  font-family: var(--font-sans);
+  font-size: 1.1em;
+  line-height: 1.7;
+  color: var(--color-white);
+  opacity: 0.9;
+  margin-bottom: var(--space-8);
+}
+
+.about-panel h3 {
+  font-family: var(--font-mono);
+  color: var(--color-peach);
+  margin-top: 0;
+  margin-bottom: var(--space-4);
+}
+
+.about-panel .flywheel-list {
+  list-style: none;
+  padding-left: 0;
+  margin-bottom: var(--space-4);
+}
+
+.about-panel .flywheel-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-family: var(--font-sans);
+  font-size: 1.05em;
+}
+
+.about-panel .flywheel-list span {
+  font-size: 1.5em;
+}
+
+.about-panel .manifesto-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+  margin: var(--space-10) 0;
+}
+
+@media (min-width: 768px) {
+  .about-panel .manifesto-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.about-panel .manifesto-item h4 {
+  font-family: var(--font-mono);
+  color: var(--color-mist);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.about-panel .outro-section {
+  text-align: center;
+  margin-top: var(--space-8);
+  padding: var(--space-6);
+  border: 1px dashed var(--color-mist);
+  border-radius: 8px;
+}
+
+.expandable-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.5s ease-out;
+}
+
+.expandable-content.is-expanded {
+  max-height: 1000px; /* A large value to allow for content growth */
+  transition: max-height 0.5s ease-in;
+}
+
+#about-toggle {
+  display: block;
+  margin: var(--space-6) auto 0;
+} 

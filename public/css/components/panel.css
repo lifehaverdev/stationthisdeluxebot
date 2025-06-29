@@ -1,0 +1,11 @@
+.panel {
+  background-color: rgba(255, 255, 255, 0.25); /* Semi-transparent white */
+  backdrop-filter: blur(10px); /* The "frosted glass" effect */
+  -webkit-backdrop-filter: blur(10px); /* For Safari compatibility */
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  padding: var(--space-8);
+  margin: var(--space-10) auto;
+  max-width: 800px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+} 

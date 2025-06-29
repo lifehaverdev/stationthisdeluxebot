@@ -4,6 +4,7 @@ const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const { createToolsApiRouter } = require('./toolsApi');
 const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
+const createGenerationsApi = require('./generationsApi');
 
 /**
  * Initializes the External API layer.
@@ -108,10 +109,10 @@ function initializeExternalApi(dependencies) {
   externalApiRouter.use('/wallets/connect', walletConnectionRouter);
   logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
 
-  // Example of a future protected route:
-  // const generationsRouter = createGenerationsRouter(dependencies);
-  // externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
-  // logger.info('External Generations API router mounted at /generations. (Protected)');
+  // Mount the Generations API router (Protected by API Key)
+  const generationsRouter = createGenerationsApi(dependencies);
+  externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
+  logger.info('External Generations API router mounted at /generations. (Protected)');
 
   logger.info('External API router initialized.');
   return externalApiRouter;

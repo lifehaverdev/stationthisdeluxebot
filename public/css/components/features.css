@@ -1,0 +1,64 @@
+/* Feature Section */
+.features-grid {
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+  padding-bottom: var(--space-4); /* For scrollbar space */
+  margin-top: var(--space-8);
+  
+  /* A more subtle scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-mist) transparent;
+}
+.features-grid::-webkit-scrollbar { height: 8px; }
+.features-grid::-webkit-scrollbar-track { background: transparent; }
+.features-grid::-webkit-scrollbar-thumb { background-color: var(--color-mist); border-radius: 10px; }
+
+/* On larger screens, we can remove the media queries as flexbox handles it */
+/* @media (min-width: 768px) { ... } */
+/* @media (min-width: 1024px) { ... } */
+
+.feature-tile {
+  flex: 0 0 80%; /* On mobile, a tile takes up 80% of the container width */
+  background-color: var(--color-teal);
+  color: var(--color-white);
+  padding: var(--space-6);
+  border-radius: 12px;
+  text-align: left;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .feature-tile {
+    flex-basis: 40%;
+  }
+}
+@media (min-width: 1024px) {
+  .feature-tile {
+    flex-basis: 30%;
+  }
+}
+
+.feature-tile h4 {
+  font-family: var(--font-mono);
+  font-size: 1.25em;
+  margin: 0 0 var(--space-2) 0;
+  color: inherit;
+}
+
+.feature-tile p {
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  margin: 0;
+  opacity: 0.8;
+}
+
+/* Assigning different background colors from our theme */
+.feature-tile:nth-child(5n + 1) { background-color: var(--color-teal); }
+.feature-tile:nth-child(5n + 2) { background-color: var(--color-coral-glow); }
+.feature-tile:nth-child(5n + 3) { background-color: var(--color-pink); color: var(--color-steel-bg-dark); }
+.feature-tile:nth-child(5n + 4) { background-color: var(--color-mist); color: var(--color-steel-bg-dark); }
+.feature-tile:nth-child(5n + 5) { background-color: #778899; /* A slate gray as a new accent */ } 

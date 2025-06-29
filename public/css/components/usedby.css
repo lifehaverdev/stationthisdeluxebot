@@ -1,0 +1,59 @@
+/* Used By Section */
+.usedby-scroller {
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+  padding-bottom: var(--space-4);
+  margin-top: var(--space-8);
+  /* Re-using the scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-mist) transparent;
+}
+.usedby-scroller::-webkit-scrollbar { height: 8px; }
+.usedby-scroller::-webkit-scrollbar-track { background: transparent; }
+.usedby-scroller::-webkit-scrollbar-thumb { background-color: var(--color-mist); border-radius: 10px; }
+
+.usedby-tile {
+  flex: 0 0 70%;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden; /* To keep the image corners rounded */
+  aspect-ratio: 16 / 9; /* Maintain a widescreen aspect ratio */
+}
+
+@media (min-width: 768px) {
+  .usedby-tile {
+    flex-basis: 40%;
+  }
+}
+@media (min-width: 1024px) {
+  .usedby-tile {
+    flex-basis: 30%;
+  }
+}
+
+.usedby-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Cover the area, cropping if necessary */
+  transition: transform 0.3s ease;
+}
+
+.usedby-tile:hover img {
+  transform: scale(1.05); /* Subtle zoom on hover */
+}
+
+.usedby-tile .tile-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%);
+  display: flex;
+  align-items: flex-end;
+  padding: var(--space-4);
+  color: var(--color-white);
+  font-family: var(--font-mono);
+  font-weight: bold;
+} 

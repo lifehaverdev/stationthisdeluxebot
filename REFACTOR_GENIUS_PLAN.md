@@ -67,9 +67,7 @@ src/
 
 ### 5. Entry Points
 ```
-src/
-  index.js             # Main application entry
-  server.js            # Express server
+/app.js
 ```
 
 ## Command Flow Example: /make
@@ -128,7 +126,5 @@ New features work in the interface (not just in theory)
 User has seen and signed off on each major feature
 
 Handoff documents match reality
-
-Playwright or live testing proves behavior
 
 Features don’t drift — they snap into place via human eyes

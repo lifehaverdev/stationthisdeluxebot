@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOEMA.ART - The StationThis Platform</title>
+    <link rel="stylesheet" href="/css/main.css">
+</head>
+<body>
+
+    <!-- 1. Navigation Bar -->
+    <header class="site-header">
+        <div class="logo">NOEMA</div>
+        <nav id="main-nav">
+            <a href="/docs">Docs</a>
+            <a href="/app">App</a>
+            <a href="/lore">Lore</a>
+            <a href="/coin">Coin Options</a>
+        </nav>
+        <button id="menu-toggle" class="menu-toggle">
+            <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"><title>Menu</title><path d="M0 3h20v2H0V3zm0 6h20v2H0V9zm0 6h20v2H0v-2z"></path></svg>
+        </button>
+    </header>
+
+    <main>
+        <!-- 2. Hero Section -->
+        <section class="hero">
+            <h1>NOEMA.ART</h1>
+            <h3>[Tagline about the art platform goes here]</h3>
+        </section>
+
+        <!-- 3. Call to Action -->
+        <section class="panel cta-panel">
+            <span>create now:</span>
+            <button id="login-modal-trigger" class="btn btn-primary">Begin</button>
+        </section>
+
+        <!-- 4. Features Rolodex -->
+        <section class="panel">
+            <h2>Features</h2>
+            <div id="features-container" class="features-grid">
+                <!-- Feature tiles will be injected here by JavaScript -->
+            </div>
+        </section>
+
+        <!-- 5. Copy Text Paragraph -->
+        <section class="panel about-panel">
+            <h2>About StationThis</h2>
+            <div class="about-content">
+                <p class="intro-paragraph">
+                    We're a small, sovereign team designing an open AI flywheel to challenge the surveillance-driven incumbents. No VC oversight. No opaque APIs. Just peer-powered, on-chain generative intelligence—by and for its contributors.
+                </p>
+                
+                <div class="flywheel-section">
+                    <h3>🔄 Own the Workflow. Share the Rewards.</h3>
+                    <ul class="flywheel-list">
+                        <li><span>🧠</span> Train a Model → get paid when it generates</li>
+                        <li><span>⚒️</span> Create a Workflow → earn as others use it</li>
+                        <li><span>🧙‍♂️</span> Design NFTs with AI → own your outputs, or mint and share them</li>
+                        <li><span>🚪</span> Bring in Users → grow your collective slice of the ecosystem</li>
+                    </ul>
+                    <p>Every action feeds the loop. The more you contribute, the more you earn.</p>
+                </div>
+
+                <div id="expandable-about" class="expandable-content">
+                    <div class="manifesto-grid">
+                        <div class="manifesto-item">
+                            <h4>🛠 Built Open. Stayed Free.</h4>
+                            <p>We train on open models, use open-source workflows, and open-source our entire stack. No lock-ins. No extractive platforms. Just tools that reward you for helping them evolve.</p>
+                        </div>
+                        <div class="manifesto-item">
+                            <h4>🌐 Generative AI Meets Crypto Culture</h4>
+                            <p>Our AI isn't just smart—it's expressive, composable, and built for NFT creation. Whether you're an artist, dev, or degen, your imagination becomes an on-chain artifact.</p>
+                        </div>
+                    </div>
+
+                    <div class="outro-section">
+                        <h3>🌱 This Isn't an AI Lab. It's a Movement.</h3>
+                        <p>We're not another foundation. We're the anti-lab: where intelligence is a shared asset, not a black box. Join us if you believe AI should be creative, permissionless, and community-owned.</p>
+                        <a href="/docs" class="btn btn-secondary">Read the Docs</a>
+                    </div>
+                </div>
+                <button id="about-toggle" class="btn btn-secondary">Show More</button>
+            </div>
+        </section>
+
+        <!-- 6. Reviews -->
+        <section class="panel">
+            <h2>What Our Users Say</h2>
+            <div id="reviews-container" class="reviews-scroller">
+                <!-- Review cards will be injected here by JavaScript -->
+            </div>
+        </section>
+
+        <!-- 7. Projects -->
+        <section class="panel">
+            <h2>Used By</h2>
+            <div id="usedby-container" class="usedby-scroller">
+                <!-- "Used By" tiles will be injected here by JavaScript -->
+            </div>
+        </section>
+    </main>
+
+    <!-- 8. Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="socials">
+                <p>Socials</p>
+                <!-- Links here -->
+            </div>
+            <div class="legal">
+                <p>&copy; 2025 Mony Corporation</p>
+                <p>VPL 2025 License</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal-overlay">
+        <div class="modal-content panel">
+            <button class="modal-close">&times;</button>
+            <h2>Connect to Create</h2>
+            <div class="modal-body">
+                <button class="btn btn-primary btn-wallet">Connect Wallet</button>
+                <div class="alternative-logins">
+                    <a href="#">Login with Username/Password</a>
+                    <span>&nbsp;or&nbsp;</span>
+                    <a href="#">Use an API Key</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html> 

@@ -19,6 +19,10 @@ RUN npm install -g pm2 \
 # Copy the rest of the application code
 COPY . .
 
+# Create necessary directories and set permissions before switching user
+RUN mkdir -p tmp output storage/media \
+    && chown -R node:node tmp output storage
+
 # Set user after all root-level operations are done
 USER node
 
