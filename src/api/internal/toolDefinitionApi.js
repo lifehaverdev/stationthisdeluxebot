@@ -26,14 +26,8 @@ function createToolDefinitionApiRouter(services) {
     logger.info('[ToolDefinitionApi] GET / - Request received to list all tools');
     try {
       const allTools = toolRegistry.getAllTools();
-      // We should format this to be a clean public contract, not just an internal dump
-      const toolList = allTools.map(tool => ({
-        id: tool.id,
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema, // Or a subset if we don't want to expose everything
-      }));
-      res.status(200).json(toolList);
+      // We are now returning the full tool object for the documentation page.
+      res.status(200).json(allTools);
     } catch (error) {
       logger.error(`[ToolDefinitionApi] GET / - Error: ${error.message}`, error);
       res.status(500).json({
@@ -66,15 +60,8 @@ function createToolDefinitionApiRouter(services) {
         });
       }
 
-      // Format for public contract
-      const toolDefinition = {
-        id: tool.id,
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      };
-
-      res.status(200).json(toolDefinition);
+      // Return the full tool object
+      res.status(200).json(tool);
     } catch (error) {
       logger.error(`[ToolDefinitionApi] GET /${toolId} - Error: ${error.message}`, error);
       res.status(500).json({

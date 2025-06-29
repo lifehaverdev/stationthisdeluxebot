@@ -1,0 +1,11 @@
+[
+  { "id": "introduction", "title": "Introduction", "file": "/docs/content/introduction.md" },
+  { "id": "tokenomics", "title": "Tokenomics", "file": "/docs/content/tokenomics.md" },
+  { "id": "smart-contracts", "title": "Smart Contracts", "file": "/docs/content/smart-contracts.md" },
+  { "id": "referral-system", "title": "Referral System", "file": "/docs/content/referral-system.md" },
+  { "id": "tools", "title": "Tools", "special": "tools-renderer" },
+  { "id": "spells", "title": "Spells", "file": "/docs/content/spells.md" },
+  { "id": "training", "title": "Training", "file": "/docs/content/training.md" },
+  { "id": "collection-mode", "title": "Collection Mode", "file": "/docs/content/collection-mode.md" },
+  { "id": "api", "title": "API", "file": "/docs/content/api.md" }
+] 

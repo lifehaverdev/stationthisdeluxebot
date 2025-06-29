@@ -29,6 +29,11 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  transition: transform 0.2s ease-in-out;
+}
+
+.feature-tile:hover {
+  transform: translateY(-5px);
 }
 
 @media (min-width: 768px) {

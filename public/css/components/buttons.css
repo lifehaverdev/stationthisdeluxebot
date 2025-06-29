@@ -23,4 +23,24 @@
 
 .btn-primary:hover {
   background-color: var(--color-mist);
+}
+
+.button:hover {
+  background-color: var(--color-peach-hover);
+  transform: translateY(-2px);
+}
+
+.button-secondary {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.button-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.button-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.8em;
 } 
