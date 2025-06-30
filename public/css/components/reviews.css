@@ -58,7 +58,7 @@
 .review-card .reviewer-name {
   font-weight: bold;
   font-family: var(--font-mono);
-  color: var(--color-white);
+  color: var(--color-black);
 }
 
 .review-card .stars {
@@ -71,7 +71,7 @@
   font-size: 1em;
   font-style: italic;
   flex-grow: 1; 
-  color: var(--color-white);
+  color: var(--color-black);
   opacity: 0.9;
   margin: 0;
 

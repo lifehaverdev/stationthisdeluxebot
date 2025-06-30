@@ -3,11 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StationThis Canvas</title>
-    <script src="/files/debug.js"></script>
-    <link rel="stylesheet" href="/files/bundle.css">
-    <script src="/files/bundle.js" defer></script>
-    <script src="/files/direct-auth.js" defer></script>
+    <title>NOEMA - Sandbox</title>
+    <link rel="stylesheet" href="/index.css">
     <style>
         /* Additional CSS for full viewport sizing */
         html, body {
@@ -22,10 +19,41 @@
             height: 100vh;
             width: 100vw;
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
     </style>
 </head>
 <body>
-    <div id="app"></div>
+    <div id="app">
+        <header class="sandbox-header">
+            <div class="logo">
+                <a href="/landing">NOEMA</a>
+            </div>
+            <nav class="main-nav">
+                <a href="#placeholder1">placeholder1</a>
+                <a href="#placeholder2">placeholder2</a>
+                <a href="#placeholder3">placeholder3</a>
+            </nav>
+            <div class="user-menu">
+                <span>Account</span>
+            </div>
+        </header>
+        <main class="sandbox-main">
+            <section class="sandbox-content">
+                <img src="/images/workspace/watertiles.gif" alt="Ambient workspace background" class="workspace-bg">
+            </section>
+            <aside id="sidebar" class="sandbox-sidebar">
+                <div class="sidebar-content">
+                    <h3>Tools</h3>
+                    <div class="tools-container">
+                        <div class="tools-loading">Loading tools...</div>
+                    </div>
+                </div>
+            </aside>
+            <button id="sidebar-toggle" class="sidebar-toggle">&lt;</button>
+        </main>
+    </div>
+    <script src="/sandbox.js"></script>
 </body>
 </html> 

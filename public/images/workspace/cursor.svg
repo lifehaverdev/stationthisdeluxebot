@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2" result="blur"/>
+            <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+        </filter>
+        
+        <filter id="pixelate">
+            <feFlood x="4" y="4" height="2" width="2"/>
+            <feComposite width="8" height="8"/>
+            <feTile result="a"/>
+            <feComposite in="SourceGraphic" in2="a" operator="in"/>
+        </filter>
+
+        <style>
+            .ripple {
+                fill: none;
+                stroke: rgba(255, 255, 255, 0.95);
+                stroke-width: 4;
+                filter: url(#glow);
+                shape-rendering: crispEdges;
+            }
+            
+            .cursor-center {
+                fill: white;
+                filter: url(#glow);
+            }
+
+            .cursor-plus {
+                fill: black;
+                shape-rendering: crispEdges;
+            }
+
+            /* Add a shadow/outline effect to make the ripples more visible */
+            .ripple-shadow {
+                fill: none;
+                stroke: rgba(0, 0, 0, 0.3);
+                stroke-width: 6;
+                shape-rendering: crispEdges;
+            }
+        </style>
+    </defs>
+    
+    <!-- Multiple ripple circles with staggered animations and shadows -->
+    <!-- First ripple -->
+    <circle class="ripple-shadow" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.3;0" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="ripple" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.95;0.2" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-width" values="4;2" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Second ripple -->
+    <circle class="ripple-shadow" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.3;0" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="ripple" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.95;0.2" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-width" values="4;2" dur="2s" begin="0.5s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Third ripple -->
+    <circle class="ripple-shadow" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" begin="1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.3;0" dur="2s" begin="1s" repeatCount="indefinite"/>
+    </circle>
+    <circle class="ripple" cx="64" cy="64" r="4">
+        <animate attributeName="r" values="4;48" dur="2s" begin="1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0.95;0.2" dur="2s" begin="1s" repeatCount="indefinite"/>
+        <animate attributeName="stroke-width" values="4;2" dur="2s" begin="1s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Center point with glow -->
+    <circle class="cursor-center" cx="64" cy="64" r="8"/>
+    
+    <!-- Pixelated plus sign -->
+    <g class="cursor-plus">
+        <!-- Horizontal bar of the plus -->
+        <rect x="60" y="63" width="8" height="2"/>
+        <!-- Vertical bar of the plus -->
+        <rect x="63" y="60" width="2" height="8"/>
+    </g>
+</svg> 

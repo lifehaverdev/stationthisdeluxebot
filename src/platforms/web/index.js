@@ -19,8 +19,19 @@ const fs = require('fs');
  */
 function setupPageRoutes(app) {
   const publicPath = path.join(__dirname, '..', '..', '..', 'public');
+  const clientPath = path.join(__dirname, 'client');
 
   app.get('/', (req, res) => {
+    // Phase 1: Temporary auth bypass for development
+    // Check for a dev cookie to show the app, otherwise show the landing page.
+    if (req.cookies.dev_auth_bypass) {
+      res.sendFile(path.join(clientPath, 'index.html'));
+    } else {
+      res.sendFile(path.join(publicPath, 'landing.html'));
+    }
+  });
+
+  app.get('/landing', (req, res) => {
     res.sendFile(path.join(publicPath, 'landing.html'));
   });
 
@@ -63,6 +74,12 @@ function initializeWebPlatform(services, options = {}) {
       await initializeRoutes(app, services); // Initialize API routes
 
       setupPageRoutes(app); // Initialize our new page routes
+
+      // Serve static files from the public directory (for images, etc.)
+      app.use(express.static(path.join(__dirname, '..', '..', '..', 'public')));
+
+      // Serve static files from the client/src directory for our new UI (e.g., index.css)
+      app.use(express.static(path.join(__dirname, 'client', 'src')));
 
       // Serve static files from the client/dist directory first (for the main app)
       app.use(express.static(path.join(__dirname, 'client', 'dist')));

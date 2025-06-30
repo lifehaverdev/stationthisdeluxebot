@@ -19,7 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loginModalTrigger && modalCloseBtn) {
       // Show modal on trigger click
       loginModalTrigger.addEventListener('click', () => {
-        loginModal.classList.add('is-visible');
+        // Set a cookie to bypass auth for development, then redirect.
+        document.cookie = 'dev_auth_bypass=true; path=/; max-age=3600'; // Expires in 1 hour
+        window.location.href = '/';
       });
 
       // Hide modal on close button click
