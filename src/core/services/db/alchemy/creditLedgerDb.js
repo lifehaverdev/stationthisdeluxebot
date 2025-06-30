@@ -45,20 +45,18 @@ class CreditLedgerDB extends BaseDB {
    * Typically used to move an entry from PENDING_CONFIRMATION to CONFIRMED.
    * @param {string} depositTxHash - The hash of the original deposit transaction.
    * @param {string} status - The new status (e.g., 'CONFIRMED', 'FAILED').
-   * @param {string} [confirmationTxHash] - The hash of the bot's confirmation transaction.
+   * @param {object} [additionalData={}] - An object with additional fields to set.
    * @returns {Promise<Object>} The result of the update operation.
    */
-  async updateLedgerStatus(depositTxHash, status, confirmationTxHash) {
+  async updateLedgerStatus(depositTxHash, status, additionalData = {}) {
     const filter = { deposit_tx_hash: depositTxHash };
     const update = {
       $set: {
         status,
+        ...additionalData,
         updatedAt: new Date(),
       },
     };
-    if (confirmationTxHash) {
-      update.$set.confirmation_tx_hash = confirmationTxHash;
-    }
     return this.updateOne(filter, update);
   }
 
@@ -80,6 +78,215 @@ class CreditLedgerDB extends BaseDB {
     return this.findMany({ 
       status: { $in: ['PENDING_CONFIRMATION', 'ERROR'] } 
     });
+  }
+
+  /**
+   * Creates a new withdrawal request entry in the ledger.
+   * @param {object} requestDetails - The details of the withdrawal request
+   * @param {string} requestDetails.request_tx_hash - Hash of the withdrawal request transaction
+   * @param {number} requestDetails.request_block_number - Block number of the request
+   * @param {string} requestDetails.vault_account - Address of the vault account
+   * @param {string} requestDetails.user_address - Address of the user requesting withdrawal
+   * @param {string} requestDetails.token_address - Address of the token to withdraw
+   * @param {string} requestDetails.master_account_id - User's master account ID
+   * @param {string} requestDetails.status - Initial status of the request
+   * @param {string} requestDetails.collateral_amount_wei - Amount of collateral in wei
+   * @returns {Promise<Object>} The created withdrawal request document
+   */
+  async createWithdrawalRequest(requestDetails) {
+    const dataToInsert = {
+      ...requestDetails,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    return this.insertOne(dataToInsert);
+  }
+
+  /**
+   * Finds a withdrawal request by its transaction hash.
+   * @param {string} txHash - The transaction hash to search for
+   * @returns {Promise<Object|null>} The withdrawal request document or null if not found
+   */
+  async findWithdrawalRequestByTxHash(txHash) {
+    return this.findOne({ request_tx_hash: txHash });
+  }
+
+  /**
+   * Updates the status of a withdrawal request.
+   * @param {string} requestTxHash - The transaction hash of the withdrawal request
+   * @param {string} status - The new status
+   * @param {object} additionalData - Additional data to update
+   * @returns {Promise<Object>} The result of the update operation
+   */
+  async updateWithdrawalRequestStatus(requestTxHash, status, additionalData = {}) {
+    const filter = { request_tx_hash: requestTxHash };
+    const update = {
+      $set: {
+        status,
+        ...additionalData,
+        updatedAt: new Date()
+      }
+    };
+    return this.updateOne(filter, update);
+  }
+
+  /**
+   * Finds all withdrawal requests in a specific status.
+   * @param {string} status - The status to filter by
+   * @returns {Promise<Array>} Array of withdrawal request documents
+   */
+  async findWithdrawalRequestsByStatus(status) {
+    return this.find({ status });
+  }
+
+  /**
+   * Records a new referral vault in the ledger.
+   * @param {object} vaultDetails - Details of the referral vault
+   * @param {string} vaultDetails.vault_address - The address of the created vault
+   * @param {string} vaultDetails.owner_address - The address that owns the vault
+   * @param {string} vaultDetails.master_account_id - The master account ID from userCore
+   * @param {string} vaultDetails.creation_tx_hash - The transaction hash where the vault was created
+   * @param {string} vaultDetails.salt - The salt used to create the vault
+   * @returns {Promise<Object>} The created vault document
+   */
+  async createReferralVault(vaultDetails) {
+    const dataToInsert = {
+      ...vaultDetails,
+      type: 'REFERRAL_VAULT',
+      is_active: true,
+      total_referral_volume_wei: '0', // Track total volume through this vault
+      total_referral_rewards_wei: '0', // Track total rewards earned
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    return this.insertOne(dataToInsert);
+  }
+
+  /**
+   * Finds a referral vault by its address.
+   * @param {string} vaultAddress - The address of the vault to find
+   * @returns {Promise<Object|null>} The vault document or null if not found
+   */
+  async findReferralVaultByAddress(vaultAddress) {
+    return this.findOne({
+      vault_address: vaultAddress,
+      type: 'REFERRAL_VAULT'
+    });
+  }
+
+  /**
+   * Gets all active referral vaults owned by a user's master account.
+   * @param {string} masterAccountId - The master account ID from userCore
+   * @returns {Promise<Array>} Array of vault documents
+   */
+  async findReferralVaultsByMasterAccount(masterAccountId) {
+    return this.findMany({
+      master_account_id: masterAccountId,
+      type: 'REFERRAL_VAULT',
+      is_active: true
+    });
+  }
+
+  /**
+   * Gets all active referral vaults owned by a specific wallet address.
+   * @param {string} ownerAddress - The wallet address that owns the vaults
+   * @returns {Promise<Array>} Array of vault documents
+   */
+  async findReferralVaultsByOwner(ownerAddress) {
+    return this.findMany({
+      owner_address: ownerAddress,
+      type: 'REFERRAL_VAULT',
+      is_active: true
+    });
+  }
+
+  /**
+   * Updates the referral volume and rewards for a vault.
+   * @param {string} vaultAddress - The address of the vault
+   * @param {string} additionalVolumeWei - Additional volume in wei to add
+   * @param {string} rewardsWei - Rewards in wei to add
+   * @returns {Promise<Object>} The result of the update operation
+   */
+  async updateReferralVaultStats(vaultAddress, additionalVolumeWei, rewardsWei) {
+    return this.updateOne(
+      { vault_address: vaultAddress, type: 'REFERRAL_VAULT' },
+      {
+        $inc: {
+          total_referral_volume_wei: additionalVolumeWei,
+          total_referral_rewards_wei: rewardsWei
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+  }
+
+  /**
+   * Finds all active, confirmed deposit entries for a user that can be spent from.
+   * The deposits are sorted by their funding rate in ascending order, so that
+   * lower-quality assets are spent first.
+   * @param {ObjectId} masterAccountId - The user's master account ID.
+   * @returns {Promise<Array<Object>>} A sorted list of credit ledger entries.
+   */
+  async findActiveDepositsForUser(masterAccountId) {
+    return this.findMany(
+      {
+        master_account_id: masterAccountId,
+        status: 'CONFIRMED',
+        points_remaining: { $gt: 0 },
+      },
+      {
+        sort: { funding_rate_applied: 1 }, // Ascending order (lowest rate first)
+      }
+    );
+  }
+
+  /**
+   * Atomically deducts a specified number of points from a specific deposit entry.
+   * @param {ObjectId} depositId - The _id of the credit_ledger entry.
+   * @param {number} pointsToDeduct - The number of points to subtract from points_remaining.
+   * @returns {Promise<Object>} The result of the update operation.
+   */
+  async deductPointsFromDeposit(depositId, pointsToDeduct) {
+    if (pointsToDeduct <= 0) {
+      throw new Error('Points to deduct must be a positive number.');
+    }
+    return this.updateOne(
+      { _id: depositId },
+      {
+        $inc: { points_remaining: -pointsToDeduct },
+        $set: { updatedAt: new Date() },
+      }
+    );
+  }
+
+  /**
+   * Creates a new, confirmed credit ledger entry specifically for rewards.
+   * This bypasses the typical on-chain deposit flow.
+   * @param {object} rewardDetails - The details of the reward.
+   * @param {ObjectId} rewardDetails.masterAccountId - The account ID of the user receiving the reward.
+   * @param {number} rewardDetails.points - The number of points to credit.
+   * @param {string} rewardDetails.rewardType - The type of reward (e.g., 'CONTRIBUTOR_REWARD').
+   * @param {string} rewardDetails.description - A description of why the reward was given.
+   * @param {object} rewardDetails.relatedItems - Contextual data, like the source generation ID.
+   * @returns {Promise<Object>} The result of the insertion.
+   */
+  async createRewardCreditEntry(rewardDetails) {
+    const { masterAccountId, points, rewardType, description, relatedItems } = rewardDetails;
+    const now = new Date();
+
+    const dataToInsert = {
+      master_account_id: masterAccountId,
+      status: 'CONFIRMED',
+      type: rewardType,
+      description: description,
+      points_credited: points,
+      points_remaining: points,
+      related_items: relatedItems || {},
+      createdAt: now,
+      updatedAt: now,
+      // Note: Fields from on-chain deposits like tx_hashes, addresses, and USD values are intentionally null.
+    };
+    return this.insertOne(dataToInsert);
   }
 }
 

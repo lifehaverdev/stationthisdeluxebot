@@ -27,6 +27,7 @@ const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
 const { createAuthApi } = require('./authApi');
+const createCreditLedgerApi = require('./creditLedgerApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -330,6 +331,9 @@ function initializeInternalServices(dependencies = {}) {
   } else {
     logger.error('[InternalAPI] Failed to create LoRA Import API router.');
   }
+
+  // Mount credit ledger routes
+  v1DataRouter.use('/ledger', createCreditLedgerApi(apiDependencies, logger));
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

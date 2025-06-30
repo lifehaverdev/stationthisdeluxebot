@@ -336,6 +336,124 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     }
   });
 
+  // POST /spend - Deducts points from a user's active deposits in priority order
+  router.post('/spend', async (req, res) => {
+    const masterAccountId = getMasterAccountId(req, res);
+    if (!masterAccountId) return;
+    const masterAccountIdStr = masterAccountId.toString();
+
+    const { pointsToSpend, spendContext } = req.body;
+    const requestId = uuidv4();
+
+    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/spend - RequestId: ${requestId}`, { body: req.body });
+
+    if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0) {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'pointsToSpend must be a positive integer.', requestId } });
+    }
+
+    try {
+      // 1. Fetch all of the user's deposits that have points remaining
+      const activeDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+      if (!activeDeposits || activeDeposits.length === 0) {
+        return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: 'User has no active deposits with points remaining.', requestId } });
+      }
+
+      // 2. Check if the user has enough total points across all deposits
+      const totalPointsRemaining = activeDeposits.reduce((sum, deposit) => sum + (deposit.points_remaining || 0), 0);
+      if (totalPointsRemaining < pointsToSpend) {
+        return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: `User has insufficient points. Required: ${pointsToSpend}, Available: ${totalPointsRemaining}.`, requestId } });
+      }
+
+      // 3. Iterate through sorted deposits and deduct points
+      let pointsLeftToDeduct = pointsToSpend;
+      const spendSummary = [];
+
+      for (const deposit of activeDeposits) {
+        if (pointsLeftToDeduct <= 0) break;
+
+        const pointsBefore = deposit.points_remaining;
+        const pointsToDeductFromThisDeposit = Math.min(pointsLeftToDeduct, pointsBefore);
+
+        await db.creditLedger.deductPointsFromDeposit(deposit._id, pointsToDeductFromThisDeposit);
+
+        const deductionRecord = {
+          depositId: deposit._id.toString(),
+          tokenAddress: deposit.token_address,
+          fundingRate: deposit.funding_rate_applied,
+          pointsBefore: pointsBefore,
+          pointsDeducted: pointsToDeductFromThisDeposit,
+          pointsAfter: pointsBefore - pointsToDeductFromThisDeposit,
+        };
+        spendSummary.push(deductionRecord);
+
+        pointsLeftToDeduct -= pointsToDeductFromThisDeposit;
+      }
+      
+      // Note: A more robust implementation would log this summary to a new 'spend_log' collection
+      // associated with the user and the specific generation/action context.
+      logger.info(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId}`, {
+        totalPointsSpent: pointsToSpend,
+        spendBreakdown: spendSummary,
+        context: spendContext || 'N/A'
+      });
+      
+      res.status(200).json({
+        message: `Successfully deducted ${pointsToSpend} points.`,
+        totalPointsSpent: pointsToSpend,
+        breakdown: spendSummary,
+        requestId,
+      });
+
+    } catch (error) {
+      logger.error(`[userEconomyApi] POST /spend: Error during point deduction for ${masterAccountIdStr}. Error: ${error.message}. RequestId: ${requestId}`, error);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred during the spend operation.', requestId } });
+    }
+  });
+
+  // POST /credit-points - Creates a new credit_ledger entry for rewards.
+  router.post('/credit-points', async (req, res) => {
+    const masterAccountId = getMasterAccountId(req, res);
+    if (!masterAccountId) return;
+    const masterAccountIdStr = masterAccountId.toString();
+
+    const { points, description, rewardType, relatedItems } = req.body;
+    const requestId = uuidv4();
+
+    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/credit-points - RequestId: ${requestId}`, { body: req.body });
+
+    if (!Number.isInteger(points) || points <= 0) {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'points must be a positive integer.', requestId } });
+    }
+    if (!description || typeof description !== 'string') {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'description must be a non-empty string.', requestId } });
+    }
+     if (!rewardType || typeof rewardType !== 'string') {
+      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'rewardType must be a non-empty string.', requestId } });
+    }
+
+    try {
+      const rewardDetails = {
+        masterAccountId,
+        points,
+        rewardType,
+        description,
+        relatedItems
+      };
+      
+      const result = await db.creditLedger.createRewardCreditEntry(rewardDetails);
+      if (!result.insertedId) {
+        throw new Error('Database operation failed to create reward entry.');
+      }
+
+      logger.info(`[userEconomyApi] Successfully created reward credit entry for ${masterAccountIdStr}. RequestId: ${requestId}`);
+      res.status(201).json({ success: true, entryId: result.insertedId, requestId });
+
+    } catch (error) {
+      logger.error(`[userEconomyApi] POST /credit-points: Error for ${masterAccountIdStr}. Error: ${error.message}. RequestId: ${requestId}`, error);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred while crediting points.', requestId } });
+    }
+  });
+
   // Error handling middleware specific to this router
   router.use((err, req, res, next) => {
     const masterAccountId = req.params.masterAccountId;

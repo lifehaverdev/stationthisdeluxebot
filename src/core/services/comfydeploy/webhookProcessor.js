@@ -222,67 +222,76 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
       const toolId = generationRecord.metadata?.toolId || generationRecord.toolId; // Fallback as per instructions
       if (!toolId) {
         logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
-        // Potentially mark as payment_failed or requires_manual_intervention
       } else {
+        const usdPerPoint = 0.000337;
+        const pointsToSpend = Math.round(costUsd / usdPerPoint);
 
-        // <<<< ADR-012: Micro-Fee System START >>>>
-        const { finalCost, rewards } = calculateCreatorRewards(generationRecord, costUsd, logger);
-        const debitPayload = buildDebitPayload(toolId, generationRecord, finalCost);
-        // <<<< ADR-012: Micro-Fee System END >>>>
+        logger.info(`[Webhook Processor] Converted cost $${costUsd.toFixed(4)} to ${pointsToSpend} points for spending.`);
 
         try {
-          logger.info(`[Webhook Processor] Attempting debit for generation ${generationId}, user ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(debitPayload));
-          await issueDebit(generationRecord.masterAccountId, debitPayload, { internalApiClient, logger });
-          logger.info(`[Webhook Processor] Debit successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
+          const spendPayload = { pointsToSpend, spendContext: { generationId: generationId.toString(), toolId } };
+          logger.info(`[Webhook Processor] Attempting to spend ${pointsToSpend} points for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
+          await issueSpend(generationRecord.masterAccountId, spendPayload, { internalApiClient, logger });
+          logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
-          // <<<< ADR-012: Micro-Fee System START >>>>
-          if (rewards.length > 0) {
-            await distributeCreatorRewards(generationRecord, rewards, { internalApiClient, logger });
+          // --- New Contributor Reward Logic ---
+          const { totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, pointsToSpend, { internalApiClient, logger });
+          const netProtocolPoints = pointsToSpend - totalRewards;
+          
+          logger.info(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${pointsToSpend}, Contributor Rewards: ${totalRewards}, Protocol Net: ${netProtocolPoints}`);
+          
+          // Add point accounting to the final generation record update
+          updatePayload.pointsSpent = pointsToSpend;
+          updatePayload.contributorRewardPoints = totalRewards;
+          updatePayload.protocolNetPoints = netProtocolPoints;
+          updatePayload.rewardBreakdown = rewardBreakdown; // Store the detailed breakdown
+          
+          // Re-apply the update to the generation record with the new accounting info
+          try {
+             const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }};
+             await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
+                pointsSpent: pointsToSpend,
+                contributorRewardPoints: totalRewards,
+                protocolNetPoints: netProtocolPoints,
+                rewardBreakdown: rewardBreakdown
+             }, putRequestOptions);
+             logger.info(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
+          } catch(err) {
+            logger.error(`[Webhook Processor] Non-critical error: Failed to update generation ${generationId} with point accounting details after a successful spend.`, err.message);
           }
-          // <<<< ADR-012: Micro-Fee System END >>>>
-
-          // If debit succeeds, the 'completed' status remains, and NotificationDispatcher will pick it up.
+          // --- End New Contributor Reward Logic ---
 
           // << ADR-005 EXP Update Start >>
           try {
-            const usdPerPoint = 0.000337;
-            const pointsSpent = Math.round(costUsd / usdPerPoint);
             const expPayload = {
-              expChange: pointsSpent,
-              description: `EXP gained for ${pointsSpent} points spent via tool ${toolId}`
+              expChange: pointsToSpend,
+              description: `EXP gained for ${pointsToSpend} points spent via tool ${toolId}`
             };
             const expUpdateEndpoint = `/internal/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
             const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
             
             logger.info(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
             await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
-            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${pointsSpent} points`);
+            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${pointsToSpend} points`);
 
           } catch (expError) {
             logger.warn(`[Webhook Processor] EXP update failed for masterAccountId ${generationRecord.masterAccountId}. This is non-blocking. Error:`, expError.message, expError.stack);
-            // Do not re-throw or change generation status.
           }
           // << ADR-005 EXP Update End >>
 
-        } catch (debitError) {
-          logger.error(`[Webhook Processor] Debit FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, debitError.message, debitError.stack);
-          // Update generation record to 'payment_failed'
+        } catch (spendError) {
+          logger.error(`[Webhook Processor] Spend FAILED for generation ${generationId}, user ${generationRecord.masterAccountId}. Error:`, spendError.message, spendError.stack);
           const paymentFailedUpdatePayload = {
             status: 'payment_failed',
-            statusReason: debitError.message || 'Debit failed post-generation.',
-            // Potentially add more context about the debit failure
+            statusReason: spendError.message || 'Spend failed post-generation.',
           };
           try {
             const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
             await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, paymentFailedUpdatePayload, putRequestOptions);
             logger.info(`[Webhook Processor] Successfully updated generation ${generationId} status to 'payment_failed'.`);
           } catch (updateError) {
-            logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after debit failure. Error:`, updateError.message, updateError.stack);
-            // This is a critical state. The user was not charged, but the record doesn't reflect payment failure.
-            // Manual intervention might be required.
+            logger.error(`[Webhook Processor] CRITICAL: Failed to update generation ${generationId} to 'payment_failed' after spend failure. Error:`, updateError.message, updateError.stack);
           }
-          // Do not proceed to notification dispatch if debit failed.
-          // The function will return, and NotificationDispatcher should not pick up 'payment_failed' jobs.
         }
       }
     } else if (updatePayload.status === 'completed' && (costUsd == null || costUsd <= 0)) {
@@ -365,29 +374,102 @@ function calculateCreatorRewards(generationRecord, baseCost, logger) {
  * @param {Array<{ownerId: string, amount: number, type: string}>} rewards - The rewards to distribute.
  * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
  */
-async function distributeCreatorRewards(generationRecord, rewards, { internalApiClient, logger }) {
-    logger.info(`[distributeCreatorRewards] Distributing ${rewards.length} rewards for generation ${generationRecord._id}.`);
+async function distributeCreatorRewards(generationRecord, pointsToSpend, { internalApiClient, logger }) {
+    logger.info(`[distributeContributorRewards] Calculating rewards for generation ${generationRecord._id} based on ${pointsToSpend} points.`);
+    const generatingUserId = generationRecord.masterAccountId.toString();
+    const contributors = new Set();
+    const rewardBreakdown = [];
 
-    for (const reward of rewards) {
-        try {
-            const creditPayload = {
-                amountUsd: reward.amount,
-                description: `Reward for your ${reward.type === 'spell_fee' ? 'Spell' : 'LoRA'} used in generation ${generationRecord._id}`,
-                transactionType: "creator_reward",
-                relatedItems: {
-                    generationId: generationRecord._id,
-                    rewardType: reward.type,
-                }
-            };
-            await issueCredit(reward.ownerId, creditPayload, { internalApiClient, logger });
-            logger.info(`[distributeCreatorRewards] Successfully credited ${reward.amount} to owner ${reward.ownerId}.`);
-        } catch (error) {
-            logger.error(`[distributeCreatorRewards] FAILED to credit owner ${reward.ownerId} for generation ${generationRecord._id}. Error:`, error.message);
-            // This failure is logged but does not stop other rewards or fail the main process.
+    // Identify unique contributors
+    const spellOwnerId = generationRecord.metadata?.spell?.ownedBy?.toString();
+    if (spellOwnerId && spellOwnerId !== generatingUserId) {
+        contributors.add(spellOwnerId);
+    }
+
+    const appliedLoras = generationRecord.metadata?.loraResolutionData?.appliedLoras || [];
+    for (const lora of appliedLoras) {
+        if (lora.ownerAccountId && lora.ownerAccountId !== generatingUserId) {
+            contributors.add(lora.ownerAccountId);
         }
     }
+
+    if (contributors.size === 0) {
+        logger.info('[distributeContributorRewards] No external contributors found. No rewards to distribute.');
+        return { totalRewards: 0, rewardBreakdown: [] };
+    }
+
+    // Calculate reward pool and per-contributor share
+    const totalRewardPool = Math.floor(pointsToSpend * 0.20);
+    if (totalRewardPool === 0) {
+        logger.info('[distributeContributorRewards] Reward pool is zero. No rewards to distribute.');
+        return { totalRewards: 0, rewardBreakdown: [] };
+    }
+    const perContributorReward = Math.floor(totalRewardPool / contributors.size);
+
+    if (perContributorReward === 0) {
+        logger.info(`[distributeContributorRewards] Per-contributor reward is zero (${totalRewardPool} / ${contributors.size}). No rewards to distribute.`);
+        return { totalRewards: 0, rewardBreakdown: [] };
+    }
+
+    let totalPointsDistributed = 0;
+
+    for (const contributorId of contributors) {
+        try {
+            const creditPayload = {
+                points: perContributorReward,
+                description: `Reward for your contribution to generation ${generationRecord._id}`,
+                rewardType: 'CONTRIBUTOR_REWARD',
+                relatedItems: {
+                    sourceGenerationId: generationRecord._id.toString(),
+                    sourceUserId: generatingUserId,
+                }
+            };
+            await issuePointsCredit(contributorId, creditPayload, { internalApiClient, logger });
+            logger.info(`[distributeContributorRewards] Successfully credited ${perContributorReward} points to contributor ${contributorId}.`);
+            
+            rewardBreakdown.push({
+                contributorId: contributorId,
+                points: perContributorReward,
+                status: 'credited'
+            });
+            totalPointsDistributed += perContributorReward;
+
+        } catch (error) {
+            logger.error(`[distributeContributorRewards] FAILED to credit contributor ${contributorId} for generation ${generationRecord._id}. Error:`, error.message);
+            rewardBreakdown.push({
+                contributorId: contributorId,
+                points: perContributorReward,
+                status: 'failed',
+                error: error.message
+            });
+        }
+    }
+    
+    return { totalRewards: totalPointsDistributed, rewardBreakdown };
 }
 
+
+/**
+ * Issues a points credit to a user's account via the internal API.
+ * @param {string} masterAccountId - The user to credit.
+ * @param {object} payload - The credit payload.
+ * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
+ */
+async function issuePointsCredit(masterAccountId, payload, { internalApiClient, logger }) {
+    if (!masterAccountId) throw new Error('masterAccountId is required for points credit.');
+    
+    const creditEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/credit-points`;
+    const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+
+    logger.info(`[issuePointsCredit] Sending POST to ${creditEndpoint} for user ${masterAccountId}.`, { payload });
+    try {
+        await internalApiClient.post(creditEndpoint, payload, requestOptions);
+    } catch (error) {
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error during points credit';
+        logger.error(`[issuePointsCredit] Points credit request failed for user ${masterAccountId}. Error: ${errorMessage}`);
+        throw new Error(`Points credit API call failed: ${errorMessage}`);
+    }
+}
 
 /**
  * Issues a credit to a user's account via the internal API.
@@ -478,6 +560,30 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
     debitError.statusCode = errorStatus;
     debitError.details = error.response?.data; // Attach more details if available
     throw debitError;
+  }
+}
+
+// Helper function to issue the spend request via the internal API
+async function issueSpend(masterAccountId, payload, { internalApiClient, logger }) {
+  if (!masterAccountId) {
+    throw new Error('masterAccountId is required for spend.');
+  }
+  const spendEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/spend`;
+  const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+  
+  logger.info(`[issueSpend] Sending POST to ${spendEndpoint} for user ${masterAccountId}.`, { payload });
+  
+  try {
+    const response = await internalApiClient.post(spendEndpoint, payload, requestOptions);
+    logger.info(`[issueSpend] Spend request successful for user ${masterAccountId}. Response status: ${response.status}`);
+    return response.data;
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || 'Unknown error during spend';
+    const errorStatus = error.response?.status || 500;
+    logger.error(`[issueSpend] Spend request failed for user ${masterAccountId}. Status: ${errorStatus}, Error: ${errorMessage}`);
+    const spendError = new Error(`Spend API call failed: ${errorMessage}`);
+    spendError.statusCode = errorStatus;
+    throw spendError;
   }
 }
 

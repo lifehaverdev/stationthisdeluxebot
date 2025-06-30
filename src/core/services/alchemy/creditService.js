@@ -13,6 +13,25 @@ const CONTRACT_DEPLOYMENT_BLOCK = 8589453;
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 // Conversion rate for USD to internal credit points.
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
+// Protocol markup on net deposits. 30% means users receive 70% of the net value.
+const PROTOCOL_MARKUP_RATE = 0.30;
+
+// Dynamic funding rates per token. Applied to gross deposit value.
+const TOKEN_FUNDING_RATES = {
+  // Tier 1: 0.95
+  '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': 0.95, // MS2 
+  '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': 0.95, // CULT
+  // Tier 2: 0.70
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 0.70, // USDC
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 0.70, // WETH
+  '0x0000000000000000000000000000000000000000': 0.70, // Native ETH
+  '0xdac17f958d2ee523a2206206994597c13d831ec7': 0.70, // USDT
+  // Tier 3: 0.60
+  '0x6982508145454ce325ddbe47a25d4ec3d2311933': 0.60, // PEPE
+  '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': 0.60, // MOG
+  '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': 0.60, // SPX6900 
+};
+const DEFAULT_FUNDING_RATE = 0.55; // Fallback for any other token
 
 /**
  * @class CreditService
@@ -30,6 +49,7 @@ class CreditService {
    * @param {UserCoreDB} services.userCoreDb - Service for core user data.
    * @param {WalletLinkingRequestDB} services.walletLinkingRequestDb - Service for magic amount requests.
    * @param {WalletLinkingService} services.walletLinkingService - Service for handling linking logic.
+   * @param {SaltMiningService} services.saltMiningService - Service for mining CREATE2 salts.
    * @param {object} config - Configuration object.
    * @param {string} config.creditVaultAddress - The address of the on-chain Credit Vault contract.
    * @param {Array} config.creditVaultAbi - The ABI of the Credit Vault contract.
@@ -38,8 +58,8 @@ class CreditService {
   constructor(services, config, logger) {
     this.logger = logger || console;
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService } = services;
-    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService) {
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService } = services;
+    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService) {
       throw new Error('CreditService: Missing one or more required services.');
     }
     this.ethereumService = ethereumService;
@@ -51,6 +71,7 @@ class CreditService {
     this.userCoreDb = userCoreDb;
     this.walletLinkingRequestDb = walletLinkingRequestDb;
     this.walletLinkingService = walletLinkingService;
+    this.saltMiningService = saltMiningService;
     
     const { creditVaultAddress, creditVaultAbi } = config;
     if (!creditVaultAddress || !creditVaultAbi) {
@@ -151,100 +172,176 @@ class CreditService {
   }
 
   /**
-   * Handles a single DepositRecorded event received from an Alchemy webhook.
-   * It acknowledges the event by creating a ledger entry and then immediately
-   * triggers the confirmation processing pipeline.
+   * Handles all events received from an Alchemy webhook.
+   * This is the main entry point for processing blockchain events.
    * @param {object} webhookPayload - The raw payload from the Alchemy webhook.
    * @returns {Promise<{success: boolean, message: string, detail: object|null}>}
    */
-  async handleDepositEventWebhook(webhookPayload) {
+  async handleEventWebhook(webhookPayload) {
     this.logger.info('[CreditService] Processing incoming Alchemy webhook...');
 
-    // Handle cases where the relevant data might be nested inside a 'payload' property.
+    // Handle cases where the relevant data might be nested inside a 'payload' property
     const eventPayload = webhookPayload.payload || webhookPayload;
 
     if (eventPayload.type !== 'GRAPHQL' || !eventPayload.event?.data?.block?.logs) {
-      this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payloadKeys: Object.keys(eventPayload || {}) });
-      return { success: false, message: 'Invalid payload structure. Expected GraphQL block logs.', detail: null };
+        this.logger.warn('[CreditService] Webhook payload is not a valid GraphQL block log notification or is malformed.', { payloadKeys: Object.keys(eventPayload || {}) });
+        return { success: false, message: 'Invalid payload structure. Expected GraphQL block logs.', detail: null };
     }
 
     const logs = eventPayload.event.data.block.logs;
     this.logger.info(`[CreditService] Webhook contains ${logs.length} event logs to process.`);
 
-    const eventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
-    if (!eventFragment) {
-      this.logger.error("[CreditService] 'DepositRecorded' event fragment not found in ABI. Cannot process webhook.");
-      return { success: false, message: "Server configuration error: ABI issue.", detail: null };
+    // Get event fragments for all events we're interested in
+    const depositEventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
+    const withdrawalEventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
+
+    if (!depositEventFragment || !withdrawalEventFragment) {
+        this.logger.error("[CreditService] Event fragments not found in ABI. Cannot process webhook.");
+        return { success: false, message: "Server configuration error: ABI issue.", detail: null };
     }
-    const eventSignatureHash = this.ethereumService.getEventTopic(eventFragment);
-    let processedCount = 0;
+
+    const depositEventHash = this.ethereumService.getEventTopic(depositEventFragment);
+    const withdrawalEventHash = this.ethereumService.getEventTopic(withdrawalEventFragment);
+
+    let processedDeposits = 0;
+    let processedWithdrawals = 0;
 
     for (const log of logs) {
-      const { transaction, topics, data, index: logIndex } = log;
-      const { hash: transactionHash, blockNumber } = transaction;
+        const { transaction, topics, data, index: logIndex } = log;
+        const { hash: transactionHash, blockNumber } = transaction;
 
-      if (topics[0] !== eventSignatureHash) {
-        this.logger.debug(`[CreditService] Skipping a log in tx ${transactionHash} as it's not a 'DepositRecorded' event.`);
-        continue;
-      }
-      
-      this.logger.info(`[CreditService] Found a 'DepositRecorded' event in tx: ${transactionHash}`);
-
-      try {
-        const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
-        if (existingEntry) {
-          this.logger.info(`[CreditService] Skipping event for tx ${transactionHash} as it's already acknowledged.`);
-          continue;
+        try {
+            if (topics[0] === depositEventHash) {
+                // Process deposit event
+                const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
+                await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
+                processedDeposits++;
+            } 
+            else if (topics[0] === withdrawalEventHash) {
+                // Process withdrawal event
+                const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
+                await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
+                processedWithdrawals++;
+            }
+        } catch (error) {
+            this.logger.error(`[CreditService] Error processing event from tx ${transactionHash}:`, error);
+            // Continue processing other logs
         }
-
-        const decodedLog = this.ethereumService.decodeEventLog(eventFragment, data, topics, this.contractConfig.abi);
-        let { vaultAccount, user, token, amount } = decodedLog;
-
-        this.logger.info(`[CreditService] Decoded event data:`, { vaultAccount, user, token, amount: amount.toString(), transactionHash });
-
-        // --- MAGIC AMOUNT WALLET LINKING ---
-        const wasHandledByLinking = await this._handleMagicAmountLinking(user, token, amount.toString());
-        if (wasHandledByLinking) {
-            this.logger.info(`[CreditService] Deposit from tx ${transactionHash} was a magic amount and has been fully processed. Skipping credit ledger entry.`);
-            processedCount++; // Still count it as processed for the webhook response.
-            continue; // Skip to the next log.
-        }
-        // --- END MAGIC AMOUNT ---
-
-        if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
-          this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in webhook event for tx ${transactionHash}. Assuming deposit to main vault.`);
-          vaultAccount = this.contractConfig.address;
-        }
-
-        await this.creditLedgerDb.createLedgerEntry({
-          deposit_tx_hash: transactionHash,
-          deposit_log_index: logIndex,
-          deposit_block_number: blockNumber,
-          vault_account: vaultAccount,
-          depositor_address: user,
-          token_address: token,
-          deposit_amount_wei: amount.toString(),
-          status: 'PENDING_CONFIRMATION',
-        });
-
-        this.logger.info(`[CreditService] Successfully acknowledged new deposit from webhook: ${transactionHash}`);
-        processedCount++;
-
-      } catch (error) {
-        this.logger.error(`[CreditService] Error processing a specific log from webhook tx ${transactionHash}:`, error);
-        // Continue to the next log, do not stop the loop
-      }
     }
 
-    if (processedCount > 0) {
-      this.logger.info(`[CreditService] Acknowledged ${processedCount} new deposits. Triggering immediate processing of pending queue...`);
-      await this.processPendingConfirmations();
-      this.logger.info(`[CreditService] Immediate processing triggered by webhook is complete.`);
-      return { success: true, message: `Webhook processed and acknowledged ${processedCount} new deposits.`, detail: null };
-    } else {
-      this.logger.info('[CreditService] Webhook processed, but no new, relevant events were found to acknowledge.');
-      return { success: true, message: 'Webhook received, but no new events to process.', detail: null };
+    // If any events were processed, trigger the processing pipeline
+    if (processedDeposits > 0) {
+        this.logger.info(`[CreditService] Triggering processing of pending deposits...`);
+        await this.processPendingConfirmations();
     }
+
+    return {
+        success: true,
+        message: `Processed ${processedDeposits} deposits and ${processedWithdrawals} withdrawals.`,
+        detail: { processedDeposits, processedWithdrawals }
+    };
+  }
+
+  /**
+   * Internal helper to process a single deposit event
+   * @private
+   */
+  async _processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
+    let { vaultAccount, user, token, amount } = decodedLog;
+
+    // Check for existing entry
+    try {
+      const response = await this.internalApiClient.get(`/internal/v1/ledger/entries/${transactionHash}`);
+      if (response.data.entry) {
+        this.logger.info(`[CreditService] Skipping deposit event for tx ${transactionHash} as it's already acknowledged.`);
+        return;
+      }
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        throw error;
+      }
+      // 404 means entry doesn't exist, continue processing
+    }
+
+    // Handle magic amount linking
+    const wasHandledByLinking = await this._handleMagicAmountLinking(user, token, amount.toString());
+    if (wasHandledByLinking) {
+      this.logger.info(`[CreditService] Deposit from tx ${transactionHash} was a magic amount and has been fully processed.`);
+      return;
+    }
+
+    // Validate vault account
+    if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
+      this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in event for tx ${transactionHash}. Assuming deposit to main vault.`);
+      vaultAccount = this.contractConfig.address;
+    }
+
+    // Create ledger entry through internal API
+    await this.internalApiClient.post('/internal/v1/ledger/entries', {
+      deposit_tx_hash: transactionHash,
+      deposit_log_index: logIndex,
+      deposit_block_number: blockNumber,
+      vault_account: vaultAccount,
+      depositor_address: user,
+      token_address: token,
+      deposit_amount_wei: amount.toString()
+    });
+
+    this.logger.info(`[CreditService] Successfully acknowledged new deposit from webhook: ${transactionHash}`);
+  }
+
+  /**
+   * Internal helper to process a single withdrawal event
+   * @private
+   */
+  async _processWithdrawalEvent(decodedLog, transactionHash, blockNumber) {
+    const { vaultAccount, user: userAddress, token: tokenAddress } = decodedLog;
+
+    // Check for existing request through internal API
+    try {
+      const response = await this.internalApiClient.get(`/internal/v1/ledger/withdrawals/${transactionHash}`);
+      if (response.data.request) {
+        this.logger.info(`[CreditService] Withdrawal request ${transactionHash} already processed`);
+        return;
+      }
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        throw error;
+      }
+      // 404 means request doesn't exist, continue processing
+    }
+
+    // Get user's master account ID
+    let masterAccountId;
+    try {
+      const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
+      masterAccountId = response.data.masterAccountId;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        this.logger.warn(`[CreditService] No user account found for address ${userAddress}`);
+        return;
+      }
+      throw error;
+    }
+
+    // Get current collateral amount
+    const custodyKey = getCustodyKey(userAddress, tokenAddress);
+    const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
+    const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
+
+    // Create withdrawal request through internal API
+    await this.internalApiClient.post('/internal/v1/ledger/withdrawals', {
+      request_tx_hash: transactionHash,
+      request_block_number: blockNumber,
+      vault_account: vaultAccount,
+      user_address: userAddress,
+      token_address: tokenAddress,
+      master_account_id: masterAccountId,
+      collateral_amount_wei: collateralAmount.toString()
+    });
+
+    // Trigger immediate processing
+    await this.processWithdrawalRequest(transactionHash);
   }
 
   /**
@@ -312,8 +409,14 @@ class CreditService {
         }
         this.logger.info(`[CreditService] Contract reports a total unconfirmed balance of ${formatEther(amount)} ETH for this group.`);
 
-        // 1. USER ACCOUNT VERIFICATION
-        this.logger.info(`[CreditService] Step 1: Verifying user account for depositor ${user}...`);
+        // 1. DYNAMIC FUNDING RATE
+        this.logger.info(`[CreditService] Step 1: Applying dynamic funding rate for token ${token}...`);
+        const fundingRate = TOKEN_FUNDING_RATES[token.toLowerCase()] || DEFAULT_FUNDING_RATE;
+        const adjustedGrossDepositUsd = parseFloat(formatEther(amount)) * fundingRate;
+        this.logger.info(`[CreditService] Original Value: $${formatEther(amount).toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
+
+        // 2. USER ACCOUNT VERIFICATION
+        this.logger.info(`[CreditService] Step 2: Verifying user account for depositor ${user}...`);
         let masterAccountId;
         try {
             const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${user}`);
@@ -330,8 +433,6 @@ class CreditService {
             return;
         }
 
-        // 2. ON-CHAIN VERIFICATION is now implicitly handled by reading the `custody` state.
-
         // 3. COLLATERAL & PROFITABILITY CHECKS (on the total aggregated amount)
         this.logger.info(`[CreditService] Step 3: Assessing collateral and profitability for the total amount...`);
         const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
@@ -340,9 +441,30 @@ class CreditService {
             return;
         }
         const priceInUsd = riskAssessment.price;
-        const depositValueUsd = parseFloat(formatEther(amount)) * priceInUsd;
+        const depositValueUsd = adjustedGrossDepositUsd;
         
         const { vault_account: vaultAccount } = deposits[0];
+
+        // --- REFERRAL LOGIC ---
+        let referralRewardUsd = 0;
+        let referrerMasterAccountId = null;
+        const isDefaultVault = vaultAccount.toLowerCase() === this.contractConfig.address.toLowerCase();
+
+        if (!isDefaultVault) {
+            this.logger.info(`[CreditService] Deposit made to a non-default vault: ${vaultAccount}. Checking for referral info...`);
+            const referralVault = await this.creditLedgerDb.findReferralVaultByAddress(vaultAccount);
+            if (referralVault && referralVault.master_account_id) {
+                referrerMasterAccountId = referralVault.master_account_id.toString();
+                // 5% reward of the *adjusted* gross deposit value
+                referralRewardUsd = adjustedGrossDepositUsd * 0.05; 
+                this.logger.info(`[CreditService] Referral vault found for owner ${referrerMasterAccountId}. Calculated reward: $${referralRewardUsd.toFixed(4)} from adjusted value.`);
+            } else {
+                this.logger.warn(`[CreditService] A non-default vault was used (${vaultAccount}), but no matching referral account was found.`);
+            }
+        }
+        // --- END REFERRAL LOGIC ---
+
+        // Note: The fee passed to confirmCredit is the platform's total fee, including gas reimbursement and any markup.
         const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, amount, 0, '0x');
         
         if (estimatedGasCostUsd >= depositValueUsd) {
@@ -351,19 +473,28 @@ class CreditService {
             return;
         }
 
+        // Calculate protocol fee based on estimated net deposit value
+        const estimatedNetDepositUsd = depositValueUsd - estimatedGasCostUsd;
+        const protocolFeeUsd = estimatedNetDepositUsd * PROTOCOL_MARKUP_RATE;
+        const protocolFeeEth = protocolFeeUsd / priceInUsd;
+        const protocolFeeWei = ethers.parseEther(protocolFeeEth.toFixed(18));
+
         const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
-        const feeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
-        const escrowAmountForContract = amount - feeInWei;
+        const gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
+
+        // The total fee sent to the contract includes both gas reimbursement and the protocol markup.
+        const totalFeeInWei = gasFeeInWei + protocolFeeWei;
+        const escrowAmountForContract = amount - totalFeeInWei;
 
         if (escrowAmountForContract < 0n) {
-            const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Fee exceeded total deposit value.` };
+            const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Total fees (gas + markup) exceeded total deposit value.` };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
             return;
         }
 
         // 4. EXECUTE ON-CHAIN CONFIRMATION (for the entire group)
-        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${formatEther(escrowAmountForContract)} ETH, Fee: ${formatEther(feeInWei)} ETH`);
-        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, feeInWei, '0x');
+        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${formatEther(escrowAmountForContract)} ETH, Total Fee: ${formatEther(totalFeeInWei)} ETH`);
+        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, totalFeeInWei, '0x');
         this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
         const confirmationReceipt = await this.ethereumService.waitForConfirmation(txResponse);
@@ -380,33 +511,101 @@ class CreditService {
         // 5. OFF-CHAIN CREDIT APPLICATION (for the net value of the entire group)
         const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
         const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
-        const netDepositValueUsd = depositValueUsd - actualGasCostUsd;
-
-        this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Net value: $${netDepositValueUsd.toFixed(2)}.`);
-        try {
-            await this.internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/credit`, {
-                amountUsd: netDepositValueUsd,
-                transactionType: 'ONCHAIN_DEPOSIT_BATCH',
-                description: `Credit from batch of ${deposits.length} on-chain deposits. Confirmed in tx: ${confirmationTxHash}`,
-                externalTransactionId: confirmationTxHash,
-            });
-            this.logger.info(`[CreditService] Successfully applied batch credit to masterAccountId ${masterAccountId}.`);
-        } catch (error) {
-            this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for group confirmation! Requires manual intervention.`, error);
-            const reason = { master_account_id: masterAccountId, confirmation_tx_hash: confirmationTxHash, net_value_usd: netDepositValueUsd, failure_reason: 'Off-chain credit application failed.', error_details: error.message };
-            for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'NEEDS_MANUAL_CREDIT', reason);
+        
+        // Calculate final credit amounts including the protocol markup and referral fees
+        // All calculations are now based on the funding-rate-adjusted value
+        const netAdjustedDepositUsd = adjustedGrossDepositUsd - actualGasCostUsd;
+        if (netAdjustedDepositUsd < 0) {
+            this.logger.warn(`[CreditService] Adjusted deposit value for group is negative after gas costs. Rejecting as unprofitable. Net adjusted value: ${netAdjustedDepositUsd}`);
+            const reason = { failure_reason: `Adjusted deposit value was less than gas cost.`, original_deposit_usd: depositValueUsd, adjusted_deposit_usd: adjustedGrossDepositUsd, gas_cost_usd: actualGasCostUsd };
+            for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
             return;
         }
+
+        const totalMarkupUsd = netAdjustedDepositUsd * PROTOCOL_MARKUP_RATE; // The 30% taken from the user's *adjusted* net deposit
+        const userCreditedUsd = netAdjustedDepositUsd - totalMarkupUsd; // The 70% the user receives of the *adjusted* value
+        
+        // The referral reward is deducted from the protocol's share (the markup)
+        const finalReferralPayoutUsd = Math.min(totalMarkupUsd, referralRewardUsd); // Cannot pay out more than we collected in markup
+        const netProtocolProfitUsd = totalMarkupUsd - finalReferralPayoutUsd;
+        
+        this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
+        this.logger.info(`[CreditService] Accounting Details -> Total Markup: $${totalMarkupUsd.toFixed(2)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(2)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(2)}`);
+
+        // --- Point Calculation for Per-Deposit Tracking ---
+        const points_credited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
+        const points_remaining = points_credited; // Initially, remaining equals credited
+
+        this.logger.info(`[CreditService] Point Calculation -> User Credited USD: $${userCreditedUsd.toFixed(2)}, Points Credited: ${points_credited}`);
+        
+        // --- Process Referral Payout ---
+        if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
+            try {
+                this.logger.info(`[CreditService] Crediting referrer ${referrerMasterAccountId} with $${finalReferralPayoutUsd.toFixed(4)}.`);
+                await this.internalApiClient.post(`/internal/v1/data/users/${referrerMasterAccountId}/economy/credit`, {
+                    amountUsd: finalReferralPayoutUsd,
+                    transactionType: 'REFERRAL_DEPOSIT_REWARD',
+                    description: `Referral reward from deposit by user ${user} to vault ${vaultAccount}.`,
+                    externalTransactionId: confirmationTxHash,
+                    metadata: {
+                        funding_rate: fundingRate,
+                        original_deposit_usd: depositValueUsd,
+                        adjusted_deposit_usd: adjustedGrossDepositUsd
+                    }
+                });
+
+                const depositAmountWei = amount.toString();
+                const rewardInEth = finalReferralPayoutUsd / priceInUsd;
+                const rewardInWei = ethers.parseEther(rewardInEth.toFixed(18)).toString();
+                await this.creditLedgerDb.updateReferralVaultStats(vaultAccount, depositAmountWei, rewardInWei);
+                this.logger.info(`[CreditService] Successfully credited referrer and updated vault stats for ${vaultAccount}.`);
+
+            } catch (error) {
+                this.logger.error(`[CreditService] CRITICAL: Failed to credit referral reward for vault ${vaultAccount} and referrer ${referrerMasterAccountId}. Requires manual intervention.`, error);
+                // This failure is logged but does not stop the original depositor from being credited.
+            }
+        }
+        // --- End Referral Payout ---
+
+        /*
+         * [DEPRECATED] - The following block is commented out as part of the transition
+         * from a single aggregate 'usdCredit' balance to a per-deposit 'pointsRemaining' balance.
+         * The user's credit is now tracked on each individual credit_ledger entry.
+         */
+        // try {
+        //     await this.internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/credit`, {
+        //         amountUsd: userCreditedUsd,
+        //         transactionType: 'ONCHAIN_DEPOSIT_BATCH',
+        //         description: `Credit from batch of ${deposits.length} on-chain deposits. Confirmed in tx: ${confirmationTxHash}`,
+        //         externalTransactionId: confirmationTxHash,
+        //     });
+        //     this.logger.info(`[CreditService] Successfully applied batch credit to masterAccountId ${masterAccountId}.`);
+        // } catch (error) {
+        //     this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for group confirmation! Requires manual intervention.`, error);
+        //     const reason = { master_account_id: masterAccountId, confirmation_tx_hash: confirmationTxHash, net_value_usd: netAdjustedDepositUsd, failure_reason: 'Off-chain credit application failed.', error_details: error.message };
+        //     for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'NEEDS_MANUAL_CREDIT', reason);
+        //     return;
+        // }
         
         // 6. FINAL LEDGER UPDATE (for all deposits in the group)
         this.logger.info(`[CreditService] Step 6: Finalizing ${deposits.length} ledger entries for group.`);
         const finalStatus = {
             master_account_id: masterAccountId,
-            deposit_value_usd: depositValueUsd,
+            gross_deposit_usd: depositValueUsd,
+            funding_rate_applied: fundingRate,
+            adjusted_gross_deposit_usd: adjustedGrossDepositUsd,
             gas_cost_usd: actualGasCostUsd,
-            net_value_usd: netDepositValueUsd,
+            net_adjusted_deposit_usd: netAdjustedDepositUsd,
+            total_markup_usd: totalMarkupUsd,
+            user_credited_usd: userCreditedUsd,
+            points_credited,
+            points_remaining,
+            referral_payout_usd: finalReferralPayoutUsd,
+            net_protocol_profit_usd: netProtocolProfitUsd,
+            referrer_master_account_id: referrerMasterAccountId,
             confirmation_tx_hash: confirmationTxHash,
         };
+
         for (const deposit of deposits) {
             await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'CONFIRMED', finalStatus);
         }
@@ -465,6 +664,363 @@ class CreditService {
         this.logger.error(`[CreditService] Error during magic amount linking check for address ${depositorAddress}:`, error);
         // We don't re-throw, as this shouldn't block the main credit processing flow.
         return false;
+    }
+  }
+
+  /**
+   * Initiates a withdrawal request for a user.
+   * This is called when a user requests to withdraw their collateral through the UI.
+   * @param {string} userAddress - The Ethereum address of the user requesting withdrawal
+   * @param {string} tokenAddress - The token contract address to withdraw
+   * @param {string} vaultAccount - The vault account address (optional, defaults to main vault)
+   * @returns {Promise<{success: boolean, message: string, txHash?: string}>}
+   */
+  async initiateWithdrawal(userAddress, tokenAddress, vaultAccount = this.contractConfig.address) {
+    this.logger.info(`[CreditService] Processing withdrawal request for user ${userAddress} and token ${tokenAddress}`);
+
+    try {
+        // 1. Verify user account exists
+        let masterAccountId;
+        try {
+            const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
+            masterAccountId = response.data.masterAccountId;
+            this.logger.info(`[CreditService] User found. MasterAccountId: ${masterAccountId}`);
+        } catch (error) {
+            if (error.response?.status === 404) {
+                return { success: false, message: 'No user account found for this address.' };
+            }
+            throw error;
+        }
+
+        // 2. Get user's current credit balance and collateral value
+        const custodyKey = getCustodyKey(userAddress, tokenAddress);
+        const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
+        const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
+
+        if (collateralAmount === 0n) {
+            return { success: false, message: 'No collateral found for withdrawal.' };
+        }
+
+        // 3. Record the withdrawal request on-chain
+        this.logger.info(`[CreditService] Recording withdrawal request on-chain for user ${userAddress}`);
+        const txResponse = await this.ethereumService.write(
+            this.contractConfig.address,
+            this.contractConfig.abi,
+            'recordWithdrawalRequest',
+            userAddress,
+            tokenAddress
+        );
+
+        // Wait for confirmation
+        const receipt = await this.ethereumService.waitForConfirmation(txResponse);
+        if (!receipt || !receipt.hash) {
+            throw new Error('Failed to get valid receipt for withdrawal request transaction');
+        }
+
+        // Create withdrawal request entry in ledger
+        await this.creditLedgerDb.createWithdrawalRequest({
+            request_tx_hash: receipt.hash,
+            request_block_number: receipt.blockNumber,
+            vault_account: vaultAccount,
+            user_address: userAddress,
+            token_address: tokenAddress,
+            master_account_id: masterAccountId,
+            status: 'PENDING_PROCESSING',
+            collateral_amount_wei: collateralAmount.toString()
+        });
+
+        return {
+            success: true,
+            message: 'Withdrawal request recorded successfully.',
+            txHash: receipt.hash
+        };
+
+    } catch (error) {
+        this.logger.error(`[CreditService] Error processing withdrawal request:`, error);
+        throw error;
+    }
+  }
+
+  /**
+   * Handles a WithdrawalRequested event from the webhook.
+   * @param {object} webhookPayload - The webhook payload from Alchemy
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  async handleWithdrawalRequestWebhook(webhookPayload) {
+    this.logger.info('[CreditService] Processing withdrawal request webhook...');
+
+    const eventPayload = webhookPayload.payload || webhookPayload;
+
+    if (eventPayload.type !== 'GRAPHQL' || !eventPayload.event?.data?.block?.logs) {
+        this.logger.warn('[CreditService] Invalid webhook payload structure');
+        return { success: false, message: 'Invalid payload structure' };
+    }
+
+    const logs = eventPayload.event.data.block.logs;
+    const eventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
+    if (!eventFragment) {
+        this.logger.error('[CreditService] WithdrawalRequested event fragment not found in ABI');
+        return { success: false, message: 'Configuration error: ABI issue' };
+    }
+
+    const eventSignatureHash = this.ethereumService.getEventTopic(eventFragment);
+    let processedCount = 0;
+
+    for (const log of logs) {
+        const { transaction, topics, data, index: logIndex } = log;
+        const { hash: transactionHash, blockNumber } = transaction;
+
+        if (topics[0] !== eventSignatureHash) {
+            continue;
+        }
+
+        try {
+            // Check if we've already processed this request
+            const existingRequest = await this.creditLedgerDb.findWithdrawalRequestByTxHash(transactionHash);
+            if (existingRequest) {
+                this.logger.info(`[CreditService] Withdrawal request ${transactionHash} already processed`);
+                continue;
+            }
+
+            const decodedLog = this.ethereumService.decodeEventLog(eventFragment, data, topics, this.contractConfig.abi);
+            const { vaultAccount, user: userAddress, token: tokenAddress } = decodedLog;
+
+            // Get user's master account ID
+            let masterAccountId;
+            try {
+                const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${userAddress}`);
+                masterAccountId = response.data.masterAccountId;
+            } catch (error) {
+                if (error.response?.status === 404) {
+                    this.logger.warn(`[CreditService] No user account found for address ${userAddress}`);
+                    continue;
+                }
+                throw error;
+            }
+
+            // Get current collateral amount
+            const custodyKey = getCustodyKey(userAddress, tokenAddress);
+            const custodyValue = await this.ethereumService.read(this.contractConfig.address, this.contractConfig.abi, 'custody', custodyKey);
+            const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
+
+            // Create withdrawal request entry
+            await this.creditLedgerDb.createWithdrawalRequest({
+                request_tx_hash: transactionHash,
+                request_block_number: blockNumber,
+                vault_account: vaultAccount,
+                user_address: userAddress,
+                token_address: tokenAddress,
+                master_account_id: masterAccountId,
+                status: 'PENDING_PROCESSING',
+                collateral_amount_wei: collateralAmount.toString()
+            });
+
+            processedCount++;
+            
+            // Trigger processing immediately
+            await this.processWithdrawalRequest(transactionHash);
+
+        } catch (error) {
+            this.logger.error(`[CreditService] Error processing withdrawal request from webhook:`, error);
+            // Continue processing other logs
+        }
+    }
+
+    return {
+        success: true,
+        message: `Processed ${processedCount} withdrawal requests`
+    };
+  }
+
+  /**
+   * Processes a pending withdrawal request.
+   * @param {string} requestTxHash - The transaction hash of the withdrawal request
+   * @returns {Promise<void>}
+   */
+  async processWithdrawalRequest(requestTxHash) {
+    this.logger.info(`[CreditService] Processing withdrawal request ${requestTxHash}`);
+
+    const request = await this.creditLedgerDb.findWithdrawalRequestByTxHash(requestTxHash);
+    if (!request) {
+        throw new Error(`Withdrawal request ${requestTxHash} not found`);
+    }
+
+    if (request.status !== 'PENDING_PROCESSING') {
+        this.logger.info(`[CreditService] Request ${requestTxHash} is not in PENDING_PROCESSING state`);
+        return;
+    }
+
+    try {
+        const { user_address: userAddress, token_address: tokenAddress, vault_account: vaultAccount, collateral_amount_wei: collateralAmountWei } = request;
+
+        // 1. Get current token price for fee calculation
+        const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, BigInt(collateralAmountWei));
+        if (!riskAssessment.isSafe) {
+            await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'FAILED', {
+                failure_reason: 'Token risk assessment failed',
+                error_details: riskAssessment.reason
+            });
+            return;
+        }
+
+        // 2. Calculate withdrawal amount and fee
+        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(
+            this.contractConfig.address,
+            this.contractConfig.abi,
+            'withdrawTo',
+            userAddress,
+            tokenAddress,
+            collateralAmountWei,
+            0,
+            '0x'
+        );
+
+        const withdrawalValueUsd = parseFloat(formatEther(BigInt(collateralAmountWei))) * riskAssessment.price;
+        if (estimatedGasCostUsd >= withdrawalValueUsd) {
+            await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'REJECTED_UNPROFITABLE', {
+                failure_reason: `Gas cost (${estimatedGasCostUsd} USD) exceeds withdrawal value (${withdrawalValueUsd} USD)`
+            });
+            return;
+        }
+
+        const estimatedGasCostEth = estimatedGasCostUsd / riskAssessment.price;
+        const feeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
+        const withdrawalAmount = BigInt(collateralAmountWei) - feeInWei;
+
+        if (withdrawalAmount <= 0n) {
+            await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'REJECTED_UNPROFITABLE', {
+                failure_reason: 'Fee would exceed withdrawal amount'
+            });
+            return;
+        }
+
+        // 3. Execute withdrawal
+        this.logger.info(`[CreditService] Executing withdrawal for ${userAddress}. Amount: ${formatEther(withdrawalAmount)} ETH, Fee: ${formatEther(feeInWei)} ETH`);
+        const txResponse = await this.ethereumService.write(
+            this.contractConfig.address,
+            this.contractConfig.abi,
+            'withdrawTo',
+            userAddress,
+            tokenAddress,
+            withdrawalAmount,
+            feeInWei,
+            '0x'
+        );
+
+        const receipt = await this.ethereumService.waitForConfirmation(txResponse);
+        if (!receipt || !receipt.hash) {
+            throw new Error('Failed to get valid receipt for withdrawal transaction');
+        }
+
+        // 4. Update request status
+        await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'COMPLETED', {
+            withdrawal_tx_hash: receipt.hash,
+            withdrawal_amount_wei: withdrawalAmount.toString(),
+            fee_wei: feeInWei.toString(),
+            withdrawal_value_usd: withdrawalValueUsd,
+            gas_cost_usd: estimatedGasCostUsd
+        });
+
+        this.logger.info(`[CreditService] Successfully processed withdrawal request ${requestTxHash}`);
+
+    } catch (error) {
+        this.logger.error(`[CreditService] Error processing withdrawal request:`, error);
+        await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'ERROR', {
+            failure_reason: error.message,
+            error_details: error.stack
+        });
+        throw error;
+    }
+  }
+
+  /**
+   * Creates a new referral vault account for a user with a vanity address starting with 0x1152
+   * @param {string} ownerAddress - The address that will own the vault
+   * @returns {Promise<{vaultAddress: string, salt: string}>}
+   */
+  async createReferralVault(ownerAddress) {
+    this.logger.info(`[CreditService] Creating referral vault for owner ${ownerAddress}`);
+
+    try {
+        // 1. Verify user account and wallet ownership
+        let masterAccountId;
+        try {
+            const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${ownerAddress}`);
+            masterAccountId = response.data.masterAccountId;
+            this.logger.info(`[CreditService] Found user account ${masterAccountId} for wallet ${ownerAddress}`);
+        } catch (error) {
+            if (error.response?.status === 404) {
+                throw new Error('No user account found for this wallet address. The wallet must be linked to a user account first.');
+            }
+            throw error;
+        }
+
+        // 2. Check if user already has too many vaults
+        const vaultsResponse = await this.internalApiClient.get(`/internal/v1/ledger/vaults/by-master-account/${masterAccountId}`);
+        const existingVaults = vaultsResponse.data.vaults;
+        const MAX_VAULTS_PER_USER = 3; // Reasonable limit to prevent abuse
+        if (existingVaults.length >= MAX_VAULTS_PER_USER) {
+            throw new Error(`User already has ${existingVaults.length} vaults. Maximum allowed is ${MAX_VAULTS_PER_USER}.`);
+        }
+
+        // 3. Get a pre-mined salt that will generate a vanity address
+        const { salt, predictedAddress } = await this.saltMiningService.getSalt(ownerAddress);
+        this.logger.info(`[CreditService] Found valid salt for vanity address ${predictedAddress}`);
+
+        // 4. Create the vault account using the mined salt
+        const txResponse = await this.ethereumService.write(
+            this.contractConfig.address,
+            this.contractConfig.abi,
+            'createVaultAccount',
+            ownerAddress,
+            salt
+        );
+
+        const receipt = await this.ethereumService.waitForConfirmation(txResponse);
+        if (!receipt || !receipt.hash) {
+            throw new Error('Failed to get valid receipt for vault creation');
+        }
+
+        // 5. Verify the created vault address matches our prediction
+        const logs = receipt.logs.filter(log => {
+            try {
+                const parsedLog = this.ethereumService.decodeEventLog(
+                    'VaultAccountCreated',
+                    log.data,
+                    log.topics,
+                    this.contractConfig.abi
+                );
+                return parsedLog.accountAddress === predictedAddress;
+            } catch {
+                return false;
+            }
+        });
+
+        if (logs.length === 0) {
+            throw new Error('Vault creation transaction succeeded but no matching VaultAccountCreated event found');
+        }
+
+        const vaultAddress = predictedAddress;
+        
+        // 6. Record the vault through internal API
+        await this.internalApiClient.post('/internal/v1/ledger/vaults', {
+            vault_address: vaultAddress,
+            owner_address: ownerAddress,
+            master_account_id: masterAccountId,
+            creation_tx_hash: receipt.hash,
+            salt: ethers.hexlify(salt)
+        });
+        
+        this.logger.info(`[CreditService] Successfully created referral vault at ${vaultAddress} for user ${masterAccountId}`);
+        
+        return {
+            vaultAddress,
+            salt: ethers.hexlify(salt)
+        };
+
+    } catch (error) {
+        this.logger.error(`[CreditService] Failed to create referral vault for ${ownerAddress}:`, error);
+        throw error;
     }
   }
 }
