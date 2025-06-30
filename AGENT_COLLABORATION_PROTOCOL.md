@@ -8,14 +8,15 @@ To define a new mode of interaction for agents working on the StationThis projec
 ### All collaboration artifacts should be placed in:
 ```
 /vibecode/
-  prompts/           # User-issued or meta prompts
-  handoffs/          # Conversational or implementation summaries
-  demos/             # Playwright tests or scripts
-  maps/              # State summaries or visual audits
-  reports/           # Health checks, audits, balance reviews
-  decisions/         # High-level architectural or process decisions
-  interface_specs/   # Frontend interaction specifications
-      ...
+  /sprint/
+   prompts/           # User-issued or meta prompts
+   handoffs/          # Conversational or implementation summaries
+   demos/             # Playwright tests or scripts
+   maps/              # State summaries or visual audits
+   reports/           # Health checks, audits, balance reviews
+   decisions/         # High-level architectural or process decisions
+   interface_specs/   # Frontend interaction specifications
+         ...
 ```
 
 
