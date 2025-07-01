@@ -20,6 +20,9 @@ const { initializeAPI } = require('../../api');
 const loraResolutionService = require('./loraResolutionService');
 const internalApiClient = require('../../utils/internalApiClient'); // Import the singleton client
 
+// Import new StorageService
+const StorageService = require('./storageService');
+
 // Import new Alchemy/Ethereum services
 const EthereumService = require('./alchemy/ethereumService');
 const CreditService = require('./alchemy/creditService');
@@ -58,6 +61,7 @@ async function initializeServices(options = {}) {
     const pointsService = new PointsService({ logger });
     const comfyUIService = new ComfyUIService({ logger });
     const openAIService = new OpenAIService({ logger });
+    const storageService = new StorageService(logger); // Initialize StorageService
     
     // Create a compatible logger for WorkflowsService if needed
     // The WorkflowsService expects logger to be a function, but we want to use logger.info method
@@ -166,6 +170,7 @@ async function initializeServices(options = {}) {
       openai: openAIService,
       userSettingsService, // Pass the service to the API layer
       walletLinkingService,
+      storageService, // Pass the storage service to the API layer
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -207,6 +212,7 @@ async function initializeServices(options = {}) {
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService
+      storageService, // Add new service
       ethereumService, // Add new service
       creditService, // Add new service
       priceFeedService,
@@ -240,6 +246,7 @@ module.exports = {
   WorkflowExecutionService,
   initializeServices,
   ToolRegistry, // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
+  StorageService, // Export new service
   // Export new services
   EthereumService,
   CreditService,

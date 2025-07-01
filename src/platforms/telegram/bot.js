@@ -23,6 +23,7 @@ const spellMenuManager = require('./components/spellMenuManager');
 const trainingMenuManager = require('./components/trainingMenuManager');
 const collectionMenuManager = require('./components/collectionMenuManager');
 const adminManager = require('./components/adminManager');
+const dashboardMenuManager = require('./components/dashboardMenuManager');
 // Delivery Menu Managers
 const globalMenuManager = require('./components/deliveryMenu/globalMenuManager');
 const infoManager = require('./components/deliveryMenu/infoManager');
@@ -65,6 +66,7 @@ function createTelegramBot(dependencies, token, options = {}) {
     trainingMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     collectionMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     adminManager.registerHandlers(dispatcherInstances, allDependencies);
+    dashboardMenuManager.registerHandlers(dispatcherInstances, allDependencies);
 
     // Register delivery menu managers
     globalMenuManager.registerHandlers(dispatcherInstances, allDependencies);

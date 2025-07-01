@@ -6,6 +6,8 @@ const createUserPreferencesApiService = require('./userPreferencesApi'); // Impo
 const initializeApiKeysApi = require('./apiKeysApi'); // Import the new API keys service
 const initializeUserEconomyApi = require('./userEconomyApi.js'); // Import the new economy service (fixed)
 const { createUserToolsApiRouter } = require('./userToolsApi'); // Import the new user tools service
+const createTransactionsApiService = require('./transactionsApi');
+const createUserSessionsApi = require('./userSessionsApi');
 
 /**
  * Creates and configures an Express router for User Core API endpoints.
@@ -31,6 +33,16 @@ function createUserCoreApiService(dependencies) {
     });
     return router;
   }
+
+  // Mount the user-specific transaction routes
+  const transactionsApiRouter = createTransactionsApiService(dependencies);
+  router.use('/:masterAccountId/transactions', transactionsApiRouter);
+  logger.info('[userCoreApi] User-specific Transactions API service mounted.');
+
+  // Mount the user-specific session routes
+  const userSessionsApiRouter = createUserSessionsApi(dependencies);
+  router.use('/:masterAccountId/sessions', userSessionsApiRouter);
+  logger.info('[userCoreApi] User-specific Sessions API service mounted.');
 
   // Middleware to parse JSON bodies
   router.use(express.json());

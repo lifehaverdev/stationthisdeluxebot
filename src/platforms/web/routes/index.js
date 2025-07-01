@@ -34,6 +34,9 @@ const createUserStatusApiRoutes = require('./api/userStatus.js');
 // Import the new tools route
 const createToolsApiRoutes = require('./api/tools');
 
+// Import Alchemy webhook utilities
+const { addAlchemyContextToRequest, validateAlchemySignature } = require('../../../core/services/alchemy/webhookUtils');
+
 /**
  * Initialize all routes for the web platform
  * @param {Express} app - Express application instance
@@ -840,33 +843,39 @@ async function initializeRoutes(app, services) {
   // --- END NEW Webhook Handler ---
 
   // --- NEW Alchemy Webhook Handler for CreditService ---
-  app.post('/api/webhook/alchemy', 
-    express.json({ verify: addAlchemyContextToRequest }), // Add raw body to request
-    validateAlchemySignature(alchemySigningKey), // Validate signature
-    async (req, res) => {
-      const logger = req.app.get('logger') || console;
-      logger.info('[Webhook] Received Alchemy webhook event');
+  const alchemySigningKey = process.env.ALCHEMY_SIGNING_KEY;
+  if (!alchemySigningKey) {
+    logger.warn('[Web Routes] ALCHEMY_SIGNING_KEY not set. The /api/webhook/alchemy endpoint will be disabled.');
+  } else {
+    app.post('/api/webhook/alchemy', 
+      express.json({ verify: addAlchemyContextToRequest }), // Add raw body to request
+      validateAlchemySignature(alchemySigningKey), // Validate signature
+      async (req, res) => {
+        const logger = req.app.get('logger') || console;
+        logger.info('[Webhook] Received Alchemy webhook event');
 
-      try {
-        const creditService = req.app.get('creditService');
-        if (!creditService) {
-          throw new Error('CreditService not available');
+        try {
+          const creditService = req.app.get('creditService');
+          if (!creditService) {
+            throw new Error('CreditService not available');
+          }
+
+          // Process all events through the unified handler
+          const result = await creditService.handleEventWebhook(req.body);
+          res.json(result);
+
+        } catch (error) {
+          logger.error('[Webhook] Error processing Alchemy webhook:', error);
+          res.status(500).json({
+            success: false,
+            message: 'Internal server error processing webhook',
+            detail: error.message
+          });
         }
-
-        // Process all events through the unified handler
-        const result = await creditService.handleEventWebhook(req.body);
-        res.json(result);
-
-      } catch (error) {
-        logger.error('[Webhook] Error processing Alchemy webhook:', error);
-        res.status(500).json({
-          success: false,
-          message: 'Internal server error processing webhook',
-          detail: error.message
-        });
       }
-    }
-  );
+    );
+    logger.info('[Web Routes] Alchemy webhook handler mounted at /api/webhook/alchemy.');
+  }
   // --- END Alchemy Webhook Handler ---
 }
 

@@ -52,6 +52,14 @@ module.exports = function generationOutputsApi(dependencies) {
         } else if (key.endsWith('_ne')) {
           const field = key.slice(0, -3);
           filter[field] = { $ne: value };
+        } else if (key.endsWith('_gte')) {
+            const field = key.slice(0, -4);
+            if (!filter[field]) filter[field] = {};
+            filter[field].$gte = new Date(value);
+        } else if (key.endsWith('_lte')) {
+            const field = key.slice(0, -4);
+            if (!filter[field]) filter[field] = {};
+            filter[field].$lte = new Date(value);
         } else {
           // Allow dot notation for nested metadata fields e.g., "metadata.run_id"
           if (key.startsWith('metadata.')) {

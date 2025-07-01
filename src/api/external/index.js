@@ -5,6 +5,8 @@ const internalApiClient = require('../../utils/internalApiClient');
 const { createToolsApiRouter } = require('./toolsApi');
 const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
 const createGenerationsApi = require('./generationsApi');
+const { createPublicStorageApi } = require('./storageApi');
+
 
 /**
  * Initializes the External API layer.
@@ -109,10 +111,17 @@ function initializeExternalApi(dependencies) {
   externalApiRouter.use('/wallets/connect', walletConnectionRouter);
   logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
 
+
+
   // Mount the Generations API router (Protected by API Key)
   const generationsRouter = createGenerationsApi(dependencies);
   externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
   logger.info('External Generations API router mounted at /generations. (Protected)');
+
+  // Mount the Public Storage API router (Publicly Accessible)
+  const storageRouter = createPublicStorageApi(dependencies);
+  externalApiRouter.use('/storage', storageRouter);
+  logger.info('External Public Storage API router mounted at /storage. (Public)');
 
   logger.info('External API router initialized.');
   return externalApiRouter;

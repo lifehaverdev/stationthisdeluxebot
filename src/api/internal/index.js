@@ -28,6 +28,7 @@ const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
 const { createAuthApi } = require('./authApi');
 const createCreditLedgerApi = require('./creditLedgerApi');
+const { createStorageApi } = require('./storageApi'); // Added storageApi
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -39,6 +40,12 @@ const createCreditLedgerApi = require('./creditLedgerApi');
 function initializeInternalServices(dependencies = {}) {
   const mainInternalRouter = express.Router();
   const v1DataRouter = express.Router();
+
+  // Diagnostic Middleware: Log all incoming requests to the internal router
+  mainInternalRouter.use((req, res, next) => {
+    console.log(`[INTERNAL ROUTER DIAGNOSTIC] Incoming Request: ${req.method} ${req.originalUrl}`);
+    next();
+  });
 
   const logger = dependencies.logger || console;
   const dbDataServices = dependencies.db?.data;
@@ -69,6 +76,7 @@ function initializeInternalServices(dependencies = {}) {
       logger: logger,
       db: dbDataServices, // Use the extracted dbDataServices which contains userCore, userSessions etc.
       openai: dependencies.openai, // Pass down the openai service instance
+      storageService: dependencies.storageService, // Pass down the storage service
       // Pass other relevant top-level dependencies if needed
       appStartTime: dependencies.appStartTime,
       version: dependencies.version,
@@ -181,6 +189,15 @@ function initializeInternalServices(dependencies = {}) {
     logger.error('[InternalAPI] Failed to create Generation Outputs API router.');
   }
 
+  // Storage API Service:
+  const storageApiRouter = createStorageApi(apiDependencies);
+  if (storageApiRouter) {
+    v1DataRouter.use('/storage', storageApiRouter);
+    logger.info('[InternalAPI] Storage API service mounted to /v1/data/storage');
+  } else {
+    logger.error('[InternalAPI] Failed to create Storage API router.');
+  }
+
   // Teams API Service:
   const teamsApiRouter = createTeamsApi(apiDependencies);
   if (teamsApiRouter) {
@@ -270,6 +287,23 @@ function initializeInternalServices(dependencies = {}) {
   // Mount the consolidated v1DataRouter onto the mainInternalRouter
   mainInternalRouter.use('/v1/data', v1DataRouter);
   logger.info('[InternalAPI] All /v1/data services mounted.');
+
+  // Diagnostic: Log all registered routes after mounting
+  setTimeout(() => {
+    console.log('[INTERNAL ROUTER DIAGNOSTIC] Registered routes on mainInternalRouter:');
+    mainInternalRouter.stack.forEach(layer => {
+      if (layer.route) { // regular route
+        console.log(`  - ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
+      } else if (layer.name === 'router') { // sub-router
+        const path = layer.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '');
+        layer.handle.stack.forEach(subLayer => {
+          if (subLayer.route) {
+            console.log(`  - ${Object.keys(subLayer.route.methods).join(', ').toUpperCase()} ${path}${subLayer.route.path}`);
+          }
+        });
+      }
+    });
+  }, 2000); // Timeout to allow all routes to register
 
   // Mount other specific internal APIs
   // mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // REVOVED: Redundant mounting, already on v1DataRouter

@@ -4,7 +4,7 @@ const { ObjectId } = require('mongodb');
 // This function initializes the routes for the User Sessions API
 module.exports = function userSessionsApi(dependencies) {
   const { logger, db } = dependencies;
-  const router = express.Router();
+  const router = express.Router({ mergeParams: true });
 
   if (!db || !db.userSessions) {
     logger.error('[userSessionsApi] Critical dependency failure: db.userSessions service is missing!');
@@ -31,9 +31,86 @@ module.exports = function userSessionsApi(dependencies) {
     next();
   };
 
+  const getMasterAccountId = (req, res) => {
+    const { masterAccountId: masterAccountIdStr } = req.params;
+    if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
+        if (res && !res.headersSent) {
+             res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid or missing masterAccountId parameter.' } });
+        }
+        return null;
+    }
+    return new ObjectId(masterAccountIdStr);
+  };
+
   //-------------------------------------------------------------------------
   // --- API Endpoint Implementations ---
   //-------------------------------------------------------------------------
+
+  // GET / - List sessions for a user (when mounted under /users/:masterAccountId/sessions)
+  router.get('/', async (req, res, next) => {
+    const masterAccountId = getMasterAccountId(req, res);
+    // If there's no masterAccountId, this might be a request to a different route.
+    // Let other handlers for this path (e.g. POST /) take over.
+    if (!masterAccountId) {
+      return next(); 
+    }
+
+    logger.info(`[userSessionsApi] GET / (list) for masterAccountId ${masterAccountId.toString()} with query:`, req.query);
+    
+    const { status, startDate, endDate, limit, offset } = req.query;
+
+    try {
+      const filter = { masterAccountId };
+      if (status) {
+        filter.status = status;
+      }
+
+      const timestampFilter = {};
+      if (startDate) {
+        const parsedStartDate = new Date(startDate);
+        if (isNaN(parsedStartDate.getTime())) {
+          return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `Invalid startDate: ${startDate}` } });
+        }
+        timestampFilter.$gte = parsedStartDate;
+      }
+      if (endDate) {
+        const parsedEndDate = new Date(endDate);
+        if (isNaN(parsedEndDate.getTime())) {
+          return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `Invalid endDate: ${endDate}` } });
+        }
+        timestampFilter.$lte = parsedEndDate;
+      }
+      if (Object.keys(timestampFilter).length > 0) {
+        filter.sessionStartTimestamp = timestampFilter;
+      }
+
+      const options = { sort: { sessionStartTimestamp: -1 } };
+      if (limit) {
+        options.limit = parseInt(limit, 10) || 100;
+      }
+      if (offset) {
+        options.skip = parseInt(offset, 10) || 0;
+      }
+
+      const sessions = await db.userSessions.findMany(filter, options);
+
+      const formattedSessions = sessions.map(s => ({
+        sessionId: s._id,
+        createdAt: s.sessionStartTimestamp,
+        endedAt: s.sessionEndTimestamp,
+        status: s.status,
+        toolsUsed: [], // Not tracked in schema
+        pointsSpent: 0, // Not tracked in schema
+        numGenerations: 0, // Not tracked in schema
+      }));
+      
+      res.status(200).json(formattedSessions);
+
+    } catch (error) {
+      logger.error(`[userSessionsApi] Error listing sessions for ${masterAccountId.toString()}:`, error);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error listing sessions.' } });
+    }
+  });
 
   // POST /sessions - Create a new session
   router.post('/', async (req, res, next) => {

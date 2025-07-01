@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const sidebar = document.getElementById('sidebar');
     const sidebarToggle = document.getElementById('sidebar-toggle');
 
@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    initializeTools();
 });
 
 // Initialize click interaction elements
@@ -573,6 +575,7 @@ function createParameterInput(param) {
 
 // Helper to make an element draggable
 function makeDraggable(element, handle) {
+    let offsetX, offsetY;
     let isDragging = false;
     let currentX;
     let currentY;
@@ -614,6 +617,14 @@ function makeDraggable(element, handle) {
 
 // Update tool activation in both sidebar and modal
 function activateTool(tool, position = null) {
+    hideModal();
+
+    // Check if a tool window with the same ID already exists
+    const existingWindow = activeToolWindows.find(w => w.id === generateWindowId());
+    if (existingWindow) {
+        return;
+    }
+
     if (!position) {
         position = calculateCenterPosition(activeToolWindows);
     }
@@ -660,9 +671,7 @@ document.addEventListener('click', (e) => {
 
     // Handle upload button click
     if (clickedUploadBtn) {
-        console.log('Upload clicked');
-        // TODO: Implement upload logic
-        hideModal();
+        showUploadInterface(actionModal);
         return;
     }
 
@@ -1257,4 +1266,150 @@ style.textContent = `
         animation: flowingLine 2s linear infinite;
     }
 `;
-document.head.appendChild(style); 
+document.head.appendChild(style);
+
+function createImageInSandbox(src, position) {
+    const sandbox = document.querySelector('.sandbox-content');
+    if (!sandbox) return;
+
+    const container = document.createElement('div');
+    container.className = 'sandbox-item image-item';
+    
+    const img = document.createElement('img');
+    img.src = src;
+    
+    container.appendChild(img);
+    makeDraggable(container, container);
+
+    if (position) {
+        container.style.left = `${position.x}px`;
+        container.style.top = `${position.y}px`;
+    } else {
+        const center = calculateCenterPosition(activeToolWindows);
+        container.style.left = `${center.x}px`;
+        container.style.top = `${center.y}px`;
+    }
+
+    sandbox.appendChild(container);
+    // You might want to manage this new item in an array or similar
+}
+
+// --- Upload Interface Logic ---
+
+function showUploadInterface(modal) {
+    const originalContent = modal.innerHTML;
+    
+    modal.innerHTML = `
+        <div class="upload-area">
+            <p>Drag & drop an image, or click</p>
+            <input type="file" id="image-upload-input" style="display:none" accept="image/*">
+        </div>
+        <button type="button" class="modal-cancel-btn">Cancel</button>
+    `;
+
+    const uploadArea = modal.querySelector('.upload-area');
+    const fileInput = modal.querySelector('#image-upload-input');
+    const cancelBtn = modal.querySelector('.modal-cancel-btn');
+
+    const handleFileSelect = (file) => {
+        if (file && file.type.startsWith('image/')) {
+            uploadFile(file, modal);
+        } else {
+            alert('Please select an image file.');
+        }
+    };
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, () => uploadArea.classList.add('active'));
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('active'));
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        handleFileSelect(e.dataTransfer.files[0]);
+    });
+
+    cancelBtn.addEventListener('click', () => {
+        modal.innerHTML = originalContent;
+        // Re-attach submenu to the create button if needed, although it's part of originalContent
+    });
+}
+
+async function uploadFile(file, modal) {
+    const uploadArea = modal.querySelector('.upload-area');
+    if (uploadArea) {
+        uploadArea.innerHTML = `<p>Uploading ${file.name}...</p>`;
+    }
+
+    try {
+        const response = await fetch('/api/v1/storage/upload-url', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error.message || 'Could not get signed URL.');
+        }
+        const { signedUrl, permanentUrl } = await response.json();
+
+        // Actually upload the file to the signed URL from R2
+        const uploadResponse = await fetch(signedUrl, {
+            method: 'PUT',
+            body: file,
+            headers: {
+                'Content-Type': file.type,
+            },
+        });
+
+        if (!uploadResponse.ok) {
+            throw new Error('Failed to upload file to storage.');
+        }
+
+        createImageInSandbox(permanentUrl, lastClickPosition);
+    } catch (error) {
+        console.error('Upload failed:', error);
+        alert(`Upload failed: ${error.message}`);
+    } finally {
+        hideModal();
+    }
+}
+
+function createImageInSandbox(src, position) {
+    const sandbox = document.querySelector('.sandbox-content');
+    if (!sandbox) return;
+
+    const container = document.createElement('div');
+    container.className = 'sandbox-item image-item';
+    
+    const img = document.createElement('img');
+    img.src = src;
+    
+    container.appendChild(img);
+    makeDraggable(container, container);
+
+    if (position) {
+        container.style.left = `${position.x}px`;
+        container.style.top = `${position.y}px`;
+    } else {
+        const center = calculateCenterPosition(activeToolWindows);
+        container.style.left = `${center.x}px`;
+        container.style.top = `${center.y}px`;
+    }
+
+    sandbox.appendChild(container);
+} 
