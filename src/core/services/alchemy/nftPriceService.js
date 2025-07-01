@@ -8,9 +8,12 @@ const NFT_COLLECTION_WHITELIST = [
     '0x7bd29408f11d2bfc23c34f18275bbf23cf646e9c'  // Milady Maker
 ];
 
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const floorPriceCache = new Map();
+
 /**
  * @class NftPriceService
- * @description A dedicated service for fetching floor prices for whitelisted NFT collections.
+ * @description A dedicated service for fetching floor prices for NFT collections.
  */
 class NftPriceService {
   /**
@@ -48,19 +51,22 @@ class NftPriceService {
   }
 
   /**
-   * Fetches the current floor price for a whitelisted NFT collection.
+   * Fetches the current floor price for an NFT collection, with caching.
    * @param {string} collectionAddress - The contract address of the NFT collection.
    * @returns {Promise<number|null>} The floor price of the collection in USD, or null if an error occurs or the price isn't available.
    */
   async getFloorPriceInUsd(collectionAddress) {
-    this.logger.info(`[NftPriceService] Fetching floor price for collection: ${collectionAddress}`);
+    const normalizedAddress = collectionAddress.toLowerCase();
+    const cached = floorPriceCache.get(normalizedAddress);
 
-    if (!this.isWhitelisted(collectionAddress)) {
-        this.logger.warn(`[NftPriceService] Attempted to fetch price for non-whitelisted collection: ${collectionAddress}`);
-        return null;
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+        this.logger.info(`[NftPriceService] Returning cached floor price for ${normalizedAddress}: $${cached.price.toFixed(2)}`);
+        return cached.price;
     }
+    
+    this.logger.info(`[NftPriceService] Fetching floor price for collection: ${normalizedAddress}`);
 
-    const url = `${this.baseUrl}/getFloorPrice?contractAddress=${collectionAddress}`;
+    const url = `${this.baseUrl}/getFloorPrice?contractAddress=${normalizedAddress}`;
     const options = {
         method: 'GET',
         headers: {
@@ -80,11 +86,11 @@ class NftPriceService {
       const floorPriceEth = data?.openSea?.floorPrice;
 
       if (floorPriceEth === undefined || floorPriceEth === null) {
-          this.logger.warn(`[NftPriceService] Floor price not available from OpenSea for collection ${collectionAddress}. Full response: ${JSON.stringify(data)}`);
+          this.logger.warn(`[NftPriceService] Floor price not available from OpenSea for collection ${normalizedAddress}. Full response: ${JSON.stringify(data)}`);
           return null;
       }
       
-      this.logger.info(`[NftPriceService] Successfully fetched floor price for ${collectionAddress}: ${floorPriceEth} ETH`);
+      this.logger.info(`[NftPriceService] Successfully fetched floor price for ${normalizedAddress}: ${floorPriceEth} ETH`);
 
       // Convert the ETH floor price to USD using the PriceFeedService.
       // The native ETH address is a constant we can use for this lookup.
@@ -97,12 +103,15 @@ class NftPriceService {
       }
 
       const floorPriceUsd = floorPriceEth * ethPriceInUsd;
-      this.logger.info(`[NftPriceService] Converted floor price for ${collectionAddress} to $${floorPriceUsd.toFixed(2)} USD.`);
+      this.logger.info(`[NftPriceService] Converted floor price for ${normalizedAddress} to $${floorPriceUsd.toFixed(2)} USD.`);
+
+      // Cache the successful result
+      floorPriceCache.set(normalizedAddress, { price: floorPriceUsd, timestamp: Date.now() });
 
       return floorPriceUsd;
 
     } catch (error) {
-      this.logger.error(`[NftPriceService] Failed to fetch floor price for ${collectionAddress}:`, error);
+      this.logger.error(`[NftPriceService] Failed to fetch floor price for ${normalizedAddress}:`, error);
       return null;
     }
   }
