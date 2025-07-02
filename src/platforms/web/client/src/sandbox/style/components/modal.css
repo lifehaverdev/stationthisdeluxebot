@@ -1,0 +1,146 @@
+.action-modal {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: var(--backdrop-blur);
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    border-radius: var(--border-radius);
+    padding: 8px;
+    z-index: var(--z-modal);
+    transform: translate(-50%, -50%);
+    box-shadow: var(--box-shadow);
+    display: none;
+    gap: 8px;
+    font-family: var(--font-family-mono);
+}
+
+.action-modal.active {
+    display: flex;
+}
+
+.action-modal button {
+    background: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--transition-speed) var(--transition-timing);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+}
+
+.action-modal button:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.3);
+}
+
+.action-modal button:active {
+    transform: translateY(1px);
+}
+
+.create-submenu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: var(--backdrop-blur);
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    border-radius: var(--border-radius);
+    padding: 8px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 140px;
+}
+
+.create-submenu.active {
+    display: flex;
+    animation: fadeIn var(--transition-speed) var(--transition-timing);
+}
+
+.create-submenu button {
+    width: 100%;
+    justify-content: flex-start;
+    white-space: nowrap;
+    font-size: var(--font-size-small);
+}
+
+.output-tools-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--modal-bg);
+    backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--modal-padding);
+    color: var(--text-color);
+    font-family: var(--font-family-mono);
+    z-index: var(--z-modal);
+    min-width: 240px;
+    animation: modalFadeIn var(--transition-speed) var(--transition-timing);
+}
+
+.output-tools-modal .header {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 12px;
+    font-weight: bold;
+    font-size: var(--font-size-large);
+}
+
+.output-tools-modal button {
+    width: 100%;
+    padding: 12px;
+    margin: 4px 0;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-color);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-family-mono);
+    transition: all var(--transition-speed) var(--transition-timing);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.output-tools-modal button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-color-hover);
+}
+
+.output-tools-modal button:active {
+    transform: scale(0.98);
+}
+
+.upload-area {
+    padding: 20px;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.upload-area:hover,
+.upload-area.active {
+    border-color: var(--border-color-hover);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+} 

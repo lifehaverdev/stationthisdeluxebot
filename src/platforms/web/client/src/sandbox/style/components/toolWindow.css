@@ -1,0 +1,107 @@
+.tool-window {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    background: var(--modal-bg);
+    backdrop-filter: var(--backdrop-blur);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    min-width: var(--tool-window-min-width);
+    color: var(--text-color);
+    font-family: var(--font-family-mono);
+    z-index: var(--z-tool-window);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.tool-window-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: move;
+}
+
+.close-button {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: var(--font-size-large);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.close-button:hover {
+    color: var(--text-color-muted);
+}
+
+.required-params,
+.optional-params {
+    padding: var(--modal-padding);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.optional-params {
+    display: none;
+    border-top: 1px solid var(--border-color);
+}
+
+.parameter-input {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.parameter-input input {
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-color);
+    font-family: var(--font-family-mono);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.parameter-input input:focus {
+    border-color: var(--border-color-hover);
+    background: rgba(255, 255, 255, 0.15);
+    outline: none;
+}
+
+.show-more-button {
+    background: none;
+    border: none;
+    color: var(--text-color-muted);
+    padding: 8px;
+    cursor: pointer;
+    font-family: var(--font-family-mono);
+    width: 100%;
+    border-top: 1px solid var(--border-color);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.show-more-button:hover,
+.show-more-button.active {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.execute-button {
+    width: calc(100% - 32px);
+    margin: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-color);
+    cursor: pointer;
+    font-family: var(--font-family-mono);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.execute-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: var(--border-color-hover);
+} 

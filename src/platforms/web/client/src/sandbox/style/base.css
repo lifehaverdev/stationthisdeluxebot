@@ -1,0 +1,166 @@
+/* Base layout */
+.sandbox-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.sandbox-content {
+    flex: 1;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    min-height: 100%;
+    background-color: var(--sandbox-bg);
+}
+
+/* Background and cursor */
+.workspace-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    image-rendering: pixelated;
+    pointer-events: none;
+    filter: hue-rotate(150deg) saturate(80%) brightness(110%);
+    mix-blend-mode: soft-light;
+    opacity: 0.9;
+}
+
+.sandbox-content:hover {
+    cursor: url('/images/workspace/cursor.svg') 64 64, auto;
+}
+
+/* Click ripple effect */
+.click-ripple {
+    position: fixed;
+    pointer-events: none;
+    width: 128px;
+    height: 128px;
+    opacity: 0;
+    z-index: var(--z-modal);
+    transform: translate(-50%, -50%);
+    transition: opacity var(--transition-speed) ease-out;
+}
+
+.click-ripple.active {
+    opacity: 1;
+}
+
+/* Common animations */
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(-4px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+@keyframes flowingLine {
+    0% {
+        background-position: 0% 50%;
+    }
+    100% {
+        background-position: 100% 50%;
+    }
+}
+
+/* Common transitions */
+.transition-all {
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Common utility classes */
+.hidden {
+    display: none !important;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-4 {
+    gap: 1rem;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.p-4 {
+    padding: 1rem;
+}
+
+.m-4 {
+    margin: 1rem;
+}
+
+.rounded {
+    border-radius: var(--border-radius);
+}
+
+.border {
+    border: 1px solid var(--border-color);
+}
+
+.bg-modal {
+    background-color: var(--modal-bg);
+    backdrop-filter: var(--backdrop-blur);
+}
+
+.text-white {
+    color: var(--text-color);
+}
+
+.text-muted {
+    color: var(--text-color-muted);
+}
+
+.font-mono {
+    font-family: var(--font-family-mono);
+}
+
+.text-sm {
+    font-size: var(--font-size-small);
+}
+
+.text-lg {
+    font-size: var(--font-size-large);
+} 

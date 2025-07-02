@@ -238,11 +238,11 @@ function initializeInternalServices(dependencies = {}) {
   let toolDefinitionRouter;
   try {
     toolDefinitionRouter = createToolDefinitionApiRouter(apiDependencies);
-    if (toolDefinitionRouter && typeof toolDefinitionRouter === 'function') {
+    if (toolDefinitionRouter) {
       v1DataRouter.use('/tools', toolDefinitionRouter);
       logger.info('[InternalAPI] Tool Definition API service mounted to /v1/data/tools');
     } else {
-      logger.error('[InternalAPI] createToolDefinitionApiRouter did not return a valid router/function. Value received:', toolDefinitionRouter);
+      logger.error('[InternalAPI] createToolDefinitionApiRouter did not return a valid router. Value received:', toolDefinitionRouter);
     }
   } catch (err) {
     logger.error('[InternalAPI] Error initializing or mounting Tool Definition API:', err);

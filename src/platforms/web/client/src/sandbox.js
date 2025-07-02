@@ -1367,17 +1367,29 @@ async function uploadFile(file, modal) {
         }
         const { signedUrl, permanentUrl } = await response.json();
 
+        // Parse the signed URL to get the required parameters
+        const url = new URL(signedUrl);
+        
+        // Extract the host from the URL
+        const host = url.hostname;
+
         // Actually upload the file to the signed URL from R2
         const uploadResponse = await fetch(signedUrl, {
             method: 'PUT',
             body: file,
             headers: {
                 'Content-Type': file.type,
-            },
+                'Content-Length': file.size.toString(),
+                'Host': host,
+                // Include only the required AWS headers from the URL
+                'x-amz-content-sha256': 'UNSIGNED-PAYLOAD',
+                'x-amz-checksum-crc32': 'AAAAAA=='
+            }
         });
 
         if (!uploadResponse.ok) {
-            throw new Error('Failed to upload file to storage.');
+            const errorText = await uploadResponse.text();
+            throw new Error(`Failed to upload file to storage: ${errorText}`);
         }
 
         createImageInSandbox(permanentUrl, lastClickPosition);

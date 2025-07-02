@@ -31,7 +31,7 @@ function initializeWebPlatform(services, options = {}) {
   logger.info('[WebPlatform] Initializing middleware...');
   app.use(httpLogger); // Use the centralized, correctly configured HTTP logger
   app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:4000'],
     credentials: true
   }));
   app.use(express.json());

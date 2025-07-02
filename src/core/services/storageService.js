@@ -40,10 +40,17 @@ class StorageService {
       Bucket: process.env.R2_BUCKET_NAME,
       Key: key,
       ContentType: contentType,
+      ChecksumAlgorithm: 'CRC32',
+      Metadata: {
+        'original-filename': fileName
+      }
     });
 
     try {
-      const signedUrl = await getSignedUrl(this.s3Client, command, { expiresIn: 3600 }); // URL expires in 1 hour
+      const signedUrl = await getSignedUrl(this.s3Client, command, { 
+        expiresIn: 3600, // URL expires in 1 hour
+        signableHeaders: new Set(['host']),
+      }); 
       const permanentUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
       return { signedUrl, permanentUrl };
     } catch (error) {
