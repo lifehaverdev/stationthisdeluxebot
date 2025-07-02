@@ -10,39 +10,8 @@ const path = require('path');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const httpLogger = require('../../utils/pino'); // Import the centralized pino-http logger
-const { initializeRoutes } = require('./routes');
 const fs = require('fs');
-
-/**
- * Sets up the page-specific routes
- * @param {Object} app - Express app instance
- */
-function setupPageRoutes(app) {
-  const publicPath = path.join(__dirname, '..', '..', '..', 'public');
-  const clientPath = path.join(__dirname, 'client');
-
-  app.get('/', (req, res) => {
-    // Phase 1: Temporary auth bypass for development
-    // Check for a dev cookie to show the app, otherwise show the landing page.
-    if (req.cookies.dev_auth_bypass) {
-      res.sendFile(path.join(clientPath, 'index.html'));
-    } else {
-      res.sendFile(path.join(publicPath, 'landing.html'));
-    }
-  });
-
-  app.get('/landing', (req, res) => {
-    res.sendFile(path.join(publicPath, 'landing.html'));
-  });
-
-  app.get('/docs', (req, res) => {
-    res.sendFile(path.join(publicPath, 'docs.html'));
-  });
-
-  app.get('/admin', (req, res) => {
-    res.sendFile(path.join(publicPath, 'admin.html'));
-  });
-}
+const { createLogger } = require('../../utils/logger');
 
 /**
  * Initialize the web platform
@@ -53,6 +22,7 @@ function setupPageRoutes(app) {
 function initializeWebPlatform(services, options = {}) {
   const app = express();
   const logger = services.logger || console; // Get logger from services, fallback to console
+  const publicPath = path.join(__dirname, '..', '..', '..', 'public');
 
   // Trust the first proxy in front of the app.
   app.set('trust proxy', 1);
@@ -71,12 +41,37 @@ function initializeWebPlatform(services, options = {}) {
   return {
     app,
     initializeRoutes: async () => {
-      await initializeRoutes(app, services); // Initialize API routes
+      // --- Page Routes ---
+      app.get('/', (req, res) => {
+        // Phase 1: Temporary auth bypass for development
+        // Check for a dev cookie to show the app, otherwise show the landing page.
+        if (req.cookies.dev_auth_bypass) {
+          res.sendFile(path.join(__dirname, 'client', 'index.html'));
+        } else {
+          res.sendFile(path.join(publicPath, 'landing.html'));
+        }
+      });
 
-      setupPageRoutes(app); // Initialize our new page routes
+      app.get('/landing', (req, res) => {
+        res.sendFile(path.join(publicPath, 'landing.html'));
+      });
 
+      app.get('/docs', (req, res) => {
+        res.sendFile(path.join(publicPath, 'docs.html'));
+      });
+
+      app.get('/admin', (req, res) => {
+        res.sendFile(path.join(publicPath, 'admin.html'));
+      });
+
+      // Health check
+      app.get('/api/health', (req, res) => {
+        res.status(200).json({ status: 'ok' });
+      });
+
+      // --- Static File Serving ---
       // Serve static files from the public directory (for images, etc.)
-      app.use(express.static(path.join(__dirname, '..', '..', '..', 'public')));
+      app.use(express.static(publicPath));
 
       // Serve static files from the client/src directory for our new UI (e.g., index.css)
       app.use(express.static(path.join(__dirname, 'client', 'src')));
@@ -96,14 +91,16 @@ function initializeWebPlatform(services, options = {}) {
           if (fs.existsSync(clientIndexPath)) {
             res.sendFile(clientIndexPath);
           } else {
-             // If the main app doesn't exist, we don't have a good fallback for SPA routes.
-             // Sending a 404 is more appropriate than sending an unrelated file.
+            // If the main app doesn't exist, we don't have a good fallback for SPA routes.
+            // Sending a 404 is more appropriate than sending an unrelated file.
             res.status(404).send('Application not found.');
           }
         } else {
           res.status(404).json({ error: 'Not found' });
         }
       });
+
+      logger.info('[WebPlatform] Routes initialized.');
     },
     start: (port = 3000) => {
       return new Promise((resolve) => {

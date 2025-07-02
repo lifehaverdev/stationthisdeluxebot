@@ -21,7 +21,7 @@ const { initializeServices } = require('./src/core/services'); // Initializes al
 const { initializePlatforms } = require('./src/platforms');
 const { initialize } = require('./src/core/initialization');
 // Import the route initializer function directly
-const { initializeRoutes: setupWebRoutes } = require('./src/platforms/web/routes');
+const { initializeRoutes: setupWebRoutes } = require('./src/platforms/web');
 
 // Import new services for notification dispatching
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');

@@ -6,6 +6,9 @@ const { createToolsApiRouter } = require('./toolsApi');
 const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
 const createGenerationsApi = require('./generationsApi');
 const { createPublicStorageApi } = require('./storageApi');
+const { createWebhookApi } = require('./webhookApi');
+const { createStatusApi } = require('./statusApi');
+const { createAdminApi } = require('./adminApi');
 
 
 /**
@@ -88,15 +91,53 @@ function initializeExternalApi(dependencies) {
   // --- Routes ---
 
   /**
+   * GET /
+   * API documentation endpoint
+   */
+  externalApiRouter.get('/', (req, res) => {
+    res.status(200).json({
+      name: 'StationThis External API',
+      version: process.env.APP_VERSION || '1.0.0',
+      endpoints: {
+        status: {
+          base: '/status',
+          description: 'Application status information',
+          endpoints: [
+            { path: '/', method: 'GET', description: 'Get detailed application status' },
+            { path: '/health', method: 'GET', description: 'Simple health check' }
+          ]
+        },
+        tools: {
+          base: '/tools',
+          description: 'Tool registry and execution',
+          endpoints: [
+            { path: '/', method: 'GET', description: 'List all available tools' },
+            { path: '/:toolId', method: 'GET', description: 'Get tool details' },
+            { path: '/registry', method: 'GET', description: 'Get full tool registry (internal)' }
+          ]
+        },
+        admin: {
+          base: '/admin',
+          description: 'Admin dashboard API endpoints',
+          endpoints: [
+            { path: '/stats/dau', method: 'GET', description: 'Get daily active users stats' },
+            { path: '/stats/recent-gens', method: 'GET', description: 'Get recent generations stats' },
+            { path: '/stats/recent-history', method: 'GET', description: 'Get recent history stats' },
+            { path: '/stats/gens-duration', method: 'GET', description: 'Get generation duration stats' },
+            { path: '/stats/user-sessions', method: 'GET', description: 'Get user session stats' }
+          ]
+        }
+      }
+    });
+  });
+
+  /**
    * GET /status
    * A public health-check endpoint to verify that the External API is running.
    */
-  externalApiRouter.get('/status', (req, res) => {
-    res.status(200).json({
-      status: 'ok',
-      message: 'External API is operational.'
-    });
-  });
+  const statusRouter = createStatusApi(dependencies);
+  externalApiRouter.use('/status', statusRouter);
+  logger.info('External Status API router mounted at /status. (Public)');
 
   // --- Endpoint Mapping ---
   // Here we will map external-facing routes to our internal services.
@@ -111,8 +152,6 @@ function initializeExternalApi(dependencies) {
   externalApiRouter.use('/wallets/connect', walletConnectionRouter);
   logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
 
-
-
   // Mount the Generations API router (Protected by API Key)
   const generationsRouter = createGenerationsApi(dependencies);
   externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
@@ -122,6 +161,16 @@ function initializeExternalApi(dependencies) {
   const storageRouter = createPublicStorageApi(dependencies);
   externalApiRouter.use('/storage', storageRouter);
   logger.info('External Public Storage API router mounted at /storage. (Public)');
+
+  // Mount the Webhook API router (Publicly Accessible but with internal validation)
+  const webhookRouter = createWebhookApi(dependencies);
+  externalApiRouter.use('/webhook', webhookRouter);
+  logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
+
+  // Mount the Admin API router (Protected by API Key)
+  const adminRouter = createAdminApi(dependencies);
+  externalApiRouter.use('/admin', apiKeyAuth, adminRouter);
+  logger.info('External Admin API router mounted at /admin. (Protected)');
 
   logger.info('External API router initialized.');
   return externalApiRouter;
