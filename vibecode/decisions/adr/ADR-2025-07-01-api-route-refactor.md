@@ -21,7 +21,6 @@ The web platform router will be reserved for navigation, admin HTML, and static 
 - `/api/v1/me/status` (user status API)
 - `/api/tools` (tools API)
 - `/api/auth` (authentication endpoints)
-- `/api/collections` (collection management)
 - `/api/status` (application status)
 - `/api/health` (health check)
 - `/api/admin/stats/*` (admin stats APIs, if needed for programmatic access)

@@ -29,6 +29,9 @@ const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
 const { createAuthApi } = require('./authApi');
 const createCreditLedgerApi = require('./creditLedgerApi');
 const { createStorageApi } = require('./storageApi'); // Added storageApi
+const generationsApi = require('./generationsApi');
+const ledgerApi = require('./ledgerApi');
+const createPointsApi = require('./pointsApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -117,6 +120,15 @@ function initializeInternalServices(dependencies = {}) {
 
   // --- Initialize and Mount New Data API Services ---
 
+  // Auth API Service:
+  const authApiRouter = createAuthApi(apiDependencies);
+  if (authApiRouter) {
+    v1DataRouter.use('/auth', authApiRouter);
+    logger.info('[InternalAPI] Auth API service mounted to /v1/data/auth');
+  } else {
+    logger.error('[InternalAPI] Failed to create Auth API router.');
+  }
+
   // Wallets API Service (for top-level lookups):
   // Initialize once and get both routers.
   const { walletsRouter, userScopedRouter: userScopedWalletsRouter } = initializeWalletsApi(apiDependencies);
@@ -196,6 +208,15 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] Storage API service mounted to /v1/data/storage');
   } else {
     logger.error('[InternalAPI] Failed to create Storage API router.');
+  }
+
+  // Points API Service:
+  const pointsApiRouter = createPointsApi(apiDependencies);
+  if (pointsApiRouter) {
+      v1DataRouter.use('/points', pointsApiRouter);
+      logger.info('[InternalAPI] Points API service mounted to /v1/data/points');
+  } else {
+      logger.error('[InternalAPI] Failed to create Points API router.');
   }
 
   // Teams API Service:
@@ -368,6 +389,15 @@ function initializeInternalServices(dependencies = {}) {
 
   // Mount credit ledger routes
   v1DataRouter.use('/ledger', createCreditLedgerApi(apiDependencies, logger));
+
+  // Mount generations routes
+  v1DataRouter.use('/generations', generationsApi);
+
+  // Mount ledger routes
+  v1DataRouter.use('/ledger', ledgerApi);
+
+  // Mount points routes
+  v1DataRouter.use('/points', pointsApi);
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

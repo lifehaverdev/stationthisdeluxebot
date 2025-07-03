@@ -9,6 +9,10 @@ const { createPublicStorageApi } = require('./storageApi');
 const { createWebhookApi } = require('./webhookApi');
 const { createStatusApi } = require('./statusApi');
 const { createAdminApi } = require('./adminApi');
+const { createAuthApi } = require('./authApi');
+const { createUserApi } = require('./userApi');
+const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
+const createPointsApi = require('./pointsApi');
 
 
 /**
@@ -85,8 +89,14 @@ function initializeExternalApi(dependencies) {
     }
   };
 
-  // Apply authentication middleware to all external API routes.
-  // externalApiRouter.use(apiKeyAuth); // REMOVED: We will apply auth on a per-route basis.
+  // Mount the User API router (Protected by JWT or API key)
+  const userRouter = createUserApi(dependencies);
+  if (userRouter) {
+    externalApiRouter.use('/user', authenticateUserOrApiKey, userRouter);
+    logger.info('External User API router mounted at /user. (JWT or API key protected)');
+  } else {
+    logger.warn('External User API router not mounted due to missing dependencies.');
+  }
 
   // --- Routes ---
 
@@ -107,15 +117,15 @@ function initializeExternalApi(dependencies) {
             { path: '/health', method: 'GET', description: 'Simple health check' }
           ]
         },
-        tools: {
-          base: '/tools',
-          description: 'Tool registry and execution',
-          endpoints: [
-            { path: '/', method: 'GET', description: 'List all available tools' },
-            { path: '/:toolId', method: 'GET', description: 'Get tool details' },
-            { path: '/registry', method: 'GET', description: 'Get full tool registry (internal)' }
-          ]
-        },
+        // tools: {
+        //   base: '/tools',
+        //   description: 'Tool registry and execution',
+        //   endpoints: [
+        //     { path: '/', method: 'GET', description: 'List all available tools' },
+        //     { path: '/:toolId', method: 'GET', description: 'Get tool details' },
+        //     { path: '/registry', method: 'GET', description: 'Get full tool registry (internal)' }
+        //   ]
+        // },
         admin: {
           base: '/admin',
           description: 'Admin dashboard API endpoints',
@@ -136,41 +146,87 @@ function initializeExternalApi(dependencies) {
    * A public health-check endpoint to verify that the External API is running.
    */
   const statusRouter = createStatusApi(dependencies);
-  externalApiRouter.use('/status', statusRouter);
-  logger.info('External Status API router mounted at /status. (Public)');
+  if (statusRouter) {
+    externalApiRouter.use('/status', statusRouter);
+    logger.info('External Status API router mounted at /status. (Public)');
+  } else {
+    logger.warn('External Status API router not mounted due to missing dependencies.');
+  }
 
   // --- Endpoint Mapping ---
   // Here we will map external-facing routes to our internal services.
   
   // Mount the Tools API router (Publicly Accessible)
   const toolsRouter = createToolsApiRouter(dependencies);
-  externalApiRouter.use('/tools', toolsRouter);
-  logger.info('External Tools API router mounted at /tools. (Public)');
+  if (toolsRouter) {
+    externalApiRouter.use('/tools', toolsRouter);
+    logger.info('External Tools API router mounted at /tools. (Public)');
+  } else {
+    logger.warn('External Tools API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Auth API router (Publicly Accessible)
+  const authRouter = createAuthApi(dependencies);
+  if (authRouter) {
+    externalApiRouter.use('/auth', authRouter);
+    logger.info('External Auth API router mounted at /auth. (Public)');
+  } else {
+    logger.warn('External Auth API router not mounted due to missing dependencies.');
+  }
 
   // Mount the Wallet Connection API router (Publicly Accessible)
   const walletConnectionRouter = createWalletConnectionApiRouter(dependencies);
-  externalApiRouter.use('/wallets/connect', walletConnectionRouter);
-  logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
+  if (walletConnectionRouter) {
+    externalApiRouter.use('/wallets/connect', walletConnectionRouter);
+    logger.info('External Wallet Connection API router mounted at /wallets/connect. (Public)');
+  } else {
+    logger.warn('External Wallet Connection API router not mounted due to missing dependencies.');
+  }
 
   // Mount the Generations API router (Protected by API Key)
   const generationsRouter = createGenerationsApi(dependencies);
-  externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
-  logger.info('External Generations API router mounted at /generations. (Protected)');
+  if (generationsRouter) {
+    externalApiRouter.use('/generations', apiKeyAuth, generationsRouter);
+    logger.info('External Generations API router mounted at /generations. (Protected)');
+  } else {
+    logger.warn('External Generations API router not mounted due to missing dependencies.');
+  }
 
   // Mount the Public Storage API router (Publicly Accessible)
   const storageRouter = createPublicStorageApi(dependencies);
-  externalApiRouter.use('/storage', storageRouter);
-  logger.info('External Public Storage API router mounted at /storage. (Public)');
+  if (storageRouter) {
+    externalApiRouter.use('/storage', storageRouter);
+    logger.info('External Public Storage API router mounted at /storage. (Public)');
+  } else {
+    logger.warn('External Public Storage API router not mounted due to missing dependencies.');
+  }
 
   // Mount the Webhook API router (Publicly Accessible but with internal validation)
   const webhookRouter = createWebhookApi(dependencies);
-  externalApiRouter.use('/webhook', webhookRouter);
-  logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
+  if (webhookRouter) {
+    externalApiRouter.use('/webhook', webhookRouter);
+    logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
+  } else {
+    logger.warn('External Webhook API router not mounted due to missing dependencies.');
+  }
 
   // Mount the Admin API router (Protected by API Key)
   const adminRouter = createAdminApi(dependencies);
-  externalApiRouter.use('/admin', apiKeyAuth, adminRouter);
-  logger.info('External Admin API router mounted at /admin. (Protected)');
+  if (adminRouter) {
+    externalApiRouter.use('/admin', apiKeyAuth, adminRouter);
+    logger.info('External Admin API router mounted at /admin. (Protected)');
+  } else {
+    logger.warn('External Admin API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Points API router (Protected by JWT or API Key)
+  const pointsRouter = createPointsApi(dependencies);
+  if (pointsRouter) {
+    externalApiRouter.use('/points', authenticateUserOrApiKey, pointsRouter);
+    logger.info('External Points API router mounted at /points. (JWT or API key protected)');
+  } else {
+    logger.warn('External Points API router not mounted due to missing dependencies.');
+  }
 
   logger.info('External API router initialized.');
   return externalApiRouter;

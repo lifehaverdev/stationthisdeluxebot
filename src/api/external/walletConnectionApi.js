@@ -14,9 +14,8 @@ function createWalletConnectionApiRouter(dependencies) {
   const { walletLinkingService } = dependencies;
 
   if (!walletLinkingService) {
-    logger.error('[WalletConnectionApi] Critical: WalletLinkingService not provided.');
-    router.use((req, res) => res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The wallet connection service is currently unavailable.' }}));
-    return router;
+    logger.error('[WalletConnectionApi] Critical: WalletLinkingService not provided. This API will be disabled.');
+    return router; // Return an empty but valid router
   }
 
   /**

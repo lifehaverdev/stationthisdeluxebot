@@ -12,6 +12,8 @@ const cookieParser = require('cookie-parser');
 const httpLogger = require('../../utils/pino'); // Import the centralized pino-http logger
 const fs = require('fs');
 const { createLogger } = require('../../utils/logger');
+const { authenticateUser } = require('./middleware/auth');
+const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 
 /**
  * Initialize the web platform
@@ -38,18 +40,31 @@ function initializeWebPlatform(services, options = {}) {
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 
+  // --- CSRF Protection ---
+  app.use(csrfProtection); // Use centralized CSRF middleware
+
+  // Endpoint to provide CSRF token to frontend
+  app.get('/api/v1/csrf-token', (req, res) => {
+    res.json({ csrfToken: req.csrfToken() });
+  });
+
   return {
     app,
     initializeRoutes: async () => {
       // --- Page Routes ---
-      app.get('/', (req, res) => {
-        // Phase 1: Temporary auth bypass for development
-        // Check for a dev cookie to show the app, otherwise show the landing page.
-        if (req.cookies.dev_auth_bypass) {
-          res.sendFile(path.join(__dirname, 'client', 'index.html'));
-        } else {
-          res.sendFile(path.join(publicPath, 'landing.html'));
-        }
+      app.get('/', authenticateUser, (req, res) => {
+        // Auth middleware has run, so if we're here, the user is authenticated.
+        res.sendFile(path.join(__dirname, 'client', 'index.html'));
+      });
+
+      app.get('/logout', (req, res) => {
+          // Clear the JWT cookie to log the user out
+          res.clearCookie('jwt', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+          });
+          res.redirect('/landing');
       });
 
       app.get('/landing', (req, res) => {

@@ -5,6 +5,7 @@ import { createImageInSandbox } from './components/image.js';
 import { initCanvas, updateConnectionLine } from './canvas.js';
 import { calculateCenterPosition, hideModal } from './utils.js';
 import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
+import AccountDropdown from './components/accountDropdown.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -42,6 +43,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize click handlers
     initClickHandlers();
+
+    const userMenu = document.querySelector('.user-menu');
+    if (userMenu) {
+        // Clear existing content (e.g., 'Account' text)
+        userMenu.innerHTML = '';
+        new AccountDropdown(userMenu);
+    }
 });
 
 // Initialize click interaction elements

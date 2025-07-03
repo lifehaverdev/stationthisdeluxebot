@@ -5,6 +5,9 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { createLogger } = require('../../../utils/logger');
+
+const logger = createLogger('AuthMiddleware');
 
 /**
  * Middleware to authenticate user based on JWT token
@@ -14,36 +17,50 @@ const jwt = require('jsonwebtoken');
  */
 function authenticateUser(req, res, next) {
   try {
-    // Get authorization header
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized: No token provided' });
+    // Prefer JWT from HTTP-only cookie
+    let token = req.cookies && req.cookies.jwt;
+
+    // Fallback: If not present in cookie, check Authorization header (for API clients)
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
     }
-    
-    // Extract the token
-    const token = authHeader.split(' ')[1];
-    
+
+    if (!token) {
+      // For web pages, redirect to login. For API calls, send 401.
+      if (req.accepts('html')) {
+        return res.redirect('/landing');
+      }
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'No token provided.' } });
+    }
+
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'stationthis-jwt-secret');
-    
-    // Add user info to request
-    req.user = {
-      id: decoded.id
-    };
-    
-    next();
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      logger.error('JWT_SECRET is not defined in environment variables.');
+      return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
+    }
+
+    jwt.verify(token, jwtSecret, (err, user) => {
+      if (err) {
+        if (req.accepts('html')) {
+          return res.redirect('/landing');
+        }
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
+      }
+      req.user = user;
+      next();
+    });
   } catch (error) {
     console.error('Authentication error:', error);
-    
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Unauthorized: Token expired' });
     }
-    
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ error: 'Unauthorized: Invalid token' });
     }
-    
     res.status(500).json({ error: 'Authentication error' });
   }
 }
@@ -114,9 +131,69 @@ function requireInternal(req, res, next) {
     next();
 }
 
+/**
+ * Middleware to authenticate user via JWT/session or API key (X-API-Key header)
+ * If both are present, JWT/session takes precedence.
+ */
+async function authenticateUserOrApiKey(req, res, next) {
+  // 1. Try JWT/session auth first
+  try {
+    let token = req.cookies && req.cookies.jwt;
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+    }
+    if (token) {
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        logger.error('JWT_SECRET is not defined in environment variables.');
+        return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
+      }
+      return jwt.verify(token, jwtSecret, (err, user) => {
+        if (err) {
+          return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
+        }
+        req.user = user;
+        req.authMethod = 'jwt';
+        return next();
+      });
+    }
+  } catch (err) {
+    // Ignore and fall through to API key
+  }
+  // 2. Try API key auth
+  const apiKey = req.get('X-API-Key');
+  if (apiKey) {
+    try {
+      // Validate API key via internal API
+      const internalApiClient = require('../../utils/internalApiClient');
+      internalApiClient.post('/internal/v1/data/auth/validate-key', { apiKey })
+        .then(response => {
+          req.user = response.data.user;
+          req.apiKey = response.data.apiKey;
+          req.authMethod = 'apiKey';
+          next();
+        })
+        .catch(error => {
+          logger.error('API key authentication failed:', error.message);
+          return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid API key.' } });
+        });
+      return;
+    } catch (error) {
+      logger.error('API key authentication error:', error.message);
+      return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'API key authentication error.' } });
+    }
+  }
+  // 3. If neither, reject
+  return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+}
+
 module.exports = {
   authenticateUser,
   optionalAuth,
   authenticateToken: authenticateUser, // Alias for backward compatibility
   requireInternal,
+  authenticateUserOrApiKey, // Export new middleware
 }; 

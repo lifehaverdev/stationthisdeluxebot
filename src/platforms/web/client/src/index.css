@@ -4,6 +4,8 @@
 @import './sandbox/style/components/toolWindow.css';
 @import './sandbox/style/components/anchor.css';
 @import './sandbox/style/components/modal.css';
+@import './sandbox/style/components/accountDropdown.css';
+@import './sandbox/style/components/historyModal.css';
 
 body {
   margin: 0;

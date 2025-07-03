@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NOEMA.ART - The StationThis Platform</title>
     <link rel="stylesheet" href="/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6/dist/ethers.umd.min.js"></script>
 </head>
 <body>
 
@@ -14,6 +15,7 @@
         <nav id="main-nav">
             <a href="/docs">Docs</a>
             <a href="/coin">Pricing</a>
+            <a href="#" id="logout-button" style="display: none;">Logout</a>
         </nav>
         <button id="menu-toggle" class="menu-toggle">
             <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"><title>Menu</title><path d="M0 3h20v2H0V3zm0 6h20v2H0V9zm0 6h20v2H0v-2z"></path></svg>
@@ -119,16 +121,34 @@
             <button class="modal-close">&times;</button>
             <h2>Connect to Create</h2>
             <div class="modal-body">
-                <button class="btn btn-primary btn-wallet">Connect Wallet</button>
-                <div class="alternative-logins">
-                    <a href="#">Login with Username/Password</a>
-                    <span>&nbsp;or&nbsp;</span>
-                    <a href="#">Use an API Key</a>
+                <div id="initial-auth-options">
+                    <button class="btn btn-primary btn-wallet">Connect Wallet</button>
+                    <div class="alternative-logins">
+                        <a href="#" id="show-password-login">Login with Username/Password</a>
+                        <span>&nbsp;or&nbsp;</span>
+                        <a href="#" id="show-apikey-login">Use an API Key</a>
+                    </div>
                 </div>
+
+                <form id="password-login-form" class="auth-form" style="display: none;">
+                    <div class="form-error" style="display: none;"></div>
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <a href="#" class="back-to-options">&larr; Back</a>
+                </form>
+
+                <form id="apikey-login-form" class="auth-form" style="display: none;">
+                    <div class="form-error" style="display: none;"></div>
+                    <input type="text" name="apikey" placeholder="API Key" required>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <a href="#" class="back-to-options">&larr; Back</a>
+                </form>
             </div>
         </div>
     </div>
 
+    <script src="/js/auth.js"></script>
     <script src="/js/landing-page.js"></script>
     <script src="/js/main.js"></script>
 </body>
