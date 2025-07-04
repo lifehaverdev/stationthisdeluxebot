@@ -173,13 +173,16 @@ class ToolRegistry {
       if (tool.visibility && !['public', 'internal', 'hidden'].includes(tool.visibility)) {
           errors.push({ toolId, message: `Invalid visibility: ${tool.visibility}` });
       }
-      if (tool.humanDefaults && typeof tool.humanDefaults !== 'object') {
+      if (!tool.humanDefaults && typeof tool.humanDefaults !== 'object') {
           errors.push({ toolId, message: 'humanDefaults should be an object' });
       }
       if (tool.webhookStrategy) {
           if (!tool.webhookStrategy.expectedStatusField) errors.push({ toolId, message: 'WebhookConfig missing expectedStatusField'});
           if (!tool.webhookStrategy.successValue) errors.push({ toolId, message: 'WebhookConfig missing successValue'});
           if (typeof tool.webhookStrategy.durationTracking !== 'boolean') errors.push({ toolId, message: 'WebhookConfig durationTracking must be boolean'});
+      }
+      if (!tool.deliveryMode || !['immediate', 'webhook'].includes(tool.deliveryMode)) {
+          errors.push({ toolId, message: `deliveryMode '${tool.deliveryMode}' is invalid or missing. Must be 'immediate' or 'webhook'.` });
       }
       if (tool.platformHints) {
           const allowedPrimaryInputs = ['text', 'image', 'video', 'audio', 'file'];

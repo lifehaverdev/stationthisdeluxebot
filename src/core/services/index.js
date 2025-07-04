@@ -27,10 +27,12 @@ const StorageService = require('./storageService');
 const EthereumService = require('./alchemy/ethereumService');
 const CreditService = require('./alchemy/creditService');
 const PriceFeedService = require('./alchemy/priceFeedService');
+const NftPriceService = require('./alchemy/nftPriceService');
 const DexService = require('./alchemy/dexService');
 const TokenRiskEngine = require('./alchemy/tokenRiskEngine');
 const { contracts, getNetworkName } = require('../contracts');
 const WalletLinkingService = require('./walletLinkingService');
+const SaltMiningService = require('./alchemy/saltMiningService');
 
 /**
  * Initialize all core services
@@ -88,6 +90,7 @@ async function initializeServices(options = {}) {
     let ethereumService;
     let creditService;
     let priceFeedService;
+    let nftPriceService;
     let dexService;
     let tokenRiskEngine;
     let walletLinkingService = new WalletLinkingService({ logger, db: initializedDbServices.data });
@@ -105,7 +108,7 @@ async function initializeServices(options = {}) {
       } else {
         // 1. Initialize services with no dependencies first.
         priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
-
+        nftPriceService = new NftPriceService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, { priceFeedService }, logger);
         // 2. Initialize EthereumService, which now requires priceFeedService for gas estimates.
         const ethereumServiceDependencies = { priceFeedService };
         ethereumService = new EthereumService(ethConfig, ethereumServiceDependencies, logger);
@@ -116,17 +119,37 @@ async function initializeServices(options = {}) {
 
         // 4. Initialize CreditService
         const networkName = getNetworkName(ethereumService.chainId);
+        logger.info(`[initializeServices] networkName: ${networkName}`);
         const creditServiceConfig = {
           creditVaultAddress: contracts.creditVault.addresses[networkName],
           creditVaultAbi: contracts.creditVault.abi,
           systemStateDb: initializedDbServices.data.systemState,
           priceFeedService,
+          nftPriceService,
           tokenRiskEngine,
           internalApiClient,
           userCoreDb: initializedDbServices.data.userCore,
           walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
           walletLinkingService,
         };
+        logger.info(`[initializeServices] creditServiceConfig.creditVaultAddress: ${creditServiceConfig.creditVaultAddress}`);
+        
+        // --- Instantiate SaltMiningService ---
+        let saltMiningService;
+        try {
+          saltMiningService = new SaltMiningService(
+            { ethereumService },
+            {
+              creditVaultAddress: creditServiceConfig.creditVaultAddress,
+              creditVaultAbi: creditServiceConfig.creditVaultAbi
+            },
+            logger
+          );
+        } catch (err) {
+          logger.error('[SaltMiningService] Failed to initialize:', err);
+          saltMiningService = null;
+        }
+        // --- End SaltMiningService ---
         
         if (!creditServiceConfig.creditVaultAddress || !creditServiceConfig.creditVaultAbi || creditServiceConfig.creditVaultAbi.length === 0) {
             logger.warn(`[CreditService] Not initialized: Could not find contract address or ABI for network '${networkName}'. Credit service will be disabled.`);
@@ -136,11 +159,13 @@ async function initializeServices(options = {}) {
                 creditLedgerDb: initializedDbServices.data.creditLedger,
                 systemStateDb: initializedDbServices.data.systemState,
                 priceFeedService,
+                nftPriceService,
                 tokenRiskEngine,
                 internalApiClient,
                 userCoreDb: initializedDbServices.data.userCore,
                 walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
                 walletLinkingService,
+                saltMiningService,
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
         }
@@ -168,9 +193,15 @@ async function initializeServices(options = {}) {
       db: initializedDbServices,
       toolRegistry,
       openai: openAIService,
+      comfyUIService: comfyUIService,
+      loraResolutionService: loraResolutionService,
       userSettingsService, // Pass the service to the API layer
       walletLinkingService,
       storageService, // Pass the storage service to the API layer
+      priceFeedService,
+      creditService,
+      ethereumService,
+      nftPriceService,
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -216,6 +247,7 @@ async function initializeServices(options = {}) {
       ethereumService, // Add new service
       creditService, // Add new service
       priceFeedService,
+      nftPriceService,
       dexService,
       tokenRiskEngine,
       walletLinkingService,
@@ -254,4 +286,5 @@ module.exports = {
   DexService,
   TokenRiskEngine,
   WalletLinkingService,
+  SaltMiningService,
 }; 

@@ -1062,6 +1062,7 @@ class WorkflowCacheManager {
       durationTracking: true,
       resultPath: ['output.files']
     };
+    toolDefinition.deliveryMode = 'webhook';
   
     // === Defaults for future extensibility ===
     toolDefinition.visibility = 'public';

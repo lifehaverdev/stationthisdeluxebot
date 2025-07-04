@@ -15,6 +15,7 @@
  * @property {Object<string, string>} [humanDefaults]
  * @property {'public'|'internal'|'hidden'} [visibility]
  * @property {Object<string, any>} [metadata] // For extra service-specific data
+ * @property {'immediate'|'webhook'} deliveryMode // NEW: how results are delivered
  */
 
 /**

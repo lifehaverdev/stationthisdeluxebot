@@ -43,6 +43,7 @@ const chatGptTool = {
     unit: 'token',
     rateSource: 'static'
   },
+  deliveryMode: 'immediate',
   webhookStrategy: {
       expectedStatusField: 'status',
       successValue: 'completed',

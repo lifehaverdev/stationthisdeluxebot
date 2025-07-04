@@ -4,7 +4,7 @@ const path = require('path');
 
 // Adjust paths based on your project structure
 // Assuming this script is run from the root of the project, or paths are adjusted accordingly.
-const { initializeServices } = require('../src/core/services'); // Path to your service initializer
+const { initializeServices } = require('../../src/core/services'); // Path to your service initializer
 // ToolRegistry is exported from initializeServices module, so we can get it from there if needed
 // or import directly if its path is stable and it always returns the same singleton.
 // const { ToolRegistry } = require('../src/core/tools/ToolRegistry');

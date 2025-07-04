@@ -29,9 +29,10 @@ const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
 const { createAuthApi } = require('./authApi');
 const createCreditLedgerApi = require('./creditLedgerApi');
 const { createStorageApi } = require('./storageApi'); // Added storageApi
-const generationsApi = require('./generationsApi');
-const ledgerApi = require('./ledgerApi');
+const generationOutputsApi = require('./generationOutputsApi');
 const createPointsApi = require('./pointsApi');
+const generationExecutionApi = require('./generationExecutionApi'); // Import the new API
+const pointsApi = require('./pointsApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -85,8 +86,17 @@ function initializeInternalServices(dependencies = {}) {
       version: dependencies.version,
       toolRegistry: dependencies.toolRegistry || require('../../core/tools/ToolRegistry').ToolRegistry.getInstance(), // Ensure toolRegistry is available
       userSettingsService: dependencies.userSettingsService, // Pass through the service
+      comfyUIService: dependencies.comfyUIService, // Pass through the comfyUi service
+      openaiService: dependencies.openai, // Pass through the openai service
+      loraResolutionService: dependencies.loraResolutionService, // Pass through the loraResolutionService
       // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
       // internalApiClient: apiClient, (defined later in this function)
+      internalApiClient: internalApiClient,
+      // --- Inject required backend services for pointsApi ---
+      priceFeedService: dependencies.priceFeedService,
+      creditService: dependencies.creditService,
+      ethereumService: dependencies.ethereumService,
+      nftPriceService: dependencies.nftPriceService,
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
@@ -391,13 +401,13 @@ function initializeInternalServices(dependencies = {}) {
   v1DataRouter.use('/ledger', createCreditLedgerApi(apiDependencies, logger));
 
   // Mount generations routes
-  v1DataRouter.use('/generations', generationsApi);
-
-  // Mount ledger routes
-  v1DataRouter.use('/ledger', ledgerApi);
+  v1DataRouter.use('/generations', generationOutputsApi);
 
   // Mount points routes
   v1DataRouter.use('/points', pointsApi);
+
+  // Mount generation execution routes
+  v1DataRouter.use('/execute', generationExecutionApi(apiDependencies));
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

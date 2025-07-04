@@ -5,7 +5,8 @@ import { createImageInSandbox } from './components/image.js';
 import { initCanvas, updateConnectionLine } from './canvas.js';
 import { calculateCenterPosition, hideModal } from './utils.js';
 import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
-import AccountDropdown from './components/accountDropdown.js';
+import AccountDropdown from './components/AccountDropdown.js';
+import './components/BuyPointsModal/buyPointsModal.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {

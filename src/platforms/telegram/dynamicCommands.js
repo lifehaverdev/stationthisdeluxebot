@@ -225,8 +225,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
       // The handler is now a standalone async function.
       const commandHandler = async (bot, msg, dependencies, match) => {
-        const { internal, comfyUI, userSettingsService, logger, loraResolutionService } = dependencies;
-        const comfyuiService = comfyUI; // Alias for clarity
+        const { internal, logger } = dependencies;
         const chatId = msg.chat.id;
 
         await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
@@ -236,82 +235,45 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
         const promptText = match && match[1] ? match[1].trim() : '';
         let masterAccountId;
         let sessionId;
-        let generationRecord;
+        let initiatingEventId;
 
         try {
-            // Step 1: Find or create user to get masterAccountId
-            const userResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
-                platform: 'telegram',
-                platformId: msg.from.id.toString(),
-                platformContext: {
-                    firstName: msg.from.first_name,
-                    username: msg.from.username,
-                },
-            });
-            masterAccountId = userResponse.data.masterAccountId;
+          // Step 1: Find or create user to get masterAccountId
+          const userResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+            platform: 'telegram',
+            platformId: msg.from.id.toString(),
+            platformContext: {
+              firstName: msg.from.first_name,
+              username: msg.from.username,
+            },
+          });
+          masterAccountId = userResponse.data.masterAccountId;
 
-            // Step 2: Create a user session for this interaction
-            const sessionResponse = await internal.client.post('/internal/v1/data/sessions', {
-                masterAccountId: masterAccountId,
-                platform: 'telegram',
-            });
-            sessionId = sessionResponse.data._id;
+          // Step 2: Create a user session for this interaction
+          const sessionResponse = await internal.client.post('/internal/v1/data/sessions', {
+            masterAccountId: masterAccountId,
+            platform: 'telegram',
+          });
+          sessionId = sessionResponse.data._id;
 
-            // Step 3: Create the initiating event record
-            const eventResponse = await internal.client.post('/internal/v1/data/events', {
-                masterAccountId,
-                sessionId,
-                eventType: 'command_used',
-                sourcePlatform: 'telegram',
-                eventData: {
-                    command: commandName,
-                    text: msg.text || msg.caption || '',
-                    toolId: tool.toolId,
-                }
-            });
-            const initiatingEventId = eventResponse.data._id;
-
-            // Step 4: Create the generation record, now with the sessionId and initiatingEventId
-            const generationRecordResponse = await internal.client.post('/internal/v1/data/generations', {
-                masterAccountId,
-                sessionId,
-                initiatingEventId,
-                platform: 'telegram',
-                toolId: tool.toolId,
-                serviceName: 'comfy-deploy',
-                status: 'pending',
-                costUsd: null,
-                deliveryStatus: 'pending',
-                notificationPlatform: 'telegram',
-                requestTimestamp: new Date().toISOString(),
-                requestPayload: {}, // Initially empty, updated before submission
-                metadata: {
-                    ...tool.metadata,
-                    displayName: tool.displayName,
-                    toolId: tool.toolId,
-                    // Add direct context for rerunManager compatibility
-                    telegramChatId: msg.chat.id,
-                    telegramMessageId: msg.message_id,
-                    userInputPrompt: msg.text || msg.caption || '',
-                    platformContext: {
-                        firstName: msg.from?.first_name,
-                        username: msg.from?.username,
-                    },
-                    // Keep notificationContext for the notification service
-                    notificationContext: {
-                        chatId: msg.chat.id,
-                        messageId: msg.message_id,
-                        replyToMessageId: msg.message_id,
-                        userId: msg.from.id,
-                    }
-                }
-            });
-            generationRecord = generationRecordResponse.data;
+          // Step 3: Create the initiating event record
+          const eventResponse = await internal.client.post('/internal/v1/data/events', {
+            masterAccountId,
+            sessionId,
+            eventType: 'command_used',
+            sourcePlatform: 'telegram',
+            eventData: {
+              command: commandName,
+              text: msg.text || msg.caption || '',
+              toolId: tool.toolId,
+            }
+          });
+          initiatingEventId = eventResponse.data._id;
 
         } catch (err) {
             const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
             logger.error(`[Telegram EXEC /${commandName}] An error occurred during initial record creation: ${errorMessage}`, { stack: err.stack });
-            await bot.sendMessage(msg.chat.id, `An error occurred: ${err.message}`, { reply_to_message_id: msg.message_id });
+            await bot.sendMessage(msg.chat.id, `An error occurred while preparing your request. Please try again.`, { reply_to_message_id: msg.message_id });
             await setReaction(bot, chatId, msg.message_id, '😨');
             return;
         }
@@ -327,97 +289,80 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 const preferencesResponse = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedDisplayName}`);
                 if (preferencesResponse.data && typeof preferencesResponse.data === 'object') {
                     userPreferences = preferencesResponse.data;
-                    logger.info(`[Telegram EXEC /${commandName}] Found user preferences for '${tool.displayName}': ${JSON.stringify(userPreferences)}`);
                 }
             } catch (error) {
-                if (error.response && error.response.status === 404) {
-                    logger.info(`[Telegram EXEC /${commandName}] No preferences found for '${tool.displayName}'. Using defaults.`);
-                } else {
+                if (!error.response || error.response.status !== 404) {
                     logger.warn(`[Telegram EXEC /${commandName}] Could not fetch user preferences for '${tool.displayName}': ${error.message}`);
                 }
             }
 
             // 2. Build inputs payload, prioritizing command inputs over user preferences
-            let inputs = { ...userPreferences }; // Start with preferences
-
-            // Command prompt overrides saved prompt
+            let inputs = { ...userPreferences };
             if (textInputKey && promptText) {
                 inputs[textInputKey] = promptText.trim();
             }
 
-            // BEGIN LORA RESOLUTION
-            if (tool.metadata.hasLoraLoader && textInputKey && inputs[textInputKey]) {
-                if (loraResolutionService) {
-                    logger.info(`[Telegram EXEC /${commandName}] LoRA loader detected, resolving triggers for tool '${tool.displayName}'.`);
-                    const originalPrompt = inputs[textInputKey];
-                    const { modifiedPrompt, appliedLoras, warnings } = await loraResolutionService.resolveLoraTriggers(
-                        originalPrompt,
-                        masterAccountId,
-                        tool.metadata.baseModel,
-                        dependencies 
-                    );
-                    
-                    inputs[textInputKey] = modifiedPrompt;
-                    
-                    if (warnings && warnings.length > 0) {
-                        logger.warn(`[Telegram EXEC /${commandName}] LoRA resolution warnings for user ${masterAccountId}: ${JSON.stringify(warnings)}`);
-                    }
-                    if (appliedLoras && appliedLoras.length > 0) {
-                        logger.info(`[Telegram EXEC /${commandName}] Applied ${appliedLoras.length} LoRAs for user ${masterAccountId}: ${JSON.stringify(appliedLoras.map(l => l.slug))}`);
-                        
-                        internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
-                            'metadata.appliedLoras': appliedLoras,
-                            'metadata.rawPrompt': originalPrompt,
-                        }).catch(updateErr => logger.error(`[Telegram EXEC /${commandName}] Failed to update generation record with LoRA info: ${updateErr.message}`));
-                    }
-                } else {
-                    logger.warn(`[Telegram EXEC /${commandName}] Tool '${tool.displayName}' has a LoRA loader, but loraResolutionService is not available. Skipping trigger resolution.`);
-                }
-            }
-            // END LORA RESOLUTION
-
-            // Attached/replied-to image overrides saved image
+            // Handle image inputs
             if (imageInputKey) {
                 const fileUrl = await getTelegramFileUrl(bot, msg);
                 if (fileUrl) {
                     inputs[imageInputKey] = fileUrl;
                 } else if (tool.inputSchema[imageInputKey]?.required && !inputs[imageInputKey]) {
-                    // If required, but not in command and not in prefs, then fail.
-                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found in message or preferences.`);
-                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image, reply to a message with one, or set a default image in settings.`, { reply_to_message_id: msg.message_id });
+                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found.`);
+                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image or reply to one.`, { reply_to_message_id: msg.message_id });
                     await setReaction(bot, chatId, msg.message_id, '😨');
-                    return; // Stop execution
+                    return;
                 }
             }
 
             logger.info(`[Telegram EXEC /${commandName}] Final inputs for submission: ${JSON.stringify(inputs)}`);
             
-            // Step 4: Submit job to ComfyUI
-            const runId = await comfyuiService.submitRequest({
-                deploymentId: tool.metadata.deploymentId,
-                inputs: inputs,
-            });
+            // 3. Construct the payload for the new centralized execution endpoint
+            const executionPayload = {
+              toolId: tool.toolId,
+              inputs: inputs,
+              user: {
+                masterAccountId: masterAccountId,
+                platform: 'telegram',
+                platformId: msg.from.id.toString(),
+                platformContext: {
+                  firstName: msg.from.first_name,
+                  username: msg.from.username,
+                  chatId: msg.chat.id,
+                  messageId: msg.message_id,
+                },
+              },
+              sessionId: sessionId,
+              eventId: initiatingEventId,
+              metadata: {
+                // Pass notification context for the dispatcher to use upon completion
+                notificationContext: {
+                  chatId: msg.chat.id,
+                  messageId: msg.message_id,
+                  replyToMessageId: msg.message_id,
+                  userId: msg.from.id,
+                }
+              }
+            };
 
-            // Step 5: IMPORTANT - Update generation record with the run_id and final inputs
-            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
-                'metadata.run_id': runId,
-                'requestPayload': inputs, 
-            });
+            // 4. Call the new centralized execution endpoint
+            const executionResponse = await internal.client.post('/internal/v1/data/execute', executionPayload);
 
-            logger.info(`[Telegram EXEC /${commandName}] ComfyUI job submitted. Run ID: ${runId}`);
+            // Use deliveryMode to determine how to respond
+            if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
+              await bot.sendMessage(chatId, executionResponse.data.response, { reply_to_message_id: msg.message_id });
+              await setReaction(bot, chatId, msg.message_id, '👌');
+              return;
+            }
+            // For webhook tools, keep the existing job-submitted logic
+            logger.info(`[Telegram EXEC /${commandName}] Job submitted via execution service. Gen ID: ${executionResponse.data.generationId}, Run ID: ${executionResponse.data.runId}`);
             await setReaction(bot, chatId, msg.message_id, '👌');
 
         } catch (err) {
-            const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
-            logger.error(`[Telegram EXEC /${commandName}] An error occurred during job submission: ${errorMessage}`, { stack: err.stack });
-            
-            // Update the generation record to failed status
-            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
-                status: 'failed',
-                responsePayload: { error: errorMessage },
-            }).catch(updateErr => logger.error(`[Telegram EXEC /${commandName}] Failed to update generation status to FAILED after submission error: ${updateErr.message}`));
+            const errorMessage = err.response ? JSON.stringify(err.response.data.error) : err.message;
+            logger.error(`[Telegram EXEC /${commandName}] An error occurred during job submission via execution service: ${errorMessage}`, { stack: err.stack });
 
-            await bot.sendMessage(msg.chat.id, `Sorry, something went wrong while starting the task: ${err.message}`, { reply_to_message_id: msg.message_id });
+            await bot.sendMessage(msg.chat.id, `Sorry, something went wrong while starting the task.`, { reply_to_message_id: msg.message_id });
             await setReaction(bot, chatId, msg.message_id, '😨');
         }
       };

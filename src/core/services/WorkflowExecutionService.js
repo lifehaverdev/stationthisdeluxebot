@@ -52,7 +52,8 @@ class WorkflowExecutionService {
         this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
         const stepInput = { ...pipelineContext, ...step.parameterOverrides };
-        const { inputs: finalInputsForComfyUI, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(
+        // Prepare tool run payload (may include LoRA resolution, etc.)
+        const { inputs: finalInputs, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(
             tool.toolId,
             stepInput,
             originalContext.masterAccountId,
@@ -71,7 +72,6 @@ class WorkflowExecutionService {
             }
         } catch (e) {
             this.logger.error(`[WorkflowExecution] Could not get or create a session for MAID ${originalContext.masterAccountId}`, e.response ? e.response.data : e.message);
-            // Don't throw, attempt to proceed without a session if we must
         }
 
         const eventPayload = {
@@ -84,35 +84,24 @@ class WorkflowExecutionService {
         const eventResponse = await this.internalApiClient.post('/internal/v1/data/events', eventPayload);
         const eventId = eventResponse.data._id;
 
-        // Get cost rate for the tool
-        let costRateInfo = null;
-        try {
-            const deploymentId = tool.metadata?.deploymentId;
-            if (deploymentId) {
-                costRateInfo = await this.comfyuiService.getCostRateForDeployment(deploymentId);
-                this.logger.info(`[WorkflowExecution] Fetched cost rate for deployment ${deploymentId}: ${JSON.stringify(costRateInfo)}`);
-            } else {
-                this.logger.warn(`[WorkflowExecution] Tool ${tool.toolId} is missing a deploymentId in its metadata. Cannot fetch cost.`);
-            }
-        } catch (costError) {
-            this.logger.error(`[WorkflowExecution] Error fetching cost rate for tool ${tool.toolId}: ${costError.message}`);
-        }
-
-        const generationParams = {
-            masterAccountId: originalContext.masterAccountId,
-            sessionId: sessionId,
-            initiatingEventId: eventId,
-            serviceName: tool.service,
+        // --- Refactored: Use centralized execution endpoint ---
+        const executionPayload = {
             toolId: tool.toolId,
-            requestPayload: finalInputsForComfyUI,
+            inputs: finalInputs,
+            user: {
+                masterAccountId: originalContext.masterAccountId,
+                platform: originalContext.platform,
+                platformId: originalContext.platformId,
+                platformContext: originalContext.platformContext || {},
+            },
+            sessionId: sessionId,
+            eventId: eventId,
             metadata: {
                 isSpell: true,
-                spell: typeof spell.toObject === 'function' ? spell.toObject() : spell, // Embed the full spell definition
+                spell: typeof spell.toObject === 'function' ? spell.toObject() : spell,
                 stepIndex,
                 pipelineContext,
                 originalContext,
-                costRate: costRateInfo,
-                toolId: tool.toolId,
                 loraResolutionData,
                 notificationContext: {
                     type: 'spell_step_completion',
@@ -120,44 +109,25 @@ class WorkflowExecutionService {
                     stepIndex,
                 },
             },
-            deliveryStrategy: 'spell_step', // Special strategy for the dispatcher
-            deliveryStatus: 'pending',
-            notificationPlatform: originalContext.platform,
-            status: 'pending', // Explicitly set status to pending
         };
 
-        let generationId;
+        let executionResponse;
         try {
-            this.logger.info(`[WorkflowExecution] Preparing to log generation for spell "${spell.name}", step ${stepIndex + 1}.`);
-            const generationResponse = await this.internalApiClient.post('/internal/v1/data/generations', generationParams);
-            generationId = generationResponse.data._id;
-            this.logger.info(`[WorkflowExecution] Logged generation ${generationId} successfully.`);
-
-        } catch(e) {
-            this.logger.error(`[WorkflowExecution] FAILED to post generation record for spell "${spell.name}". Error: ${e.message}`, { 
-                responseData: e.response?.data,
-                // Avoid logging the whole params object if it's huge or has circular refs, just log keys or specific fields
-                generationParamKeys: Object.keys(generationParams),
-                metadataKeys: Object.keys(generationParams.metadata),
-            });
-            throw e; // Re-throw the error to be caught by the bot
+            executionResponse = await this.internalApiClient.post('/internal/v1/data/execute', executionPayload);
+            this.logger.info(`[WorkflowExecution] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
+        } catch (err) {
+            this.logger.error(`[WorkflowExecution] Error submitting step ${stepIndex + 1} to execution endpoint: ${err.message}`);
+            throw err;
         }
-        
-        const submissionResult = await this.comfyuiService.submitRequest({
-            deploymentId: tool.metadata.deploymentId,
-            inputs: finalInputsForComfyUI,
-        });
 
-        const run_id = (typeof submissionResult === 'string') ? submissionResult : submissionResult?.run_id;
-
-        if (run_id) {
-            await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, { "metadata.run_id": run_id, status: 'processing' });
-            this.logger.info(`[WorkflowExecution] Step ${stepIndex + 1} submitted. GenID: ${generationId}, RunID: ${run_id}`);
-        } else {
-            const errorMessage = submissionResult?.error || 'Unknown error during ComfyUI submission';
-            await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, { status: 'failed', statusReason: `ComfyUI submission failed: ${errorMessage}` });
-            throw new Error(`ComfyUI submission failed for step ${stepIndex + 1}: ${errorMessage}`);
+        // Handle immediate delivery tools (e.g., LLMs)
+        if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
+            this.logger.info(`[WorkflowExecution] Immediate tool response for step ${stepIndex + 1}: ${JSON.stringify(executionResponse.data.response)}`);
+            // Optionally, you could process the response here, chain to next step, or log it for audit.
+            // For now, just log and return.
+            return executionResponse.data.response;
         }
+        // For webhook tools, the NotificationDispatcher will handle the rest.
     }
 
     /**

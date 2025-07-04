@@ -89,6 +89,7 @@ export default class AccountDropdown {
                             <a href="#" class="action-btn" data-action="connect">Connect</a>
                             <a href="#" class="action-btn" data-action="history">History</a>
                             <a href="#" class="action-btn" data-action="settings">Settings</a>
+                            <a href="#" class="action-btn" data-action="buy-points">Buy Points</a>
                             <a href="#" class="action-btn" data-action="logout">Logout</a>
                         </div>
                     </div>
@@ -131,6 +132,14 @@ export default class AccountDropdown {
                 this.closeDropdown();
                 const modal = new HistoryModal();
                 modal.show();
+            });
+        }
+        const buyPointsBtn = this.container.querySelector('[data-action="buy-points"]');
+        if (buyPointsBtn) {
+            buyPointsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                if (window.openBuyPointsModal) window.openBuyPointsModal();
             });
         }
         // ... add other action handlers here

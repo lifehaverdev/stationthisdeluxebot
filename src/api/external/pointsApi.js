@@ -1,5 +1,5 @@
 const express = require('express');
-const { requireLogin, authenticateUserOrApiKey } = require('../../../platforms/web/middleware/auth');
+const { requireLogin, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 
 function createPointsApi(dependencies) {
     const router = express.Router();
@@ -12,7 +12,7 @@ function createPointsApi(dependencies) {
      */
     router.get('/supported-assets', async (req, res, next) => {
         try {
-            const response = await internalApiClient.get('/internal/v1/points/supported-assets');
+            const response = await internalApiClient.get('/internal/v1/data/points/supported-assets');
             res.json(response.data);
         } catch (error) {
             next(error);
@@ -26,7 +26,7 @@ function createPointsApi(dependencies) {
      */
     router.post('/quote', async (req, res, next) => {
         try {
-            const response = await internalApiClient.post('/internal/v1/points/quote', req.body);
+            const response = await internalApiClient.post('/internal/v1/data/points/quote', req.body);
             res.json(response.data);
         } catch (error) {
             next(error);
@@ -45,7 +45,7 @@ function createPointsApi(dependencies) {
                 userId: req.user.id,
                 userWalletAddress: req.user.walletAddress
             };
-            const response = await internalApiClient.post('/internal/v1/points/purchase', payload);
+            const response = await internalApiClient.post('/internal/v1/data/points/purchase', payload);
             res.json(response.data);
         } catch (error) {
             next(error);
@@ -63,7 +63,7 @@ function createPointsApi(dependencies) {
             if (!txHash) {
                 return res.status(400).json({ message: 'Transaction hash is required.' });
             }
-            const response = await internalApiClient.get(`/internal/v1/points/tx-status?txHash=${txHash}`);
+            const response = await internalApiClient.get(`/internal/v1/data/points/tx-status?txHash=${txHash}`);
             res.json(response.data);
         } catch (error) {
             next(error);

@@ -325,9 +325,9 @@ class ComfyUIService {
       this.logger.info(`[ComfyUIService] Current finalWebhookUrl startsWithHttp: ${startsWithHttp}, startsWithHttps: ${startsWithHttps}`);
 
       if (!startsWithHttp && !startsWithHttps) {
-        this.logger.info(`[ComfyUIService] Prepending http:// to "${finalWebhookUrl}"`);
-        finalWebhookUrl = `http://${finalWebhookUrl}`;
-        this.logger.info(`[ComfyUIService] After prepending http://: "${finalWebhookUrl}"`);
+        this.logger.info(`[ComfyUIService] Prepending https:// to "${finalWebhookUrl}"`);
+        finalWebhookUrl = `https://${finalWebhookUrl}`;
+        this.logger.info(`[ComfyUIService] After prepending https://: "${finalWebhookUrl}"`);
       } else {
         this.logger.info(`[ComfyUIService] Scheme (http/https) already present, not prepending.`);
       }

@@ -41,12 +41,21 @@ export async function uploadFile(file, modal) {
     }
 
     try {
+        // Fetch CSRF token from backend
+        const csrfRes = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+        if (!csrfRes.ok) {
+            throw new Error('Could not fetch CSRF token.');
+        }
+        const { csrfToken } = await csrfRes.json();
+
         const response = await fetch('/api/v1/storage/upload-url', {
             method: 'POST',
             headers: { 
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'x-csrf-token': csrfToken
             },
             body: JSON.stringify({ fileName: file.name, contentType: file.type }),
+            credentials: 'include',
         });
         if (!response.ok) {
             const errorData = await response.json();
@@ -65,12 +74,7 @@ export async function uploadFile(file, modal) {
             method: 'PUT',
             body: file,
             headers: {
-                'Content-Type': file.type,
-                'Content-Length': file.size.toString(),
-                'Host': host,
-                // Include only the required AWS headers from the URL
-                'x-amz-content-sha256': 'UNSIGNED-PAYLOAD',
-                'x-amz-checksum-crc32': 'AAAAAA=='
+                'Content-Type': file.type
             }
         });
 

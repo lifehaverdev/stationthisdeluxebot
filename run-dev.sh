@@ -14,5 +14,16 @@ if [ -f .env ]; then
   done < <(grep -v '^\s*#' .env | grep '=')
 fi
 
+# --- Load Ethereum signer private key interactively unless SKIP_CREDIT_SERVICE=1 ---
+if [ "${SKIP_CREDIT_SERVICE}" != "1" ]; then
+  if [ -z "$ETHEREUM_SIGNER_PRIVATE_KEY" ]; then
+    echo "Loading Ethereum signer private key from keystore..."
+    ETHEREUM_SIGNER_PRIVATE_KEY="$(node scripts/local_dev_helpers/loadKeystore.js --path ~/.foundry/keystores/STATIONTHIS < /dev/tty | tr -d '\n')"
+    export ETHEREUM_SIGNER_PRIVATE_KEY
+  fi
+else
+  echo "[run-dev.sh] SKIP_CREDIT_SERVICE=1: Skipping Ethereum signer private key setup. CreditService will be inactive."
+fi
+
 # Run the application
 node app.js

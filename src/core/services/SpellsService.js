@@ -46,6 +46,7 @@ class SpellsService {
         }
 
         // 3. Execute the spell via WorkflowExecutionService
+        // NOTE: WorkflowExecutionService now uses the centralized execution endpoint for all tool executions.
         this.logger.info(`[SpellsService] Permissions check passed. Handing off to WorkflowExecutionService for spell "${spell.name}".`);
         const result = await this.workflowExecutionService.execute(spell, context);
         

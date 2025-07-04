@@ -144,38 +144,55 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             userInputPrompt: finalTweakedParams.input_prompt,
         };
 
-        const newGenPayload = {
+        // --- Refactored: Use centralized execution endpoint ---
+        const executionPayload = {
             toolId,
-            requestPayload: servicePayload,
-            masterAccountId,
-            platform: 'telegram',
-            status: 'pending',
-            deliveryStatus: 'pending',
-            notificationPlatform: 'telegram',
-            serviceName: originalRecord.serviceName,
+            inputs: servicePayload,
+            user: {
+                masterAccountId,
+                platform: 'telegram',
+                platformId: masterAccountId, // Telegram user ID
+                platformContext: platformContext || {},
+            },
+            sessionId: originalRecord.sessionId,
+            eventId: initiatingEventId || uuidv4(),
             metadata: newGenMetadata
         };
 
-        const newGenResponse = await internal.client.post('/internal/v1/data/generations', newGenPayload);
-        const newGeneratedId = newGenResponse.data._id;
-        logger.info(`[TweakManager] New tweaked generation logged with ID: ${newGeneratedId}`);
+        const tool = dependencies.toolRegistry.getToolById(toolId);
+        if (!tool) throw new Error(`Tool definition not found for toolId: ${toolId}`);
 
-        let deploymentId = originalRecord.metadata?.deploymentId || toolId;
-        if (deploymentId.startsWith('comfy-')) deploymentId = deploymentId.substring(6);
+        let executionResponse;
+        try {
+            executionResponse = await internal.client.post('/internal/v1/data/execute', executionPayload);
+            logger.info(`[TweakManager] Tweaked generation submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
+        } catch (err) {
+            logger.error(`[TweakManager] Error submitting tweaked generation to execution endpoint: ${err.message}`);
+            await bot.editMessageText("Error: Failed to submit your tweak. Please try again later.", {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                reply_markup: null
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Submission failed.", show_alert: true });
+            return;
+        }
 
-        const submissionResult = await services.comfyui.submitRequest({ deploymentId, inputs: servicePayload });
-        const run_id = submissionResult?.run_id;
-        if (!run_id) throw new Error(`ComfyUI submission failed. Reason: ${submissionResult?.error || 'Unknown'}`);
-
-        await internal.client.put(`/internal/v1/data/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
-        logger.info(`[TweakManager] ComfyUI submission successful for tweaked GenID ${newGeneratedId}.`);
-
-        await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
-            chat_id: message.chat.id,
-            message_id: message.message_id,
-            reply_markup: null
-        });
-        
+        // Use deliveryMode to determine how to respond
+        if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
+            await bot.editMessageText(executionResponse.data.response, {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                reply_markup: null
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Tweak complete!", show_alert: false });
+        } else {
+            await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
+                chat_id: message.chat.id,
+                message_id: message.message_id,
+                reply_markup: null
+            });
+            await bot.answerCallbackQuery(callbackQuery.id, { text: "Applying tweaks...", show_alert: false });
+        }
         delete pendingTweaks[sessionKey];
         logger.info(`[TweakManager] Cleared pendingTweaks for sessionKey: ${sessionKey}`);
 

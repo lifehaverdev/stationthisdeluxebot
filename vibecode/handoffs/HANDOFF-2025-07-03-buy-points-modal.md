@@ -4,6 +4,7 @@
 - **API-Only Data Access:** All data access from the web client must go through internal API endpoints, never direct database calls. The web client communicates only with external API endpoints, which in turn call internal APIs.
 - **Component Organization:** All UI components must be placed under `@/components` (i.e., `src/platforms/web/client/src/sandbox/components`). Subfolders are encouraged for logical grouping.
 - **Asset Management:** All images and assets for this modal must be placed in `public/images/sandbox/components`.
+- **VANILLA JAVASCRIPT CSS HTML ONLY -- NO REACT
 
 ## Backend Integration & API Contracts
 The Buy Points modal relies on three backend modules:
@@ -78,5 +79,9 @@ This document is the north star for the Buy Points modal. All implementation, de
 ## Implementation Progress (as of 2025-07-03)
 - **External API endpoints** for the Buy Points modal have been created in `src/api/external/pointsApi.js` and registered in `src/api/external/index.js`, protected by session or API key authentication.
 - **Internal API endpoints** have been created in `src/api/internal/pointsApi.js` and registered in `src/api/internal/index.js` using the established factory pattern and dependency injection.
-- The **/supported-assets endpoint** is implemented and functional, returning the list of supported tokens and NFTs for the modal UI.
-- **Next step:** Implement the `/quote` endpoint to provide real-time point purchase quotes for tokens and NFTs. 
+- The **/supported-assets**, **/quote**, **/purchase**, and **/tx-status** endpoints are all implemented and functional.
+- The **/tx-status** endpoint uses real data from the credit ledger and blockchain (not mocks), returning accurate status and receipt information for any transaction hash.
+- The backend is now ready for frontend integration and further refinement.
+
+## Next step:
+Implement the `/quote` endpoint to provide real-time point purchase quotes for tokens and NFTs. 
