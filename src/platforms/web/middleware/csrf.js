@@ -20,6 +20,8 @@ const csrfExcluded = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/register', // Add registration if/when implemented
   '/internal/',// Add more as needed
+  '/api/v1/webhook/alchemy',
+  '/api/v1/webhook/comfydeploy',
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)

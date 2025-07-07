@@ -69,6 +69,17 @@ function createUserApi(dependencies) {
       const txRes = await internalApiClient.get(`/internal/v1/data/users/${userId}/transactions`);
       const transactions = txRes.data;
 
+      // Fetch referral vaults
+      let referralVault = null;
+      try {
+        const vaultsRes = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${userId}`);
+        const vaults = vaultsRes.data && Array.isArray(vaultsRes.data.vaults) ? vaultsRes.data.vaults : [];
+        referralVault = vaults.length > 0 ? vaults[0] : null;
+      } catch (vaultErr) {
+        logger.warn('[UserApi] /dashboard: Could not fetch referral vaults:', { error: vaultErr.message });
+        referralVault = null;
+      }
+
       // Username
       const username = user.username || user.profile?.username || user.profile?.name || 'User';
       // Wallet address (primary or first)
@@ -104,7 +115,8 @@ function createUserApi(dependencies) {
         expToNextLevel,
         levelProgressRatio,
         points,
-        rewards
+        rewards,
+        referralVault
       });
     } catch (error) {
       logger.error('[UserApi] /dashboard failed:', {
