@@ -299,6 +299,21 @@ async function fetchQuote() {
     }
 }
 
+async function sendTransaction(tx) {
+    // tx: { to, from, value, data }
+    // value should be a hex string for ETH, or '0x0' for ERC20
+    const params = [{
+        from: tx.from,
+        to: tx.to,
+        value: tx.value && tx.value !== '0' ? '0x' + BigInt(tx.value).toString(16) : '0x0',
+        data: tx.data
+    }];
+    return await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params
+    });
+}
+
 async function initiatePurchase() {
     if (!buyPointsState.quote) return;
     showLoader(true);
@@ -309,7 +324,16 @@ async function initiatePurchase() {
             amountToSend = toSmallestUnit(buyPointsState.amount, decimals);
         }
         // Get wallet address
-        const userWalletAddress = await getUserWalletAddress();
+        let userWalletAddress;
+        try {
+            userWalletAddress = await getUserWalletAddress();
+            console.log('[BuyPointsModal] Wallet address obtained:', userWalletAddress);
+        } catch (walletErr) {
+            console.error('[BuyPointsModal] Wallet connection error:', walletErr);
+            showLoader(false);
+            showError(walletErr.message || 'Could not connect wallet.');
+            return;
+        }
         const body = {
             quoteId: buyPointsState.quote.quoteId,
             type: buyPointsState.selectedAsset.type,
@@ -318,6 +342,7 @@ async function initiatePurchase() {
             userWalletAddress
             // userId should be filled by backend session if needed
         };
+        console.log('[BuyPointsModal] Sending purchase payload:', body);
         const token = await ensureCsrfToken();
         const res = await fetch(`${API_BASE_URL}/purchase`, {
             method: 'POST',
@@ -331,35 +356,56 @@ async function initiatePurchase() {
         if (!res.ok) throw new Error('Failed to initiate purchase');
         buyPointsState.purchase = await res.json();
         showLoader(false);
-        goToStep(4);
-        pollTxStatus();
+        // --- Prompt user to sign transactions ---
+        const { approvalRequired, approvalTx, depositTx } = buyPointsState.purchase;
+        let txHash;
+        if (approvalRequired && approvalTx) {
+            try {
+                showLoader(true);
+                showError('Please sign the approval transaction in your wallet.');
+                const approvalHash = await sendTransaction(approvalTx);
+                console.log('[BuyPointsModal] Approval tx sent:', approvalHash);
+                // Optionally, wait for confirmation before proceeding
+            } catch (err) {
+                showLoader(false);
+                showError('Approval transaction was rejected or failed.');
+                return;
+            }
+        }
+        try {
+            showLoader(true);
+            showError('Please sign the deposit transaction in your wallet.');
+            txHash = await sendTransaction(depositTx);
+            console.log('[BuyPointsModal] Deposit tx sent:', txHash);
+        } catch (err) {
+            showLoader(false);
+            showError('Deposit transaction was rejected or failed.');
+            return;
+        }
+        showLoader(false);
+        goToStep(4); // Step 4: Waiting for confirmation
+        // User can click 'Refresh' to update their account info
+        // TODO: Integrate notification/event-driven updates for real-time status
     } catch (err) {
         showLoader(false);
         showError(err.message || 'Could not initiate purchase.');
     }
 }
 
-async function pollTxStatus() {
-    if (!buyPointsState.purchase || !buyPointsState.purchase.depositTx) return;
-    const txHash = buyPointsState.purchase.depositTx.hash || buyPointsState.purchase.depositTx.txHash || buyPointsState.purchase.depositTx;
-    if (!txHash) return;
-    buyPointsState.pollInterval = setInterval(async function() {
-        try {
-            const res = await fetch(`${API_BASE_URL}/tx-status?txHash=${txHash}`, {
-                credentials: 'include'
-            });
-            if (!res.ok) throw new Error('Failed to fetch tx status');
-            const status = await res.json();
-            buyPointsState.txStatus = status;
-            render();
-            if (status.status === 'CONFIRMED' || status.status === 'FAILED' || status.status === 'REJECTED') {
-                clearInterval(buyPointsState.pollInterval);
-                goToStep(5);
-            }
-        } catch (err) {
-            // Optionally show error
-        }
-    }, 3000);
+// --- Add a manual refresh function ---
+async function handleManualRefresh() {
+    showLoader(true);
+    try {
+        // Fetch latest user/account info (implement as needed)
+        // Example: await fetchUserAccountInfo();
+        // Optionally, update buyPointsState with new info
+        showLoader(false);
+        // Optionally, advance to receipt step if confirmed
+        // goToStep(5);
+    } catch (err) {
+        showLoader(false);
+        showError('Failed to refresh account info.');
+    }
 }
 
 // --- Event Handlers ---
@@ -452,6 +498,7 @@ const buyPointsModalHTML = `
         <div id="modal-step-4" class="modal-step" style="display: none;">
             <h2>Transaction Status</h2>
             <div id="tx-status-display"></div>
+            <button id="manual-refresh-btn">Refresh</button>
         </div>
 
         <!-- Step 5: Receipt -->
@@ -511,6 +558,7 @@ async function initBuyPointsModal() {
     showLoader(true);
     await fetchSupportedAssets();
     showLoader(false);
+    document.getElementById('manual-refresh-btn').addEventListener('click', handleManualRefresh);
 }
 
 window.openBuyPointsModal = initBuyPointsModal; 

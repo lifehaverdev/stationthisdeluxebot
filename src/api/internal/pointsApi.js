@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 const creditVaultAbi = require('../../core/contracts/abis/creditVault.json');
-const { creditVaultAddress } = require('../../core/contracts');
+const { contracts } = require('../../core/contracts');
 
 // Constants are replicated from creditService for immediate use.
 // TODO: Refactor creditService to expose these lists via a method.
@@ -178,11 +178,20 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/purchase', async (req, res, next) => {
         try {
-            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress } = req.body;
+            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress } = req.body;
             logger.info(`[pointsApi] /purchase called with:`, req.body);
-            if (!quoteId || !type || !assetAddress || !userWalletAddress || (type === 'token' && !amount)) {
-                logger.warn('[pointsApi] /purchase missing required fields.');
-                return res.status(400).json({ message: 'Missing required fields.' });
+            // Debug: Log the full request body
+            console.log('[pointsApi] /purchase received body:', req.body);
+            const missingFields = [];
+            if (!quoteId) missingFields.push('quoteId');
+            if (!type) missingFields.push('type');
+            if (!assetAddress) missingFields.push('assetAddress');
+            if (!userWalletAddress) missingFields.push('userWalletAddress');
+            if (type === 'token' && !amount) missingFields.push('amount');
+            if (missingFields.length > 0) {
+                logger.warn(`[pointsApi] /purchase missing required fields: ${missingFields.join(', ')}`);
+                console.warn('[pointsApi] /purchase missing fields:', missingFields, 'Body:', req.body);
+                return res.status(400).json({ message: 'Missing required fields.', missingFields });
             }
 
             let approvalRequired = false;
@@ -191,15 +200,24 @@ module.exports = function pointsApi(dependencies) {
             const purchaseId = 'pid_' + crypto.randomBytes(8).toString('hex');
             const iface = new ethers.Interface(creditVaultAbi);
 
+            // Helper to validate Ethereum address
+            function isValidAddress(addr) {
+                return /^0x[a-fA-F0-9]{40}$/.test(addr);
+            }
+
             if (type === 'token') {
                 if (assetAddress === '0x0000000000000000000000000000000000000000') {
-                    // ETH deposit
-                    const data = iface.encodeFunctionData('deposit', [userWalletAddress, assetAddress, amount]);
+                    // ETH deposit: send plain ETH transfer to contract (no calldata)
+                    const vaultNetwork = 'sepolia'; // TODO: dynamically detect network if needed
+                    const creditVaultAddress = contracts.creditVault.addresses[vaultNetwork];
+                    console.log('[pointsApi] Using creditVaultAddress for ETH deposit:', creditVaultAddress);
+                    let toAddress = creditVaultAddress;
+                    let value = amount;
                     depositTx = {
-                        to: creditVaultAddress,
+                        to: toAddress,
                         from: userWalletAddress,
-                        value: amount,
-                        data
+                        value: value,
+                        data: '0x' // No calldata for ETH transfer
                     };
                     approvalRequired = false;
                     approvalTx = null;
@@ -216,8 +234,22 @@ module.exports = function pointsApi(dependencies) {
                         value: '0',
                         data: approveData
                     };
-                    // 2. Deposit
-                    const data = iface.encodeFunctionData('deposit', [userWalletAddress, assetAddress, amount]);
+                    // 2. Deposit or DepositFor
+                    let toAddress = userWalletAddress;
+                    let useDepositFor = false;
+                    if (recipientAddress && recipientAddress.toLowerCase() !== userWalletAddress.toLowerCase()) {
+                        if (!isValidAddress(recipientAddress)) {
+                            return res.status(400).json({ message: 'Invalid recipient address.' });
+                        }
+                        useDepositFor = true;
+                        toAddress = recipientAddress;
+                    }
+                    let data;
+                    if (useDepositFor) {
+                        data = iface.encodeFunctionData('depositFor', [toAddress, assetAddress, amount]);
+                    } else {
+                        data = iface.encodeFunctionData('deposit', [assetAddress, amount]);
+                    }
                     depositTx = {
                         to: creditVaultAddress,
                         from: userWalletAddress,

@@ -42,8 +42,7 @@ function createPointsApi(dependencies) {
         try {
             const payload = {
                 ...req.body,
-                userId: req.user.id,
-                userWalletAddress: req.user.walletAddress
+                userId: req.user.id
             };
             const response = await internalApiClient.post('/internal/v1/data/points/purchase', payload);
             res.json(response.data);
