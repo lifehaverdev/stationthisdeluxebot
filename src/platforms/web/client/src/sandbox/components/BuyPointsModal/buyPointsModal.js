@@ -160,14 +160,17 @@ function renderReviewStep() {
         return;
     }
     const q = buyPointsState.quote;
+    const b = q.breakdown || {};
     reviewSummary.innerHTML = `
         <div>Asset: ${buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name}</div>
         <div>Amount: ${buyPointsState.amount}</div>
         <div>Points: <b>${q.pointsCredited}</b></div>
-        <div>Funding Rate: ${q.fundingRate}</div>
-        <div>Gross USD: $${q.usdValue.gross.toFixed(2)}</div>
-        <div>Fees: $${q.fees.totalFeesUsd.toFixed(2)}</div>
-        <div>User Receives: $${q.userReceivesUsd.toFixed(2)}</div>
+        <hr>
+        <div>Gross USD: <b>$${(b.grossUsd ?? q.usdValue.gross).toFixed(2)}</b></div>
+        <div>Funding Rate Deduction: <b>-$${(b.fundingRateDeduction ?? 0).toFixed(2)}</b></div>
+        <div>Net After Funding Rate: <b>$${(b.netAfterFundingRate ?? q.usdValue.netAfterFundingRate).toFixed(2)}</b></div>
+        <div>Estimated Gas Fee: <b>-$${(b.estimatedGasUsd ?? q.fees.estimatedGasUsd).toFixed(2)}</b></div>
+        <div style="font-weight:bold; color:#4caf50;">User Receives: $${(b.userReceivesUsd ?? q.userReceivesUsd).toFixed(2)}</div>
     `;
 }
 

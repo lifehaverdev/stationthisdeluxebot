@@ -511,7 +511,7 @@ class CreditService {
         this.logger.info(`[CreditService] Step 1: Applying dynamic funding rate for token ${token}...`);
         const fundingRate = TOKEN_FUNDING_RATES[token.toLowerCase()] || DEFAULT_FUNDING_RATE;
         const adjustedGrossDepositUsd = parseFloat(formatEther(amount)) * fundingRate;
-        this.logger.info(`[CreditService] Original Value: $${formatEther(amount).toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
+        this.logger.info(`[CreditService] Original Value: $${parseFloat(formatEther(amount)).toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
 
         // 2. USER ACCOUNT VERIFICATION
         this.logger.info(`[CreditService] Step 2: Verifying user account for depositor ${user}...`);
@@ -591,7 +591,7 @@ class CreditService {
         }
 
         // 4. EXECUTE ON-CHAIN CONFIRMATION (for the entire group)
-        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${formatEther(escrowAmountForContract)} ETH, Total Fee: ${formatEther(totalFeeInWei)} ETH`);
+        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(totalFeeInWei)).toFixed(6)} ETH`);
         const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, totalFeeInWei, '0x');
         this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
@@ -1120,6 +1120,65 @@ class CreditService {
     } catch (error) {
         this.logger.error(`[CreditService] Failed to create referral vault for ${ownerAddress}:`, error);
         throw error;
+    }
+  }
+
+  /**
+   * Estimates the gas cost in USD for a deposit transaction (ETH, ERC20, or NFT).
+   * @param {object} params - The parameters for the deposit.
+   * @param {string} params.type - 'token' or 'nft'.
+   * @param {string} params.assetAddress - The token or NFT contract address.
+   * @param {string} params.amount - The amount in smallest unit (for tokens).
+   * @param {string} params.userWalletAddress - The user's wallet address.
+   * @param {string} [params.tokenId] - The NFT tokenId (for NFTs).
+   * @returns {Promise<number>} Estimated gas cost in USD.
+   */
+  async estimateDepositGasCostInUsd({ type, assetAddress, amount, userWalletAddress, tokenId }) {
+    const { address: vaultAddress, abi: vaultAbi } = this.contractConfig;
+    try {
+      if (type === 'token') {
+        // ETH deposit: estimate a value transfer (no calldata)
+        if (assetAddress === '0x0000000000000000000000000000000000000000') {
+          // For ETH, estimate a simple transfer to the vault
+          // ethers.js doesn't estimate gas for plain value transfers directly, so use provider.estimateGas
+          const tx = {
+            to: vaultAddress,
+            from: userWalletAddress,
+            value: amount
+          };
+          const gasEstimate = await this.ethereumService.getProvider().estimateGas(tx);
+          const gasPrice = (await this.ethereumService.getProvider().getFeeData()).gasPrice;
+          const ethPriceUsd = await this.priceFeedService.getPriceInUsd(assetAddress);
+          const estimatedCostUsd = parseFloat(formatEther(gasEstimate * gasPrice)) * ethPriceUsd;
+          return estimatedCostUsd;
+        } else {
+          // ERC20: estimate deposit(assetAddress, amount)
+          // Use deposit (not depositFor) for quote
+          return await this.ethereumService.estimateGasCostInUsd(
+            vaultAddress,
+            vaultAbi,
+            'deposit',
+            assetAddress,
+            amount
+          );
+        }
+      } else if (type === 'nft') {
+        // NFT: estimate safeTransferFrom(user, vault, tokenId)
+        const erc721Abi = ["function safeTransferFrom(address from, address to, uint256 tokenId)"];
+        return await this.ethereumService.estimateGasCostInUsd(
+          assetAddress,
+          erc721Abi,
+          'safeTransferFrom',
+          userWalletAddress,
+          vaultAddress,
+          tokenId
+        );
+      } else {
+        throw new Error(`Unsupported type for gas estimation: ${type}`);
+      }
+    } catch (err) {
+      this.logger.error('[CreditService] Failed to estimate deposit gas cost:', err);
+      throw err;
     }
   }
 }

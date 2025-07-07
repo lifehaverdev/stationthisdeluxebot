@@ -93,15 +93,15 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/quote', async (req, res, next) => {
         try {
-            const { type, assetAddress, amount, tokenId } = req.body;
+            const { type, assetAddress, amount, tokenId, userWalletAddress } = req.body;
+            console.log('[pointsApi:/quote] Incoming request:', req.body);
             if (!type || !assetAddress || (type === 'token' && !amount)) {
                 return res.status(400).json({ message: 'Missing required fields.' });
             }
 
             let fundingRate, symbol, name, decimals, grossUsd, netAfterFundingRate, price, assetAmount;
-            let estimatedGasUsd = 5.5; // Placeholder
-            let protocolMarkupRate = 0.30; // Placeholder, should match creditService.js
-            let protocolMarkupUsd, totalFeesUsd, userReceivesUsd, pointsCredited;
+            let estimatedGasUsd = 5.5; // Placeholder, will be replaced by dynamic estimation
+            let userReceivesUsd, pointsCredited;
 
             if (type === 'token') {
                 // Lookup token config
@@ -116,11 +116,26 @@ module.exports = function pointsApi(dependencies) {
                 symbol = data.symbol;
                 name = data.name;
                 decimals = data.decimals;
-                assetAmount = parseFloat((BigInt(amount) / BigInt(10 ** decimals)).toString());
+                // Fix: Use floating point division for assetAmount
+                assetAmount = Number(amount) / 10 ** decimals;
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
+                console.log('[pointsApi:/quote] Price fetched for', assetAddress, ':', price);
                 grossUsd = assetAmount * price;
                 netAfterFundingRate = grossUsd * fundingRate;
+                // --- Dynamic gas estimation ---
+                try {
+                    if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
+                    estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
+                        type,
+                        assetAddress,
+                        amount,
+                        userWalletAddress
+                    });
+                    console.log('[pointsApi:/quote] Dynamic gas estimate (USD):', estimatedGasUsd);
+                } catch (err) {
+                    console.warn('[pointsApi:/quote] Failed to estimate gas dynamically, using fallback:', err);
+                }
             } else if (type === 'nft') {
                 // Lookup NFT config
                 const nftConfig = Object.entries(TRUSTED_NFT_COLLECTIONS).find(
@@ -135,20 +150,58 @@ module.exports = function pointsApi(dependencies) {
                 name = data.name;
                 // Get floor price in USD
                 price = await nftPriceService.getFloorPriceInUsd(assetAddress);
+                console.log('[pointsApi:/quote] NFT price fetched for', assetAddress, ':', price);
                 if (!price) {
                     return res.status(400).json({ message: 'Could not fetch NFT floor price.' });
                 }
                 grossUsd = price;
                 netAfterFundingRate = grossUsd * fundingRate;
                 assetAmount = 1;
+                // --- Dynamic gas estimation for NFT transfer ---
+                try {
+                    if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
+                    estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
+                        type,
+                        assetAddress,
+                        tokenId,
+                        userWalletAddress
+                    });
+                    console.log('[pointsApi:/quote] Dynamic gas estimate (USD) for NFT:', estimatedGasUsd);
+                } catch (err) {
+                    console.warn('[pointsApi:/quote] Failed to estimate gas dynamically for NFT, using fallback:', err);
+                }
             } else {
                 return res.status(400).json({ message: 'Invalid type.' });
             }
 
-            protocolMarkupUsd = (netAfterFundingRate - estimatedGasUsd) * protocolMarkupRate;
-            totalFeesUsd = estimatedGasUsd + protocolMarkupUsd;
-            userReceivesUsd = netAfterFundingRate - totalFeesUsd;
-            pointsCredited = Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE);
+            // Calculate funding rate deduction
+            const fundingRateDeduction = grossUsd - netAfterFundingRate;
+
+            // Only deduct gas after funding rate
+            userReceivesUsd = netAfterFundingRate - estimatedGasUsd;
+
+            // Ensure pointsCredited is always set and valid
+            if (typeof USD_TO_POINTS_CONVERSION_RATE === 'number' && USD_TO_POINTS_CONVERSION_RATE > 0 && typeof userReceivesUsd === 'number' && userReceivesUsd > 0) {
+                pointsCredited = Math.max(0, Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE));
+            } else {
+                pointsCredited = 0;
+            }
+
+            // Log all intermediate values
+            console.log('[pointsApi:/quote] Calculated values:', {
+                fundingRate,
+                symbol,
+                name,
+                decimals,
+                assetAmount,
+                price,
+                grossUsd,
+                fundingRateDeduction,
+                netAfterFundingRate,
+                estimatedGasUsd,
+                userReceivesUsd,
+                pointsCredited
+            });
 
             const quoteId = 'qid_' + crypto.randomBytes(8).toString('hex');
 
@@ -158,12 +211,17 @@ module.exports = function pointsApi(dependencies) {
                 usdValue: { gross: grossUsd, netAfterFundingRate },
                 fundingRate,
                 fees: {
-                    estimatedGasUsd,
-                    protocolMarkupUsd,
-                    totalFeesUsd
+                    estimatedGasUsd
                 },
                 userReceivesUsd,
-                quoteId
+                quoteId,
+                breakdown: {
+                    grossUsd,
+                    fundingRateDeduction,
+                    netAfterFundingRate,
+                    estimatedGasUsd,
+                    userReceivesUsd
+                }
             });
         } catch (error) {
             logger.error('Failed to generate quote:', error);
