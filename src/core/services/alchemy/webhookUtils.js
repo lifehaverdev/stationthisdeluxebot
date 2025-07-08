@@ -1,27 +1,6 @@
 const crypto = require('crypto');
 
 /**
- * Adds Alchemy webhook context to the request object
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Buffer} buf - Raw body buffer
- * @param {string} encoding - Encoding (not used)
- */
-function addAlchemyContextToRequest(req, res, buf, encoding) {
-  const logger = req.app && req.app.locals && req.app.locals.logger ? req.app.locals.logger : console;
-  logger.info('[AlchemyWebhookUtils] addAlchemyContextToRequest called', {
-    bufLength: buf ? buf.length : 0,
-    encoding
-  });
-  if (buf && buf.length) {
-    req.rawBody = buf;
-    logger.info('[AlchemyWebhookUtils] req.rawBody set', { rawBodyLength: buf.length });
-  } else {
-    logger.warn('[AlchemyWebhookUtils] No buffer provided to addAlchemyContextToRequest');
-  }
-}
-
-/**
  * Creates middleware to validate Alchemy webhook signatures
  * @param {string} signingKey - Webhook signing key from Alchemy
  * @returns {Function} Express middleware
@@ -57,6 +36,5 @@ function validateAlchemySignature(signingKey) {
 }
 
 module.exports = {
-  addAlchemyContextToRequest,
   validateAlchemySignature
 }; 

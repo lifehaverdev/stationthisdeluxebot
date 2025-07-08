@@ -2,6 +2,7 @@ const express = require('express');
 const { createLogger } = require('../../utils/logger');
 const { processComfyDeployWebhook } = require('../../core/services/comfydeploy/webhookProcessor');
 const { validateAlchemySignature, addAlchemyContextToRequest } = require('../../core/services/alchemy/webhookUtils');
+const bodyParser = require('body-parser');
 
 /**
  * Creates the webhook API router for handling external webhook events.
@@ -65,12 +66,13 @@ function createWebhookApi(dependencies) {
         });
         next();
       },
-      express.json({ verify: addAlchemyContextToRequest }),
+      bodyParser.raw({ type: 'application/json' }),
       (req, res, next) => {
         const logger = dependencies.logger || console;
-        logger.info('[AlchemyWebhook] After express.json', {
+        req.rawBody = req.body;
+        logger.info('[AlchemyWebhook] After express.raw', {
           hasRawBody: !!req.rawBody,
-          body: req.body
+          rawBodyLength: req.rawBody ? req.rawBody.length : 0
         });
         next();
       },
@@ -83,6 +85,17 @@ function createWebhookApi(dependencies) {
         next();
       },
       validateAlchemySignature(alchemySigningKey),
+      (req, res, next) => {
+        const logger = dependencies.logger || console;
+        try {
+          req.body = JSON.parse(req.rawBody.toString('utf8'));
+          logger.info('[AlchemyWebhook] JSON body parsed successfully');
+          next();
+        } catch (e) {
+          logger.error('[AlchemyWebhook] Failed to parse JSON body', { error: e.message });
+          return res.status(400).json({ error: 'Invalid JSON' });
+        }
+      },
       async (req, res) => {
         const logger = dependencies.logger || console;
         logger.info('[AlchemyWebhook] Handler start', {
