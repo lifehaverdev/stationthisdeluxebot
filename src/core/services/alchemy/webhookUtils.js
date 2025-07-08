@@ -2,12 +2,12 @@ const crypto = require('crypto');
 
 /**
  * Adds Alchemy webhook context to the request object
- * @param {Buffer} rawBody - Raw request body buffer
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @param {Buffer} buf - Raw body buffer
+ * @param {string} encoding - Encoding (not used)
  */
-function addAlchemyContextToRequest(rawBody, req, res, buf) {
+function addAlchemyContextToRequest(req, res, buf, encoding) {
   if (buf && buf.length) {
     req.rawBody = buf;
   }
