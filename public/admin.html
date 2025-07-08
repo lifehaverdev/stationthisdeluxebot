@@ -7,27 +7,8 @@
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
         header { background-color: #333; color: #fff; padding: 1rem; text-align: center; }
-        nav { background-color: #444; padding: 1rem; }
-        nav ul { list-style-type: none; padding: 0; margin: 0; text-align: center; }
-        nav ul li { display: inline; margin-right: 20px; }
-        nav ul li a { color: #fff; text-decoration: none; }
-        .container { padding: 20px; }
-        .metric-group { margin-bottom: 20px; padding: 15px; background-color: #fff; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1, h2 { text-align: center; }
-        h3 { margin-top: 0; }
-        pre { background-color: #eee; padding: 10px; border-radius: 3px; white-space: pre-wrap; word-wrap: break-word; }
-        .metric-header { cursor: pointer; padding: 10px; background-color: #e9e9e9; margin-top:0; margin-bottom:0; border-bottom: 1px solid #ddd; }
-        .metric-header:hover { background-color: #dcdcdc; }
-        .metric-content { padding: 15px; display: none; /* Initially hidden */ }
-        .metric-content.open { display: block; }
-        #user-sessions-controls { margin-bottom: 15px; padding: 10px; background-color: #f0f0f0; border-radius: 3px; }
-        #user-sessions-controls label { margin-right: 5px; }
-        #user-sessions-controls input[type="number"], #user-sessions-controls input[type="text"] { margin-right: 10px; width: 80px; }
-        .session-summary { margin-bottom: 10px; padding: 8px; background-color: #f9f9f9; border: 1px solid #eee; border-radius: 3px; cursor: pointer; }
-        .session-summary:hover { background-color: #efefef; }
-        .session-events { display: none; padding-left: 20px; margin-top: 5px; border-left: 2px solid #ccc; }
-        .session-events.open { display: block; }
-        .session-events pre { font-size: 0.9em; }
+        #wallet-connection-panel { margin: 2rem auto 1rem auto; max-width: 400px; text-align: center; }
+        .admin-content-placeholder { margin: 3rem auto; text-align: center; color: #888; font-size: 1.2rem; }
     </style>
 </head>
 <body>
@@ -35,68 +16,9 @@
         <h1>StationThis Deluxe Bot - Admin Dashboard</h1>
     </header>
     <div id="wallet-connection-panel"></div>
-    <nav>
-        <ul>
-            <li><a href="/admin">Home</a></li>
-            <!-- Placeholder for future links -->
-        </ul>
-    </nav>
-    <div class="container">
-        <div id="dau-stats" class="metric-group">
-            <h2 class="metric-header">Daily Active Users (DAU)</h2>
-            <div class="metric-content">
-                <p id="dau-count">Loading...</p>
-            </div>
-        </div>
-
-        <div id="gens-stats" class="metric-group">
-            <h2 class="metric-header">Recent Generations (last 24h)</h2>
-            <div class="metric-content">
-                <p>Count: <span id="gens-count">Loading...</span></p>
-                <h4>Sample Records:</h4>
-                <pre id="gens-records">Loading...</pre>
-            </div>
-        </div>
-
-        <div id="history-stats" class="metric-group">
-            <h2 class="metric-header">Recent History (last 24h)</h2>
-            <div class="metric-content">
-                <p>Count: <span id="history-count">Loading...</span></p>
-                <h4>Sample Records:</h4>
-                <pre id="history-records">Loading...</pre>
-            </div>
-        </div>
-
-        <div id="gens-duration-stats" class="metric-group">
-            <h2 class="metric-header">Generation Duration Stats (last 24h)</h2>
-            <div class="metric-content">
-                <p>Total Generations: <span id="total-gens-count">Loading...</span></p>
-                <p>Total Duration (seconds): <span id="total-gens-duration">Loading...</span></p>
-                <p>Average Duration (seconds): <span id="avg-gens-duration">Loading...</span></p>
-                <h4>Duration Per User (Top 5 by duration):</h4>
-                <pre id="gens-duration-by-user">Loading...</pre>
-            </div>
-        </div>
-
-        <div id="user-sessions-stats" class="metric-group">
-            <h2 class="metric-header">User Session Narratives (Last 3 Days)</h2>
-            <div class="metric-content">
-                <div id="user-sessions-controls">
-                    <label for="session-days">Days to scan:</label>
-                    <input type="number" id="session-days" value="3" min="1" max="30">
-                    <label for="session-user-id">User ID (optional):</label>
-                    <input type="text" id="session-user-id" placeholder="Enter User ID">
-                    <label for="session-timeout">Inactivity Timeout (minutes):</label>
-                    <input type="number" id="session-timeout" value="30" min="5">
-                    <button id="fetch-sessions-btn">Fetch Sessions</button>
-                </div>
-                <div id="user-sessions-summary">Loading session data...</div>
-                <!-- Detailed session events will be populated here dynamically -->
-            </div>
-        </div>
-
+    <div class="admin-content-placeholder">
+        Admin features will appear here after wallet verification.
     </div>
-
-    <script type="module" src="/js/admin-dashboard.js"></script> 
+    <script type="module" src="/js/admin-dashboard.js"></script>
 </body>
 </html> 

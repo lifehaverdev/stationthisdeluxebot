@@ -1,10 +1,10 @@
 /**
  * StationThis Bot - Entry Point
  * 
- * This file serves as the entry point for the refactored application.
+ * This file serves as the entry point for the application.
  */
 
-const express = require('express');
+//const express = require('express');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid'); // For request IDs in errors
 
@@ -20,8 +20,6 @@ const { initializeDatabase } = require('./src/core/initDB'); // Uses getCachedCl
 const { initializeServices } = require('./src/core/services'); // Initializes all services
 const { initializePlatforms } = require('./src/platforms');
 const { initialize } = require('./src/core/initialization');
-// Import the route initializer function directly
-const { initializeRoutes: setupWebRoutes } = require('./src/platforms/web');
 
 // Import new services for notification dispatching
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
@@ -38,12 +36,12 @@ const { CommandRegistry } = require('./src/platforms/telegram/dynamicCommands.js
 async function startApp() {
   try {
     logger.info('===================================================');
-    logger.info('| Initializing StationThis Bot application |');
+    logger.info('===| Initializing StationThis Bot Application |====');
     logger.info('===================================================');
     logger.info('===================================================');
-    logger.info('=')
-    logger.info('=')
-    logger.info('=')
+    logger.info('===================================================');
+    logger.info('===================================================');
+    logger.info('===================================================');
     // Initialize Database Connection FIRST
     await initializeDatabase();
     logger.info('Database connection initialized.');
@@ -53,26 +51,26 @@ async function startApp() {
       logger: logger // Pass the app logger or a child logger
     });
     logger.info('Core services initialized.');
-/*
-] [app]: services (shallow): {
-  "session": "object",
-  "media": "object",
-  "points": "object",
-  "comfyUI": "object",
-  "workflows": "object",
-  "openai": "object",
-  "db": "object",
-  "internal": "object",
-  "internalApiClient": "undefined",
-  "userSettingsService": "object",
-  "spellsService": "object",
-  "workflowExecutionService": "object",
-  "logger": "object",
-  "appStartTime": "object",
-  "toolRegistry": "object"
-}
-*/
-    
+    /*
+    ] [app]: services (shallow): {
+      "session": "object",
+      "media": "object",
+      "points": "object",
+      "comfyUI": "object",
+      "workflows": "object",
+      "openai": "object",
+      "db": "object",
+      "internal": "object",
+      "internalApiClient": "undefined",
+      "userSettingsService": "object",
+      "spellsService": "object",
+      "workflowExecutionService": "object",
+      "logger": "object",
+      "appStartTime": "object",
+      "toolRegistry": "object"
+    }
+    */
+
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
       logger.info('Initializing WorkflowsService cache...');

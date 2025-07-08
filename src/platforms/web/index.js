@@ -15,6 +15,13 @@ const { createLogger } = require('../../utils/logger');
 const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 
+// Add this function before middleware setup
+function rawBodySaver(req, res, buf, encoding) {
+  if (buf && buf.length) {
+    req.rawBody = buf;
+  }
+}
+
 /**
  * Initialize the web platform
  * @param {Object} services - Core services
@@ -36,7 +43,7 @@ function initializeWebPlatform(services, options = {}) {
     origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:4000'],
     credentials: true
   }));
-  app.use(express.json());
+  app.use(express.json({ verify: rawBodySaver }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 

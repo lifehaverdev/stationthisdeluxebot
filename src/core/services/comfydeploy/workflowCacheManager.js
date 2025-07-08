@@ -1,6 +1,7 @@
 const DEBUG_LOGGING_ENABLED = false; // Set to true to enable detailed logging
 const DEBUG_LOGGING_ENABLED_MULTILORA = false; // Set to true to enable detailed logging
 const DEBUG_BUILD_INDEXES = false; // Set to true to enable detailed logging
+const DEBUG = false; // Set to true to enable detailed logging
 
 const { 
   DEFAULT_TIMEOUT, // Keep for potential future use within manager
@@ -833,7 +834,7 @@ class WorkflowCacheManager {
     // Check for version_id directly on deployment, which was the original expectation from the log message
     if (!deployment.version_id) {
         const deploymentDetailsLog = DEBUG_LOGGING_ENABLED ? ` Full deployment object: ${JSON.stringify(deployment)}` : '';
-        this.logger.warn(`[WorkflowCacheManager] Deployment ${deploymentId} (Name: ${deployment.name || 'N/A'}) is missing 'version_id' field. This field is often used to link to machine configurations for costing.${deploymentDetailsLog}`);
+        if (DEBUG) this.logger.warn(`[WorkflowCacheManager] Deployment ${deploymentId} (Name: ${deployment.name || 'N/A'}) is missing 'version_id' field. This field is often used to link to machine configurations for costing.${deploymentDetailsLog}`);
         // Continue to machine_id logic as a fallback, but log this absence.
     }
 
