@@ -206,20 +206,20 @@ class CreditService {
     // Get event fragments for all events we're interested in
     const depositEventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
     const withdrawalEventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
-    const nftDepositEventFragment = this.ethereumService.getEventFragment('NFTDepositRecorded', this.contractConfig.abi);
+    // const nftDepositEventFragment = this.ethereumService.getEventFragment('NFTDepositRecorded', this.contractConfig.abi);
 
-    if (!depositEventFragment || !withdrawalEventFragment || !nftDepositEventFragment) {
+    if (!depositEventFragment || !withdrawalEventFragment ) {//|| !nftDepositEventFragment) {
         this.logger.error("[CreditService] Event fragments not found in ABI. Cannot process webhook.");
         return { success: false, message: "Server configuration error: ABI issue.", detail: null };
     }
 
     const depositEventHash = this.ethereumService.getEventTopic(depositEventFragment);
     const withdrawalEventHash = this.ethereumService.getEventTopic(withdrawalEventFragment);
-    const nftDepositEventHash = this.ethereumService.getEventTopic(nftDepositEventFragment);
+    //const nftDepositEventHash = this.ethereumService.getEventTopic(nftDepositEventFragment);
 
     let processedDeposits = 0;
     let processedWithdrawals = 0;
-    let processedNftDeposits = 0;
+    //let processedNftDeposits = 0;
 
     for (const log of logs) {
         const { transaction, topics, data, index: logIndex } = log;
@@ -231,13 +231,13 @@ class CreditService {
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
                 await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
                 processedDeposits++;
-            } else if (topics[0] === nftDepositEventHash) {
-                // Process NFT deposit event
-                const decodedLog = this.ethereumService.decodeEventLog(nftDepositEventFragment, data, topics, this.contractConfig.abi);
-                await this._processNftDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
-                processedNftDeposits++;
-            }
-            else if (topics[0] === withdrawalEventHash) {
+            // } else if (topics[0] === nftDepositEventHash) {
+            //     // Process NFT deposit event
+            //     const decodedLog = this.ethereumService.decodeEventLog(nftDepositEventFragment, data, topics, this.contractConfig.abi);
+            //     await this._processNftDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
+            //     processedNftDeposits++;
+            // }
+            } else if (topics[0] === withdrawalEventHash) {
                 // Process withdrawal event
                 const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
                 await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
@@ -314,79 +314,79 @@ class CreditService {
    * Internal helper to process a single NFT deposit event
    * @private
    */
-  async _processNftDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
-      const { user, collection, tokenId } = decodedLog;
-      const normalizedAddress = collection.toLowerCase();
+//   async _processNftDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
+//       const { user, collection, tokenId } = decodedLog;
+//       const normalizedAddress = collection.toLowerCase();
       
-      this.logger.info(`[CreditService] Processing NFT Deposit from tx ${transactionHash}: User ${user}, Collection ${collection}, TokenID ${tokenId}`);
+//       this.logger.info(`[CreditService] Processing NFT Deposit from tx ${transactionHash}: User ${user}, Collection ${collection}, TokenID ${tokenId}`);
       
-      const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
-      if (existingEntry) {
-          this.logger.debug(`[CreditService] Skipping NFT deposit event for tx ${transactionHash} as it's already acknowledged.`);
-          return;
-      }
+//       const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
+//       if (existingEntry) {
+//           this.logger.debug(`[CreditService] Skipping NFT deposit event for tx ${transactionHash} as it's already acknowledged.`);
+//           return;
+//       }
       
-      const masterAccountId = await this.walletLinkingService.getMasterAccountIdForWallet(user);
-      if (!masterAccountId) {
-          this.logger.warn(`[CreditService] No user account found for NFT depositor address ${user}. Cannot credit NFT deposit.`);
-          // Create a rejected entry for audit purposes
-          await this.creditLedgerDb.createLedgerEntry({
-              deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, depositor_address: user,
-              token_address: collection, token_id: tokenId, status: 'REJECTED_UNKNOWN_USER', failure_reason: 'No corresponding user account found for the depositor address.'
-          });
-          return;
-      }
+//       const masterAccountId = await this.walletLinkingService.getMasterAccountIdForWallet(user);
+//       if (!masterAccountId) {
+//           this.logger.warn(`[CreditService] No user account found for NFT depositor address ${user}. Cannot credit NFT deposit.`);
+//           // Create a rejected entry for audit purposes
+//           await this.creditLedgerDb.createLedgerEntry({
+//               deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, depositor_address: user,
+//               token_address: collection, token_id: tokenId, status: 'REJECTED_UNKNOWN_USER', failure_reason: 'No corresponding user account found for the depositor address.'
+//           });
+//           return;
+//       }
       
-      let usdValue = 0;
-      let fundingRate = 0;
-      let collectionName = 'Unknown';
+//       let usdValue = 0;
+//       let fundingRate = 0;
+//       let collectionName = 'Unknown';
       
-      const trustedInfo = TRUSTED_NFT_COLLECTIONS[normalizedAddress];
+//       const trustedInfo = TRUSTED_NFT_COLLECTIONS[normalizedAddress];
       
-      if (trustedInfo) {
-          collectionName = trustedInfo.name;
-          fundingRate = trustedInfo.fundingRate;
-          usdValue = await this.services.nftPriceService.getFloorPriceInUsd(normalizedAddress);
-          this.logger.info(`[CreditService] Trusted collection '${collectionName}' found. Using boosted funding rate: ${fundingRate}. Floor price: $${usdValue}`);
-      } else {
-          fundingRate = BASELINE_NFT_FUNDING_RATE;
-          usdValue = await this.services.nftPriceService.getFloorPriceInUsd(normalizedAddress);
-          this.logger.info(`[CreditService] Non-trusted collection. Using baseline funding rate: ${fundingRate}. Floor price: $${usdValue}`);
-      }
+//       if (trustedInfo) {
+//           collectionName = trustedInfo.name;
+//           fundingRate = trustedInfo.fundingRate;
+//           usdValue = await this.services.nftPriceService.getFloorPriceInUsd(normalizedAddress);
+//           this.logger.info(`[CreditService] Trusted collection '${collectionName}' found. Using boosted funding rate: ${fundingRate}. Floor price: $${usdValue}`);
+//       } else {
+//           fundingRate = BASELINE_NFT_FUNDING_RATE;
+//           usdValue = await this.services.nftPriceService.getFloorPriceInUsd(normalizedAddress);
+//           this.logger.info(`[CreditService] Non-trusted collection. Using baseline funding rate: ${fundingRate}. Floor price: $${usdValue}`);
+//       }
       
-      if (!usdValue || usdValue <= 0) {
-          this.logger.warn(`[CreditService] No valid floor price found for NFT collection ${collection}. Rejecting deposit.`);
-          await this.creditLedgerDb.createLedgerEntry({
-              deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, depositor_address: user,
-              token_address: collection, token_id: tokenId, status: 'REJECTED_NO_FLOOR_PRICE', failure_reason: 'Collection has no detectable floor price.'
-          });
-          return;
-      }
+//       if (!usdValue || usdValue <= 0) {
+//           this.logger.warn(`[CreditService] No valid floor price found for NFT collection ${collection}. Rejecting deposit.`);
+//           await this.creditLedgerDb.createLedgerEntry({
+//               deposit_tx_hash: transactionHash, deposit_log_index: logIndex, deposit_block_number: blockNumber, depositor_address: user,
+//               token_address: collection, token_id: tokenId, status: 'REJECTED_NO_FLOOR_PRICE', failure_reason: 'Collection has no detectable floor price.'
+//           });
+//           return;
+//       }
       
-      const userCreditedUsd = usdValue * fundingRate;
-      const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
+//       const userCreditedUsd = usdValue * fundingRate;
+//       const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
       
-      const ledgerEntry = {
-          deposit_tx_hash: transactionHash,
-          deposit_log_index: logIndex,
-          deposit_block_number: blockNumber,
-          master_account_id: masterAccountId,
-          depositor_address: user,
-          token_address: collection,
-          token_id: tokenId.toString(),
-          deposit_type: 'NFT',
-          status: 'CONFIRMED',
-          gross_deposit_usd: usdValue,
-          funding_rate_applied: fundingRate,
-          user_credited_usd: userCreditedUsd,
-          points_credited: pointsCredited,
-          points_remaining: pointsCredited,
-          collection_name: collectionName,
-      };
+//       const ledgerEntry = {
+//           deposit_tx_hash: transactionHash,
+//           deposit_log_index: logIndex,
+//           deposit_block_number: blockNumber,
+//           master_account_id: masterAccountId,
+//           depositor_address: user,
+//           token_address: collection,
+//           token_id: tokenId.toString(),
+//           deposit_type: 'NFT',
+//           status: 'CONFIRMED',
+//           gross_deposit_usd: usdValue,
+//           funding_rate_applied: fundingRate,
+//           user_credited_usd: userCreditedUsd,
+//           points_credited: pointsCredited,
+//           points_remaining: pointsCredited,
+//           collection_name: collectionName,
+//       };
       
-      await this.creditLedgerDb.createLedgerEntry(ledgerEntry);
-      this.logger.info(`[CreditService] Successfully credited ${pointsCredited} points for NFT deposit from ${collectionName} (ID: ${tokenId}) to user ${masterAccountId}.`);
-  }
+//       await this.creditLedgerDb.createLedgerEntry(ledgerEntry);
+//       this.logger.info(`[CreditService] Successfully credited ${pointsCredited} points for NFT deposit from ${collectionName} (ID: ${tokenId}) to user ${masterAccountId}.`);
+//   }
 
   /**
    * Internal helper to process a single withdrawal event
