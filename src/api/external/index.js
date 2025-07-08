@@ -27,6 +27,8 @@ const createPointsApi = require('./pointsApi');
 function initializeExternalApi(dependencies) {
   const logger = createLogger('ExternalAPI');
   const externalApiRouter = express.Router();
+  // Ensure dependencies.internal exists before setting .client
+  dependencies.internal = dependencies.internal || {};
   dependencies.internal.client = internalApiClient;
   // --- Middleware ---
 
