@@ -257,8 +257,10 @@ class CreditService {
 
     return {
         success: true,
-        message: `Processed ${processedDeposits} deposits, ${processedNftDeposits} NFT deposits, and ${processedWithdrawals} withdrawals.`,
-        detail: { processedDeposits, processedNftDeposits, processedWithdrawals }
+        //message: `Processed ${processedDeposits} deposits, ${processedNftDeposits} NFT deposits, and ${processedWithdrawals} withdrawals.`,
+        message: `Processed ${processedDeposits} deposits, and ${processedWithdrawals} withdrawals.`,
+        //detail: { processedDeposits, processedNftDeposits, processedWithdrawals }
+        detail: { processedDeposits, processedWithdrawals }
     };
   }
 
