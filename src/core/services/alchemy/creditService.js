@@ -22,16 +22,16 @@ const TOKEN_FUNDING_RATES = {
   '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': 0.95, // MS2 
   '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': 0.95, // CULT
   // Tier 2: 0.70
-  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 0.70, // USDC
-  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 0.70, // WETH
-  '0x0000000000000000000000000000000000000000': 0.70, // Native ETH
-  '0xdac17f958d2ee523a2206206994597c13d831ec7': 0.70, // USDT
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 0.80, // USDC
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 0.80, // WETH
+  '0x0000000000000000000000000000000000000000': 0.80, // Native ETH
+  '0xdac17f958d2ee523a2206206994597c13d831ec7': 0.80, // USDT
   // Tier 3: 0.60
-  '0x6982508145454ce325ddbe47a25d4ec3d2311933': 0.60, // PEPE
-  '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': 0.60, // MOG
-  '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': 0.60, // SPX6900 
+  '0x6982508145454ce325ddbe47a25d4ec3d2311933': 0.70, // PEPE
+  '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': 0.70, // MOG
+  '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': 0.70, // SPX6900 
 };
-const DEFAULT_FUNDING_RATE = 0.55; // Fallback for any other token
+const DEFAULT_FUNDING_RATE = 0.65; // Fallback for any other token
 
 const TRUSTED_NFT_COLLECTIONS = {
   // Mainnet Addresses
@@ -620,8 +620,9 @@ class CreditService {
             return;
         }
 
-        const totalMarkupUsd = netAdjustedDepositUsd * PROTOCOL_MARKUP_RATE; // The 30% taken from the user's *adjusted* net deposit
-        const userCreditedUsd = netAdjustedDepositUsd - totalMarkupUsd; // The 70% the user receives of the *adjusted* value
+        //const totalMarkupUsd = netAdjustedDepositUsd * PROTOCOL_MARKUP_RATE; // The 30% taken from the user's *adjusted* net deposit
+        const totalMarkupUsd = 0; // NO MARKUP WE ALREADY TOOK OUR CUT
+        const userCreditedUsd = netAdjustedDepositUsd - totalMarkupUsd; // 
         
         // The referral reward is deducted from the protocol's share (the markup)
         const finalReferralPayoutUsd = Math.min(totalMarkupUsd, referralRewardUsd); // Cannot pay out more than we collected in markup

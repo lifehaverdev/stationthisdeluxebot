@@ -60,10 +60,12 @@ export default class AccountDropdown {
 
     render() {
         const { loading, error, data } = this.state;
+        const referralVault = data && 'referralVault' in data ? data.referralVault : null;
+        const referralValue = data && data.rewards ? data.rewards.referral : 0;
         this.container.innerHTML = `
             <div class="account-dropdown-root">
-                <button class="account-profile-btn" aria-haspopup="true" aria-expanded="${this.dropdownOpen}">
-                    <span class="profile-icon">👤</span>
+                <button class="account-web3-btn" aria-haspopup="true" aria-expanded="${this.dropdownOpen}">
+                    <span class="wallet-icon">🔗</span> ${data && data.wallet ? this.shortenWallet(data.wallet) : 'Connect Wallet'}
                 </button>
                 <div class="account-dropdown-menu" hidden>
                     <div class="dropdown-header">Account</div>
@@ -74,23 +76,26 @@ export default class AccountDropdown {
                             <div class="dropdown-item"><b>${data.username}</b></div>
                             <div class="dropdown-item">Wallet: ${data.wallet ? this.shortenWallet(data.wallet) : '—'}</div>
                             <div class="dropdown-item">Level: ${data.level}</div>
-                            <div class="dropdown-item">EXP: ${data.exp} / ${data.expToNextLevel + Math.pow(data.level,3)}</div>
+                            <div class="dropdown-item">EXP:</div>
                             <div class="dropdown-item">
                                 <div style="background:#333;border-radius:4px;height:8px;width:100%;margin:4px 0;">
                                     <div style="background:#90caf9;height:8px;border-radius:4px;width:${Math.round((data.levelProgressRatio||0)*100)}%;transition:width 0.3s;"></div>
                                 </div>
                             </div>
                             <div class="dropdown-item">Points: ${data.points}</div>
-                            <div class="dropdown-item">Referral: ${data.rewards.referral}</div>
+                            <a href="#" class="action-btn" data-action="get-more-points">Get More Points</a>
+                            <div class="dropdown-item">Referral: ${
+                                referralVault
+                                    ? referralValue
+                                    : `<button class='setup-referral-btn'>Set Up Referral Vault</button>`
+                            }</div>
                             <div class="dropdown-item">Model: ${data.rewards.model}</div>
                             <div class="dropdown-item">Spell: ${data.rewards.spell}</div>
-                            ${data.rewards.referral === 0 && !data.referralVault ? '<button class="action-btn" data-action="setup-referral-vault">Set Up Referral Vault</button>' : ''}
                         ` : ''}
                         <div class="dropdown-actions">
-                            <button class="action-btn web3-status-btn" data-action="web3-status">${data.wallet ? this.shortenWallet(data.wallet) : 'Connect Wallet'}</button>
                             <a href="#" class="action-btn" data-action="history">History</a>
                             <a href="#" class="action-btn" data-action="settings">Settings</a>
-                            <a href="#" class="action-btn" data-action="buy-points">Get More Points</a>
+                            
                             <a href="#" class="action-btn" data-action="logout">Logout</a>
                         </div>
                     </div>
@@ -99,15 +104,25 @@ export default class AccountDropdown {
         `;
         this.attachEvents();
         this.attachActionEvents();
+        // Attach referral vault setup button event
+        const setupReferralBtn = this.container.querySelector('.setup-referral-btn');
+        if (setupReferralBtn) {
+            setupReferralBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                if (window.openReferralVaultModal) window.openReferralVaultModal();
+                // TODO: Implement openReferralVaultModal
+            });
+        }
     }
 
     shortenWallet(addr) {
-        if (!addr || typeof addr !== 'string' || addr.length < 10) return '0x0000...0000';
+        if (!addr) return '';
         return addr.slice(0, 6) + '...' + addr.slice(-4);
     }
 
     attachEvents() {
-        this.profileBtn = this.container.querySelector('.account-profile-btn');
+        this.profileBtn = this.container.querySelector('.account-web3-btn');
         this.dropdownMenu = this.container.querySelector('.account-dropdown-menu');
 
         this.profileBtn.addEventListener('click', () => this.toggleDropdown());
@@ -135,31 +150,12 @@ export default class AccountDropdown {
                 modal.show();
             });
         }
-        const buyPointsBtn = this.container.querySelector('[data-action="buy-points"]');
-        if (buyPointsBtn) {
-            buyPointsBtn.addEventListener('click', (e) => {
+        const getMorePointsBtn = this.container.querySelector('[data-action="get-more-points"]');
+        if (getMorePointsBtn) {
+            getMorePointsBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.closeDropdown();
                 if (window.openBuyPointsModal) window.openBuyPointsModal();
-            });
-        }
-        // New: Setup Referral Vault button
-        const setupReferralVaultBtn = this.container.querySelector('[data-action="setup-referral-vault"]');
-        if (setupReferralVaultBtn) {
-            setupReferralVaultBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.closeDropdown();
-                // TODO: Open referral vault setup modal
-                if (window.openReferralVaultModal) window.openReferralVaultModal();
-            });
-        }
-        // Web3 status button (disconnect/signout)
-        const web3StatusBtn = this.container.querySelector('[data-action="web3-status"]');
-        if (web3StatusBtn) {
-            web3StatusBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                // TODO: Show disconnect/signout menu or perform disconnect
-                alert('Web3 status menu coming soon!');
             });
         }
         // ... add other action handlers here

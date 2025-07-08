@@ -97,7 +97,7 @@ function createUserApi(dependencies) {
       const userExpInLevel = exp - lastLevelExp;
       const levelProgressRatio = expToNextLevel > 0 ? userExpInLevel / expToNextLevel : 0;
       // Points
-      const points = parseFloat(economy.usdCredit?.$numberDecimal || economy.usdCredit || '0');
+      const points = parseFloat(economy.pointsRemaining?.$numberDecimal || economy.pointsRemaining || '0');
       // Rewards
       const sumRewards = (type) => transactions
         .filter(t => t.transactionType === type && parseFloat(t.amountUsd) > 0)
