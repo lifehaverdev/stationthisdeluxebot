@@ -4,6 +4,7 @@ const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
 const WalletLinkingRequestDB = require('../db/walletLinkingRequestDb');
 const WalletLinkingService = require('../walletLinkingService');
+const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('./tokenConfig');
 // const NoemaUserCoreDB = require('../db/noemaUserCoreDb'); // To be implemented
 // const NoemaUserEconomyDB = require('../db/noemaUserEconomyDb'); // To be implemented
 
@@ -13,37 +14,6 @@ const CONTRACT_DEPLOYMENT_BLOCK = 8589453;
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 // Conversion rate for USD to internal credit points.
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
-// Protocol markup on net deposits. 30% means users receive 70% of the net value.
-const PROTOCOL_MARKUP_RATE = 0.30;
-
-// Dynamic funding rates per token. Applied to gross deposit value.
-const TOKEN_FUNDING_RATES = {
-  // Tier 1: 0.95
-  '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': 0.95, // MS2 
-  '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': 0.95, // CULT
-  // Tier 2: 0.70
-  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 0.80, // USDC
-  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': 0.80, // WETH
-  '0x0000000000000000000000000000000000000000': 0.80, // Native ETH
-  '0xdac17f958d2ee523a2206206994597c13d831ec7': 0.80, // USDT
-  // Tier 3: 0.60
-  '0x6982508145454ce325ddbe47a25d4ec3d2311933': 0.70, // PEPE
-  '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': 0.70, // MOG
-  '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': 0.70, // SPX6900 
-};
-const DEFAULT_FUNDING_RATE = 0.65; // Fallback for any other token
-
-const TRUSTED_NFT_COLLECTIONS = {
-  // Mainnet Addresses
-  "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation" },
-  "0xd3d9ddd0cf0a5f0bfb8f7fc9e046c5318a33c168": { fundingRate: 1, name: "Remilio" },
-  "0x7bd29408f11d2bfc23c34f18275bbf23cf646e9c": { fundingRate: 1, name: "Milady" },
-  "0x139a67691b353f1d3a5b82f0223707e4a81571db": { fundingRate: 1, name: "Kagami" },
-  "0x88f253ab39797375a025e64a1324792c3a9de35d": { fundingRate: 0.65, name: "Bonkler" },
-  "0x892972989e5a1b24d61f1c75908da684e27f46e5": { fundingRate: 0.85, name: "Fumo" },
-  "0x42069055135d56221123495f5cff5bac4115b136": { fundingRate: 0.85, name: "CultExec" },
-};
-const BASELINE_NFT_FUNDING_RATE = 0.70;
 
 /**
  * @class CreditService
@@ -511,9 +481,17 @@ class CreditService {
 
         // 1. DYNAMIC FUNDING RATE
         this.logger.info(`[CreditService] Step 1: Applying dynamic funding rate for token ${token}...`);
-        const fundingRate = TOKEN_FUNDING_RATES[token.toLowerCase()] || DEFAULT_FUNDING_RATE;
-        const adjustedGrossDepositUsd = parseFloat(formatEther(amount)) * fundingRate;
-        this.logger.info(`[CreditService] Original Value: $${parseFloat(formatEther(amount)).toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
+        // Move riskAssessment and priceInUsd assignment up
+        const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
+        if (!riskAssessment.isSafe) {
+            for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
+            return;
+        }
+        const priceInUsd = riskAssessment.price;
+        const fundingRate = getFundingRate(token);
+        const grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+        const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
+        this.logger.info(`[CreditService] Original Value: $${grossDepositUsd.toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
 
         // 2. USER ACCOUNT VERIFICATION
         this.logger.info(`[CreditService] Step 2: Verifying user account for depositor ${user}...`);
@@ -535,12 +513,12 @@ class CreditService {
 
         // 3. COLLATERAL & PROFITABILITY CHECKS (on the total aggregated amount)
         this.logger.info(`[CreditService] Step 3: Assessing collateral and profitability for the total amount...`);
-        const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
-        if (!riskAssessment.isSafe) {
-            for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
-            return;
-        }
-        const priceInUsd = riskAssessment.price;
+        // const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
+        // if (!riskAssessment.isSafe) {
+        //     for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
+        //     return;
+        // }
+        // const priceInUsd = riskAssessment.price;
         const depositValueUsd = adjustedGrossDepositUsd;
         
         const { vault_account: vaultAccount } = deposits[0];
@@ -574,27 +552,34 @@ class CreditService {
         }
 
         // Calculate protocol fee based on estimated net deposit value
-        const estimatedNetDepositUsd = depositValueUsd - estimatedGasCostUsd;
-        const protocolFeeUsd = estimatedNetDepositUsd * PROTOCOL_MARKUP_RATE;
-        const protocolFeeEth = protocolFeeUsd / priceInUsd;
-        const protocolFeeWei = ethers.parseEther(protocolFeeEth.toFixed(18));
-
+        // const estimatedNetDepositUsd = depositValueUsd - estimatedGasCostUsd;
+        // const protocolFeeUsd = estimatedNetDepositUsd * PROTOCOL_MARKUP_RATE;
+        // const protocolFeeEth = protocolFeeUsd / priceInUsd;
+        // const protocolFeeWei = ethers.parseEther(protocolFeeEth.toFixed(18));
+        // const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
+        // const gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
+        // const totalFeeInWei = gasFeeInWei + protocolFeeWei;
+        // const escrowAmountForContract = amount - totalFeeInWei;
+        //
+        // if (escrowAmountForContract < 0n) {
+        //     const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Total fees (gas + markup) exceeded total deposit value.` };
+        //     for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+        //     return;
+        // }
+        //
+        // 4. EXECUTE ON-CHAIN CONFIRMATION (for the entire group)
+        //
+        // --- REWRITE FEE LOGIC: Only use gas fee, no protocol markup ---
         const estimatedGasCostEth = estimatedGasCostUsd / priceInUsd;
         const gasFeeInWei = ethers.parseEther(estimatedGasCostEth.toFixed(18));
-
-        // The total fee sent to the contract includes both gas reimbursement and the protocol markup.
-        const totalFeeInWei = gasFeeInWei + protocolFeeWei;
-        const escrowAmountForContract = amount - totalFeeInWei;
-
+        const escrowAmountForContract = amount - gasFeeInWei;
         if (escrowAmountForContract < 0n) {
-            const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Total fees (gas + markup) exceeded total deposit value.` };
+            const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Total fees (gas) exceeded total deposit value.` };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
             return;
         }
-
-        // 4. EXECUTE ON-CHAIN CONFIRMATION (for the entire group)
-        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(totalFeeInWei)).toFixed(6)} ETH`);
-        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, totalFeeInWei, '0x');
+        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(gasFeeInWei)).toFixed(6)} ETH`);
+        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, gasFeeInWei, '0x');
         this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
         const confirmationReceipt = await this.ethereumService.waitForConfirmation(txResponse);
@@ -611,8 +596,6 @@ class CreditService {
         // 5. OFF-CHAIN CREDIT APPLICATION (for the net value of the entire group)
         const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
         const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
-        
-        // Calculate final credit amounts including the protocol markup and referral fees
         // All calculations are now based on the funding-rate-adjusted value
         const netAdjustedDepositUsd = adjustedGrossDepositUsd - actualGasCostUsd;
         if (netAdjustedDepositUsd < 0) {
@@ -621,14 +604,13 @@ class CreditService {
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
             return;
         }
-
-        //const totalMarkupUsd = netAdjustedDepositUsd * PROTOCOL_MARKUP_RATE; // The 30% taken from the user's *adjusted* net deposit
-        const totalMarkupUsd = 0; // NO MARKUP WE ALREADY TOOK OUR CUT
-        const userCreditedUsd = netAdjustedDepositUsd - totalMarkupUsd; // 
+        // --- REMOVE MARKUP: userCreditedUsd is just netAdjustedDepositUsd ---
+        const userCreditedUsd = netAdjustedDepositUsd;
+        // --- END MARKUP REMOVAL ---
         
         // The referral reward is deducted from the protocol's share (the markup)
-        const finalReferralPayoutUsd = Math.min(totalMarkupUsd, referralRewardUsd); // Cannot pay out more than we collected in markup
-        const netProtocolProfitUsd = totalMarkupUsd - finalReferralPayoutUsd;
+        const finalReferralPayoutUsd = 0; // No markup, so no referral payout
+        const netProtocolProfitUsd = 0;
         
         this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
         this.logger.info(`[CreditService] Accounting Details -> Total Markup: $${totalMarkupUsd.toFixed(2)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(2)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(2)}`);
@@ -640,32 +622,33 @@ class CreditService {
         this.logger.info(`[CreditService] Point Calculation -> User Credited USD: $${userCreditedUsd.toFixed(2)}, Points Credited: ${points_credited}`);
         
         // --- Process Referral Payout ---
-        if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
-            try {
-                this.logger.info(`[CreditService] Crediting referrer ${referrerMasterAccountId} with $${finalReferralPayoutUsd.toFixed(4)}.`);
-                await this.internalApiClient.post(`/internal/v1/data/users/${referrerMasterAccountId}/economy/credit`, {
-                    amountUsd: finalReferralPayoutUsd,
-                    transactionType: 'REFERRAL_DEPOSIT_REWARD',
-                    description: `Referral reward from deposit by user ${user} to vault ${vaultAccount}.`,
-                    externalTransactionId: confirmationTxHash,
-                    metadata: {
-                        funding_rate: fundingRate,
-                        original_deposit_usd: depositValueUsd,
-                        adjusted_deposit_usd: adjustedGrossDepositUsd
-                    }
-                });
+        // (Referral logic disabled since no markup)
+        // if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
+        //     try {
+        //         this.logger.info(`[CreditService] Crediting referrer ${referrerMasterAccountId} with $${finalReferralPayoutUsd.toFixed(4)}.`);
+        //         await this.internalApiClient.post(`/internal/v1/data/users/${referrerMasterAccountId}/economy/credit`, {
+        //             amountUsd: finalReferralPayoutUsd,
+        //             transactionType: 'REFERRAL_DEPOSIT_REWARD',
+        //             description: `Referral reward from deposit by user ${user} to vault ${vaultAccount}.`,
+        //             externalTransactionId: confirmationTxHash,
+        //             metadata: {
+        //                 funding_rate: fundingRate,
+        //                 original_deposit_usd: depositValueUsd,
+        //                 adjusted_deposit_usd: adjustedGrossDepositUsd
+        //             }
+        //         });
 
-                const depositAmountWei = amount.toString();
-                const rewardInEth = finalReferralPayoutUsd / priceInUsd;
-                const rewardInWei = ethers.parseEther(rewardInEth.toFixed(18)).toString();
-                await this.creditLedgerDb.updateReferralVaultStats(vaultAccount, depositAmountWei, rewardInWei);
-                this.logger.info(`[CreditService] Successfully credited referrer and updated vault stats for ${vaultAccount}.`);
+        //         const depositAmountWei = amount.toString();
+        //         const rewardInEth = finalReferralPayoutUsd / priceInUsd;
+        //         const rewardInWei = ethers.parseEther(rewardInEth.toFixed(18)).toString();
+        //         await this.creditLedgerDb.updateReferralVaultStats(vaultAccount, depositAmountWei, rewardInWei);
+        //         this.logger.info(`[CreditService] Successfully credited referrer and updated vault stats for ${vaultAccount}.`);
 
-            } catch (error) {
-                this.logger.error(`[CreditService] CRITICAL: Failed to credit referral reward for vault ${vaultAccount} and referrer ${referrerMasterAccountId}. Requires manual intervention.`, error);
-                // This failure is logged but does not stop the original depositor from being credited.
-            }
-        }
+        //     } catch (error) {
+        //         this.logger.error(`[CreditService] CRITICAL: Failed to credit referral reward for vault ${vaultAccount} and referrer ${referrerMasterAccountId}. Requires manual intervention.`, error);
+        //         // This failure is logged but does not stop the original depositor from being credited.
+        //     }
+        // }
         // --- End Referral Payout ---
 
         /*

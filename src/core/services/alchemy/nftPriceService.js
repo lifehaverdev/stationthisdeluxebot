@@ -1,12 +1,5 @@
 const fetch = require('node-fetch');
-
-// A placeholder whitelist of trusted NFT collection contract addresses.
-// In a real application, this should be managed in a more dynamic way.
-const NFT_COLLECTION_WHITELIST = [
-    '0xbc4ca0edb7647a8ab7c2061c2e118a18a936f13d', // Bored Ape Yacht Club
-    '0xbd3531da5cf5857e76f49122f693e5c4cc6450ca', // Pudgy Penguins
-    '0x7bd29408f11d2bfc23c34f18275bbf23cf646e9c'  // Milady Maker
-];
+const { TRUSTED_NFT_COLLECTIONS } = require('./tokenConfig');
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const floorPriceCache = new Map();
@@ -47,7 +40,7 @@ class NftPriceService {
    * @returns {boolean} True if the collection is whitelisted, false otherwise.
    */
   isWhitelisted(collectionAddress) {
-    return NFT_COLLECTION_WHITELIST.includes(collectionAddress.toLowerCase());
+    return TRUSTED_NFT_COLLECTIONS.includes(collectionAddress.toLowerCase());
   }
 
   /**

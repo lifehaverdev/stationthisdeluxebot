@@ -3,24 +3,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const creditVaultAbi = require('../../core/contracts/abis/creditVault.json');
 const { contracts } = require('../../core/contracts');
-
-// Constants are replicated from creditService for immediate use.
-// TODO: Refactor creditService to expose these lists via a method.
-const TOKEN_FUNDING_RATES = {
-    // Tier 1: 0.95
-    '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': { fundingRate: 0.95, symbol: 'MS2', iconUrl: '/images/sandbox/components/ms2.png', decimals: 9 },
-    '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': { fundingRate: 0.95, symbol: 'CULT', iconUrl: '/images/sandbox/components/cult.png', decimals: 18 },
-    // Tier 2: 0.70
-    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { fundingRate: 0.70, symbol: 'USDC', iconUrl: '/images/sandbox/components/usdc.png', decimals: 6 },
-    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { fundingRate: 0.70, symbol: 'WETH', iconUrl: '/images/sandbox/components/weth.png', decimals: 18 },
-    '0x0000000000000000000000000000000000000000': { fundingRate: 0.70, symbol: 'ETH', iconUrl: '/images/sandbox/components/eth.png', decimals: 18 },
-    '0xdac17f958d2ee523a2206206994597c13d831ec7': { fundingRate: 0.70, symbol: 'USDT', iconUrl: '/images/sandbox/components/usdt.png', decimals: 6 },
-    // Tier 3: 0.60
-    '0x6982508145454ce325ddbe47a25d4ec3d2311933': { fundingRate: 0.60, symbol: 'PEPE', iconUrl: '/images/sandbox/components/pepe.png', decimals: 18 },
-    '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': { fundingRate: 0.60, symbol: 'MOG', iconUrl: '/images/sandbox/components/mog.png', decimals: 18 },
-    '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': { fundingRate: 0.60, symbol: 'SPX6900', iconUrl: '/images/sandbox/components/spx6900.png', decimals: 18 },
-};
-const DEFAULT_FUNDING_RATE = 0.55;
+const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -104,18 +87,8 @@ module.exports = function pointsApi(dependencies) {
             let userReceivesUsd, pointsCredited;
 
             if (type === 'token') {
-                // Lookup token config
-                const tokenConfig = Object.entries(TOKEN_FUNDING_RATES).find(
-                    ([address]) => address.toLowerCase() === assetAddress.toLowerCase()
-                );
-                if (!tokenConfig) {
-                    return res.status(400).json({ message: 'Unsupported token.' });
-                }
-                const [address, data] = tokenConfig;
-                fundingRate = data.fundingRate;
-                symbol = data.symbol;
-                name = data.name;
-                decimals = data.decimals;
+                fundingRate = getFundingRate(assetAddress);
+                decimals = getDecimals(assetAddress);
                 // Fix: Use floating point division for assetAmount
                 assetAmount = Number(amount) / 10 ** decimals;
                 // Get price in USD

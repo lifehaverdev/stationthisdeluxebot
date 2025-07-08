@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireLogin, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
+const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
 
 function createPointsApi(dependencies) {
     const router = express.Router();
