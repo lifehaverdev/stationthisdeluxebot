@@ -273,7 +273,7 @@ class CreditService {
 
     // Check for existing entry
     try {
-      const response = await this.internalApiClient.get(`/internal/v1/ledger/entries/${transactionHash}`);
+      const response = await this.internalApiClient.get(`/internal/v1/data/ledger/entries/${transactionHash}`);
       if (response.data.entry) {
         this.logger.info(`[CreditService] Skipping deposit event for tx ${transactionHash} as it's already acknowledged.`);
         return;
@@ -299,7 +299,7 @@ class CreditService {
     }
 
     // Create ledger entry through internal API
-    await this.internalApiClient.post('/internal/v1/ledger/entries', {
+    await this.internalApiClient.post('/internal/v1/data/ledger/entries', {
       deposit_tx_hash: transactionHash,
       deposit_log_index: logIndex,
       deposit_block_number: blockNumber,
@@ -399,7 +399,7 @@ class CreditService {
 
     // Check for existing request through internal API
     try {
-      const response = await this.internalApiClient.get(`/internal/v1/ledger/withdrawals/${transactionHash}`);
+      const response = await this.internalApiClient.get(`/internal/v1/data/ledger/withdrawals/${transactionHash}`);
       if (response.data.request) {
         this.logger.info(`[CreditService] Withdrawal request ${transactionHash} already processed`);
         return;
@@ -430,7 +430,7 @@ class CreditService {
     const { userOwned: collateralAmount } = splitCustodyAmount(custodyValue);
 
     // Create withdrawal request through internal API
-    await this.internalApiClient.post('/internal/v1/ledger/withdrawals', {
+    await this.internalApiClient.post('/internal/v1/data/ledger/withdrawals', {
       request_tx_hash: transactionHash,
       request_block_number: blockNumber,
       vault_account: vaultAccount,
@@ -1058,7 +1058,7 @@ class CreditService {
         }
 
         // 2. Check if user already has too many vaults
-        const vaultsResponse = await this.internalApiClient.get(`/internal/v1/ledger/vaults/by-master-account/${masterAccountId}`);
+        const vaultsResponse = await this.internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${masterAccountId}`);
         const existingVaults = vaultsResponse.data.vaults;
         const MAX_VAULTS_PER_USER = 3; // Reasonable limit to prevent abuse
         if (existingVaults.length >= MAX_VAULTS_PER_USER) {
@@ -1105,7 +1105,7 @@ class CreditService {
         const vaultAddress = predictedAddress;
         
         // 6. Record the vault through internal API
-        await this.internalApiClient.post('/internal/v1/ledger/vaults', {
+        await this.internalApiClient.post('/internal/v1/data/ledger/vaults', {
             vault_address: vaultAddress,
             owner_address: ownerAddress,
             master_account_id: masterAccountId,

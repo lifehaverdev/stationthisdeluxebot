@@ -36,6 +36,8 @@ const GPU_COST_PER_SECOND = {
   'A100': 0.00114,
   'A100-80GB': 0.001708,
   'H100': 0.002338,
+  'H200': 0.001891,
+  'B200': 0.002604,
   'CPU': 0.000042 // Default/fallback cost
 };
 
