@@ -56,24 +56,50 @@ function createWebhookApi(dependencies) {
     logger.warn('[WebhookAPI] ALCHEMY_SIGNING_KEY not set. The /alchemy endpoint will be disabled.');
   } else {
     webhookRouter.post('/alchemy',
-      express.json({ verify: addAlchemyContextToRequest }), // Add raw body to request
-      validateAlchemySignature(alchemySigningKey), // Validate signature
+      (req, res, next) => {
+        const logger = dependencies.logger || console;
+        logger.info('[AlchemyWebhook] Incoming request', {
+          headers: req.headers,
+          method: req.method,
+          url: req.originalUrl
+        });
+        next();
+      },
+      express.json({ verify: addAlchemyContextToRequest }),
+      (req, res, next) => {
+        const logger = dependencies.logger || console;
+        logger.info('[AlchemyWebhook] After express.json', {
+          hasRawBody: !!req.rawBody,
+          body: req.body
+        });
+        next();
+      },
+      (req, res, next) => {
+        const logger = dependencies.logger || console;
+        logger.info('[AlchemyWebhook] Before signature validation', {
+          signature: req.header('X-Alchemy-Signature'),
+          hasRawBody: !!req.rawBody
+        });
+        next();
+      },
+      validateAlchemySignature(alchemySigningKey),
       async (req, res) => {
         const logger = dependencies.logger || console;
-        logger.info('[WebhookAPI] Received Alchemy webhook event');
-
+        logger.info('[AlchemyWebhook] Handler start', {
+          body: req.body,
+          rawBody: req.rawBody ? req.rawBody.toString('hex').slice(0, 64) + '...' : undefined
+        });
         try {
           const creditService = dependencies.creditService;
           if (!creditService) {
+            logger.error('[AlchemyWebhook] CreditService not available');
             throw new Error('CreditService not available');
           }
-
-          // Process all events through the unified handler
           const result = await creditService.handleEventWebhook(req.body);
+          logger.info('[AlchemyWebhook] Handler result', result);
           res.json(result);
-
         } catch (error) {
-          logger.error('[WebhookAPI] Error processing Alchemy webhook:', error);
+          logger.error('[AlchemyWebhook] Error processing webhook:', error);
           res.status(500).json({
             success: false,
             message: 'Internal server error processing webhook',
