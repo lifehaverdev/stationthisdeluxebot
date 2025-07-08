@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const creditVaultAbi = require('../../core/contracts/abis/creditVault.json');
 const { contracts } = require('../../core/contracts');
-const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
+const { TOKEN_CONFIG, getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -42,7 +42,7 @@ module.exports = function pointsApi(dependencies) {
     router.get('/supported-assets', (req, res) => {
         logger.info('[pointsApi] GET /supported-assets');
         
-        const tokens = Object.entries(TOKEN_FUNDING_RATES).map(([address, { fundingRate, symbol, iconUrl, decimals }]) => ({
+        const tokens = Object.entries(TOKEN_CONFIG).map(([address, { fundingRate, symbol, iconUrl, decimals }]) => ({
             type: 'TOKEN',
             address,
             symbol,
@@ -351,7 +351,7 @@ module.exports = function pointsApi(dependencies) {
                 // Try to get symbol from config if not present
                 let assetSymbol = symbol;
                 if (!assetSymbol && assetAddress) {
-                    const tokenConfig = Object.entries(TOKEN_FUNDING_RATES).find(
+                    const tokenConfig = Object.entries(TOKEN_CONFIG).find(
                         ([address]) => address.toLowerCase() === assetAddress.toLowerCase()
                     );
                     assetSymbol = tokenConfig ? tokenConfig[1].symbol : undefined;
@@ -359,7 +359,7 @@ module.exports = function pointsApi(dependencies) {
                 // Format amount
                 let assetAmount = amount;
                 if (amount && assetAddress && assetSymbol) {
-                    const tokenConfig = Object.entries(TOKEN_FUNDING_RATES).find(
+                    const tokenConfig = Object.entries(TOKEN_CONFIG).find(
                         ([address]) => address.toLowerCase() === assetAddress.toLowerCase()
                     );
                     if (tokenConfig) {

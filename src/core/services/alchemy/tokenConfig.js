@@ -6,46 +6,55 @@ const TOKEN_CONFIG = {
     symbol: 'ETH',
     decimals: 18,
     fundingRate: 0.7,
+    iconUrl: '/images/sandbox/components/eth.png',
   },
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { // USDC
     symbol: 'USDC',
     decimals: 6,
     fundingRate: 0.7,
+    iconUrl: '/images/sandbox/components/usdc.png',
   },
   '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': { // CULT
     symbol: 'CULT',
     decimals: 18,
     fundingRate: 0.95,
+    iconUrl: '/images/sandbox/components/cult.png',
   },
   '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': { // MS2
     symbol: 'MS2',
     decimals: 9,
     fundingRate: 0.95,
+    iconUrl: '/images/sandbox/components/ms2.png',
   },
   '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { // WETH
     symbol: 'WETH',
     decimals: 18,
     fundingRate: 0.7,
+    iconUrl: '/images/sandbox/components/weth.png',
   },
   '0xdac17f958d2ee523a2206206994597c13d831ec7': { // USDT
     symbol: 'USDT',
     decimals: 6,
     fundingRate: 0.7,
+    iconUrl: '/images/sandbox/components/usdt.png',
   },
   '0x6982508145454ce325ddbe47a25d4ec3d2311933': { // PEPE
     symbol: 'PEPE',
     decimals: 18,
     fundingRate: 0.6,
+    iconUrl: '/images/sandbox/components/pepe.png',
   },
   '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': { // MOG
     symbol: 'MOG',
     decimals: 18,
     fundingRate: 0.6,
+    iconUrl: '/images/sandbox/components/mog.png',
   },
   '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': { // SPX6900
     symbol: 'SPX6900',
     decimals: 18,
     fundingRate: 0.6,
+    iconUrl: '/images/sandbox/components/spx6900.png',
   },
 };
 
