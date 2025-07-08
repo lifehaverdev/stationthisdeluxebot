@@ -66,7 +66,7 @@ function createWebhookApi(dependencies) {
         });
         next();
       },
-      bodyParser.raw({ type: 'application/json' }),
+      bodyParser.raw({ type: /^application\/json/i }),
       (req, res, next) => {
         const logger = dependencies.logger || console;
         req.rawBody = req.body;
