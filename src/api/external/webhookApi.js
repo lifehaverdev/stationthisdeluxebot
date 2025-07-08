@@ -66,36 +66,16 @@ function createWebhookApi(dependencies) {
         });
         next();
       },
-      bodyParser.raw({ type: /^application\/json/i }),
       (req, res, next) => {
         const logger = dependencies.logger || console;
-        req.rawBody = req.body;
-        logger.info('[AlchemyWebhook] After express.raw', {
+        logger.info('[AlchemyWebhook] Before signature validation', {
+          signature: req.header('X-Alchemy-Signature'),
           hasRawBody: !!req.rawBody,
           rawBodyLength: req.rawBody ? req.rawBody.length : 0
         });
         next();
       },
-      (req, res, next) => {
-        const logger = dependencies.logger || console;
-        logger.info('[AlchemyWebhook] Before signature validation', {
-          signature: req.header('X-Alchemy-Signature'),
-          hasRawBody: !!req.rawBody
-        });
-        next();
-      },
       validateAlchemySignature(alchemySigningKey),
-      (req, res, next) => {
-        const logger = dependencies.logger || console;
-        try {
-          req.body = JSON.parse(req.rawBody.toString('utf8'));
-          logger.info('[AlchemyWebhook] JSON body parsed successfully');
-          next();
-        } catch (e) {
-          logger.error('[AlchemyWebhook] Failed to parse JSON body', { error: e.message });
-          return res.status(400).json({ error: 'Invalid JSON' });
-        }
-      },
       async (req, res) => {
         const logger = dependencies.logger || console;
         logger.info('[AlchemyWebhook] Handler start', {
