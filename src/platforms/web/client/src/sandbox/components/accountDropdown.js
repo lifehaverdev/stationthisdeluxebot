@@ -102,7 +102,7 @@ export default class AccountDropdown {
     }
 
     shortenWallet(addr) {
-        if (!addr) return '';
+        if (!addr || typeof addr !== 'string' || addr.length < 10) return '0x0000...0000';
         return addr.slice(0, 6) + '...' + addr.slice(-4);
     }
 
