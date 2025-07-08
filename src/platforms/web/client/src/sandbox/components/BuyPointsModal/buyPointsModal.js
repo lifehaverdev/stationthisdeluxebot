@@ -19,6 +19,11 @@ let customCoinBtn, customCoinInputContainer, customCoinAddress, customCoinSubmit
 let selectedAssetDisplay, reviewPurchaseBtn, confirmPurchaseBtn;
 
 // --- Utility Functions (Function Declarations) ---
+function safeToFixed(val, digits = 2) {
+    const num = Number(val);
+    return isFinite(num) ? num.toFixed(digits) : '-';
+}
+
 function goToStep(stepNumber) {
     buyPointsState.step = stepNumber;
     render();
@@ -149,7 +154,7 @@ function renderAmountStep() {
     selectedAssetDisplay.textContent = buyPointsState.selectedAsset ? `Selected: ${buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name}` : '';
     amountInput.value = buyPointsState.amount;
     quoteDisplay.innerHTML = buyPointsState.quote ?
-        `<div>Points: <b>${buyPointsState.quote.pointsCredited}</b><br>Funding Rate: ${buyPointsState.quote.fundingRate}<br>USD Value: $${buyPointsState.quote.usdValue.gross.toFixed(2)}<br>Fees: $${buyPointsState.quote.fees.totalFeesUsd.toFixed(2)}</div>`
+        `<div>Points: <b>${buyPointsState.quote.pointsCredited ?? '-'}</b><br>Funding Rate: ${buyPointsState.quote.fundingRate ?? '-'}<br>USD Value: $${safeToFixed(buyPointsState.quote.usdValue?.gross)}<br>Fees: $${safeToFixed(buyPointsState.quote.fees?.totalFeesUsd)}</div>`
         : '<div>Enter an amount to get a quote.</div>';
 }
 
@@ -166,11 +171,11 @@ function renderReviewStep() {
         <div>Amount: ${buyPointsState.amount}</div>
         <div>Points: <b>${q.pointsCredited}</b></div>
         <hr>
-        <div>Gross USD: <b>$${(b.grossUsd ?? q.usdValue.gross).toFixed(2)}</b></div>
-        <div>Funding Rate Deduction: <b>-$${(b.fundingRateDeduction ?? 0).toFixed(2)}</b></div>
-        <div>Net After Funding Rate: <b>$${(b.netAfterFundingRate ?? q.usdValue.netAfterFundingRate).toFixed(2)}</b></div>
-        <div>Estimated Gas Fee: <b>-$${(b.estimatedGasUsd ?? q.fees.estimatedGasUsd).toFixed(2)}</b></div>
-        <div style="font-weight:bold; color:#4caf50;">User Receives: $${(b.userReceivesUsd ?? q.userReceivesUsd).toFixed(2)}</div>
+        <div>Gross USD: <b>$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}</b></div>
+        <div>Funding Rate Deduction: <b>-$${safeToFixed(b.fundingRateDeduction ?? 0)}</b></div>
+        <div>Net After Funding Rate: <b>$${safeToFixed(b.netAfterFundingRate ?? q.usdValue?.netAfterFundingRate)}</b></div>
+        <div>Estimated Gas Fee: <b>-$${safeToFixed(b.estimatedGasUsd ?? q.fees?.estimatedGasUsd)}</b></div>
+        <div style="font-weight:bold; color:#4caf50;">User Receives: $${safeToFixed(b.userReceivesUsd ?? q.userReceivesUsd)}</div>
     `;
 }
 

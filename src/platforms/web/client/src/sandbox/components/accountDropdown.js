@@ -84,12 +84,13 @@ export default class AccountDropdown {
                             <div class="dropdown-item">Referral: ${data.rewards.referral}</div>
                             <div class="dropdown-item">Model: ${data.rewards.model}</div>
                             <div class="dropdown-item">Spell: ${data.rewards.spell}</div>
+                            ${data.rewards.referral === 0 && !data.referralVault ? '<button class="action-btn" data-action="setup-referral-vault">Set Up Referral Vault</button>' : ''}
                         ` : ''}
                         <div class="dropdown-actions">
-                            <a href="#" class="action-btn" data-action="connect">Connect</a>
+                            <button class="action-btn web3-status-btn" data-action="web3-status">${data.wallet ? this.shortenWallet(data.wallet) : 'Connect Wallet'}</button>
                             <a href="#" class="action-btn" data-action="history">History</a>
                             <a href="#" class="action-btn" data-action="settings">Settings</a>
-                            <a href="#" class="action-btn" data-action="buy-points">Buy Points</a>
+                            <a href="#" class="action-btn" data-action="buy-points">Get More Points</a>
                             <a href="#" class="action-btn" data-action="logout">Logout</a>
                         </div>
                     </div>
@@ -140,6 +141,25 @@ export default class AccountDropdown {
                 e.preventDefault();
                 this.closeDropdown();
                 if (window.openBuyPointsModal) window.openBuyPointsModal();
+            });
+        }
+        // New: Setup Referral Vault button
+        const setupReferralVaultBtn = this.container.querySelector('[data-action="setup-referral-vault"]');
+        if (setupReferralVaultBtn) {
+            setupReferralVaultBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                // TODO: Open referral vault setup modal
+                if (window.openReferralVaultModal) window.openReferralVaultModal();
+            });
+        }
+        // Web3 status button (disconnect/signout)
+        const web3StatusBtn = this.container.querySelector('[data-action="web3-status"]');
+        if (web3StatusBtn) {
+            web3StatusBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                // TODO: Show disconnect/signout menu or perform disconnect
+                alert('Web3 status menu coming soon!');
             });
         }
         // ... add other action handlers here

@@ -34,7 +34,7 @@ function createWebhookApi(dependencies) {
         telegramNotifier: dependencies.telegramNotifier,
         logger: dependencies.logger || console
       };
-
+      
       const result = await processComfyDeployWebhook(req.body, processorDeps);
 
       if (result.success) {
