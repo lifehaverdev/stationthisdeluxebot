@@ -65,6 +65,8 @@ class ComfyUIService {
     'A100': { amount: 0.00114, currency: 'USD', unit: 'second' },
     'A100-80GB': { amount: 0.001708, currency: 'USD', unit: 'second' }, // Ensure key matches API if distinct
     'H100': { amount: 0.002338, currency: 'USD', unit: 'second' },
+    'H200': { amount: 0.001891, currency: 'USD', unit: 'second' },
+    'B200': { amount: 0.002604, currency: 'USD', unit: 'second' },
     // Add/verify other machine types and their rates based on API response
   };
 
@@ -301,10 +303,10 @@ class ComfyUIService {
       this.logger.info(`[ComfyUIService] baseWebhookUrl (no trailing slash): "${baseWebhookUrl}"`);
 
       // Ensure it ends with the correct, new path
-      const correctPath = '/api/webhook/comfydeploy';
+      const correctPath = '/api/v1/webhook/comfydeploy';
       if (!baseWebhookUrl.endsWith(correctPath)) {
         // Check if it ends with the OLD path and remove it if so, to avoid duplication if .env is not updated yet
-        const oldPath = '/api/webhook';
+        const oldPath = '/api/v1/webhook';
         let urlToAppendTo = baseWebhookUrl;
         if (baseWebhookUrl.endsWith(oldPath)) {
           urlToAppendTo = baseWebhookUrl.substring(0, baseWebhookUrl.length - oldPath.length);
