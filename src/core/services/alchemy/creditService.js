@@ -613,7 +613,8 @@ class CreditService {
         const netProtocolProfitUsd = 0;
         
         this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
-        this.logger.info(`[CreditService] Accounting Details -> Total Markup: $${totalMarkupUsd.toFixed(2)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(2)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(2)}`);
+        // Remove markup from accounting details log
+        this.logger.info(`[CreditService] Accounting Details -> Referral Payout: $${finalReferralPayoutUsd.toFixed(2)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(2)}`);
 
         // --- Point Calculation for Per-Deposit Tracking ---
         const points_credited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
@@ -650,26 +651,6 @@ class CreditService {
         //     }
         // }
         // --- End Referral Payout ---
-
-        /*
-         * [DEPRECATED] - The following block is commented out as part of the transition
-         * from a single aggregate 'usdCredit' balance to a per-deposit 'pointsRemaining' balance.
-         * The user's credit is now tracked on each individual credit_ledger entry.
-         */
-        // try {
-        //     await this.internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/economy/credit`, {
-        //         amountUsd: userCreditedUsd,
-        //         transactionType: 'ONCHAIN_DEPOSIT_BATCH',
-        //         description: `Credit from batch of ${deposits.length} on-chain deposits. Confirmed in tx: ${confirmationTxHash}`,
-        //         externalTransactionId: confirmationTxHash,
-        //     });
-        //     this.logger.info(`[CreditService] Successfully applied batch credit to masterAccountId ${masterAccountId}.`);
-        // } catch (error) {
-        //     this.logger.error(`[CreditService] CRITICAL: Failed to apply off-chain credit for group confirmation! Requires manual intervention.`, error);
-        //     const reason = { master_account_id: masterAccountId, confirmation_tx_hash: confirmationTxHash, net_value_usd: netAdjustedDepositUsd, failure_reason: 'Off-chain credit application failed.', error_details: error.message };
-        //     for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'NEEDS_MANUAL_CREDIT', reason);
-        //     return;
-        // }
         
         // 6. FINAL LEDGER UPDATE (for all deposits in the group)
         this.logger.info(`[CreditService] Step 6: Finalizing ${deposits.length} ledger entries for group.`);
@@ -681,7 +662,6 @@ class CreditService {
             adjusted_gross_deposit_usd: adjustedGrossDepositUsd,
             gas_cost_usd: actualGasCostUsd,
             net_adjusted_deposit_usd: netAdjustedDepositUsd,
-            total_markup_usd: totalMarkupUsd,
             user_credited_usd: userCreditedUsd,
             points_credited,
             points_remaining,
