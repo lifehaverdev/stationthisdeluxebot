@@ -19,6 +19,9 @@ const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 const RECENT_TX_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const recentProcessedTxHashes = new Map(); // txHash -> timestamp
 
+// --- In-memory lock for currently processing user-token groups ---
+const processingGroups = new Set(); // groupKey -> true
+
 function addTxToCache(txHash) {
   recentProcessedTxHashes.set(txHash, Date.now());
 }
@@ -42,6 +45,10 @@ function cleanupTxCache() {
   }
 }
 setInterval(cleanupTxCache, 60 * 1000); // Clean up every minute
+
+function getGroupKey(user, token) {
+  return user.toLowerCase() + '-' + token.toLowerCase();
+}
 
 /**
  * @class CreditService
@@ -493,18 +500,26 @@ class CreditService {
     // All deposits in this group share the same user and token.
     const { depositor_address: user, token_address: token } = deposits[0];
     const originalTxHashes = deposits.map(d => d.deposit_tx_hash);
+    const groupKey = getGroupKey(user, token);
 
-    // --- Debounce duplicate confirmation for this group ---
-    let allInCache = originalTxHashes.every(isTxInCache);
-    if (allInCache) {
-      this.logger.info(`[CreditService] Skipping confirmation for group (User: ${user}, Token: ${token}) because all txs are recently processed.`);
+    // --- Group-level processing lock ---
+    if (processingGroups.has(groupKey)) {
+      this.logger.info(`[CreditService] Group ${groupKey} is already being processed. Skipping.`);
       return;
     }
-
-    this.logger.info(`[CreditService] Processing group (User: ${user}, Token: ${token}). Involves ${deposits.length} deposits.`);
-    this.logger.debug(`[CreditService] Original deposit hashes in this group: ${originalTxHashes.join(', ')}`);
+    processingGroups.add(groupKey);
 
     try {
+      // --- Debounce duplicate confirmation for this group ---
+      let allInCache = originalTxHashes.every(isTxInCache);
+      if (allInCache) {
+        this.logger.info(`[CreditService] Skipping confirmation for group (User: ${user}, Token: ${token}) because all txs are recently processed.`);
+        return;
+      }
+
+      this.logger.info(`[CreditService] Processing group (User: ${user}, Token: ${token}). Involves ${deposits.length} deposits.`);
+      this.logger.debug(`[CreditService] Original deposit hashes in this group: ${originalTxHashes.join(', ')}`);
+
         // 0. READ `custody` state from contract to get the true total unconfirmed balance.
         this.logger.info(`[CreditService] Step 0: Reading unconfirmed balance from contract 'custody' state...`);
         const custodyKey = getCustodyKey(user, token);
@@ -729,6 +744,9 @@ class CreditService {
          await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', reason);
          addTxToCache(deposit.deposit_tx_hash);
       }
+    } finally {
+      // --- Always release group lock ---
+      processingGroups.delete(groupKey);
     }
   }
 
