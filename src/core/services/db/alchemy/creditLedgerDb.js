@@ -288,6 +288,40 @@ class CreditLedgerDB extends BaseDB {
     };
     return this.insertOne(dataToInsert);
   }
+
+  /**
+   * Sums the points_remaining for all active, confirmed deposits for a wallet address.
+   * @param {string} walletAddress - The user's wallet address (case-insensitive).
+   * @returns {Promise<number>} The total points remaining.
+   */
+  async sumPointsRemainingForWalletAddress(walletAddress) {
+    if (!walletAddress) return 0;
+    const match = {
+      depositor_address: { $regex: `^${walletAddress}$`, $options: 'i' },
+      status: 'CONFIRMED',
+      points_remaining: { $gt: 0 },
+    };
+    // Debug: log how many entries match before aggregation
+    const allEntries = await this.findMany(match);
+    this.logger.info(`[CreditLedgerDB] Aggregating points for wallet ${walletAddress}: Found ${allEntries.length} matching ledger entries.`);
+    if (allEntries.length > 0) {
+      this.logger.info(`[CreditLedgerDB] Points remaining in entries:`, allEntries.map(e => e.points_remaining));
+    }
+    const result = await this.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: "$points_remaining" } } }
+    ]);
+    this.logger.info(`[CreditLedgerDB] Aggregation result for wallet ${walletAddress}:`, result);
+    return result.length > 0 ? result[0].total : 0;
+  }
+
+  /**
+   * @deprecated Use sumPointsRemainingForWalletAddress instead.
+   */
+  async sumPointsRemainingForUser(masterAccountId) {
+    // Deprecated: Use wallet address instead
+    return 0;
+  }
 }
 
 module.exports = CreditLedgerDB; 

@@ -69,6 +69,8 @@ function createUserApi(dependencies) {
       const txRes = await internalApiClient.get(`/internal/v1/data/users/${userId}/transactions`);
       const transactions = txRes.data;
 
+
+
       // Fetch referral vaults
       let referralVault = null;
       try {
@@ -97,7 +99,16 @@ function createUserApi(dependencies) {
       const userExpInLevel = exp - lastLevelExp;
       const levelProgressRatio = expToNextLevel > 0 ? userExpInLevel / expToNextLevel : 0;
       // Points
-      const points = parseFloat(economy.pointsRemaining?.$numberDecimal || economy.pointsRemaining || '0');
+      let points = 0;
+      try {
+        if (wallet) {
+          const pointsRes = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${wallet}`);
+          points = pointsRes.data.points || 0;
+        }
+      } catch (err) {
+        logger.warn('[UserApi] /dashboard: Could not fetch points for wallet:', { error: err.message });
+        points = 0;
+      }
       // Rewards
       const sumRewards = (type) => transactions
         .filter(t => t.transactionType === type && parseFloat(t.amountUsd) > 0)

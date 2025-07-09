@@ -198,6 +198,30 @@ function createCreditLedgerApi(services, logger) {
     }
   });
 
+  // GET /ledger/points/:masterAccountId - Get total points remaining for a user
+  router.get('/points/:masterAccountId', async (req, res) => {
+    const { masterAccountId } = req.params;
+    try {
+      const points = await creditLedgerDb.sumPointsRemainingForUser(masterAccountId);
+      res.json({ points });
+    } catch (error) {
+      logger.error(`[creditLedgerApi] Error getting points for user ${masterAccountId}:`, error);
+      res.status(500).json({ error: { message: 'Failed to get points', details: error.message } });
+    }
+  });
+
+  // GET /ledger/points/by-wallet/:walletAddress - Get total points remaining for a wallet address
+  router.get('/points/by-wallet/:walletAddress', async (req, res) => {
+    const { walletAddress } = req.params;
+    try {
+      const points = await creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress);
+      res.json({ points });
+    } catch (error) {
+      logger.error(`[creditLedgerApi] Error getting points for wallet ${walletAddress}:`, error);
+      res.status(500).json({ error: { message: 'Failed to get points', details: error.message } });
+    }
+  });
+
   return router;
 }
 
