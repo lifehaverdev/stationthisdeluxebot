@@ -15,6 +15,34 @@ const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 // Conversion rate for USD to internal credit points.
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 
+// --- In-memory cache for recently processed tx hashes (debounce duplicate webhook processing) ---
+const RECENT_TX_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const recentProcessedTxHashes = new Map(); // txHash -> timestamp
+
+function addTxToCache(txHash) {
+  recentProcessedTxHashes.set(txHash, Date.now());
+}
+
+function isTxInCache(txHash) {
+  const ts = recentProcessedTxHashes.get(txHash);
+  if (!ts) return false;
+  if (Date.now() - ts > RECENT_TX_CACHE_TTL_MS) {
+    recentProcessedTxHashes.delete(txHash);
+    return false;
+  }
+  return true;
+}
+
+function cleanupTxCache() {
+  const now = Date.now();
+  for (const [txHash, ts] of recentProcessedTxHashes.entries()) {
+    if (now - ts > RECENT_TX_CACHE_TTL_MS) {
+      recentProcessedTxHashes.delete(txHash);
+    }
+  }
+}
+setInterval(cleanupTxCache, 60 * 1000); // Clean up every minute
+
 /**
  * @class CreditService
  * @description Manages the credit lifecycle, from event detection to off-chain accounting.
@@ -195,11 +223,18 @@ class CreditService {
         const { transaction, topics, data, index: logIndex } = log;
         const { hash: transactionHash, blockNumber } = transaction;
 
+        // --- Debounce duplicate webhook processing ---
+        if (isTxInCache(transactionHash)) {
+          this.logger.info(`[CreditService] Skipping duplicate webhook event for tx ${transactionHash} (recently processed)`);
+          continue;
+        }
+
         try {
             if (topics[0] === depositEventHash) {
                 // Process deposit event
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
                 await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
+                addTxToCache(transactionHash);
                 processedDeposits++;
             // } else if (topics[0] === nftDepositEventHash) {
             //     // Process NFT deposit event
@@ -211,6 +246,7 @@ class CreditService {
                 // Process withdrawal event
                 const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
                 await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
+                addTxToCache(transactionHash);
                 processedWithdrawals++;
             }
         } catch (error) {
@@ -460,6 +496,13 @@ class CreditService {
     const { depositor_address: user, token_address: token } = deposits[0];
     const originalTxHashes = deposits.map(d => d.deposit_tx_hash);
 
+    // --- Debounce duplicate confirmation for this group ---
+    let allInCache = originalTxHashes.every(isTxInCache);
+    if (allInCache) {
+      this.logger.info(`[CreditService] Skipping confirmation for group (User: ${user}, Token: ${token}) because all txs are recently processed.`);
+      return;
+    }
+
     this.logger.info(`[CreditService] Processing group (User: ${user}, Token: ${token}). Involves ${deposits.length} deposits.`);
     this.logger.debug(`[CreditService] Original deposit hashes in this group: ${originalTxHashes.join(', ')}`);
 
@@ -474,6 +517,7 @@ class CreditService {
             this.logger.warn(`[CreditService] Contract reports 0 unconfirmed balance for this group. These deposits may have been confirmed in a previous run. Marking as stale.`);
             for (const deposit of deposits) {
                  await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'CONFIRMED', { failure_reason: 'Stale pending entry; contract unconfirmed balance was zero upon processing.' });
+                 addTxToCache(deposit.deposit_tx_hash);
             }
             return;
         }
@@ -673,6 +717,7 @@ class CreditService {
 
         for (const deposit of deposits) {
             await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'CONFIRMED', finalStatus);
+            addTxToCache(deposit.deposit_tx_hash);
         }
 
         this.logger.info(`[CreditService] Successfully processed deposit group for user ${user} and token ${token}`);
@@ -684,6 +729,7 @@ class CreditService {
       const reason = { failure_reason: 'An unexpected error occurred during group processing.', error_details: errorMessage, error_stack: error.stack };
       for (const deposit of deposits) {
          await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', reason);
+         addTxToCache(deposit.deposit_tx_hash);
       }
     }
   }
