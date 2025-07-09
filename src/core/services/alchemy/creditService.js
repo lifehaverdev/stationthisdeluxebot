@@ -234,7 +234,6 @@ class CreditService {
                 // Process deposit event
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
                 await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
-                addTxToCache(transactionHash);
                 processedDeposits++;
             // } else if (topics[0] === nftDepositEventHash) {
             //     // Process NFT deposit event
@@ -246,7 +245,6 @@ class CreditService {
                 // Process withdrawal event
                 const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
                 await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
-                addTxToCache(transactionHash);
                 processedWithdrawals++;
             }
         } catch (error) {
