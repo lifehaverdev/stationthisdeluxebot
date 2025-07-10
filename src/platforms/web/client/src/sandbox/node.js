@@ -1,4 +1,4 @@
-import { websocketClient } from '../../../../../core/services/websocket/client.js';
+import { websocketClient } from '/js/websocketClient.js';
 import { generateWindowId, getToolInputTypes } from './utils.js';
 import { addToolWindow, removeToolWindow, getConnections, OUTPUT_TYPE_EMOJI } from './state.js';
 import { makeDraggable } from './canvas.js';
