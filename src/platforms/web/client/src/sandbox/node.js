@@ -1,11 +1,74 @@
+import { websocketClient } from '../../../../../core/services/websocket/client.js';
 import { generateWindowId, getToolInputTypes } from './utils.js';
 import { addToolWindow, removeToolWindow, getConnections, OUTPUT_TYPE_EMOJI } from './state.js';
 import { makeDraggable } from './canvas.js';
 import { calculateCenterPosition } from './utils.js';
 import { startConnection, updatePermanentConnection } from './connections.js';
 
+// A map to associate generation IDs with their corresponding tool window elements
+const generationIdToWindowMap = {};
+
+/**
+ * Handles real-time progress updates from the WebSocket.
+ * @param {object} payload - The progress payload from the server.
+ */
+function handleGenerationProgress(payload) {
+    console.log('[Sandbox] Generation progress received:', payload);
+    const { generationId, progress, status, liveStatus } = payload;
+    const toolWindow = generationIdToWindowMap[generationId];
+
+    if (toolWindow) {
+        let progressIndicator = toolWindow.querySelector('.progress-indicator');
+        if (!progressIndicator) {
+            progressIndicator = document.createElement('div');
+            progressIndicator.className = 'progress-indicator';
+            toolWindow.appendChild(progressIndicator);
+        }
+        const progressPercent = progress ? `(${(progress * 100).toFixed(1)}%)` : '';
+        progressIndicator.textContent = `Status: ${liveStatus || status} ${progressPercent}`;
+    }
+}
+
+/**
+ * Handles the final result update from the WebSocket.
+ * @param {object} payload - The final result payload from the server.
+ */
+function handleGenerationUpdate(payload) {
+    console.log('[Sandbox] Generation update received:', payload);
+    const { generationId, outputs, status } = payload;
+    const toolWindow = generationIdToWindowMap[generationId];
+
+    if (toolWindow) {
+        // Remove progress indicator
+        const progressIndicator = toolWindow.querySelector('.progress-indicator');
+        if (progressIndicator) progressIndicator.remove();
+
+        let resultContainer = toolWindow.querySelector('.result-container');
+        if (!resultContainer) {
+            resultContainer = document.createElement('div');
+            resultContainer.className = 'result-container';
+            toolWindow.appendChild(resultContainer);
+        }
+
+        if (status === 'completed' || status === 'success') {
+            resultContainer.innerHTML = `<p>Completed!</p><pre>${JSON.stringify(outputs, null, 2)}</pre>`;
+        } else {
+            resultContainer.innerHTML = `<p style="color: red;">Failed: ${JSON.stringify(outputs, null, 2)}</p>`;
+        }
+        
+        // Clean up the map entry
+        delete generationIdToWindowMap[generationId];
+    }
+}
+
+// Register WebSocket event listeners
+websocketClient.on('generationProgress', handleGenerationProgress);
+websocketClient.on('generationUpdate', handleGenerationUpdate);
+
+
 // Create a tool window
 export function createToolWindow(tool, position) {
+    console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at position:', position);
     const windowId = generateWindowId();
     
     const toolWindow = document.createElement('div');
@@ -32,6 +95,81 @@ export function createToolWindow(tool, position) {
     const executeBtn = createExecuteButton();
     const anchorPoint = createAnchorPoint(tool, toolWindow);
     const inputAnchors = createInputAnchors(tool);
+
+    // Attach click handler to execute button
+    executeBtn.addEventListener('click', async () => {
+        // Clear previous results/errors
+        const existingResult = toolWindow.querySelector('.result-container');
+        if (existingResult) existingResult.remove();
+        showError(toolWindow, '');
+
+        // Show initial progress
+        let progressIndicator = toolWindow.querySelector('.progress-indicator');
+        if (!progressIndicator) {
+            progressIndicator = document.createElement('div');
+            progressIndicator.className = 'progress-indicator';
+            toolWindow.appendChild(progressIndicator);
+        }
+        progressIndicator.textContent = 'Executing...';
+
+        console.log('[node.js] Execute button clicked for tool:', tool && tool.toolId);
+        // Gather inputs from the tool window
+        const inputs = {};
+        const inputElements = toolWindow.querySelectorAll('.parameter-input input');
+        inputElements.forEach(input => {
+            const paramName = input.placeholder;
+            inputs[paramName] = input.value;
+        });
+        const payload = {
+            toolId: tool.toolId,
+            inputs: inputs,
+            metadata: {
+                platform: 'web-sandbox'
+            }
+        };
+        console.log('[node.js] Sending execution payload:', payload);
+        try {
+            // Get CSRF token
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            console.log('[node.js] CSRF token:', csrfToken);
+            // Log cookies (if possible)
+            console.log('[node.js] Document cookies:', document.cookie);
+
+            const response = await fetch('/api/v1/generation/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrfToken
+                },
+                credentials: 'include', // Ensure cookies are sent
+                body: JSON.stringify(payload),
+            });
+            console.log('[node.js] Raw fetch response:', response);
+            const result = await response.json();
+            console.log('[node.js] Execution response:', result);
+
+            if (!response.ok) {
+                // Show error in UI
+                showError(toolWindow, result.error?.message || 'Execution request failed');
+                if (progressIndicator) progressIndicator.remove(); // Remove progress on immediate failure
+                throw new Error(result.error?.message || 'Execution request failed');
+            } else {
+                // Clear any previous error
+                showError(toolWindow, '');
+                // Link the generationId to this tool window for WebSocket updates
+                if (result.generationId) {
+                    generationIdToWindowMap[result.generationId] = toolWindow;
+                    progressIndicator.textContent = `Status: ${result.status}`;
+                }
+            }
+        } catch (error) {
+            console.error('[node.js] Execution Error:', error);
+            showError(toolWindow, error.message || 'Unknown error');
+            if (progressIndicator) progressIndicator.remove(); // Remove progress on error
+        }
+    });
+    console.log('[node.js] Execute button handler attached for tool:', tool && tool.toolId);
 
     // Assemble window
     toolWindow.append(
@@ -208,4 +346,16 @@ function setupDragging(toolWindow, handle) {
         toolWindow.style.cursor = '';
         handle.style.cursor = 'move';
     });
+} 
+
+function showError(toolWindow, message) {
+    let errorDiv = toolWindow.querySelector('.tool-error-message');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'tool-error-message';
+        errorDiv.style.color = 'red';
+        errorDiv.style.marginTop = '8px';
+        toolWindow.appendChild(errorDiv);
+    }
+    errorDiv.textContent = message;
 } 

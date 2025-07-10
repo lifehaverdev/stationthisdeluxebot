@@ -13,6 +13,7 @@ const { createAuthApi } = require('./authApi');
 const { createUserApi } = require('./userApi');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 const createPointsApi = require('./pointsApi');
+const createGenerationExecutionApi = require('./generationExecutionApi');
 
 
 /**
@@ -89,6 +90,41 @@ function initializeExternalApi(dependencies) {
       // For network errors or unhandled internal errors, return a generic 500.
       return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An error occurred during authentication.' } });
     }
+  };
+
+  // Dual authentication middleware: allows API key or session/CSRF
+  const dualAuth = async (req, res, next) => {
+    // API Key authentication
+    const apiKey = req.get('X-API-Key');
+    if (apiKey) {
+      try {
+        const response = await internalApiClient.post('/internal/v1/data/auth/validate-key', { apiKey });
+        req.user = response.data.user;
+        req.apiKey = response.data.apiKey;
+        return next();
+      } catch (error) {
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid API key.' } });
+      }
+    }
+
+    // JWT authentication from cookie
+    const token = req.cookies.jwt;
+  console.log('[dualAuth] jwt cookie:', token);
+  if (token) {
+    try {
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log('[dualAuth] decoded JWT:', decoded);
+      req.user = decoded;
+      return next();
+    } catch (error) {
+      console.error('[dualAuth] JWT verification error:', error);
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token.' } });
+    }
+  }
+
+    // If neither API key nor JWT is present, deny access.
+    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
   };
 
   // Mount the User API router (Protected by JWT or API key)
@@ -229,6 +265,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Points API router mounted at /points. (JWT or API key protected)');
   } else {
     logger.warn('External Points API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Generation Execution API router (Protected by dualAuth)
+  const generationExecutionRouter = createGenerationExecutionApi(dependencies);
+  if (generationExecutionRouter) {
+    externalApiRouter.use('/generation', dualAuth, generationExecutionRouter);
+    logger.info('External Generation Execution API router mounted at /api/v1/generation/. (Dual Auth)');
+  } else {
+    logger.warn('External Generation Execution API router not mounted due to missing dependencies.');
   }
 
   logger.info('External API router initialized.');

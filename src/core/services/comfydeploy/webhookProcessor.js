@@ -5,21 +5,23 @@ const notificationEvents = require('../../events/notificationEvents');
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
 
-// Dependencies: internalApiClient and logger. telegramNotifier is removed.
-async function processComfyDeployWebhook(payload, { internalApiClient, logger }) {
+// Dependencies: internalApiClient, logger, and websocketServer for real-time updates.
+async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
   // Initial check of received dependencies
   // Use a temporary console.log if logger itself might be an issue, but logs show it works.
   if (logger && typeof logger.info === 'function') {
     logger.info('[Webhook Processor] Initial check of received dependencies:', {
       isInternalApiClientPresent: !!internalApiClient,
       isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
-      isLoggerPresent: !!logger
+      isLoggerPresent: !!logger,
+      isWsSenderPresent: !!websocketServer,
     });
   } else {
     console.log('[Webhook Processor - Fallback Log] Initial check of received dependencies:', {
       isInternalApiClientPresent: !!internalApiClient,
       isInternalApiClientGetFunction: typeof internalApiClient?.get === 'function',
-      isLoggerPresent: !!logger
+      isLoggerPresent: !!logger,
+      isWsSenderPresent: !!websocketServer,
     });
   }
 
@@ -50,6 +52,24 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
       progress, 
       last_updated: now 
     });
+
+    // Find the associated generation to get the user ID for real-time progress updates
+    const generationRecordForProgress = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, {
+      headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }
+    }).then(res => res.data?.generations?.[0]).catch(() => null);
+
+    if (generationRecordForProgress && websocketServer) {
+        websocketServer.sendToUser(generationRecordForProgress.masterAccountId, {
+            type: 'generationProgress',
+            payload: {
+                generationId: generationRecordForProgress._id.toString(),
+                runId: run_id,
+                status: status,
+                progress: progress,
+                liveStatus: live_status
+            }
+        });
+    }
   }
 
   if (status === 'success' || status === 'failed') {
@@ -213,6 +233,23 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger })
        const errMessage = err.response && err.response.data && err.response.data.message ? err.response.data.message : "Failed to update internal generation record.";
        return { success: false, statusCode: errStatus, error: errMessage };
     }
+
+    // --- Send Final Update via WebSocket ---
+    if (websocketServer && generationRecord) {
+        logger.info(`[Webhook Processor] Sending final WebSocket update for generation ${generationId}.`);
+        websocketServer.sendToUser(generationRecord.masterAccountId, {
+            type: 'generationUpdate',
+            payload: {
+                generationId: generationId,
+                runId: run_id,
+                status: updatePayload.status,
+                outputs: updatePayload.responsePayload,
+                costUsd: updatePayload.costUsd,
+                finalEventTimestamp: finalEventTimestamp
+            }
+        });
+    }
+    // --- End WebSocket Update ---
 
     // Notification logic has been removed as per ADR-001.
     // The Notification Dispatch Service will handle notifications based on generationRecord updates.

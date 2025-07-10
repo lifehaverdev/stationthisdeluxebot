@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 
 // This function initializes the routes for the centralized Generation Execution API
 module.exports = function generationExecutionApi(dependencies) {
-  const { logger, db, toolRegistry, comfyUIService, openaiService, internalApiClient, loraResolutionService } = dependencies;
+  const { logger, db, toolRegistry, comfyUIService, openaiService, internalApiClient, loraResolutionService, webSocketService: websocketServer } = dependencies;
   const router = express.Router();
 
   // Check for essential dependencies
@@ -204,6 +204,22 @@ module.exports = function generationExecutionApi(dependencies) {
             status: 'completed',
             'metadata.response': responseContent
           });
+
+          // --- Send Final Update via WebSocket ---
+          if (websocketServer) {
+            logger.info(`[Execute] Sending final WebSocket update for OpenAI generation ${generationRecord._id}.`);
+            websocketServer.sendToUser(generationRecord.masterAccountId.toString(), {
+              type: 'generationUpdate',
+              payload: {
+                generationId: generationRecord._id.toString(),
+                status: 'completed',
+                outputs: { response: responseContent }, // Consistent output format
+                service: tool.service,
+                toolId: tool.toolId,
+              }
+            });
+          }
+          // --- End WebSocket Update ---
 
           // 5. Respond with result
           return res.status(200).json({

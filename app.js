@@ -21,6 +21,9 @@ const { initializeServices } = require('./src/core/services'); // Initializes al
 const { initializePlatforms } = require('./src/platforms');
 const { initialize } = require('./src/core/initialization');
 
+// Import our new WebSocketService singleton
+const websocketServer = require('./src/core/services/websocket/server.js');
+
 // Import new services for notification dispatching
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
 const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
@@ -46,9 +49,10 @@ async function startApp() {
     await initializeDatabase();
     logger.info('Database connection initialized.');
     
-    // Initialize core services
+    // Initialize core services, passing the WebSocketService instance
     const services = await initializeServices({ 
-      logger: logger // Pass the app logger or a child logger
+      logger: logger,
+      webSocketService: websocketServer
     });
     logger.info('Core services initialized.');
     /*
@@ -256,8 +260,14 @@ async function startApp() {
 
         const port = process.env.WEB_PORT || 4000;
         logger.info(`Starting Web platform on port ${port}...`);
-        await platforms.web.start(port);
+        // Get the httpServer instance when starting the web platform
+        const httpServer = await platforms.web.start(port);
         logger.info(`Web platform running on port ${port}`);
+
+        // Initialize the WebSocket service by attaching it to the running HTTP server
+        logger.info('Initializing WebSocket service...');
+        websocketServer.initialize(httpServer);
+        logger.info('WebSocket service initialized.');
         
         // --- Credit Service Startup ---
         // This is now started AFTER the web platform is running to ensure

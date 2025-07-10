@@ -1,30 +1,48 @@
 # HANDOFF: 2025-07-09
 
 ## Work Completed
-- Traced the full flow of deposit events from quote to ledger entry and dashboard aggregation.
-- Refactored backend aggregation to use wallet address and case-insensitive matching.
-- Added detailed logging to aggregation and crediting logic.
-- Verified that points are correctly calculated and credited in the ledger when status is CONFIRMED.
-- Identified that recent deposits are not showing in the dashboard because their ledger entries have status ERROR, not CONFIRMED.
-- Investigated the contract and found that every deposit confirmation is being attempted twice; the second attempt fails and is saved as ERROR in the ledger.
+- Implemented a robust, race-free deposit confirmation pipeline for points crediting.
+- Added an in-memory group lock (user-token level) to prevent concurrent confirmation attempts for the same deposit group.
+- Combined the group lock with a recent tx cache to debounce duplicate webhook deliveries from Alchemy.
+- Verified via logs and dashboard that only one confirmation is attempted per deposit, and points are credited exactly once.
+- Confirmed that duplicate webhooks are safely ignored while a group is being processed.
+- User dashboard now reflects credited points immediately after successful confirmation.
 
 ## Current State
-- The dashboard points aggregation works and matches all CONFIRMED ledger entries for the user's wallet.
-- New deposits are processed, but the ledger entry for each deposit ends up with status ERROR due to a duplicate confirmation attempt (the second attempt fails on-chain and is saved as the final state).
-- The user does not see their new points in the dashboard because only CONFIRMED entries are counted.
-- The root cause is duplicate confirmation attempts for the same deposit, leading to the second (failing) attempt overwriting the ledger entry with ERROR status.
+- Deposit events are processed idempotently and atomically: only one on-chain confirmation is ever attempted for a deposit group, even under heavy webhook replay or race conditions.
+- The ledger entry is updated to CONFIRMED only after a successful on-chain confirmation, and points are credited and visible in the dashboard.
+- Duplicate or concurrent webhook deliveries for the same deposit group are safely ignored/skipped.
+- The system is robust against double confirmation, ledger overwrites, and race conditions.
 
 ## Next Tasks
-- Investigate why duplicate confirmation attempts are being made for each deposit group in CreditService.
-- Ensure that only one confirmation is attempted per deposit group.
-- Add explicit error logging and admin visibility for failed confirmations.
-- Optionally, expose failed deposit attempts and their reasons in the user dashboard for transparency.
-- Once the duplicate confirmation bug is fixed, verify that new deposits are credited as CONFIRMED and points show up in the dashboard as expected.
+- **Handle legacy errored deposits:**
+  - Identify all ledger entries with status ERROR that resulted from previous double confirmation attempts.
+  - For each, check if the deposit was actually confirmed on-chain (i.e., the first confirmation succeeded but the entry was later overwritten by an error from a duplicate attempt).
+  - If so, update the ledger entry status to CONFIRMED and credit the appropriate points to the user.
+  - Optionally, build an admin tool or script to automate this reconciliation and recovery process.
+- Add metrics/logging for group lock contention and skipped confirmations for monitoring.
+- Continue to monitor for any edge cases or new error patterns as the system runs in production.
 
 ## Changes to Plan
-- No major changes to the overall plan, but the focus is now on fixing the duplicate confirmation bug in CreditService before further dashboard or aggregation changes.
+- No major changes to the overall plan. The focus has shifted from fixing duplicate confirmation to also addressing recovery for previously errored deposits.
 
 ## Open Questions
-- What is triggering the duplicate confirmation attempts? Is it a race condition, webhook replay, or logic bug in the deposit processing pipeline?
-- Should failed deposit attempts be visible to users, or only to admins?
-- Is there a need for a migration to clean up existing ERROR entries that should have been CONFIRMED? 
+- **How should we handle deposits that are currently in ERROR due to double confirmation?**
+  - Should we automatically attempt to reconcile and credit points for these, or require admin review?
+  - What is the best way to detect on-chain that a deposit was actually confirmed, even if the ledger entry is in ERROR?
+  - Should users be notified if their previously errored deposits are recovered and credited?
+- **Should we expose failed deposit attempts and their reasons in the user dashboard for transparency, or only to admins?**
+- **Is there a need for a migration or one-time script to clean up and recover points for all affected users?**
+
+## Discussion: Handling Legacy Errored Deposits
+Many deposits that were processed before the group lock fix ended up with status ERROR due to double confirmation attempts. In these cases, the first on-chain confirmation often succeeded, but a second (duplicate) attempt failed and overwrote the ledger entry with an error, leaving the user's points uncredited and trapped.
+
+**Proposed Recovery Approach:**
+- Query all ledger entries with status ERROR and a non-null confirmation_tx_hash.
+- For each, check the on-chain status of the confirmation_tx_hash:
+  - If the tx succeeded and the deposit was credited on-chain, update the ledger entry to CONFIRMED and credit the user's points.
+  - If the tx failed, leave as ERROR and flag for admin review.
+- Optionally, notify users whose deposits are recovered.
+- Consider building an admin dashboard view or script for this reconciliation process.
+
+This approach will ensure that all users receive the points they are owed, and that the ledger accurately reflects the true state of all deposits, even those affected by past race conditions. 
