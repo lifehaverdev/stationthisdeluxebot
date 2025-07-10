@@ -33,7 +33,8 @@ function createWebhookApi(dependencies) {
       const processorDeps = {
         internalApiClient: dependencies.internal?.client,
         telegramNotifier: dependencies.telegramNotifier,
-        logger: dependencies.logger || console
+        logger: dependencies.logger || console,
+        webSocketService: dependencies.webSocketService // <-- add this
       };
       
       const result = await processComfyDeployWebhook(req.body, processorDeps);

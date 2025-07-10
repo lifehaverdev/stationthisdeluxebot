@@ -240,7 +240,10 @@ function initializeExternalApi(dependencies) {
   }
 
   // Mount the Webhook API router (Publicly Accessible but with internal validation)
-  const webhookRouter = createWebhookApi(dependencies);
+  const webhookRouter = createWebhookApi({
+    ...dependencies,
+    webSocketService: dependencies.webSocketService || (global.websocketServer || require('../../core/services/websocket/server'))
+  });
   if (webhookRouter) {
     externalApiRouter.use('/webhook', webhookRouter);
     logger.info('External Webhook API router mounted at /webhook. (Public with validation)');
