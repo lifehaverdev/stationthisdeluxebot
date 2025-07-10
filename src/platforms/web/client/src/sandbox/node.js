@@ -51,9 +51,21 @@ function handleGenerationUpdate(payload) {
         }
 
         if (status === 'completed' || status === 'success') {
-            resultContainer.innerHTML = `<p>Completed!</p><pre>${JSON.stringify(outputs, null, 2)}</pre>`;
+            // Try to extract image URL from outputs
+            let imageUrl = null;
+            if (Array.isArray(outputs) && outputs.length > 0) {
+                const firstOutput = outputs[0];
+                if (firstOutput && firstOutput.data && Array.isArray(firstOutput.data.images) && firstOutput.data.images.length > 0) {
+                    imageUrl = firstOutput.data.images[0].url;
+                }
+            }
+            if (imageUrl) {
+                resultContainer.innerHTML = `<p>Completed!</p><img src="${imageUrl}" alt="Generated Image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0;" />`;
+            } else {
+                resultContainer.innerHTML = `<p>Completed!</p><pre>${JSON.stringify(outputs, null, 2)}</pre>`;
+            }
         } else {
-            resultContainer.innerHTML = `<p style="color: red;">Failed: ${JSON.stringify(outputs, null, 2)}</p>`;
+            resultContainer.innerHTML = `<p style=\"color: red;\">Failed: ${JSON.stringify(outputs, null, 2)}</p>`;
         }
         
         // Clean up the map entry
