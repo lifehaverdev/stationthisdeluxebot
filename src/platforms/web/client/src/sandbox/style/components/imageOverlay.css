@@ -1,17 +1,44 @@
 .image-overlay {
-  position: fixed; z-index: 9999; top: 0; left: 0; width: 100vw; height: 100vh;
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(0,0,0,0.85);
+  overflow: auto;
 }
 .image-overlay-bg {
-  position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(0,0,0,0.85);
 }
 .image-overlay-img {
-  max-width: 90vw; max-height: 90vh; z-index: 1; border-radius: 8px;
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  z-index: 1;
+  border-radius: 8px;
   box-shadow: 0 4px 32px rgba(0,0,0,0.5);
+  display: block;
+  margin: 0 auto;
 }
 .image-overlay-close {
-  position: absolute; top: 24px; right: 32px; z-index: 2;
-  background: none; border: none; color: #fff; font-size: 2.5rem; cursor: pointer;
+  position: absolute;
+  top: 24px;
+  right: 32px;
+  z-index: 2;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2.5rem;
+  cursor: pointer;
 } 

@@ -261,35 +261,31 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
       } else {
         const usdPerPoint = 0.000337;
-        const pointsToSpend = Math.round(costUsd / usdPerPoint);
+        const basePointsToSpend = Math.round(costUsd / usdPerPoint);
 
-        logger.info(`[Webhook Processor] Converted cost $${costUsd.toFixed(4)} to ${pointsToSpend} points for spending.`);
+        logger.info(`[Webhook Processor] Converted cost $${costUsd.toFixed(4)} to ${basePointsToSpend} base points for spending.`);
 
         try {
-          const spendPayload = { pointsToSpend, spendContext: { generationId: generationId.toString(), toolId } };
-          logger.info(`[Webhook Processor] Attempting to spend ${pointsToSpend} points for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
+          // --- New Contributor Reward Logic ---
+          // This must be called *before* issueSpend to determine the total charge.
+          const { totalPointsToCharge, totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, basePointsToSpend, { internalApiClient, logger });
+          
+          const spendPayload = { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId } };
+          logger.info(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
           await issueSpend(generationRecord.masterAccountId, spendPayload, { internalApiClient, logger });
           logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
-          // --- New Contributor Reward Logic ---
-          const { totalRewards, rewardBreakdown } = await distributeContributorRewards(generationRecord, pointsToSpend, { internalApiClient, logger });
-          const netProtocolPoints = pointsToSpend - totalRewards;
+          const protocolNetPoints = basePointsToSpend;
           
-          logger.info(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${pointsToSpend}, Contributor Rewards: ${totalRewards}, Protocol Net: ${netProtocolPoints}`);
-          
-          // Add point accounting to the final generation record update
-          updatePayload.pointsSpent = pointsToSpend;
-          updatePayload.contributorRewardPoints = totalRewards;
-          updatePayload.protocolNetPoints = netProtocolPoints;
-          updatePayload.rewardBreakdown = rewardBreakdown; // Store the detailed breakdown
+          logger.info(`[Webhook Processor] Points accounting for gen ${generationId}: Total Spent: ${totalPointsToCharge}, Contributor Rewards: ${totalRewards}, Protocol Net: ${protocolNetPoints}`);
           
           // Re-apply the update to the generation record with the new accounting info
           try {
              const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB }};
              await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
-                pointsSpent: pointsToSpend,
+                pointsSpent: totalPointsToCharge,
                 contributorRewardPoints: totalRewards,
-                protocolNetPoints: netProtocolPoints,
+                protocolNetPoints: protocolNetPoints,
                 rewardBreakdown: rewardBreakdown
              }, putRequestOptions);
              logger.info(`[Webhook Processor] Successfully updated generation ${generationId} with final point accounting.`);
@@ -301,15 +297,15 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           // << ADR-005 EXP Update Start >>
           try {
             const expPayload = {
-              expChange: pointsToSpend,
-              description: `EXP gained for ${pointsToSpend} points spent via tool ${toolId}`
+              expChange: totalPointsToCharge, // User gets EXP for the total amount spent
+              description: `EXP gained for ${totalPointsToCharge} points spent via tool ${toolId}`
             };
             const expUpdateEndpoint = `/internal/v1/data/users/${generationRecord.masterAccountId}/economy/exp`;
             const expRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
             
             logger.info(`[Webhook Processor] Attempting EXP update for masterAccountId ${generationRecord.masterAccountId}. Payload:`, JSON.stringify(expPayload));
             await internalApiClient.put(expUpdateEndpoint, expPayload, expRequestOptions);
-            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${pointsToSpend} points`);
+            logger.info(`[Webhook Processor] EXP updated for masterAccountId ${generationRecord.masterAccountId}: +${totalPointsToCharge} points`);
 
           } catch (expError) {
             logger.warn(`[Webhook Processor] EXP update failed for masterAccountId ${generationRecord.masterAccountId}. This is non-blocking. Error:`, expError.message, expError.stack);
@@ -339,121 +335,92 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
   return { success: true, statusCode: 200, data: { message: "Webhook processed successfully. DB record updated." } };
 }
 
-// <<<< ADR-012: Micro-Fee System START >>>>
+// <<<< ADR-012: Micro-Fee System REVISED >>>>
 /**
- * Calculates creator rewards based on spell and LoRA usage.
+ * Calculates and distributes contributor rewards based on a shared pool model.
+ * The user is charged the base cost + the total rewards distributed.
  * @param {object} generationRecord - The full generation record.
- * @param {number} baseCost - The base cost of the generation in USD.
- * @param {object} logger - The logger instance.
- * @returns {{finalCost: number, rewards: Array<{ownerId: string, amount: number, type: string}>}}
+ * @param {number} basePoints - The base cost of the generation in points.
+ * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
+ * @returns {Promise<{totalPointsToCharge: number, totalRewards: number, rewardBreakdown: Array}>}
  */
-function calculateCreatorRewards(generationRecord, baseCost, logger) {
-    const rewards = [];
-    let totalFee = 0;
+async function distributeContributorRewards(generationRecord, basePoints, { internalApiClient, logger }) {
+    logger.info(`[distributeContributorRewards] Calculating rewards for gen ${generationRecord._id} based on ${basePoints} base points.`);
     const generatingUserId = generationRecord.masterAccountId.toString();
+    const rewardsToDistribute = [];
+    const shares = {};
+    let totalShares = 0;
+
+    // --- 1. Gather contributors and count shares ---
+    const loras = (generationRecord.metadata?.loraResolutionData?.appliedLoras || []);
+    loras.forEach(lora => {
+        const ownerId = lora.ownerAccountId?.toString();
+        // Don't reward user for using their own assets
+        if (ownerId && ownerId !== generatingUserId) {
+            shares[ownerId] = (shares[ownerId] || 0) + 1; // 1 share per LoRA used
+            totalShares++;
+            logger.info(`[distributeContributorRewards] LoRA from ${ownerId} adds 1 share.`);
+        }
+    });
 
     const isSpell = generationRecord.metadata?.isSpell;
-    const appliedLoras = generationRecord.metadata?.loraResolutionData?.appliedLoras || [];
-
-    const uniqueLoras = appliedLoras.reduce((acc, lora) => {
-        // Don't reward user for using their own LoRA
-        if (lora.ownerAccountId && lora.ownerAccountId !== generatingUserId) {
-            if (!acc.find(item => item.modelId === lora.modelId)) {
-                acc.push(lora);
-            }
-        }
-        return acc;
-    }, []);
-
-    if (isSpell) {
-        const spellOwnerId = generationRecord.metadata?.spell?.ownedBy?.toString();
-        const LORA_FEE_RATE = 0.03;
-        const SPELL_FEE_RATE = 0.03;
-
-        // Credit spell owner (if they aren't the one running the spell)
-        if (spellOwnerId && spellOwnerId !== generatingUserId) {
-            const spellFee = baseCost * SPELL_FEE_RATE;
-            rewards.push({ ownerId: spellOwnerId, amount: spellFee, type: 'spell_fee' });
-            totalFee += spellFee;
-            logger.info(`[calculateCreatorRewards] Calculated spell fee of ${spellFee} for owner ${spellOwnerId}`);
-        }
-
-        // Credit LoRA owners
-        if (uniqueLoras.length > 0) {
-            const loraFeePool = baseCost * LORA_FEE_RATE;
-            const perLoraFee = loraFeePool / uniqueLoras.length;
-            uniqueLoras.forEach(lora => {
-                rewards.push({ ownerId: lora.ownerAccountId, amount: perLoraFee, type: 'lora_fee' });
-                totalFee += perLoraFee;
-            });
-            logger.info(`[calculateCreatorRewards] Calculated LoRA fee of ${loraFeePool} split among ${uniqueLoras.length} LoRAs for spell generation.`);
-        }
-    } else if (uniqueLoras.length > 0) {
-        const LORA_FEE_RATE = 0.05;
-        const loraFeePool = baseCost * LORA_FEE_RATE;
-        const perLoraFee = loraFeePool / uniqueLoras.length;
-        uniqueLoras.forEach(lora => {
-            rewards.push({ ownerId: lora.ownerAccountId, amount: perLoraFee, type: 'lora_fee' });
-            totalFee += perLoraFee;
-        });
-        logger.info(`[calculateCreatorRewards] Calculated LoRA fee of ${loraFeePool} split among ${uniqueLoras.length} LoRAs.`);
-    }
-
-    const finalCost = baseCost + totalFee;
-    logger.info(`[calculateCreatorRewards] Base Cost: ${baseCost}, Total Fee: ${totalFee}, Final Cost: ${finalCost}`);
-
-    return { finalCost, rewards };
-}
-
-/**
- * Distributes rewards to creators by calling the credit API.
- * @param {object} generationRecord - The generation record for context.
- * @param {Array<{ownerId: string, amount: number, type: string}>} rewards - The rewards to distribute.
- * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
- */
-async function distributeCreatorRewards(generationRecord, pointsToSpend, { internalApiClient, logger }) {
-    logger.info(`[distributeContributorRewards] Calculating rewards for generation ${generationRecord._id} based on ${pointsToSpend} points.`);
-    const generatingUserId = generationRecord.masterAccountId.toString();
-    const contributors = new Set();
-    const rewardBreakdown = [];
-
-    // Identify unique contributors
     const spellOwnerId = generationRecord.metadata?.spell?.ownedBy?.toString();
-    if (spellOwnerId && spellOwnerId !== generatingUserId) {
-        contributors.add(spellOwnerId);
+    if (isSpell && spellOwnerId && spellOwnerId !== generatingUserId) {
+        shares[spellOwnerId] = (shares[spellOwnerId] || 0) + 1; // 1 share for the spell
+        totalShares++;
+        logger.info(`[distributeContributorRewards] Spell from ${spellOwnerId} adds 1 share.`);
     }
 
-    const appliedLoras = generationRecord.metadata?.loraResolutionData?.appliedLoras || [];
-    for (const lora of appliedLoras) {
-        if (lora.ownerAccountId && lora.ownerAccountId !== generatingUserId) {
-            contributors.add(lora.ownerAccountId);
-        }
+    // Future-proofing for base model owner reward
+    const baseModelOwnerId = generationRecord.metadata?.model?.ownerAccountId?.toString();
+    if (baseModelOwnerId && baseModelOwnerId !== generatingUserId) {
+        // This part is for future implementation when base model ownership is tracked.
+        // For now, we just log it. Uncomment the lines below to activate it.
+        // shares[baseModelOwnerId] = (shares[baseModelOwnerId] || 0) + 1;
+        // totalShares++;
+        logger.info(`[distributeContributorRewards] Base model owner found (${baseModelOwnerId}), but reward logic is not yet active for base models.`);
     }
 
-    if (contributors.size === 0) {
+    if (totalShares === 0) {
         logger.info('[distributeContributorRewards] No external contributors found. No rewards to distribute.');
-        return { totalRewards: 0, rewardBreakdown: [] };
+        return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
 
-    // Calculate reward pool and per-contributor share
-    const totalRewardPool = Math.floor(pointsToSpend * 0.20);
-    if (totalRewardPool === 0) {
+    // --- 2. Calculate rewards ---
+    const contributorRewardPool = Math.floor(basePoints * 0.20);
+    logger.info(`[distributeContributorRewards] Total Shares: ${totalShares}. Reward Pool: ${contributorRewardPool} points (20% of base).`);
+
+    if (contributorRewardPool === 0) {
         logger.info('[distributeContributorRewards] Reward pool is zero. No rewards to distribute.');
-        return { totalRewards: 0, rewardBreakdown: [] };
+        return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
-    const perContributorReward = Math.floor(totalRewardPool / contributors.size);
 
-    if (perContributorReward === 0) {
-        logger.info(`[distributeContributorRewards] Per-contributor reward is zero (${totalRewardPool} / ${contributors.size}). No rewards to distribute.`);
-        return { totalRewards: 0, rewardBreakdown: [] };
+    const pointsPerShare = Math.floor(contributorRewardPool / totalShares);
+    if (pointsPerShare === 0) {
+        logger.info(`[distributeContributorRewards] Points per share is zero. No rewards to distribute.`);
+        return { totalPointsToCharge: basePoints, totalRewards: 0, rewardBreakdown: [] };
     }
 
     let totalPointsDistributed = 0;
+    const rewardBreakdown = [];
 
-    for (const contributorId of contributors) {
+    // --- 3. Prepare reward distribution ---
+    for (const [contributorId, shareCount] of Object.entries(shares)) {
+        const points = pointsPerShare * shareCount;
+        if (points > 0) {
+            rewardsToDistribute.push({ contributorId, points });
+            totalPointsDistributed += points;
+        }
+    }
+    
+    // The user is charged the base cost + total rewards successfully calculated
+    const totalPointsToCharge = basePoints + totalPointsDistributed;
+
+    // --- 4. Issue credits to contributors ---
+    for (const reward of rewardsToDistribute) {
         try {
             const creditPayload = {
-                points: perContributorReward,
+                points: reward.points,
                 description: `Reward for your contribution to generation ${generationRecord._id}`,
                 rewardType: 'CONTRIBUTOR_REWARD',
                 relatedItems: {
@@ -461,28 +428,27 @@ async function distributeCreatorRewards(generationRecord, pointsToSpend, { inter
                     sourceUserId: generatingUserId,
                 }
             };
-            await issuePointsCredit(contributorId, creditPayload, { internalApiClient, logger });
-            logger.info(`[distributeContributorRewards] Successfully credited ${perContributorReward} points to contributor ${contributorId}.`);
-            
+            await issuePointsCredit(reward.contributorId, creditPayload, { internalApiClient, logger });
+            logger.info(`[distributeContributorRewards] Successfully credited ${reward.points} points to contributor ${reward.contributorId}.`);
             rewardBreakdown.push({
-                contributorId: contributorId,
-                points: perContributorReward,
+                contributorId: reward.contributorId,
+                points: reward.points,
                 status: 'credited'
             });
-            totalPointsDistributed += perContributorReward;
-
         } catch (error) {
-            logger.error(`[distributeContributorRewards] FAILED to credit contributor ${contributorId} for generation ${generationRecord._id}. Error:`, error.message);
+            logger.error(`[distributeContributorRewards] FAILED to credit contributor ${reward.contributorId} for generation ${generationRecord._id}. Error:`, error.message);
             rewardBreakdown.push({
-                contributorId: contributorId,
-                points: perContributorReward,
+                contributorId: reward.contributorId,
+                points: reward.points,
                 status: 'failed',
                 error: error.message
             });
         }
     }
     
-    return { totalRewards: totalPointsDistributed, rewardBreakdown };
+    logger.info(`[distributeContributorRewards] Calculation complete. Base: ${basePoints}, Rewards: ${totalPointsDistributed}, Total Charge: ${totalPointsToCharge}.`);
+    
+    return { totalPointsToCharge, totalRewards: totalPointsDistributed, rewardBreakdown };
 }
 
 
@@ -508,12 +474,8 @@ async function issuePointsCredit(masterAccountId, payload, { internalApiClient, 
     }
 }
 
-/**
- * Issues a credit to a user's account via the internal API.
- * @param {string} masterAccountId - The user to credit.
- * @param {object} payload - The credit payload.
- * @param {{internalApiClient: object, logger: object}} dependencies - Dependencies.
- */
+// This function is no longer needed as we are using a points-based system and a single reward function.
+/*
 async function issueCredit(masterAccountId, payload, { internalApiClient, logger }) {
     if (!masterAccountId) {
         throw new Error('masterAccountId is required for credit.');
@@ -535,6 +497,7 @@ async function issueCredit(masterAccountId, payload, { internalApiClient, logger
         throw creditError;
     }
 }
+*/
 // <<<< ADR-012: Micro-Fee System END >>>>
 
 // Helper function to build the debit payload as per ADR-005
@@ -568,13 +531,10 @@ async function issueDebit(masterAccountId, payload, { internalApiClient, logger 
     throw new Error('Internal API client not configured or invalid for issuing debit.');
   }
 
-  // const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
-  // ADR-005 hotfix: Path issue with internalApiClient potentially double-prepending /internal
   const debitEndpoint = `/internal/v1/data/users/${masterAccountId}/economy/debit`;
   const requestOptions = {
     headers: {
       'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB,
-      // Add other necessary headers like Content-Type if not automatically handled by internalApiClient
     },
   };
   if (!process.env.INTERNAL_API_KEY_WEB) {
