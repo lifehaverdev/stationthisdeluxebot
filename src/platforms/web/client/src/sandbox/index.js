@@ -17,6 +17,8 @@ import { calculateCenterPosition, hideModal } from './utils.js';
 import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
 import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
+import SpellsMenuModal from './components/SpellsMenuModal.js';
+import './style/components/spellsMenuModal.css';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -206,6 +208,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize click handlers
     initClickHandlers();
+
+    // Spells Menu link handler
+    const spellsNavLink = document.querySelector('nav.main-nav a[href="#spells"]');
+    if (spellsNavLink) {
+        spellsNavLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const spellsModal = new SpellsMenuModal();
+            spellsModal.show();
+        });
+    }
 
     const userMenu = document.querySelector('.user-menu');
     if (userMenu) {

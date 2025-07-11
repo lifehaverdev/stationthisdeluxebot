@@ -97,7 +97,6 @@ function injectImageOverlay() {
     overlay.className = 'image-overlay';
     overlay.style.display = 'none';
     overlay.innerHTML = `
-      <div class="image-overlay-bg"></div>
       <img class="image-overlay-img" src="" alt="Full Size" />
       <button class="image-overlay-close">&times;</button>
     `;
