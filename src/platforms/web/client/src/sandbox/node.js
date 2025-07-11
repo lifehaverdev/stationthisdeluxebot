@@ -121,6 +121,7 @@ function showImageOverlay(url) {
 }
 
 function hideImageOverlay() {
+    console.log('[DEBUG] hideImageOverlay called');
     const overlay = document.getElementById('image-overlay');
     if (!overlay) return;
     overlay.style.display = 'none';
