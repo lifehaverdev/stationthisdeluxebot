@@ -69,7 +69,10 @@ function handleGenerationUpdate(payload) {
                 resultContainer.innerHTML = `<p>Completed!</p><img src="${imageUrl}" alt="Generated Image" class="result-image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0; cursor: pointer;" />`;
                 // Add click handler for overlay
                 const img = resultContainer.querySelector('.result-image');
-                img.addEventListener('click', () => showImageOverlay(imageUrl));
+                img.addEventListener('click', () => {
+                    console.log('[DEBUG] result-image clicked, imageUrl:', imageUrl);
+                    showImageOverlay(imageUrl);
+                });
             } else {
                 resultContainer.innerHTML = `<p>Completed!</p><pre>${JSON.stringify(outputs, null, 2)}</pre>`;
             }
@@ -109,10 +112,12 @@ function injectImageOverlay() {
 }
 
 function showImageOverlay(url) {
+    console.log('[DEBUG] showImageOverlay called with url:', url);
     const overlay = document.getElementById('image-overlay');
     const img = overlay.querySelector('.image-overlay-img');
     img.src = url;
     overlay.style.display = 'flex';
+    console.log('[DEBUG] overlay.style.display set to flex, overlay:', overlay, 'img:', img);
 }
 
 function hideImageOverlay() {
