@@ -42,7 +42,7 @@ function createSpellsApi(dependencies) {
             if (!user || !user.userId) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
-            const response = await internalApiClient.get(`/internal/v1/data/spells?masterAccountId=${user.userId}`);
+            const response = await internalApiClient.get(`/internal/v1/data/spells?ownedBy=${user.userId}`);
             res.status(200).json(response.data);
         } catch (error) {
             logger.error('Failed to fetch user spells:', error);
@@ -57,7 +57,7 @@ function createSpellsApi(dependencies) {
             if (!user || !user.userId) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
-            const payload = { ...req.body, masterAccountId: user.userId };
+            const payload = { ...req.body, creatorId: user.userId, ownedBy: user.userId };
             const response = await internalApiClient.post('/internal/v1/data/spells', payload);
             res.status(response.status).json(response.data);
         } catch (error) {
@@ -74,7 +74,7 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const payload = { ...req.body, masterAccountId: user.userId };
+            const payload = { ...req.body, ownedBy: user.userId };
             const response = await internalApiClient.put(`/internal/v1/data/spells/${spellId}`, payload);
             res.status(response.status).json(response.data);
         } catch (error) {
@@ -91,7 +91,7 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}?masterAccountId=${user.userId}`);
+            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}?ownedBy=${user.userId}`);
             res.status(response.status).json(response.data);
         } catch (error) {
             logger.error('Failed to delete spell:', error);

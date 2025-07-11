@@ -102,7 +102,10 @@ function injectImageOverlay() {
         <button class="image-overlay-close">&times;</button>
       </div>
     `;
-    document.body.appendChild(overlay);
+    const sandboxMain = document.querySelector('.sandbox-main');
+    if (sandboxMain) {
+        sandboxMain.appendChild(overlay);
+    }
 
     // Event listeners for closing overlay
     overlay.querySelector('.image-overlay-close').onclick = hideImageOverlay;
