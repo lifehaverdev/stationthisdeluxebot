@@ -1,32 +1,34 @@
 # HANDOFF: 2025-07-10
 
 ## Work Completed
-- Implemented a real-time WebSocket delivery system for the web sandbox interface.
-- Created a backend WebSocket server (`src/core/services/websocket/server.js`) for authenticated, per-user push notifications.
-- Created a frontend WebSocket client (`src/core/services/websocket/client.js`) for live event subscription in the browser.
-- Refactored codebase to use clear, centralized naming (`websocketServer`, `websocketClient`) and a single `src/core/services/websocket/` directory.
-- Updated all backend and frontend imports to use the new structure.
-- Integrated real-time progress and result delivery for both synchronous (OpenAI) and asynchronous (ComfyUI) tool executions.
-- Updated the sandbox UI to display live progress and results for each tool window.
-- Added a README to the websocket service directory for future contributors.
+- Refactored authentication for generation execution to use JWT throughout (removed legacy session checks)
+- Fixed dualAuth middleware to support JWT and API key
+- Fixed handler to accept both userId and masterAccountId for user context
+- Corrected internal API proxy path for generation execution
+- Implemented real-time WebSocket delivery of generation progress and results:
+  - Ensured webhookProcessor receives websocketServer and emits updates
+  - Updated frontend WebSocket client to listen for progress and result events
+  - Mapped generationId to tool window in sandbox UI
+  - Displayed progress and final result in the correct tool window
+  - Rendered output images directly in the UI when available
+- Validated end-to-end flow with live test and console logs
 
 ## Current State
-- WebSocket server is initialized with the main HTTP server and manages user connections by JWT-authenticated masterAccountId.
-- Backend services emit `generationProgress` and `generationUpdate` events to the correct user in real time.
-- Frontend sandbox UI listens for these events and updates the UI for the relevant tool window.
-- Codebase is organized, with no duplicate/confusing service files.
+- Sandbox UI now shows real-time progress and result updates for generation jobs
+- Output images are displayed inline in the tool window upon completion
+- WebSocket infrastructure is fully integrated and working
+- All backend and frontend code paths are aligned on JWT-based authentication
 
 ## Next Tasks
-- Add more event types as needed (e.g., for notifications, errors, or other live updates).
-- Expand UI to handle more output types (audio, video, etc.).
-- Add Playwright or equivalent tests to demonstrate end-to-end real-time delivery.
-- Document the event contract in more detail (types, payloads, error handling).
+- Enhance UI to support multiple images, download links, or richer result formatting
+- Add error handling and user feedback for payment failures (e.g., insufficient points)
+- Consider Playwright or equivalent test for full real-time flow
+- Clean up any remaining legacy session code
 
 ## Changes to Plan
-- Consolidated all WebSocket logic into a single, top-level service directory for clarity and maintainability.
-- Renamed all service variables and imports for unambiguous usage.
+- No major deviations; all changes align with the refactor north star and real-time UX goals
 
 ## Open Questions
-- Should we add a generic event bus or pub/sub abstraction for future real-time features?
-- Do we want to support multi-device or multi-tab session management for the same user?
-- What is the preferred way to handle authentication refresh or reconnection edge cases? 
+- Should we support other output types (text, audio, etc.) in the same UI pattern?
+- Should we add notifications or toasts for generation completion?
+- Is there a need for a persistent generation history panel in the sandbox? 

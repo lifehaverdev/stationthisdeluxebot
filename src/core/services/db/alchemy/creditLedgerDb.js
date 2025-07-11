@@ -241,6 +241,26 @@ class CreditLedgerDB extends BaseDB {
   }
 
   /**
+   * Finds all active, confirmed deposit entries for a wallet address that can be spent from.
+   * The deposits are sorted by their funding rate in ascending order.
+   * @param {string} walletAddress - The user's wallet address (case-insensitive).
+   * @returns {Promise<Array<Object>>} A sorted list of credit ledger entries.
+   */
+  async findActiveDepositsForWalletAddress(walletAddress) {
+    if (!walletAddress) return [];
+    return this.findMany(
+      {
+        depositor_address: { $regex: `^${walletAddress}$`, $options: 'i' },
+        status: 'CONFIRMED',
+        points_remaining: { $gt: 0 },
+      },
+      {
+        sort: { funding_rate_applied: 1 },
+      }
+    );
+  }
+
+  /**
    * Atomically deducts a specified number of points from a specific deposit entry.
    * @param {ObjectId} depositId - The _id of the credit_ledger entry.
    * @param {number} pointsToDeduct - The number of points to subtract from points_remaining.

@@ -187,6 +187,17 @@ export function showToolsForConnection(connectionType, x, y) {
     
     document.body.appendChild(modal);
 
+    // Clamp modal position to viewport
+    const margin = 16;
+    const rect = modal.getBoundingClientRect();
+    let newLeft = rect.left, newTop = rect.top;
+    if (rect.left < margin) newLeft = margin;
+    if (rect.top < margin) newTop = margin;
+    if (rect.right > window.innerWidth - margin) newLeft = window.innerWidth - rect.width - margin;
+    if (rect.bottom > window.innerHeight - margin) newTop = window.innerHeight - rect.height - margin;
+    modal.style.left = `${newLeft + rect.width / 2}px`;
+    modal.style.top = `${newTop + rect.height / 2}px`;
+
     function handleClickOutside(e) {
         if (!modal.contains(e.target)) {
             modal.remove();
@@ -296,4 +307,34 @@ export function showToolsForCategory(type, x, y) {
     }
 
     document.body.appendChild(modal);
+
+    // Clamp modal position to viewport
+    const margin = 16;
+    const rect = modal.getBoundingClientRect();
+    let newLeft = rect.left, newTop = rect.top;
+    if (rect.left < margin) newLeft = margin;
+    if (rect.top < margin) newTop = margin;
+    if (rect.right > window.innerWidth - margin) newLeft = window.innerWidth - rect.width - margin;
+    if (rect.bottom > window.innerHeight - margin) newTop = window.innerHeight - rect.height - margin;
+    modal.style.left = `${newLeft + rect.width / 2}px`;
+    modal.style.top = `${newTop + rect.height / 2}px`;
+
+    function handleClickOutside(e) {
+        if (!modal.contains(e.target)) {
+            modal.remove();
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        }
+    }
+    function handleEscape(e) {
+        if (e.key === 'Escape') {
+            modal.remove();
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('keydown', handleEscape);
+        }
+    }
+    setTimeout(() => {
+        document.addEventListener('click', handleClickOutside);
+        document.addEventListener('keydown', handleEscape);
+    }, 0);
 }

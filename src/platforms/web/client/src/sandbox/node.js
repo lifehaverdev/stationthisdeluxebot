@@ -1,6 +1,12 @@
 import { websocketClient } from '/js/websocketClient.js';
 import { generateWindowId, getToolInputTypes } from './utils.js';
-import { addToolWindow, removeToolWindow, getConnections, OUTPUT_TYPE_EMOJI } from './state.js';
+import {
+    addToolWindow,
+    removeToolWindow,
+    getConnections,
+    updateToolWindowPosition,
+    OUTPUT_TYPE_EMOJI
+} from './state.js';
 import { makeDraggable } from './canvas.js';
 import { calculateCenterPosition } from './utils.js';
 import { startConnection, updatePermanentConnection } from './connections.js';
@@ -60,7 +66,10 @@ function handleGenerationUpdate(payload) {
                 }
             }
             if (imageUrl) {
-                resultContainer.innerHTML = `<p>Completed!</p><img src="${imageUrl}" alt="Generated Image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0;" />`;
+                resultContainer.innerHTML = `<p>Completed!</p><img src="${imageUrl}" alt="Generated Image" class="result-image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0; cursor: pointer;" />`;
+                // Add click handler for overlay
+                const img = resultContainer.querySelector('.result-image');
+                img.addEventListener('click', () => showImageOverlay(imageUrl));
             } else {
                 resultContainer.innerHTML = `<p>Completed!</p><pre>${JSON.stringify(outputs, null, 2)}</pre>`;
             }
@@ -77,17 +86,68 @@ function handleGenerationUpdate(payload) {
 websocketClient.on('generationProgress', handleGenerationProgress);
 websocketClient.on('generationUpdate', handleGenerationUpdate);
 
+// Inject image overlay modal if not present
+function injectImageOverlay() {
+    if (document.getElementById('image-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'image-overlay';
+    overlay.className = 'image-overlay';
+    overlay.style.display = 'none';
+    overlay.innerHTML = `
+      <div class="image-overlay-bg"></div>
+      <img class="image-overlay-img" src="" alt="Full Size" />
+      <button class="image-overlay-close">&times;</button>
+    `;
+    document.body.appendChild(overlay);
+
+    // Event listeners for closing overlay
+    overlay.querySelector('.image-overlay-bg').onclick = hideImageOverlay;
+    overlay.querySelector('.image-overlay-close').onclick = hideImageOverlay;
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideImageOverlay();
+    });
+}
+
+function showImageOverlay(url) {
+    const overlay = document.getElementById('image-overlay');
+    const img = overlay.querySelector('.image-overlay-img');
+    img.src = url;
+    overlay.style.display = 'flex';
+}
+
+function hideImageOverlay() {
+    const overlay = document.getElementById('image-overlay');
+    if (!overlay) return;
+    overlay.style.display = 'none';
+    overlay.querySelector('.image-overlay-img').src = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    injectImageOverlay();
+});
+
 
 // Create a tool window
 export function createToolWindow(tool, position) {
-    console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at position:', position);
+    console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at workspace position:', position);
     const windowId = generateWindowId();
     
-    const toolWindow = document.createElement('div');
-    toolWindow.id = windowId;
-    toolWindow.className = 'tool-window';
-    toolWindow.style.left = `${position.x}px`;
-    toolWindow.style.top = `${position.y}px`;
+    const toolWindowEl = document.createElement('div');
+    toolWindowEl.id = windowId;
+    toolWindowEl.className = 'tool-window';
+
+    const windowData = {
+        id: windowId,
+        tool: tool,
+        element: toolWindowEl,
+        workspaceX: position.x,
+        workspaceY: position.y,
+    };
+    addToolWindow(windowData);
+
+    const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(position.x, position.y);
+    toolWindowEl.style.left = `${screenX}px`;
+    toolWindowEl.style.top = `${screenY}px`;
 
     // Separate parameters into required and optional
     const params = Object.entries(tool.inputSchema || {}).reduce((acc, [key, param]) => {
@@ -105,29 +165,29 @@ export function createToolWindow(tool, position) {
     const optionalSection = createParameterSection(params.optional, 'optional-params');
     const showMoreBtn = createShowMoreButton(optionalSection);
     const executeBtn = createExecuteButton();
-    const anchorPoint = createAnchorPoint(tool, toolWindow);
+    const anchorPoint = createAnchorPoint(tool, toolWindowEl);
     const inputAnchors = createInputAnchors(tool);
 
     // Attach click handler to execute button
     executeBtn.addEventListener('click', async () => {
         // Clear previous results/errors
-        const existingResult = toolWindow.querySelector('.result-container');
+        const existingResult = toolWindowEl.querySelector('.result-container');
         if (existingResult) existingResult.remove();
-        showError(toolWindow, '');
+        showError(toolWindowEl, '');
 
         // Show initial progress
-        let progressIndicator = toolWindow.querySelector('.progress-indicator');
+        let progressIndicator = toolWindowEl.querySelector('.progress-indicator');
         if (!progressIndicator) {
             progressIndicator = document.createElement('div');
             progressIndicator.className = 'progress-indicator';
-            toolWindow.appendChild(progressIndicator);
+            toolWindowEl.appendChild(progressIndicator);
         }
         progressIndicator.textContent = 'Executing...';
 
         console.log('[node.js] Execute button clicked for tool:', tool && tool.toolId);
         // Gather inputs from the tool window
         const inputs = {};
-        const inputElements = toolWindow.querySelectorAll('.parameter-input input');
+        const inputElements = toolWindowEl.querySelectorAll('.parameter-input input');
         inputElements.forEach(input => {
             const paramName = input.placeholder;
             inputs[paramName] = input.value;
@@ -163,28 +223,28 @@ export function createToolWindow(tool, position) {
 
             if (!response.ok) {
                 // Show error in UI
-                showError(toolWindow, result.error?.message || 'Execution request failed');
+                showError(toolWindowEl, result.error?.message || 'Execution request failed');
                 if (progressIndicator) progressIndicator.remove(); // Remove progress on immediate failure
                 throw new Error(result.error?.message || 'Execution request failed');
             } else {
                 // Clear any previous error
-                showError(toolWindow, '');
+                showError(toolWindowEl, '');
                 // Link the generationId to this tool window for WebSocket updates
                 if (result.generationId) {
-                    generationIdToWindowMap[result.generationId] = toolWindow;
+                    generationIdToWindowMap[result.generationId] = toolWindowEl;
                     progressIndicator.textContent = `Status: ${result.status}`;
                 }
             }
         } catch (error) {
             console.error('[node.js] Execution Error:', error);
-            showError(toolWindow, error.message || 'Unknown error');
+            showError(toolWindowEl, error.message || 'Unknown error');
             if (progressIndicator) progressIndicator.remove(); // Remove progress on error
         }
     });
     console.log('[node.js] Execute button handler attached for tool:', tool && tool.toolId);
 
     // Assemble window
-    toolWindow.append(
+    toolWindowEl.append(
         header, 
         requiredSection, 
         showMoreBtn, 
@@ -195,11 +255,17 @@ export function createToolWindow(tool, position) {
     );
 
     // Make window draggable by its header
-    setupDragging(toolWindow, header);
+    setupDragging(windowData, header);
 
-    document.body.appendChild(toolWindow);
-    addToolWindow({ id: windowId, tool, window: toolWindow });
-    return toolWindow;
+    const canvas = document.querySelector('.sandbox-canvas');
+    if (canvas) {
+        canvas.appendChild(toolWindowEl);
+    } else {
+        document.body.appendChild(toolWindowEl); // Fallback
+    }
+    
+    // addToolWindow({ id: windowId, tool, window: toolWindowEl }); // Old way
+    return toolWindowEl;
 }
 
 // Create window header
@@ -214,9 +280,14 @@ function createWindowHeader(title) {
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
     closeBtn.className = 'close-button';
-    closeBtn.addEventListener('click', () => {
+    function closeWindow() {
         header.parentElement.remove();
         removeToolWindow(header.parentElement.id);
+    }
+    closeBtn.addEventListener('click', closeWindow);
+    closeBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        closeWindow();
     });
 
     header.append(titleElement, closeBtn);
@@ -296,6 +367,12 @@ function createAnchorPoint(tool, toolWindow) {
         e.stopPropagation(); // Prevent window dragging
         startConnection(e, outputType, toolWindow);
     });
+    anchorPoint.addEventListener('touchstart', (e) => {
+        console.log('Anchor point touchstart event fired.');
+        e.preventDefault();
+        e.stopPropagation();
+        startConnection(e, outputType, toolWindow);
+    }, { passive: false });
 
     return anchorPoint;
 }
@@ -325,39 +402,80 @@ function createInputAnchors(tool) {
 }
 
 // Setup dragging functionality
-function setupDragging(toolWindow, handle) {
+function setupDragging(windowData, handle) {
     let isDragging = false;
-    let dragOffset = { x: 0, y: 0 };
+    let dragStart = { x: 0, y: 0 };
+    let initialWorkspacePos = { x: 0, y: 0 };
 
-    handle.addEventListener('mousedown', (e) => {
+    const startDrag = (e, isTouch = false) => {
+        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+        
         isDragging = true;
-        dragOffset.x = e.clientX - toolWindow.offsetLeft;
-        dragOffset.y = e.clientY - toolWindow.offsetTop;
-        toolWindow.style.cursor = 'grabbing';
+        dragStart = { x: clientX, y: clientY };
+        initialWorkspacePos = { x: windowData.workspaceX, y: windowData.workspaceY };
+        
+        windowData.element.style.cursor = 'grabbing';
         handle.style.cursor = 'grabbing';
-    });
+        if (isTouch) e.preventDefault();
+    };
 
-    document.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            const x = e.clientX - dragOffset.x;
-            const y = e.clientY - dragOffset.y;
-            toolWindow.style.left = `${x}px`;
-            toolWindow.style.top = `${y}px`;
+    const drag = (e, isTouch = false) => {
+        if (!isDragging) return;
+        if (isTouch) e.preventDefault();
 
-            // Update all connections involving this window
+        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+        const scale = window.sandbox.getScale();
+
+        const dx = (clientX - dragStart.x) / scale;
+        const dy = (clientY - dragStart.y) / scale;
+
+        windowData.workspaceX = initialWorkspacePos.x + dx;
+        windowData.workspaceY = initialWorkspacePos.y + dy;
+        
+        // Live re-rendering from parent
+        const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(windowData.workspaceX, windowData.workspaceY);
+        windowData.element.style.left = `${screenX}px`;
+        windowData.element.style.top = `${screenY}px`;
+
+        // Update connections
             getConnections().forEach(conn => {
-                if (conn.from === toolWindow || conn.to === toolWindow) {
+            if (conn.from === windowData.element || conn.to === windowData.element) {
                     updatePermanentConnection(conn);
                 }
             });
-        }
-    });
+    };
 
-    document.addEventListener('mouseup', () => {
+    const endDrag = (e, isTouch = false) => {
+        if (!isDragging) return;
+        if (isTouch) e.preventDefault();
+
+        const gridSize = window.sandbox.getGridSize();
+        const finalX = Math.round(windowData.workspaceX / gridSize) * gridSize;
+        const finalY = Math.round(windowData.workspaceY / gridSize) * gridSize;
+
+        updateToolWindowPosition(windowData.id, finalX, finalY);
+        
+        // Final render after snap
+        const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(finalX, finalY);
+        windowData.element.style.left = `${screenX}px`;
+        windowData.element.style.top = `${screenY}px`;
+        
         isDragging = false;
-        toolWindow.style.cursor = '';
+        windowData.element.style.cursor = '';
         handle.style.cursor = 'move';
-    });
+    };
+
+    // Mouse Events
+    handle.addEventListener('mousedown', (e) => startDrag(e, false));
+    document.addEventListener('mousemove', (e) => drag(e, false));
+    document.addEventListener('mouseup', (e) => endDrag(e, false));
+
+    // Touch Events
+    handle.addEventListener('touchstart', (e) => startDrag(e, true), { passive: false });
+    document.addEventListener('touchmove', (e) => drag(e, true), { passive: false });
+    document.addEventListener('touchend', (e) => endDrag(e, true), { passive: false });
 } 
 
 function showError(toolWindow, message) {

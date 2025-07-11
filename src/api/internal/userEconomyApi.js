@@ -342,7 +342,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     if (!masterAccountId) return;
     const masterAccountIdStr = masterAccountId.toString();
 
-    const { pointsToSpend, spendContext } = req.body;
+    const { pointsToSpend, spendContext, walletAddress } = req.body;
     const requestId = uuidv4();
 
     logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/spend - RequestId: ${requestId}`, { body: req.body });
@@ -351,9 +351,17 @@ module.exports = function initializeUserEconomyApi(dependencies) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'pointsToSpend must be a positive integer.', requestId } });
     }
 
+    let activeDeposits;
+    let spendTarget = 'masterAccountId';
     try {
-      // 1. Fetch all of the user's deposits that have points remaining
-      const activeDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+      if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
+        logger.info(`[userEconomyApi] /spend: Using wallet-based spend for address ${walletAddress}`);
+        activeDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(walletAddress);
+        spendTarget = 'walletAddress';
+      } else {
+        logger.info(`[userEconomyApi] /spend: Using masterAccountId-based spend for user ${masterAccountIdStr}`);
+        activeDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+      }
       if (!activeDeposits || activeDeposits.length === 0) {
         return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: 'User has no active deposits with points remaining.', requestId } });
       }
@@ -389,9 +397,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         pointsLeftToDeduct -= pointsToDeductFromThisDeposit;
       }
       
-      // Note: A more robust implementation would log this summary to a new 'spend_log' collection
-      // associated with the user and the specific generation/action context.
-      logger.info(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId}`, {
+      logger.info(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId} (target: ${spendTarget})`, {
         totalPointsSpent: pointsToSpend,
         spendBreakdown: spendSummary,
         context: spendContext || 'N/A'

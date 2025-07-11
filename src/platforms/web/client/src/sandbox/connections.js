@@ -54,8 +54,41 @@ export function startConnection(event, outputType, fromWindow) {
         showToolsForConnection(outputType, e.clientX, e.clientY);
     }
 
+    // Touch event handlers
+    function handleTouchMove(e) {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        updateConnectionLine(event.touches ? event.touches[0].clientX : event.clientX, event.touches ? event.touches[0].clientY : event.clientY, touch.clientX, touch.clientY);
+    }
+
+    function handleTouchEnd(e) {
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+
+        line.remove();
+        setConnectionLine(null);
+
+        // Find the element under the finger
+        const touch = (e.changedTouches && e.changedTouches[0]) || (e.touches && e.touches[0]);
+        if (touch) {
+            const elem = document.elementFromPoint(touch.clientX, touch.clientY);
+            const targetAnchor = elem && elem.closest('.input-anchor');
+            if (targetAnchor && targetAnchor.dataset.type === outputType) {
+                const toWindow = targetAnchor.closest('.tool-window');
+                if (toWindow && toWindow !== fromWindow) {
+                    createPermanentConnection(fromWindow, toWindow, outputType);
+                    setActiveConnection(null);
+                    return;
+                }
+            }
+            showToolsForConnection(outputType, touch.clientX, touch.clientY);
+        }
+    }
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: false });
 }
 
 function updateConnectionLine(startX, startY, endX, endY) {

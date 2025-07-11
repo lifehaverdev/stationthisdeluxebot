@@ -83,6 +83,8 @@
     z-index: var(--z-modal);
     min-width: 240px;
     animation: modalFadeIn var(--transition-speed) var(--transition-timing);
+    max-height: 80vh;
+    overflow-y: auto;
 }
 
 .output-tools-modal .header {

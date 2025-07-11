@@ -69,6 +69,22 @@ export function getAvailableTools() {
     return availableTools;
 }
 
+export function getToolWindows() {
+    return activeToolWindows;
+}
+
+export function getToolWindow(id) {
+    return activeToolWindows.find(w => w.id === id);
+}
+
+export function updateToolWindowPosition(id, workspaceX, workspaceY) {
+    const window = getToolWindow(id);
+    if (window) {
+        window.workspaceX = workspaceX;
+        window.workspaceY = workspaceY;
+    }
+}
+
 // Output type mapping
 export const OUTPUT_TYPE_MAPPING = {
     'image': {
@@ -182,12 +198,16 @@ export const OUTPUT_TYPE_MAPPING = {
 };
 
 // Window and connection management
-export function addToolWindow(window) {
-    activeToolWindows.push(window);
+export function addToolWindow(windowData) {
+    activeToolWindows.push(windowData);
 }
 
 export function removeToolWindow(windowId) {
     activeToolWindows = activeToolWindows.filter(w => w.id !== windowId);
+    const windowEl = document.getElementById(windowId);
+    if (windowEl) {
+        windowEl.remove();
+    }
 }
 
 export function setActiveConnection(connection) {
