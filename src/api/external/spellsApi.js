@@ -11,7 +11,6 @@ function createSpellsApi(dependencies) {
     const { internalApiClient, logger, dualAuth } = dependencies;
 
     // --- PUBLIC: Marketplace/Discovery Endpoint ---
-    // GET /spells/marketplace - List public spells, organized by usage count
     router.get('/marketplace', async (req, res) => {
         try {
             const response = await internalApiClient.get('/internal/v1/data/spells/public');
@@ -34,17 +33,16 @@ function createSpellsApi(dependencies) {
     });
 
     // --- PROTECTED: All other spells endpoints ---
-    // Use dualAuth for all other routes
     router.use(dualAuth);
 
-    // Example: GET /spells - List user's spells
+    // GET /spells - List user's spells
     router.get('/', async (req, res) => {
         try {
             const user = req.user;
-            if (!user || !user.masterAccountId) {
-                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or masterAccountId not found.' } });
+            if (!user || !user.userId) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
-            const response = await internalApiClient.get(`/internal/v1/data/spells?masterAccountId=${user.masterAccountId}`);
+            const response = await internalApiClient.get(`/internal/v1/data/spells?masterAccountId=${user.userId}`);
             res.status(200).json(response.data);
         } catch (error) {
             logger.error('Failed to fetch user spells:', error);
@@ -52,14 +50,14 @@ function createSpellsApi(dependencies) {
         }
     });
 
-    // Example: POST /spells - Create a new spell
+    // POST /spells - Create a new spell
     router.post('/', async (req, res) => {
         try {
             const user = req.user;
-            if (!user || !user.masterAccountId) {
-                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or masterAccountId not found.' } });
+            if (!user || !user.userId) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
-            const payload = { ...req.body, masterAccountId: user.masterAccountId };
+            const payload = { ...req.body, masterAccountId: user.userId };
             const response = await internalApiClient.post('/internal/v1/data/spells', payload);
             res.status(response.status).json(response.data);
         } catch (error) {
@@ -68,15 +66,15 @@ function createSpellsApi(dependencies) {
         }
     });
 
-    // Example: PUT /spells/:spellId - Update a spell
+    // PUT /spells/:spellId - Update a spell
     router.put('/:spellId', async (req, res) => {
         try {
             const user = req.user;
-            if (!user || !user.masterAccountId) {
-                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or masterAccountId not found.' } });
+            if (!user || !user.userId) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const payload = { ...req.body, masterAccountId: user.masterAccountId };
+            const payload = { ...req.body, masterAccountId: user.userId };
             const response = await internalApiClient.put(`/internal/v1/data/spells/${spellId}`, payload);
             res.status(response.status).json(response.data);
         } catch (error) {
@@ -85,15 +83,15 @@ function createSpellsApi(dependencies) {
         }
     });
 
-    // Example: DELETE /spells/:spellId - Delete a spell
+    // DELETE /spells/:spellId - Delete a spell
     router.delete('/:spellId', async (req, res) => {
         try {
             const user = req.user;
-            if (!user || !user.masterAccountId) {
-                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or masterAccountId not found.' } });
+            if (!user || !user.userId) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}?masterAccountId=${user.masterAccountId}`);
+            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}?masterAccountId=${user.userId}`);
             res.status(response.status).json(response.data);
         } catch (error) {
             logger.error('Failed to delete spell:', error);
