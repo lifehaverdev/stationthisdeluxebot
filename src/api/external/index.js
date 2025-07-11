@@ -14,6 +14,7 @@ const { createUserApi } = require('./userApi');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 const createPointsApi = require('./pointsApi');
 const createGenerationExecutionApi = require('./generationExecutionApi');
+const createSpellsApi = require('./spellsApi');
 
 
 /**
@@ -268,6 +269,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Points API router mounted at /points. (JWT or API key protected)');
   } else {
     logger.warn('External Points API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Spells API router (Protected by JWT or API key)
+  const spellsRouter = createSpellsApi(dependencies);
+  if (spellsRouter) {
+    externalApiRouter.use('/spells', authenticateUserOrApiKey, spellsRouter);
+    logger.info('External Spells API router mounted at /spells. (JWT or API key protected)');
+  } else {
+    logger.warn('External Spells API router not mounted due to missing dependencies.');
   }
 
   // Mount the Generation Execution API router (Protected by dualAuth)

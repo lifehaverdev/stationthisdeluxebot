@@ -1,84 +1,144 @@
 const express = require('express');
 
 /**
- * Initializes the external-facing Spells API routes.
- * This API is the public gateway for the web client to interact with spells.
- * It ensures that all requests are authenticated and authorized before forwarding
- * them to the internal data services.
- * @param {object} dependencies - Services and utilities.
+ * Creates an external-facing Express router for Spells.
+ * This router proxies requests to the internal spells API, handling user authentication.
+ * @param {Object} dependencies - Dependencies including internalApiClient.
  * @returns {express.Router}
  */
-module.exports = function spellsApi(dependencies) {
-    const { logger, internalApiClient } = dependencies;
-
-    if (!internalApiClient) {
-        logger.error('[external-spellsApi] Critical dependency failure: internalApiClient is missing!');
-        // Return a router that always responds with a service unavailable error
-        const router = express.Router();
-        router.use((req, res) => {
-            res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Internal API client is not available.' } });
-        });
-        return router;
-    }
-
+function createSpellsApi(dependencies) {
     const router = express.Router();
+    const { internalApiClient, logger } = dependencies;
 
-    // GET /spells - Get public spells or the user's owned spells
-    router.get('/', async (req, res) => {
-        // req.user is populated by authentication middleware
+    // Middleware to extract masterAccountId and add it to the request for downstream use.
+    const getMasterAccountId = (req, res, next) => {
+        // The authenticateUserOrApiKey middleware should place user info on req.user
         if (!req.user || !req.user.masterAccountId) {
-            return res.status(401).json({ error: 'Authentication required.' });
+            logger.warn('[spellsApiExternal] User or masterAccountId not found on request object.');
+            return res.status(401).json({ error: 'Authentication details not found.' });
         }
+        req.masterAccountId = req.user.masterAccountId;
+        next();
+    };
+    
+    // Use this middleware for all routes in this router
+    router.use(getMasterAccountId);
 
-        const { masterAccountId } = req.user;
-        const { public: fetchPublic } = req.query;
-
+    // GET /spells - Get public spells or spells owned by the logged-in user
+    router.get('/', async (req, res, next) => {
         try {
-            let response;
-            if (fetchPublic === 'true') {
-                // Fetching for the marketplace
-                logger.info(`[external-spellsApi] Fetching public spells for marketplace view.`);
-                response = await internalApiClient.get('/internal/v1/data/spells');
-            } else {
-                // Fetching the user's owned spells
-                logger.info(`[external-spellsApi] Fetching spells for owner: ${masterAccountId}`);
-                response = await internalApiClient.get(`/internal/v1/data/spells`, { params: { ownedBy: masterAccountId } });
+            // Forward query params (like `public=true` or `search=...`) to the internal API.
+            // Add `ownedBy` if the user is requesting their own spells.
+            const queryParams = { ...req.query };
+            if (!queryParams.public) {
+                queryParams.ownedBy = req.masterAccountId;
             }
-            
+
+            const response = await internalApiClient.get('/internal/v1/data/spells', { params: queryParams });
+            res.json(response.data);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    // GET /spells/:identifier - Get a single spell by slug or ID
+    router.get('/:identifier', async (req, res, next) => {
+        try {
+            const { identifier } = req.params;
+            const response = await internalApiClient.get(`/internal/v1/data/spells/${identifier}`, {
+                params: { masterAccountId: req.masterAccountId } // Pass for permission checks
+            });
+            res.json(response.data);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    // POST /spells - Create a new spell
+    router.post('/', async (req, res, next) => {
+        try {
+            const payload = {
+                ...req.body,
+                creatorId: req.masterAccountId // Ensure creatorId is the authenticated user
+            };
+            const response = await internalApiClient.post('/internal/v1/data/spells', payload);
             res.status(response.status).json(response.data);
         } catch (error) {
-            const status = error.response?.status || 500;
-            const message = error.response?.data?.error || 'An error occurred while fetching spells.';
-            logger.error(`[external-spellsApi] GET /: Error fetching spells: ${error.message}`, error);
-            res.status(status).json({ error: message });
+            next(error);
+        }
+    });
+
+    // PUT /spells/:spellId - Update a spell
+    router.put('/:spellId', async (req, res, next) => {
+        try {
+            const { spellId } = req.params;
+            const payload = {
+                ...req.body,
+                masterAccountId: req.masterAccountId // For ownership verification
+            };
+            const response = await internalApiClient.put(`/internal/v1/data/spells/${spellId}`, payload);
+            res.json(response.data);
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    // DELETE /spells/:spellId - Delete a spell
+    router.delete('/:spellId', async (req, res, next) => {
+        try {
+            const { spellId } = req.params;
+            // The internal API expects masterAccountId in the body for delete
+            const payload = { masterAccountId: req.masterAccountId };
+            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}`, { data: payload });
+            res.status(response.status).send();
+        } catch (error) {
+            next(error);
         }
     });
     
-    // GET /spells/:spellIdentifier - Get a single spell by slug or ID
-    router.get('/:spellIdentifier', async (req, res) => {
-        if (!req.user || !req.user.masterAccountId) {
-            return res.status(401).json({ error: 'Authentication required.' });
-        }
-        
-        const { masterAccountId } = req.user;
-        const { spellIdentifier } = req.params;
-        
+    // POST /spells/:spellId/steps - Add a step
+    router.post('/:spellId/steps', async (req, res, next) => {
         try {
-            // Pass the user's ID for permission checks in the internal API
-            const response = await internalApiClient.get(`/internal/v1/data/spells/${spellIdentifier}`, {
-                params: { masterAccountId }
-            });
+            const { spellId } = req.params;
+            const payload = { ...req.body, masterAccountId: req.masterAccountId };
+            const response = await internalApiClient.post(`/internal/v1/data/spells/${spellId}/steps`, payload);
             res.status(response.status).json(response.data);
         } catch (error) {
-            const status = error.response?.status || 500;
-            const message = error.response?.data?.error || 'An error occurred while fetching the spell.';
-            logger.error(`[external-spellsApi] GET /${spellIdentifier}: Error fetching spell: ${error.message}`, error);
-            res.status(status).json({ error: message });
+            next(error);
         }
     });
 
-    // We will implement POST, PUT, DELETE later.
+    // DELETE /spells/:spellId/steps/:stepId - Remove a step
+    router.delete('/:spellId/steps/:stepId', async (req, res, next) => {
+        try {
+            const { spellId, stepId } = req.params;
+            const payload = { masterAccountId: req.masterAccountId };
+            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}/steps/${stepId}`, { data: payload });
+            res.json(response.data);
+        } catch (error) {
+            next(error);
+        }
+    });
 
-    logger.info('[external-spellsApi] External Spells API routes initialized.');
+    // PUT /spells/:spellId/steps/:stepId/parameters - Update step parameters
+    router.put('/:spellId/steps/:stepId/parameters', async (req, res, next) => {
+        try {
+            const { spellId, stepId } = req.params;
+            const payload = { ...req.body, masterAccountId: req.masterAccountId };
+            const response = await internalApiClient.put(`/internal/v1/data/spells/${spellId}/steps/${stepId}/parameters`, payload);
+            res.json(response.data);
+        } catch (error) {
+            next(error);
+        }
+    });
+    
+    // Placeholder for import/copy
+    router.post('/import', async (req, res, next) => {
+        // TODO: Implement the internal logic for importing/copying a spell first
+        res.status(501).json({ message: 'Not implemented' });
+    });
+
     return router;
-}; 
+}
+
+module.exports = createSpellsApi; 

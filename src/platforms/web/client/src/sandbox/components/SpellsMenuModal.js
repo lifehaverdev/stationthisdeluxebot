@@ -43,29 +43,14 @@ export default class SpellsMenuModal {
     async fetchMySpells() {
         this.setState({ loading: true, error: null });
         try {
-            // This now correctly calls the external API
+            // Using the new external API endpoint
             const response = await fetch(`/api/v1/spells`);
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to fetch your spells (status: ${response.status}).`);
+                throw new Error(errorData.error?.message || 'Failed to fetch your spells.');
             }
             const data = await response.json();
             this.setState({ loading: false, spells: data.spells || [] });
-        } catch (error) {
-            this.setState({ loading: false, error: error.message });
-        }
-    }
-
-    async fetchMarketplaceSpells() {
-        this.setState({ loading: true, error: null });
-        try {
-            const response = await fetch(`/api/v1/spells?public=true`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to fetch marketplace spells (status: ${response.status}).`);
-            }
-            const data = await response.json();
-            this.setState({ loading: false, marketplaceSpells: data.spells || [] });
         } catch (error) {
             this.setState({ loading: false, error: error.message });
         }
@@ -128,24 +113,6 @@ export default class SpellsMenuModal {
         `;
     }
 
-    renderMarketplace() {
-        const { marketplaceSpells } = this.state;
-        return `
-            <div class="spells-header">
-                <button class="action-button-secondary" data-action="back-to-main">⬅️ Back</button>
-                <h2>Discover Spells</h2>
-            </div>
-            <div class="spells-list">
-                ${marketplaceSpells && marketplaceSpells.length > 0 ? marketplaceSpells.map(spell => `
-                    <div class="spell-item">
-                        <span>📖 ${spell.name} (by ${spell.creatorUsername || 'Unknown'})</span>
-                        <button class="action-button" data-action="view-market-spell" data-slug="${spell.slug}">View</button>
-                    </div>
-                `).join('') : '<p class="empty-list-message">No public spells found at the moment.</p>'}
-            </div>
-        `;
-    }
-
     attachEvents() {
         // Main event delegation
         const content = this.modalElement.querySelector('.spells-modal-content');
@@ -163,21 +130,13 @@ export default class SpellsMenuModal {
                     break;
                 case 'discover':
                     console.log('Discover spells clicked');
-                    this.fetchMarketplaceSpells();
                     this.setState({ view: 'marketplace' });
+                    // this.fetchMarketplaceSpells(); // We'll implement this next
                     break;
                 case 'edit-spell':
                     const slug = button.dataset.slug;
                     console.log(`Edit spell: ${slug}`);
                     // this.setState({ view: 'spellDetail', selectedSpellSlug: slug });
-                    break;
-                case 'back-to-main':
-                    this.setState({ view: 'main' });
-                    break;
-                case 'view-market-spell':
-                    const marketSlug = button.dataset.slug;
-                    console.log(`View market spell: ${marketSlug}`);
-                    // this.setState({ view: 'marketDetail', selectedSpellSlug: marketSlug });
                     break;
             }
         });
