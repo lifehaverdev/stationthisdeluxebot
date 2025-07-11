@@ -103,8 +103,10 @@ function injectImageOverlay() {
     document.body.appendChild(overlay);
 
     // Event listeners for closing overlay
-    overlay.querySelector('.image-overlay-bg').onclick = hideImageOverlay;
     overlay.querySelector('.image-overlay-close').onclick = hideImageOverlay;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) hideImageOverlay();
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideImageOverlay();
     });

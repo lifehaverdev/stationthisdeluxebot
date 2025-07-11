@@ -271,11 +271,14 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Points API router not mounted due to missing dependencies.');
   }
 
-  // Mount the Spells API router (Protected by JWT or API key)
-  const spellsRouter = createSpellsApi(dependencies);
+  // Mount the Spells API router (Protected by JWT or API key, with dualAuth for protected endpoints)
+  const spellsRouter = createSpellsApi({
+    ...dependencies,
+    dualAuth,
+  });
   if (spellsRouter) {
-    externalApiRouter.use('/spells', authenticateUserOrApiKey, spellsRouter);
-    logger.info('External Spells API router mounted at /spells. (JWT or API key protected)');
+    externalApiRouter.use('/spells', spellsRouter);
+    logger.info('External Spells API router mounted at /spells. (JWT or API key protected, dualAuth)');
   } else {
     logger.warn('External Spells API router not mounted due to missing dependencies.');
   }

@@ -30,7 +30,7 @@ export default class SpellsMenuModal {
         
         this.render();
         this.attachCloseEvents();
-        this.fetchMySpells();
+        this.fetchUserSpells();
     }
 
     hide() {
@@ -40,19 +40,37 @@ export default class SpellsMenuModal {
         this.modalElement = null;
     }
 
-    async fetchMySpells() {
+    async fetchUserSpells() {
         this.setState({ loading: true, error: null });
         try {
-            // Using the new external API endpoint
-            const response = await fetch(`/api/v1/spells`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error?.message || 'Failed to fetch your spells.');
+            // Get CSRF token
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            const res = await fetch('/api/v1/spells', {
+                method: 'GET',
+                headers: { 'x-csrf-token': csrfToken },
+                credentials: 'include',
+            });
+            if (res.status === 401 || res.status === 403) {
+                this.setState({ error: 'You must be logged in to view your spells.', loading: false });
+                return;
             }
-            const data = await response.json();
-            this.setState({ loading: false, spells: data.spells || [] });
-        } catch (error) {
-            this.setState({ loading: false, error: error.message });
+            const spells = await res.json();
+            this.setState({ spells, loading: false });
+        } catch (err) {
+            this.setState({ error: 'Failed to fetch your spells.', loading: false });
+        }
+    }
+
+    async fetchMarketplaceSpells() {
+        this.setState({ loading: true, error: null });
+        try {
+            const res = await fetch('/api/v1/spells/marketplace');
+            if (!res.ok) throw new Error('Failed to fetch marketplace spells');
+            const marketplaceSpells = await res.json();
+            this.setState({ marketplaceSpells, loading: false });
+        } catch (err) {
+            this.setState({ error: 'Failed to fetch marketplace spells.', loading: false });
         }
     }
 
@@ -61,7 +79,11 @@ export default class SpellsMenuModal {
 
         this.modalElement.innerHTML = `
             <div class="spells-modal-container">
-                <button class="close-btn">&times;</button>
+                <button class="close-btn" aria-label="Close">×</button>
+                <div class="spells-menu-tabs">
+                    <button class="tab-btn${this.state.view === 'main' ? ' active' : ''}" data-tab="main">My Spells</button>
+                    <button class="tab-btn${this.state.view === 'marketplace' ? ' active' : ''}" data-tab="marketplace">Discover Spells</button>
+                </div>
                 <div class="spells-modal-content">
                     ${this.renderCurrentView()}
                 </div>
@@ -71,46 +93,42 @@ export default class SpellsMenuModal {
     }
 
     renderCurrentView() {
-        const { view, loading, error } = this.state;
-
+        const { view, loading, error, spells, marketplaceSpells } = this.state;
+        let html = '';
+        html += `<div class="spells-modal-container">
+            <button class="close-btn" aria-label="Close">×</button>
+            <div class="spells-menu-tabs">
+                <button class="tab-btn${view === 'main' ? ' active' : ''}" data-tab="main">My Spells</button>
+                <button class="tab-btn${view === 'marketplace' ? ' active' : ''}" data-tab="marketplace">Discover Spells</button>
+            </div>
+            <div class="spells-modal-content">`;
         if (loading) {
-            return `<div class="loading-spinner"></div>`;
+            html += '<div class="loading-spinner">Loading…</div>';
+        } else if (error) {
+            html += `<div class="error-message">${error}</div>`;
+        } else if (view === 'main') {
+            if (!spells || spells.length === 0) {
+                html += '<div class="empty-message">You have no spells yet.</div>';
+            } else {
+                html += '<ul class="spells-list">';
+                for (const spell of spells) {
+                    html += `<li class="spell-item">${spell.name} <span class="spell-desc">${spell.description || ''}</span></li>`;
+                }
+                html += '</ul>';
+            }
+        } else if (view === 'marketplace') {
+            if (!marketplaceSpells || marketplaceSpells.length === 0) {
+                html += '<div class="empty-message">No public spells found.</div>';
+            } else {
+                html += '<ul class="spells-list">';
+                for (const spell of marketplaceSpells) {
+                    html += `<li class="spell-item">${spell.name} <span class="spell-desc">${spell.description || ''}</span> <span class="spell-uses">${spell.uses} uses</span></li>`;
+                }
+                html += '</ul>';
+            }
         }
-
-        if (error) {
-            return `<div class="error-message">Error: ${error}</div>`;
-        }
-
-        switch (view) {
-            case 'main':
-                return this.renderMainMenu();
-            case 'marketplace':
-                return this.renderMarketplace();
-            default:
-                return `<h2>Unknown view: ${view}</h2>`;
-        }
-    }
-
-    renderMainMenu() {
-        const { spells } = this.state;
-        return `
-            <div class="spells-header">
-                <h2>Spells Menu</h2>
-                <div class="spells-main-actions">
-                    <button class="action-button" data-action="create-new">🪄 Create New Spell</button>
-                    <button class="action-button" data-action="discover">🔍 Discover Spells</button>
-                </div>
-            </div>
-            <div class="spells-list">
-                <h3>My Spells</h3>
-                ${spells && spells.length > 0 ? spells.map(spell => `
-                    <div class="spell-item">
-                        <span>📖 ${spell.name}</span>
-                        <button class="action-button-secondary" data-action="edit-spell" data-slug="${spell.slug}">Edit</button>
-                    </div>
-                `).join('') : '<p class="empty-list-message">You have no spells yet. Create one or discover new spells!</p>'}
-            </div>
-        `;
+        html += '</div></div>';
+        return html;
     }
 
     attachEvents() {
