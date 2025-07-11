@@ -18,7 +18,6 @@ import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
 import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
-import './style/components/spellsMenuModal.css';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {

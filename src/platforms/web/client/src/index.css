@@ -7,6 +7,7 @@
 @import './sandbox/style/components/accountDropdown.css';
 @import './sandbox/style/components/historyModal.css';
 @import './sandbox/components/BuyPointsModal/buyPointsModal.css';
+@import './sandbox/style/components/spellsMenuModal.css';
 
 body {
   margin: 0;
