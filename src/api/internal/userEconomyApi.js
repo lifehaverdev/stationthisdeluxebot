@@ -354,14 +354,24 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     let activeDeposits;
     let spendTarget = 'masterAccountId';
     try {
-      if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
-        logger.info(`[userEconomyApi] /spend: Using wallet-based spend for address ${walletAddress}`);
-        activeDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(walletAddress);
-        spendTarget = 'walletAddress';
-      } else {
-        logger.info(`[userEconomyApi] /spend: Using masterAccountId-based spend for user ${masterAccountIdStr}`);
-        activeDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+      // 1. Try by masterAccountId
+      activeDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+
+      // 2. If none, try by wallet address (from userCore)
+      if (!activeDeposits || activeDeposits.length === 0) {
+        logger.info(`[userEconomyApi] /spend: No deposits for masterAccountId, attempting wallet fallback.`);
+        const userCore = await db.userCore.findUserCoreById(masterAccountId);
+        let primaryWallet = null;
+        if (userCore && Array.isArray(userCore.wallets)) {
+          primaryWallet = userCore.wallets.find(w => w.isPrimary) || userCore.wallets[0];
+        }
+        if (primaryWallet && primaryWallet.address) {
+          logger.info(`[userEconomyApi] /spend: Fallback to wallet-based spend for address ${primaryWallet.address}`);
+          activeDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(primaryWallet.address);
+          spendTarget = 'walletAddress';
+        }
       }
+
       if (!activeDeposits || activeDeposits.length === 0) {
         return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: 'User has no active deposits with points remaining.', requestId } });
       }

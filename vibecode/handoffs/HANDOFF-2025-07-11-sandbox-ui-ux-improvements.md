@@ -12,8 +12,12 @@
 - **Implemented full-size image overlay/modal for generated images (pending production test)**
 - **Refactored workspace to use logical grid coordinates for tool window placement**
 - **Implemented zoom and pan for the workspace, with all tool windows and grid moving/scaling together**
-- **Restored and debugged the action modal, create submenu, and tool selection modal; all are now fully functional**
+- **Restored and debugged the action modal, create submenu, and tool selection modal; all are now fully functional and visually polished**
 - **Removed all debug styles and logging; UI is ready for further polish and new features**
+- **Made all modals and menus (including 'no tools' and tool selection) dismissible by clicking outside or pressing Escape**
+- **Added touch support for anchor-point (output node) drag to create connections and new nodes**
+- **Made tool selection modals scrollable with max-height, so large lists never overflow the viewport**
+- **Ensured tool selection modals are always fully visible by clamping their position to the viewport**
 
 ## Current State
 - Tool windows are draggable with both mouse and touch (mobile and desktop)
@@ -21,11 +25,16 @@
 - Generated images are clickable and open a full-size overlay/modal
 - Workspace supports zoom and pan, with a logical grid system for tool window placement
 - Action modal, create submenu, and tool selection modal are fully functional and visually polished
+- All modals and menus can be dismissed by clicking outside or pressing Escape
+- Anchor points (output nodes) support both mouse and touch drag for creating connections
+- Tool selection modals are scrollable and never overflow the viewport
+- Tool selection modals are always fully visible, even when triggered near the edge of the screen
 
 ## Next Tasks
 - Polish the workspace zoom/pan and grid system for usability and aesthetics
 - Consider adding snapping, boundaries, or advanced grid features
 - Test image overlay/modal after deployment to production
+- Consider making tool selection modals draggable or resizable for further UX improvements
 
 ## Changes to Plan
 - No deviations from the refactor or collaboration protocols; this work aligns with the current UI/UX improvement phase
