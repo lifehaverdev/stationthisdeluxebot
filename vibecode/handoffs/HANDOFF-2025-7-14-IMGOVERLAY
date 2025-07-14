@@ -72,3 +72,19 @@ Should the overlay/modal be resizable or draggable for power users?
 - It is now likely that there is JavaScript or CSS elsewhere in the chain (possibly global styles, inline styles, or JS manipulation) that is interfering with the overlay's sizing.
 - Next steps: Deeply inspect the DOM in the browser, check computed styles for all overlay and parent elements, and search for any JS that might be setting width/height or overriding styles at runtime.
 - Consider searching the codebase for any JS that manipulates overlay/modal/image sizing, or for global CSS rules that could affect overlays or images.
+
+## Root Cause and Resolution (2024-07-14)
+
+- **Root Cause:** The image overlay stylesheet (`imageOverlay.css`) was not imported into the main `index.css`, so none of the overlay-specific CSS was being applied. This made all selector and specificity changes ineffective, regardless of correctness.
+- **Resolution:** Once the stylesheet was imported and the CSS was cleaned up (removing unnecessary `!important` and redundant rules), the overlay and image sizing worked perfectly. The overlay now opens, closes, and constrains images as intended.
+
+## Postmortem & Agent Self-Reprimand
+
+> **Agent Note:** I failed to check whether the stylesheet was actually imported until very late in the debugging process. This is a fundamental troubleshooting step and should have been the first thing I verified. Not checking the import chain wasted significant time and effort. In the future, always confirm that the relevant CSS/JS files are loaded before investigating specificity or selector issues.
+
+---
+
+**Final Status:**
+- Overlay image scaling and containment now work as designed.
+- Overlay visibility is correctly controlled by JS.
+- CSS is robust, maintainable, and future-proof.

@@ -28,7 +28,9 @@ function createToolsApiRouter(dependencies) {
       // For the public endpoint, return simplified tool info
       const simplifiedTools = allTools.map(tool => ({
         displayName: tool.displayName,
-        description: tool.description?.split('\\n')[0] || `A tool for ${tool.displayName}.`
+        description: tool.description?.split('\n')[0] || `A tool for ${tool.displayName}.`,
+        commandName: tool.commandName,
+        toolId: tool.toolId
       }));
 
       res.status(200).json(simplifiedTools);

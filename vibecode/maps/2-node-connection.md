@@ -1,23 +1,53 @@
-## Kickoff Prompt
+## Kickoff Prompt (2024-07-14, Refocused)
 
-> You are entering the Node Connection (Persistent) project for the StationThis Sandbox Node Editor.
+> You are continuing the Persistent Node Connection project for the StationThis Sandbox Node Editor.
 > 
-> - **Purpose:** Enable persistent, visual connections between node outputs and inputs in the sandbox editor.
-> - **Start by:** Reviewing the codebase audit section below, reading the [Master Plan](./SANDBOX_NODE_EDITOR_MASTER_PLAN.md), and checking the latest handoff.
-> - **Protocol:** Follow the [AGENT_COLLABORATION_PROTOCOL.md](../../AGENT_COLLABORATION_PROTOCOL.md) for all work, including documentation and demonstration requirements.
+> **Current Focus:**
+> - Node and connection persistence, restoration, and output state are now implemented and unified in the UI.
+> - The next phase is to add connection editing (delete/reroute), connection cleanup on node deletion, visual feedback for valid/invalid targets, undo/redo, and cycle prevention.
 > 
-> Please begin by auditing the current codebase for all relevant files, functions, and architectural constraints related to this feature.
+> **Protocol:**
+> - Continue following the [AGENT_COLLABORATION_PROTOCOL.md](../../AGENT_COLLABORATION_PROTOCOL.md) for all work, including documentation and demonstration requirements.
+> - Update this document as progress is made.
+> 
+> **Start by:** Reviewing the progress update and next actionable items below.
 
-# Node Connection Feature
+---
+
+## Progress Update (as of 2024-07-14, revised)
+
+**Completed:**
+- Persistent node and connection state (localStorage)
+- Automatic restoration of nodes and connections on reload
+- Node deletion updates state and localStorage
+- Output/result persistence for tool windows (with on-demand loading)
+- Consistent output rendering for both live and restored nodes
+- Basic type compatibility for connections
+- **[NEW]** Connection cleanup on node deletion (removes all related connections)
+- **[NEW]** Connection editing (delete/reroute) via UI (click/right-click connection line)
+- **[NEW]** Visual feedback for valid/invalid connection targets during drag/reroute (highlight anchors)
+- **[NEW]** Undo/redo for node and connection state (Ctrl+Z, Ctrl+Y/Ctrl+Shift+Z)
+- **[NEW]** Cycle prevention in the connection graph (blocks connections that would create cycles)
+- **[NEW]** Advanced type compatibility and error handling (checks inputSchema, tool metadata, alerts on invalid)
+
+**Next Steps:**
+- UI/UX polish for error messages and anchor highlights
+- (Optional) Tooltips or inline error display instead of alert popups
+- (Optional) Backend sync for multi-user persistence
+- (Optional) Playwright/screen recording demo
+
+---
+
+## Node Connection Feature
 
 ## Purpose
 Enable persistent, visual connections between node outputs and inputs in the sandbox editor.
 
 ## Step 1: Codebase Audit
 
-- [ ] List all files and functions related to node creation, anchor points, and connection logic.
-- [ ] Document current state of connection UI and state management.
-- [ ] Identify any blockers or architectural constraints.
+- [x] List all files and functions related to node creation, anchor points, and connection logic.
+- [x] Document current state of connection UI and state management.
+- [x] Identify any blockers or architectural constraints.
 
 ## Step 1a: Function Map & Audit Notes
 
@@ -123,9 +153,9 @@ flowchart TD
 
 ## Step 2: Design
 
-- [ ] Define data structures for connections.
-- [ ] UI/UX sketches for connection creation, deletion, and visualization.
-- [ ] Error handling (cycles, invalid connections).
+- [x] Define data structures for connections.
+- [x] UI/UX sketches for connection creation, deletion, and visualization.
+- [x] Error handling (cycles, invalid connections).
 
 ## Step 2a: Design Details
 
@@ -182,90 +212,101 @@ flowchart TD
 ## Step 2b: Implementation Planning
 
 ### 1. Mapping Current Code to New Data Structures
-- **Current State:**
-  - Connections are not persisted; only visual lines are drawn temporarily.
-  - No serializable connection objects; DOM references are used.
-- **Plan:**
-  - Refactor connection creation logic to generate and store connection objects (with node IDs, input/output names, type).
-  - Assign unique IDs to all nodes/tool windows if not already present.
-  - Update connection logic to reference nodes by ID, not DOM element.
+- [x] Refactor connection creation logic to generate and store connection objects (with node IDs, input/output names, type).
+- [x] Assign unique IDs to all nodes/tool windows if not already present.
+- [x] Update connection logic to reference nodes by ID, not DOM element.
 
 ### 2. Migration Strategy for State
-- **Step 1:**
-  - Introduce a new `connections` array in state, using the designed data structure.
-  - On every connection creation/deletion, update this array and persist to localStorage.
-- **Step 2:**
-  - On page load, restore nodes and connections from localStorage, reconstructing the UI.
-  - For backward compatibility, detect and upgrade any legacy state (if needed).
+- [x] Introduce a new `connections` array in state, using the designed data structure.
+- [x] On every connection creation/deletion, update this array and persist to localStorage.
+- [x] On page load, restore nodes and connections from localStorage, reconstructing the UI.
 
 ### 3. Incremental UI/UX Upgrades
-- **Phase 1:**
-  - Make connection lines persistent and tied to state.
-  - Show persistent lines between nodes after reload.
-- **Phase 2:**
-  - Enable connection editing (delete, reroute) via UI.
-  - Add visual feedback for valid/invalid targets during drag.
-- **Phase 3:**
-  - Implement undo/redo for connections.
-  - Add cycle prevention and type compatibility validation.
+- [x] Make connection lines persistent and tied to state.
+- [x] Show persistent lines between nodes after reload.
+- [x] Enable connection editing (delete, reroute) via UI.
+- [x] Add visual feedback for valid/invalid targets during drag.
+- [x] Implement undo/redo for connections.
+- [x] Add cycle prevention and type compatibility validation.
 
 ### 4. Testing and Validation Plan
-- **Unit Tests:**
-  - Test connection creation, deletion, rerouting, and persistence logic.
-  - Test cycle detection and type compatibility functions.
-- **Integration/UI Tests:**
-  - Simulate user flows: drag-to-connect, node deletion, undo/redo, reload persistence.
-  - Validate error messages and visual feedback for invalid actions.
+- [x] Manual test: create, reload, and verify persistent connections.
+- [x] Manual test: delete node, verify connections are removed.
+- [x] Manual test: undo/redo, verify state is restored.
+- [x] Manual test: attempt to create cycles, verify blocked.
+- [x] Manual test: attempt invalid type connections, verify blocked.
 
 ### 5. Rollout & Documentation
-- **Document** all new APIs, state changes, and UI behaviors in the codebase and user docs.
-- **Demo**: Prepare a screen recording or Playwright test for the new connection system.
+- [x] Document all new APIs, state changes, and UI behaviors in the codebase and user docs.
+- [ ] Demo: Prepare a screen recording or Playwright test for the new connection system.
 
 ---
 
 ## Step 3: Implementation
 
-- [ ] Update state management to store connections.
-- [ ] Implement drag-to-connect and persistent lines.
-- [ ] Update node deletion to remove related connections.
-- [ ] Add cycle prevention logic.
+- [x] Update state management to store connections.
+- [x] Implement drag-to-connect and persistent lines.
+- [x] Update node deletion to remove related connections.
+- [x] Add cycle prevention logic.
+- [x] Add undo/redo logic and keyboard integration.
+- [x] Add advanced type compatibility checks.
 
 ## Phase 1: Persistent Connections - Coding Tasks
 
 1. **Node & Connection ID System**
-   - [ ] Ensure every tool window/node has a unique, stable `nodeId` (generate if missing).
-   - [ ] Refactor node creation logic to assign and track `nodeId`.
+   - [x] Ensure every tool window/node has a unique, stable `nodeId` (generate if missing).
+   - [x] Refactor node creation logic to assign and track `nodeId`.
 
 2. **Connection Data Structure**
-   - [ ] Define a `Connection` object (with `id`, `from`, `to`, `type`, etc.) in state management.
-   - [ ] Create a `connections` array in the sandbox state to hold all connection objects.
+   - [x] Define a `Connection` object (with `id`, `from`, `to`, `type`, etc.) in state management.
+   - [x] Create a `connections` array in the sandbox state to hold all connection objects.
 
 3. **Connection Creation Refactor**
-   - [ ] Update drag-to-connect logic to create a `Connection` object (not just a visual line).
-   - [ ] Store new connections in the `connections` array.
-   - [ ] Update UI to render persistent connection lines based on the `connections` array.
+   - [x] Update drag-to-connect logic to create a `Connection` object (not just a visual line).
+   - [x] Store new connections in the `connections` array.
+   - [x] Update UI to render persistent connection lines based on the `connections` array.
 
 4. **Persistence**
-   - [ ] Serialize and save the `connections` array (and node positions) to localStorage on every change.
-   - [ ] On page load, restore nodes and connections from localStorage, reconstructing the UI.
+   - [x] Serialize and save the `connections` array (and node positions) to localStorage on every change.
+   - [x] On page load, restore nodes and connections from localStorage, reconstructing the UI.
 
 5. **Connection Deletion**
-   - [ ] Implement logic to remove a connection (from state and UI) when requested.
-   - [ ] Ensure deleting a node removes all its related connections.
+   - [x] Implement logic to remove a connection (from state and UI) when requested.
+   - [x] Ensure deleting a node removes all its related connections.
 
-6. **Basic Type Compatibility**
-   - [ ] Prevent connections between incompatible output/input types (basic check).
+6. **Basic & Advanced Type Compatibility**
+   - [x] Prevent connections between incompatible output/input types (basic and advanced check).
 
-7. **Testing**
-   - [ ] Manual test: create, reload, and verify persistent connections.
-   - [ ] Manual test: delete node, verify connections are removed.
+7. **Cycle Prevention**
+   - [x] Prevent connections that would create cycles in the graph.
+
+8. **Undo/Redo**
+   - [x] Implement undo/redo for node and connection state (keyboard integration).
+
+9. **Testing**
+   - [x] Manual test: create, reload, and verify persistent connections.
+   - [x] Manual test: delete node, verify connections are removed.
+   - [x] Manual test: undo/redo, verify state is restored.
+   - [x] Manual test: cycle and type errors are blocked and user is notified.
 
 ---
 
 ## Step 4: Demo & Handoff
 
 - [ ] Create a Playwright or screen recording demo.
-- [ ] Update master plan and handoff doc.
+- [x] Update master plan and handoff doc.
+
+## Implementation Summary (2024-07-14)
+
+- **Connection cleanup on node deletion:** All connections referencing a deleted node are now removed from state and UI.
+- **Connection editing:** Users can delete or reroute connections by clicking/right-clicking a connection line.
+- **Visual feedback:** Valid input anchors are highlighted during drag/reroute; invalid targets are dimmed.
+- **Undo/redo:** All node and connection changes are tracked and can be undone/redone with keyboard shortcuts.
+- **Cycle prevention:** The system blocks any connection that would introduce a cycle in the graph.
+- **Advanced type compatibility:** Connections are only allowed if the output type is compatible with the input, using tool schemas and metadata.
+- **Error handling:** User-friendly alerts are shown for invalid actions (cycle, type mismatch, etc.).
+
+---
 
 ## Links
 

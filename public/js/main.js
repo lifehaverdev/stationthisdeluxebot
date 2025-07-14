@@ -47,11 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/api/v1/tools');
             const tools = await response.json();
 
-            // Filter for some interesting, diverse tools to feature
-            const featuredToolNames = ['/make', '/effect', '/understand', '/tag', '/makevideo'];
-            const featuredTools = tools.filter(t => featuredToolNames.includes(t.commandName));
-
-            featuresContainer.innerHTML = featuredTools.map(tool => {
+            featuresContainer.innerHTML = tools.map(tool => {
                 const commandId = tool.commandName.replace('/', '');
                 return `
                     <a href="/docs#tools#${commandId}" class="feature-tile">

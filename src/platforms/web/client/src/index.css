@@ -8,6 +8,7 @@
 @import './sandbox/style/components/historyModal.css';
 @import './sandbox/components/BuyPointsModal/buyPointsModal.css';
 @import './sandbox/style/components/spellsMenuModal.css';
+@import './sandbox/style/components/imageOverlay.css';
 
 body {
   margin: 0;

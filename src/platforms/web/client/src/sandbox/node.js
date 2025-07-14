@@ -175,6 +175,16 @@ function renderResultContent(resultContainer, output) {
 export function createToolWindow(tool, position, id = null, output = null) {
     console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at workspace position:', position);
     const windowId = id || generateWindowId();
+    // Prevent duplicate nodes: check if already exists in DOM or state
+    if (document.getElementById(windowId)) {
+        return document.getElementById(windowId);
+    }
+    if (typeof getToolWindow === 'function' && getToolWindow(windowId)) {
+        // If already in state, return the DOM element if present, else do nothing
+        const existing = document.getElementById(windowId);
+        if (existing) return existing;
+        // If not in DOM, fall through to create (should not happen in normal flow)
+    }
     
     const toolWindowEl = document.createElement('div');
     toolWindowEl.id = windowId;

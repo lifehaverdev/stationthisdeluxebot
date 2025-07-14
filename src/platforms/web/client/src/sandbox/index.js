@@ -7,7 +7,9 @@ import {
     setLastClickPosition,
     getLastClickPosition,
     getAvailableTools,
-    OUTPUT_TYPE_MAPPING
+    OUTPUT_TYPE_MAPPING,
+    undo,
+    redo
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
 import { createToolWindow } from './node.js';
@@ -237,6 +239,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // After restoring tool windows/nodes on page load:
     renderAllConnections();
+
+    // --- Keyboard Undo/Redo Integration ---
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+Z (undo)
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+            e.preventDefault();
+            undo();
+            rerenderAllToolWindowsAndConnections();
+        }
+        // Ctrl+Y or Ctrl+Shift+Z (redo)
+        if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z')) {
+            e.preventDefault();
+            redo();
+            rerenderAllToolWindowsAndConnections();
+        }
+    });
+
+    function rerenderAllToolWindowsAndConnections() {
+        // Remove all tool windows from DOM
+        document.querySelectorAll('.tool-window').forEach(el => el.remove());
+        // Re-create tool windows from state
+        getToolWindows().forEach(win => {
+            // Find the tool by displayName from availableTools
+            const tool = getAvailableTools().find(t => t.displayName === win.tool.displayName);
+            if (tool) {
+                createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            }
+        });
+        // Re-render connections
+        renderAllConnections();
+    }
 });
 
 // Initialize click interaction elements

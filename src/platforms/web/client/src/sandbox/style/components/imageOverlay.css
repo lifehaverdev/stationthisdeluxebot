@@ -1,27 +1,29 @@
+/* Reset and robustly constrain overlay and image sizing. Allow JS to control visibility. */
+
 .image-overlay,
 .image-overlay-content,
 .image-overlay-img-container,
 .image-overlay-img {
-  min-width: 0 !important;
-  min-height: 0 !important;
-  box-sizing: border-box !important;
-  flex-shrink: 1 !important;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  flex-shrink: 1;
 }
 
 .image-overlay {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  overflow: hidden !important;
-  position: absolute !important;
-  left: 0 !important;
-  top: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  display: flex !important;
-  justify-content: center !important;
-  align-items: center !important;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex; /* No !important: allow JS to toggle display */
+  justify-content: center;
+  align-items: center;
   z-index: 100;
 }
 
@@ -58,13 +60,14 @@
   box-sizing: border-box;
 }
 
+/* Robust image sizing: constrain to 80% of overlay width, 80vh max height, always centered */
 .image-overlay-img {
-  display: block !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  width: auto !important;
-  height: auto !important;
-  object-fit: contain !important;
+  display: block;
+  width: 80%;
+  max-width: 80%;
+  max-height: 80vh;
+  height: auto;
+  object-fit: contain;
   margin: auto;
   border-radius: 8px;
   box-shadow: 0 4px 32px rgba(0,0,0,0.5);
@@ -90,12 +93,4 @@
   color: #ff5c5c;
 }
 
-.image-overlay .image-overlay-content .image-overlay-img-container img {
-  display: block !important;
-  width: 80% !important;
-  max-width: 80% !important;
-  max-height: 80vh !important;
-  height: auto !important;
-  object-fit: contain !important;
-  margin: auto !important;
-}
+/* Remove redundant, overly specific, or conflicting rules */

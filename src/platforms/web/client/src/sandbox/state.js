@@ -75,18 +75,59 @@ function loadState() {
     }
 }
 
-// Patch add/remove/clear to persist
+// --- Undo/Redo History Stack ---
+const historyStack = [];
+const redoStack = [];
+
+function cloneState() {
+    // Deep clone connections and tool windows (serializable only)
+    return {
+        connections: JSON.parse(JSON.stringify(connections)),
+        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows)),
+    };
+}
+
+export function pushHistory() {
+    historyStack.push(cloneState());
+    // Clear redo stack on new action
+    redoStack.length = 0;
+}
+
+export function undo() {
+    if (historyStack.length === 0) return;
+    const prev = historyStack.pop();
+    redoStack.push(cloneState());
+    connections = prev.connections;
+    activeToolWindows = prev.activeToolWindows;
+    persistState();
+    // Optionally, trigger UI re-render here
+}
+
+export function redo() {
+    if (redoStack.length === 0) return;
+    const next = redoStack.pop();
+    historyStack.push(cloneState());
+    connections = next.connections;
+    activeToolWindows = next.activeToolWindows;
+    persistState();
+    // Optionally, trigger UI re-render here
+}
+
+// Patch add/remove/clear to push history
 export function addConnection(connection) {
+    pushHistory();
     connections.push(connection);
     persistState();
 }
 
 export function removeConnection(connectionId) {
+    pushHistory();
     connections = connections.filter(c => c.id !== connectionId);
     persistState();
 }
 
 export function clearConnectionsForWindow(windowId) {
+    pushHistory();
     connections = connections.filter(c => c.fromWindowId !== windowId && c.toWindowId !== windowId);
     persistState();
 }
@@ -286,11 +327,14 @@ export const OUTPUT_TYPE_MAPPING = {
 
 // Window and connection management
 export function addToolWindow(windowData) {
+    pushHistory();
     activeToolWindows.push(windowData);
     persistState();
 }
 
 export function removeToolWindow(windowId) {
+    pushHistory();
+    clearConnectionsForWindow(windowId); // Remove all connections related to this node
     activeToolWindows = activeToolWindows.filter(w => w.id !== windowId);
     const windowEl = document.getElementById(windowId);
     if (windowEl) {
