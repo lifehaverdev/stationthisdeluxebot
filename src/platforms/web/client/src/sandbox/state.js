@@ -1,12 +1,97 @@
 // Global state
 export let availableTools = [];
 export let activeToolWindows = [];
-export let connections = [];
 export let lastClickPosition = null;
 export let activeConnection = null;
 export let connectionLine = null;
 export let activeModal = false;
 export let activeSubmenu = false;
+
+// --- Persistent Node Connection System Scaffold ---
+
+/**
+ * Connection object for persistent node connections
+ * @typedef {Object} Connection
+ * @property {string} id - Unique connection id
+ * @property {string} fromDisplayName - Display name of the source tool
+ * @property {string} fromWindowId - Window id of the source node (runtime lookup)
+ * @property {string} fromOutput - Output name/key (e.g. 'output_image')
+ * @property {string} toDisplayName - Display name of the target tool
+ * @property {string} toWindowId - Window id of the target node (runtime lookup)
+ * @property {string} toInput - Input name/key (e.g. 'input_image')
+ * @property {string} type - Data type (e.g. 'image', 'text')
+ * @property {number} createdAt - Timestamp
+ */
+
+/** @type {Connection[]} */
+export let connections = [];
+
+export function getConnections() {
+    return connections;
+}
+
+const CONNECTIONS_KEY = 'sandbox_connections';
+const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+
+// Serialize and save state to localStorage
+function persistState() {
+    // Only store serializable data
+    const serializableConnections = connections.map(({ element, ...rest }) => rest);
+    const serializableWindows = activeToolWindows.map(w => {
+        // Only persist id, tool.displayName, workspaceX, workspaceY, output
+        return {
+            id: w.id,
+            displayName: w.tool?.displayName || '',
+            workspaceX: w.workspaceX,
+            workspaceY: w.workspaceY,
+            output: w.output || null
+        };
+    });
+    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(serializableConnections));
+    localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(serializableWindows));
+}
+
+// Load state from localStorage
+function loadState() {
+    const connRaw = localStorage.getItem(CONNECTIONS_KEY);
+    const winRaw = localStorage.getItem(TOOL_WINDOWS_KEY);
+    if (connRaw) {
+        try {
+            connections = JSON.parse(connRaw);
+        } catch (e) { connections = []; }
+    }
+    if (winRaw) {
+        try {
+            // Only restore window id, displayName, workspaceX, workspaceY, output
+            const wins = JSON.parse(winRaw);
+            activeToolWindows = wins.map(w => ({
+                id: w.id,
+                tool: { displayName: w.displayName },
+                workspaceX: w.workspaceX,
+                workspaceY: w.workspaceY,
+                output: w.output || null
+            }));
+        } catch (e) { activeToolWindows = []; }
+    }
+}
+
+// Patch add/remove/clear to persist
+export function addConnection(connection) {
+    connections.push(connection);
+    persistState();
+}
+
+export function removeConnection(connectionId) {
+    connections = connections.filter(c => c.id !== connectionId);
+    persistState();
+}
+
+export function clearConnectionsForWindow(windowId) {
+    connections = connections.filter(c => c.fromWindowId !== windowId && c.toWindowId !== windowId);
+    persistState();
+}
+
+// TODO: Add undo/redo stack for connections
 
 // Type mappings
 export const CREATION_TYPE_TO_CATEGORY = {
@@ -33,6 +118,7 @@ export function initState() {
     connectionLine = null;
     activeModal = false;
     activeSubmenu = false;
+    loadState();
 }
 
 // State getters and setters
@@ -82,6 +168,7 @@ export function updateToolWindowPosition(id, workspaceX, workspaceY) {
     if (window) {
         window.workspaceX = workspaceX;
         window.workspaceY = workspaceY;
+        persistState();
     }
 }
 
@@ -200,6 +287,7 @@ export const OUTPUT_TYPE_MAPPING = {
 // Window and connection management
 export function addToolWindow(windowData) {
     activeToolWindows.push(windowData);
+    persistState();
 }
 
 export function removeToolWindow(windowId) {
@@ -208,6 +296,7 @@ export function removeToolWindow(windowId) {
     if (windowEl) {
         windowEl.remove();
     }
+    persistState();
 }
 
 export function setActiveConnection(connection) {
@@ -222,14 +311,10 @@ export function setConnectionLine(line) {
     connectionLine = line;
 }
 
-export function addConnection(connection) {
-    connections.push(connection);
-}
-
-export function removeConnection(connection) {
-    connections = connections.filter(c => c !== connection);
-}
-
-export function getConnections() {
-    return connections;
+export function setToolWindowOutput(id, output) {
+    const win = getToolWindow(id);
+    if (win) {
+        win.output = output;
+        persistState();
+    }
 } 

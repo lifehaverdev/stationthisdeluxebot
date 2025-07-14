@@ -43,6 +43,7 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const response = await internalApiClient.get(`/internal/v1/data/spells?ownedBy=${user.userId}`);
+            logger.info('[externalSpellsApi] Data received from internal API:', JSON.stringify(response.data, null, 2));
             res.status(200).json(response.data);
         } catch (error) {
             logger.error('Failed to fetch user spells:', error);
@@ -74,7 +75,8 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const payload = { ...req.body, ownedBy: user.userId };
+            // Add both ownedBy and masterAccountId for internal API compatibility
+            const payload = { ...req.body, ownedBy: user.userId, masterAccountId: user.userId };
             const response = await internalApiClient.put(`/internal/v1/data/spells/${spellId}`, payload);
             res.status(response.status).json(response.data);
         } catch (error) {

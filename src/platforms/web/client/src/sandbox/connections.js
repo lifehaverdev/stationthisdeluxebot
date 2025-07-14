@@ -1,5 +1,4 @@
-import { setActiveConnection, setConnectionLine, getConnections } from './state.js';
-import { showToolsForConnection } from './toolSelection.js';
+import { setActiveConnection, setConnectionLine, getConnections, addConnection } from './state.js';
 
 export function startConnection(event, outputType, fromWindow) {
     console.log('startConnection called', { outputType, fromWindow });
@@ -106,10 +105,31 @@ function updateConnectionLine(startX, startY, endX, endY) {
     line.style.transform = `rotate(${angle}rad)`;
 }
 
-export function createPermanentConnection(fromWindow, toWindow, type) {
-    const connection = document.createElement('div');
-    connection.className = 'connection-line permanent';
-    connection.style.cssText = `
+function getAnchorPoint(windowEl, type, isOutput) {
+    if (!windowEl) return null;
+    if (isOutput) {
+        return windowEl.querySelector('.anchor-point');
+    } else {
+        // Find input anchor matching type
+        return windowEl.querySelector(`.input-anchor[data-type="${type}"]`);
+    }
+}
+
+function drawConnectionLine(fromEl, toEl, type, isPermanent = true) {
+    if (!fromEl || !toEl) return null;
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const fromX = fromRect.right;
+    const fromY = fromRect.top + (fromRect.height / 2);
+    const toX = toRect.left;
+    const toY = toRect.top + (toRect.height / 2);
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const line = document.createElement('div');
+    line.className = 'connection-line' + (isPermanent ? ' permanent' : '');
+    line.style.cssText = `
         position: fixed;
         pointer-events: none;
         background: linear-gradient(90deg, 
@@ -123,21 +143,57 @@ export function createPermanentConnection(fromWindow, toWindow, type) {
         z-index: 999;
         filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
         animation: flowingLine 2s linear infinite;
+        width: ${length}px;
+        left: ${fromX}px;
+        top: ${fromY}px;
+        transform: rotate(${angle}rad);
     `;
-    document.body.appendChild(connection);
+    document.body.appendChild(line);
+    return line;
+}
 
-    const connectionData = {
-        element: connection,
-        from: fromWindow,
-        to: toWindow,
-        type: type
-    };
-    
+export function renderAllConnections() {
+    // Remove all existing permanent connection lines
+    document.querySelectorAll('.connection-line.permanent').forEach(el => el.remove());
     const connections = getConnections();
-    connections.push(connectionData);
-    updatePermanentConnection(connectionData);
+    connections.forEach(conn => {
+        const fromWindow = document.getElementById(conn.fromWindowId);
+        const toWindow = document.getElementById(conn.toWindowId);
+        const fromAnchor = getAnchorPoint(fromWindow, conn.type, true);
+        const toAnchor = getAnchorPoint(toWindow, conn.type, false);
+        drawConnectionLine(fromAnchor, toAnchor, conn.type, true);
+    });
+}
 
-    return connectionData;
+// After adding a connection, render all
+import { showToolsForConnection } from './toolSelection.js';
+
+export function createPermanentConnection(fromWindow, toWindow, type) {
+    // Get tool data from window elements
+    const fromWindowData = fromWindow && fromWindow.dataset ? fromWindow.dataset : fromWindow;
+    const toWindowData = toWindow && toWindow.dataset ? toWindow.dataset : toWindow;
+    // Fallback: try to get displayName from windowData or element
+    const fromDisplayName = fromWindowData.displayName || fromWindow?.tool?.displayName || fromWindow?.getAttribute?.('data-displayname') || '';
+    const toDisplayName = toWindowData.displayName || toWindow?.tool?.displayName || toWindow?.getAttribute?.('data-displayname') || '';
+    const fromWindowId = fromWindow.id;
+    const toWindowId = toWindow.id;
+    // For now, use generic output/input names
+    const fromOutput = type;
+    const toInput = type;
+    const connection = {
+        id: 'conn-' + Math.random().toString(36).substr(2, 9),
+        fromDisplayName,
+        fromWindowId,
+        fromOutput,
+        toDisplayName,
+        toWindowId,
+        toInput,
+        type,
+        createdAt: Date.now()
+    };
+    addConnection(connection);
+    renderAllConnections();
+    return connection;
 }
 
 export function updatePermanentConnection(connection) {

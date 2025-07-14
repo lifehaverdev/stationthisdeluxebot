@@ -141,6 +141,33 @@ module.exports = function generationExecutionApi(dependencies) {
             message: 'Your request has been accepted and is being processed.',
           });
         }
+        case 'static': {
+          // Hardcoded static image response for testing
+          const staticPayload = {
+            generationId: 'static-image-test',
+            status: 'completed',
+            service: 'static',
+            toolId: tool.toolId,
+            outputs: [
+              {
+                data: {
+                  images: [
+                    { url: 'https://comfy-deploy-output.s3.us-east-2.amazonaws.com/outputs/runs/2011f35c-3758-4405-afa0-0fdb2b381860/ComfyUI_00001_.png' }
+                  ]
+                }
+              }
+            ],
+            message: 'Static image tool executed successfully.'
+          };
+          // Emit WebSocket event to user
+          if (websocketServer && user && user.masterAccountId) {
+            websocketServer.sendToUser(String(user.masterAccountId), {
+              type: 'generationUpdate',
+              payload: staticPayload
+            });
+          }
+          return res.status(200).json(staticPayload);
+        }
         case 'openai': {
           // 1. Validate required inputs for ChatGPT
           const { masterAccountId } = user;

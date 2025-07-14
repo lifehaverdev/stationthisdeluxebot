@@ -23,14 +23,23 @@ module.exports = function spellsApi(dependencies) {
       const { ownedBy } = req.query;
       let spells;
 
+      // Add logging for incoming query
+      logger.info(`[spellsApi] GET /spells query:`, req.query);
+
       if (ownedBy) {
         if (!ObjectId.isValid(ownedBy)) {
+            logger.warn(`[spellsApi] Invalid ownedBy ID format: ${ownedBy}`);
             return res.status(400).json({ error: 'Invalid ownedBy ID format.' });
         }
         spells = await spellsDb.findSpellsByOwner(ownedBy);
+        logger.info(`[spellsApi] findSpellsByOwner(${ownedBy}) returned ${spells.length} spells.`);
+        if (spells.length > 0) {
+          logger.info(`[spellsApi] Sample spell:`, JSON.stringify(spells[0], null, 2));
+        }
       } else {
         // TODO: Add pagination, filtering, sorting from query params
         spells = await spellsDb.findPublicSpells();
+        logger.info(`[spellsApi] findPublicSpells() returned ${spells.length} spells.`);
       }
       
       res.status(200).json({ spells: spells || [] });

@@ -18,6 +18,7 @@ import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
 import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
+import { renderAllConnections } from './connections.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -205,6 +206,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initializeTools();
     renderSidebarTools();
 
+    // Restore tool windows from state (localStorage)
+    getToolWindows().forEach(win => {
+        // Find the tool by displayName from availableTools
+        const tool = getAvailableTools().find(t => t.displayName === win.tool.displayName);
+        if (tool) {
+            createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+        }
+    });
+
     // Initialize click handlers
     initClickHandlers();
 
@@ -224,6 +234,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         userMenu.innerHTML = '';
         new AccountDropdown(userMenu);
     }
+
+    // After restoring tool windows/nodes on page load:
+    renderAllConnections();
 });
 
 // Initialize click interaction elements

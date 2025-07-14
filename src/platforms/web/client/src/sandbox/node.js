@@ -5,7 +5,8 @@ import {
     removeToolWindow,
     getConnections,
     updateToolWindowPosition,
-    OUTPUT_TYPE_EMOJI
+    OUTPUT_TYPE_EMOJI,
+    setToolWindowOutput
 } from './state.js';
 import { makeDraggable } from './canvas.js';
 import { calculateCenterPosition } from './utils.js';
@@ -98,7 +99,9 @@ function injectImageOverlay() {
     overlay.style.display = 'none';
     overlay.innerHTML = `
       <div class="image-overlay-content">
-        <img class="image-overlay-img" src="" alt="Full Size" />
+        <div class="image-overlay-img-container">
+          <img class="image-overlay-img" src="" alt="Full Size" />
+        </div>
         <button class="image-overlay-close">&times;</button>
       </div>
     `;
@@ -110,6 +113,7 @@ function injectImageOverlay() {
     // Event listeners for closing overlay
     overlay.querySelector('.image-overlay-close').onclick = hideImageOverlay;
     overlay.addEventListener('click', (e) => {
+      // Only close if clicking the overlay background, not the modal content or its children
       if (e.target === overlay) hideImageOverlay();
     });
     document.addEventListener('keydown', (e) => {
@@ -123,6 +127,19 @@ function showImageOverlay(url) {
     const img = overlay.querySelector('.image-overlay-img');
     img.src = url;
     overlay.style.display = 'flex';
+
+    // Wait for image to load, then log sizes
+    img.onload = () => {
+        const overlayContent = overlay.querySelector('.image-overlay-content');
+        const imgContainer = overlay.querySelector('.image-overlay-img-container');
+        const overlayParent = overlay.parentElement;
+        console.log('[DEBUG] overlay parent (.sandbox-main) size:', overlayParent.offsetWidth, overlayParent.offsetHeight);
+        console.log('[DEBUG] overlay size:', overlay.offsetWidth, overlay.offsetHeight);
+        console.log('[DEBUG] overlay-content size:', overlayContent.offsetWidth, overlayContent.offsetHeight);
+        console.log('[DEBUG] img-container size:', imgContainer.offsetWidth, imgContainer.offsetHeight);
+        console.log('[DEBUG] img size:', img.offsetWidth, img.offsetHeight);
+        console.log('[DEBUG] window size:', window.innerWidth, window.innerHeight);
+    };
     console.log('[DEBUG] overlay.style.display set to flex, overlay:', overlay, 'img:', img);
 }
 
@@ -138,15 +155,31 @@ document.addEventListener('DOMContentLoaded', () => {
     injectImageOverlay();
 });
 
+function renderResultContent(resultContainer, output) {
+    resultContainer.innerHTML = '';
+    if (output.type === 'image' && output.url) {
+        resultContainer.innerHTML = `<p>Completed!</p><img src="${output.url}" alt="Generated Image" class="result-image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0; cursor: pointer;" />`;
+        // Add click handler for overlay
+        const img = resultContainer.querySelector('.result-image');
+        img.addEventListener('click', () => {
+            showImageOverlay(output.url);
+        });
+    } else if (output.type === 'text' && output.text) {
+        resultContainer.textContent = output.text;
+    } else {
+        resultContainer.textContent = 'Output available.';
+    }
+}
 
 // Create a tool window
-export function createToolWindow(tool, position) {
+export function createToolWindow(tool, position, id = null, output = null) {
     console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at workspace position:', position);
-    const windowId = generateWindowId();
+    const windowId = id || generateWindowId();
     
     const toolWindowEl = document.createElement('div');
     toolWindowEl.id = windowId;
     toolWindowEl.className = 'tool-window';
+    toolWindowEl.setAttribute('data-displayname', tool.displayName || '');
 
     const windowData = {
         id: windowId,
@@ -154,6 +187,7 @@ export function createToolWindow(tool, position) {
         element: toolWindowEl,
         workspaceX: position.x,
         workspaceY: position.y,
+        output: output || null
     };
     addToolWindow(windowData);
 
@@ -176,84 +210,9 @@ export function createToolWindow(tool, position) {
     const requiredSection = createParameterSection(params.required, 'required-params');
     const optionalSection = createParameterSection(params.optional, 'optional-params');
     const showMoreBtn = createShowMoreButton(optionalSection);
-    const executeBtn = createExecuteButton();
+    let executeBtn = createExecuteButton();
     const anchorPoint = createAnchorPoint(tool, toolWindowEl);
     const inputAnchors = createInputAnchors(tool);
-
-    // Attach click handler to execute button
-    executeBtn.addEventListener('click', async () => {
-        // Clear previous results/errors
-        const existingResult = toolWindowEl.querySelector('.result-container');
-        if (existingResult) existingResult.remove();
-        showError(toolWindowEl, '');
-
-        // Show initial progress
-        let progressIndicator = toolWindowEl.querySelector('.progress-indicator');
-        if (!progressIndicator) {
-            progressIndicator = document.createElement('div');
-            progressIndicator.className = 'progress-indicator';
-            toolWindowEl.appendChild(progressIndicator);
-        }
-        progressIndicator.textContent = 'Executing...';
-
-        console.log('[node.js] Execute button clicked for tool:', tool && tool.toolId);
-        // Gather inputs from the tool window
-        const inputs = {};
-        const inputElements = toolWindowEl.querySelectorAll('.parameter-input input');
-        inputElements.forEach(input => {
-            const paramName = input.placeholder;
-            inputs[paramName] = input.value;
-        });
-        const payload = {
-            toolId: tool.toolId,
-            inputs: inputs,
-            metadata: {
-                platform: 'web-sandbox'
-            }
-        };
-        console.log('[node.js] Sending execution payload:', payload);
-        try {
-            // Get CSRF token
-            const csrfRes = await fetch('/api/v1/csrf-token');
-            const { csrfToken } = await csrfRes.json();
-            console.log('[node.js] CSRF token:', csrfToken);
-            // Log cookies (if possible)
-            console.log('[node.js] Document cookies:', document.cookie);
-
-            const response = await fetch('/api/v1/generation/execute', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-csrf-token': csrfToken
-                },
-                credentials: 'include', // Ensure cookies are sent
-                body: JSON.stringify(payload),
-            });
-            console.log('[node.js] Raw fetch response:', response);
-            const result = await response.json();
-            console.log('[node.js] Execution response:', result);
-
-            if (!response.ok) {
-                // Show error in UI
-                showError(toolWindowEl, result.error?.message || 'Execution request failed');
-                if (progressIndicator) progressIndicator.remove(); // Remove progress on immediate failure
-                throw new Error(result.error?.message || 'Execution request failed');
-            } else {
-                // Clear any previous error
-                showError(toolWindowEl, '');
-                // Link the generationId to this tool window for WebSocket updates
-                if (result.generationId) {
-                    generationIdToWindowMap[result.generationId] = toolWindowEl;
-                    progressIndicator.textContent = `Status: ${result.status}`;
-                }
-            }
-        } catch (error) {
-            console.error('[node.js] Execution Error:', error);
-            showError(toolWindowEl, error.message || 'Unknown error');
-            if (progressIndicator) progressIndicator.remove(); // Remove progress on error
-        }
-    });
-    console.log('[node.js] Execute button handler attached for tool:', tool && tool.toolId);
 
     // Assemble window
     toolWindowEl.append(
@@ -261,10 +220,121 @@ export function createToolWindow(tool, position) {
         requiredSection, 
         showMoreBtn, 
         optionalSection, 
-        executeBtn, 
+        // executeBtn will be replaced if output is present
         anchorPoint, 
         inputAnchors
     );
+
+    // If output is present, replace execute button with Load button
+    if (output) {
+        const resultContainer = document.createElement('div');
+        resultContainer.className = 'result-container';
+        toolWindowEl.appendChild(resultContainer);
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = output.type === 'image' ? 'Load Image' : (output.type === 'text' ? 'Load Text' : 'Load Output');
+        loadBtn.className = 'execute-button'; // Match style
+        loadBtn.onclick = () => {
+            renderResultContent(resultContainer, output);
+            loadBtn.remove();
+        };
+        toolWindowEl.appendChild(loadBtn);
+    } else {
+        // Attach click handler to execute button
+        executeBtn.addEventListener('click', async () => {
+            // Clear previous results/errors
+            const existingResult = toolWindowEl.querySelector('.result-container');
+            if (existingResult) existingResult.remove();
+            showError(toolWindowEl, '');
+
+            // Show initial progress
+            let progressIndicator = toolWindowEl.querySelector('.progress-indicator');
+            if (!progressIndicator) {
+                progressIndicator = document.createElement('div');
+                progressIndicator.className = 'progress-indicator';
+                toolWindowEl.appendChild(progressIndicator);
+            }
+            progressIndicator.textContent = 'Executing...';
+
+            console.log('[node.js] Execute button clicked for tool:', tool && tool.toolId);
+            // Gather inputs from the tool window
+            const inputs = {};
+            const inputElements = toolWindowEl.querySelectorAll('.parameter-input input');
+            inputElements.forEach(input => {
+                const paramName = input.placeholder;
+                inputs[paramName] = input.value;
+            });
+            const payload = {
+                toolId: tool.toolId,
+                inputs: inputs,
+                metadata: {
+                    platform: 'web-sandbox'
+                }
+            };
+            console.log('[node.js] Sending execution payload:', payload);
+            try {
+                // Get CSRF token
+                const csrfRes = await fetch('/api/v1/csrf-token');
+                const { csrfToken } = await csrfRes.json();
+                console.log('[node.js] CSRF token:', csrfToken);
+                // Log cookies (if possible)
+                console.log('[node.js] Document cookies:', document.cookie);
+
+                const response = await fetch('/api/v1/generation/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-csrf-token': csrfToken
+                    },
+                    credentials: 'include', // Ensure cookies are sent
+                    body: JSON.stringify(payload),
+                });
+                console.log('[node.js] Raw fetch response:', response);
+                const result = await response.json();
+                console.log('[node.js] Execution response:', result);
+
+                if (!response.ok) {
+                    // Show error in UI
+                    showError(toolWindowEl, result.error?.message || 'Execution request failed');
+                    if (progressIndicator) progressIndicator.remove(); // Remove progress on immediate failure
+                    throw new Error(result.error?.message || 'Execution request failed');
+                } else {
+                    // Clear any previous error
+                    showError(toolWindowEl, '');
+                    // Link the generationId to this tool window for WebSocket updates
+                    if (result.generationId) {
+                        generationIdToWindowMap[result.generationId] = toolWindowEl;
+                        progressIndicator.textContent = `Status: ${result.status}`;
+                    }
+                    // If the result is already completed, handle it immediately (for static tools)
+                    if (result.status === 'completed' && result.outputs) {
+                        handleGenerationUpdate({
+                            generationId: result.generationId,
+                            outputs: result.outputs,
+                            status: result.status
+                        });
+                        // Persist output for restoration
+                        // Handle both array and flat output structures
+                        if (Array.isArray(result.outputs) && result.outputs[0]?.data?.images?.[0]?.url) {
+                            setToolWindowOutput(windowId, { type: 'image', url: result.outputs[0].data.images[0].url });
+                        } else if (result.outputs.imageUrl) {
+                            setToolWindowOutput(windowId, { type: 'image', url: result.outputs.imageUrl });
+                        } else if (result.outputs.text) {
+                            setToolWindowOutput(windowId, { type: 'text', text: result.outputs.text });
+                        } else {
+                            setToolWindowOutput(windowId, { type: 'unknown', ...result.outputs });
+                        }
+                        // On successful output:
+                        // renderResultContent(resultContainer, output)
+                    }
+                }
+            } catch (error) {
+                console.error('[node.js] Execution Error:', error);
+                showError(toolWindowEl, error.message || 'Unknown error');
+                if (progressIndicator) progressIndicator.remove(); // Remove progress on error
+            }
+        });
+        toolWindowEl.appendChild(executeBtn);
+    }
 
     // Make window draggable by its header
     setupDragging(windowData, header);
@@ -293,8 +363,10 @@ function createWindowHeader(title) {
     closeBtn.textContent = '×';
     closeBtn.className = 'close-button';
     function closeWindow() {
-        header.parentElement.remove();
-        removeToolWindow(header.parentElement.id);
+        const winEl = header.parentElement;
+        if (winEl) {
+            removeToolWindow(winEl.id); // This updates state and localStorage
+        }
     }
     closeBtn.addEventListener('click', closeWindow);
     closeBtn.addEventListener('touchend', (e) => {
