@@ -25,21 +25,31 @@
     cursor: grabbing;
 }
 
-.input-anchor {
-    left: -20px;
-    transform: translateY(-50%);
-}
-
 .input-anchors-container {
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
+    left: -32px; /* Move container to the left of the window */
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    justify-content: space-evenly;
-    transform: translateX(-100%);
-    padding: 8px 0;
+    gap: 16px; /* Add vertical spacing between anchors */
+    z-index: var(--z-tool-window);
+}
+
+.input-anchor {
+    position: relative;
+    background: var(--modal-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-large);
+    transition: all var(--transition-speed) var(--transition-timing);
+    z-index: var(--z-tool-window);
+    margin: 0;
 }
 
 .anchor-tooltip {
@@ -95,4 +105,28 @@
 
 .connection-line.permanent {
     animation: flowingLine 2s linear infinite;
+}
+
+/* Styles for highlighting valid/invalid drop targets */
+.input-anchor.anchor-highlight-valid {
+    border-color: var(--success-color, #4caf50);
+    box-shadow: 0 0 12px var(--success-color, #4caf50);
+    transform: scale(1.2);
+    opacity: 1;
+}
+
+.input-anchor.anchor-highlight-invalid {
+    border-color: var(--error-color, #f44336);
+    box-shadow: 0 0 8px var(--error-color, #f44336);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@keyframes flowingLine {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
 } 

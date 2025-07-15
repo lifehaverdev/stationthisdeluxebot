@@ -29,12 +29,23 @@
 - **[NEW]** Undo/redo for node and connection state (Ctrl+Z, Ctrl+Y/Ctrl+Shift+Z)
 - **[NEW]** Cycle prevention in the connection graph (blocks connections that would create cycles)
 - **[NEW]** Advanced type compatibility and error handling (checks inputSchema, tool metadata, alerts on invalid)
+- **[2024-07-14]**
+    - Fixed connection drop handling: invalid anchor drops are blocked, tool menu only appears on empty canvas
+    - Fixed connection rerouting: reroute now deletes the old connection and updates parameter mappings
+    - Fixed node deletion: deleting a node removes all associated connections and cleans up parameter mappings
+    - Fixed visual feedback: anchor points glow green for valid, red for invalid during drag
+    - Fixed error messaging: user sees clear, context-specific errors for cycles, type mismatches, etc.
+    - Fixed zoom/pan rendering: connection lines update correctly at all zoom levels and during panning
+    - Fixed node movement: moving nodes updates connection lines in real time and is undoable
+    - Fixed undo/redo: all actions (create, delete, move, connect, reroute) are atomic and robustly undoable/redone
+    - Fixed crash on undo/redo: rerender now gracefully handles missing tool definitions
 
 **Next Steps:**
 - UI/UX polish for error messages and anchor highlights
 - (Optional) Tooltips or inline error display instead of alert popups
 - (Optional) Backend sync for multi-user persistence
 - (Optional) Playwright/screen recording demo
+- (Optional) Handle missing tool definitions more gracefully (e.g., show placeholder node)
 
 ---
 
@@ -305,6 +316,65 @@ flowchart TD
 - **Cycle prevention:** The system blocks any connection that would introduce a cycle in the graph.
 - **Advanced type compatibility:** Connections are only allowed if the output type is compatible with the input, using tool schemas and metadata.
 - **Error handling:** User-friendly alerts are shown for invalid actions (cycle, type mismatch, etc.).
+
+---
+
+## User Testing Results (2024-07-14, post-fixes)
+
+### 1. Basic Node & Connection Functionality
+- **Pass**
+
+### 2. Connection Editing
+- **Pass**: Rerouting a connection now deletes the old one and updates mappings
+
+### 3. Node Deletion & Connection Cleanup
+- **Pass**: Connections are deleted from state and UI when a node is deleted
+
+### 4. Visual Feedback
+- **Pass**: Dimming/highlighting effect is visible and accurate
+
+### 5. Undo/Redo
+- **Pass**: Undo/redo now works for all actions, including node move, connect, reroute, and delete
+
+### 6. Cycle Prevention
+- **Pass**: Correct error message shown for cycles, and cycles are blocked
+
+### 7. Advanced Type Compatibility
+- **Pass**: Invalid type connections are blocked and user is notified
+
+### 8. Persistence
+- **Pass**: Nodes and connections persist after reload, and visualization is correct at all zoom levels
+
+### 9. Error Handling
+- **Pass**: Errors are shown contextually and do not crash the app
+
+### 10. Edge Cases
+- **Pass**: Undo/redo, reroute, and node deletion all work as expected
+
+---
+
+## Summary Table (2024-07-14, post-fixes)
+
+| Priority | Issue                                 | Status   |
+|----------|---------------------------------------|----------|
+| 1        | Connection Drop Handling              | Fixed    |
+| 2        | Connection Editing (Reroute)          | Fixed    |
+| 3        | Connection Line Cleanup               | Fixed    |
+| 4        | Visual Feedback (Highlight/Dimming)   | Fixed    |
+| 5        | Type Compatibility & Cycle Prevention | Fixed    |
+| 6        | Error Messaging                       | Fixed    |
+| 7        | Undo/Redo Robustness                  | Fixed    |
+| 8        | Connection Visualization & Zoom       | Fixed    |
+| 9        | Node Movement Updates Connections     | Fixed    |
+
+---
+
+## Remaining Known Issues / Next Steps
+- UI/UX polish for error messages and anchor highlights
+- (Optional) Tooltips or inline error display instead of alert popups
+- (Optional) Backend sync for multi-user persistence
+- (Optional) Playwright/screen recording demo
+- (Optional) Handle missing tool definitions more gracefully (e.g., show placeholder node)
 
 ---
 

@@ -174,10 +174,27 @@ parameterMappings: {
 - On reload, restore all mappings and connections visually and in state.
 
 #### 6. Testing & Demo
-- Test anchor-based mapping, connection/disconnection, parameter resolution, persistence, and error handling.
+- [x] Test anchor-based mapping, connection/disconnection, parameter resolution, persistence, and error handling.
 - Create a screen recording or Playwright test showing parameter mapping in action.
 
 **Note:** The current implementation already uses `anchorPoint` and `anchorType` in the node and connection logic. This plan builds on and extends those mechanisms for parameter mapping.
+
+---
+
+## **Current State (Post-Refactor)**
+- **Parameter Mapping:** The `parameterMappings` data structure is now correctly updated in the application state when connections are created, changed, or deleted.
+- **State Management:** Duplicate node entries have been eliminated from the state on load, providing a clean and reliable state. The unique `toolId` is now persisted, making lookups more robust.
+- **UI Reactivity:** The tool window UI is now fully reactive. It correctly displays the "connected" status for mapped parameters and reverts to a static input field when a connection is removed or a source node is deleted.
+- **Node Execution:** The execution logic correctly resolves `nodeOutput` parameter types, pulling data from the output of connected source nodes.
+
+### Completion Summary
+The parameter mapping feature is now fully implemented and robust. All core functionality is in place:
+- **State Management:** Clean, reliable, and free of duplicate nodes.
+- **UI Reactivity:** The UI correctly reflects all connection and disconnection events in real-time.
+- **Workflow Execution:** The "Execute" button now intelligently runs entire dependency chains, correctly handling both immediate and asynchronous tools without race conditions.
+- **State Cleanup:** Deleting nodes or connections correctly cleans up all related state, preventing stale data and UI bugs.
+
+All major implementation tasks for this feature are complete.
 
 ## Step 4: Demo & Handoff
 

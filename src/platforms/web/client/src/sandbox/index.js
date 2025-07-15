@@ -12,7 +12,7 @@ import {
     redo
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
-import { createToolWindow } from './node.js';
+import { createToolWindow } from './node/index.js';
 import { createImageInSandbox } from './components/image.js';
 import { initCanvas, updateConnectionLine } from './canvas.js';
 import { calculateCenterPosition, hideModal } from './utils.js';
@@ -20,7 +20,7 @@ import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
 import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
-import { renderAllConnections } from './connections.js';
+import { renderAllConnections } from './connections/index.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -64,10 +64,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
         // You would also re-render connections here
+        renderAllConnections();
     }
 
     function updateTransform() {
-        console.log(`[Workspace] Pan: (${pan.x.toFixed(2)}, ${pan.y.toFixed(2)}), Scale: ${scale.toFixed(2)}`);
+        //console.log(`[Workspace] Pan: (${pan.x.toFixed(2)}, ${pan.y.toFixed(2)}), Scale: ${scale.toFixed(2)}`);
         canvas.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${scale})`;
         // The background grid is now part of the canvas, so it scales with it.
         const gridBgSize = gridSize * scale;
@@ -262,9 +263,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-create tool windows from state
         getToolWindows().forEach(win => {
             // Find the tool by displayName from availableTools
-            const tool = getAvailableTools().find(t => t.displayName === win.tool.displayName);
+            const tool = getAvailableTools().find(t => t.displayName === win.displayName);
             if (tool) {
                 createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            } else {
+                console.warn(`Could not find tool definition for '${win.displayName}' during rerender. It might have been removed or renamed.`);
             }
         });
         // Re-render connections

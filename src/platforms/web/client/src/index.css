@@ -9,6 +9,7 @@
 @import './sandbox/components/BuyPointsModal/buyPointsModal.css';
 @import './sandbox/style/components/spellsMenuModal.css';
 @import './sandbox/style/components/imageOverlay.css';
+@import './sandbox/style/components/textOverlay.css';
 
 body {
   margin: 0;
@@ -365,7 +366,7 @@ a:hover {
 .sidebar-toggle {
     position: absolute;
     top: 50%;
-    right: 300px;
+    right: 365px;
     transform: translateY(-50%);
     width: 40px;
     height: 80px;

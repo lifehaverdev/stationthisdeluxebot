@@ -1,6 +1,6 @@
 import { OUTPUT_TYPE_MAPPING, getAvailableTools, activeToolWindows, getActiveConnection, setActiveConnection } from './state.js';
-import { createToolWindow } from './node.js';
-import { createPermanentConnection } from './connections.js';
+import { createToolWindow } from './node/index.js';
+import { createPermanentConnection } from './connections/index.js';
 import { hideModal, calculateCenterPosition, getToolInputTypes } from './utils.js';
 
 // Creation type to category mapping

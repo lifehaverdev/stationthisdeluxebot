@@ -1,0 +1,44 @@
+.text-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(20,20,20,0.98);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.text-overlay-content {
+  background: #222;
+  border-radius: 12px;
+  padding: 32px;
+  width: 80vw;
+  max-width: 800px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.text-overlay-textarea {
+  width: 100%;
+  min-height: 300px;
+  font-size: 1.1rem;
+  font-family: var(--font-family-mono, monospace);
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #181818;
+  color: #f0f0f0;
+  padding: 16px;
+  resize: vertical;
+}
+.text-overlay-close {
+  align-self: flex-end;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  margin-bottom: 16px;
+}
+.text-overlay-close:hover {
+  color: #ff5c5c;
+} 

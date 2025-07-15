@@ -34,17 +34,19 @@ const CONNECTIONS_KEY = 'sandbox_connections';
 const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
 
 // Serialize and save state to localStorage
-function persistState() {
+export function persistState() {
     // Only store serializable data
     const serializableConnections = connections.map(({ element, ...rest }) => rest);
     const serializableWindows = activeToolWindows.map(w => {
-        // Only persist id, tool.displayName, workspaceX, workspaceY, output
+        // Persist id, tool.displayName, tool.toolId, workspaceX, workspaceY, output, parameterMappings
         return {
             id: w.id,
             displayName: w.tool?.displayName || '',
+            toolId: w.tool?.toolId || '', // <-- ADD THIS LINE
             workspaceX: w.workspaceX,
             workspaceY: w.workspaceY,
-            output: w.output || null
+            output: w.output || null,
+            parameterMappings: w.parameterMappings || {}
         };
     });
     localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(serializableConnections));
@@ -62,15 +64,26 @@ function loadState() {
     }
     if (winRaw) {
         try {
-            // Only restore window id, displayName, workspaceX, workspaceY, output
+            // Restore window id, displayName, toolId, workspaceX, workspaceY, output, parameterMappings
             const wins = JSON.parse(winRaw);
-            activeToolWindows = wins.map(w => ({
+
+            // Deduplicate windows by ID, keeping the last one found
+            const uniqueWinsMap = new Map();
+            wins.forEach(w => uniqueWinsMap.set(w.id, w));
+            const uniqueWins = Array.from(uniqueWinsMap.values());
+            
+            activeToolWindows = uniqueWins.map(w => ({
                 id: w.id,
-                tool: { displayName: w.displayName },
+                tool: { 
+                    displayName: w.displayName,
+                    toolId: w.toolId // <-- ADD THIS LINE
+                },
                 workspaceX: w.workspaceX,
                 workspaceY: w.workspaceY,
-                output: w.output || null
+                output: w.output || null,
+                parameterMappings: w.parameterMappings || {}
             }));
+            console.log(`[State] Loaded ${activeToolWindows.length} unique tool windows from storage.`);
         } catch (e) { activeToolWindows = []; }
     }
 }
@@ -80,56 +93,63 @@ const historyStack = [];
 const redoStack = [];
 
 function cloneState() {
-    // Deep clone connections and tool windows (serializable only)
+    // Deep clone connections and tool windows
     return {
-        connections: JSON.parse(JSON.stringify(connections)),
-        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows)),
+        connections: JSON.parse(JSON.stringify(connections.map(({ element, ...rest }) => rest))),
+        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows.map(w => ({
+            id: w.id,
+            displayName: w.tool?.displayName || '',
+            workspaceX: w.workspaceX,
+            workspaceY: w.workspaceY,
+            output: w.output || null,
+            parameterMappings: w.parameterMappings || {}
+        })))),
     };
 }
 
 export function pushHistory() {
-    historyStack.push(cloneState());
-    // Clear redo stack on new action
+    // A new action clears the redo stack.
     redoStack.length = 0;
+    historyStack.push(cloneState());
+    // Optional: Limit history size to prevent memory issues
+    if (historyStack.length > 50) {
+        historyStack.shift();
+    }
 }
 
 export function undo() {
-    if (historyStack.length === 0) return;
-    const prev = historyStack.pop();
+    if (historyStack.length < 1) return;
+    // Push the current state onto the redo stack before we travel back in time.
     redoStack.push(cloneState());
-    connections = prev.connections;
-    activeToolWindows = prev.activeToolWindows;
+    const prevState = historyStack.pop();
+    // Now, restore the previous state.
+    connections = prevState.connections;
+    activeToolWindows = prevState.activeToolWindows;
     persistState();
-    // Optionally, trigger UI re-render here
 }
 
 export function redo() {
-    if (redoStack.length === 0) return;
-    const next = redoStack.pop();
+    if (redoStack.length < 1) return;
+    // Push the current state back to history before we travel forward.
     historyStack.push(cloneState());
-    connections = next.connections;
-    activeToolWindows = next.activeToolWindows;
+    const nextState = redoStack.pop();
+    // Now, restore the future state.
+    connections = nextState.connections;
+    activeToolWindows = nextState.activeToolWindows;
     persistState();
-    // Optionally, trigger UI re-render here
 }
 
 // Patch add/remove/clear to push history
 export function addConnection(connection) {
-    pushHistory();
     connections.push(connection);
-    persistState();
 }
 
 export function removeConnection(connectionId) {
-    pushHistory();
     connections = connections.filter(c => c.id !== connectionId);
-    persistState();
 }
 
 export function clearConnectionsForWindow(windowId) {
-    pushHistory();
     connections = connections.filter(c => c.fromWindowId !== windowId && c.toWindowId !== windowId);
-    persistState();
 }
 
 // TODO: Add undo/redo stack for connections
@@ -209,7 +229,6 @@ export function updateToolWindowPosition(id, workspaceX, workspaceY) {
     if (window) {
         window.workspaceX = workspaceX;
         window.workspaceY = workspaceY;
-        persistState();
     }
 }
 
@@ -327,20 +346,20 @@ export const OUTPUT_TYPE_MAPPING = {
 
 // Window and connection management
 export function addToolWindow(windowData) {
-    pushHistory();
-    activeToolWindows.push(windowData);
-    persistState();
+    const existingIndex = activeToolWindows.findIndex(w => w.id === windowData.id);
+    if (existingIndex > -1) {
+        activeToolWindows[existingIndex] = windowData;
+    } else {
+        activeToolWindows.push(windowData);
+    }
 }
 
 export function removeToolWindow(windowId) {
-    pushHistory();
-    clearConnectionsForWindow(windowId); // Remove all connections related to this node
     activeToolWindows = activeToolWindows.filter(w => w.id !== windowId);
     const windowEl = document.getElementById(windowId);
     if (windowEl) {
         windowEl.remove();
     }
-    persistState();
 }
 
 export function setActiveConnection(connection) {
@@ -359,6 +378,11 @@ export function setToolWindowOutput(id, output) {
     const win = getToolWindow(id);
     if (win) {
         win.output = output;
-        persistState();
     }
+}
+
+// Expose for debugging in browser console
+if (typeof window !== 'undefined') {
+    window.getToolWindows = getToolWindows;
+    window.activeToolWindows = activeToolWindows;
 } 
