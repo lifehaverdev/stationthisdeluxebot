@@ -174,12 +174,20 @@ function getNodeExecutionOrder(startNodeId) {
         visited.add(nodeId);
 
         const node = allWindows.find(w => w.id === nodeId);
-        if (!node || !node.parameterMappings) return;
+        if (!node) return;
 
-        // Visit all dependencies (inputs from other nodes) first
-        for (const mapping of Object.values(node.parameterMappings)) {
-            if (mapping.type === 'nodeOutput' && mapping.nodeId) {
-                visit(mapping.nodeId);
+        // If the node already has output, don't re-execute it or its dependencies.
+        // An explicit execution of a node (the startNodeId) should always run.
+        if (node.output && nodeId !== startNodeId) {
+            return;
+        }
+
+        if (node.parameterMappings) {
+            // Visit all dependencies (inputs from other nodes) first
+            for (const mapping of Object.values(node.parameterMappings)) {
+                if (mapping.type === 'nodeOutput' && mapping.nodeId) {
+                    visit(mapping.nodeId);
+                }
             }
         }
 

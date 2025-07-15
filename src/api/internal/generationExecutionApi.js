@@ -25,6 +25,7 @@ module.exports = function generationExecutionApi(dependencies) {
   // POST / - Executes a generation based on a toolId and inputs
   router.post('/', async (req, res) => {
     const { toolId, inputs, user, sessionId, eventId, metadata } = req.body;
+    let costRateInfo = null; // Defined here to be in scope for the whole request
 
     // 1. --- Basic Request Validation ---
     if (!toolId || !inputs || !user || !user.masterAccountId) {
@@ -38,121 +39,106 @@ module.exports = function generationExecutionApi(dependencies) {
     try {
       // 2. --- Tool Lookup & Validation ---
       logger.info(`[Execute] Received request for toolId: ${toolId}`);
-      const tool = toolRegistry.getToolById(toolId);
-
+      const tool = await db.toolRegistry.getTool(toolId);
       if (!tool) {
-        return res.status(404).json({
-          error: { code: 'TOOL_NOT_FOUND', message: `Tool with ID '${toolId}' not found in registry.` }
-        });
+        return res.status(404).json({ error: { code: 'TOOL_NOT_FOUND', message: `Tool '${toolId}' not found.` } });
       }
 
-      // 2a. --- Costing Model Validation ---
-      let costRateInfo = null;
-      if (!tool.costingModel || !tool.costingModel.rateSource) {
-        logger.error(`[Execute] Tool '${toolId}' is missing a valid costingModel. Execution blocked.`);
-        return res.status(400).json({
-          error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' is not configured for costing and cannot be executed.` }
-        });
-      }
-      // If rateSource is machine, we need to fetch it dynamically
-      if (tool.costingModel.rateSource === 'machine') {
-          costRateInfo = await comfyUIService.getCostRateForDeployment(tool.metadata.deploymentId);
-          if (typeof costRateInfo === 'string' && costRateInfo.startsWith('error:')) {
-              logger.error(`[Execute] Could not determine machine cost for tool '${toolId}'. Reason: ${costRateInfo}`);
-              return res.status(500).json({ error: { code: 'COSTING_ERROR', message: 'Could not determine execution cost for this tool.' }});
-          }
-      } else {
-          costRateInfo = tool.costingModel;
-      }
-      logger.info(`[Execute] Determined cost rate for tool ${toolId}: ${JSON.stringify(costRateInfo)}`);
-
-      // 2. --- Pre-Execution Credit Check ---
+      // 3. --- Pre-Execution Credit Check ---
       try {
-          // 2a. --- Costing Model Validation ---
-          let costRateInfo = null;
-          if (!tool.costingModel || !tool.costingModel.rateSource) {
-              logger.error(`[Execute] Tool '${toolId}' is missing a valid costingModel. Execution blocked.`);
-              return res.status(400).json({
-                  error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' is not configured for costing and cannot be executed.` }
-              });
-          }
-          // If rateSource is machine, we need to fetch it dynamically
-          if (tool.costingModel.rateSource === 'machine') {
-              costRateInfo = await comfyUIService.getCostRateForDeployment(tool.metadata.deploymentId);
-              if (!costRateInfo) {
-                  logger.error(`[Execute] Could not retrieve dynamic machine cost for tool '${toolId}'.`);
-                  return res.status(500).json({ error: { code: 'COSTING_UNAVAILABLE', message: 'Could not determine execution cost.' } });
-              }
-          } else if (tool.costingModel.rateSource === 'fixed') {
-              costRateInfo = {
-                  amount: tool.costingModel.fixedCost.amount,
-                  unit: tool.costingModel.fixedCost.unit
-              };
-          }
-
-          // 2b. --- Estimate Cost in Points ---
-          let estimatedSeconds = 30; // Default estimate for variable-cost tools
-          let costUsd = 0;
-          if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
-              // If the tool has a minDuration or estimatedDuration, use it
-              if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
-                  estimatedSeconds = tool.metadata.estimatedDurationSeconds;
-              } else if (tool.metadata && tool.metadata.minDurationSeconds) {
-                  estimatedSeconds = tool.metadata.minDurationSeconds;
-              }
-              costUsd = estimatedSeconds * costRateInfo.amount;
-          } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed')) {
-              costUsd = costRateInfo.amount;
-          } else {
-              costUsd = costRateInfo.amount; // Fallback: treat as fixed cost
-          }
-
-          const USD_PER_POINT = 0.000337;
-          let pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
-          
-          // --- Fetch User's Wallet and Points ---
-          const userId = user.masterAccountId;
-          const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
-          const userCore = userCoreRes.data;
-
-          let walletAddress = null;
-          if (userCore.wallets && userCore.wallets.length > 0) {
-              const primary = userCore.wallets.find(w => w.isPrimary);
-              walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
-          }
-
-          if (!walletAddress) {
-              logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
-              return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
-          }
-
-          const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
-          const currentPoints = pointsResponse.data.points || 0;
-          
-          logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
-          
-          if (currentPoints < pointsRequired) {
-            return res.status(402).json({
-              error: {
-                code: 'INSUFFICIENT_FUNDS',
-                message: 'You do not have enough points to execute this workflow.',
-                details: { required: pointsRequired, available: currentPoints }
-              }
-            });
-          }
-      } catch (creditCheckErr) {
-          logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}:`, creditCheckErr);
-          return res.status(500).json({
-              error: {
-                  code: 'CREDIT_CHECK_FAILED',
-                  message: 'Could not verify your available points. Please try again later.'
-              }
+        // 3a. --- Determine Cost Rate ---
+        if (!tool.costingModel || !tool.costingModel.rateSource) {
+          logger.error(`[Execute] Tool '${toolId}' is missing a valid costingModel. Execution blocked.`);
+          return res.status(400).json({
+            error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' is not configured for costing and cannot be executed.` }
           });
+        }
+        
+        if (tool.costingModel.rateSource === 'machine') {
+          costRateInfo = await comfyUIService.getCostRateForDeployment(tool.metadata.deploymentId);
+          if (!costRateInfo) {
+            logger.error(`[Execute] Could not retrieve dynamic machine cost for tool '${toolId}'.`);
+            return res.status(500).json({ error: { code: 'COSTING_UNAVAILABLE', message: 'Could not determine execution cost.' } });
+          }
+        } else if (tool.costingModel.rateSource === 'fixed') {
+          costRateInfo = {
+            amount: tool.costingModel.fixedCost.amount,
+            unit: tool.costingModel.fixedCost.unit
+          };
+        } else if (tool.costingModel.rateSource === 'static' && tool.costingModel.staticCost) {
+          costRateInfo = {
+            amount: tool.costingModel.staticCost.amount,
+            unit: tool.costingModel.staticCost.unit
+          };
+        } else {
+          logger.error(`[Execute] Unsupported or invalid rateSource in costingModel for tool '${toolId}'.`);
+          return res.status(400).json({ error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' has an invalid costing configuration.` } });
+        }
+
+        // 3b. --- Estimate Cost in Points ---
+        let estimatedSeconds = 30; // Default estimate for variable-cost tools
+        let costUsd = 0;
+        
+        if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
+          if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
+            estimatedSeconds = tool.metadata.estimatedDurationSeconds;
+          } else if (tool.metadata && tool.metadata.minDurationSeconds) {
+            estimatedSeconds = tool.metadata.minDurationSeconds;
+          }
+          costUsd = estimatedSeconds * costRateInfo.amount;
+        } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed' || costRateInfo.unit.toLowerCase() === 'token')) { // Added token for static
+          costUsd = costRateInfo.amount;
+        } else {
+          logger.error(`[Execute] Could not determine cost for tool '${toolId}' with unhandled unit type:`, costRateInfo.unit);
+          return res.status(500).json({ error: { code: 'COSTING_ERROR', message: 'Could not determine execution cost for this tool.' } });
+        }
+        
+        const USD_PER_POINT = 0.000337;
+        const pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
+
+        // 3c. --- Fetch User's Wallet and Points ---
+        const userId = user.masterAccountId;
+        const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
+        const userCore = userCoreRes.data;
+
+        let walletAddress = null;
+        if (userCore.wallets && userCore.wallets.length > 0) {
+          const primary = userCore.wallets.find(w => w.isPrimary);
+          walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
+        }
+
+        if (!walletAddress) {
+          logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
+          return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
+        }
+
+        const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
+        const currentPoints = pointsResponse.data.points || 0;
+        
+        logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
+        
+        if (currentPoints < pointsRequired) {
+          return res.status(402).json({
+            error: {
+              code: 'INSUFFICIENT_FUNDS',
+              message: 'You do not have enough points to execute this workflow.',
+              details: { required: pointsRequired, available: currentPoints }
+            }
+          });
+        }
+      } catch (creditCheckErr) {
+        logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}:`, creditCheckErr);
+        return res.status(500).json({
+          error: {
+            code: 'CREDIT_CHECK_FAILED',
+            message: 'Could not verify your available points. Please try again later.'
+          }
+        });
       }
 
       // TODO: Validate inputs against tool.inputSchema
 
-      // 3. --- Routing based on Service ---
+      // 4. --- Routing based on Service ---
       const service = tool.service;
       logger.info(`[Execute] Routing tool '${toolId}' to service: '${service}'`);
 
@@ -162,7 +148,7 @@ module.exports = function generationExecutionApi(dependencies) {
           let finalInputs = { ...inputs };
           let loraResolutionData = {};
 
-          // 3a. --- LoRA Resolution ---
+          // --- LoRA Resolution ---
           const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
           if (tool.metadata.hasLoraLoader && finalInputs[promptInputKey]) {
             logger.info(`[Execute] Resolving LoRA triggers for tool '${toolId}'.`);
@@ -176,7 +162,7 @@ module.exports = function generationExecutionApi(dependencies) {
             loraResolutionData = { appliedLoras, warnings, rawPrompt: inputs[promptInputKey] };
           }
           
-          // 3b. --- Create Generation Record ---
+          // --- Create Generation Record ---
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
@@ -185,7 +171,7 @@ module.exports = function generationExecutionApi(dependencies) {
             toolId: tool.toolId,
             requestPayload: finalInputs,
             status: 'pending',
-            deliveryStatus: 'pending', // Assume all executions might need delivery
+            deliveryStatus: 'pending', 
             notificationPlatform: user.platform || 'none',
             costUsd: null,
             metadata: {
@@ -198,23 +184,23 @@ module.exports = function generationExecutionApi(dependencies) {
           };
 
           const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
-          generationRecord = createResponse; // Store for potential updates
+          generationRecord = createResponse;
           logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
 
-          // 3c. --- Submit to ComfyUI Service ---
+          // --- Submit to ComfyUI Service ---
           const runId = await comfyUIService.submitRequest({
             deploymentId: tool.metadata.deploymentId,
             inputs: finalInputs,
           });
           logger.info(`[Execute] Submitted job to ComfyUI for GenID ${generationRecord._id}. Run ID: ${runId}`);
 
-          // 3d. --- Update Record with Run ID ---
+          // --- Update Record with Run ID ---
           await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
             'metadata.run_id': runId,
             status: 'processing',
           });
 
-          // 3e. --- Respond ---
+          // --- Respond ---
           return res.status(202).json({
             generationId: generationRecord._id.toString(),
             status: 'processing',
@@ -243,7 +229,6 @@ module.exports = function generationExecutionApi(dependencies) {
             ],
             message: 'Static image tool executed successfully.'
           };
-          // Emit WebSocket event to user
           if (websocketServer && user && user.masterAccountId) {
             websocketServer.sendToUser(String(user.masterAccountId), {
               type: 'generationUpdate',
@@ -253,7 +238,6 @@ module.exports = function generationExecutionApi(dependencies) {
           return res.status(200).json(staticPayload);
         }
         case 'openai': {
-          // 1. Validate required inputs for ChatGPT
           const { masterAccountId } = user;
           const prompt = inputs.prompt;
           const instructions = inputs.instructions || tool.inputSchema.instructions?.default || 'You are a helpful assistant.';
@@ -264,7 +248,6 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });
           }
 
-          // 2. Create Generation Record (status: processing)
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
@@ -288,7 +271,6 @@ module.exports = function generationExecutionApi(dependencies) {
           generationRecord = createResponse;
           logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
 
-          // 3. Call OpenAI Service
           let responseContent;
           try {
             responseContent = await openaiService.executeChatCompletion({
@@ -310,13 +292,11 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(500).json({ error: { code: 'OPENAI_ERROR', message: err.message } });
           }
 
-          // 4. Update Generation Record with result
           await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
             status: 'completed',
             'metadata.response': responseContent
           });
 
-          // --- Send Final Update via WebSocket ---
           if (websocketServer) {
             logger.info(`[Execute] Sending final WebSocket update for OpenAI generation ${generationRecord._id}.`);
             websocketServer.sendToUser(generationRecord.masterAccountId.toString(), {
@@ -324,15 +304,13 @@ module.exports = function generationExecutionApi(dependencies) {
               payload: {
                 generationId: generationRecord._id.toString(),
                 status: 'completed',
-                outputs: { response: responseContent }, // Consistent output format
+                outputs: { response: responseContent }, 
                 service: tool.service,
                 toolId: tool.toolId,
               }
             });
           }
-          // --- End WebSocket Update ---
 
-          // 5. Respond with result
           return res.status(200).json({
             generationId: generationRecord._id.toString(),
             status: 'completed',
@@ -348,13 +326,10 @@ module.exports = function generationExecutionApi(dependencies) {
             error: { code: 'NOT_IMPLEMENTED', message: `Execution for service type '${service}' is not supported.` }
           });
       }
-      
-      res.status(501).json({ message: 'Service logic not yet implemented.' });
 
     } catch (error) {
       logger.error(`[Execute] An unexpected error occurred while processing tool '${toolId}': ${error.message}`, error);
       
-      // If a record was created before the error, update it to failed
       if (generationRecord && generationRecord._id) {
         await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
           status: 'failed',
