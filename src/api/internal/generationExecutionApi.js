@@ -66,48 +66,88 @@ module.exports = function generationExecutionApi(dependencies) {
       }
       logger.info(`[Execute] Determined cost rate for tool ${toolId}: ${JSON.stringify(costRateInfo)}`);
 
-      // --- Pre-Execution Credit Check ---
+      // 2. --- Pre-Execution Credit Check ---
       try {
-        // 1. Estimate cost in USD and points
-        let estimatedSeconds = 30; // Default estimate for variable-cost tools
-        let costUsd = 0;
-        if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
-          // If the tool has a minDuration or estimatedDuration, use it
-          if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
-            estimatedSeconds = tool.metadata.estimatedDurationSeconds;
-          } else if (tool.metadata && tool.metadata.minDurationSeconds) {
-            estimatedSeconds = tool.metadata.minDurationSeconds;
+          // 2a. --- Costing Model Validation ---
+          let costRateInfo = null;
+          if (!tool.costingModel || !tool.costingModel.rateSource) {
+              logger.error(`[Execute] Tool '${toolId}' is missing a valid costingModel. Execution blocked.`);
+              return res.status(400).json({
+                  error: { code: 'INVALID_TOOL_CONFIG', message: `Tool '${toolId}' is not configured for costing and cannot be executed.` }
+              });
           }
-          costUsd = estimatedSeconds * costRateInfo.amount;
-        } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed')) {
-          costUsd = costRateInfo.amount;
-        } else {
-          // Fallback: treat as fixed cost
-          costUsd = costRateInfo.amount;
-        }
-        const USD_PER_POINT = 0.000337;
-        let pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
-        // 2. Fetch user points
-        const pointsRes = await internalApiClient.get(`/internal/v1/data/ledger/points/${user.masterAccountId}`);
-        const userPoints = typeof pointsRes.data.points === 'number' ? pointsRes.data.points : 0;
-        logger.info(`[Pre-Execution Credit Check] User ${user.masterAccountId} has ${userPoints} points. Required: ${pointsRequired}`);
-        if (userPoints < pointsRequired) {
-          return res.status(402).json({
-            error: {
-              code: 'INSUFFICIENT_FUNDS',
-              message: 'You do not have enough points to execute this workflow.',
-              details: { required: pointsRequired, available: userPoints }
-            }
-          });
-        }
+          // If rateSource is machine, we need to fetch it dynamically
+          if (tool.costingModel.rateSource === 'machine') {
+              costRateInfo = await comfyUIService.getCostRateForDeployment(tool.metadata.deploymentId);
+              if (!costRateInfo) {
+                  logger.error(`[Execute] Could not retrieve dynamic machine cost for tool '${toolId}'.`);
+                  return res.status(500).json({ error: { code: 'COSTING_UNAVAILABLE', message: 'Could not determine execution cost.' } });
+              }
+          } else if (tool.costingModel.rateSource === 'fixed') {
+              costRateInfo = {
+                  amount: tool.costingModel.fixedCost.amount,
+                  unit: tool.costingModel.fixedCost.unit
+              };
+          }
+
+          // 2b. --- Estimate Cost in Points ---
+          let estimatedSeconds = 30; // Default estimate for variable-cost tools
+          let costUsd = 0;
+          if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
+              // If the tool has a minDuration or estimatedDuration, use it
+              if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
+                  estimatedSeconds = tool.metadata.estimatedDurationSeconds;
+              } else if (tool.metadata && tool.metadata.minDurationSeconds) {
+                  estimatedSeconds = tool.metadata.minDurationSeconds;
+              }
+              costUsd = estimatedSeconds * costRateInfo.amount;
+          } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed')) {
+              costUsd = costRateInfo.amount;
+          } else {
+              costUsd = costRateInfo.amount; // Fallback: treat as fixed cost
+          }
+
+          const USD_PER_POINT = 0.000337;
+          let pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
+          
+          // --- Fetch User's Wallet and Points ---
+          const userId = user.masterAccountId;
+          const userCoreRes = await internalApiClient.get(`/internal/v1/data/users/${userId}`);
+          const userCore = userCoreRes.data;
+
+          let walletAddress = null;
+          if (userCore.wallets && userCore.wallets.length > 0) {
+              const primary = userCore.wallets.find(w => w.isPrimary);
+              walletAddress = (primary ? primary.address : userCore.wallets[0].address) || null;
+          }
+
+          if (!walletAddress) {
+              logger.error(`[Execute] Pre-check failed: Could not find a wallet address for user ${userId}.`);
+              return res.status(403).json({ error: { code: 'WALLET_NOT_FOUND', message: 'User wallet not available for credit check.' } });
+          }
+
+          const pointsResponse = await internalApiClient.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddress}`);
+          const currentPoints = pointsResponse.data.points || 0;
+          
+          logger.info(`[Pre-Execution Credit Check] User ${userId} (Wallet: ${walletAddress}) has ${currentPoints} points. Required: ${pointsRequired}`);
+          
+          if (currentPoints < pointsRequired) {
+            return res.status(402).json({
+              error: {
+                code: 'INSUFFICIENT_FUNDS',
+                message: 'You do not have enough points to execute this workflow.',
+                details: { required: pointsRequired, available: currentPoints }
+              }
+            });
+          }
       } catch (creditCheckErr) {
-        logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}: ${creditCheckErr.message}`);
-        return res.status(500).json({
-          error: {
-            code: 'CREDIT_CHECK_FAILED',
-            message: 'Could not verify your available points. Please try again later.'
-          }
-        });
+          logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}:`, creditCheckErr);
+          return res.status(500).json({
+              error: {
+                  code: 'CREDIT_CHECK_FAILED',
+                  message: 'Could not verify your available points. Please try again later.'
+              }
+          });
       }
 
       // TODO: Validate inputs against tool.inputSchema
