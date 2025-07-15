@@ -8,8 +8,8 @@ A robust, user-friendly node-based workflow editor for the web sandbox, supporti
 | Feature                                 | Status   | Doc Link                                 | Owner/Agent | Last Updated |
 |------------------------------------------|----------|-------------------------------------------|-------------|--------------|
 | Node Creation/Deletion/Drag              | ✅       | [node-creation.md](./node-creation.md)    |             |              |
-| Node Connection (Persistent)             | 🚧       | [node-connection.md](./node-connection.md)|             |              |
-| Parameter Mapping                        | ⬜       | [parameter-mapping.md](./parameter-mapping.md) |         |              |
+| Node Connection (Persistent)             | ✅       | [node-connection.md](./node-connection.md)|             | 2024-07-15   |
+| Parameter Mapping                        | ✅       | [parameter-mapping.md](./parameter-mapping.md) |         | 2024-07-15   |
 | Subgraph Selection & Minting             | ⬜       | [subgraph-minting.md](./subgraph-minting.md) |         |              |
 | Save/Load Workspace                      | ⬜       | [workspace-save-load.md](./workspace-save-load.md) |     |              |
 | Execution Cost Tracking                  | ⬜       | [execution-cost.md](./execution-cost.md)  |             |              |
@@ -19,7 +19,7 @@ A robust, user-friendly node-based workflow editor for the web sandbox, supporti
 ## Progress Summary
 
 - **Last Handoff:** [HANDOFF-2025-07-14.md](../handoffs/HANDOFF-2025-07-14.md)
-- **Current Focus:** [Node Connection](./node-connection.md)
+- **Current Focus:** [Subgraph Selection & Minting](./subgraph-minting.md)
 - **Blockers:** None
 
 ## Collaboration Protocol

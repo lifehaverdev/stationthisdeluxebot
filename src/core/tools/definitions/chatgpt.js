@@ -11,13 +11,13 @@ const chatGptTool = {
   inputSchema: {
     prompt: {
       name: 'prompt',
-      type: 'string',
+      type: 'text',
       required: true,
       description: 'The text prompt to send to the AI.'
     },
     instructions: {
         name: 'instructions',
-        type: 'string',
+        type: 'text',
         required: true,
         description: 'The instructions to send to the AI.',
         default: 'You are a helpful assistant.',

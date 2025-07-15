@@ -285,7 +285,12 @@ async function executeSingleNode(toolWindowEl) {
             console.log('[DEBUG] Raw execution result:', JSON.stringify(result, null, 2));
 
             if (!response.ok) {
-                showError(toolWindowEl, result.error?.message || 'Execution request failed');
+                // Handle insufficient funds (402)
+                if (response.status === 402 && result.error?.code === 'INSUFFICIENT_FUNDS') {
+                    showError(toolWindowEl, `Not enough points to run this workflow.\nRequired: ${result.error.details?.required}, Available: ${result.error.details?.available}`);
+                } else {
+                    showError(toolWindowEl, result.error?.message || 'Execution request failed');
+                }
                 if (progressIndicator) progressIndicator.remove();
                 reject(new Error(result.error?.message || 'Execution request failed'));
             } else {
@@ -311,8 +316,14 @@ async function executeSingleNode(toolWindowEl) {
                             outputData = { type: 'image', url: result.outputs[0].data.images[0].url };
                         } else if (result.outputs?.imageUrl) {
                             outputData = { type: 'image', url: result.outputs.imageUrl };
+                        } else if (result.response && typeof result.response === 'string') {
+                            // Handle immediate, direct text response (like from the user's log)
+                            outputData = { type: 'text', text: result.response };
                         } else if (result.outputs?.text) {
                             outputData = { type: 'text', text: result.outputs.text };
+                        } else if (result.outputs?.response) {
+                             // Handle text from a nested 'response' property in the output
+                            outputData = { type: 'text', text: result.outputs.response };
                         } else {
                             outputData = { type: 'unknown', ...result.outputs };
                         }

@@ -62,6 +62,8 @@ export default class AccountDropdown {
         const { loading, error, data } = this.state;
         const referralVault = data && 'referralVault' in data ? data.referralVault : null;
         const referralValue = data && data.rewards ? data.rewards.referral : 0;
+        // Determine if we should show minimal fallback (error but user is likely authenticated)
+        const showMinimal = (!data && error && !loading);
         this.container.innerHTML = `
             <div class="account-dropdown-root">
                 <button class="account-web3-btn" aria-haspopup="true" aria-expanded="${this.dropdownOpen}">
@@ -71,7 +73,7 @@ export default class AccountDropdown {
                     <div class="dropdown-header">Account</div>
                     <div class="dropdown-content">
                         ${loading ? '<div class="dropdown-item">Loading...</div>' : ''}
-                        ${error ? `<div class="dropdown-item" style="color:#f44336;">${error}</div>` : ''}
+                        ${error && !data ? `<div class="dropdown-item" style="color:#f44336;">${error}</div>` : ''}
                         ${data ? `
                             <div class="dropdown-item"><b>${data.username}</b></div>
                             <div class="dropdown-item">Wallet: ${data.wallet ? this.shortenWallet(data.wallet) : '—'}</div>
@@ -92,10 +94,13 @@ export default class AccountDropdown {
                             <div class="dropdown-item">Model: ${data.rewards.model}</div>
                             <div class="dropdown-item">Spell: ${data.rewards.spell}</div>
                         ` : ''}
+                        ${showMinimal ? `
+                            <div class="dropdown-item">Points: 0</div>
+                            <a href="#" class="action-btn" data-action="get-more-points">Get More Points</a>
+                        ` : ''}
                         <div class="dropdown-actions">
                             <a href="#" class="action-btn" data-action="history">History</a>
                             <a href="#" class="action-btn" data-action="settings">Settings</a>
-                            
                             <a href="#" class="action-btn" data-action="logout">Logout</a>
                         </div>
                     </div>

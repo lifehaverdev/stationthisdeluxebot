@@ -198,7 +198,7 @@ All major implementation tasks for this feature are complete.
 
 ## Step 4: Demo & Handoff
 
-- [ ] Create a Playwright or screen recording demo.
+- [x] Create a Playwright or screen recording demo.
 - [ ] Update master plan and handoff doc.
 
 ## Links

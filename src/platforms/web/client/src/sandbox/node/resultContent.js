@@ -9,8 +9,26 @@ export function renderResultContent(resultContainer, output) {
         img.addEventListener('click', () => {
             showImageOverlay(output.url);
         });
+        // Optionally render a caption if present
+        if (output.caption) {
+            const captionDiv = document.createElement('div');
+            captionDiv.className = 'result-caption';
+            captionDiv.textContent = output.caption;
+            resultContainer.appendChild(captionDiv);
+        }
     } else if (output.type === 'text' && output.text) {
-        resultContainer.textContent = output.text;
+        // Render text output in a styled div for chat or captions
+        const textDiv = document.createElement('div');
+        textDiv.className = 'result-text-output';
+        textDiv.textContent = output.text;
+        resultContainer.appendChild(textDiv);
+        // Optionally render a caption if present
+        if (output.caption) {
+            const captionDiv = document.createElement('div');
+            captionDiv.className = 'result-caption';
+            captionDiv.textContent = output.caption;
+            resultContainer.appendChild(captionDiv);
+        }
     } else {
         resultContainer.textContent = 'Output available.';
     }

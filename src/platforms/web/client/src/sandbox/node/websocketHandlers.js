@@ -76,6 +76,9 @@ export function handleGenerationUpdate(payload) {
                 outputData = { type: 'image', url: outputs.imageUrl };
             } else if (outputs.text) {
                 outputData = { type: 'text', text: outputs.text };
+            } else if (outputs.response) {
+                // Handle text from a nested 'response' property
+                outputData = { type: 'text', text: outputs.response };
             } else {
                 outputData = { type: 'unknown', ...outputs };
             }

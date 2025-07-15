@@ -66,6 +66,50 @@ module.exports = function generationExecutionApi(dependencies) {
       }
       logger.info(`[Execute] Determined cost rate for tool ${toolId}: ${JSON.stringify(costRateInfo)}`);
 
+      // --- Pre-Execution Credit Check ---
+      try {
+        // 1. Estimate cost in USD and points
+        let estimatedSeconds = 30; // Default estimate for variable-cost tools
+        let costUsd = 0;
+        if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
+          // If the tool has a minDuration or estimatedDuration, use it
+          if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
+            estimatedSeconds = tool.metadata.estimatedDurationSeconds;
+          } else if (tool.metadata && tool.metadata.minDurationSeconds) {
+            estimatedSeconds = tool.metadata.minDurationSeconds;
+          }
+          costUsd = estimatedSeconds * costRateInfo.amount;
+        } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed')) {
+          costUsd = costRateInfo.amount;
+        } else {
+          // Fallback: treat as fixed cost
+          costUsd = costRateInfo.amount;
+        }
+        const USD_PER_POINT = 0.000337;
+        let pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
+        // 2. Fetch user points
+        const pointsRes = await internalApiClient.get(`/internal/v1/data/ledger/points/${user.masterAccountId}`);
+        const userPoints = typeof pointsRes.data.points === 'number' ? pointsRes.data.points : 0;
+        logger.info(`[Pre-Execution Credit Check] User ${user.masterAccountId} has ${userPoints} points. Required: ${pointsRequired}`);
+        if (userPoints < pointsRequired) {
+          return res.status(402).json({
+            error: {
+              code: 'INSUFFICIENT_FUNDS',
+              message: 'You do not have enough points to execute this workflow.',
+              details: { required: pointsRequired, available: userPoints }
+            }
+          });
+        }
+      } catch (creditCheckErr) {
+        logger.error(`[Pre-Execution Credit Check] Error during credit check for user ${user.masterAccountId}: ${creditCheckErr.message}`);
+        return res.status(500).json({
+          error: {
+            code: 'CREDIT_CHECK_FAILED',
+            message: 'Could not verify your available points. Please try again later.'
+          }
+        });
+      }
+
       // TODO: Validate inputs against tool.inputSchema
 
       // 3. --- Routing based on Service ---

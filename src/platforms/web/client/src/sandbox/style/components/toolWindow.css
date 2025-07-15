@@ -130,4 +130,29 @@
 .execute-button:hover {
     background: rgba(255, 255, 255, 0.2);
     border-color: var(--border-color-hover);
+}
+
+/* --- Result Display Styles --- */
+.result-container {
+    padding: 0 16px 16px 16px; /* Add padding to the sides and bottom */
+}
+
+.result-text-output {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    font-size: var(--font-size-small);
+    white-space: pre-wrap;   /* Respects newlines and wraps text */
+    word-break: break-word;    /* Prevents long strings from overflowing */
+    user-select: text;       /* Ensures text is easily selectable */
+    color: var(--text-color);
+}
+
+.result-caption {
+    font-size: var(--font-size-x-small);
+    color: var(--text-color-muted);
+    margin-top: 8px;
+    font-style: italic;
+    text-align: center;
 } 

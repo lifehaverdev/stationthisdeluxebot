@@ -123,4 +123,36 @@ document.addEventListener('DOMContentLoaded', function() {
             aboutToggle.textContent = expandableContent.classList.contains('is-expanded') ? 'Show Less' : 'Show More';
         });
     }
+
+    // Generalized tool output handler
+    const toolHandlers = {
+        'chatgpt-free': (output, requestId) => displayChatMessage(output.response, requestId),
+        'static-image': (output, requestId) => displayImage(output.imageUrl, requestId),
+        // Add more tool-specific handlers as needed
+    };
+
+    // Use the global websocketClient
+    websocketClient.on('tool-response', ({ toolId, output, requestId }) => {
+        if (toolHandlers[toolId]) {
+            toolHandlers[toolId](output, requestId);
+        } else {
+            displayGenericToolOutput(toolId, output, requestId);
+        }
+    });
+
+    // --- UI handler stubs ---
+    function displayChatMessage(text, requestId) {
+        // TODO: Implement chat message display in your UI
+        console.log('[ChatGPT]', text, requestId);
+    }
+
+    function displayImage(imageUrl, requestId) {
+        // TODO: Implement image display in your UI
+        console.log('[Static Image]', imageUrl, requestId);
+    }
+
+    function displayGenericToolOutput(toolId, output, requestId) {
+        // TODO: Implement generic tool output display in your UI
+        console.log(`[Tool Output][${toolId}]`, output, requestId);
+    }
 }); 

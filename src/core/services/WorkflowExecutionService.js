@@ -123,6 +123,23 @@ class WorkflowExecutionService {
         // Handle immediate delivery tools (e.g., LLMs)
         if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
             this.logger.info(`[WorkflowExecution] Immediate tool response for step ${stepIndex + 1}: ${JSON.stringify(executionResponse.data.response)}`);
+            // Send generalized tool-response via WebSocket
+            try {
+                const websocketService = require('./websocket/server');
+                websocketService.sendToUser(
+                    originalContext.masterAccountId,
+                    {
+                        type: 'tool-response',
+                        payload: {
+                            toolId: tool.toolId,
+                            output: executionResponse.data.response,
+                            requestId: originalContext.requestId || null
+                        }
+                    }
+                );
+            } catch (err) {
+                this.logger.error(`[WorkflowExecution] Failed to send tool-response via WebSocket: ${err.message}`);
+            }
             // Optionally, you could process the response here, chain to next step, or log it for audit.
             // For now, just log and return.
             return executionResponse.data.response;

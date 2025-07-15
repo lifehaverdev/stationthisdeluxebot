@@ -62,8 +62,14 @@ function createUserApi(dependencies) {
       const user = userRes.data;
 
       // Fetch economy info
-      const economyRes = await internalApiClient.get(`/internal/v1/data/users/${userId}/economy`);
-      const economy = economyRes.data;
+      let economy = null;
+      try {
+        const economyRes = await internalApiClient.get(`/internal/v1/data/users/${userId}/economy`);
+        economy = economyRes.data;
+      } catch (err) {
+        logger.warn('[UserApi] /dashboard: No economy record found for user, defaulting to zero.', { error: err.message });
+        economy = { exp: 0, points: 0 };
+      }
 
       // Fetch transactions
       const txRes = await internalApiClient.get(`/internal/v1/data/users/${userId}/transactions`);

@@ -40,3 +40,47 @@ Enable users to select a group of connected nodes (subgraph) and mint/save them 
 
 - [Back to Master Plan](./SANDBOX_NODE_EDITOR_MASTER_PLAN.md)
 - [AGENT_COLLABORATION_PROTOCOL.md](../../AGENT_COLLABORATION_PROTOCOL.md) 
+
+---
+
+## Codebase Audit Findings (2024-07-09)
+
+### 1. Node Selection & Subgraph Logic
+- **Node Representation & State:**
+  - Nodes are represented as "tool windows" (`toolWindow.js`), each with a unique ID, position, tool definition, and parameter mappings.
+  - Connections between nodes are managed via parameter mappings, where a parameter can be mapped to the output of another node.
+- **Connection Management:**
+  - Connection creation, validation, and management are handled in `connections/interaction.js`, `connections/manager.js`, and `connections/validation.js`.
+  - The function `getNodeExecutionOrder` in `toolWindow.js` traverses dependencies, which is similar to subgraph traversal.
+- **Selection UI:**
+  - There is currently no explicit multi-select or subgraph selection UI. Node selection is implicit via interactions (e.g., clicking, dragging, connecting).
+
+### 2. Spell Minting & Spells Menu
+- **SpellsMenuModal (`components/SpellsMenuModal.js`):**
+  - Handles the UI for creating, editing, and listing spells.
+  - Spells have metadata (name, description) and a list of steps (nodes/tools).
+  - Spell creation currently appears to be manual (form-based), not via subgraph selection.
+- **Spell Saving:**
+  - Spells are saved via API calls (`/api/v1/spells/`), with CSRF protection.
+  - There is logic for checking duplicate names and updating spell metadata.
+
+### 3. Architectural Constraints & Opportunities
+- **State Management:**
+  - All node and connection state is managed in a central state module (`state.js`), which is imported throughout the sandbox code.
+- **Extensibility:**
+  - The modular structure (nodes, connections, spells) is conducive to adding subgraph selection and minting.
+- **Blockers:**
+  - No existing multi-select or subgraph selection logic.
+  - No direct way to "mint" a selected subgraph as a spell from the editor UI.
+
+### Next Steps
+1. **Design & Implement Subgraph Selection:**
+   - Add UI for multi-selecting nodes (e.g., shift+click, lasso, or context menu).
+   - Implement logic to extract the subgraph (selected nodes + their connections).
+2. **Integrate with Spell Minting:**
+   - Add a "Mint as Spell" action for the selected subgraph.
+   - Pre-fill the spell creation modal with the subgraph's nodes and connections.
+3. **Update State & API:**
+   - Ensure the selected subgraph can be serialized and sent to the backend as a new spell.
+
+--- 
