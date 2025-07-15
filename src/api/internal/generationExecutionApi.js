@@ -39,7 +39,7 @@ module.exports = function generationExecutionApi(dependencies) {
     try {
       // 2. --- Tool Lookup & Validation ---
       logger.info(`[Execute] Received request for toolId: ${toolId}`);
-      const tool = await db.toolRegistry.getTool(toolId);
+      const tool = await toolRegistry.getToolById(toolId);
       if (!tool) {
         return res.status(404).json({ error: { code: 'TOOL_NOT_FOUND', message: `Tool '${toolId}' not found.` } });
       }
