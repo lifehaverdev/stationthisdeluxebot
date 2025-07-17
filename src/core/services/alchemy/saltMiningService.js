@@ -8,109 +8,83 @@ const SALT_CACHE_SIZE = 10;
 const MINING_TIMEOUT_MS = 30000; // 30 seconds
 const TARGET_PREFIX = '0x1152';
 
-// Load the creation bytecode for the VaultAccount contract
-let vaultAccountBytecode;
+// Load the creation bytecode for the CharteredFund contract
+let charteredFundBytecode;
 try {
-    // The bytecode is often just the raw hex string in the JSON
-    const bytecodeJson = require('../../contracts/abis/creditVaultAccount.bytecode.json');
-    vaultAccountBytecode = typeof bytecodeJson === 'string' ? bytecodeJson : bytecodeJson.object;
-    if (!vaultAccountBytecode || !vaultAccountBytecode.startsWith('0x')) {
-        throw new Error('Bytecode is not in the expected format.');
-    }
+  // Try loading from a direct string first (e.g., from an env var or a simple JSON file)
+  const bytecodeJson = require('../../contracts/abis/bytecode/charteredFund.bytecode.json');
+  charteredFundBytecode = typeof bytecodeJson === 'string' ? bytecodeJson : bytecodeJson.object;
+  if (!charteredFundBytecode || !charteredFundBytecode.startsWith('0x')) {
+    throw new Error('Bytecode is not in the expected format.');
+  }
 } catch (error) {
-    console.error('[SaltMiningService] CRITICAL ERROR: Could not load VaultAccount bytecode.', error);
-    // In a real app, you might want to prevent the service from starting
-    // or handle this more gracefully. For now, we set it to null and let
-    // the worker handle the missing data.
-    vaultAccountBytecode = null;
+    console.error('[SaltMiningService] CRITICAL ERROR: Could not load CharteredFund bytecode.', error);
+    // Set to null to prevent the service from starting if bytecode is essential
+    charteredFundBytecode = null;
 }
 
 
+/**
+ * @class SaltMiningService
+ * @description Manages a pool of workers to find CREATE2 salts for vanity addresses.
+ */
 class SaltMiningService {
-    /**
-     * @param {object} services - Required service instances
-     * @param {EthereumService} services.ethereumService - Instance of EthereumService
-     * @param {object} config - Configuration object
-     * @param {string} config.creditVaultAddress - The address of the CreditVault contract
-     * @param {Array} config.creditVaultAbi - The ABI of the CreditVault contract
-     * @param {object} logger - Logger instance
-     */
-    constructor(services, config, logger) {
-        if (!services.ethereumService) {
-            throw new Error('SaltMiningService: Missing ethereumService');
-        }
-        this.ethereumService = services.ethereumService;
-
-        if (!config.creditVaultAddress || !config.creditVaultAbi) {
-            throw new Error('SaltMiningService: Missing contract configuration');
-        }
-        this.contractConfig = {
-            address: config.creditVaultAddress,
-            abi: config.creditVaultAbi
-        };
-
-        this.logger = logger || console;
-        this.saltCache = new Map(); // ownerAddress -> [salts]
-        this.miningPromises = new Map(); // ownerAddress -> Promise
-
-        // Start background cache filling
-        this.startCacheFilling();
+  /**
+   * @param {object} config - Configuration object.
+   * @param {string} config.foundationAddress - The address of the Foundation contract
+   * @param {Array} config.foundationAbi - The ABI of the Foundation contract
+   * @param {object} logger - A logger instance.
+   */
+  constructor(config, logger) {
+    this.logger = logger || console;
+    
+    if (!charteredFundBytecode) {
+        throw new Error('[SaltMiningService] Service cannot start because CharteredFund bytecode is not loaded.');
     }
 
-    /**
-     * Gets a salt that will create a vault address starting with 0x1152
-     * First checks cache, then mines if needed
-     * @param {string} ownerAddress - The address that will own the vault
-     * @returns {Promise<{salt: string, predictedAddress: string}>}
-     */
-    async getSalt(ownerAddress) {
-        // Check cache first
-        const cachedSalts = this.saltCache.get(ownerAddress);
-        if (cachedSalts && cachedSalts.length > 0) {
-            const { salt, predictedAddress } = cachedSalts.pop();
-
-            // If cache is getting low, trigger background mining
-            if (cachedSalts.length < SALT_CACHE_SIZE / 2) {
-                this.fillCache(ownerAddress).catch(err => {
-                    this.logger.error('[SaltMiningService] Background cache filling failed:', err);
-                });
-            }
-
-            return { salt, predictedAddress };
-        }
-
-        // No cache hit, mine a new salt
-        return this.mineSalt(ownerAddress);
+    if (!config.foundationAddress || !config.foundationAbi) {
+        throw new Error('[SaltMiningService] Missing foundationAddress or foundationAbi in config.');
     }
+    
+    this.contractConfig = {
+        address: config.foundationAddress,
+        abi: config.foundationAbi
+    };
 
-    /**
-     * Mines a new salt that will create a vault address starting with 0x1152
-     * @param {string} ownerAddress - The address that will own the vault
-     * @returns {Promise<{salt: string, predictedAddress: string}>}
-     */
-    async mineSalt(ownerAddress) {
-        // Check if there's already a mining operation in progress
-        let existingPromise = this.miningPromises.get(ownerAddress);
-        if (existingPromise) {
-            return existingPromise;
+    this.workerPath = path.resolve(__dirname, 'saltMiningWorker.js');
+    this.saltQueue = []; // A queue to hold pre-mined salts
+    this.isMining = false;
+
+    this.logger.info(`[SaltMiningService] Initialized with Foundation address: ${this.contractConfig.address}`);
+  }
+
+  /**
+   * Gets a salt that will create a vault address starting with 0x1152
+   * First checks cache, then mines if needed
+   * @param {string} ownerAddress - The address that will own the vault
+   * @returns {Promise<{salt: string, predictedAddress: string}>}
+   */
+  getSalt(ownerAddress) {
+    return new Promise((resolve, reject) => {
+      this.logger.info('[SaltMiningService] Salt requested. Checking queue...');
+      if (this.saltQueue.length > 0) {
+        const result = this.saltQueue.shift();
+        this.logger.info(`[SaltMiningService] Found pre-mined salt for request. Predicted Address: ${result.predictedAddress}`);
+        this.fillQueue(); // Trigger a refill in the background
+        return resolve(result);
+      }
+
+      this.logger.info('[SaltMiningService] No pre-mined salt available. Mining a new one directly...');
+      const worker = new Worker(this.workerPath, {
+        workerData: {
+          ownerAddress: ownerAddress,
+          foundationAddress: this.contractConfig.address,
+          targetPrefix: '0x1152',
+          creationBytecode: charteredFundBytecode // Pass the bytecode to the worker
         }
+      });
 
-        const promise = new Promise(async (resolve, reject) => {
-            const worker = new Worker(path.join(__dirname, 'saltMiningWorker.js'), {
-                workerData: {
-                    ownerAddress,
-                    creditVaultAddress: this.contractConfig.address,
-                    targetPrefix: TARGET_PREFIX,
-                    creationBytecode: vaultAccountBytecode // Pass the bytecode to the worker
-                }
-            });
-
-            const timeoutId = setTimeout(() => {
-                worker.terminate();
-                reject(new Error('Salt mining timed out after 30 seconds'));
-            }, MINING_TIMEOUT_MS);
-
-            worker.on('message', (result) => {
+      worker.on('message', (result) => {
                 clearTimeout(timeoutId);
                 this.miningPromises.delete(ownerAddress);
                 resolve(result);

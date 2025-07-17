@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
-const creditVaultAbi = require('../../core/contracts/abis/creditVault.json');
+const foundationAbi = require('../../core/contracts/abis/foundation.json');
 const { contracts } = require('../../core/contracts');
 const { TOKEN_CONFIG, getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
 
@@ -229,7 +229,7 @@ module.exports = function pointsApi(dependencies) {
             let approvalTx = null;
             let depositTx = null;
             const purchaseId = 'pid_' + crypto.randomBytes(8).toString('hex');
-            const iface = new ethers.Interface(creditVaultAbi);
+            const iface = new ethers.Interface(foundationAbi);
 
             // Helper to validate Ethereum address
             function isValidAddress(addr) {

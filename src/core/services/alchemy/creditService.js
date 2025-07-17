@@ -68,8 +68,8 @@ class CreditService {
    * @param {WalletLinkingService} services.walletLinkingService - Service for handling linking logic.
    * @param {SaltMiningService} services.saltMiningService - Service for mining CREATE2 salts.
    * @param {object} config - Configuration object.
-   * @param {string} config.creditVaultAddress - The address of the on-chain Credit Vault contract.
-   * @param {Array} config.creditVaultAbi - The ABI of the Credit Vault contract.
+   * @param {string} config.foundationAddress - The address of the on-chain Foundation contract.
+   * @param {Array} config.foundationAbi - The ABI of the Foundation contract.
    * @param {object} logger - A logger instance.
    */
   constructor(services, config, logger) {
@@ -90,13 +90,13 @@ class CreditService {
     this.walletLinkingService = walletLinkingService;
     this.saltMiningService = saltMiningService;
     
-    const { creditVaultAddress, creditVaultAbi } = config;
-    if (!creditVaultAddress || !creditVaultAbi) {
+    const { foundationAddress, foundationAbi } = config;
+    if (!foundationAddress || !foundationAbi) {
         throw new Error('CreditService: Missing contract address or ABI in config.');
     }
-    this.contractConfig = { address: creditVaultAddress, abi: creditVaultAbi };
+    this.contractConfig = { address: foundationAddress, abi: foundationAbi };
 
-    this.logger.info(`[CreditService] Configured to use CreditVault at address: ${this.contractConfig.address}`);
+    this.logger.info(`[CreditService] Configured to use Foundation at address: ${this.contractConfig.address}`);
     this.logger.info('[CreditService] Initialized.');
 
     // The start() method is now the primary entry point.
@@ -122,7 +122,7 @@ class CreditService {
   }
 
   /**
-   * STAGE 1: Scans for and acknowledges any `DepositRecorded` events not yet in our database.
+   * STAGE 1: Scans for and acknowledges any `ContributionRecorded` events not yet in our database.
    */
   async acknowledgeNewEvents() {
     this.logger.info('[CreditService] Starting acknowledgment of new deposit events...');
@@ -134,20 +134,20 @@ class CreditService {
       return;
     }
 
-    this.logger.info(`[CreditService] Fetching 'DepositRecorded' events from block ${fromBlock} to ${toBlock}.`);
+    this.logger.info(`[CreditService] Fetching 'ContributionRecorded' events from block ${fromBlock} to ${toBlock}.`);
     const pastDepositEvents = await this.ethereumService.getPastEvents(
       this.contractConfig.address,
       this.contractConfig.abi,
-      'DepositRecorded',
+      'ContributionRecorded',
       fromBlock,
       toBlock,
     );
 
-    this.logger.info(`[CreditService] Found ${pastDepositEvents.length} new 'DepositRecorded' events. Acknowledging...`);
+    this.logger.info(`[CreditService] Found ${pastDepositEvents.length} new 'ContributionRecorded' events. Acknowledging...`);
 
     for (const event of pastDepositEvents) {
         const { transactionHash, logIndex, blockNumber, args } = event;
-        let { vaultAccount } = args;
+        let { fundAddress } = args;
         const { user, token, amount } = args;
 
         // --- MAGIC AMOUNT WALLET LINKING ---
@@ -158,11 +158,11 @@ class CreditService {
         }
         // --- END MAGIC AMOUNT ---
 
-        // If vaultAccount is not in the event args, it's a deposit to the main vault.
-        // In this case, the vaultAccount IS the main contract address.
-        if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
-            this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in event args for tx ${transactionHash}. Assuming deposit to main vault.`);
-            vaultAccount = this.contractConfig.address;
+        // If fundAddress is not in the event args, it's a deposit to the main vault.
+        // In this case, the fundAddress IS the main contract address.
+        if (!fundAddress || !ethers.isAddress(fundAddress)) {
+            this.logger.warn(`[CreditService] 'fundAddress' not found or invalid in event args for tx ${transactionHash}. Assuming deposit to main vault.`);
+            fundAddress = this.contractConfig.address;
         }
 
         const existingEntry = await this.creditLedgerDb.findLedgerEntryByTxHash(transactionHash);
@@ -176,7 +176,7 @@ class CreditService {
             deposit_tx_hash: transactionHash,
             deposit_log_index: logIndex,
             deposit_block_number: blockNumber,
-            vault_account: vaultAccount,
+            vault_account: fundAddress, // Stays vault_account in DB for now
             depositor_address: user,
             token_address: token,
             deposit_amount_wei: amount.toString(),
@@ -209,9 +209,9 @@ class CreditService {
     this.logger.info(`[CreditService] Webhook contains ${logs.length} event logs to process.`);
 
     // Get event fragments for all events we're interested in
-    const depositEventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
-    const withdrawalEventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
-    const vaultCreatedEventFragment = this.ethereumService.getEventFragment('VaultAccountCreated', this.contractConfig.abi); // CORRECTED
+    const depositEventFragment = this.ethereumService.getEventFragment('ContributionRecorded', this.contractConfig.abi);
+    const withdrawalEventFragment = this.ethereumService.getEventFragment('RescissionRequested', this.contractConfig.abi);
+    const vaultCreatedEventFragment = this.ethereumService.getEventFragment('FundChartered', this.contractConfig.abi); 
     // const nftDepositEventFragment = this.ethereumService.getEventFragment('NFTDepositRecorded', this.contractConfig.abi);
 
     if (!depositEventFragment || !withdrawalEventFragment || !vaultCreatedEventFragment ) {//|| !nftDepositEventFragment) {
@@ -221,7 +221,7 @@ class CreditService {
 
     const depositEventHash = this.ethereumService.getEventTopic(depositEventFragment);
     const withdrawalEventHash = this.ethereumService.getEventTopic(withdrawalEventFragment);
-    const vaultCreatedEventHash = this.ethereumService.getEventTopic(vaultCreatedEventFragment); // CORRECTED
+    const vaultCreatedEventHash = this.ethereumService.getEventTopic(vaultCreatedEventFragment); 
     //const nftDepositEventHash = this.ethereumService.getEventTopic(nftDepositEventFragment);
 
     let processedDeposits = 0;
@@ -259,8 +259,8 @@ class CreditService {
             } else if (topics[0] === vaultCreatedEventHash) {
                 // Process vault creation event
                 const decodedLog = this.ethereumService.decodeEventLog(vaultCreatedEventFragment, data, topics, this.contractConfig.abi);
-                // CORRECTED: Use `accountAddress` from VaultAccountCreated event
-                await this.finalizeVaultDeployment(transactionHash, decodedLog.accountAddress);
+                // CORRECTED: Use `fundAddress` from FundChartered event
+                await this.finalizeVaultDeployment(transactionHash, decodedLog.fundAddress);
                 processedVaultCreations++;
             }
         } catch (error) {
@@ -287,7 +287,7 @@ class CreditService {
    * @private
    */
   async _processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
-    let { vaultAccount, user, token, amount } = decodedLog;
+    let { fundAddress, user, token, amount } = decodedLog;
 
     // Check for existing entry
     try {
@@ -311,9 +311,9 @@ class CreditService {
     }
 
     // Validate vault account
-    if (!vaultAccount || !ethers.isAddress(vaultAccount)) {
-      this.logger.warn(`[CreditService] 'vaultAccount' not found or invalid in event for tx ${transactionHash}. Assuming deposit to main vault.`);
-      vaultAccount = this.contractConfig.address;
+    if (!fundAddress || !ethers.isAddress(fundAddress)) {
+      this.logger.warn(`[CreditService] 'fundAddress' not found or invalid in event for tx ${transactionHash}. Assuming deposit to main vault.`);
+      fundAddress = this.contractConfig.address;
     }
 
     // Create ledger entry through internal API
@@ -321,7 +321,7 @@ class CreditService {
       deposit_tx_hash: transactionHash,
       deposit_log_index: logIndex,
       deposit_block_number: blockNumber,
-      vault_account: vaultAccount,
+      vault_account: fundAddress, // Stays vault_account in DB for now
       depositor_address: user,
       token_address: token,
       deposit_amount_wei: amount.toString()
@@ -413,7 +413,7 @@ class CreditService {
    * @private
    */
   async _processWithdrawalEvent(decodedLog, transactionHash, blockNumber) {
-    const { vaultAccount, user: userAddress, token: tokenAddress } = decodedLog;
+    const { fundAddress, user: userAddress, token: tokenAddress } = decodedLog;
 
     // Check for existing request through internal API
     try {
@@ -451,7 +451,7 @@ class CreditService {
     await this.internalApiClient.post('/internal/v1/data/ledger/withdrawals', {
       request_tx_hash: transactionHash,
       request_block_number: blockNumber,
-      vault_account: vaultAccount,
+      vault_account: fundAddress, // Stays vault_account in DB for now
       user_address: userAddress,
       token_address: tokenAddress,
       master_account_id: masterAccountId,
@@ -606,8 +606,8 @@ class CreditService {
         }
         // --- END REFERRAL LOGIC ---
 
-        // Note: The fee passed to confirmCredit is the platform's total fee, including gas reimbursement and any markup.
-        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, amount, 0, '0x');
+        // Note: The fee passed to commit is the platform's total fee, including gas reimbursement and any markup.
+        const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(this.contractConfig.address, this.contractConfig.abi, 'commit', fundAddress, user, token, amount, 0, '0x');
         
         if (estimatedGasCostUsd >= depositValueUsd) {
             const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded total unconfirmed deposit value ($${depositValueUsd.toFixed(2)}).` };
@@ -643,7 +643,7 @@ class CreditService {
             return;
         }
         this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(gasFeeInWei)).toFixed(6)} ETH`);
-        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'confirmCredit', vaultAccount, user, token, escrowAmountForContract, gasFeeInWei, '0x');
+        const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'commit', fundAddress, user, token, escrowAmountForContract, gasFeeInWei, '0x');
         this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
         const confirmationReceipt = await this.ethereumService.waitForConfirmation(txResponse);
@@ -806,10 +806,10 @@ class CreditService {
    * This is called when a user requests to withdraw their collateral through the UI.
    * @param {string} userAddress - The Ethereum address of the user requesting withdrawal
    * @param {string} tokenAddress - The token contract address to withdraw
-   * @param {string} vaultAccount - The vault account address (optional, defaults to main vault)
+   * @param {string} [params.fundAddress] - The fund address (optional, defaults to main vault)
    * @returns {Promise<{success: boolean, message: string, txHash?: string}>}
    */
-  async initiateWithdrawal(userAddress, tokenAddress, vaultAccount = this.contractConfig.address) {
+  async initiateWithdrawal(userAddress, tokenAddress, fundAddress = this.contractConfig.address) {
     this.logger.info(`[CreditService] Processing withdrawal request for user ${userAddress} and token ${tokenAddress}`);
 
     try {
@@ -840,7 +840,7 @@ class CreditService {
         const txResponse = await this.ethereumService.write(
             this.contractConfig.address,
             this.contractConfig.abi,
-            'recordWithdrawalRequest',
+            'recordRescissionRequest',
             userAddress,
             tokenAddress
         );
@@ -855,7 +855,7 @@ class CreditService {
         await this.creditLedgerDb.createWithdrawalRequest({
             request_tx_hash: receipt.hash,
             request_block_number: receipt.blockNumber,
-            vault_account: vaultAccount,
+            vault_account: fundAddress, // Stays vault_account for now
             user_address: userAddress,
             token_address: tokenAddress,
             master_account_id: masterAccountId,
@@ -876,7 +876,7 @@ class CreditService {
   }
 
   /**
-   * Handles a WithdrawalRequested event from the webhook.
+   * Handles a RescissionRequested event from the webhook.
    * @param {object} webhookPayload - The webhook payload from Alchemy
    * @returns {Promise<{success: boolean, message: string}>}
    */
@@ -886,14 +886,14 @@ class CreditService {
     const eventPayload = webhookPayload.payload || webhookPayload;
 
     if (eventPayload.type !== 'GRAPHQL' || !eventPayload.event?.data?.block?.logs) {
-        this.logger.warn('[CreditService] Invalid webhook payload structure');
+        this.logger.warn('[WebhookService] Invalid webhook payload structure');
         return { success: false, message: 'Invalid payload structure' };
     }
 
     const logs = eventPayload.event.data.block.logs;
-    const eventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
+    const eventFragment = this.ethereumService.getEventFragment('RescissionRequested', this.contractConfig.abi);
     if (!eventFragment) {
-        this.logger.error('[CreditService] WithdrawalRequested event fragment not found in ABI');
+        this.logger.error('[CreditService] RescissionRequested event fragment not found in ABI');
         return { success: false, message: 'Configuration error: ABI issue' };
     }
 
@@ -917,7 +917,7 @@ class CreditService {
             }
 
             const decodedLog = this.ethereumService.decodeEventLog(eventFragment, data, topics, this.contractConfig.abi);
-            const { vaultAccount, user: userAddress, token: tokenAddress } = decodedLog;
+            const { fundAddress, user: userAddress, token: tokenAddress } = decodedLog;
 
             // Get user's master account ID
             let masterAccountId;
@@ -941,7 +941,7 @@ class CreditService {
             await this.creditLedgerDb.createWithdrawalRequest({
                 request_tx_hash: transactionHash,
                 request_block_number: blockNumber,
-                vault_account: vaultAccount,
+                vault_account: fundAddress,
                 user_address: userAddress,
                 token_address: tokenAddress,
                 master_account_id: masterAccountId,
@@ -985,7 +985,7 @@ class CreditService {
     }
 
     try {
-        const { user_address: userAddress, token_address: tokenAddress, vault_account: vaultAccount, collateral_amount_wei: collateralAmountWei } = request;
+        const { user_address: userAddress, token_address: tokenAddress, vault_account: fundAddress, collateral_amount_wei: collateralAmountWei } = request;
 
         // 1. Get current token price for fee calculation
         const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, BigInt(collateralAmountWei));
@@ -1001,7 +1001,7 @@ class CreditService {
         const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(
             this.contractConfig.address,
             this.contractConfig.abi,
-            'withdrawTo',
+            'remit',
             userAddress,
             tokenAddress,
             collateralAmountWei,
@@ -1033,7 +1033,7 @@ class CreditService {
         const txResponse = await this.ethereumService.write(
             this.contractConfig.address,
             this.contractConfig.abi,
-            'withdrawTo',
+            'remit',
             userAddress,
             tokenAddress,
             withdrawalAmount,
@@ -1105,7 +1105,7 @@ class CreditService {
         const txResponse = await this.ethereumService.write(
             this.contractConfig.address,
             this.contractConfig.abi,
-            'createVaultAccount',
+            'charterFund',
             ownerAddress,
             salt
         );
@@ -1119,7 +1119,7 @@ class CreditService {
         const logs = receipt.logs.filter(log => {
             try {
                 const parsedLog = this.ethereumService.decodeEventLog(
-                    'VaultAccountCreated',
+                    'FundChartered',
                     log.data,
                     log.topics,
                     this.contractConfig.abi
@@ -1131,7 +1131,7 @@ class CreditService {
         });
 
         if (logs.length === 0) {
-            throw new Error('Vault creation transaction succeeded but no matching VaultAccountCreated event found');
+            throw new Error('Vault creation transaction succeeded but no matching FundChartered event found');
         }
 
         const vaultAddress = predictedAddress;
@@ -1192,7 +1192,7 @@ class CreditService {
           return await this.ethereumService.estimateGasCostInUsd(
             vaultAddress,
             vaultAbi,
-            'deposit',
+            'contribute',
             assetAddress,
             amount
           );
@@ -1234,7 +1234,7 @@ class CreditService {
     try {
       this.logger.info('[CreditService] Sending transaction to ethereumService.write with params:', {
         contractAddress: this.contractConfig.address,
-        functionName: 'createVaultAccount',
+        functionName: 'charterFund',
         ownerAddress,
         salt
       });
@@ -1243,7 +1243,7 @@ class CreditService {
       const txResponse = await this.ethereumService.write(
         this.contractConfig.address,
         this.contractConfig.abi,
-        'createVaultAccount',
+        'charterFund',
         ownerAddress,
         salt
       );

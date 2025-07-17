@@ -122,8 +122,8 @@ async function initializeServices(options = {}) {
         const networkName = getNetworkName(ethereumService.chainId);
         logger.info(`[initializeServices] networkName: ${networkName}`);
         const creditServiceConfig = {
-          creditVaultAddress: contracts.creditVault.addresses[networkName],
-          creditVaultAbi: contracts.creditVault.abi,
+          foundationAddress: contracts.foundation.addresses[networkName],
+          foundationAbi: contracts.foundation.abi,
           systemStateDb: initializedDbServices.data.systemState,
           priceFeedService,
           nftPriceService,
@@ -133,7 +133,10 @@ async function initializeServices(options = {}) {
           walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
           walletLinkingService,
         };
-        logger.info(`[initializeServices] creditServiceConfig.creditVaultAddress: ${creditServiceConfig.creditVaultAddress}`);
+        logger.info(`[initializeServices] creditServiceConfig.foundationAddress: ${creditServiceConfig.foundationAddress}`);
+        
+        // Pass the salt mining service to the credit service
+        creditServiceConfig.saltMiningService = saltMiningService;
         
         // --- Instantiate SaltMiningService ---
         try {
@@ -151,7 +154,7 @@ async function initializeServices(options = {}) {
         }
         // --- End SaltMiningService ---
         
-        if (!creditServiceConfig.creditVaultAddress || !creditServiceConfig.creditVaultAbi || creditServiceConfig.creditVaultAbi.length === 0) {
+        if (!creditServiceConfig.foundationAddress || !creditServiceConfig.foundationAbi || creditServiceConfig.foundationAbi.length === 0) {
             logger.warn(`[CreditService] Not initialized: Could not find contract address or ABI for network '${networkName}'. Credit service will be disabled.`);
         } else {
             const creditServiceDependencies = {

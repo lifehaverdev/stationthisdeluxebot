@@ -1,25 +1,25 @@
-const { ethers } = require('ethers');
+const { ethers, keccak256, getCreate2Address } = require('ethers');
 const { workerData, parentPort } = require('worker_threads');
 
 // Get data passed to worker
-const { ownerAddress, creditVaultAddress, targetPrefix, creationBytecode } = workerData;
+const { ownerAddress, foundationAddress, targetPrefix, creationBytecode } = workerData;
 
 if (!creationBytecode) {
     throw new Error('SaltMiningWorker: Missing creationBytecode from workerData.');
 }
 
 // --- Pre-calculate the initCodeHash once, as it's constant for this worker run ---
-// The constructor for VaultAccount takes (address creditVaultAddress, address ownerAddress)
-const constructorTypes = ['address', 'address'];
-const constructorArgs = [creditVaultAddress, ownerAddress];
-const encodedArgs = ethers.AbiCoder.defaultAbiCoder().encode(constructorTypes, constructorArgs);
+// The constructor for CharteredFund takes (address foundation, address ownerAddress)
+const constructorArgTypes = ['address', 'address'];
+const constructorArgs = [foundationAddress, ownerAddress];
+const encodedArgs = ethers.AbiCoder.defaultAbiCoder().encode(constructorArgTypes, constructorArgs);
 const initCode = creationBytecode + encodedArgs.slice(2);
 const initCodeHash = ethers.keccak256(initCode);
 // --- End pre-calculation ---
 
 
 /**
- * Computes the CREATE2 address for a new VaultAccount.
+ * Computes the CREATE2 address for a new CharteredFund.
  * This function must perfectly replicate the on-chain logic.
  * @param {string} salt - The 32-byte salt, as a hex string.
  * @returns {string} The predicted contract address.
@@ -27,7 +27,7 @@ const initCodeHash = ethers.keccak256(initCode);
 function computeCreate2Address(salt) {
     // Use the pre-calculated initCodeHash
     const predictedAddress = ethers.getCreate2Address(
-        creditVaultAddress, // The address of the factory contract (CreditVault)
+        foundationAddress, // The address of the factory contract (CharteredFund)
         salt,               // The salt
         initCodeHash        // The hash of the init code
     );

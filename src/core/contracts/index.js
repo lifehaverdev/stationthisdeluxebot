@@ -1,17 +1,17 @@
-const creditVaultAbi = require('./abis/creditVault.json');
-const creditVaultAccountAbi = require('./abis/creditVaultAccount.json');
+const foundationAbi = require('./abis/foundation.json');
+const charteredFundAbi = require('./abis/charteredFund.json');
 const uniswapV3QuoterV2Abi = require('./abis/uniswapV3QuoterV2.json');
 
 const contracts = {
-  creditVault: {
-    abi: creditVaultAbi,
+  foundation: {
+    abi: foundationAbi,
     addresses: {
       // e.g., mainnet: '0x...',
-      sepolia: process.env.CREDIT_VAULT_ADDRESS || '0x011528b1d5822B3269d919e38872cC33bdec6d17',
+      sepolia: process.env.FOUNDATION_ADDRESS || '0x011528b1d5822B3269d919e38872cC33bdec6d17', // Replace with actual new foundation address
     }
   },
-  creditVaultAccount: {
-    abi: creditVaultAccountAbi,
+  charteredFund: {
+    abi: charteredFundAbi,
     // This contract is deployed via a factory, so it has no single static address.
     addresses: {}
   },
