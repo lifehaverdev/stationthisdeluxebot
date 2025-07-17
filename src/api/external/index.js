@@ -9,6 +9,7 @@ const { createPublicStorageApi } = require('./storageApi');
 const { createWebhookApi } = require('./webhookApi');
 const { createStatusApi } = require('./statusApi');
 const { createAdminApi } = require('./adminApi');
+const { createReferralVaultApi } = require('./referralVaultApi');
 const { createAuthApi } = require('./authApi');
 const { createUserApi } = require('./userApi');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
@@ -135,6 +136,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External User API router mounted at /user. (JWT or API key protected)');
   } else {
     logger.warn('External User API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Referral Vault API router (Protected by JWT or API key)
+  const referralVaultApi = createReferralVaultApi(dependencies);
+  if (referralVaultApi) {
+    externalApiRouter.use('/referral-vault', authenticateUserOrApiKey, referralVaultApi);
+    logger.info('External Referral Vault API router mounted at /referral-vault. (JWT or API key protected)');
+  } else {
+    logger.warn('External Referral Vault API router not mounted due to missing dependencies.');
   }
 
   // --- Routes ---

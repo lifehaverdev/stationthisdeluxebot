@@ -8,7 +8,11 @@ import {
     persistState,
     clearConnectionsForWindow,
     setToolWindowOutput,
-    getAvailableTools
+    getAvailableTools,
+    toggleNodeSelection,
+    selectNode,
+    clearSelection,
+    getSelectedNodeIds
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
@@ -45,6 +49,20 @@ export function createToolWindow(tool, position, id = null, output = null) {
     toolWindowEl.id = windowId;
     toolWindowEl.className = 'tool-window';
     toolWindowEl.setAttribute('data-displayname', tool.displayName || '');
+
+    toolWindowEl.addEventListener('click', (e) => {
+        if (e.shiftKey) {
+            toggleNodeSelection(windowId);
+        } else {
+            // If not shift-clicking, and this node isn't the ONLY one selected,
+            // clear others and select this one.
+            const selected = getSelectedNodeIds();
+            if (selected.size !== 1 || !selected.has(windowId)) {
+                selectNode(windowId);
+            }
+        }
+        e.stopPropagation(); // Prevent this click from reaching the canvas
+    });
 
     // Use existing parameterMappings if they exist, otherwise initialize them.
     const parameterMappings = existingWindow ? existingWindow.parameterMappings : {};

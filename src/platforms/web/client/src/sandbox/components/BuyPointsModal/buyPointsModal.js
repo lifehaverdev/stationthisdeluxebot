@@ -216,17 +216,6 @@ function renderReceiptStep() {
 // --- API Functions ---
 const API_BASE_URL = '/api/v1/points';
 
-// --- CSRF Token Utility ---
-let csrfToken = null;
-async function ensureCsrfToken() {
-    if (!csrfToken) {
-        const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
-        const data = await res.json();
-        csrfToken = data.csrfToken;
-    }
-    return csrfToken;
-}
-
 // --- Debounce Utility ---
 let debounceTimer = null;
 function debounce(fn, delay) {
@@ -287,7 +276,7 @@ async function fetchQuote() {
             assetAddress: buyPointsState.selectedAsset.address,
             amount: amountToSend
         };
-        const token = await ensureCsrfToken();
+        const token = await window.auth.ensureCsrfToken();
         const res = await fetch(`${API_BASE_URL}/quote`, {
             method: 'POST',
             headers: {
@@ -351,7 +340,7 @@ async function initiatePurchase() {
             // userId should be filled by backend session if needed
         };
         console.log('[BuyPointsModal] Sending purchase payload:', body);
-        const token = await ensureCsrfToken();
+        const token = await window.auth.ensureCsrfToken();
         const res = await fetch(`${API_BASE_URL}/purchase`, {
             method: 'POST',
             headers: {

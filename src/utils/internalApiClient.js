@@ -6,7 +6,7 @@ const logger = createLogger('internal-api-client'); // More generic logger name
 
 const internalApiClient = axios.create({
   baseURL: process.env.INTERNAL_API_BASE_URL || 'http://localhost:4000', // The base URL of the web/API server. Services will add the full path.
-  timeout: 5000, // 5 second timeout
+  timeout: 15000, // 15 second timeout
   headers: {
     'Content-Type': 'application/json',
     // IMPORTANT: Consider if this key should be more generic or configurable if different services need different keys

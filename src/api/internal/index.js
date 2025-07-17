@@ -33,6 +33,9 @@ const generationOutputsApi = require('./generationOutputsApi');
 const createPointsApi = require('./pointsApi');
 const generationExecutionApi = require('./generationExecutionApi'); // Import the new API
 const pointsApi = require('./pointsApi');
+const { createGenerationOutputsApi } = require('./generationOutputsApi');
+const { createSystemApi } = require('./systemApi');
+const { createActionsApi } = require('./actionsApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -97,6 +100,7 @@ function initializeInternalServices(dependencies = {}) {
       creditService: dependencies.creditService,
       ethereumService: dependencies.ethereumService,
       nftPriceService: dependencies.nftPriceService,
+      saltMiningService: dependencies.saltMiningService,
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
@@ -408,6 +412,15 @@ function initializeInternalServices(dependencies = {}) {
 
   // Mount generation execution routes
   v1DataRouter.use('/execute', generationExecutionApi(apiDependencies));
+
+  // Mount actions routes
+  const actionsApiRouter = createActionsApi(apiDependencies);
+  if (actionsApiRouter) {
+    v1DataRouter.use('/actions', actionsApiRouter);
+    logger.info('[InternalAPI] Actions API service mounted to /v1/actions');
+  } else {
+    logger.error('[InternalAPI] Failed to create Actions API router.');
+  }
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

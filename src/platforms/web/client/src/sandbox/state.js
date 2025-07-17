@@ -7,6 +7,15 @@ export let connectionLine = null;
 export let activeModal = false;
 export let activeSubmenu = false;
 
+// --- Selection Management ---
+export const selectedNodeIds = new Set();
+export const lasso = {
+    active: false,
+    x1: 0, y1: 0,
+    x2: 0, y2: 0,
+    element: null
+};
+
 // --- Persistent Node Connection System Scaffold ---
 
 /**
@@ -179,6 +188,7 @@ export function initState() {
     connectionLine = null;
     activeModal = false;
     activeSubmenu = false;
+    selectedNodeIds.clear();
     loadState();
 }
 
@@ -198,6 +208,59 @@ export function setSubmenuState(state) {
 export function getSubmenuState() {
     return activeSubmenu;
 }
+
+// --- Selection Getters/Setters ---
+
+export function getSelectedNodeIds() {
+    return selectedNodeIds;
+}
+
+export function isNodeSelected(id) {
+    return selectedNodeIds.has(id);
+}
+
+export function selectNode(id, additive = false) {
+    if (!additive) {
+        // Create a copy of the set before clearing, to know which nodes to update.
+        const previouslySelected = new Set(selectedNodeIds);
+        selectedNodeIds.clear();
+        previouslySelected.forEach(nodeId => {
+            if (nodeId !== id) {
+                const el = document.getElementById(nodeId);
+                if (el) el.classList.remove('node-selected');
+            }
+        });
+    }
+    selectedNodeIds.add(id);
+    const el = document.getElementById(id);
+    if (el) el.classList.add('node-selected');
+}
+
+export function deselectNode(id) {
+    selectedNodeIds.delete(id);
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('node-selected');
+}
+
+export function toggleNodeSelection(id) {
+    if (isNodeSelected(id)) {
+        deselectNode(id);
+    } else {
+        // Toggle is always additive
+        selectNode(id, true);
+    }
+}
+
+export function clearSelection() {
+    selectedNodeIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('node-selected');
+    });
+    selectedNodeIds.clear();
+}
+
+// --- End Selection ---
+
 
 export function setLastClickPosition(position) {
     lastClickPosition = position;
@@ -386,3 +449,26 @@ if (typeof window !== 'undefined') {
     window.getToolWindows = getToolWindows;
     window.activeToolWindows = activeToolWindows;
 } 
+
+const sandboxState = {
+    toolWindows: [], // Array of active tool window data
+    connections: [], // Array of active connection data
+    availableTools: [], // All tools loaded from the server
+    history: [], // For undo/redo
+    historyIndex: -1,
+    activeConnection: null, // Info about the connection being drawn
+    connectionLine: null, // The DOM element for the connection line
+    lastClickPosition: { x: 0, y: 0 },
+    modal: { active: false, type: null, position: { x: 0, y: 0 } },
+    submenu: { active: false, type: null, position: { x: 0, y: 0 } },
+    selectedNodeIds: new Set(), // IDs of selected tool windows
+    lasso: {
+        active: false,
+        x1: 0, y1: 0,
+        x2: 0, y2: 0,
+        element: null
+    },
+};
+
+// --- History Management ---
+// ... existing code ...

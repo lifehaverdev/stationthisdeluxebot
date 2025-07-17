@@ -142,6 +142,7 @@ class CreditLedgerDB extends BaseDB {
   /**
    * Records a new referral vault in the ledger.
    * @param {object} vaultDetails - Details of the referral vault
+   * @param {string} vaultDetails.vaultName - The unique code name for the vault
    * @param {string} vaultDetails.vault_address - The address of the created vault
    * @param {string} vaultDetails.owner_address - The address that owns the vault
    * @param {string} vaultDetails.master_account_id - The master account ID from userCore
@@ -160,6 +161,18 @@ class CreditLedgerDB extends BaseDB {
       updatedAt: new Date()
     };
     return this.insertOne(dataToInsert);
+  }
+
+  /**
+   * Finds a referral vault by its unique code name.
+   * @param {string} vaultName - The name of the vault to find.
+   * @returns {Promise<Object|null>} The vault document or null if not found.
+   */
+  async findReferralVaultByName(vaultName) {
+    return this.findOne({
+      vaultName: vaultName,
+      type: 'REFERRAL_VAULT'
+    });
   }
 
   /**

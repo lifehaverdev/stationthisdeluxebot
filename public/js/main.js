@@ -1,3 +1,5 @@
+import { websocketClient } from '/js/websocketClient.js';
+
 document.addEventListener('DOMContentLoaded', function() {
     const hamburger = document.getElementById('hamburger-menu');
     const mobileNav = document.getElementById('main-nav');

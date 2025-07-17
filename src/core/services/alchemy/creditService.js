@@ -211,19 +211,22 @@ class CreditService {
     // Get event fragments for all events we're interested in
     const depositEventFragment = this.ethereumService.getEventFragment('DepositRecorded', this.contractConfig.abi);
     const withdrawalEventFragment = this.ethereumService.getEventFragment('WithdrawalRequested', this.contractConfig.abi);
+    const vaultCreatedEventFragment = this.ethereumService.getEventFragment('VaultAccountCreated', this.contractConfig.abi); // CORRECTED
     // const nftDepositEventFragment = this.ethereumService.getEventFragment('NFTDepositRecorded', this.contractConfig.abi);
 
-    if (!depositEventFragment || !withdrawalEventFragment ) {//|| !nftDepositEventFragment) {
+    if (!depositEventFragment || !withdrawalEventFragment || !vaultCreatedEventFragment ) {//|| !nftDepositEventFragment) {
         this.logger.error("[CreditService] Event fragments not found in ABI. Cannot process webhook.");
         return { success: false, message: "Server configuration error: ABI issue.", detail: null };
     }
 
     const depositEventHash = this.ethereumService.getEventTopic(depositEventFragment);
     const withdrawalEventHash = this.ethereumService.getEventTopic(withdrawalEventFragment);
+    const vaultCreatedEventHash = this.ethereumService.getEventTopic(vaultCreatedEventFragment); // CORRECTED
     //const nftDepositEventHash = this.ethereumService.getEventTopic(nftDepositEventFragment);
 
     let processedDeposits = 0;
     let processedWithdrawals = 0;
+    let processedVaultCreations = 0;
     //let processedNftDeposits = 0;
 
     for (const log of logs) {
@@ -253,6 +256,12 @@ class CreditService {
                 const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
                 await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
                 processedWithdrawals++;
+            } else if (topics[0] === vaultCreatedEventHash) {
+                // Process vault creation event
+                const decodedLog = this.ethereumService.decodeEventLog(vaultCreatedEventFragment, data, topics, this.contractConfig.abi);
+                // CORRECTED: Use `accountAddress` from VaultAccountCreated event
+                await this.finalizeVaultDeployment(transactionHash, decodedLog.accountAddress);
+                processedVaultCreations++;
             }
         } catch (error) {
             this.logger.error(`[CreditService] Error processing event from tx ${transactionHash}:`, error);
@@ -268,10 +277,8 @@ class CreditService {
 
     return {
         success: true,
-        //message: `Processed ${processedDeposits} deposits, ${processedNftDeposits} NFT deposits, and ${processedWithdrawals} withdrawals.`,
-        message: `Processed ${processedDeposits} deposits, and ${processedWithdrawals} withdrawals.`,
-        //detail: { processedDeposits, processedNftDeposits, processedWithdrawals }
-        detail: { processedDeposits, processedWithdrawals }
+        message: `Processed ${processedDeposits} deposits, ${processedVaultCreations} vault creations, and ${processedWithdrawals} withdrawals.`,
+        detail: { processedDeposits, processedWithdrawals, processedVaultCreations }
     };
   }
 
@@ -1208,6 +1215,112 @@ class CreditService {
       this.logger.error('[CreditService] Failed to estimate deposit gas cost:', err);
       throw err;
     }
+  }
+
+  /**
+   * Deploys a new referral vault, records it, and returns the vault data.
+   * @param {object} details - The details for deployment.
+   * @param {ObjectId} details.masterAccountId
+   * @param {string} details.ownerAddress
+   * @param {string} details.vaultName
+   * @param {string} details.salt
+   * @param {string} details.predictedAddress
+   * @returns {Promise<Object>} The newly created vault document.
+   */
+  async deployReferralVault(details) {
+    this.logger.info('[CreditService] Initiating on-chain referral vault deployment with details:', { details });
+    const { masterAccountId, ownerAddress, vaultName, salt, predictedAddress } = details;
+
+    try {
+      this.logger.info('[CreditService] Sending transaction to ethereumService.write with params:', {
+        contractAddress: this.contractConfig.address,
+        functionName: 'createVaultAccount',
+        ownerAddress,
+        salt
+      });
+
+      // 1. Send the transaction via the operator wallet using the 'write' method
+      const txResponse = await this.ethereumService.write(
+        this.contractConfig.address,
+        this.contractConfig.abi,
+        'createVaultAccount',
+        ownerAddress,
+        salt
+      );
+
+      this.logger.info(`[CreditService] Vault deployment transaction sent successfully. Hash: ${txResponse.hash}`, {
+        txHash: txResponse.hash,
+        owner: ownerAddress,
+        predictedAddress: predictedAddress,
+      });
+
+      // 3. Create the initial database record with a 'PENDING_DEPLOYMENT' status
+      const newVaultData = {
+        master_account_id: masterAccountId,
+        vault_name: vaultName,
+        owner_address: ownerAddress,
+        vault_address: predictedAddress, // We store the predicted address
+        salt: salt,
+        deployment_tx_hash: txResponse.hash,
+        created_at: new Date(),
+        status: 'PENDING_DEPLOYMENT',
+      };
+
+      const savedVault = await this.creditLedgerDb.createReferralVault(newVaultData);
+
+      this.logger.info('[CreditService] Vault record created with pending status.', { savedVault });
+
+      // We don't wait for confirmation here. A separate process will listen for the
+      // `VaultCreated` event and update the status to 'ACTIVE'.
+      return savedVault;
+
+    } catch (error) {
+      this.logger.error(`[CreditService] On-chain vault deployment failed for owner ${ownerAddress}.`, {
+        error: error.message,
+        stack: error.stack,
+      });
+      // Optionally, create a DB record with 'FAILED' status
+      // For now, re-throw to let the caller handle it.
+      this.logger.error('[CreditService] Error during vault deployment transaction:', { 
+        errorMessage: error.message,
+        errorStack: error.stack,
+        details 
+      });
+      throw new Error('Failed to send vault deployment transaction.');
+    }
+  }
+
+  /**
+   * Finalizes a vault deployment after the on-chain transaction is confirmed.
+   * @param {string} txHash - The deployment transaction hash.
+   * @param {string} vaultAddress - The actual address of the created vault from the event.
+   */
+  async finalizeVaultDeployment(txHash, vaultAddress) {
+    this.logger.info(`[CreditService] Finalizing vault deployment for tx: ${txHash}`);
+
+    const vault = await this.creditLedgerDb.findReferralVaultByTxHash(txHash);
+
+    if (!vault) {
+      this.logger.error(`[CreditService] Could not find a pending vault for tx hash: ${txHash}. This may be a race condition or an orphan event.`);
+      return;
+    }
+
+    if (vault.status === 'ACTIVE') {
+      this.logger.warn(`[CreditService] Vault for tx ${txHash} is already active. Ignoring event.`);
+      return;
+    }
+
+    // It's good practice to verify the address from the event matches the predicted one
+    if (vault.vault_address.toLowerCase() !== vaultAddress.toLowerCase()) {
+      this.logger.error(`[CreditService] Mismatch between predicted vault address (${vault.vault_address}) and on-chain address (${vaultAddress}) for tx ${txHash}. Manual review needed.`);
+      // Update status to 'ERROR' or something similar
+      await this.creditLedgerDb.updateReferralVaultStatus(vault._id, 'ADDRESS_MISMATCH');
+      return;
+    }
+    
+    await this.creditLedgerDb.updateReferralVaultStatus(vault._id, 'ACTIVE');
+
+    this.logger.info(`[CreditService] Successfully activated vault ${vaultAddress} (ID: ${vault._id})`);
   }
 }
 

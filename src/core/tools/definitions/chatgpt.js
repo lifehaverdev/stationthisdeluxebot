@@ -10,13 +10,13 @@ const chatGptTool = {
   description: 'A general-purpose conversational AI. Use it to ask questions, get explanations, or generate text.',
   inputSchema: {
     prompt: {
-      name: 'prompt',
+      name: 'input_prompt',
       type: 'text',
       required: true,
       description: 'The text prompt to send to the AI.'
     },
     instructions: {
-        name: 'instructions',
+        name: 'input_instructions',
         type: 'text',
         required: true,
         description: 'The instructions to send to the AI.',
@@ -39,9 +39,11 @@ const chatGptTool = {
       }
   },
   costingModel: {
-    rate: 0.000002, // Example cost per token
-    unit: 'token',
-    rateSource: 'static'
+    rateSource: 'static',
+    staticCost: {
+      amount: 0.000002, // Example cost per token
+      unit: 'token'
+    }
   },
   deliveryMode: 'immediate',
   webhookStrategy: {

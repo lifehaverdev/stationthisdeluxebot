@@ -8,6 +8,24 @@ const SALT_CACHE_SIZE = 10;
 const MINING_TIMEOUT_MS = 30000; // 30 seconds
 const TARGET_PREFIX = '0x1152';
 
+// Load the creation bytecode for the VaultAccount contract
+let vaultAccountBytecode;
+try {
+    // The bytecode is often just the raw hex string in the JSON
+    const bytecodeJson = require('../../contracts/abis/creditVaultAccount.bytecode.json');
+    vaultAccountBytecode = typeof bytecodeJson === 'string' ? bytecodeJson : bytecodeJson.object;
+    if (!vaultAccountBytecode || !vaultAccountBytecode.startsWith('0x')) {
+        throw new Error('Bytecode is not in the expected format.');
+    }
+} catch (error) {
+    console.error('[SaltMiningService] CRITICAL ERROR: Could not load VaultAccount bytecode.', error);
+    // In a real app, you might want to prevent the service from starting
+    // or handle this more gracefully. For now, we set it to null and let
+    // the worker handle the missing data.
+    vaultAccountBytecode = null;
+}
+
+
 class SaltMiningService {
     /**
      * @param {object} services - Required service instances
@@ -22,7 +40,7 @@ class SaltMiningService {
             throw new Error('SaltMiningService: Missing ethereumService');
         }
         this.ethereumService = services.ethereumService;
-        
+
         if (!config.creditVaultAddress || !config.creditVaultAbi) {
             throw new Error('SaltMiningService: Missing contract configuration');
         }
@@ -34,7 +52,7 @@ class SaltMiningService {
         this.logger = logger || console;
         this.saltCache = new Map(); // ownerAddress -> [salts]
         this.miningPromises = new Map(); // ownerAddress -> Promise
-        
+
         // Start background cache filling
         this.startCacheFilling();
     }
@@ -50,14 +68,14 @@ class SaltMiningService {
         const cachedSalts = this.saltCache.get(ownerAddress);
         if (cachedSalts && cachedSalts.length > 0) {
             const { salt, predictedAddress } = cachedSalts.pop();
-            
+
             // If cache is getting low, trigger background mining
             if (cachedSalts.length < SALT_CACHE_SIZE / 2) {
                 this.fillCache(ownerAddress).catch(err => {
                     this.logger.error('[SaltMiningService] Background cache filling failed:', err);
                 });
             }
-            
+
             return { salt, predictedAddress };
         }
 
@@ -82,7 +100,8 @@ class SaltMiningService {
                 workerData: {
                     ownerAddress,
                     creditVaultAddress: this.contractConfig.address,
-                    targetPrefix: TARGET_PREFIX
+                    targetPrefix: TARGET_PREFIX,
+                    creationBytecode: vaultAccountBytecode // Pass the bytecode to the worker
                 }
             });
 

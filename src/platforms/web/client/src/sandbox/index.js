@@ -21,6 +21,7 @@ import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
 import { renderAllConnections } from './connections/index.js';
+import './components/ReferralVaultModal/referralVaultModal.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -134,7 +135,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Touch pinch/pan
     let lastTouchDist = null, lastTouchCenter = null;
     sandboxContent.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
+        if (e.touches.length === 1) {
+            // Pan with one finger
+            if (e.target === canvas || e.target.classList.contains('sandbox-bg')) {
+                isPanning = true;
+                start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                panStart = { ...pan };
+            }
+        } else if (e.touches.length === 2) {
+            // Pinch zoom with two fingers
+            isPanning = false; // Stop panning when starting to pinch
             lastTouchDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
@@ -146,7 +156,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }, { passive: false });
     sandboxContent.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2) {
+        if (isPanning && e.touches.length === 1) {
+            // Pan with one finger
+            e.preventDefault();
+            pan.x = panStart.x + (e.touches[0].clientX - start.x);
+            pan.y = panStart.y + (e.touches[0].clientY - start.y);
+            updateTransform();
+        } else if (e.touches.length === 2 && lastTouchDist !== null) {
             e.preventDefault();
             const newDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
@@ -166,9 +182,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             lastTouchCenter = newCenter;
         }
     }, { passive: false });
-    sandboxContent.addEventListener('touchend', () => {
-        lastTouchDist = null;
-        lastTouchCenter = null;
+    sandboxContent.addEventListener('touchend', (e) => {
+        // Stop panning when last finger is lifted
+        if (e.touches.length === 0) {
+            isPanning = false;
+        }
+        // Reset pinch-zoom state if less than 2 fingers
+        if (e.touches.length < 2) {
+            lastTouchDist = null;
+            lastTouchCenter = null;
+        }
     });
 
     // Expose for debugging and for createToolWindow

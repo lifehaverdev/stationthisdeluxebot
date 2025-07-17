@@ -1,0 +1,77 @@
+const express = require('express');
+const { createLogger } = require('../../utils/logger');
+const internalApiClient = require('../../utils/internalApiClient');
+
+const logger = createLogger('ReferralVaultApi');
+
+function createReferralVaultApi(dependencies) {
+  const router = express.Router();
+
+  // Endpoint to check if a vault name is available
+  router.post('/check-name', async (req, res) => {
+    const { name } = req.body;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+    }
+    if (!name || name.length < 4 || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+      return res.status(400).json({ error: { code: 'INVALID_NAME', message: 'Name must be at least 4 characters long and contain only letters, numbers, underscores, or dashes.' } });
+    }
+
+    try {
+      // This internal endpoint will need to be created.
+      const response = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-name/${name}`);
+      // If the request succeeds, it means a vault was found.
+      res.status(200).json({ isAvailable: false });
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        // 404 means the name was not found, so it's available.
+        res.status(200).json({ isAvailable: true });
+      } else {
+        logger.error('[ReferralVaultApi] /check-name failed:', error);
+        res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Error checking name availability.' } });
+      }
+    }
+  });
+
+  // Endpoint to create a new referral vault
+  router.post('/create', async (req, res) => {
+    const { name } = req.body;
+    const userId = req.user?.userId;
+
+     if (!userId) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+    }
+    if (!name || name.length < 4 || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+      return res.status(400).json({ error: { code: 'INVALID_NAME', message: 'Invalid name provided.' } });
+    }
+    
+    try {
+        // This internal endpoint will orchestrate the creation.
+        const response = await internalApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
+            masterAccountId: userId,
+            vaultName: name
+        });
+        
+        // The internal endpoint will return the new vault details upon success.
+        res.status(201).json(response.data);
+
+    } catch(error) {
+        // Log a clean, structured error instead of the massive Axios object
+        logger.error('[ReferralVaultApi] /create call to internal API failed.', {
+            status: error.response?.status,
+            method: error.config?.method,
+            url: error.config?.url,
+            responseData: error.response?.data
+        });
+
+        const errPayload = error.response?.data || { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create referral vault.' } };
+        res.status(error.response?.status || 500).json(errPayload);
+    }
+  });
+
+  return router;
+}
+
+module.exports = { createReferralVaultApi }; 

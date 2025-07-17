@@ -93,6 +93,7 @@ async function initializeServices(options = {}) {
     let nftPriceService;
     let dexService;
     let tokenRiskEngine;
+    let saltMiningService;
     let walletLinkingService = new WalletLinkingService({ logger, db: initializedDbServices.data });
 
     try {
@@ -135,7 +136,6 @@ async function initializeServices(options = {}) {
         logger.info(`[initializeServices] creditServiceConfig.creditVaultAddress: ${creditServiceConfig.creditVaultAddress}`);
         
         // --- Instantiate SaltMiningService ---
-        let saltMiningService;
         try {
           saltMiningService = new SaltMiningService(
             { ethereumService },
@@ -202,6 +202,7 @@ async function initializeServices(options = {}) {
       creditService,
       ethereumService,
       nftPriceService,
+      saltMiningService
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.

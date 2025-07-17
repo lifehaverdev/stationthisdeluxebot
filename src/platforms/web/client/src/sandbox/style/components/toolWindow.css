@@ -156,3 +156,8 @@
     font-style: italic;
     text-align: center;
 } 
+
+.tool-window.node-selected {
+    border-color: #4f8cff;
+    box-shadow: 0 0 15px rgba(79, 140, 255, 0.5);
+} 

@@ -60,7 +60,8 @@ export function bindPromptFieldOverlays() {
         'input_prompt',
         'input_negative',
         'input_negative_prompt',
-        'input_text' // As per your suggestion
+        'input_text', // As per your suggestion
+        'input_instructions'
     ];
 
     paramNames.forEach(paramName => {

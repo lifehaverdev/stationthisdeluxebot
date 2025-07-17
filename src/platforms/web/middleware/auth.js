@@ -156,6 +156,7 @@ async function authenticateUserOrApiKey(req, res, next) {
           return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
         }
         req.user = user;
+        console.log('[AuthMiddleware] JWT Verified. req.user set to:', req.user); // DEBUG LOG
         req.authMethod = 'jwt';
         return next();
       });

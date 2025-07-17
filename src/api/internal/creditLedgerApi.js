@@ -163,6 +163,23 @@ function createCreditLedgerApi(services, logger) {
     }
   });
 
+  // GET /ledger/vaults/by-name/:name - Get a vault by its unique name
+  router.get('/vaults/by-name/:name', async (req, res) => {
+    const { name } = req.params;
+    const requestId = uuidv4();
+    logger.info(`[creditLedgerApi] GET /ledger/vaults/by-name/${name} - RequestId: ${requestId}`);
+    try {
+      const vault = await creditLedgerDb.findReferralVaultByName(name);
+      if (!vault) {
+        return res.status(404).json({ error: { message: 'Vault not found by name', requestId } });
+      }
+      res.json({ vault, requestId });
+    } catch (error) {
+      logger.error(`[creditLedgerApi] Error finding vault by name:`, error);
+      res.status(500).json({ error: { message: 'Failed to find vault by name', details: error.message, requestId } });
+    }
+  });
+
   // GET /ledger/vaults/by-address/:address - Get a vault by its address
   router.get('/vaults/by-address/:address', async (req, res) => {
     const { address } = req.params;
