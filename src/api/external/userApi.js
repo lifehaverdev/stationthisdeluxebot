@@ -78,14 +78,14 @@ function createUserApi(dependencies) {
 
 
       // Fetch referral vaults
-      let referralVault = null;
+      let referralVaults = [];
       try {
         const vaultsRes = await internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${userId}`);
         const vaults = vaultsRes.data && Array.isArray(vaultsRes.data.vaults) ? vaultsRes.data.vaults : [];
-        referralVault = vaults.length > 0 ? vaults[0] : null;
+        referralVaults = vaults;
       } catch (vaultErr) {
         logger.warn('[UserApi] /dashboard: Could not fetch referral vaults:', { error: vaultErr.message });
-        referralVault = null;
+        referralVaults = [];
       }
 
       // Username
@@ -133,7 +133,7 @@ function createUserApi(dependencies) {
         levelProgressRatio,
         points,
         rewards,
-        referralVault
+        referralVaults // only return the array, no single vault
       });
     } catch (error) {
       logger.error('[UserApi] /dashboard failed:', {

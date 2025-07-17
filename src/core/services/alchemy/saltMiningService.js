@@ -59,55 +59,89 @@ class SaltMiningService {
   }
 
   /**
-   * Gets a salt that will create a vault address starting with 0x1152
-   * First checks cache, then mines if needed
+   * Gets a salt that will create a vault address starting with 0x1152.
+   * This method will continuously retry until a salt is found.
    * @param {string} ownerAddress - The address that will own the vault
    * @returns {Promise<{salt: string, predictedAddress: string}>}
    */
-  getSalt(ownerAddress) {
-    return new Promise((resolve, reject) => {
-      this.logger.info('[SaltMiningService] Salt requested. Checking queue...');
-      if (this.saltQueue.length > 0) {
-        const result = this.saltQueue.shift();
-        this.logger.info(`[SaltMiningService] Found pre-mined salt for request. Predicted Address: ${result.predictedAddress}`);
-        this.fillQueue(); // Trigger a refill in the background
-        return resolve(result);
-      }
+  async getSalt(ownerAddress) {
+    this.logger.info(`[SaltMiningService] Salt requested for owner: ${ownerAddress}. Checking queue...`);
+    if (this.saltQueue.length > 0) {
+      const result = this.saltQueue.shift();
+      this.logger.info(`[SaltMiningService] Found pre-mined salt for request. Predicted Address: ${result.predictedAddress}`);
+      // this.fillQueue(); // TODO: Implement queue refilling logic if desired
+      return result;
+    }
 
-      this.logger.info('[SaltMiningService] No pre-mined salt available. Mining a new one directly...');
+    this.logger.info(`[SaltMiningService] No pre-mined salt available for ${ownerAddress}. Starting live mining...`);
+    
+    let attempt = 0;
+    // This loop will run indefinitely until a salt is successfully mined.
+    while (true) {
+      attempt++;
+      try {
+        this.logger.info(`[SaltMiningService] Mining attempt #${attempt} for owner ${ownerAddress}.`);
+        const result = await this.mineNewSalt(ownerAddress);
+        this.logger.info(`[SaltMiningService] Successfully mined salt on attempt #${attempt} for owner ${ownerAddress}.`);
+        return result;
+      } catch (error) {
+        this.logger.error(`[SaltMiningService] Mining attempt #${attempt} for ${ownerAddress} failed: ${error.message}. Retrying...`);
+        // The loop will continue, automatically retrying.
+      }
+    }
+  }
+
+  /**
+   * Spawns a worker to mine a single salt, with a timeout.
+   * @param {string} ownerAddress - The owner of the vault.
+   * @returns {Promise<{salt: string, predictedAddress: string}>}
+   * @private
+   */
+  mineNewSalt(ownerAddress) {
+    return new Promise((resolve, reject) => {
+      this.logger.debug(`[SaltMiningService] Spawning new worker for owner: ${ownerAddress}`);
       const worker = new Worker(this.workerPath, {
         workerData: {
           ownerAddress: ownerAddress,
           foundationAddress: this.contractConfig.address,
-          targetPrefix: '0x1152',
-          creationBytecode: charteredFundBytecode // Pass the bytecode to the worker
+          targetPrefix: TARGET_PREFIX,
+          creationBytecode: charteredFundBytecode
         }
       });
 
+      const timeoutId = setTimeout(() => {
+        worker.terminate();
+        reject(new Error(`Mining worker timed out after ${MINING_TIMEOUT_MS / 1000}s.`));
+      }, MINING_TIMEOUT_MS);
+
       worker.on('message', (result) => {
-                clearTimeout(timeoutId);
-                this.miningPromises.delete(ownerAddress);
-                resolve(result);
-            });
+        clearTimeout(timeoutId);
+        if (result.error) {
+          this.logger.error(`[SaltMiningService] Worker for ${ownerAddress} returned an error: ${result.error}`);
+          reject(new Error(result.error));
+        } else {
+          this.logger.info(`[SaltMiningService] Worker for ${ownerAddress} found salt. Predicted address: ${result.predictedAddress}`);
+          resolve(result);
+        }
+      });
 
-            worker.on('error', (err) => {
-                clearTimeout(timeoutId);
-                this.miningPromises.delete(ownerAddress);
-                reject(err);
-            });
+      worker.on('error', (err) => {
+        clearTimeout(timeoutId);
+        this.logger.error(`[SaltMiningService] Worker for ${ownerAddress} encountered a critical error:`, err);
+        reject(err);
+      });
 
-            worker.on('exit', (code) => {
-                clearTimeout(timeoutId);
-                this.miningPromises.delete(ownerAddress);
-                if (code !== 0) {
-                    reject(new Error(`Worker stopped with exit code ${code}`));
-                }
-            });
-        });
-
-        this.miningPromises.set(ownerAddress, promise);
-        return promise;
-    }
+      worker.on('exit', (code) => {
+        clearTimeout(timeoutId);
+        // A non-zero exit code in other contexts could be an error, but 'message' and 'error' events handle outcomes.
+        // This log is for diagnostics. If exit happens without a message/error, it's noteworthy.
+        if (code !== 0) {
+          this.logger.warn(`[SaltMiningService] Worker for ${ownerAddress} exited unexpectedly with code ${code}.`);
+          reject(new Error(`Worker stopped with exit code ${code}`));
+        }
+      });
+    });
+  }
 
     /**
      * Starts background cache filling process

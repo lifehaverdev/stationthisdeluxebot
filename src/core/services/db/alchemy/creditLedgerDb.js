@@ -193,8 +193,12 @@ class CreditLedgerDB extends BaseDB {
    * @returns {Promise<Array>} Array of vault documents
    */
   async findReferralVaultsByMasterAccount(masterAccountId) {
+    let id = masterAccountId;
+    if (typeof masterAccountId === 'string' && ObjectId.isValid(masterAccountId)) {
+      id = new ObjectId(masterAccountId);
+    }
     return this.findMany({
-      master_account_id: masterAccountId,
+      master_account_id: id,
       type: 'REFERRAL_VAULT',
       is_active: true
     });

@@ -141,10 +141,9 @@ async function initializeServices(options = {}) {
         // --- Instantiate SaltMiningService ---
         try {
           saltMiningService = new SaltMiningService(
-            { ethereumService },
             {
-              creditVaultAddress: creditServiceConfig.creditVaultAddress,
-              creditVaultAbi: creditServiceConfig.creditVaultAbi
+              foundationAddress: contracts.foundation.addresses[networkName],
+              foundationAbi: contracts.foundation.abi
             },
             logger
           );

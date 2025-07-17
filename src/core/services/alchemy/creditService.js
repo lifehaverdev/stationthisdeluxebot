@@ -1092,10 +1092,7 @@ class CreditService {
         // 2. Check if user already has too many vaults
         const vaultsResponse = await this.internalApiClient.get(`/internal/v1/data/ledger/vaults/by-master-account/${masterAccountId}`);
         const existingVaults = vaultsResponse.data.vaults;
-        const MAX_VAULTS_PER_USER = 3; // Reasonable limit to prevent abuse
-        if (existingVaults.length >= MAX_VAULTS_PER_USER) {
-            throw new Error(`User already has ${existingVaults.length} vaults. Maximum allowed is ${MAX_VAULTS_PER_USER}.`);
-        }
+        // Vault limit removed: users can create unlimited vaults
 
         // 3. Get a pre-mined salt that will generate a vanity address
         const { salt, predictedAddress } = await this.saltMiningService.getSalt(ownerAddress);

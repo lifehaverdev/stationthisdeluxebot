@@ -60,8 +60,7 @@ export default class AccountDropdown {
 
     render() {
         const { loading, error, data } = this.state;
-        const referralVault = data && 'referralVault' in data ? data.referralVault : null;
-        const referralValue = data && data.rewards ? data.rewards.referral : 0;
+        const referralVaults = data && Array.isArray(data.referralVaults) ? data.referralVaults : [];
         // Determine if we should show minimal fallback (error but user is likely authenticated)
         const showMinimal = (!data && error && !loading);
         this.container.innerHTML = `
@@ -86,11 +85,17 @@ export default class AccountDropdown {
                             </div>
                             <div class="dropdown-item">Points: ${data.points}</div>
                             <a href="#" class="action-btn" data-action="get-more-points">Get More Points</a>
-                            <div class="dropdown-item">Referral: ${
-                                referralVault
-                                    ? referralValue
-                                    : `<button class='setup-referral-btn'>Set Up Referral Vault</button>`
-                            }</div>
+                            <div class="dropdown-item"><b>Referral Vaults</b></div>
+                            <div class="dropdown-item">
+                              ${referralVaults.length ? referralVaults.map(vault => `
+                                <div class="vault-list-item">
+                                  <b>${vault.vault_name || '(unnamed)'}</b><br>
+                                  <span class="vault-address">${this.shortenWallet(vault.vault_address)}</span><br>
+                                  <a href="/referral/${vault.vault_name}" target="_blank">Referral Link</a>
+                                  <button class="vault-dashboard-btn" data-vault-address="${vault.vault_address}">Dashboard</button>
+                                </div>
+                              `).join('') : '<div class="vault-list-item">No referral vaults yet.</div>'}
+                            </div>
                             <div class="dropdown-item">Model: ${data.rewards.model}</div>
                             <div class="dropdown-item">Spell: ${data.rewards.spell}</div>
                         ` : ''}
@@ -109,6 +114,20 @@ export default class AccountDropdown {
         `;
         this.attachEvents();
         this.attachActionEvents();
+        // Attach dashboard button events
+        const dashboardBtns = this.container.querySelectorAll('.vault-dashboard-btn');
+        dashboardBtns.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            this.closeDropdown();
+            const vaultAddress = btn.getAttribute('data-vault-address');
+            const vault = referralVaults.find(v => v.vault_address === vaultAddress);
+            if (!window.openVaultDashboardModal) {
+              await this.loadVaultDashboardModalScript();
+            }
+            if (window.openVaultDashboardModal && vault) window.openVaultDashboardModal(vault);
+          });
+        });
         // Attach referral vault setup button event
         const setupReferralBtn = this.container.querySelector('.setup-referral-btn');
         if (setupReferralBtn) {
@@ -123,6 +142,11 @@ export default class AccountDropdown {
 
     shortenWallet(addr) {
         if (!addr) return '';
+        // If address starts with 0x1152, show 0x1152 + next 4 + ... + last 4
+        if (addr.startsWith('0x1152')) {
+            return addr.slice(0, 10) + '...' + addr.slice(-4);
+        }
+        // Default: first 6 + ... + last 4
         return addr.slice(0, 6) + '...' + addr.slice(-4);
     }
 
@@ -176,5 +200,18 @@ export default class AccountDropdown {
         this.dropdownOpen = false;
         this.dropdownMenu.hidden = true;
         this.profileBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    // Add a utility to dynamically load the dashboard modal script
+    async loadVaultDashboardModalScript() {
+        if (document.getElementById('vault-dashboard-modal-script')) return;
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.id = 'vault-dashboard-modal-script';
+            script.src = '/components/ReferralVaultDashboardModal/vaultDashboardModal.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.body.appendChild(script);
+        });
     }
 } 

@@ -22,6 +22,7 @@ import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
 import { renderAllConnections } from './connections/index.js';
 import './components/ReferralVaultModal/referralVaultModal.js';
+import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
