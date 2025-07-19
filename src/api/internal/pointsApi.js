@@ -19,16 +19,18 @@ const BASELINE_NFT_FUNDING_RATE = 0.70;
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 
 module.exports = function pointsApi(dependencies) {
-    const { logger, priceFeedService, nftPriceService, creditService, ethereumService } = dependencies;
+    const { logger, priceFeedService, nftPriceService, creditService, ethereumService, db } = dependencies;
+    const creditLedgerDb = db.creditLedger;
     logger.info('[pointsApi] Initializing with dependencies:', {
         priceFeedService: !!priceFeedService,
         nftPriceService: !!nftPriceService,
         creditService: !!creditService,
         ethereumService: !!ethereumService,
+        creditLedgerDb: !!creditLedgerDb
     });
     const router = express.Router();
 
-    if (!priceFeedService || !nftPriceService) {
+    if (!priceFeedService || !nftPriceService || !creditLedgerDb) {
         logger.error('[pointsApi] Critical dependency failure: required services are missing!');
         return (req, res, next) => {
             res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Core services for points API are not available.' } });
@@ -209,7 +211,7 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/purchase', async (req, res, next) => {
         try {
-            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress } = req.body;
+            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode } = req.body;
             logger.info(`[pointsApi] /purchase called with:`, req.body);
             // Debug: Log the full request body
             console.log('[pointsApi] /purchase received body:', req.body);
@@ -231,6 +233,32 @@ module.exports = function pointsApi(dependencies) {
             const purchaseId = 'pid_' + crypto.randomBytes(8).toString('hex');
             const iface = new ethers.Interface(foundationAbi);
 
+            // Determine the foundation address once
+            const vaultNetwork = 'sepolia'; // TODO: dynamically detect network if needed
+            const foundationAddress = contracts.foundation.addresses[vaultNetwork];
+            let toAddress = foundationAddress;
+
+            if (!foundationAddress) {
+                logger.error(`[pointsApi] /purchase could not find foundation address for network: ${vaultNetwork}`);
+                return res.status(500).json({ message: 'Internal server configuration error: foundation address not found.' });
+            }
+
+            if (referralCode) {
+                logger.info(`[pointsApi] /purchase looking up referral code: ${referralCode}`);
+                const vault = await creditLedgerDb.findReferralVaultByName(referralCode);
+                if (vault && vault.vault_address) {
+                    logger.info(`[pointsApi] /purchase found vault for referral code ${referralCode}: ${vault.vault_address}`);
+                    toAddress = vault.vault_address;
+                } else {
+                    logger.warn(`[pointsApi] /purchase referral code ${referralCode} not found or vault has no address. Defaulting to foundation address.`);
+                }
+            } else if (recipientAddress && isValidAddress(recipientAddress)) {
+                logger.info(`[pointsApi] /purchase using recipientAddress from request body: ${recipientAddress}`);
+                toAddress = recipientAddress;
+            }
+
+            logger.info(`[pointsApi] Using recipient address for deposit: ${toAddress}`);
+
             // Helper to validate Ethereum address
             function isValidAddress(addr) {
                 return /^0x[a-fA-F0-9]{40}$/.test(addr);
@@ -238,69 +266,62 @@ module.exports = function pointsApi(dependencies) {
 
             if (type === 'token') {
                 if (assetAddress === '0x0000000000000000000000000000000000000000') {
-                    // ETH deposit: send plain ETH transfer to contract (no calldata)
-                    const vaultNetwork = 'sepolia'; // TODO: dynamically detect network if needed
-                    const creditVaultAddress = contracts.creditVault.addresses[vaultNetwork];
-                    console.log('[pointsApi] Using creditVaultAddress for ETH deposit:', creditVaultAddress);
-                    let toAddress = creditVaultAddress;
-                    let value = amount;
+                    // Native currency (ETH) deposit
+                    logger.info(`[pointsApi] /purchase processing native currency (ETH) deposit for amount: ${amount}`);
                     depositTx = {
+                        from: userWalletAddress,
                         to: toAddress,
-                        from: userWalletAddress,
-                        value: value,
-                        data: '0x' // No calldata for ETH transfer
+                        value: amount, // Amount is already in wei
+                        data: '0x', // No data for native transfer
                     };
-                    approvalRequired = false;
-                    approvalTx = null;
                 } else {
-                    // ERC20 deposit
-                    // 1. Approval
-                    const erc20Abi = ["function approve(address spender, uint256 amount)"];
-                    const erc20Iface = new ethers.Interface(erc20Abi);
-                    const approveData = erc20Iface.encodeFunctionData('approve', [creditVaultAddress, amount]);
-                    approvalRequired = true;
-                    approvalTx = {
-                        to: assetAddress,
-                        from: userWalletAddress,
-                        value: '0',
-                        data: approveData
-                    };
-                    // 2. Deposit or DepositFor
-                    let toAddress = userWalletAddress;
-                    let useDepositFor = false;
-                    if (recipientAddress && recipientAddress.toLowerCase() !== userWalletAddress.toLowerCase()) {
-                        if (!isValidAddress(recipientAddress)) {
-                            return res.status(400).json({ message: 'Invalid recipient address.' });
-                        }
-                        useDepositFor = true;
-                        toAddress = recipientAddress;
+                    // ERC20 token deposit
+                    const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
+                    const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
+
+                    logger.info(`[pointsApi] /purchase ERC20 allowance check: allowance=${allowance}, amount=${amount}`);
+
+                    if (ethers.toBigInt(allowance) < ethers.toBigInt(amount)) {
+                        approvalRequired = true;
+                        const approveData = tokenContract.interface.encodeFunctionData('approve', [toAddress, amount]);
+                        approvalTx = {
+                            from: userWalletAddress,
+                            to: assetAddress,
+                            data: approveData,
+                        };
+                        logger.info(`[pointsApi] /purchase approval required for ${amount}. Approval tx:`, approvalTx);
                     }
-                    let data;
-                    if (useDepositFor) {
-                        data = iface.encodeFunctionData('depositFor', [toAddress, assetAddress, amount]);
-                    } else {
-                        data = iface.encodeFunctionData('deposit', [assetAddress, amount]);
-                    }
+
+                    const depositData = iface.encodeFunctionData("deposit", [assetAddress, amount]);
                     depositTx = {
-                        to: creditVaultAddress,
                         from: userWalletAddress,
-                        value: '0',
-                        data
+                        to: toAddress,
+                        data: depositData,
                     };
                 }
             } else if (type === 'nft') {
-                // ERC721 transfer
-                const erc721Abi = ["function safeTransferFrom(address from, address to, uint256 tokenId)"];
-                const erc721Iface = new ethers.Interface(erc721Abi);
-                const transferData = erc721Iface.encodeFunctionData('safeTransferFrom', [userWalletAddress, creditVaultAddress, tokenId]);
+                const erc721Abi = ['function isApprovedForAll(address owner, address operator) view returns (bool)', 'function setApprovalForAll(address operator, bool approved)'];
+                const nftContract = ethereumService.getContract(assetAddress, erc721Abi);
+                const isApproved = await nftContract.isApprovedForAll(userWalletAddress, toAddress);
+                logger.info(`[pointsApi] /purchase NFT isApprovedForAll check: isApproved=${isApproved}`);
+
+                if (!isApproved) {
+                    approvalRequired = true;
+                    const approveData = nftContract.interface.encodeFunctionData('setApprovalForAll', [toAddress, true]);
+                    approvalTx = {
+                        from: userWalletAddress,
+                        to: assetAddress,
+                        data: approveData,
+                    };
+                    logger.info(`[pointsApi] /purchase NFT approval required. Approval tx:`, approvalTx);
+                }
+
+                const depositData = iface.encodeFunctionData("depositNFT", [assetAddress, tokenId]);
                 depositTx = {
-                    to: assetAddress,
                     from: userWalletAddress,
-                    value: '0',
-                    data: transferData
+                    to: toAddress,
+                    data: depositData,
                 };
-                approvalRequired = false;
-                approvalTx = null;
             } else {
                 logger.warn('[pointsApi] /purchase invalid type.');
                 return res.status(400).json({ message: 'Invalid type.' });

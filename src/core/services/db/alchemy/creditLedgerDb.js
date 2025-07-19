@@ -170,7 +170,7 @@ class CreditLedgerDB extends BaseDB {
    */
   async findReferralVaultByName(vaultName) {
     return this.findOne({
-      vaultName: vaultName,
+      vault_name: vaultName,
       type: 'REFERRAL_VAULT'
     });
   }
@@ -215,6 +215,45 @@ class CreditLedgerDB extends BaseDB {
       type: 'REFERRAL_VAULT',
       is_active: true
     });
+  }
+
+  /**
+   * Retrieves aggregated deposit statistics for a given vault, grouped by token.
+   * @param {string} vaultAddress - The address of the referral vault.
+   * @returns {Promise<Array<{tokenAddress: string, totalDeposits: string, totalAdjustedGrossUsd: number}>>}
+   */
+  async getVaultTokenStats(vaultAddress) {
+    this.logger.info(`[CreditLedgerDB] Getting token stats for vault: ${vaultAddress}`);
+    try {
+      const stats = await this.aggregate([
+        {
+          $match: {
+            vault_account: vaultAddress,
+            status: 'CONFIRMED'
+          }
+        },
+        {
+          $group: {
+            _id: "$token_address",
+            totalDeposits: { $sum: { $toLong: "$deposit_amount_wei" } },
+            totalAdjustedGrossUsd: { $sum: "$adjusted_gross_deposit_usd" }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            tokenAddress: "$_id",
+            totalDeposits: { $toString: "$totalDeposits" },
+            totalAdjustedGrossUsd: "$totalAdjustedGrossUsd"
+          }
+        }
+      ]);
+      this.logger.info(`[CreditLedgerDB] Found stats for ${stats.length} tokens for vault ${vaultAddress}.`);
+      return stats;
+    } catch (error) {
+      this.logger.error(`[CreditLedgerDB] Error getting vault token stats for ${vaultAddress}:`, error);
+      throw error;
+    }
   }
 
   /**

@@ -9,6 +9,8 @@ export let activeSubmenu = false;
 
 // --- Selection Management ---
 export const selectedNodeIds = new Set();
+const selectionChangeEvent = new CustomEvent('selectionchange');
+
 export const lasso = {
     active: false,
     x1: 0, y1: 0,
@@ -233,13 +235,24 @@ export function selectNode(id, additive = false) {
     }
     selectedNodeIds.add(id);
     const el = document.getElementById(id);
-    if (el) el.classList.add('node-selected');
+    if (el) {
+        el.classList.add('node-selected');
+        // Force repaint
+        void el.offsetHeight;
+        el.style.boxShadow = getComputedStyle(el).boxShadow;
+        console.log('[SELECTNODE] Added node-selected to', id);
+    } else {
+        console.warn('[SELECTNODE] Could not find element for ID', id);
+    }
+    console.log('[selectNode] selection now:', Array.from(selectedNodeIds));
+    document.dispatchEvent(selectionChangeEvent);
 }
 
 export function deselectNode(id) {
     selectedNodeIds.delete(id);
     const el = document.getElementById(id);
     if (el) el.classList.remove('node-selected');
+    document.dispatchEvent(selectionChangeEvent);
 }
 
 export function toggleNodeSelection(id) {
@@ -249,14 +262,18 @@ export function toggleNodeSelection(id) {
         // Toggle is always additive
         selectNode(id, true);
     }
+    // deselectNode and selectNode already dispatch the event
 }
 
 export function clearSelection() {
-    selectedNodeIds.forEach(id => {
-        const el = document.getElementById(id);
+    const previouslySelected = new Set(selectedNodeIds);
+    selectedNodeIds.clear();
+    previouslySelected.forEach(nodeId => {
+        const el = document.getElementById(nodeId);
         if (el) el.classList.remove('node-selected');
     });
-    selectedNodeIds.clear();
+    console.log('[clearSelection] selection now:', Array.from(selectedNodeIds));
+    document.dispatchEvent(selectionChangeEvent);
 }
 
 // --- End Selection ---

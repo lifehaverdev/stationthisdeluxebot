@@ -15,25 +15,25 @@ Enable users to select a group of connected nodes (subgraph) and mint/save them 
 
 ## Step 1: Codebase Audit
 
-- [ ] List all files and functions related to node selection, subgraph logic, and spell minting.
-- [ ] Document current state of selection and minting UI.
-- [ ] Identify any blockers or architectural constraints.
+- [x] List all files and functions related to node selection, subgraph logic, and spell minting.
+- [x] Document current state of selection and minting UI.
+- [x] Identify any blockers or architectural constraints.
 
 ## Step 2: Design
 
-- [ ] Define data structures for subgraph selection and spell metadata.
-- [ ] UI/UX sketches for selection, minting, and metadata entry.
-- [ ] Error handling (invalid subgraphs, incomplete metadata).
+- [x] Define data structures for subgraph selection and spell metadata.
+- [x] UI/UX sketches for selection, minting, and metadata entry.
+- [x] Error handling (invalid subgraphs, incomplete metadata).
 
 ## Step 3: Implementation
 
-- [ ] Implement multi-select and subgraph selection logic.
+- [x] Implement multi-select and subgraph selection logic (lasso, shift+click, and mobile tap-to-multiselect all working).
 - [ ] Implement "mint as spell" UI and backend integration.
 - [ ] Update state management for spells.
 
 ## Step 4: Demo & Handoff
 
-- [ ] Create a Playwright or screen recording demo.
+- [ ] Test functionality Live
 - [ ] Update master plan and handoff doc.
 
 ## Links
@@ -82,5 +82,105 @@ Enable users to select a group of connected nodes (subgraph) and mint/save them 
    - Pre-fill the spell creation modal with the subgraph's nodes and connections.
 3. **Update State & API:**
    - Ensure the selected subgraph can be serialized and sent to the backend as a new spell.
+
+--- 
+
+### Progress Update (2024-07-09)
+
+- **Multi-select and lasso selection are fully implemented:**
+  - Desktop: Figma-style controls (pan with spacebar/middle mouse, lasso with left mouse, shift+click for multi-select).
+  - Mobile: Tap toggles selection (multi-select by default, no lasso).
+- **Selection state is robust and visually clear.**
+- **Next up:** Implementing the "mint as spell" UI and backend integration for selected subgraphs.
+
+--- 
+
+---
+
+## Spell Minting UX Plan (2024-07-09)
+
+- **Trigger:**
+  - When 2 or more nodes are selected, a floating "Mint as Spell" action button appears near the selection or at a fixed location.
+- **Action:**
+  - Clicking the button serializes the selected subgraph (nodes + connections/parameter mappings).
+  - Opens the SpellsMenuModal in "Create" mode.
+- **SpellsMenuModal (Create Mode):**
+  - Pre-fills the spell creation form with:
+    - Steps: List of selected nodes (with display names)
+    - (Optional) Visual summary of the subgraph
+    - Name: (empty, user must enter)
+    - Description: (empty, user must enter)
+  - User can:
+    - Enter name/description
+    - Review steps (see which nodes are included)
+    - Define Spell Inputs: Select which unconnected input parameters from the included nodes will be exposed as inputs for the entire spell.
+    - (Optional) Remove/reorder steps before saving
+    - Save the spell
+- **Validation:**
+  - (Optional) Validate subgraph before allowing minting (e.g., all required parameters mapped, no cycles)
+- **Result:**
+  - Spell is saved and appears in the user's spell list.
+
+--- 
+
+---
+
+## Implementation Plan: Mint as Spell (2024-07-09)
+
+1. **Floating Action Button (FAB) Logic**
+   - Show FAB only when 2+ nodes are selected.
+   - Add to main sandbox UI (`index.js`).
+   - Listen for selection changes to show/hide FAB.
+
+2. **Subgraph Serialization**
+   - Utility function in `state.js` or new `subgraph.js`.
+   - Gather selected node IDs, connections, and parameter mappings.
+   - Return a serializable subgraph object.
+
+3. **FAB Click Handler**
+   - On click, serialize the current selection as a subgraph.
+   - Open `SpellsMenuModal` in "Create" mode, passing the subgraph as initial data.
+
+4. **SpellsMenuModal Integration**
+   - Update `SpellsMenuModal` to accept an optional initial subgraph.
+   - Pre-fill steps list with selected nodes.
+   - Add UI for selecting which node parameters to expose as spell inputs.
+   - (Optional) Show a visual summary of the subgraph.
+
+5. **Save Spell**
+   - On save, send the subgraph (nodes, connections, metadata, and exposed inputs) to the backend.
+
+6. **(Optional) Validation**
+   - Validate subgraph before allowing minting (e.g., all required parameters mapped, no cycles).
+
+**Recommended Order:**
+1. Implement FAB and show/hide logic.
+2. Write subgraph serialization utility.
+3. Wire up FAB click to modal with pre-filled data.
+4. Integrate with backend save.
+
+**Integration Points:**
+- Selection state: `state.js`
+- FAB UI: `index.js`
+- Subgraph extraction: `state.js` or new file
+- Modal: `SpellsMenuModal.js`
+- API: Spell creation endpoint
+
+--- 
+
+---
+
+## [RESOLVED] Blocker: Mint as Spell FAB Disappears After Lasso Selection (2024-07-19)
+
+### Issue Summary
+The "Mint as Spell" FAB would disappear after lasso selection because the selection state was being cleared by a race condition between the lasso `mouseup` event and a subsequent background `click` event. A `setTimeout` call to `clearSelection()` in the lasso logic was the primary cause.
+
+### Resolution (2024-07-19)
+- **Fix Implemented:** The `setTimeout(() => clearSelection(), 0)` in the lasso's `mouseup` handler in `src/platforms/web/client/src/sandbox/index.js` was replaced with a direct, synchronous call to `clearSelection()`.
+- **Outcome:** This resolves the race condition. The previous selection is now cleared *before* the new lasso selection is established. The existing click-suppression logic now correctly prevents the background click from clearing the new selection.
+- **Status:** The blocker is resolved. Lasso selection works as expected on desktop, and the "Mint as Spell" FAB persists correctly.
+
+### Next Steps
+- Continue with the implementation of the "Mint as Spell" feature as outlined in the implementation plan.
 
 --- 

@@ -10,7 +10,7 @@ const crypto = require('crypto');
 function createAuthApi(dependencies) {
   const router = express.Router();
   // This internal API is allowed to access the database directly.
-  const { userCore } = dependencies.db;
+  const { userCore, userPreferences: userPreferencesDb, creditLedger: creditLedgerDb } = dependencies.db;
   const logger = dependencies.logger;
 
   /**
@@ -69,7 +69,7 @@ function createAuthApi(dependencies) {
    * Finds a user by wallet or creates a new one, then returns the user doc.
    */
   router.post('/find-or-create-by-wallet', async (req, res) => {
-    const { address } = req.body;
+    const { address, referralCode } = req.body;
     if (!address) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Wallet address is required.' } });
     }
@@ -115,6 +115,29 @@ function createAuthApi(dependencies) {
           return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'DB error in updateLastLogin', details: dbUpdateErr.message } });
         }
       }
+
+      if (user && referralCode) {
+        try {
+          const existingPreference = await userPreferencesDb.getPreferenceByKey(user._id.toString(), 'preferredCharteredFund');
+          if (!existingPreference) {
+            logger.info(`[AuthApi] User ${user._id} has no preferred fund. Attempting to migrate referral code: ${referralCode}`);
+            const vault = await creditLedgerDb.findReferralVaultByName(referralCode);
+            if (vault && vault.vault_address) {
+              const preferenceValue = { vaultName: vault.vaultName, vaultAddress: vault.vault_address, referralCode: referralCode };
+              await userPreferencesDb.setPreferenceByKey(user._id.toString(), 'preferredCharteredFund', preferenceValue);
+              logger.info(`[AuthApi] Successfully set preferredCharteredFund for user ${user._id} to vault ${vault.vaultName} (${vault.vault_address})`);
+            } else {
+              logger.warn(`[AuthApi] Referral code ${referralCode} provided during login for user ${user._id} is invalid or has no vault address. Skipping preference update.`);
+            }
+          } else {
+            logger.info(`[AuthApi] User ${user._id} already has a preferred fund. Ignoring new referral code ${referralCode}.`);
+          }
+        } catch (prefError) {
+          logger.error(`[AuthApi] Error during referral preference migration for user ${user._id}:`, prefError);
+          // Non-fatal error, so we don't block the login process
+        }
+      }
+
       // Sanitize user object to prevent potential circular references in JSON serialization
       const safeUser = JSON.parse(JSON.stringify(user));
       res.status(200).json({ user: safeUser, isNewUser });

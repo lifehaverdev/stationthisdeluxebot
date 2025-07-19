@@ -65,6 +65,7 @@ function createAuthApi(dependencies) {
   router.post('/web3/verify', async (req, res) => {
     try {
         const { address, signature } = req.body;
+        const { referral_code: referralCode } = req.cookies;
 
         if (!address || !signature) {
             return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Address and signature are required.' } });
@@ -88,7 +89,10 @@ function createAuthApi(dependencies) {
         nonceStore.delete(lowerCaseAddress);
 
         // Defer user creation/lookup to the internal API
-        const response = await internalApiClient.post('/internal/v1/data/auth/find-or-create-by-wallet', { address: lowerCaseAddress });
+        const response = await internalApiClient.post('/internal/v1/data/auth/find-or-create-by-wallet', {
+             address: lowerCaseAddress,
+             referralCode 
+        });
         const { user } = response.data;
 
         const jwtSecret = process.env.JWT_SECRET;

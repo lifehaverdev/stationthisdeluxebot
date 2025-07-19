@@ -4,7 +4,7 @@ const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../cor
 
 function createPointsApi(dependencies) {
     const router = express.Router();
-    const { internalApiClient } = dependencies;
+    const { internalApiClient, logger } = dependencies;
 
     /**
      * @route GET /api/external/points/supported-assets
@@ -41,9 +41,29 @@ function createPointsApi(dependencies) {
      */
     router.post('/purchase', async (req, res, next) => {
         try {
+            let { referral_code: referralCode } = req.cookies;
+
+            // If no cookie, check user preferences for logged-in users
+            if (!referralCode && req.user && req.user.userId) {
+                try {
+                    const response = await internalApiClient.get(`/internal/v1/data/users/${req.user.userId}/preferences/preferredCharteredFund`);
+                    if (response.data && response.data.value && response.data.value.referralCode) {
+                        referralCode = response.data.value.referralCode;
+                        logger.info(`[pointsApi-external] Used referral code '${referralCode}' from user preferences for user ${req.user.userId}.`);
+                    }
+                } catch (error) {
+                    // A 404 is expected if the preference isn't set. We can ignore it.
+                    if (error.response && error.response.status !== 404) {
+                        // Log other errors but don't block the transaction
+                        logger.warn(`[pointsApi-external] Failed to fetch user preferences: ${error.message}`);
+                    }
+                }
+            }
+
             const payload = {
                 ...req.body,
-                userId: req.user.id
+                userId: req.user.id,
+                referralCode
             };
             const response = await internalApiClient.post('/internal/v1/data/points/purchase', payload);
             res.json(response.data);

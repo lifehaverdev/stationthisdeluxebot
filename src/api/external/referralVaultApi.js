@@ -1,11 +1,32 @@
 const express = require('express');
 const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
+const contractUtils = require('../../core/services/alchemy/contractUtils');
+const { ethers } = require('ethers');
 
 const logger = createLogger('ReferralVaultApi');
+const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function createReferralVaultApi(dependencies) {
   const router = express.Router();
+  // Use creditService as the canonical source of contract config
+  const { ethereumService, priceFeedService, creditService } = dependencies;
+  // All contract config comes from creditService
+  const contractConfig = creditService && creditService.contractConfig;
+
+  // Debug log for missing dependencies
+  console.log('[ReferralVaultApi] Dependency check:', {
+    ethereumService: !!ethereumService,
+    priceFeedService: !!priceFeedService,
+    creditService: !!creditService,
+    contractConfig: !!contractConfig,
+    contractConfigAddress: contractConfig && contractConfig.address,
+    contractConfigAbi: contractConfig && Array.isArray(contractConfig.abi) && contractConfig.abi.length
+  });
+
+  if (!ethereumService || !priceFeedService || !creditService || !contractConfig) {
+    throw new Error('ReferralVaultApi: Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
+  }
 
   // Endpoint to check if a vault name is available
   router.post('/check-name', async (req, res) => {
@@ -68,6 +89,89 @@ function createReferralVaultApi(dependencies) {
 
         const errPayload = error.response?.data || { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create referral vault.' } };
         res.status(error.response?.status || 500).json(errPayload);
+    }
+  });
+
+  router.get('/:vaultAddress/dashboard', async (req, res) => {
+    const { vaultAddress } = req.params;
+    logger.info(`[ReferralVaultApi] GET /:vaultAddress/dashboard for vault: ${vaultAddress}`);
+
+    try {
+      // 1. Get historical stats from the internal API
+      const response = await internalApiClient.get(`/internal/v1/data/ledger/vaults/${vaultAddress}/stats`);
+      const historicalStats = response.data.stats;
+
+      // 2. Enrich with on-chain data and prices
+      const enrichedStats = await Promise.all(
+        historicalStats.map(async (stat) => {
+          const { tokenAddress, totalDeposits, totalAdjustedGrossUsd } = stat;
+
+          // a. Get token metadata
+          let symbol = 'N/A', decimals = 18, iconUrl = null, name = '';
+          if (tokenAddress.toLowerCase() === NATIVE_ETH_ADDRESS) {
+            // Native ETH: hardcode metadata
+            symbol = 'ETH';
+            decimals = 18;
+            name = 'Ethereum';
+            iconUrl = null;
+          } else {
+            try {
+              const meta = await priceFeedService.getMetadata(tokenAddress);
+              symbol = meta.symbol;
+              decimals = meta.decimals;
+              name = meta.name;
+              iconUrl = meta.logo || null;
+            } catch (e) {
+              logger.warn(`[ReferralVaultApi] Could not fetch metadata for token ${tokenAddress}`, e.message);
+            }
+          }
+
+          // b. Get on-chain withdrawable balance (userOwned)
+          let currentWithdrawable = '0';
+          try {
+            const custodyKey = contractUtils.getCustodyKey(vaultAddress, tokenAddress);
+            const packedAmount = await ethereumService.read(contractConfig.address, contractConfig.abi, 'custody', custodyKey);
+            const { userOwned } = contractUtils.splitCustodyAmount(packedAmount);
+            currentWithdrawable = userOwned.toString();
+          } catch (e) {
+            logger.error(`[ReferralVaultApi] Could not fetch on-chain custody for ${tokenAddress} in vault ${vaultAddress}`, e);
+          }
+
+          // c. Get current price
+          let price = 0;
+          try {
+            price = await priceFeedService.getPriceInUsd(tokenAddress);
+          } catch (e) {
+            logger.warn(`[ReferralVaultApi] Could not fetch price for token ${tokenAddress}`, e.message);
+          }
+          
+          const toFloat = (val) => parseFloat(ethers.formatUnits(val, decimals));
+
+          return {
+            tokenAddress,
+            symbol,
+            decimals,
+            iconUrl,
+            name,
+            totalDeposits,
+            totalDepositsUsd: totalAdjustedGrossUsd,
+            currentWithdrawable,
+            currentWithdrawableUsd: toFloat(currentWithdrawable) * price,
+          };
+        })
+      );
+
+      res.json({
+        vaultAddress,
+        tokens: enrichedStats,
+      });
+
+    } catch (error) {
+      logger.error(`[ReferralVaultApi] Failed to get dashboard data for vault ${vaultAddress}:`, error);
+      if (error.response && error.response.status === 404) {
+        return res.status(404).json({ error: { message: 'Vault not found or has no confirmed deposits.' } });
+      }
+      res.status(500).json({ error: { message: 'An internal error occurred while fetching vault data.' } });
     }
   });
 

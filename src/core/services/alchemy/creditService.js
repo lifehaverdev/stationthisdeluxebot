@@ -597,15 +597,15 @@ class CreditService {
             const referralVault = await this.creditLedgerDb.findReferralVaultByAddress(vaultAccount);
             if (referralVault && referralVault.master_account_id) {
                 referrerMasterAccountId = referralVault.master_account_id.toString();
-                // 5% reward of the *adjusted* gross deposit value
-                referralRewardUsd = adjustedGrossDepositUsd * 0.05; 
-                this.logger.info(`[CreditService] Referral vault found for owner ${referrerMasterAccountId}. Calculated reward: $${referralRewardUsd.toFixed(4)} from adjusted value.`);
+                // 5% reward of the total gross deposit value
+                referralRewardUsd = grossDepositUsd * 0.05; 
+                this.logger.info(`[CreditService] Referral vault found for owner ${referrerMasterAccountId}. Calculated reward: $${referralRewardUsd.toFixed(4)} from gross value.`);
             } else {
                 this.logger.warn(`[CreditService] A non-default vault was used (${vaultAccount}), but no matching referral account was found.`);
             }
         }
         // --- END REFERRAL LOGIC ---
-
+        const fundAddress = vaultAccount;
         // Note: The fee passed to commit is the platform's total fee, including gas reimbursement and any markup.
         const estimatedGasCostUsd = await this.ethereumService.estimateGasCostInUsd(this.contractConfig.address, this.contractConfig.abi, 'commit', fundAddress, user, token, amount, 0, '0x');
         
@@ -672,13 +672,14 @@ class CreditService {
         const userCreditedUsd = netAdjustedDepositUsd;
         // --- END MARKUP REMOVAL ---
         
-        // The referral reward is deducted from the protocol's share (the markup)
-        const finalReferralPayoutUsd = 0; // No markup, so no referral payout
-        const netProtocolProfitUsd = 0;
+        // The referral reward is deducted from the platform's share (the funding rate cut)
+        const platformCutUsd = grossDepositUsd * (1 - fundingRate);
+        const finalReferralPayoutUsd = Math.min(platformCutUsd, referralRewardUsd); // Cannot pay out more than the platform's total cut
+        const netProtocolProfitUsd = platformCutUsd - finalReferralPayoutUsd;
         
         this.logger.info(`[CreditService] Step 5: Applying credit to user's off-chain account. Adj. Gross: $${adjustedGrossDepositUsd.toFixed(2)}, Gas: $${actualGasCostUsd.toFixed(2)}, Adj. Net: $${netAdjustedDepositUsd.toFixed(2)}, User Credit: $${userCreditedUsd.toFixed(2)}.`);
         // Remove markup from accounting details log
-        this.logger.info(`[CreditService] Accounting Details -> Referral Payout: $${finalReferralPayoutUsd.toFixed(2)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(2)}`);
+        this.logger.info(`[CreditService] Accounting Details -> Platform Cut: $${platformCutUsd.toFixed(4)}, Referral Payout: $${finalReferralPayoutUsd.toFixed(4)}, Net Protocol Profit: $${netProtocolProfitUsd.toFixed(4)}`);
 
         // --- Point Calculation for Per-Deposit Tracking ---
         const points_credited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
@@ -687,33 +688,32 @@ class CreditService {
         this.logger.info(`[CreditService] Point Calculation -> User Credited USD: $${userCreditedUsd.toFixed(2)}, Points Credited: ${points_credited}`);
         
         // --- Process Referral Payout ---
-        // (Referral logic disabled since no markup)
-        // if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
-        //     try {
-        //         this.logger.info(`[CreditService] Crediting referrer ${referrerMasterAccountId} with $${finalReferralPayoutUsd.toFixed(4)}.`);
-        //         await this.internalApiClient.post(`/internal/v1/data/users/${referrerMasterAccountId}/economy/credit`, {
-        //             amountUsd: finalReferralPayoutUsd,
-        //             transactionType: 'REFERRAL_DEPOSIT_REWARD',
-        //             description: `Referral reward from deposit by user ${user} to vault ${vaultAccount}.`,
-        //             externalTransactionId: confirmationTxHash,
-        //             metadata: {
-        //                 funding_rate: fundingRate,
-        //                 original_deposit_usd: depositValueUsd,
-        //                 adjusted_deposit_usd: adjustedGrossDepositUsd
-        //             }
-        //         });
+        if (referrerMasterAccountId && finalReferralPayoutUsd > 0) {
+            try {
+                this.logger.info(`[CreditService] Crediting referrer ${referrerMasterAccountId} with $${finalReferralPayoutUsd.toFixed(4)}.`);
+                await this.internalApiClient.post(`/internal/v1/data/users/${referrerMasterAccountId}/economy/credit`, {
+                    amountUsd: finalReferralPayoutUsd,
+                    transactionType: 'REFERRAL_DEPOSIT_REWARD',
+                    description: `Referral reward from deposit by user ${user} to vault ${vaultAccount}.`,
+                    externalTransactionId: confirmationTxHash,
+                    metadata: {
+                        funding_rate: fundingRate,
+                        original_deposit_usd: depositValueUsd,
+                        adjusted_deposit_usd: adjustedGrossDepositUsd
+                    }
+                });
 
-        //         const depositAmountWei = amount.toString();
-        //         const rewardInEth = finalReferralPayoutUsd / priceInUsd;
-        //         const rewardInWei = ethers.parseEther(rewardInEth.toFixed(18)).toString();
-        //         await this.creditLedgerDb.updateReferralVaultStats(vaultAccount, depositAmountWei, rewardInWei);
-        //         this.logger.info(`[CreditService] Successfully credited referrer and updated vault stats for ${vaultAccount}.`);
+                const depositAmountWei = amount.toString();
+                const rewardInEth = finalReferralPayoutUsd / priceInUsd;
+                const rewardInWei = ethers.parseEther(rewardInEth.toFixed(18)).toString();
+                await this.creditLedgerDb.updateReferralVaultStats(vaultAccount, depositAmountWei, rewardInWei);
+                this.logger.info(`[CreditService] Successfully credited referrer and updated vault stats for ${vaultAccount}.`);
 
-        //     } catch (error) {
-        //         this.logger.error(`[CreditService] CRITICAL: Failed to credit referral reward for vault ${vaultAccount} and referrer ${referrerMasterAccountId}. Requires manual intervention.`, error);
-        //         // This failure is logged but does not stop the original depositor from being credited.
-        //     }
-        // }
+            } catch (error) {
+                this.logger.error(`[CreditService] CRITICAL: Failed to credit referral reward for vault ${vaultAccount} and referrer ${referrerMasterAccountId}. Requires manual intervention.`, error);
+                // This failure is logged but does not stop the original depositor from being credited.
+            }
+        }
         // --- End Referral Payout ---
         
         // 6. FINAL LEDGER UPDATE (for all deposits in the group)

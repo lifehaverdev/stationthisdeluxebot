@@ -128,6 +128,47 @@ Integrate real API calls for vault stats and withdrawal in the dashboard modal.
 Finalize referral link format and update all relevant UI/logic.
 (Optional) Standardize all user ID storage/querying to use a single type (string or ObjectId).
 Implement Playwright or equivalent UI test for the full referral vault flow.
+
+### Investigation: `TypeError` on Vault Dashboard API (2025-07-18)
+
+**1. The Problem:**
+Upon wiring up the new `referralVaultApi` module, the application fails to start, throwing a `TypeError: Cannot read properties of undefined (reading 'contract')`.
+
+**2. The Director's Requirement:**
+The lead director has mandated that any fix for this issue **must not** involve broad, disruptive changes to the application's core initialization flow. Specifically, the function signature for `initializeAPI(options)` must not be altered, as this would break the initialization pattern for all other API modules. The solution must be surgical and localized.
+
+**3. Error Trace Analysis:**
+The error originates in `src/api/external/referralVaultApi.js` on the line where it tries to access `config.contract`. The `config` object is undefined. The trace is as follows:
+- `app.js` -> `initializeServices()`
+- `initializeServices()` -> `initializeAPI(services)`
+- `initializeAPI(services)` -> `initializeExternalApi(dependencies)`
+- `initializeExternalApi(dependencies)` -> `createReferralVaultApi(dependencies)`
+
+The root cause is that the `dependencies` object passed down this chain never has the main `config` object added to it. The `services` are passed correctly, but the configuration is lost.
+
+**4. The Go-Forward Strategy:**
+The fix must inject the application `config` into the `dependencies` object at the highest possible level within the API module, without changing function signatures.
+
+- The file `src/api/index.js` is the ideal place to implement this fix. It is the entry point for the entire API layer and is where the `dependencies` object is first assembled for the external API.
+- We will modify `initializeAPI` to import the master configuration file (`src/config.js`) directly.
+- It will then add this imported `config` object to the `dependencies` object it creates and passes to `initializeExternalApi`.
+- This approach is safe and respects the director's requirements because:
+    - It does not change any function signatures.
+    - It is completely transparent to all other API modules.
+    - It surgically injects the missing dependency exactly where it's needed.
+
+### Backend - Vault Dashboard API (2025-07-18)
+- **DB Layer:** Added `getVaultTokenStats(vaultAddress)` to `creditLedgerDb.js`. This method uses an aggregation pipeline to efficiently query all confirmed deposits for a given vault, grouping them by token and summing the total deposit amounts.
+- **Internal API:** Added a new endpoint `GET /internal/v1/data/ledger/vaults/:vaultAddress/stats` to `creditLedgerApi.js`. This securely exposes the `getVaultTokenStats` DB method to other internal services.
+- **External API:**
+  - Created a new external-facing API module at `src/api/external/referralVaultApi.js`.
+  - Implemented the primary dashboard endpoint `GET /api/v1/referral-vault/:vaultAddress/dashboard`.
+  - This endpoint fetches historical data from the internal API, then enriches it with:
+    - **On-chain Data:** Fetches the current withdrawable balance for each token from the `custody` mapping using `ethereumService`.
+    - **Price Data:** Fetches the current USD price for each token using `priceFeedService`.
+  - The final response provides a comprehensive, per-token breakdown of all stats needed for the frontend modal.
+- **TODO:** The new `referralVaultApi` router needs to be wired into the main external API router in `src/api/external/index.js`.
+
 Changes to Plan
 No major deviations; all changes align with the North Star and Genius Plan.
 Referral link format decision deferred for higher-level review.

@@ -14,6 +14,7 @@ const fs = require('fs');
 const { createLogger } = require('../../utils/logger');
 const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
+const { referralHandler } = require('./middleware/referralHandler');
 
 // Add this function before middleware setup
 function rawBodySaver(req, res, buf, encoding) {
@@ -46,6 +47,9 @@ function initializeWebPlatform(services, options = {}) {
   app.use(express.json({ verify: rawBodySaver }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+
+  // --- Referral Handler ---
+  app.use(referralHandler);
 
   // --- CSRF Protection ---
   app.use(csrfProtection); // Use centralized CSRF middleware

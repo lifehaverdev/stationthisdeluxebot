@@ -9,7 +9,11 @@ import {
     getAvailableTools,
     OUTPUT_TYPE_MAPPING,
     undo,
-    redo
+    redo,
+    lasso,
+    selectNode,
+    clearSelection,
+    getSelectedNodeIds
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
 import { createToolWindow } from './node/index.js';
@@ -23,6 +27,17 @@ import SpellsMenuModal from './components/SpellsMenuModal.js';
 import { renderAllConnections } from './connections/index.js';
 import './components/ReferralVaultModal/referralVaultModal.js';
 import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
+import { MintSpellFAB } from './components/MintSpellFAB.js';
+
+let spacebarIsDown = false;
+let justLassoed = false;
+
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') spacebarIsDown = true;
+});
+document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') spacebarIsDown = false;
+});
 
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
@@ -114,11 +129,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isPanning = false, start = { x: 0, y: 0 }, panStart = { x: 0, y: 0 };
     sandboxContent.addEventListener('mousedown', (e) => {
         // Pan only when clicking on the background, not on other elements.
-        if (e.target === canvas || e.target.classList.contains('sandbox-bg')) {
+        // Figma-style: pan with spacebar or middle mouse
+        if ((e.target === canvas || e.target.classList.contains('sandbox-bg')) && (e.button === 1 || spacebarIsDown)) {
             isPanning = true;
             start = { x: e.clientX, y: e.clientY };
             panStart = { ...pan };
             sandboxContent.style.cursor = 'grabbing';
+            e.preventDefault();
         }
     });
     document.addEventListener('mousemove', (e) => {
@@ -244,6 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize click handlers
     initClickHandlers();
+    initLassoSelection();
 
     // Spells Menu link handler
     const spellsNavLink = document.querySelector('nav.main-nav a[href="#spells"]');
@@ -297,7 +315,135 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-render connections
         renderAllConnections();
     }
+
+    const fabContainer = document.querySelector('.sandbox-canvas');
+    const mintSpellFAB = new MintSpellFAB(fabContainer);
+
+    // Function to update FAB visibility
+    function updateFAB() {
+        const sel = getSelectedNodeIds();
+        console.log('[updateFAB] selection size:', sel.size, 'ids:', Array.from(sel));
+        mintSpellFAB.update(sel.size);
+    }
+
+    // Listen for selection changes
+    document.addEventListener('selectionchange', updateFAB);
+
+    // Initial check
+    updateFAB();
 });
+
+function initLassoSelection() {
+    const canvas = document.querySelector('.sandbox-canvas');
+
+    canvas.addEventListener('mousedown', (e) => {
+        // Figma-style: only start lasso with left mouse, no spacebar
+        if (e.button !== 0 || e.target !== canvas || spacebarIsDown) return;
+
+        lasso.active = true;
+        lasso.x1 = e.clientX;
+        lasso.y1 = e.clientY;
+
+        if (!lasso.element) {
+            lasso.element = document.createElement('div');
+            lasso.element.className = 'lasso-rect';
+            document.body.appendChild(lasso.element);
+        }
+        lasso.element.style.display = 'block';
+        updateLassoRect(e);
+        e.preventDefault();
+        e.stopPropagation(); // Stop event from bubbling to pan listener
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!lasso.active) return;
+        updateLassoRect(e);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!lasso.active) return;
+        
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Hide the lasso element immediately
+        if (lasso.element) {
+            lasso.element.style.display = 'none';
+        }
+
+        const dx = Math.abs(lasso.x1 - lasso.x2);
+        const dy = Math.abs(lasso.y1 - lasso.y2);
+
+        // Deactivate lasso state *after* getting final coordinates
+        lasso.active = false;
+        
+        // If the lasso is too small, treat it as a click and do nothing
+        if (dx < 10 && dy < 10) {
+            return;
+        }
+
+        // One-time capture-phase click suppression
+        function suppressNextClick(ev) {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            document.removeEventListener('click', suppressNextClick, true);
+            console.log('[SUPPRESS] Suppressed next click after lasso');
+        }
+        document.addEventListener('click', suppressNextClick, true);
+
+        const lassoRect = {
+            left: Math.min(lasso.x1, lasso.x2),
+            right: Math.max(lasso.x1, lasso.x2),
+            top: Math.min(lasso.y1, lasso.y2),
+            bottom: Math.max(lasso.y1, lasso.y2)
+        };
+        
+        const selectedIdsInLasso = new Set();
+        getToolWindows().forEach(win => {
+            const el = document.getElementById(win.id);
+            if (!el) return;
+            
+            const elRect = el.getBoundingClientRect();
+
+            // AABB (Axis-Aligned Bounding Box) intersection test
+            if (
+                elRect.left < lassoRect.right &&
+                elRect.right > lassoRect.left &&
+                elRect.top < lassoRect.bottom &&
+                elRect.bottom > lassoRect.top
+            ) {
+                selectedIdsInLasso.add(win.id);
+            }
+        });
+
+        // If shift is not held, clear the previous selection *before* adding the new one.
+        if (!e.shiftKey) {
+            clearSelection();
+        }
+
+        // Select all the nodes that were within the lasso
+        if (selectedIdsInLasso.size > 0) {
+            console.log('[LASSO] Selecting nodes:', Array.from(selectedIdsInLasso));
+            selectedIdsInLasso.forEach(id => {
+                selectNode(id, true); // `true` for additive selection
+            });
+        }
+    });
+
+    function updateLassoRect(e) {
+        if (!lasso.element) return;
+        lasso.x2 = e.clientX;
+        lasso.y2 = e.clientY;
+        const x = Math.min(lasso.x1, lasso.x2);
+        const y = Math.min(lasso.y1, lasso.y2);
+        const width = Math.abs(lasso.x1 - lasso.x2);
+        const height = Math.abs(lasso.y1 - lasso.y2);
+        lasso.element.style.left = `${x}px`;
+        lasso.element.style.top = `${y}px`;
+        lasso.element.style.width = `${width}px`;
+        lasso.element.style.height = `${height}px`;
+    }
+}
 
 // Initialize click interaction elements
 const rippleElement = document.createElement('img');
@@ -375,11 +521,28 @@ document.body.appendChild(actionModal);
 function initClickHandlers() {
     // Handle click interactions
     document.addEventListener('click', (e) => {
+        console.log('[CLICK HANDLER]', e.target, getSelectedNodeIds().size);
+        if (justLassoed) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+        }
+
+        const isNodeOrUI = e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle, .create-submenu');
+        // If the click is on a node, the node's own handler will manage selection.
+        // If it's on other UI, do nothing.
+        // If it's on the background, clear selection.
+        if (!isNodeOrUI) {
+             if (getSelectedNodeIds().size > 0) {
+                clearSelection();
+            }
+        }
+
         // Prevent modal from opening when interacting with sidebar, tool windows, or other modals.
         if (e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle')) {
             return;
         }
-
+        
         const clickedSubmenuBtn = e.target.closest('.create-submenu button');
         const clickedUploadBtn = e.target.closest('.upload-btn');
 

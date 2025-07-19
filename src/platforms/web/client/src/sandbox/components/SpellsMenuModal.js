@@ -1,7 +1,7 @@
 // src/platforms/web/client/src/sandbox/components/SpellsMenuModal.js
 
 export default class SpellsMenuModal {
-    constructor() {
+    constructor(options = {}) {
         this.state = {
             view: 'main', // 'main', 'spellDetail', 'toolSelect', 'paramEdit', 'marketplace', 'marketDetail', 'create'
             loading: false,
@@ -12,9 +12,15 @@ export default class SpellsMenuModal {
             // For create form
             newSpellName: '',
             newSpellDescription: '',
+            subgraph: options.initialData?.subgraph || null,
+            newSpellExposedInputs: {},
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
+
+        if (this.state.subgraph) {
+            this.state.view = 'create';
+        }
     }
 
     setState(newState) {
@@ -99,7 +105,10 @@ export default class SpellsMenuModal {
         
         this.render();
         this.attachCloseEvents();
-        this.fetchUserSpells();
+
+        if (!this.state.subgraph) {
+            this.fetchUserSpells();
+        }
     }
 
     hide() {
@@ -190,7 +199,7 @@ export default class SpellsMenuModal {
             // Create button
             const createBtn = this.modalElement.querySelector('.create-spell-btn');
             if (createBtn) createBtn.onclick = () => {
-                this.setState({ view: 'create', newSpellName: '', newSpellDescription: '', error: null });
+                this.setState({ view: 'create', newSpellName: '', newSpellDescription: '', error: null, newSpellExposedInputs: {} });
             };
         }
         // Spell create actions
@@ -207,11 +216,19 @@ export default class SpellsMenuModal {
                     this.state.newSpellDescription = e.target.value;
                 };
             }
+            // Handle exposed inputs checkboxes
+            const inputCheckboxes = this.modalElement.querySelectorAll('.spell-input-checkbox');
+            inputCheckboxes.forEach(checkbox => {
+                checkbox.onchange = (e) => {
+                    const inputId = e.target.dataset.inputId;
+                    this.state.newSpellExposedInputs[inputId] = e.target.checked;
+                };
+            });
             const submitBtn = this.modalElement.querySelector('.submit-create-spell-btn');
             const cancelBtn = this.modalElement.querySelector('.cancel-create-spell-btn');
             if (submitBtn) submitBtn.onclick = () => this.handleCreateSpell();
             if (cancelBtn) cancelBtn.onclick = () => {
-                this.setState({ view: 'main', newSpellName: '', newSpellDescription: '', error: null });
+                this.setState({ view: 'main', newSpellName: '', newSpellDescription: '', error: null, newSpellExposedInputs: {} });
                 this.fetchUserSpells();
             };
         }
@@ -263,30 +280,9 @@ export default class SpellsMenuModal {
                 html += '</ul>';
             }
         } else if (view === 'create') {
-            html += `<div class="spell-create-view">
-                <label>Name:<br><input type="text" class="create-spell-name" value="${newSpellName || ''}" maxlength="64" /></label><br>
-                <label>Description:<br><textarea class="create-spell-desc" maxlength="256">${newSpellDescription || ''}</textarea></label><br>
-                <div class="spell-create-actions">
-                    <button class="submit-create-spell-btn">Create</button>
-                    <button class="cancel-create-spell-btn">Cancel</button>
-                </div>
-            </div>`;
+            html += this.renderCreateView();
         } else if (view === 'spellDetail' && selectedSpell) {
-            html += `<div class="spell-detail-view">
-                <label>Name:<br><input type="text" class="spell-detail-name" value="${selectedSpell.name || ''}" /></label><br>
-                <label>Description:<br><textarea class="spell-detail-desc">${selectedSpell.description || ''}</textarea></label><br>
-                <div class="spell-detail-steps">
-                    <strong>Steps:</strong>
-                    <ul>
-                        ${(selectedSpell.steps || []).map(step => `<li>${step.toolIdentifier}</li>`).join('') || '<li>No steps yet.</li>'}
-                    </ul>
-                </div>
-                <div class="spell-detail-actions">
-                    <button class="save-spell-btn">Save</button>
-                    <button class="delete-spell-btn">Delete</button>
-                    <button class="back-spell-btn">Back</button>
-                </div>
-            </div>`;
+            html += this.renderSpellDetailView();
         } else if (view === 'marketplace') {
             if (!marketplaceSpells || marketplaceSpells.length === 0) {
                 html += '<div class="empty-message">No public spells found.</div>';
@@ -299,6 +295,120 @@ export default class SpellsMenuModal {
             }
         }
         return html;
+    }
+
+    renderCreateView() {
+        const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs } = this.state;
+        
+        let stepsHtml = '';
+        if (subgraph && subgraph.nodes) {
+            stepsHtml = `
+                <div class="spell-steps-preview">
+                    <h4>Steps in this Spell:</h4>
+                    <ul>
+                        ${subgraph.nodes.map(node => `<li>${node.tool.displayName}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        let potentialInputsHtml = '';
+        if (subgraph && subgraph.nodes) {
+            const connectedInputs = new Set();
+            if (subgraph.connections) {
+                subgraph.connections.forEach(conn => {
+                    connectedInputs.add(`${conn.to.nodeId}__${conn.to.paramKey}`);
+                });
+            }
+
+            const potentialInputs = [];
+            for (const node of subgraph.nodes) {
+                if (node.tool.inputSchema) {
+                    for (const paramKey in node.tool.inputSchema) {
+                        if (!connectedInputs.has(`${node.id}__${paramKey}`)) {
+                            const paramDef = node.tool.inputSchema[paramKey];
+                            potentialInputs.push({
+                                nodeId: node.id,
+                                nodeDisplayName: node.tool.displayName,
+                                paramKey: paramKey,
+                                paramDisplayName: paramDef.displayName || paramKey,
+                                uniqueId: `${node.id}__${paramKey}`
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (potentialInputs.length > 0) {
+                const inputsList = potentialInputs.map(input => `
+                    <li class="spell-input-item">
+                        <label>
+                            <input type="checkbox" class="spell-input-checkbox" data-input-id="${input.uniqueId}" ${newSpellExposedInputs[input.uniqueId] ? 'checked' : ''}>
+                            <span class="spell-input-nodename">${input.nodeDisplayName}:</span>
+                            <span class="spell-input-paramname">${input.paramDisplayName}</span>
+                        </label>
+                    </li>
+                `).join('');
+
+                potentialInputsHtml = `
+                    <div class="spell-inputs-selection">
+                        <h4>Expose Spell Inputs</h4>
+                        <p>Select which parameters will be available as inputs when using this spell.</p>
+                        <ul>
+                            ${inputsList}
+                        </ul>
+                    </div>
+                `;
+            }
+        }
+
+        return `
+            <div class="create-spell-view">
+                <h2>Mint New Spell</h2>
+                ${error ? `<div class="error-message">${error}</div>` : ''}
+                <div class="form-group">
+                    <label for="spell-name">Spell Name</label>
+                    <input type="text" id="spell-name" class="create-spell-name" placeholder="e.g., Psychedelic Portrait" value="${newSpellName}">
+                </div>
+                <div class="form-group">
+                    <label for="spell-desc">Description</label>
+                    <textarea id="spell-desc" class="create-spell-desc" placeholder="A short description of what this spell does.">${newSpellDescription}</textarea>
+                </div>
+                ${stepsHtml}
+                ${potentialInputsHtml}
+                <div class="form-actions">
+                    <button class="cancel-create-spell-btn">Cancel</button>
+                    <button class="submit-create-spell-btn">Save Spell</button>
+                </div>
+            </div>
+        `;
+    }
+
+    renderSpellDetailView() {
+        const { selectedSpell } = this.state;
+        let stepsHtml = '';
+        if (selectedSpell && selectedSpell.steps) {
+            stepsHtml = `
+                <div class="spell-detail-steps">
+                    <strong>Steps:</strong>
+                    <ul>
+                        ${selectedSpell.steps.map(step => `<li>${step.toolIdentifier}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        return `
+            <div class="spell-detail-view">
+                <label>Name:<br><input type="text" class="spell-detail-name" value="${selectedSpell.name || ''}" /></label><br>
+                <label>Description:<br><textarea class="spell-detail-desc">${selectedSpell.description || ''}</textarea></label><br>
+                ${stepsHtml}
+                <div class="spell-detail-actions">
+                    <button class="save-spell-btn">Save</button>
+                    <button class="delete-spell-btn">Delete</button>
+                    <button class="back-spell-btn">Back</button>
+                </div>
+            </div>
+        `;
     }
 
     attachEvents() {
@@ -347,23 +457,41 @@ export default class SpellsMenuModal {
     }
 
     async handleCreateSpell() {
-        const { newSpellName, newSpellDescription, spells } = this.state;
-        const name = (newSpellName || '').trim();
-        if (!name) {
+        const { newSpellName, newSpellDescription, spells, subgraph, newSpellExposedInputs } = this.state;
+
+        // Validation
+        if (!newSpellName.trim()) {
             this.setState({ error: 'Spell name is required.' });
             return;
         }
-        // Uniqueness check (case-insensitive)
-        const isDuplicate = spells.some(s => (s.name || '').trim().toLowerCase() === name.toLowerCase());
+
+        const isDuplicate = spells.some(s => (s.name || '').trim().toLowerCase() === newSpellName.trim().toLowerCase());
         if (isDuplicate) {
             this.setState({ error: 'You already have a spell with this name. Please choose a different name.' });
             return;
         }
+
         this.setState({ loading: true, error: null });
+
+        const exposedInputs = Object.entries(newSpellExposedInputs)
+            .filter(([, isExposed]) => isExposed)
+            .map(([inputId]) => {
+                const [nodeId, paramKey] = inputId.split('__');
+                return { nodeId, paramKey };
+            });
+
         try {
-            // Get CSRF token
             const csrfRes = await fetch('/api/v1/csrf-token');
             const { csrfToken } = await csrfRes.json();
+
+            const payload = {
+                name: newSpellName,
+                description: newSpellDescription,
+                steps: subgraph ? subgraph.nodes.map(n => ({ id: n.id, toolIdentifier: n.tool.toolId, displayName: n.tool.displayName, parameterMappings: n.parameterMappings })) : [],
+                connections: subgraph ? subgraph.connections : [],
+                exposedInputs: exposedInputs,
+            };
+
             const res = await fetch('/api/v1/spells', {
                 method: 'POST',
                 headers: {
@@ -371,17 +499,18 @@ export default class SpellsMenuModal {
                     'x-csrf-token': csrfToken
                 },
                 credentials: 'include',
-                body: JSON.stringify({
-                    name,
-                    description: newSpellDescription
-                })
+                body: JSON.stringify(payload)
             });
-            if (!res.ok) throw new Error('Failed to create spell');
-            // After creating, return to main view and re-fetch spells
-            this.setState({ loading: false, view: 'main', newSpellName: '', newSpellDescription: '', error: null });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Failed to create spell');
+            }
+
+            this.setState({ loading: false, view: 'main', newSpellName: '', newSpellDescription: '', newSpellExposedInputs: {} });
             this.fetchUserSpells();
         } catch (err) {
-            this.setState({ error: 'Failed to create spell.', loading: false });
+            this.setState({ error: err.message, loading: false });
         }
     }
 } 

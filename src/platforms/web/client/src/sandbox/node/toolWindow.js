@@ -51,17 +51,20 @@ export function createToolWindow(tool, position, id = null, output = null) {
     toolWindowEl.setAttribute('data-displayname', tool.displayName || '');
 
     toolWindowEl.addEventListener('click', (e) => {
+        // Only handle left mouse button
+        if (e.button !== 0) return;
         if (e.shiftKey) {
             toggleNodeSelection(windowId);
         } else {
-            // If not shift-clicking, and this node isn't the ONLY one selected,
-            // clear others and select this one.
-            const selected = getSelectedNodeIds();
-            if (selected.size !== 1 || !selected.has(windowId)) {
-                selectNode(windowId);
-            }
+            selectNode(windowId, false);
         }
-        e.stopPropagation(); // Prevent this click from reaching the canvas
+        e.stopPropagation();
+    });
+
+    // Mobile: tap toggles selection (multi-select by default)
+    toolWindowEl.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        toggleNodeSelection(windowId);
     });
 
     // Use existing parameterMappings if they exist, otherwise initialize them.

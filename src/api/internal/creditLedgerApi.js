@@ -215,6 +215,22 @@ function createCreditLedgerApi(services, logger) {
     }
   });
 
+  // GET /ledger/vaults/:vaultAddress/stats - Get aggregated token statistics for a vault
+  router.get('/vaults/:vaultAddress/stats', async (req, res) => {
+    const { vaultAddress } = req.params;
+    const requestId = uuidv4();
+
+    logger.info(`[creditLedgerApi] GET /ledger/vaults/${vaultAddress}/stats - RequestId: ${requestId}`);
+
+    try {
+      const stats = await creditLedgerDb.getVaultTokenStats(vaultAddress);
+      res.json({ stats, requestId });
+    } catch (error) {
+      logger.error(`[creditLedgerApi] Error getting vault stats for ${vaultAddress}:`, error);
+      res.status(500).json({ error: { message: 'Failed to get vault stats', details: error.message, requestId } });
+    }
+  });
+
   // GET /ledger/points/:masterAccountId - Get total points remaining for a user
   router.get('/points/:masterAccountId', async (req, res) => {
     const { masterAccountId } = req.params;
