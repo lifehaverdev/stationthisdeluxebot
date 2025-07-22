@@ -114,6 +114,40 @@ function createSpellsApi(dependencies) {
         }
     });
 
+    // POST /spells/cast - Execute a spell (proxy to internal API)
+    router.post('/cast', async (req, res) => {
+        try {
+            const user = req.user;
+            if (!user || !user.userId) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
+            }
+
+            const { slug, context = {} } = req.body || {};
+            if (!slug) {
+                return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing spell slug in request body.' } });
+            }
+
+            // Ensure masterAccountId is set to the authenticated user
+            const proxyPayload = {
+                slug,
+                context: {
+                    masterAccountId: user.userId,
+                    platform: context.platform || 'web-sandbox',
+                    parameterOverrides: context.parameterOverrides || {},
+                    ...context,
+                }
+            };
+
+            const response = await internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload);
+            res.status(response.status).json(response.data);
+        } catch (error) {
+            const statusCode = error.response ? error.response.status : 502;
+            const errorData = error.response ? error.response.data : { message: 'Unable to cast spell.' };
+            logger.error('Failed to cast spell via external API:', errorData);
+            res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+        }
+    });
+
     // ... add other protected endpoints as needed ...
 
     return router;
