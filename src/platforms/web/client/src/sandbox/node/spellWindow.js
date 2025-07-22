@@ -389,10 +389,20 @@ async function executeSpell(windowId) {
 
     console.log(`[spellWindow] Executing spell "${spell.name}" with inputs:`, inputs);
 
+    // Prepare payload for Spells API
+    const masterAccountId = await getCurrentMasterAccountId();
+    if (!masterAccountId) {
+        alert('You must be logged in to cast spells.');
+        return;
+    }
+
     const payload = {
-        toolId: `spell-${spell.slug}`,
-        inputs: inputs,
-        metadata: { platform: 'web-sandbox' }
+        slug: spell.slug,
+        context: {
+            masterAccountId,
+            parameterOverrides: inputs,
+            platform: 'web-sandbox'
+        }
     };
 
     try {
@@ -410,7 +420,7 @@ async function executeSpell(windowId) {
         const csrfRes = await fetch('/api/v1/csrf-token');
         const { csrfToken } = await csrfRes.json();
 
-        const response = await fetch('/api/v1/generation/execute', {
+        const response = await fetch('/api/v1/spells/cast', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
             credentials: 'include',
@@ -549,4 +559,19 @@ function createExecuteButton() {
     button.textContent = 'Execute Spell';
     button.className = 'execute-button';
     return button;
+} 
+
+// --- Helper: fetch & cache current user's MasterAccountId ---
+let _cachedMasterAccountId = null;
+async function getCurrentMasterAccountId() {
+    if (_cachedMasterAccountId) return _cachedMasterAccountId;
+    try {
+        const res = await fetch('/api/v1/user/dashboard', { credentials: 'include' });
+        if (!res.ok) return null;
+        const data = await res.json();
+        _cachedMasterAccountId = data.masterAccountId || null;
+        return _cachedMasterAccountId;
+    } catch {
+        return null;
+    }
 } 
