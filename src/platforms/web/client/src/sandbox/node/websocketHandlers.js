@@ -57,21 +57,27 @@ export function handleGenerationUpdate(payload) {
     const { generationId, outputs, status, toolId } = payload;
     let toolWindowEl = generationIdToWindowMap[generationId];
 
-    // Fallback: attempt to locate a tool window by toolId (useful for spell completion events)
+    // Debug
+    console.log('[WS] generationUpdate received', { generationId, toolId });
+
+    // Fallback search by toolId – check spell-window first then any tool-window
     if (!toolWindowEl && toolId) {
-        toolWindowEl = document.querySelector(`.tool-window[data-toolid="${toolId}"]`);
+        toolWindowEl = document.querySelector(`.spell-window[data-toolid="${toolId}"]`) ||
+                       document.querySelector(`.tool-window[data-toolid="${toolId}"]`);
     }
 
     if (toolWindowEl) {
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');
         if (progressIndicator) progressIndicator.remove();
 
+        // Always append result container at the end so it isn't hidden behind details panel
         let resultContainer = toolWindowEl.querySelector('.result-container');
         if (!resultContainer) {
             resultContainer = document.createElement('div');
             resultContainer.className = 'result-container';
             toolWindowEl.appendChild(resultContainer);
         }
+        resultContainer.style.display = 'block';
 
         if (status === 'completed' || status === 'success') {
             let outputData;
@@ -89,6 +95,7 @@ export function handleGenerationUpdate(payload) {
             }
             
             setToolWindowOutput(toolWindowEl.id, outputData);
+            console.log('[WS] Rendering output', outputData);
             renderResultContent(resultContainer, outputData);
             
         } else {
