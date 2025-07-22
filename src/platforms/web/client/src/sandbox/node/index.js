@@ -23,4 +23,7 @@ export {
     rerenderToolWindowById,
     injectImageOverlay,
     bindPromptFieldOverlays
-}; 
+};
+
+export * from './toolWindow.js';
+export * from './spellWindow.js'; 

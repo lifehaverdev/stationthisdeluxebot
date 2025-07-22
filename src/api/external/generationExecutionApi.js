@@ -14,8 +14,35 @@ function createGenerationExecutionApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User context missing or invalid.' } });
             }
 
-            // Forward the request to the internal API, injecting the user
             const { toolId, inputs, sessionId, eventId, metadata } = req.body;
+            
+            // If toolId starts with 'spell:', treat it as a spell execution
+            if (toolId && toolId.startsWith('spell:')) {
+                // This block is a placeholder for a more robust implementation.
+                // Ideally, this logic lives in a service, not the API route handler.
+                // For now, we'll put a simple version here.
+                logger.info(`[ExternalGenerationExecutionApi] Detected spell execution for: ${toolId}`);
+                
+                // This is a simplified proxy. The SpellsService is not directly available here.
+                // We will need to create a new internal endpoint to handle this.
+                // Let's create `/internal/v1/spells/cast`
+                
+                const spellSlug = toolId.substring('spell:'.length);
+                const spellPayload = {
+                    slug: spellSlug,
+                    context: {
+                        masterAccountId: user.masterAccountId || user.userId,
+                        platform: 'web-sandbox',
+                        parameterOverrides: inputs,
+                        // Pass other relevant context if available
+                    }
+                };
+
+                // Updated path to match internal API routing (/internal/v1/data/spells/cast)
+                const internalResponse = await internalApiClient.post('/internal/v1/data/spells/cast', spellPayload);
+                return res.status(internalResponse.status).json(internalResponse.data);
+            }
+
             // Always use masterAccountId if present, else userId
             const userForPayload = { ...user, masterAccountId: user.masterAccountId || user.userId };
             const payload = { toolId, inputs, user: userForPayload, sessionId, eventId, metadata };

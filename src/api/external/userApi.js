@@ -125,6 +125,7 @@ function createUserApi(dependencies) {
         spell: sumRewards('spell_reward'),
       };
       res.status(200).json({
+        masterAccountId: userId, // Add this line
         username,
         wallet,
         level,

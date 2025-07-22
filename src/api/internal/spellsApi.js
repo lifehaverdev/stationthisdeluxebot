@@ -3,19 +3,47 @@ const { ObjectId } = require('mongodb');
 
 // This function initializes the routes for the Spells API
 module.exports = function spellsApi(dependencies) {
-  const { logger, db } = dependencies;
+  const { logger, db, spellsService } = dependencies;
   // The 'db' object from dependencies should contain our instantiated DB services
   const spellsDb = db.spells;
   const spellPermissionsDb = db.spellPermissions;
 
   if (!spellsDb || !spellPermissionsDb) {
-    logger.error('[spellsApi] Critical dependency failure: spellsDb or spellPermissionsDb service is missing!');
+    logger.error('[spellsApi] Critical dependency failure: spellsDb or spellPermissionsDb service is not available!');
     return (req, res, next) => {
         res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Spells database service is not available.' } });
     };
   }
 
   const router = express.Router();
+
+  // POST /spells/cast - Execute a spell
+  router.post('/cast', async (req, res) => {
+    const { slug, context } = req.body;
+
+    if (!slug || !context || !context.masterAccountId) {
+      return res.status(400).json({ 
+        error: { 
+          code: 'BAD_REQUEST', 
+          message: 'Request body must include a spell slug and a context object with a masterAccountId.' 
+        } 
+      });
+    }
+
+    if (!spellsService) {
+        logger.error('[spellsApi] SpellsService is not available, cannot cast spell.');
+        return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Spell execution service is not available.' } });
+    }
+
+    try {
+      const result = await spellsService.castSpell(slug, context);
+      res.status(200).json(result);
+    } catch (error) {
+      logger.error(`[spellsApi] POST /cast: Error casting spell "${slug}": ${error.message}`, { stack: error.stack });
+      const statusCode = error.message.includes('not found') ? 404 : (error.message.includes('permission') ? 403 : 500);
+      res.status(statusCode).json({ error: { code: 'SPELL_CAST_FAILED', message: error.message } });
+    }
+  });
 
   // GET /spells - Get public spells or spells owned by a user
   router.get('/', async (req, res) => {
@@ -83,7 +111,7 @@ module.exports = function spellsApi(dependencies) {
   router.post('/', async (req, res) => {
     // NOTE: We need the user's masterAccountId. This should come from a middleware.
     // For now, we'll expect it in the request body.
-    const { name, description, creatorId } = req.body;
+    const { name, description, creatorId, steps, connections, exposedInputs } = req.body;
 
     if (!name || !creatorId) {
       return res.status(400).json({ error: 'Spell name and creatorId are required.' });
@@ -94,6 +122,9 @@ module.exports = function spellsApi(dependencies) {
         name,
         description,
         creatorId,
+        steps: Array.isArray(steps) ? steps : [], // Persist the spell steps for UI rendering and execution
+        connections: Array.isArray(connections) ? connections : [], // Persist the sub-graph connections
+        exposedInputs: Array.isArray(exposedInputs) ? exposedInputs : [],
         visibility: 'private', // All new spells start as private
       };
       const newSpell = await spellsDb.createSpell(spellData);

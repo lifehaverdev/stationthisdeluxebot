@@ -41,6 +41,7 @@ const SaltMiningService = require('./alchemy/saltMiningService');
  */
 async function initializeServices(options = {}) {
   const logger = options.logger || console;
+  const webSocketService = options.webSocketService; // Extract WebSocket service
   const appStartTime = new Date();
   
   // Initialize ToolRegistry Singleton
@@ -168,6 +169,7 @@ async function initializeServices(options = {}) {
                 walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
                 walletLinkingService,
                 saltMiningService,
+                webSocketService // Add the service here
             };
             creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
         }
@@ -187,6 +189,26 @@ async function initializeServices(options = {}) {
     });
     logger.info('UserSettingsService initialized globally in core services.');
 
+    // --- Initialize WorkflowExecutionService & SpellsService BEFORE API so they can be injected ---
+    const workflowExecutionService = new WorkflowExecutionService({
+      logger,
+      toolRegistry,
+      comfyUIService: comfyUIService,
+      internalApiClient, // Use the singleton directly
+      db: initializedDbServices.data,
+      workflowsService: workflowsService,
+      userSettingsService,
+    });
+    logger.info('WorkflowExecutionService initialized (pre-API).');
+
+    const spellsService = new SpellsService({
+      logger,
+      db: initializedDbServices.data,
+      workflowExecutionService,
+      spellPermissionsDb: initializedDbServices.data.spellPermissions,
+    });
+    logger.info('SpellsService initialized (pre-API).');
+
     // Initialize API services, now with userSettingsService
     const apiServices = initializeAPI({
       logger,
@@ -204,32 +226,35 @@ async function initializeServices(options = {}) {
       creditService,
       ethereumService,
       nftPriceService,
-      saltMiningService
+      saltMiningService,
+      spellsService, // Inject spellsService so internal API can use it
+      workflowExecutionService,
+      webSocketService // Add the service here
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
     // The old logic to extract it from apiServices is removed.
     
     // Initialize WorkflowExecutionService
-    const workflowExecutionService = new WorkflowExecutionService({
-      logger,
-      toolRegistry,
-      comfyUIService: comfyUIService,
-      internalApiClient: apiServices.internal?.client,
-      db: initializedDbServices.data,
-      workflowsService: workflowsService,
-      userSettingsService, // Added userSettingsService
-    });
-    logger.info('WorkflowExecutionService initialized.');
+    // const workflowExecutionService = new WorkflowExecutionService({
+    //   logger,
+    //   toolRegistry,
+    //   comfyUIService: comfyUIService,
+    //   internalApiClient: apiServices.internal?.client,
+    //   db: initializedDbServices.data,
+    //   workflowsService: workflowsService,
+    //   userSettingsService, // Added userSettingsService
+    // });
+    // logger.info('WorkflowExecutionService initialized.');
 
     // Initialize SpellsService
-    const spellsService = new SpellsService({
-      logger,
-      db: initializedDbServices.data,
-      workflowExecutionService,
-      spellPermissionsDb: initializedDbServices.data.spellPermissions,
-    });
-    logger.info('SpellsService initialized.');
+    // const spellsService = new SpellsService({
+    //   logger,
+    //   db: initializedDbServices.data,
+    //   workflowExecutionService,
+    //   spellPermissionsDb: initializedDbServices.data.spellPermissions,
+    // });
+    // logger.info('SpellsService initialized.');
 
     logger.info('Core services created successfully');
     
@@ -257,7 +282,8 @@ async function initializeServices(options = {}) {
       logger,
       appStartTime,
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
-      loraResolutionService
+      loraResolutionService,
+      webSocketService // Add the service here
     };
 
     // DIAGNOSTIC LOGGING REMOVED

@@ -28,7 +28,7 @@ Enable users to select a group of connected nodes (subgraph) and mint/save them 
 ## Step 3: Implementation
 
 - [x] Implement multi-select and subgraph selection logic (lasso, shift+click, and mobile tap-to-multiselect all working).
-- [ ] Implement "mint as spell" UI and backend integration.
+- [x] Implement "mint as spell" UI and backend integration.
 - [ ] Update state management for spells.
 
 ## Step 4: Demo & Handoff
@@ -85,13 +85,35 @@ Enable users to select a group of connected nodes (subgraph) and mint/save them 
 
 --- 
 
-### Progress Update (2024-07-09)
+### Progress Update (2024-07-19)
 
 - **Multi-select and lasso selection are fully implemented:**
   - Desktop: Figma-style controls (pan with spacebar/middle mouse, lasso with left mouse, shift+click for multi-select).
   - Mobile: Tap toggles selection (multi-select by default, no lasso).
-- **Selection state is robust and visually clear.**
-- **Next up:** Implementing the "mint as spell" UI and backend integration for selected subgraphs.
+  - Selection state is robust and visually clear.
+- **Spell Minting from Multi-Selection is now working:**
+  - Users can select 2+ nodes, click the "Mint as Spell" FAB, and open the spell creation modal.
+  - The modal is pre-filled with the selected nodes and connections.
+  - **Users can now select which node parameters to expose as spell inputs** (e.g., prompt fields for LLM nodes).
+  - Spell is saved and appears in the user's spell list.
+- **Spell Node UX in Sandbox Canvas:**
+  - Spells can be added to the canvas just like tools, with a unique spell node UI.
+  - Exposed inputs are displayed and editable, just like tool parameters.
+  - "Show More" reveals spell description, step list, and an "Explode" button.
+  - "Explode" unpacks the spell into its original tool windows and connections, fully editable.
+  - Spells can be executed directly from the canvas, using the exposed inputs.
+
+---
+
+### Next Steps (as of 2024-07-19)
+
+1. **Comprehensive Testing:**
+   - Test the full spell lifecycle: mint, add to canvas, edit inputs, explode, execute.
+   - Test edge cases (missing tool definitions, invalid subgraphs, connected exposed inputs, etc).
+   - Validate error handling and user feedback.
+2. **Polish & Documentation:**
+   - Refine UI/UX based on feedback.
+   - Update documentation and handoff materials to reflect the new spell node system.
 
 --- 
 
@@ -184,3 +206,42 @@ The "Mint as Spell" FAB would disappear after lasso selection because the select
 - Continue with the implementation of the "Mint as Spell" feature as outlined in the implementation plan.
 
 --- 
+
+---
+
+## Testing Checklist
+
+- [x] Mint a spell from a multi-selection of nodes
+- [x] Select and expose parameters as spell inputs during minting
+- [x] Add a spell node to the canvas from the spell menu
+- [x] Edit exposed inputs on the spell node
+- [ ] Execute a spell node and verify correct output
+- [x] Use 'Show More' to view spell details and steps
+- [ ] Explode a spell node into its original tool windows and connections
+- [ ] Edit and run the exploded nodes as normal
+- [ ] Handle missing tool definitions gracefully
+- [ ] Handle invalid or incomplete subgraphs
+- [ ] Handle spells with connected (non-static) exposed inputs
+- [ ] Validate error messages and user feedback for all failure cases
+- [ ] Undo/redo works for spell minting, adding, exploding, and deleting
+- [ ] Spell node UI is visually distinct and consistent with tool windows
+- [ ] All spell features work on both desktop and mobile
+
+--- 
+
+### Progress Update (2025-07-21)
+
+- **Spell execution pipeline unblocked:** fixed missing `spellsService` injection and corrected internal API pathing so `/internal/v1/data/spells/cast` now resolves.
+- **Tool resolution hardening:** WorkflowExecutionService now falls back to global ToolRegistry; OpenAI tools like `chatgpt-free` are recognised inside spells.
+- **Prompt aliasing:** keep original `prompt` while adding `input_prompt` to satisfy both legacy and new tools.
+- **Session handling fixed:** replaced invalid `/sessions/active` route with query-filtered `/sessions` lookup; auto-creates session when none exist.
+- **Event logging:** events now carry valid `sessionId`; 400 errors eliminated.
+- **First spell step executes successfully** (ChatGPT). Remaining work: ensure multi-step continuation and output wiring. 
+
+### Progress Update (2025-07-22)
+
+- **Spell execution now proceeds through step chain** thanks to centralized generation updates – ✅
+- **Step parameter UI implemented** in the Spell Window “Show More” panel – ✅
+- **Explode Spell** action throws missing-tool warnings for identifier look-ups (e.g., `chatgpt-free`, `comfy-*`) and does not instantiate nodes – ❌
+
+Next focus: fix tool-resolution in `explodeSpell` and resolve missing-tool warnings. 

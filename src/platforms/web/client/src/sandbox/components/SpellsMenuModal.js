@@ -1,4 +1,6 @@
 // src/platforms/web/client/src/sandbox/components/SpellsMenuModal.js
+import { getAvailableTools, getLastClickPosition } from '../state.js';
+import { createSpellWindow } from '../node/spellWindow.js';
 
 export default class SpellsMenuModal {
     constructor(options = {}) {
@@ -83,16 +85,39 @@ export default class SpellsMenuModal {
             // Get CSRF token
             const csrfRes = await fetch('/api/v1/csrf-token');
             const { csrfToken } = await csrfRes.json();
+            // Get masterAccountId
+            const masterAccountId = await this.getCurrentMasterAccountId();
+            if (!masterAccountId) throw new Error('Could not determine your account ID. Please log in again.');
             const res = await fetch(`/api/v1/spells/${selectedSpell._id}`, {
                 method: 'DELETE',
-                headers: { 'x-csrf-token': csrfToken },
-                credentials: 'include'
+                headers: { 'x-csrf-token': csrfToken, 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ masterAccountId })
             });
-            if (!res.ok) throw new Error('Failed to delete spell');
+            if (!res.ok) {
+                let errMsg = 'Failed to delete spell';
+                try { const errData = await res.json(); errMsg = errData.error || errMsg; } catch {}
+                throw new Error(errMsg);
+            }
             this.setState({ loading: false, view: 'main', selectedSpell: null });
             this.fetchUserSpells();
         } catch (err) {
-            this.setState({ error: 'Failed to delete spell.', loading: false });
+            this.setState({ error: err.message || 'Failed to delete spell.', loading: false });
+        }
+    }
+
+    // Utility to fetch and cache the current user's masterAccountId
+    async getCurrentMasterAccountId() {
+        if (this._cachedMasterAccountId) return this._cachedMasterAccountId;
+        try {
+            const res = await fetch('/api/v1/user/dashboard', { credentials: 'include' });
+            if (!res.ok) return null;
+            const data = await res.json();
+            const masterAccountId = data.masterAccountId || null;
+            if (masterAccountId) this._cachedMasterAccountId = masterAccountId;
+            return masterAccountId;
+        } catch {
+            return null;
         }
     }
 
@@ -191,10 +216,22 @@ export default class SpellsMenuModal {
         if (this.state.view === 'main') {
             const spellItems = this.modalElement.querySelectorAll('.spell-item');
             spellItems.forEach((item, idx) => {
-                item.onclick = () => {
+                // The item itself is now a container for the name and the button
+                const addToCanvasBtn = item.querySelector('.add-spell-to-canvas-btn');
+                if (addToCanvasBtn) {
+                    addToCanvasBtn.onclick = (e) => {
+                        e.stopPropagation(); // Prevent detail view from opening
+                        const spell = this.state.spells[idx];
+                        this.handleAddSpellToCanvas(spell);
+                    };
+                }
+
+                // Allow clicking the rest of the item to see details
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.add-spell-to-canvas-btn')) return;
                     const spell = this.state.spells[idx];
                     this.handleSpellClick(spell);
-                };
+                });
             });
             // Create button
             const createBtn = this.modalElement.querySelector('.create-spell-btn');
@@ -273,8 +310,11 @@ export default class SpellsMenuModal {
                 html += '<ul class="spells-list">';
                 for (const spell of spells) {
                     html += `<li class="spell-item" data-spell-id="${spell._id}">
-                        <span class="spell-name">${spell.name}</span>
-                        <span class="spell-desc">${spell.description || ''}</span>
+                        <div class="spell-info">
+                            <span class="spell-name">🪄 ${spell.name}</span>
+                            <span class="spell-desc">${spell.description || ''}</span>
+                        </div>
+                        <button class="add-spell-to-canvas-btn" title="Add to Canvas">+</button>
                     </li>`;
                 }
                 html += '</ul>';
@@ -300,29 +340,47 @@ export default class SpellsMenuModal {
     renderCreateView() {
         const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs } = this.state;
         
+        if (!subgraph || !subgraph.nodes) {
+            return `<div class="create-spell-view"><h2>Mint New Spell</h2><div class="empty-message">No nodes were selected to create a spell.</div></div>`;
+        }
+
+        const availableTools = getAvailableTools();
+        const toolMap = new Map(availableTools.map(t => [t.toolId, t]));
+        
+        const nodesWithTools = subgraph.nodes.map(node => {
+            const tool = toolMap.get(node.toolId);
+            if (!tool) {
+                console.warn(`Could not find tool definition for toolId '${node.toolId}'. This node will be omitted from the spell.`);
+                return null;
+            }
+            return { ...node, tool };
+        }).filter(Boolean);
+
         let stepsHtml = '';
-        if (subgraph && subgraph.nodes) {
+        if (nodesWithTools.length > 0) {
             stepsHtml = `
                 <div class="spell-steps-preview">
                     <h4>Steps in this Spell:</h4>
                     <ul>
-                        ${subgraph.nodes.map(node => `<li>${node.tool.displayName}</li>`).join('')}
+                        ${nodesWithTools.map(node => `<li>${node.tool.displayName}</li>`).join('')}
                     </ul>
                 </div>
             `;
+        } else {
+            return `<div class="create-spell-view"><h2>Mint New Spell</h2><div class="error-message">Could not find the definitions for any of the selected tools.</div></div>`;
         }
 
         let potentialInputsHtml = '';
-        if (subgraph && subgraph.nodes) {
+        if (nodesWithTools.length > 0) {
             const connectedInputs = new Set();
             if (subgraph.connections) {
                 subgraph.connections.forEach(conn => {
-                    connectedInputs.add(`${conn.to.nodeId}__${conn.to.paramKey}`);
+                    connectedInputs.add(`${conn.toWindowId}__${conn.toInput}`);
                 });
             }
 
             const potentialInputs = [];
-            for (const node of subgraph.nodes) {
+            for (const node of nodesWithTools) {
                 if (node.tool.inputSchema) {
                     for (const paramKey in node.tool.inputSchema) {
                         if (!connectedInputs.has(`${node.id}__${paramKey}`)) {
@@ -456,6 +514,21 @@ export default class SpellsMenuModal {
         }
     }
 
+    handleAddSpellToCanvas(spell) {
+        if (!spell) return;
+        
+        console.log(`[SpellsMenuModal] Adding spell "${spell.name}" to canvas.`);
+        
+        // Use the last click position to place the node, or a default
+        const position = getLastClickPosition() || { x: 200, y: 200 };
+        
+        // Call the new function to create a spell window
+        createSpellWindow(spell, position);
+        
+        // Hide the modal after adding the spell
+        this.hide();
+    }
+
     async handleCreateSpell() {
         const { newSpellName, newSpellDescription, spells, subgraph, newSpellExposedInputs } = this.state;
 
@@ -487,7 +560,7 @@ export default class SpellsMenuModal {
             const payload = {
                 name: newSpellName,
                 description: newSpellDescription,
-                steps: subgraph ? subgraph.nodes.map(n => ({ id: n.id, toolIdentifier: n.tool.toolId, displayName: n.tool.displayName, parameterMappings: n.parameterMappings })) : [],
+                steps: subgraph ? subgraph.nodes.map(n => ({ id: n.id, toolIdentifier: n.toolId, displayName: n.displayName, parameterMappings: n.parameterMappings })) : [],
                 connections: subgraph ? subgraph.connections : [],
                 exposedInputs: exposedInputs,
             };

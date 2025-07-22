@@ -23,9 +23,9 @@ class WorkflowExecutionService {
         
         // Normalize the 'prompt' parameter to 'input_prompt' for consistency.
         if (context.parameterOverrides && context.parameterOverrides.prompt && !context.parameterOverrides.input_prompt) {
-            this.logger.info('[WorkflowExecution] Normalizing "prompt" to "input_prompt" in parameterOverrides.');
+            this.logger.info('[WorkflowExecution] Adding alias "input_prompt" for provided "prompt" input.');
             context.parameterOverrides.input_prompt = context.parameterOverrides.prompt;
-            delete context.parameterOverrides.prompt;
+            // Keep original 'prompt' key so tools that expect it still work.
         }
 
         // The initial pipeline context starts with the global parameters from the /cast command.
@@ -40,9 +40,13 @@ class WorkflowExecutionService {
      */
     async _executeStep(spell, stepIndex, pipelineContext, originalContext) {
         const step = spell.steps[stepIndex];
-        const tool = this.toolRegistry.findByDisplayName(step.toolIdentifier);
+        let tool = this.toolRegistry.findByDisplayName(step.toolIdentifier);
         if (!tool) {
-            throw new Error(`Tool with name '${step.toolIdentifier}' not found in registry for step ${step.stepId} of spell "${spell.name}".`);
+            // Fallback: attempt lookup by toolId
+            tool = this.toolRegistry.getToolById(step.toolIdentifier);
+        }
+        if (!tool) {
+            throw new Error(`Tool with name or ID '${step.toolIdentifier}' not found in registry for step ${step.stepId} of spell "${spell.name}".`);
         }
 
         this.logger.info(`[WorkflowExecution] Found tool for step ${step.stepId}: "${tool.displayName}". Inspecting tool object...`);
@@ -63,10 +67,15 @@ class WorkflowExecutionService {
         // Find or create a session for this execution
         let sessionId;
         try {
-            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${originalContext.masterAccountId}/sessions/active?platform=${originalContext.platform}`);
-            if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
-                sessionId = activeSessionsResponse.data[0]._id;
-            } else {
+            // Use query parameters instead of path segment to filter active sessions
+            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${originalContext.masterAccountId}/sessions`, {
+                params: { status: 'active', platform: originalContext.platform }
+            });
+            if (Array.isArray(activeSessionsResponse.data) && activeSessionsResponse.data.length > 0) {
+                sessionId = activeSessionsResponse.data[0]._id || activeSessionsResponse.data[0].sessionId;
+            }
+
+            if (!sessionId) {
                 const newSessionResponse = await this.internalApiClient.post('/internal/v1/data/sessions', { masterAccountId: originalContext.masterAccountId, platform: originalContext.platform, userAgent: 'Spell Execution' });
                 sessionId = newSessionResponse.data._id;
             }

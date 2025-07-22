@@ -186,30 +186,39 @@ function renderTxStatusStep() {
         return;
     }
     const s = buyPointsState.txStatus;
-    txStatusDisplay.innerHTML = `
-        <div>Status: <b>${s.status}</b></div>
-        <div>Tx Hash: <span class="copyable">${s.txHash}</span></div>
-        <div>Block: ${s.blockNumber || 'Pending'}</div>
-        <div>Points Credited: ${s.receipt ? s.receipt.pointsCredited : '-'}</div>
-        <div>User Credited (USD): ${s.receipt ? '$' + s.receipt.userCreditedUsd : '-'}</div>
-        <div>${s.failureReason ? 'Error: ' + s.failureReason : ''}</div>
+    let html = `
+        <div>Status: <b>${s.status || 'Submitted'}</b></div>
+        <div>Your Tx Hash: <span class="copyable" title="Click to copy">${s.txHash}</span></div>
     `;
+    if (s.message) {
+        html += `<p style="margin-top: 10px;">${s.message}</p>`;
+    }
+    if (s.confirmationTxHash) {
+        html += `<div>Confirmation Tx: <span class="copyable" title="Click to copy">${s.confirmationTxHash}</span></div>`;
+    }
+    if (s.failureReason) {
+        html += `<div style="color: #e74c3c; margin-top: 10px;">Error: ${s.failureReason}</div>`;
+    }
+    txStatusDisplay.innerHTML = html;
 }
 
 function renderReceiptStep() {
     if (!receiptDisplay) return;
-    if (!buyPointsState.txStatus) {
+    if (!buyPointsState.txStatus || !buyPointsState.txStatus.receipt) {
         receiptDisplay.innerHTML = '<div>No receipt available.</div>';
         return;
     }
     const s = buyPointsState.txStatus;
+    const r = s.receipt;
     receiptDisplay.innerHTML = `
-        <div>Purchase Complete!</div>
-        <div>Points: <b>${s.receipt ? s.receipt.pointsCredited : '-'}</b></div>
-        <div>Asset: ${buyPointsState.selectedAsset ? buyPointsState.selectedAsset.symbol : '-'}</div>
+        <h2>Purchase Complete!</h2>
+        <div>Points Credited: <b style="color: #4caf50;">+${r.points_credited}</b></div>
+        <div>USD Credited: <b>$${safeToFixed(r.user_credited_usd)}</b></div>
+        <hr>
+        <div>Asset: ${buyPointsState.selectedAsset ? (buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name) : '-'}</div>
         <div>Amount: ${buyPointsState.amount}</div>
-        <div>Tx Hash: <span class="copyable">${s.txHash}</span></div>
-        <div>User Credited (USD): ${s.receipt ? '$' + s.receipt.userCreditedUsd : '-'}</div>
+        <div>Your Tx Hash: <span class="copyable" title="Click to copy">${s.txHash}</span></div>
+        <div>Confirmation Tx: <span class="copyable" title="Click to copy">${r.confirmation_tx_hash}</span></div>
     `;
 }
 
@@ -374,6 +383,11 @@ async function initiatePurchase() {
             showError('Please sign the deposit transaction in your wallet.');
             txHash = await sendTransaction(depositTx);
             console.log('[BuyPointsModal] Deposit tx sent:', txHash);
+            buyPointsState.txStatus = { 
+                status: 'submitted', 
+                txHash: txHash, 
+                message: 'Waiting for blockchain confirmation and backend processing...' 
+            };
         } catch (err) {
             showLoader(false);
             showError('Deposit transaction was rejected or failed.');
@@ -416,6 +430,26 @@ function handleAmountChange(e) {
     }
 }
 
+function handlePointsDepositUpdate(event) {
+    console.log('[BuyPointsModal] Received pointsDepositUpdate event:', event);
+    const { status, reason, originalTxHashes, ...receiptData } = event;
+
+    // Check if this update is relevant to the current modal transaction
+    if (buyPointsState.step === 4 && buyPointsState.txStatus && originalTxHashes && originalTxHashes.includes(buyPointsState.txStatus.txHash)) {
+        if (status === 'confirmed') {
+            buyPointsState.txStatus.status = 'Success!';
+            buyPointsState.txStatus.receipt = receiptData;
+            buyPointsState.txStatus.confirmationTxHash = receiptData.confirmation_tx_hash;
+            goToStep(5); // Go to receipt step
+        } else if (status === 'failed') {
+            buyPointsState.txStatus.status = 'Failed';
+            buyPointsState.txStatus.failureReason = reason || 'The transaction failed during backend processing.';
+            showError(buyPointsState.txStatus.failureReason); // Show error prominently
+        }
+        render(); // Re-render the current step (4 or 5) with new info
+    }
+}
+
 function handleReviewPurchase() {
     if (!buyPointsState.quote) {
         showError('No quote available.');
@@ -446,6 +480,10 @@ function closeModal() {
         pollInterval: null
     });
     modal.parentNode.removeChild(modal);
+    // Unsubscribe from websocket events
+    if (window.websocketClient) {
+        window.websocketClient.off('pointsDepositUpdate', handlePointsDepositUpdate);
+    }
 }
 
 // --- Modal HTML Template ---
@@ -550,6 +588,13 @@ async function initBuyPointsModal() {
     Array.from(modal.querySelectorAll('.modal-back-btn')).forEach(function(btn) {
         btn.addEventListener('click', function() { goToStep(buyPointsState.step - 1); });
     });
+
+    // Subscribe to websocket events
+    if (window.websocketClient) {
+        window.websocketClient.on('pointsDepositUpdate', handlePointsDepositUpdate);
+        console.log('[BuyPointsModal] Subscribed to pointsDepositUpdate events.');
+    }
+
     modal.style.display = 'flex';
     goToStep(1);
     showLoader(true);

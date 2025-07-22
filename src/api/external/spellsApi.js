@@ -93,11 +93,24 @@ function createSpellsApi(dependencies) {
                 return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
             }
             const { spellId } = req.params;
-            const response = await internalApiClient.delete(`/internal/v1/data/spells/${spellId}?ownedBy=${user.userId}`);
+            
+            // The internal API expects masterAccountId in the body for authorization.
+            // We use the authenticated user's ID for this.
+            const response = await internalApiClient.delete(
+                `/internal/v1/data/spells/${spellId}`, 
+                { data: { masterAccountId: user.userId } }
+            );
+
+            // Forward the response. A successful DELETE (204) has no body.
+            if (response.status === 204) {
+                return res.status(204).send();
+            }
             res.status(response.status).json(response.data);
         } catch (error) {
-            logger.error('Failed to delete spell:', error);
-            res.status(502).json({ error: { code: 'BAD_GATEWAY', message: 'Unable to delete spell.' } });
+            const errorData = error.response ? error.response.data : { message: 'Unable to delete spell.' };
+            const statusCode = error.response ? error.response.status : 502;
+            logger.error('Failed to delete spell:', errorData);
+            res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
         }
     });
 

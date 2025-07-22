@@ -75,8 +75,8 @@ class CreditService {
   constructor(services, config, logger) {
     this.logger = logger || console;
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService } = services;
-    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService) {
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService, webSocketService } = services;
+    if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService || !webSocketService) {
       throw new Error('CreditService: Missing one or more required services.');
     }
     this.ethereumService = ethereumService;
@@ -89,6 +89,7 @@ class CreditService {
     this.walletLinkingRequestDb = walletLinkingRequestDb;
     this.walletLinkingService = walletLinkingService;
     this.saltMiningService = saltMiningService;
+    this.webSocketService = webSocketService;
     
     const { foundationAddress, foundationAbi } = config;
     if (!foundationAddress || !foundationAbi) {
@@ -463,6 +464,20 @@ class CreditService {
   }
 
   /**
+   * Sends a WebSocket notification for deposit-related events.
+   * @private
+   */
+  _sendDepositNotification(masterAccountId, status, payload) {
+    if (this.webSocketService) {
+        this.webSocketService.sendToUser(masterAccountId, {
+            type: 'pointsDepositUpdate',
+            payload: { status, ...payload }
+        });
+        this.logger.info(`[CreditService] Sent pointsDepositUpdate (${status}) WebSocket notification to user ${masterAccountId}`);
+    }
+  }
+
+  /**
    * STAGE 2: Processes all deposits that are in a 'PENDING_CONFIRMATION' or 'ERROR' state
    * by grouping them by user and token to perform a single, aggregate confirmation.
    */
@@ -549,6 +564,7 @@ class CreditService {
         const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
         if (!riskAssessment.isSafe) {
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'FAILED_RISK_ASSESSMENT', { failure_reason: riskAssessment.reason });
+            this._sendDepositNotification(masterAccountId, 'failed', { reason: riskAssessment.reason, originalTxHashes });
             return;
         }
         const priceInUsd = riskAssessment.price;
@@ -568,9 +584,11 @@ class CreditService {
             if (error.response && error.response.status === 404) {
                 this.logger.warn(`[CreditService] No user account found for address ${user}. Rejecting deposit group.`);
                 for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNKNOWN_USER', { failure_reason: 'No corresponding user account found.' });
+                // Cannot notify user as we don't know their masterAccountId
             } else {
                 this.logger.error(`[CreditService] Error looking up user for group.`, error);
                 for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', { failure_reason: 'Failed to lookup user due to an internal API error.', error_details: error.message });
+                // Cannot notify user if lookup fails
             }
             return;
         }
@@ -612,6 +630,7 @@ class CreditService {
         if (estimatedGasCostUsd >= depositValueUsd) {
             const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Estimated gas cost ($${estimatedGasCostUsd.toFixed(4)}) exceeded total unconfirmed deposit value ($${depositValueUsd.toFixed(2)}).` };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+            this._sendDepositNotification(masterAccountId, 'failed', { reason: reason.failure_reason, originalTxHashes });
             return;
         }
 
@@ -640,6 +659,7 @@ class CreditService {
         if (escrowAmountForContract < 0n) {
             const reason = { deposit_value_usd: depositValueUsd, failure_reason: `Total fees (gas) exceeded total deposit value.` };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+            this._sendDepositNotification(masterAccountId, 'failed', { reason: reason.failure_reason, originalTxHashes });
             return;
         }
         this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(gasFeeInWei)).toFixed(6)} ETH`);
@@ -651,6 +671,7 @@ class CreditService {
             this.logger.error(`[CreditService] CRITICAL: Failed to receive a valid receipt for group confirmation. Manual verification required for user: ${user}`);
             const reason = { failure_reason: 'Transaction sent but an invalid receipt was returned by the provider.' };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR_INVALID_RECEIPT', reason);
+            this._sendDepositNotification(masterAccountId, 'failed', { reason: reason.failure_reason, originalTxHashes });
             return;
         }
 
@@ -666,6 +687,7 @@ class CreditService {
             this.logger.warn(`[CreditService] Adjusted deposit value for group is negative after gas costs. Rejecting as unprofitable. Net adjusted value: ${netAdjustedDepositUsd}`);
             const reason = { failure_reason: `Adjusted deposit value was less than gas cost.`, original_deposit_usd: depositValueUsd, adjusted_deposit_usd: adjustedGrossDepositUsd, gas_cost_usd: actualGasCostUsd };
             for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNPROFITABLE', reason);
+            this._sendDepositNotification(masterAccountId, 'failed', { reason: reason.failure_reason, originalTxHashes });
             return;
         }
         // --- REMOVE MARKUP: userCreditedUsd is just netAdjustedDepositUsd ---
@@ -742,6 +764,10 @@ class CreditService {
 
         this.logger.info(`[CreditService] Successfully processed deposit group for user ${user} and token ${token}`);
 
+        // --- WEBSOCKET NOTIFICATION ---
+        this._sendDepositNotification(masterAccountId, 'confirmed', { ...finalStatus, originalTxHashes });
+        // --- END WEBSOCKET NOTIFICATION ---
+
     } catch (error) {
       const errorMessage = error.message || 'An unknown error occurred';
       this.logger.error(`[CreditService] Unhandled error during confirmation for group (User: ${user}, Token: ${token}).`, error);
@@ -750,6 +776,10 @@ class CreditService {
       for (const deposit of deposits) {
          await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', reason);
          addTxToCache(deposit.deposit_tx_hash);
+      }
+      // Send failure notification if we know who the user is
+      if (masterAccountId) {
+          this._sendDepositNotification(masterAccountId, 'failed', { reason: errorMessage, originalTxHashes });
       }
     } finally {
       // --- Always release group lock ---
@@ -1312,12 +1342,39 @@ class CreditService {
       this.logger.error(`[CreditService] Mismatch between predicted vault address (${vault.vault_address}) and on-chain address (${vaultAddress}) for tx ${txHash}. Manual review needed.`);
       // Update status to 'ERROR' or something similar
       await this.creditLedgerDb.updateReferralVaultStatus(vault._id, 'ADDRESS_MISMATCH');
+      // --- WEBSOCKET NOTIFICATION ---
+      if (this.webSocketService) {
+          this.webSocketService.sendToUser(vault.master_account_id, {
+              type: 'referralVaultUpdate',
+              payload: {
+                  status: 'failed',
+                  reason: 'Address mismatch during deployment verification.',
+                  txHash: vault.deployment_tx_hash
+              }
+          });
+      }
+      // --- END WEBSOCKET NOTIFICATION ---
       return;
     }
     
     await this.creditLedgerDb.updateReferralVaultStatus(vault._id, 'ACTIVE');
 
     this.logger.info(`[CreditService] Successfully activated vault ${vaultAddress} (ID: ${vault._id})`);
+
+    // --- WEBSOCKET NOTIFICATION ---
+    if (this.webSocketService) {
+        this.webSocketService.sendToUser(vault.master_account_id, {
+            type: 'referralVaultUpdate',
+            payload: {
+                status: 'active',
+                vaultAddress: vault.vault_address,
+                vaultName: vault.vault_name,
+                txHash: vault.deployment_tx_hash,
+            }
+        });
+        this.logger.info(`[CreditService] Sent referralVaultUpdate WebSocket notification to user ${vault.master_account_id}`);
+    }
+    // --- END WEBSOCKET NOTIFICATION ---
   }
 }
 

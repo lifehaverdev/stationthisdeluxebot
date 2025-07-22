@@ -6,6 +6,7 @@
  * No database dependencies - all workflows are retrieved directly from the API.
  */
 
+const { v4: uuidv4 } = require('uuid');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const path = require('path');
 
@@ -137,8 +138,13 @@ class WorkflowsService {
    */
   async getToolById(toolId) {
     await this.cacheManager.ensureInitialized();
-    // The cacheManager's byName map is also indexed by toolId as per its _buildIndexes method
-    return this.cacheManager.cache.byName.get(toolId) || null;
+    // First try ComfyUI workflow cache
+    const cached = this.cacheManager.cache.byName.get(toolId);
+    if (cached) return cached;
+
+    // Fallback: check global ToolRegistry for non-Comfy tools (e.g., openai)
+    const registryTool = ToolRegistry.getInstance().getToolById(toolId);
+    return registryTool || null;
   }
   
   /**

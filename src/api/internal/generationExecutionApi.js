@@ -163,6 +163,8 @@ module.exports = function generationExecutionApi(dependencies) {
           }
           
           // --- Create Generation Record ---
+          const isSpellStep = metadata && metadata.isSpell;
+
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
@@ -172,6 +174,7 @@ module.exports = function generationExecutionApi(dependencies) {
             requestPayload: finalInputs,
             status: 'pending',
             deliveryStatus: 'pending', 
+            ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
             notificationPlatform: user.platform || 'none',
             costUsd: null,
             metadata: {
@@ -239,6 +242,7 @@ module.exports = function generationExecutionApi(dependencies) {
         }
         case 'openai': {
           const { masterAccountId } = user;
+          const isSpellStep = metadata && metadata.isSpell;
           const prompt = inputs.prompt;
           const instructions = inputs.instructions || tool.inputSchema.instructions?.default || 'You are a helpful assistant.';
           const temperature = typeof inputs.temperature === 'number' ? inputs.temperature : tool.inputSchema.temperature?.default || 0.7;
@@ -257,6 +261,7 @@ module.exports = function generationExecutionApi(dependencies) {
             requestPayload: { prompt, instructions, temperature, model },
             status: 'processing',
             deliveryStatus: 'pending',
+            ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
             notificationPlatform: user.platform || 'none',
             costUsd: null,
             metadata: {
@@ -292,10 +297,24 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(500).json({ error: { code: 'OPENAI_ERROR', message: err.message } });
           }
 
-          await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+          const updatePayload = {
             status: 'completed',
             'metadata.response': responseContent
-          });
+          };
+
+          // Apply update
+          await db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
+
+          // --- Emit notification event for spell continuation if applicable ---
+          if (isSpellStep) {
+              try {
+                  const notificationEvents = require('../../core/events/notificationEvents');
+                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+                  notificationEvents.emit('generationUpdated', { ...updatedRecord, deliveryStrategy: 'spell_step' });
+              } catch (emitErr) {
+                  logger.error(`[Execute] Failed to emit generationUpdated event for spell step generation ${generationRecord._id}: ${emitErr.message}`);
+              }
+          }
 
           if (websocketServer) {
             logger.info(`[Execute] Sending final WebSocket update for OpenAI generation ${generationRecord._id}.`);

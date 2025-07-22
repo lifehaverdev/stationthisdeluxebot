@@ -95,6 +95,8 @@ function initializeInternalServices(dependencies = {}) {
       // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
       // internalApiClient: apiClient, (defined later in this function)
       internalApiClient: internalApiClient,
+      spellsService: dependencies.spellsService, // Inject spellsService so spellsApi can cast spells
+      workflowExecutionService: dependencies.workflowExecutionService,
       // --- Inject required backend services for pointsApi ---
       priceFeedService: dependencies.priceFeedService,
       creditService: dependencies.creditService,

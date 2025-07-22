@@ -28,6 +28,13 @@ const { slugify } = require('../../../utils/stringUtils'); // Assuming a slugify
  *       outputMappings: Object
  *     }
  *   ],
+ *
+ *   exposedInputs: [
+ *     {
+ *       nodeId: string,      // The node in the subgraph
+ *       paramKey: string     // The parameter key to expose as a spell input
+ *     }
+ *   ],
  *   
  *   // Discovery & Usage
  *   tags: [string],
@@ -88,6 +95,7 @@ class SpellsDB extends BaseDB {
       ownedBy: new ObjectId(spellData.creatorId), // Owner defaults to creator
       description: spellData.description || '',
       steps: spellData.steps || [],
+      exposedInputs: spellData.exposedInputs || [],
       tags: spellData.tags || [],
       usageCount: 0,
       rating: { avg: 0, count: 0 },

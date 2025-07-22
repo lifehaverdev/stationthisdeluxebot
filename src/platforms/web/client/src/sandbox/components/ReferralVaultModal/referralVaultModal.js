@@ -9,6 +9,8 @@ const vaultState = {
     predictedAddress: null,
     error: null,
     isLoading: false,
+    txHash: null,
+    deploymentMessage: null,
 };
 
 // --- DOM Element References ---
@@ -91,7 +93,12 @@ function renderStep3() {
         </div>
     `;
     // In a real scenario, this would update as the process continues
-    // e.g. "Deploying contract..."
+    if (vaultState.txHash) {
+        deploymentStatus.innerHTML += `<p style="margin-top: 15px; font-size: 0.9em; word-break: break-all;">Tx Hash: ${vaultState.txHash}</p>`;
+    }
+    if (vaultState.deploymentMessage) {
+        deploymentStatus.innerHTML += `<p style="color: #90caf9; margin-top: 10px;">${vaultState.deploymentMessage}</p>`;
+    }
 }
 
 function renderStep4() {
@@ -138,6 +145,8 @@ async function checkVaultNameAvailability(name) {
 async function createReferralVault() {
     goToStep(3); // Show mining/deployment progress
     showLoader(true);
+    vaultState.deploymentMessage = 'Requesting salt and preparing transaction...';
+    render();
     try {
         const token = await window.auth.ensureCsrfToken();
         const res = await fetch('/api/v1/referral-vault/create', {
@@ -153,14 +162,17 @@ async function createReferralVault() {
         if (!res.ok) {
             throw new Error(data.error?.message || 'Failed to create vault.');
         }
+        vaultState.txHash = data.deployment_tx_hash;
         vaultState.predictedAddress = data.vault_address;
-        goToStep(4);
+        vaultState.deploymentMessage = 'Transaction sent! Waiting for blockchain confirmation...';
+        // We no longer advance state here; we wait for the websocket message.
     } catch (err) {
         showError(err.message);
         // Optionally go back to a previous step on failure
         goToStep(2);
     } finally {
         showLoader(false);
+        render();
     }
 }
 
@@ -179,6 +191,22 @@ function handleNameInputChange(e) {
     render();
 }
 
+function handleReferralVaultUpdate(event) {
+    console.log('[ReferralVaultModal] Received referralVaultUpdate:', event);
+    const { status, reason, txHash, ...receiptData } = event;
+    
+    // Check if the update is relevant to this modal's transaction
+    if (vaultState.step === 3 && vaultState.txHash && vaultState.txHash === txHash) {
+        if (status === 'active') {
+            goToStep(4); // Success, move to receipt
+        } else if (status === 'failed') {
+            showError(reason || 'Vault deployment failed on the backend.');
+            vaultState.deploymentMessage = `Error: ${reason}`;
+            render(); // Re-render step 3 with the error message
+        }
+    }
+}
+
 function closeModal() {
     if (modal) {
         modal.remove();
@@ -187,7 +215,12 @@ function closeModal() {
     Object.assign(vaultState, {
         step: 1, vaultName: '', isNameAvailable: false, isNameChecking: false,
         predictedAddress: null, error: null, isLoading: false,
+        txHash: null, deploymentMessage: null,
     });
+    // Unsubscribe from websocket events
+    if (window.websocketClient) {
+        window.websocketClient.off('referralVaultUpdate', handleReferralVaultUpdate);
+    }
 }
 
 // --- Modal HTML Template ---
@@ -280,6 +313,12 @@ function initReferralVaultModal() {
     closeBtn.addEventListener('click', closeModal);
     modal.querySelector('.modal-close-btn-bottom').addEventListener('click', closeModal);
     modal.querySelector('.modal-back-btn').addEventListener('click', () => goToStep(1));
+
+    // Subscribe to websocket events
+    if (window.websocketClient) {
+        window.websocketClient.on('referralVaultUpdate', handleReferralVaultUpdate);
+        console.log('[ReferralVaultModal] Subscribed to referralVaultUpdate events.');
+    }
 
     modal.style.display = 'flex';
     goToStep(1);

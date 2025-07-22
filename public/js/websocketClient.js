@@ -91,4 +91,9 @@ export const websocketClient = {
   on,
   off,
   sendMessage,
-}; 
+};
+
+// Expose to window for legacy script compatibility
+if (typeof window !== 'undefined') {
+    window.websocketClient = websocketClient;
+} 
