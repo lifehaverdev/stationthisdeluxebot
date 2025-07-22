@@ -25,6 +25,7 @@ import { createParameterSection, showError } from './parameterInputs.js';
 import { createAnchorPoint, createInputAnchors } from './anchors.js';
 import { setupDragging } from './drag.js';
 import { createToolWindow, rerenderToolWindowById } from './toolWindow.js';
+import { generationIdToWindowMap, generationCompletionManager } from './websocketHandlers.js';
 
 // TODO: Implement spell-specific execution logic
 // import { executeSpellAndDependencies } from './spellExecution.js'; 
@@ -53,6 +54,8 @@ export function createSpellWindow(spell, position, id = null, output = null) {
     spellWindowEl.className = 'tool-window spell-window'; 
     spellWindowEl.setAttribute('data-spell-id', spell._id);
     spellWindowEl.setAttribute('data-displayname', spell.name || '');
+    // Provide toolId for websocket fallback lookups
+    spellWindowEl.setAttribute('data-toolid', `spell-${spell.slug}`);
 
     spellWindowEl.addEventListener('click', (e) => {
         if (e.button !== 0) return;
@@ -387,7 +390,7 @@ async function executeSpell(windowId) {
     console.log(`[spellWindow] Executing spell "${spell.name}" with inputs:`, inputs);
 
     const payload = {
-        toolId: `spell:${spell.slug}`,
+        toolId: `spell-${spell.slug}`,
         inputs: inputs,
         metadata: { platform: 'web-sandbox' }
     };
@@ -421,11 +424,28 @@ async function executeSpell(windowId) {
             throw new Error(result.error?.message || 'Spell execution failed.');
         }
 
-        // TODO: Handle spell output rendering. Spells might have complex outputs.
-        // For now, we assume a simple text or image output might come back.
+        // If the execution is async (status processing/pending) we wait for websocket updates.
+        const isFinalStatus = result.status === 'completed' || result.status === 'success' || result.status === 'failed';
+
+        if (result.generationId && !isFinalStatus) {
+            // Map generationId to this spell window for future websocket updates
+            generationIdToWindowMap[result.generationId] = document.getElementById(windowId);
+            progressIndicator.textContent = `Status: ${result.status}`;
+            // Optional: wait until completion then remove indicator
+            generationCompletionManager.createCompletionPromise(result.generationId).then(() => {
+                const progEl = document.getElementById(windowId)?.querySelector('.progress-indicator');
+                if (progEl) progEl.remove();
+            });
+            return; // Rendering will be handled on websocket completion
+        }
+
+        // Immediate path (synchronous tool)
         progressIndicator.remove();
 
-        const outputData = result.outputs?.[0]?.data || result.response;
+        const outputData = (Array.isArray(result.outputs) && result.outputs[0]?.data)
+            ? result.outputs[0].data
+            : (result.response || null);
+
         if (outputData) {
             setToolWindowOutput(windowId, outputData);
             let resultContainer = spellWindowEl.querySelector('.result-container');

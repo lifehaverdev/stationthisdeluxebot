@@ -20,7 +20,9 @@ const chatGptTool = {
         type: 'text',
         required: true,
         description: 'The instructions to send to the AI.',
-        default: 'You are a helpful assistant.',
+        // Default instructions aligned with legacy `assist` command behaviour.
+        // These guide the model to act as an SDXL prompt-engineering assistant.
+        default: 'You are a helpful SDXL prompt engineer assistant. Create comma-separated word lists that work well with SDXL. Focus on descriptive terms, artistic styles, and atmospheric elements.',
 
     },
     temperature: {
