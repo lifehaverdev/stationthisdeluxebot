@@ -217,7 +217,7 @@ The "Mint as Spell" FAB would disappear after lasso selection because the select
 - [x] Edit exposed inputs on the spell node
 - [ ] Execute a spell node and verify correct output
 - [x] Use 'Show More' to view spell details and steps
-- [ ] Explode a spell node into its original tool windows and connections
+- [x] Explode a spell node into its original tool windows and connections
 - [ ] Edit and run the exploded nodes as normal
 - [ ] Handle missing tool definitions gracefully
 - [ ] Handle invalid or incomplete subgraphs
@@ -242,6 +242,6 @@ The "Mint as Spell" FAB would disappear after lasso selection because the select
 
 - **Spell execution now proceeds through step chain** thanks to centralized generation updates – ✅
 - **Step parameter UI implemented** in the Spell Window “Show More” panel – ✅
-- **Explode Spell** action throws missing-tool warnings for identifier look-ups (e.g., `chatgpt-free`, `comfy-*`) and does not instantiate nodes – ❌
+- **Explode Spell** now instantiates underlying tool windows, restores their parameter mappings, recreates all connections, and removes the original spell node – ✅
 
-Next focus: fix tool-resolution in `explodeSpell` and resolve missing-tool warnings. 
+Next focus: verify execution of exploded nodes end-to-end and continue polishing error states (missing definitions, invalid subgraphs, connected exposed inputs). 

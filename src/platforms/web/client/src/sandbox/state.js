@@ -49,11 +49,23 @@ export function persistState() {
     // Only store serializable data
     const serializableConnections = connections.map(({ element, ...rest }) => rest);
     const serializableWindows = activeToolWindows.map(w => {
-        // Persist id, tool.displayName, tool.toolId, workspaceX, workspaceY, output, parameterMappings
+        if (w.isSpell) {
+            // Persist spell windows with their spell definition
+            return {
+                id: w.id,
+                isSpell: true,
+                spell: w.spell,           // full spell object (plain JSON)
+                workspaceX: w.workspaceX,
+                workspaceY: w.workspaceY,
+                output: w.output || null,
+                parameterMappings: w.parameterMappings || {}
+            };
+        }
+        // Persist regular tool windows
         return {
             id: w.id,
             displayName: w.tool?.displayName || '',
-            toolId: w.tool?.toolId || '', // <-- ADD THIS LINE
+            toolId: w.tool?.toolId || '',
             workspaceX: w.workspaceX,
             workspaceY: w.workspaceY,
             output: w.output || null,
@@ -75,25 +87,37 @@ function loadState() {
     }
     if (winRaw) {
         try {
-            // Restore window id, displayName, toolId, workspaceX, workspaceY, output, parameterMappings
             const wins = JSON.parse(winRaw);
 
             // Deduplicate windows by ID, keeping the last one found
             const uniqueWinsMap = new Map();
             wins.forEach(w => uniqueWinsMap.set(w.id, w));
             const uniqueWins = Array.from(uniqueWinsMap.values());
-            
-            activeToolWindows = uniqueWins.map(w => ({
-                id: w.id,
-                tool: { 
-                    displayName: w.displayName,
-                    toolId: w.toolId // <-- ADD THIS LINE
-                },
-                workspaceX: w.workspaceX,
-                workspaceY: w.workspaceY,
-                output: w.output || null,
-                parameterMappings: w.parameterMappings || {}
-            }));
+
+            activeToolWindows = uniqueWins.map(w => {
+                if (w.isSpell) {
+                    return {
+                        id: w.id,
+                        spell: w.spell,
+                        isSpell: true,
+                        workspaceX: w.workspaceX,
+                        workspaceY: w.workspaceY,
+                        output: w.output || null,
+                        parameterMappings: w.parameterMappings || {}
+                    };
+                }
+                return {
+                    id: w.id,
+                    tool: {
+                        displayName: w.displayName,
+                        toolId: w.toolId
+                    },
+                    workspaceX: w.workspaceX,
+                    workspaceY: w.workspaceY,
+                    output: w.output || null,
+                    parameterMappings: w.parameterMappings || {}
+                };
+            });
             console.log(`[State] Loaded ${activeToolWindows.length} unique tool windows from storage.`);
         } catch (e) { activeToolWindows = []; }
     }
@@ -104,17 +128,31 @@ const historyStack = [];
 const redoStack = [];
 
 function cloneState() {
-    // Deep clone connections and tool windows
+    // Deep clone connections and tool windows, including spell definitions where present
     return {
         connections: JSON.parse(JSON.stringify(connections.map(({ element, ...rest }) => rest))),
-        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows.map(w => ({
-            id: w.id,
-            displayName: w.tool?.displayName || '',
-            workspaceX: w.workspaceX,
-            workspaceY: w.workspaceY,
-            output: w.output || null,
-            parameterMappings: w.parameterMappings || {}
-        })))),
+        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows.map(w => {
+            if (w.isSpell) {
+                return {
+                    id: w.id,
+                    spell: w.spell,
+                    isSpell: true,
+                    workspaceX: w.workspaceX,
+                    workspaceY: w.workspaceY,
+                    output: w.output || null,
+                    parameterMappings: w.parameterMappings || {}
+                };
+            }
+            return {
+                id: w.id,
+                displayName: w.tool?.displayName || '',
+                toolId: w.tool?.toolId || '',
+                workspaceX: w.workspaceX,
+                workspaceY: w.workspaceY,
+                output: w.output || null,
+                parameterMappings: w.parameterMappings || {}
+            };
+        })))
     };
 }
 

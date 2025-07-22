@@ -16,7 +16,7 @@ import {
     getSelectedNodeIds
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
-import { createToolWindow } from './node/index.js';
+import { createToolWindow, createSpellWindow } from './node/index.js';
 import { createImageInSandbox } from './components/image.js';
 import { initCanvas, updateConnectionLine } from './canvas.js';
 import { calculateCenterPosition, hideModal } from './utils.js';
@@ -250,12 +250,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initializeTools();
     renderSidebarTools();
 
-    // Restore tool windows from state (localStorage)
+    // Restore tool and spell windows from state (localStorage)
     getToolWindows().forEach(win => {
-        // Find the tool by displayName from availableTools
-        const tool = getAvailableTools().find(t => t.displayName === win.tool.displayName);
-        if (tool) {
-            createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+        if (win.isSpell && win.spell) {
+            createSpellWindow(win.spell, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            return;
+        }
+        if (win.tool) {
+            const tool = getAvailableTools().find(t => t.toolId === win.tool.toolId || t.displayName === win.tool.displayName);
+            if (tool) {
+                createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            }
         }
     });
 
@@ -302,14 +307,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     function rerenderAllToolWindowsAndConnections() {
         // Remove all tool windows from DOM
         document.querySelectorAll('.tool-window').forEach(el => el.remove());
-        // Re-create tool windows from state
+        // Re-create tool and spell windows from state
         getToolWindows().forEach(win => {
-            // Find the tool by displayName from availableTools
-            const tool = getAvailableTools().find(t => t.displayName === win.displayName);
-            if (tool) {
-                createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
-            } else {
-                console.warn(`Could not find tool definition for '${win.displayName}' during rerender. It might have been removed or renamed.`);
+            if (win.isSpell && win.spell) {
+                createSpellWindow(win.spell, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+                return;
+            }
+            if (win.tool) {
+                const tool = getAvailableTools().find(t => t.toolId === win.tool.toolId || t.displayName === win.tool.displayName);
+                if (tool) {
+                    createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+                } else {
+                    console.warn(`Could not find tool definition for '${win.displayName || win.tool?.displayName}' during rerender. It might have been removed or renamed.`);
+                }
             }
         });
         // Re-render connections

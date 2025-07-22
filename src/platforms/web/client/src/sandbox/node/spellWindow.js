@@ -24,6 +24,7 @@ import { renderResultContent } from './resultContent.js';
 import { createParameterSection, showError } from './parameterInputs.js';
 import { createAnchorPoint, createInputAnchors } from './anchors.js';
 import { setupDragging } from './drag.js';
+import { createToolWindow, rerenderToolWindowById } from './toolWindow.js';
 
 // TODO: Implement spell-specific execution logic
 // import { executeSpellAndDependencies } from './spellExecution.js'; 
@@ -69,7 +70,16 @@ export function createSpellWindow(spell, position, id = null, output = null) {
     });
 
     const availableTools = getAvailableTools();
-    const toolMap = new Map(availableTools.map(t => [t.toolId, t]));
+    // Build a map for quick lookup by both identifier and displayName (case-insensitive)
+    const toolMap = new Map();
+    availableTools.forEach(t => {
+        // Some loaders use t.toolId, others toolIdentifier – map both
+        const identifier = t.toolIdentifier || t.toolId;
+        if (identifier) toolMap.set(identifier, t);
+        if (t.displayName) {
+            toolMap.set(t.displayName.toLowerCase(), t);
+        }
+    });
 
     // Map spell's exposedInputs to a format that createParameterSection understands.
     const parameterMappings = existingWindow ? existingWindow.parameterMappings : {};
@@ -78,7 +88,11 @@ export function createSpellWindow(spell, position, id = null, output = null) {
     if (spell.exposedInputs) {
         spell.exposedInputs.forEach(input => {
             const originalNode = spell.steps.find(s => s.id === input.nodeId);
-            const originalTool = originalNode ? toolMap.get(originalNode.toolIdentifier) : null;
+            let originalTool = null;
+            if (originalNode) {
+                const identifier = originalNode.toolIdentifier || originalNode.toolId;
+                originalTool = toolMap.get(identifier) || toolMap.get((originalNode.displayName || '').toLowerCase());
+            }
             const originalParam = originalTool ? originalTool.inputSchema[input.paramKey] : null;
 
             if (originalParam) {
@@ -248,7 +262,10 @@ function createShowMoreButtonForSpell(windowId, spell) {
 
     // Allow users to click a step to view its parameter overrides
     spell.steps.forEach(step => {
-        const tool = toolMap.get(step.toolIdentifier);
+        let tool = toolMap.get(step.toolIdentifier || step.toolId);
+        if (!tool) {
+            tool = toolMap.get((step.displayName || '').toLowerCase());
+        }
         const li = document.createElement('li');
         li.className = 'spell-step-item';
         // Create a caret icon so it's clear the item is expandable
@@ -445,26 +462,35 @@ function explodeSpell(spellWindowId, spell) {
     const startPosition = { x: spellWindow.workspaceX, y: spellWindow.workspaceY };
 
     const availableTools = getAvailableTools();
-    const toolMap = new Map(availableTools.map(t => [t.toolIdentifier, t]));
+    const toolMap = new Map();
+    availableTools.forEach(t => {
+        const identifier = t.toolIdentifier || t.toolId;
+        if (identifier) toolMap.set(identifier, t);
+        if (t.displayName) toolMap.set(t.displayName.toLowerCase(), t);
+    });
     
     // 1. Create all the tool windows from the spell's steps
-    const createdNodeIds = new Map(); // Map original step ID to new window ID
+    const createdNodeMap = new Map(); // Map original step ID to { id, element }
     spell.steps.forEach((step, index) => {
-        const tool = toolMap.get(step.toolIdentifier);
+        let tool = toolMap.get(step.toolIdentifier || step.toolId);
+        if (!tool) {
+            tool = toolMap.get((step.displayName || '').toLowerCase());
+        }
         if (tool) {
             // Arrange the new nodes in a neat row to avoid overlap
             const position = {
                 x: startPosition.x + (index * 350), // Stagger horizontally
                 y: startPosition.y
             };
-            const newWindow = createToolWindow(tool, position, step.id);
-            // We'll need the new ID to recreate connections
-            createdNodeIds.set(step.id, newWindow.id); 
+            const newWindowEl = createToolWindow(tool, position, step.id);
+            // Track mapping and element
+            createdNodeMap.set(step.id, { id: newWindowEl.id, el: newWindowEl });
 
             // Restore the parameter mappings for this node
-            const newToolWindow = getToolWindow(newWindow.id);
+            const newToolWindow = getToolWindow(newWindowEl.id);
             if (newToolWindow) {
-                newToolWindow.parameterMappings = step.parameterMappings;
+                newToolWindow.parameterMappings = step.parameterMappings || {};
+                rerenderToolWindowById(newWindowEl.id);
             }
         } else {
             console.warn(`[spellWindow] Could not find tool with identifier "${step.toolIdentifier}" during spell explosion.`);
@@ -474,14 +500,14 @@ function explodeSpell(spellWindowId, spell) {
     // 2. Re-create the connections between the new windows
     if (spell.connections) {
         spell.connections.forEach(conn => {
-            const fromId = createdNodeIds.get(conn.fromWindowId);
-            const toId = createdNodeIds.get(conn.toWindowId);
-            
-            if (fromId && toId) {
-                createPermanentConnection({
-                    from: { windowId: fromId, outputKey: conn.fromOutput },
-                    to: { windowId: toId, paramKey: conn.toInput }
-                });
+            const fromEntry = createdNodeMap.get(conn.fromWindowId);
+            const toEntry = createdNodeMap.get(conn.toWindowId);
+
+            if (fromEntry && toEntry) {
+                const fromEl = fromEntry.el;
+                const toEl = toEntry.el;
+                // Use the stored type (outputKey) as the connection type
+                createPermanentConnection(fromEl, toEl, conn.fromOutput);
             }
         });
     }
