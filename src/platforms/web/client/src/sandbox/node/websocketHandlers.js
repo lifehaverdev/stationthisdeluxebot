@@ -54,8 +54,13 @@ function handleGenerationProgress(payload) {
  * @param {object} payload - The final result payload from the server.
  */
 export function handleGenerationUpdate(payload) {
-    const { generationId, outputs, status } = payload;
-    const toolWindowEl = generationIdToWindowMap[generationId];
+    const { generationId, outputs, status, toolId } = payload;
+    let toolWindowEl = generationIdToWindowMap[generationId];
+
+    // Fallback: attempt to locate a tool window by toolId (useful for spell completion events)
+    if (!toolWindowEl && toolId) {
+        toolWindowEl = document.querySelector(`.tool-window[data-toolid="${toolId}"]`);
+    }
 
     if (toolWindowEl) {
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');

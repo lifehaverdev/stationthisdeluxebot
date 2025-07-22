@@ -27,6 +27,7 @@ const websocketServer = require('./src/core/services/websocket/server.js');
 // Import new services for notification dispatching
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
 const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
+const WebSandboxNotifier = require('./src/platforms/web/webSandboxNotifier');
 
 // geniusoverhaul: Import ToolRegistry
 const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
@@ -154,16 +155,36 @@ async function startApp() {
     logger.info('Platform adapters initialized');
 
     // --- Initialize and Start Notification Dispatcher ---
-    if (services.internal?.client && services.logger && platforms.telegram && platforms.telegram.bot) {
+    if (services.internal?.client && services.logger) {
       try {
-        logger.info('[App] Initializing TelegramNotifier...');
-        const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
-        
-        const platformNotifiersMap = {
-          telegram: telegramNotifierInstance,
-          // Add other notifiers here, e.g.:
-          // discord: new DiscordNotifier(platforms.discord.bot, services.logger),
-        };
+        // Build platform notifiers map dynamically
+        const platformNotifiersMap = {};
+
+        // --- Telegram Notifier ---
+        if (platforms.telegram && platforms.telegram.bot) {
+          try {
+            logger.info('[App] Initializing TelegramNotifier...');
+            const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
+            platformNotifiersMap.telegram = telegramNotifierInstance;
+          } catch (telegramErr) {
+            logger.error('[App] Failed to initialize TelegramNotifier:', telegramErr.message);
+          }
+        } else {
+          logger.info('[App] Telegram platform not available. TelegramNotifier not registered.');
+        }
+
+        // --- Web Sandbox Notifier ---
+        try {
+          if (websocketServer) {
+            const webSandboxNotifierInstance = new WebSandboxNotifier(websocketServer, services.logger);
+            platformNotifiersMap['web-sandbox'] = webSandboxNotifierInstance;
+            logger.info('[App] WebSandboxNotifier initialized and registered.');
+          } else {
+            logger.warn('[App] WebSocketService not available. WebSandboxNotifier will not be registered.');
+          }
+        } catch (webNotifierErr) {
+          logger.error('[App] Failed to initialize WebSandboxNotifier:', webNotifierErr.message);
+        }
 
         logger.info('[App] Initializing NotificationDispatcher...');
         const notificationDispatcher = new NotificationDispatcher(

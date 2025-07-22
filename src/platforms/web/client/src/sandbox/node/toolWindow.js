@@ -49,6 +49,10 @@ export function createToolWindow(tool, position, id = null, output = null) {
     toolWindowEl.id = windowId;
     toolWindowEl.className = 'tool-window';
     toolWindowEl.setAttribute('data-displayname', tool.displayName || '');
+    // Store toolId for easier mapping of spell completion events
+    if (tool && tool.toolId) {
+        toolWindowEl.setAttribute('data-toolid', tool.toolId);
+    }
 
     toolWindowEl.addEventListener('click', (e) => {
         // Only handle left mouse button
