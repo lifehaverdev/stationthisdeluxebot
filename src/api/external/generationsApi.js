@@ -1,7 +1,12 @@
 const express = require('express');
 
 function createGenerationsApi(dependencies) {
-    const { internal, toolRegistry, comfyUI, userSettingsService, loraResolutionService, logger } = dependencies;
+    const { internalApiClient, toolRegistry, comfyUI, userSettingsService, loraResolutionService, logger } = dependencies;
+    if (!internalApiClient) {
+        throw new Error('[GenerationsApi] Missing internalApiClient in dependencies');
+    }
+    // Backward compatibility: some legacy code expects dependencies.internal.client
+    const internalClient = internalApiClient;
     const router = express.Router();
 
     router.post('/execute', async (req, res) => {
@@ -29,13 +34,13 @@ function createGenerationsApi(dependencies) {
         let generationRecord;
         try {
             // 3. Create Session and Records
-            const sessionResponse = await internal.client.post('/internal/v1/data/sessions', {
+            const sessionResponse = await internalClient.post('/internal/v1/data/sessions', {
                 masterAccountId: user.masterAccountId,
                 platform: 'external_api',
             });
             const sessionId = sessionResponse.data._id;
 
-            const eventResponse = await internal.client.post('/internal/v1/data/events', {
+            const eventResponse = await internalClient.post('/internal/v1/data/events', {
                 masterAccountId: user.masterAccountId,
                 sessionId,
                 eventType: 'api_command_used',
@@ -44,7 +49,7 @@ function createGenerationsApi(dependencies) {
             });
             const initiatingEventId = eventResponse.data._id;
 
-            const generationRecordResponse = await internal.client.post('/internal/v1/data/generations', {
+            const generationRecordResponse = await internalClient.post('/internal/v1/data/generations', {
                 masterAccountId: user.masterAccountId,
                 sessionId,
                 initiatingEventId,
@@ -73,7 +78,7 @@ function createGenerationsApi(dependencies) {
             let userPreferences = {};
             try {
                 const encodedDisplayName = encodeURIComponent(tool.displayName);
-                const preferencesResponse = await internal.client.get(`/internal/v1/data/users/${user.masterAccountId}/preferences/${encodedDisplayName}`);
+                const preferencesResponse = await internalClient.get(`/internal/v1/data/users/${user.masterAccountId}/preferences/${encodedDisplayName}`);
                 if (preferencesResponse.data && typeof preferencesResponse.data === 'object') {
                     userPreferences = preferencesResponse.data;
                 }
@@ -95,7 +100,7 @@ function createGenerationsApi(dependencies) {
                     );
                     finalInputs[tool.metadata.telegramPromptInputKey] = modifiedPrompt;
                     if (appliedLoras && appliedLoras.length > 0) {
-                        internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+                        internalClient.put(`/internal/v1/data/generations/${generationRecord._id}`, {
                             'metadata.appliedLoras': appliedLoras,
                             'metadata.rawPrompt': rawPrompt,
                         }).catch(updateErr => logger.error(`[ExternalAPI EXEC /${toolId}] Failed to update generation with LoRA info: ${updateErr.message}`));
@@ -110,7 +115,7 @@ function createGenerationsApi(dependencies) {
             });
 
             // 7. Update generation record with run_id
-            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+            await internalClient.put(`/internal/v1/data/generations/${generationRecord._id}`, {
                 'metadata.run_id': runId,
                 'requestPayload': finalInputs,
                 'status': 'processing'
@@ -130,7 +135,7 @@ function createGenerationsApi(dependencies) {
             const errorMessage = err.response ? JSON.stringify(err.response.data) : err.message;
             logger.error(`[ExternalAPI EXEC /${toolId}] An error occurred during job submission: ${errorMessage}`, { stack: err.stack });
             
-            await internal.client.put(`/internal/v1/data/generations/${generationRecord._id}`, {
+            await internalClient.put(`/internal/v1/data/generations/${generationRecord._id}`, {
                 status: 'failed',
                 responsePayload: { error: errorMessage },
             }).catch(updateErr => logger.error(`[ExternalAPI EXEC /${toolId}] Failed to update generation to FAILED: ${updateErr.message}`));
@@ -148,7 +153,7 @@ function createGenerationsApi(dependencies) {
         }
 
         try {
-            const response = await internal.client.get(`/internal/v1/data/generations/${generationId}`);
+            const response = await internalClient.get(`/internal/v1/data/generations/${generationId}`);
             const generationRecord = response.data;
 
             // Security Check: Ensure the user owns this record

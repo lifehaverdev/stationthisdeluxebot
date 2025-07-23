@@ -457,6 +457,13 @@ async function handleTrainCommand(bot, message, masterAccountId, dependencies = 
 function registerHandlers(dispatcherInstances, dependencies) {
     const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
 
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[TrainingMenuManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     // Register a handler for the /train command
     commandDispatcher.register(/^\/train(?:@\w+)?$/i, async (bot, message, dependencies, match) => {
         // Resolve masterAccountId via internal API (find-or-create)

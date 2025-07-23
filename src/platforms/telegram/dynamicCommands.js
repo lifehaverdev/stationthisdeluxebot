@@ -1,5 +1,6 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
+const executionClient = require('../../utils/serverExecutionClient');
 
 /**
  * A registry to hold dynamic command definitions and their handlers.
@@ -225,7 +226,11 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
       // The handler is now a standalone async function.
       const commandHandler = async (bot, msg, dependencies, match) => {
-        const { internal, logger } = dependencies;
+        const { logger } = dependencies;
+        const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+        if (!apiClient) {
+            throw new Error('[dynamicCommands] internalApiClient dependency missing');
+        }
         const chatId = msg.chat.id;
 
         await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
@@ -239,7 +244,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
         try {
           // Step 1: Find or create user to get masterAccountId
-          const userResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+          const userResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
             platform: 'telegram',
             platformId: msg.from.id.toString(),
             platformContext: {
@@ -250,14 +255,14 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
           masterAccountId = userResponse.data.masterAccountId;
 
           // Step 2: Create a user session for this interaction
-          const sessionResponse = await internal.client.post('/internal/v1/data/sessions', {
+          const sessionResponse = await apiClient.post('/internal/v1/data/sessions', {
             masterAccountId: masterAccountId,
             platform: 'telegram',
           });
           sessionId = sessionResponse.data._id;
 
           // Step 3: Create the initiating event record
-          const eventResponse = await internal.client.post('/internal/v1/data/events', {
+          const eventResponse = await apiClient.post('/internal/v1/data/events', {
             masterAccountId,
             sessionId,
             eventType: 'command_used',
@@ -286,7 +291,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             let userPreferences = {};
             try {
                 const encodedDisplayName = encodeURIComponent(tool.displayName);
-                const preferencesResponse = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedDisplayName}`);
+                const preferencesResponse = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedDisplayName}`);
                 if (preferencesResponse.data && typeof preferencesResponse.data === 'object') {
                     userPreferences = preferencesResponse.data;
                 }
@@ -345,17 +350,17 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
               }
             };
 
-            // 4. Call the new centralized execution endpoint
-            const executionResponse = await internal.client.post('/internal/v1/data/execute', executionPayload);
+            // 4. Execute via central ExecutionClient (wraps internal endpoint)
+            const execResult = await executionClient.execute(executionPayload);
 
-            // Use deliveryMode to determine how to respond
-            if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
-              await bot.sendMessage(chatId, executionResponse.data.response, { reply_to_message_id: msg.message_id });
+            if (execResult.final && execResult.outputs && execResult.outputs.response) {
+              await bot.sendMessage(chatId, execResult.outputs.response, { reply_to_message_id: msg.message_id });
               await setReaction(bot, chatId, msg.message_id, '👌');
               return;
             }
-            // For webhook tools, keep the existing job-submitted logic
-            logger.info(`[Telegram EXEC /${commandName}] Job submitted via execution service. Gen ID: ${executionResponse.data.generationId}, Run ID: ${executionResponse.data.runId}`);
+
+            // Non-immediate tools – respond with a quick acknowledgement; updates will arrive via websocket
+            logger.info(`[Telegram EXEC /${commandName}] Job submitted via execution service. Gen ID: ${execResult.generationId}`);
             await setReaction(bot, chatId, msg.message_id, '👌');
 
         } catch (err) {

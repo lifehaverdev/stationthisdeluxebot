@@ -1,7 +1,9 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { createLogger } = require('../../utils/logger');
-const internalApiClient = require('../../utils/internalApiClient');
+// Expect a pre-instantiated internalApiClient instance via dependencies
+// This enforces the canonical dependency injection pattern and avoids
+// accidental creation of multiple axios clients.
 const { createToolsApiRouter } = require('./toolsApi');
 const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
 const createGenerationsApi = require('./generationsApi');
@@ -28,11 +30,17 @@ const createSpellsApi = require('./spellsApi');
  * @returns {express.Router} - The configured Express router for the external API.
  */
 function initializeExternalApi(dependencies) {
+  if (!dependencies.internalApiClient && !(dependencies.internal && dependencies.internal.client)) {
+    throw new Error('[ExternalAPI] internalApiClient dependency is missing. Ensure the canonical dependencies object includes "internalApiClient".');
+  }
+  // Prefer the top-level canonical property
+  const internalApiClient = dependencies.internalApiClient || dependencies.internal.client;
   const logger = createLogger('ExternalAPI');
   const externalApiRouter = express.Router();
-  // Ensure dependencies.internal exists before setting .client
+  // Maintain backward compatibility for modules that still expect dependencies.internal.client
   dependencies.internal = dependencies.internal || {};
-  dependencies.internal.client = internalApiClient;
+  dependencies.internal.client = internalApiClient; // legacy path
+  dependencies.internalApiClient = internalApiClient; // canonical path for new modules
   // --- Middleware ---
 
   /**

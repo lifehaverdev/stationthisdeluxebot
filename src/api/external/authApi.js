@@ -3,9 +3,10 @@ const jwt = require('jsonwebtoken');
 const { createLogger } = require('../../utils/logger');
 const { ethers } = require('ethers');
 const crypto = require('crypto');
-const internalApiClient = require('../../utils/internalApiClient');
 
 const logger = createLogger('AuthApi');
+
+// createAuthApi will receive internalApiClient via dependencies (canonical DI)
 
 // Simple in-memory store for nonces. In a production environment,
 // you would use a more robust cache like Redis.
@@ -17,6 +18,10 @@ const nonceStore = new Map();
  * @returns {express.Router}
  */
 function createAuthApi(dependencies) {
+  const { internalApiClient } = dependencies;
+  if (!internalApiClient) {
+    throw new Error('[AuthApi] Missing required dependency "internalApiClient"');
+  }
   const router = express.Router();
 
   /**

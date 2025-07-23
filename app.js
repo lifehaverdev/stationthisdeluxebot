@@ -129,10 +129,16 @@ async function startApp() {
       ...services, // Spread all initialized services
       logger,      // Add the root app logger
       appStartTime: APP_START_TIME,
+      internalApiClient: services.internalApiClient || services.internal?.client,
       toolRegistry: ToolRegistry.getInstance(),
       commandRegistry: new CommandRegistry(logger), // Instantiate the CommandRegistry
     };
-    
+
+    // Backward compatibility: ensure legacy path dependencies.internal.client exists
+    if (!dependencies.internal) {
+      dependencies.internal = {};
+    }
+    dependencies.internal.client = dependencies.internalApiClient;
     // geniusoverhaul: Add a log to verify dependencies.toolRegistry
     logger.info('[App] Canonical dependencies object created. Checking toolRegistry...');
     if (dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function') {

@@ -512,6 +512,13 @@ function calculateTimeframe(timeUnit, offset) {
  * @param {object} dependencies - The canonical dependencies object.
  */
 function registerHandlers(dispatcherInstances, dependencies) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[DashboardMenuManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     const { commandDispatcher, callbackQueryDispatcher } = dispatcherInstances;
     const { logger, internal } = dependencies;
 

@@ -4,8 +4,14 @@
  */
 
 function registerHandlers(dispatchers, dependencies) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[RateManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
     const { callbackQueryDispatcher } = dispatchers;
-    const { logger, internal } = dependencies;
+    const { logger } = dependencies;
 
     /**
      * Handles the 'rate_gen:' callback.
@@ -21,7 +27,7 @@ function registerHandlers(dispatchers, dependencies) {
 
         try {
           // Call the internal API to add the rating using the correct endpoint
-          await internal.client.post(`/internal/v1/data/generations/rate_gen/${generationId}`, {
+          await apiClient.post(`/internal/v1/data/generations/rate_gen/${generationId}`, {
             ratingType: ratingType,
             masterAccountId: masterAccountId,
           });

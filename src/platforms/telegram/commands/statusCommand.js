@@ -33,6 +33,10 @@ function createStatusCommandHandler(dependencies) {
    * @returns {Promise<void>}
    */
   return async function handleStatusCommand(bot, message, dependencies, match) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+      throw new Error('[statusCommand] internalApiClient dependency missing');
+    }
     const telegramUserId = message.from.id;
     let masterAccountId;
     let sessionId;
@@ -42,7 +46,7 @@ function createStatusCommandHandler(dependencies) {
     try {
       // 1. Get masterAccountId via Internal API
       logger.debug(`[statusCommand] Getting masterAccountId for platformId: ${platformIdStr}...`);
-      const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+      const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
         platform: platform,
         platformId: platformIdStr,
         platformContext: { // Optional: Pass some context if needed by the API
@@ -57,7 +61,7 @@ function createStatusCommandHandler(dependencies) {
 
       // 2. Find or Create Session via Internal API
       logger.debug(`[statusCommand] Checking for active session for masterAccountId: ${masterAccountId}...`);
-      const activeSessionsResponse = await dependencies.internal.client.get(`/internal/v1/data/users/${masterAccountId}/sessions/active?platform=${platform}`);
+      const activeSessionsResponse = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/sessions/active?platform=${platform}`);
       
       if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
         sessionId = activeSessionsResponse.data[0]._id; // Use the first active session
@@ -67,7 +71,7 @@ function createStatusCommandHandler(dependencies) {
         }
       } else {
         logger.debug(`[statusCommand] No active session found. Creating new session for masterAccountId: ${masterAccountId}...`);
-        const newSessionResponse = await dependencies.internal.client.post('/internal/v1/data/sessions', {
+        const newSessionResponse = await apiClient.post('/internal/v1/data/sessions', {
           masterAccountId: masterAccountId,
           platform: platform,
           userAgent: 'Telegram Bot Command' // Example user agent
@@ -78,7 +82,7 @@ function createStatusCommandHandler(dependencies) {
         // Log session_started event via Internal API
         try {
           logger.debug(`[statusCommand] Logging session_started event for sessionId: ${sessionId}...`);
-          await dependencies.internal.client.post('/internal/v1/data/events', {
+          await apiClient.post('/internal/v1/data/events', {
             masterAccountId: masterAccountId,
             sessionId: sessionId,
             eventType: 'session_started',
@@ -99,7 +103,7 @@ function createStatusCommandHandler(dependencies) {
       if (sessionId) {
         logger.debug(`[statusCommand] Updating activity for session: ${sessionId}...`);
         try {
-          await dependencies.internal.client.put(`/internal/v1/data/sessions/${sessionId}/activity`, {});
+          await apiClient.put(`/internal/v1/data/sessions/${sessionId}/activity`, {});
           logger.debug(`[statusCommand] Activity updated for session: ${sessionId}`);
         } catch (activityError) {
           // Log the error but don't block the status command
@@ -109,7 +113,7 @@ function createStatusCommandHandler(dependencies) {
 
       // 4. Get Enhanced Status Info via new Internal API Endpoint
       logger.debug(`[statusCommand] Getting enhanced status report for masterAccountId: ${masterAccountId}...`);
-      const statusReportResponse = await dependencies.internal.client.get(`/internal/v1/data/users/${masterAccountId}/status-report`);
+      const statusReportResponse = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/status-report`);
       const statusData = statusReportResponse.data;
 
       // 5. Format and Send Response

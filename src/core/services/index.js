@@ -219,6 +219,7 @@ async function initializeServices(options = {}) {
       openai: openAIService,
       comfyUIService: comfyUIService,
       loraResolutionService: loraResolutionService,
+      internalApiClient, // pass canonical client to API layer
       userSettingsService, // Pass the service to the API layer
       walletLinkingService,
       storageService, // Pass the storage service to the API layer
@@ -268,6 +269,7 @@ async function initializeServices(options = {}) {
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
       external: apiServices.external, // This contains the external router
+      internalApiClient, // <-- expose the singleton client at top-level
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService

@@ -133,6 +133,13 @@ async function handleRerunGenCallback(bot, callbackQuery, masterAccountId, depen
 }
 
 function registerHandlers(dispatchers, dependencies) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[RerunManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     const { callbackQueryDispatcher } = dispatchers;
     const { logger } = dependencies;
 

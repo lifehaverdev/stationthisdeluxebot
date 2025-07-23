@@ -1,6 +1,5 @@
 const express = require('express');
 const { createLogger } = require('../../utils/logger');
-const internalApiClient = require('../../utils/internalApiClient');
 const contractUtils = require('../../core/services/alchemy/contractUtils');
 const { ethers } = require('ethers');
 
@@ -8,9 +7,11 @@ const logger = createLogger('ReferralVaultApi');
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function createReferralVaultApi(dependencies) {
+  const { internalApiClient, ethereumService, priceFeedService, creditService } = dependencies;
+  if (!internalApiClient) {
+    throw new Error('[ReferralVaultApi] internalApiClient dependency missing');
+  }
   const router = express.Router();
-  // Use creditService as the canonical source of contract config
-  const { ethereumService, priceFeedService, creditService } = dependencies;
   // All contract config comes from creditService
   const contractConfig = creditService && creditService.contractConfig;
 

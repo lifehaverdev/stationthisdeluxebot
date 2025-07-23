@@ -1,5 +1,4 @@
 const express = require('express');
-const internalApiClient = require('../../utils/internalApiClient');
 const { createLogger } = require('../../utils/logger');
 
 const logger = createLogger('ExternalToolsApi');
@@ -12,6 +11,10 @@ const logger = createLogger('ExternalToolsApi');
  * @returns {express.Router} - An Express router.
  */
 function createToolsApiRouter(dependencies) {
+  const { internalApiClient } = dependencies;
+  if (!internalApiClient) {
+    throw new Error('[toolsApi-external] internalApiClient dependency missing');
+  }
   const router = express.Router();
 
   /**

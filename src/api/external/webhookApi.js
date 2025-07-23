@@ -31,7 +31,7 @@ function createWebhookApi(dependencies) {
       
       // Prepare dependencies for the webhook processor
       const processorDeps = {
-        internalApiClient: dependencies.internal?.client,
+        internalApiClient: dependencies.internalApiClient || dependencies.internal?.client,
         telegramNotifier: dependencies.telegramNotifier,
         logger: dependencies.logger || console,
         webSocketService: dependencies.webSocketService // <-- add this

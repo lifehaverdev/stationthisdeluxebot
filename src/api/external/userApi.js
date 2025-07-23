@@ -1,6 +1,5 @@
 const express = require('express');
 const { createLogger } = require('../../utils/logger');
-const internalApiClient = require('../../utils/internalApiClient');
 
 const logger = createLogger('UserApi');
 
@@ -10,6 +9,10 @@ const logger = createLogger('UserApi');
  * @returns {express.Router}
  */
 function createUserApi(dependencies) {
+  const { internalApiClient } = dependencies;
+  if (!internalApiClient) {
+    throw new Error('[UserApi] Missing required dependency "internalApiClient"');
+  }
   const router = express.Router();
 
   /**

@@ -5,6 +5,11 @@ const { sendEscapedMessage, editEscapedMessageText } = require('../utils/messagi
 // const UserSettingsService = require('../../../core/services/userSettingsService'); // Direct import not needed if passed via dependencies
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils'); // ADDED
 
+// Utility: resolve canonical internalApiClient for this module
+function getApiClient(dependencies) {
+    return dependencies.internalApiClient || dependencies.internal?.client;
+}
+
 // Dependencies like logger, toolRegistry, userSettingsService will be passed into functions.
 
 const TELEGRAM_API_KEY = process.env.INTERNAL_API_KEY_TELEGRAM; // Ensure this is defined
@@ -19,10 +24,14 @@ const ITEMS_PER_PAGE_ALL_TOOLS = 6; // 3 rows of 2 tools
  * @returns {Promise<object>}
  */
 async function getToolSettings(masterAccountId, toolIdentifier, dependencies) {
-    const { logger, internal } = dependencies;
+    const { logger } = dependencies;
+    const apiClient = getApiClient(dependencies);
+    if (!apiClient) {
+        throw new Error('[SettingsMenu] internalApiClient dependency missing');
+    }
     try {
         const encodedIdentifier = encodeURIComponent(toolIdentifier);
-        const response = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`);
+        const response = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`);
         return response.data || {};
     } catch (error) {
         if (error.response && error.response.status === 404) {
@@ -44,10 +53,14 @@ async function getToolSettings(masterAccountId, toolIdentifier, dependencies) {
  * @returns {Promise<{success: boolean, data?: object, message?: string}>}
  */
 async function saveToolSettings(masterAccountId, toolIdentifier, settingsToUpdate, dependencies) {
-    const { logger, internal } = dependencies;
+    const { logger } = dependencies;
+    const apiClient = getApiClient(dependencies);
+    if (!apiClient) {
+        throw new Error('[SettingsMenu] internalApiClient dependency missing');
+    }
     try {
         const encodedIdentifier = encodeURIComponent(toolIdentifier);
-        const response = await internal.client.put(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`, settingsToUpdate);
+        const response = await apiClient.put(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedIdentifier}`, settingsToUpdate);
         return { success: true, data: response.data };
     } catch (error) {
         logger.error(`[SettingsMenu] saveToolSettings: Error saving tool settings for MAID ${masterAccountId}, Tool ${toolIdentifier}.`);
@@ -91,10 +104,8 @@ async function getMostFrequentlyUsedTools(masterAccountId, dependencies) {
         return [];
     }
     try {
-        const apiFetchLimit = limit * 3; // Fetch more to account for filtering
-        logger.info(`[SettingsMenu] Fetching most frequent tools (raw) for MAID: ${masterAccountId}, API fetch limit: ${apiFetchLimit}`);
-        
-        const response = await dependencies.internal.client.get(`/internal/v1/data/generations/users/${masterAccountId}/most-frequent-tools`, {
+        const apiClient = getApiClient(dependencies);
+        const response = await apiClient.get(`/internal/v1/data/generations/users/${masterAccountId}/most-frequent-tools`, {
             params: { limit: apiFetchLimit }
         });
 

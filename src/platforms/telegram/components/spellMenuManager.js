@@ -736,6 +736,14 @@ async function spellCallbackHandler(bot, callbackQuery, masterAccountId, depende
  * @param {object} dependencies - The canonical dependencies object.
  */
 function registerHandlers(dispatcherInstances, dependencies) {
+    // Canonical internalApiClient wiring for legacy code
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[SpellMenuManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
     const { logger } = dependencies;
 

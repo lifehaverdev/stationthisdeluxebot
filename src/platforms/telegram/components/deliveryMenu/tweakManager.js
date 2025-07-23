@@ -267,6 +267,13 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
 
 
 function registerHandlers(dispatchers, dependencies) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[TweakManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     const { callbackQueryDispatcher, messageReplyDispatcher } = dispatchers;
     const { logger } = dependencies;
 

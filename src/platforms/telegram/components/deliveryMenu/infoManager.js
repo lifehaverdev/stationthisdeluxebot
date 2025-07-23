@@ -254,6 +254,13 @@ async function handleRestoreDeliveryCallback(bot, callbackQuery, masterAccountId
 
 
 function registerHandlers(dispatchers, dependencies) {
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+        throw new Error('[InfoManager] internalApiClient dependency missing');
+    }
+    if (!dependencies.internal) dependencies.internal = {};
+    dependencies.internal.client = apiClient;
+
     const { callbackQueryDispatcher } = dispatchers;
     const { logger } = dependencies;
 

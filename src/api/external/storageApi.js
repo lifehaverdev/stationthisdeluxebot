@@ -1,5 +1,4 @@
 const express = require('express');
-const internalApiClient = require('../../utils/internalApiClient');
 
 /**
  * Creates a router for public-facing storage operations.
@@ -9,8 +8,11 @@ const internalApiClient = require('../../utils/internalApiClient');
  * @returns {express.Router}
  */
 function createPublicStorageApi(services) {
+  const { internalApiClient, logger } = services;
+  if (!internalApiClient) {
+    throw new Error('[storageApi-external] internalApiClient dependency missing');
+  }
   const router = express.Router();
-  const { logger } = services;
 
   router.post('/upload-url', async (req, res) => {
     const { fileName, contentType } = req.body;

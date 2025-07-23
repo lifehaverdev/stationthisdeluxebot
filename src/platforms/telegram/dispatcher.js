@@ -51,7 +51,11 @@ class CallbackQueryDispatcher {
     const { data, from } = callbackQuery;
     for (const [prefix, handler] of this.handlers.entries()) {
       if (data.startsWith(prefix)) {
-        const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {
+        const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+        if (!apiClient) {
+          throw new Error('[CallbackQueryDispatcher] internalApiClient dependency missing');
+        }
+        const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
           platform: 'telegram',
           platformId: from.id.toString(),
           platformContext: { firstName: from.first_name, username: from.username }
