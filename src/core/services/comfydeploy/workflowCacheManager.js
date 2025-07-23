@@ -27,6 +27,24 @@ const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 // We might refactor this later to avoid circular dependencies or pass methods directly
 let ComfyUIService; // Lazy load to potentially help with circular deps
 
+const { keccak256, toUtf8Bytes } = require('ethers'); // For deterministic toolId generation using Solidity-compatible keccak256 hash
+
+/**
+ * Generate a deterministic toolId based on a display name using a Solidity-compatible keccak256 hash.
+ * A prefix (e.g. "comfy") is prepended so we retain human-readable context while ensuring
+ * the resulting ID is stable between application restarts.
+ *
+ * @param {string} prefix - Namespace/service prefix (e.g. "comfy", "openai").
+ * @param {string} displayName - Human-readable name of the tool/workflow.
+ * @returns {string} Deterministic toolId value like `comfy-<hex>`.
+ */
+function generateDeterministicToolId(prefix, displayName) {
+  // Fallbacks to guard against unexpected input
+  const safeName = (displayName || '').toString();
+  const hash = keccak256(toUtf8Bytes(safeName)); // 0x-prefixed 32-byte hex string
+  return `${prefix}-${hash.slice(2)}`; // strip 0x for compactness
+}
+
 // Define GPU costs (dollars per second)
 const GPU_COST_PER_SECOND = {
   'T4': 0.00018,
@@ -899,9 +917,10 @@ class WorkflowCacheManager {
     }
   
     // Basic tool metadata
-    toolDefinition.toolId = `comfy-${actualDeploymentId}`;
+    const computedDisplayName = workflowData?.friendly_name || workflowData?.workflow?.name || workflowData?.name || workflowSummaryIfNoDeployment?.name || `Comfy Workflow ${actualDeploymentId}`;
+    toolDefinition.displayName = computedDisplayName;
+    toolDefinition.toolId = generateDeterministicToolId('comfy', computedDisplayName);
     toolDefinition.service = 'comfyui';
-    toolDefinition.displayName = workflowData?.friendly_name || workflowData?.workflow?.name || workflowData?.name || workflowSummaryIfNoDeployment?.name || `Comfy Workflow ${actualDeploymentId}`;
     toolDefinition.commandName = generateCommandName(toolDefinition.displayName);
     toolDefinition.apiPath = `/api/internal/comfy/run/${actualDeploymentId}`;
   
