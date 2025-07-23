@@ -7,6 +7,7 @@ function injectTextOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'text-overlay';
     overlay.className = 'text-overlay';
+    overlay.style.zIndex = '3000';
     overlay.style.display = 'none';
     overlay.innerHTML = `
       <div class="text-overlay-content">
@@ -34,6 +35,12 @@ export function showTextOverlay(initialValue, onSave) {
     const textarea = overlay.querySelector('.text-overlay-textarea');
     textarea.value = initialValue || '';
     overlay.style.display = 'flex';
+
+    // Hide connection lines
+    document.querySelectorAll('.connection-line.permanent').forEach(el => {
+        el._prevVisibility = el.style.visibility;
+        el.style.visibility = 'hidden';
+    });
     textarea.focus();
     textOverlaySaveCallback = onSave;
 }
@@ -47,6 +54,12 @@ function hideTextOverlay() {
     const overlay = document.getElementById('text-overlay');
     if (!overlay) return;
     overlay.style.display = 'none';
+
+    // Restore connection lines
+    document.querySelectorAll('.connection-line.permanent').forEach(el => {
+        el.style.visibility = el._prevVisibility || '';
+        delete el._prevVisibility;
+    });
     const textarea = overlay.querySelector('.text-overlay-textarea');
     if (textOverlaySaveCallback) {
         textOverlaySaveCallback(textarea.value);
@@ -56,28 +69,22 @@ function hideTextOverlay() {
 
 export function bindPromptFieldOverlays() {
     console.log('[textOverlay.js] bindPromptFieldOverlays called');
-    const paramNames = [
-        'input_prompt',
-        'input_negative',
-        'input_negative_prompt',
-        'input_text', // As per your suggestion
-        'input_instructions'
-    ];
+    // Bind to any parameter whose name suggests longer text – prompt, text, instructions
+    const containers = document.querySelectorAll('div.parameter-input');
+    containers.forEach(container => {
+        const paramName = container.dataset.paramName || '';
+        if (!/(prompt|text|instruction)/i.test(paramName)) return;
 
-    paramNames.forEach(paramName => {
-        const containers = document.querySelectorAll(`div.parameter-input[data-param-name="${paramName}"]`);
-        containers.forEach(container => {
-            const field = container.querySelector('input[type="text"]');
-            if (!field || field._overlayBound) return;
+        const field = container.querySelector('input[type="text"]');
+        if (!field || field._overlayBound) return;
 
-            console.log('[textOverlay.js] Binding overlay to field:', field);
-            field._overlayBound = true;
-            field.addEventListener('focus', function(e) {
-                e.preventDefault();
-                showTextOverlay(field.value, (newValue) => {
-                    field.value = newValue;
-                    field.dispatchEvent(new Event('input', { bubbles: true }));
-                });
+        console.log('[textOverlay.js] Binding overlay to field:', field);
+        field._overlayBound = true;
+        field.addEventListener('focus', function(e) {
+            e.preventDefault();
+            showTextOverlay(field.value, (newValue) => {
+                field.value = newValue;
+                field.dispatchEvent(new Event('input', { bubbles: true }));
             });
         });
     });

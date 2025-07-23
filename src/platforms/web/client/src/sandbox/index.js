@@ -60,21 +60,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     const minScale = 0.2, maxScale = 4.0; // Adjusted zoom limits
     const gridSize = 32;
 
+    // When the canvas has `transform: translate(pan) scale(scale)` the true mapping is:
+    // screen = (workspace + pan) * scale  ⇒  workspace = (screen / scale) - pan
     function workspaceToScreen(x, y) {
-        return { x: (x * scale) + pan.x, y: (y * scale) + pan.y };
+        // Children of .sandbox-canvas inherit the canvas transform. Their raw
+        // left/top are expressed in *workspace* coordinates; scaling & pan
+        // are both handled by the parent transform. Therefore return the
+        // raw workspace coordinates here.
+        return { x: x, y: y };
     }
 
     function screenToWorkspace(x, y) {
-        return { x: (x - pan.x) / scale, y: (y - pan.y) / scale };
+        // Reverse the transform: first remove pan, then divide by scale.
+        return { x: (x / scale) - pan.x, y: (y / scale) - pan.y };
     }
 
     function renderAllWindows() {
         getToolWindows().forEach(win => {
             const el = document.getElementById(win.id);
             if (el) {
-                const { x, y } = workspaceToScreen(win.workspaceX, win.workspaceY);
-                el.style.left = `${x}px`;
-                el.style.top = `${y}px`;
+                el.style.left = `${win.workspaceX}px`;
+                el.style.top = `${win.workspaceY}px`;
                 // Optional: scale window size too
                 // el.style.width = `${win.width * scale}px`;
                 // el.style.height = `${win.height * scale}px`;

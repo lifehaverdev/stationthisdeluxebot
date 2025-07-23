@@ -98,9 +98,8 @@ export function createToolWindow(tool, position, id = null, output = null) {
         persistState();
     }
 
-    const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(position.x, position.y);
-    toolWindowEl.style.left = `${screenX}px`;
-    toolWindowEl.style.top = `${screenY}px`;
+    toolWindowEl.style.left = `${position.x}px`;
+    toolWindowEl.style.top = `${position.y}px`;
 
     // Separate parameters into required and optional
     const params = Object.entries(tool.inputSchema || {}).reduce((acc, [key, param]) => {
@@ -144,8 +143,14 @@ export function createToolWindow(tool, position, id = null, output = null) {
         };
         toolWindowEl.appendChild(loadBtn);
     } else {
+        // Each click creates a *new* window (5px offset) and runs execution there.
         executeBtn.addEventListener('click', async () => {
-            await executeNodeAndDependencies(windowId);
+            const OFFSET = 5;
+            // Create a duplicate window slightly offset so the previous result stays visible
+            const dupPos = { x: windowData.workspaceX + OFFSET, y: windowData.workspaceY + OFFSET };
+            const dupEl = createToolWindow(tool, dupPos);
+            // Execute the duplicate (includes dependencies)
+            await executeNodeAndDependencies(dupEl.id);
         });
         toolWindowEl.appendChild(executeBtn);
     }
@@ -346,19 +351,19 @@ async function executeSingleNode(toolWindowEl) {
                     if (isFinalStatus && result.status !== 'failed') {
                         let outputData;
                         if (Array.isArray(result.outputs) && result.outputs[0]?.data?.images?.[0]?.url) {
-                            outputData = { type: 'image', url: result.outputs[0].data.images[0].url };
+                            outputData = { type: 'image', url: result.outputs[0].data.images[0].url, generationId: result.generationId };
                         } else if (result.outputs?.imageUrl) {
-                            outputData = { type: 'image', url: result.outputs.imageUrl };
+                            outputData = { type: 'image', url: result.outputs.imageUrl, generationId: result.generationId };
                         } else if (result.response && typeof result.response === 'string') {
                             // Handle immediate, direct text response (like from the user's log)
-                            outputData = { type: 'text', text: result.response };
+                            outputData = { type: 'text', text: result.response, generationId: result.generationId };
                         } else if (result.outputs?.text) {
-                            outputData = { type: 'text', text: result.outputs.text };
+                            outputData = { type: 'text', text: result.outputs.text, generationId: result.generationId };
                         } else if (result.outputs?.response) {
                              // Handle text from a nested 'response' property in the output
-                            outputData = { type: 'text', text: result.outputs.response };
+                            outputData = { type: 'text', text: result.outputs.response, generationId: result.generationId };
                         } else {
-                            outputData = { type: 'unknown', ...result.outputs };
+                            outputData = { type: 'unknown', generationId: result.generationId, ...result.outputs };
                         }
                         
                         setToolWindowOutput(windowId, outputData);

@@ -82,16 +82,16 @@ export function handleGenerationUpdate(payload) {
         if (status === 'completed' || status === 'success') {
             let outputData;
             if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
-                outputData = { type: 'image', url: outputs[0].data.images[0].url };
+                outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId };
             } else if (outputs.imageUrl) {
-                outputData = { type: 'image', url: outputs.imageUrl };
+                outputData = { type: 'image', url: outputs.imageUrl, generationId };
             } else if (outputs.text) {
-                outputData = { type: 'text', text: outputs.text };
+                outputData = { type: 'text', text: outputs.text, generationId };
             } else if (outputs.response) {
                 // Handle text from a nested 'response' property
-                outputData = { type: 'text', text: outputs.response };
+                outputData = { type: 'text', text: outputs.response, generationId };
             } else {
-                outputData = { type: 'unknown', ...outputs };
+                outputData = { type: 'unknown', generationId, ...outputs };
             }
             
             setToolWindowOutput(toolWindowEl.id, outputData);

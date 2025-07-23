@@ -34,10 +34,10 @@ export function setupDragging(windowData, handle) {
         windowData.workspaceX = initialWorkspacePos.x + dx;
         windowData.workspaceY = initialWorkspacePos.y + dy;
         
-        // Live re-rendering from parent
+        // Convert workspace → screen so the element tracks the cursor exactly
         const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(windowData.workspaceX, windowData.workspaceY);
         windowData.element.style.left = `${screenX}px`;
-        windowData.element.style.top = `${screenY}px`;
+        windowData.element.style.top = `${screenY}px`;  
 
         // Update all connections in real-time
         renderAllConnections();
@@ -60,9 +60,9 @@ export function setupDragging(windowData, handle) {
         persistState();
         
         // Final render after snap
-        const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(finalX, finalY);
-        windowData.element.style.left = `${screenX}px`;
-        windowData.element.style.top = `${screenY}px`;
+        const { x: snapScreenX, y: snapScreenY } = window.sandbox.workspaceToScreen(finalX, finalY);
+        windowData.element.style.left = `${snapScreenX}px`;
+        windowData.element.style.top = `${snapScreenY}px`;  
         
         isDragging = false;
         windowData.element.style.cursor = '';

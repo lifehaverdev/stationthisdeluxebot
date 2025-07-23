@@ -4,6 +4,8 @@ export function injectImageOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'image-overlay';
     overlay.className = 'image-overlay';
+    // Ensure it sits above connection lines (which use z-index 999-1000)
+    overlay.style.zIndex = '3000';
     overlay.style.display = 'none';
     overlay.innerHTML = `
       <div class="image-overlay-content">
@@ -39,6 +41,12 @@ export function showImageOverlay(url) {
     img.src = url;
     overlay.style.display = 'flex';
 
+    // Hide permanent connection lines while overlay is active
+    document.querySelectorAll('.connection-line.permanent').forEach(el => {
+        el._prevVisibility = el.style.visibility;
+        el.style.visibility = 'hidden';
+    });
+
     // Wait for image to load, then log sizes
     img.onload = () => {
         const overlayContent = overlay.querySelector('.image-overlay-content');
@@ -62,4 +70,10 @@ export function hideImageOverlay() {
     if (!overlay) return;
     overlay.style.display = 'none';
     overlay.querySelector('.image-overlay-img').src = '';
+
+    // Restore connection-line visibility
+    document.querySelectorAll('.connection-line.permanent').forEach(el => {
+        el.style.visibility = el._prevVisibility || '';
+        delete el._prevVisibility;
+    });
 } 

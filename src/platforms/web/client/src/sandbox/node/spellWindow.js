@@ -132,9 +132,8 @@ export function createSpellWindow(spell, position, id = null, output = null) {
         persistState();
     }
 
-    const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(position.x, position.y);
-    spellWindowEl.style.left = `${screenX}px`;
-    spellWindowEl.style.top = `${screenY}px`;
+    spellWindowEl.style.left = `${position.x}px`;
+    spellWindowEl.style.top = `${position.y}px`;
     
     const header = createSpellWindowHeader(spell.name);
     

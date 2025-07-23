@@ -215,7 +215,7 @@ The "Mint as Spell" FAB would disappear after lasso selection because the select
 - [x] Select and expose parameters as spell inputs during minting
 - [x] Add a spell node to the canvas from the spell menu
 - [x] Edit exposed inputs on the spell node
-- [ ] Execute a spell node and verify correct output
+- [x] Execute a spell node and verify correct output
 - [x] Use 'Show More' to view spell details and steps
 - [x] Explode a spell node into its original tool windows and connections
 - [ ] Edit and run the exploded nodes as normal
