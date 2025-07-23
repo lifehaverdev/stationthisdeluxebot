@@ -24,6 +24,7 @@ import { setupDragging } from './drag.js';
 import { handleGenerationUpdate } from './websocketHandlers.js';
 import { bindPromptFieldOverlays } from './overlays/textOverlay.js';
 import { websocketClient } from '/js/websocketClient.js';
+import executionClient from '../executionClient.js';
 
 // Call once to register the handlers
 registerWebSocketHandlers();
@@ -310,77 +311,47 @@ async function executeSingleNode(toolWindowEl) {
         };
         
         try {
-            const csrfRes = await fetch('/api/v1/csrf-token');
-            const { csrfToken } = await csrfRes.json();
+            const execResult = await executionClient.execute(payload);
+            console.log('[DEBUG] Normalised execution result:', JSON.stringify(execResult, null, 2));
 
-            const response = await fetch('/api/v1/generation/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
-                credentials: 'include',
-                body: JSON.stringify(payload),
-            });
-            const result = await response.json();
-            console.log('[DEBUG] Raw execution result:', JSON.stringify(result, null, 2));
+            showError(toolWindowEl, '');
 
-            if (!response.ok) {
-                // Handle insufficient funds (402)
-                if (response.status === 402 && result.error?.code === 'INSUFFICIENT_FUNDS') {
-                    showError(toolWindowEl, `Not enough points to run this workflow.\nRequired: ${result.error.details?.required}, Available: ${result.error.details?.available}`);
-                } else {
-                    showError(toolWindowEl, result.error?.message || 'Execution request failed');
-                }
-                if (progressIndicator) progressIndicator.remove();
-                reject(new Error(result.error?.message || 'Execution request failed'));
+            if (execResult.generationId && !execResult.final) {
+                // Long-running job – wait for websocket updates
+                generationIdToWindowMap[execResult.generationId] = toolWindowEl;
+                progressIndicator.textContent = `Status: ${execResult.status}`;
+                await generationCompletionManager.createCompletionPromise(execResult.generationId);
             } else {
-                showError(toolWindowEl, '');
+                // Immediate result
+                if (progressIndicator) progressIndicator.remove();
 
-                // Check if the job is already complete in the initial response.
-                const isFinalStatus = result.status === 'completed' || result.status === 'success' || result.status === 'failed';
-
-                if (result.generationId && !isFinalStatus) {
-                    // ASYNC PATH: It's a long-running job. Wait for the websocket update.
-                    generationIdToWindowMap[result.generationId] = toolWindowEl;
-                    progressIndicator.textContent = `Status: ${result.status}`;
-                    await generationCompletionManager.createCompletionPromise(result.generationId);
-                    
-                } else {
-                    // IMMEDIATE PATH: The result is final, handle it now.
-                    // This covers cases where status is final, regardless of whether a generationId is present.
-                    if (progressIndicator) progressIndicator.remove();
-
-                    if (isFinalStatus && result.status !== 'failed') {
-                        let outputData;
-                        if (Array.isArray(result.outputs) && result.outputs[0]?.data?.images?.[0]?.url) {
-                            outputData = { type: 'image', url: result.outputs[0].data.images[0].url, generationId: result.generationId };
-                        } else if (result.outputs?.imageUrl) {
-                            outputData = { type: 'image', url: result.outputs.imageUrl, generationId: result.generationId };
-                        } else if (result.response && typeof result.response === 'string') {
-                            // Handle immediate, direct text response (like from the user's log)
-                            outputData = { type: 'text', text: result.response, generationId: result.generationId };
-                        } else if (result.outputs?.text) {
-                            outputData = { type: 'text', text: result.outputs.text, generationId: result.generationId };
-                        } else if (result.outputs?.response) {
-                             // Handle text from a nested 'response' property in the output
-                            outputData = { type: 'text', text: result.outputs.response, generationId: result.generationId };
-                        } else {
-                            outputData = { type: 'unknown', generationId: result.generationId, ...result.outputs };
-                        }
-                        
-                        setToolWindowOutput(windowId, outputData);
-                        const resultContainer = toolWindowEl.querySelector('.result-container') || document.createElement('div');
-                        if (!resultContainer.parentElement) {
-                            resultContainer.className = 'result-container';
-                            toolWindowEl.appendChild(resultContainer);
-                        }
-                        renderResultContent(resultContainer, outputData);
-                    } else if (result.status === 'failed') {
-                        showError(toolWindowEl, result.outputs?.error || 'Execution failed.');
+                if (execResult.final && execResult.status !== 'failed') {
+                    let outputData;
+                    if (Array.isArray(execResult.outputs?.images) && execResult.outputs.images[0]?.url) {
+                        outputData = { type: 'image', url: execResult.outputs.images[0].url, generationId: execResult.generationId };
+                    } else if (execResult.outputs?.imageUrl) {
+                        outputData = { type: 'image', url: execResult.outputs.imageUrl, generationId: execResult.generationId };
+                    } else if (execResult.outputs?.response) {
+                        outputData = { type: 'text', text: execResult.outputs.response, generationId: execResult.generationId };
+                    } else if (execResult.outputs?.text) {
+                        outputData = { type: 'text', text: execResult.outputs.text, generationId: execResult.generationId };
+                    } else {
+                        outputData = { type: 'unknown', generationId: execResult.generationId, ...execResult.outputs };
                     }
+
+                    setToolWindowOutput(windowId, outputData);
+                    const resultContainer = toolWindowEl.querySelector('.result-container') || document.createElement('div');
+                    if (!resultContainer.parentElement) {
+                        resultContainer.className = 'result-container';
+                        toolWindowEl.appendChild(resultContainer);
+                    }
+                    renderResultContent(resultContainer, outputData);
+                } else if (execResult.status === 'failed') {
+                    showError(toolWindowEl, execResult.outputs?.error || 'Execution failed.');
                 }
-                
-                // Whether we waited or handled it immediately, the step is now done.
-                resolve();
             }
+
+            resolve();
         } catch (error) {
             console.error('[node.js] Execution Error:', error);
             showError(toolWindowEl, error.message || 'Unknown error');
