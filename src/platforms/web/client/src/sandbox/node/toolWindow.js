@@ -150,6 +150,16 @@ export function createToolWindow(tool, position, id = null, output = null) {
             // Create a duplicate window slightly offset so the previous result stays visible
             const dupPos = { x: windowData.workspaceX + OFFSET, y: windowData.workspaceY + OFFSET };
             const dupEl = createToolWindow(tool, dupPos);
+
+            // ---- NEW: copy parameter mappings from source → duplicate ----
+            const dupWinData = getToolWindow(dupEl.id);
+            if (dupWinData) {
+                dupWinData.parameterMappings = JSON.parse(JSON.stringify(windowData.parameterMappings || {}));
+                randomizeSeedInMappings(dupWinData.parameterMappings);
+                persistState();
+            }
+            // --------------------------------------------------------------
+
             // Execute the duplicate (includes dependencies)
             await executeNodeAndDependencies(dupEl.id);
         });
@@ -495,3 +505,26 @@ function rerenderAllUI() {
     // Re-draw all connections
     renderAllConnections();
 } 
+
+// ---- NEW UTILITY ---------------------------------------------------------
+/**
+ * Walk through a parameterMappings object and randomise any key that appears to
+ * be a seed ("seed", "input_seed", or contains the word "seed" case-insensitively).
+ * We only touch mappings of type "static" so nodeOutput mappings remain intact.
+ */
+function randomizeSeedInMappings(mappings) {
+    if (!mappings) return;
+    Object.entries(mappings).forEach(([key, map]) => {
+        if (map && map.type === 'static' && /seed/i.test(key)) {
+            map.value = Math.floor(Math.random() * 1e9);
+        }
+    });
+}
+// Make globally accessible for other modules that may be loaded after this script
+if (typeof window !== 'undefined') {
+    window.randomizeSeedInMappings = randomizeSeedInMappings;
+}
+// -------------------------------------------------------------------------
+
+// Export helpers for use in other modules
+export { executeNodeAndDependencies }; 

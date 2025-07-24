@@ -1,36 +1,143 @@
 import { showImageOverlay } from './overlays/imageOverlay.js';
+import { getToolWindow } from '../state.js';
+import { createToolWindow, executeNodeAndDependencies } from './toolWindow.js';
+
+// Helper to duplicate a window with copied mappings + randomised seed and run it
+async function duplicateAndRun(windowId) {
+    const srcWin = getToolWindow(windowId);
+    if (!srcWin) return;
+
+    const OFFSET = 5;
+    const dupPos = { x: srcWin.workspaceX + OFFSET, y: srcWin.workspaceY + OFFSET };
+    const dupEl = createToolWindow(srcWin.tool, dupPos);
+
+    const dupWinData = getToolWindow(dupEl.id);
+    if (dupWinData) {
+        dupWinData.parameterMappings = JSON.parse(JSON.stringify(srcWin.parameterMappings || {}));
+        // Randomise seeds (reuse util defined in toolWindow.js)
+        if (typeof window.randomizeSeedInMappings === 'function') {
+            window.randomizeSeedInMappings(dupWinData.parameterMappings);
+        } else {
+            Object.entries(dupWinData.parameterMappings).forEach(([k, m]) => {
+                if (m && m.type === 'static' && /seed/i.test(k)) {
+                    m.value = Math.floor(Math.random() * 1e9);
+                }
+            });
+        }
+    }
+
+    await executeNodeAndDependencies(dupEl.id);
+}
 
 export function renderResultContent(resultContainer, output) {
     resultContainer.innerHTML = '';
-    if (output.type === 'image' && output.url) {
-        resultContainer.innerHTML = `<p>Completed!</p><img src="${output.url}" alt="Generated Image" class="result-image" style="max-width: 100%; max-height: 300px; display: block; margin: 8px 0; cursor: pointer;" />`;
-        // Add click handler for overlay
-        const img = resultContainer.querySelector('.result-image');
-        img.addEventListener('click', () => {
-            showImageOverlay(output.url);
+
+    // If this is a spell with multiple step outputs, build a step selector UI and return early
+    if (Array.isArray(output.steps)) {
+        const selector = document.createElement('div');
+        selector.className = 'spell-step-selector';
+        selector.style.marginBottom = '6px';
+
+        const contentHolder = document.createElement('div');
+
+        let currentIndex = 0;
+
+        const renderStep = (idx) => {
+            currentIndex = idx;
+            contentHolder.innerHTML = '';
+            const step = output.steps[idx];
+            const stepOutput = step.output || step.outputs || step.data || {};
+            // Recurse into renderResultContent to display the step output
+            renderResultContent(contentHolder, stepOutput);
+            Array.from(selector.querySelectorAll('button')).forEach((b,i)=>{
+                b.disabled = i===idx;
+            });
+        };
+
+        output.steps.forEach((s,i)=>{
+            const btn = document.createElement('button');
+            btn.textContent = s.name || `step ${i+1}`;
+            btn.style.marginRight = '4px';
+            btn.addEventListener('click', ()=> renderStep(i));
+            selector.appendChild(btn);
         });
-        // Optionally render a caption if present
-        if (output.caption) {
-            const captionDiv = document.createElement('div');
-            captionDiv.className = 'result-caption';
-            captionDiv.textContent = output.caption;
-            resultContainer.appendChild(captionDiv);
+
+        resultContainer.appendChild(selector);
+        resultContainer.appendChild(contentHolder);
+        renderStep(0);
+
+        return; // Spell handling done, skip the rest of the function
+    }
+
+    // Normalise possible batch structures to arrays
+    const normalised = (() => {
+        if (output.type === 'image') {
+            if (Array.isArray(output.urls)) return output.urls;
+            if (Array.isArray(output.url))  return output.url;
+            if (Array.isArray(output.images)) return output.images.map(i => i.url || i);
+            return [output.url];
+        } else if (output.type === 'text') {
+            if (Array.isArray(output.text)) return output.text;
+            return [output.text];
         }
-    } else if (output.type === 'text' && output.text) {
-        // Render text output in a styled div for chat or captions
-        const textDiv = document.createElement('div');
-        textDiv.className = 'result-text-output';
-        textDiv.textContent = output.text;
-        resultContainer.appendChild(textDiv);
-        // Optionally render a caption if present
-        if (output.caption) {
-            const captionDiv = document.createElement('div');
-            captionDiv.className = 'result-caption';
-            captionDiv.textContent = output.caption;
-            resultContainer.appendChild(captionDiv);
+        return [];
+    })();
+
+    const renderSingle = (idx) => {
+        resultContainer.innerHTML = '';
+        const value = normalised[idx];
+
+        if (output.type === 'image') {
+            const img = document.createElement('img');
+            img.src = value;
+            img.className = 'result-image';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '300px';
+            img.style.display = 'block';
+            img.style.cursor = 'pointer';
+            img.addEventListener('click', () => showImageOverlay(value));
+            resultContainer.appendChild(img);
+        } else if (output.type === 'text') {
+            const text = document.createElement('div');
+            text.className = 'result-text-output';
+            text.textContent = value;
+            resultContainer.appendChild(text);
         }
+    };
+
+    // If we have multiple items, build pager controls
+    if (normalised.length > 1) {
+        let index = 0;
+        const nav = document.createElement('div');
+        nav.className = 'batch-nav';
+        const prev = document.createElement('button'); prev.textContent = '◀';
+        const next = document.createElement('button'); next.textContent = '▶';
+        const counter = document.createElement('span'); counter.textContent = ` 1 / ${normalised.length}`;
+
+        const update = () => {
+            counter.textContent = ` ${index + 1} / ${normalised.length}`;
+            renderSingle(index);
+        };
+        prev.onclick = () => { index = (index - 1 + normalised.length) % normalised.length; update(); };
+        next.onclick = () => { index = (index + 1) % normalised.length; update(); };
+
+        nav.append(prev, counter, next);
+        resultContainer.appendChild(nav);
+        update();
     } else {
-        resultContainer.textContent = 'Output available.';
+        if (normalised.length) {
+            renderSingle(0);
+        } else {
+            resultContainer.textContent = 'Output available.';
+        }
+    }
+
+    // Caption support (only for single item)
+    if (normalised.length === 1 && output.caption) {
+        const captionDiv = document.createElement('div');
+        captionDiv.className = 'result-caption';
+        captionDiv.textContent = output.caption;
+        resultContainer.appendChild(captionDiv);
     }
 
     // --- Rating UI ---
@@ -38,6 +145,20 @@ export function renderResultContent(resultContainer, output) {
         const ratingContainer = document.createElement('div');
         ratingContainer.className = 'result-rating-container';
         ratingContainer.style.marginTop = '8px';
+
+        // Re-roll button (appears before emojis)
+        const rerollBtn = document.createElement('button');
+        rerollBtn.textContent = '🎲 re-roll';
+        rerollBtn.style.marginRight = '8px';
+        rerollBtn.addEventListener('click', async () => {
+            rerollBtn.disabled = true;
+            const winId = resultContainer.closest('.tool-window')?.id;
+            if (winId) {
+                await duplicateAndRun(winId);
+            }
+            rerollBtn.disabled = false;
+        });
+        ratingContainer.appendChild(rerollBtn);
 
         const ratings = [
             { key: 'beautiful', emoji: '😻' },

@@ -451,9 +451,17 @@ async function executeSpell(windowId) {
         // Immediate path (synchronous tool)
         progressIndicator.remove();
 
-        const outputData = (Array.isArray(result.outputs) && result.outputs[0]?.data)
-            ? result.outputs[0].data
-            : (result.response || null);
+        let outputData;
+        if (result.outputs?.steps) {
+            // Spell pipeline returned each step’s output
+            outputData = { type: 'spell', steps: result.outputs.steps };
+            // Optionally include a final output shortcut if present
+            if (result.outputs.final) outputData.final = result.outputs.final;
+        } else if (Array.isArray(result.outputs) && result.outputs[0]?.data) {
+            outputData = result.outputs[0].data;
+        } else if (result.response) {
+            outputData = { type: 'text', text: result.response };
+        }
 
         if (outputData) {
             setToolWindowOutput(windowId, outputData);
