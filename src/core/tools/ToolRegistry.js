@@ -167,7 +167,7 @@ class ToolRegistry {
           errors.push({ toolId, message: `CostingModel rateSource '${tool.costingModel.rateSource}' is invalid. Allowed sources: ${allowedRateSources.join(', ')}` });
         }
       }
-      if (tool.category && !['text-to-image', 'img2img', 'upscale', 'inpaint', 'video', 'interrogate'].includes(tool.category)) {
+      if (tool.category && !['text-to-image', 'img2img', 'upscale', 'inpaint', 'video', 'interrogate', 'text-to-text'].includes(tool.category)) {
           errors.push({ toolId, message: `Invalid category: ${tool.category}` });
       }
       if (tool.visibility && !['public', 'internal', 'hidden'].includes(tool.visibility)) {

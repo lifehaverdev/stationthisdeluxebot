@@ -10,27 +10,25 @@ const chatGptTool = {
   description: 'A general-purpose conversational AI. Use it to ask questions, get explanations, or generate text.',
   inputSchema: {
     prompt: {
-      name: 'input_prompt',
-      type: 'text',
+      name: 'prompt',
+      type: 'string',
       required: true,
       description: 'The text prompt to send to the AI.'
     },
     instructions: {
-        name: 'input_instructions',
-        type: 'text',
-        required: true,
-        description: 'The instructions to send to the AI.',
-        // Default instructions aligned with legacy `assist` command behaviour.
-        // These guide the model to act as an SDXL prompt-engineering assistant.
-        default: 'You are a helpful SDXL prompt engineer assistant. Create comma-separated word lists that work well with SDXL. Focus on descriptive terms, artistic styles, and atmospheric elements.',
-
+      name: 'instructions',
+      type: 'string',
+      required: true,
+      description: 'System or user instructions that guide the assistant.',
+      default:
+        'You are a helpful SDXL prompt engineer assistant. Create comma-separated word lists that work well with SDXL. Focus on descriptive terms, artistic styles, and atmospheric elements.'
     },
     temperature: {
-        name: 'temperature',
-        type: 'number',
-        required: false,
-        default: 0.7,
-        description: 'Controls randomness. Lower is more deterministic.'
+      name: 'temperature',
+      type: 'number',
+      required: false,
+      default: 0.7,
+      description: 'Controls randomness. Lower is more deterministic.'
     }
   },
   outputSchema: {
