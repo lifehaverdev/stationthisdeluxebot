@@ -30,7 +30,7 @@ import executionClient from '../executionClient.js';
 registerWebSocketHandlers();
 
 // Create a tool window
-export function createToolWindow(tool, position, id = null, output = null) {
+export function createToolWindow(tool, position, id = null, output = null, parameterMappings = null) {
     // If we're creating a new window (not restoring), it's a new action.
     if (!id) {
         pushHistory();
@@ -72,15 +72,22 @@ export function createToolWindow(tool, position, id = null, output = null) {
         toggleNodeSelection(windowId);
     });
 
-    // Use existing parameterMappings if they exist, otherwise initialize them.
-    const parameterMappings = existingWindow ? existingWindow.parameterMappings : {};
-    if (!existingWindow && tool.inputSchema) {
+    // Use provided parameterMappings if present, otherwise use existingWindow or initialize from schema.
+    let paramMappings;
+    if (parameterMappings) {
+        paramMappings = JSON.parse(JSON.stringify(parameterMappings));
+    } else if (existingWindow) {
+        paramMappings = existingWindow.parameterMappings;
+    } else if (tool.inputSchema) {
+        paramMappings = {};
         Object.entries(tool.inputSchema).forEach(([paramKey, paramDef]) => {
-            parameterMappings[paramKey] = {
+            paramMappings[paramKey] = {
                 type: 'static',
                 value: paramDef.default !== undefined ? paramDef.default : ''
             };
         });
+    } else {
+        paramMappings = {};
     }
 
     const windowData = {
@@ -90,7 +97,7 @@ export function createToolWindow(tool, position, id = null, output = null) {
         workspaceX: position.x,
         workspaceY: position.y,
         output: output || (existingWindow ? existingWindow.output : null),
-        parameterMappings
+        parameterMappings: paramMappings
     };
     addToolWindow(windowData);
 
@@ -114,8 +121,8 @@ export function createToolWindow(tool, position, id = null, output = null) {
 
     // Create window components
     const header = createWindowHeader(tool.displayName);
-    const requiredSection = createParameterSection(params.required, 'required-params', parameterMappings, getToolWindows());
-    const optionalSection = createParameterSection(params.optional, 'optional-params', parameterMappings, getToolWindows());
+    const requiredSection = createParameterSection(params.required, 'required-params', paramMappings, getToolWindows());
+    const optionalSection = createParameterSection(params.optional, 'optional-params', paramMappings, getToolWindows());
     const showMoreBtn = createShowMoreButton(optionalSection);
     let executeBtn = createExecuteButton();
     const anchorPoint = createAnchorPoint(tool, toolWindowEl);
@@ -149,16 +156,16 @@ export function createToolWindow(tool, position, id = null, output = null) {
             const OFFSET = 5;
             // Create a duplicate window slightly offset so the previous result stays visible
             const dupPos = { x: windowData.workspaceX + OFFSET, y: windowData.workspaceY + OFFSET };
-            const dupEl = createToolWindow(tool, dupPos);
+            // Pass parameterMappings to duplicate
+            const dupEl = createToolWindow(tool, dupPos, null, null, windowData.parameterMappings);
 
-            // ---- NEW: copy parameter mappings from source → duplicate ----
+            // ---- NEW: randomize seed in mappings for duplicate ----
             const dupWinData = getToolWindow(dupEl.id);
             if (dupWinData) {
-                dupWinData.parameterMappings = JSON.parse(JSON.stringify(windowData.parameterMappings || {}));
                 randomizeSeedInMappings(dupWinData.parameterMappings);
                 persistState();
             }
-            // --------------------------------------------------------------
+            // ------------------------------------------------------
 
             // Execute the duplicate (includes dependencies)
             await executeNodeAndDependencies(dupEl.id);
@@ -426,9 +433,41 @@ function createWindowHeader(title) {
         // Persist all accumulated changes to localStorage
         persistState();
         
-        // Rerender all connections and any windows that might have been affected by the state change.
-        // A full rerender is safest here to ensure UI consistency.
-        rerenderAllUI();
+        // --- Improved Refresh Logic ---
+        // 1. Remove the closed window element from the DOM.
+        if (winEl && winEl.parentElement) {
+            winEl.parentElement.removeChild(winEl);
+        }
+
+        // 2. Rerender ONLY the windows whose parameter mappings we had to reset.
+        const windowsToRefresh = new Set();
+        connectionsToRemove.forEach(conn => {
+            if (conn.fromWindowId === windowId) {
+                windowsToRefresh.add(conn.toWindowId);
+            }
+        });
+
+        windowsToRefresh.forEach(wId => {
+            rerenderToolWindowById(wId);
+        });
+
+        // 3a. Update any generation → window element mappings that might have been affected.
+        try {
+            Object.entries(generationIdToWindowMap).forEach(([genId, el]) => {
+                if (el && windowsToRefresh.has(el.id)) {
+                    const newEl = document.getElementById(el.id);
+                    if (newEl) {
+                        generationIdToWindowMap[genId] = newEl;
+                    }
+                }
+            });
+        } catch (err) {
+            console.warn('[WindowManager] Could not update generationIdToWindowMap after window close:', err);
+        }
+         
+        // 3. Re-draw connections to reflect the new state without touching executing windows.
+        renderAllConnections();
+        // --- End Improved Refresh Logic ---
     }
     closeBtn.addEventListener('click', closeWindow);
     closeBtn.addEventListener('touchend', (e) => {

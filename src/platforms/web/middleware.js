@@ -35,6 +35,7 @@ function setupMiddleware(app, logger) {
     secret: process.env.SESSION_SECRET || 'stationthis-secret',
     resave: false,
     saveUninitialized: false,
+    rolling: true, // Extend cookie expiration on every response if the user is active
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours

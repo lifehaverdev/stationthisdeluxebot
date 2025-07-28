@@ -28,6 +28,7 @@ import { renderAllConnections } from './connections/index.js';
 import './components/ReferralVaultModal/referralVaultModal.js';
 import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
 import { MintSpellFAB } from './components/MintSpellFAB.js';
+import './onboarding/onboarding.js';
 
 let spacebarIsDown = false;
 let justLassoed = false;
