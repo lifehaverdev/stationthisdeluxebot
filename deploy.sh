@@ -10,6 +10,12 @@ CONTAINER_ALIAS="deluxebot"
 LOG_DIR="/var/log/deluxebot"
 LOG_FILE="${LOG_DIR}/deluxebot.log"
 
+# After the LOG_FILE variable, add Caddy-specific variables
+CADDY_CONTAINER="caddy_proxy"
+CADDY_IMAGE="caddy:latest"
+CADDYFILE_PATH="$(pwd)/Caddyfile"
+CADDY_LOG_FILE="${LOG_DIR}/caddy.log"
+
 # Function to check if a container is running
 is_container_running() {
     [ "$(docker inspect -f '{{.State.Running}}' $1 2>/dev/null)" = "true" ]
@@ -21,6 +27,11 @@ mkdir -p ${LOG_DIR}
 # Truncate the log file to the last 1000 lines if it exists
 if [ -f ${LOG_FILE} ]; then
     tail -n 1000 ${LOG_FILE} > ${LOG_FILE}.tmp && mv ${LOG_FILE}.tmp ${LOG_FILE}
+fi
+
+# Truncate the Caddy log file similarly
+if [ -f ${CADDY_LOG_FILE} ]; then
+    tail -n 1000 ${CADDY_LOG_FILE} > ${CADDY_LOG_FILE}.tmp && mv ${CADDY_LOG_FILE}.tmp ${CADDY_LOG_FILE}
 fi
 
 # Pull the latest changes from the repository
@@ -35,6 +46,34 @@ docker build -t ${IMAGE_NAME} . >> ${LOG_FILE} 2>&1
 # Create a Docker network if it doesn't exist
 echo "Ensuring network ${NETWORK_NAME} exists..."
 docker network inspect ${NETWORK_NAME} >/dev/null 2>&1 || docker network create ${NETWORK_NAME}
+
+# --- CADDY DEPLOYMENT ---
+echo "🔐 Setting up HTTPS reverse proxy with Caddy..."
+
+docker rm -f "${CADDY_CONTAINER}" >> "${CADDY_LOG_FILE}" 2>&1 || true
+
+docker volume create caddy_data >/dev/null 2>&1 || true
+docker volume create caddy_config >/dev/null 2>&1 || true
+
+docker run -d \
+  --name "${CADDY_CONTAINER}" \
+  --network "${NETWORK_NAME}" \
+  -p 80:80 \
+  -p 443:443 \
+  -v "${CADDYFILE_PATH}":/etc/caddy/Caddyfile \
+  -v caddy_data:/data \
+  -v caddy_config:/config \
+  "${CADDY_IMAGE}" >> "${CADDY_LOG_FILE}" 2>&1
+
+echo "✅ Caddy reverse proxy running and serving HTTPS"
+
+# --- 🔐 LOAD PRIVATE KEY FROM KEYSTORE ---
+PRIVATE_KEY=$(node scripts/local_dev_helpers/loadKeystore.js --path /etc/account/STATIONTHIS < /dev/tty)
+
+if [ -z "$PRIVATE_KEY" ]; then
+  echo "❌ Private key could not be loaded. Aborting deployment."
+  exit 1
+fi
 
 # Ensure any existing new container is removed
 echo "Cleaning up any existing temporary containers..."
@@ -52,7 +91,16 @@ fi
 
 # Run the new container
 echo "Starting new container..."
-docker run -d -p 80:3000 --network ${NETWORK_NAME} --network-alias ${CONTAINER_ALIAS}_new --name ${NEW_CONTAINER} ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+docker run -d \
+  --env ETHEREUM_SIGNER_PRIVATE_KEY="$PRIVATE_KEY" \
+  --env-file .env \
+  --network ${NETWORK_NAME} \
+  --network-alias ${CONTAINER_ALIAS}_new \
+  --name ${NEW_CONTAINER} \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  ${IMAGE_NAME} >> ${LOG_FILE} 2>&1
+unset PRIVATE_KEY
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
