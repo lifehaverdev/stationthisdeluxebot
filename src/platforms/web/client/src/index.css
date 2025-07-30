@@ -11,6 +11,7 @@
 @import './sandbox/style/components/imageOverlay.css';
 @import './sandbox/style/components/textOverlay.css';
 @import './sandbox/style/components/spellWindow.css';
+@import './sandbox/onboarding/styles/onboarding.css';
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
