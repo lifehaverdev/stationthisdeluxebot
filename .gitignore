@@ -122,3 +122,5 @@ reports/user_sessions_output.json
 reports/enriched_user_sessions.json
 
 reports/user_aggregated_features.json
+
+reports

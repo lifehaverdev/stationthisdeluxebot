@@ -67,6 +67,13 @@ docker run -d \
 
 echo "✅ Caddy reverse proxy running and serving HTTPS"
 
+CADDY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${CADDY_CONTAINER})
+echo "[DEBUG] Caddy container IP on ${NETWORK_NAME}: ${CADDY_IP}" | tee -a ${LOG_FILE}
+# Record Caddy container details
+docker ps -a --filter "name=${CADDY_CONTAINER}" >> ${LOG_FILE}
+
+docker network inspect ${NETWORK_NAME} >> ${LOG_FILE} 2>&1
+
 # --- 🔐 LOAD PRIVATE KEY FROM KEYSTORE ---
 PRIVATE_KEY=$(node scripts/local_dev_helpers/loadKeystore.js --path /etc/account/STATIONTHIS < /dev/tty)
 
@@ -104,7 +111,11 @@ unset PRIVATE_KEY
 
 # Check if the new container is running successfully
 if is_container_running ${NEW_CONTAINER}; then
-    echo "✅ New container started successfully!"
+    BOT_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${NEW_CONTAINER})
+    echo "[DEBUG] Bot container (${NEW_CONTAINER}) IP on ${NETWORK_NAME}: ${BOT_IP}" | tee -a ${LOG_FILE}
+    # Simple connectivity test from inside Caddy container to bot /status endpoint (non-fatal)
+    STATUS_CODE=$(docker exec ${CADDY_CONTAINER} sh -c "curl -s -o /dev/null -w '%{http_code}' http://deluxebot:4000/status || true")
+    echo "[DEBUG] HTTP status code from Caddy->Bot /status endpoint: ${STATUS_CODE}" | tee -a ${LOG_FILE}
     echo "Updating network configuration..."
     
     # Update network alias to point to the new container
