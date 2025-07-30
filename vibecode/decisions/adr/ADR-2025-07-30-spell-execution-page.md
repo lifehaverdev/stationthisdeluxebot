@@ -44,6 +44,7 @@ We will introduce a new top-level route and micro-frontend:
 * **Incentive routing**: A configurable percentage of the paid points is forwarded to the spell creator.  If the creator has an active **Referral Vault**, payouts are deposited there; otherwise they default to the creator’s main balance.  This maximises creator upside while reinforcing the existing referral-based growth loop.
 * **Point pre-purchase UX**: When a visitor lacks sufficient points, the UI prompts them to top-up with the *quoted cost + safety margin* in a single click before execution proceeds.
 * **Data model**: Add `publicSlug` and `isPublic` fields to the `spells` table; ensure slugs are unique.
+* **Analytics integration**: At service startup the `ToolRegistry` (or a dedicated `SpellStatsService`) scans the analytics DB for the last **N = 10** successful executions per component, calculates `avgRuntimeMs` and `avgCostPts`, and attaches those values to each tool definition.  The same job runs hourly in the background to keep numbers fresh; this removes the need for a separate long-running pipeline while still providing near-real-time quotes.
 
 ## Consequences
 * **Pros**
@@ -52,6 +53,7 @@ We will introduce a new top-level route and micro-frontend:
   * Separation of authoring vs. consumption keeps UX focused.
 * **Cons / Risks**
   * Exposes execution service to potentially higher, spiky load.
+  * Accuracy of runtime/cost estimates depends on representativeness of the most recent runs; outliers may skew quotes.
   * New payment flow surface increases legal/compliance scope.
 
 ## Alternatives Considered
@@ -62,3 +64,57 @@ We will introduce a new top-level route and micro-frontend:
 ---
 
 *Status*: Proposed – awaiting discussion & approval. 
+
+## Implementation Plan (Phased)
+
+### Phase 0 – Schema & Data Preparation
+1. **DB migrations** (`scripts/migrations/2025_07_add_spell_public_slug.js`)
+   * Add `publicSlug` (unique), `isPublic` and `avgCostPtsCached` to `spells` collection.
+   * Create `spell_component_stats` collection for runtime history.
+2. **Seed script** – back-fill `publicSlug` for existing spells.
+
+### Phase 1 – Backend API Surface
+* **Files touched**
+  * `src/api/internal/spellsApi.js` – add:
+    * `GET /spells/:slug` (metadata) – already exists, ensure public access.
+    * `POST /spells/:id/quote`
+    * `POST /spells/:id/execute`
+  * `src/api/external/index.js` – expose new endpoints to web client.
+  * `src/core/services/SpellsService.js` – implement `quoteSpell()` leveraging ToolRegistry stats.
+  * `src/core/services/analytics/SpellStatsService.js` (new) – aggregation helpers.
+
+### Phase 2 – ToolRegistry Stats Injection
+* **File** `src/core/services/tools/ToolRegistry.js`
+  * On init, call `SpellStatsService.getAvgStats(toolId)` and attach `avgRuntimeMs` / `avgCostPts`.
+  * Hourly `refreshStats()` scheduled via existing `TaskScheduler`.
+
+### Phase 3 – Payment & Incentive Flow
+* **Files**
+  * `src/core/services/alchemy/creditService.js`
+    * Add `chargeSpellExecution(userId, spellId, quote)` returning `creditTxId`.
+    * After success, route creator share: `routeReferralOrCreatorShare(spell.creatorId, amount)` using existing referral-vault helpers in `creditLedgerDb`.
+  * `src/api/internal/pointsApi.js` – expose helper to top-up points from frontend.
+
+### Phase 4 – Frontend Page & UX
+* **Router update** `src/platforms/web/index.js` (or `client/src/router.js`) – add `'/spells/:slug'`.
+* **New component** `src/platforms/web/client/src/pages/SpellExecutePage.js`:
+  1. `useEffect` → fetch metadata.
+  2. Render dynamic input form.
+  3. “Estimate Cost” button hits `/api/spells/:id/quote`.
+  4. If insufficient points → open existing BuyPointsModal with recommended amount.
+  5. “Run Spell” button → `execute` endpoint; stream output; display results grid.
+* **API helpers** `client/src/api/spells.js`.
+* **Marketing share link** copy-to-clipboard.
+
+### Phase 5 – Observability & QA
+1. **Telemetry** – emit `spellExecutionStarted|Finished` events from backend.
+2. **Playwright test** `vibecode/demos/spell_execution_page.spec.ts` – cover happy path.
+3. **Load testing** script in `scripts/testing_helpers/run-spell-loadtest.js`.
+
+### Phase 6 – Documentation & Launch
+* Update public docs in `public/docs/content/spell-execution.md`.
+* Add tutorial blogpost stub.
+
+---
+*ETA*: ~1 week dev elapsed time assuming 1 engineer. 
+*Dependencies*: DB migration window, front-end build pipeline. 
