@@ -9,19 +9,16 @@ import ValuePropStep from './steps/valuePropStep.js';
 import UserTypeStep from './steps/userTypeStep.js';
 import WalletConnectStep from './steps/walletConnectStep.js';
 
-const STORAGE_KEY = 'st_onboarding';
-const DEFAULT_STATE = { current: 0, complete: false };
+// Persistence is disabled for testing so onboarding appears on every reload.
+
+const DEFAULT_STATE = { current: 0 };
 
 function readState() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { ...DEFAULT_STATE };
-  } catch (_) {
-    return { ...DEFAULT_STATE };
-  }
+  return { ...DEFAULT_STATE };
 }
 
-function writeState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function writeState() {
+  /* no-op while persistence disabled */
 }
 
 class OnboardingEngine {
@@ -32,7 +29,6 @@ class OnboardingEngine {
   }
 
   begin() {
-    if (this.state.complete) return;
     if (this.root) return; // already running
     this.root = document.createElement('div');
     this.root.className = 'st-onboard-root';
@@ -58,8 +54,6 @@ class OnboardingEngine {
   }
 
   finish() {
-    this.state.complete = true;
-    writeState(this.state);
     if (this.root) this.root.remove();
     this.root = null;
     window.dispatchEvent(new CustomEvent('onboarding:complete'));

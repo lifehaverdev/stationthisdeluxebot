@@ -63,11 +63,12 @@ We will introduce a new top-level route and micro-frontend:
 
 ---
 
-*Status*: Proposed – awaiting discussion & approval. 
+*Status*: In Progress – Phase 0 completed (2025-07-30). 
 
 ## Implementation Plan (Phased)
 
 ### Phase 0 – Schema & Data Preparation
+✅ **Completed 2025-07-30**
 1. **DB migrations** (`scripts/migrations/2025_07_add_spell_public_slug.js`)
    * Add `publicSlug` (unique), `isPublic` and `avgCostPtsCached` to `spells` collection.
    * Create `spell_component_stats` collection for runtime history.

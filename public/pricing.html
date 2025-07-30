@@ -38,36 +38,10 @@
 
         <!-- Accepted Assets & Funding Rates -->
         <section class="panel">
-            <h2>Accepted Assets & Funding Rates</h2>
-            <div class="assets-table-wrapper">
-                <table class="assets-table">
-                    <thead>
-                        <tr>
-                            <th>Asset</th>
-                            <th>Funding Rate</th>
-                            <th>Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>MS2</td>
-                            <td>5%</td>
-                            <td>Referral vaults & self-funding = at-cost compute</td>
-                        </tr>
-                        <tr>
-                            <td>CULT</td>
-                            <td>5%</td>
-                            <td>Referral vaults & self-funding = at-cost compute</td>
-                        </tr>
-                        <tr>
-                            <td>Other ETH assets</td>
-                            <td>Varies</td>
-                            <td>See docs for current rates</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <p class="note">* Funding rates are subject to change as the platform evolves. Check back for updates.</p>
+            <h2>Supported Assets & Funding Fees</h2>
+            <p>Funding fees are automatically deducted from every contribution. Lower fees mean more points for you.</p>
+            <div id="assets-container" class="assets-grid"></div>
+            <p class="note">Funding fees and supported assets may change as the platform evolves. Check back for updates.</p>
         </section>
 
         <!-- Withdrawals & Fees -->
@@ -90,7 +64,7 @@
         <section class="panel">
             <h2>Referral Vaults</h2>
             <p>
-                Set up a referral vault to earn rewards when others fund through your link. If you fund your own vault, you pay for compute at cost (lowest available rate). Referral rewards are distributed automatically and transparently.
+                Create a referral vault to earn rewards: when someone uses your referral code, their contribution is directed to your vault and <b>you receive 5% of that contribution</b>. Rewards are distributed automatically on-chain.
             </p>
         </section>
 
@@ -120,5 +94,7 @@
             </div>
         </div>
     </footer>
+
+    <script type="module" src="/js/pricing-page.js"></script>
 </body>
 </html> 
