@@ -101,7 +101,7 @@ docker run -d \
   --env ETHEREUM_SIGNER_PRIVATE_KEY="${PRIVATE_KEY}" \
   --env-file .env \
   --network "${NETWORK_NAME}" \
-  --network-alias "${CONTAINER_ALIAS}_new" \
+  --network-alias "${CONTAINER_ALIAS}" \
   --name "${NEW_CONTAINER}" \
   --cap-drop ALL \
   --security-opt no-new-privileges \
@@ -114,9 +114,7 @@ unset PRIVATE_KEY
 
 if is_container_running "${NEW_CONTAINER}"; then
   echo "✅ New container started successfully!"
-  echo "🔄 Updating network alias..."
-  docker network disconnect "${NETWORK_NAME}" "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
-  docker network connect --alias "${CONTAINER_ALIAS}" "${NETWORK_NAME}" "${NEW_CONTAINER}" >> "${LOG_FILE}" 2>&1
+  echo "🔄 Old container already removed; alias assigned at container launch."
 
   echo "🔄 Renaming containers..."
   docker rename "${NEW_CONTAINER}" "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1
