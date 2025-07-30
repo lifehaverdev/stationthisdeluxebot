@@ -82,6 +82,10 @@ function initializeWebPlatform(services, options = {}) {
         res.sendFile(path.join(publicPath, 'landing.html'));
       });
 
+      app.get('/pricing', (req, res) => {
+        res.sendFile(path.join(publicPath, 'pricing.html'));
+      });
+
       app.get('/docs', (req, res) => {
         res.sendFile(path.join(publicPath, 'docs.html'));
       });

@@ -7,6 +7,7 @@
 
 import ValuePropStep from './steps/valuePropStep.js';
 import UserTypeStep from './steps/userTypeStep.js';
+import WalletConnectStep from './steps/walletConnectStep.js';
 
 const STORAGE_KEY = 'st_onboarding';
 const DEFAULT_STATE = { current: 0, complete: false };
@@ -65,7 +66,7 @@ class OnboardingEngine {
   }
 }
 
-const steps = [new ValuePropStep(), new UserTypeStep()];
+const steps = [new ValuePropStep(), new UserTypeStep(), new WalletConnectStep()];
 const engine = new OnboardingEngine(steps);
 
 export function show() {

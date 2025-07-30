@@ -17,11 +17,13 @@
   width: 90%;
   text-align: center;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  color: #333;
 }
 
 .st-onboard-card h2 {
   margin-top: 0;
   font-size: 1.6rem;
+  color: #111;
 }
 
 .st-onboard-card p {
