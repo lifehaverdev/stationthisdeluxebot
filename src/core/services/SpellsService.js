@@ -71,6 +71,85 @@ class SpellsService {
         }
         return false;
     }
+
+    async quoteSpell(spellIdentifier, { sampleSize = 10 } = {}) {
+        // Accept either slug or ObjectId string as spellIdentifier
+        this.logger.info(`[SpellsService] Generating quote for spell "${spellIdentifier}" (sampleSize=${sampleSize}).`);
+
+        // 1. Fetch the spell metadata
+        let spell;
+        if (require('mongodb').ObjectId.isValid(spellIdentifier)) {
+            spell = await this.db.spells.findById(spellIdentifier);
+        } else {
+            spell = await this.db.spells.findBySlug(spellIdentifier);
+        }
+
+        if (!spell) {
+            throw new Error(`Spell \"${spellIdentifier}\" not found.`);
+        }
+
+        // Ensure steps array exists
+        const steps = Array.isArray(spell.steps) ? spell.steps : [];
+        if (steps.length === 0) {
+            throw new Error('Spell contains no steps – cannot generate quote.');
+        }
+
+        // 2. Iterate over each step and compute average stats using GenerationOutputsDB
+        const generationOutputsDb = this.db.generationOutputs;
+        if (!generationOutputsDb || typeof generationOutputsDb.aggregate !== 'function') {
+            throw new Error('GenerationOutputsDB is not available – cannot generate quote.');
+        }
+
+        const USD_TO_POINTS_CONVERSION_RATE = 0.000337; // Keep in sync with CreditService
+
+        const breakdown = [];
+        let totalRuntimeMs = 0;
+        let totalCostPts = 0;
+
+        for (const step of steps) {
+            // Support both `toolIdentifier` and legacy `toolId`
+            const toolId = step.toolIdentifier || step.toolId;
+            if (!toolId) {
+                this.logger.warn(`[SpellsService] Step ${step.stepId || '<unknown>'} is missing toolIdentifier/toolId – skipping from quote.`);
+                continue;
+            }
+
+            const pipeline = [
+                { $match: { serviceName: toolId, status: 'completed', durationMs: { $exists: true }, costUsd: { $exists: true } } },
+                { $sort: { responseTimestamp: -1 } },
+                { $limit: sampleSize },
+                { $group: {
+                    _id: null,
+                    avgRuntimeMs: { $avg: '$durationMs' },
+                    avgCostUsd: { $avg: '$costUsd' }
+                }}
+            ];
+
+            const [stats] = await generationOutputsDb.aggregate(pipeline);
+            const avgRuntimeMs = stats?.avgRuntimeMs || 0;
+            let avgCostUsd = 0;
+            if (stats?.avgCostUsd) {
+                // Decimal128 may be returned; convert safely
+                if (typeof stats.avgCostUsd === 'object' && stats.avgCostUsd._bsontype === 'Decimal128') {
+                    avgCostUsd = parseFloat(stats.avgCostUsd.toString());
+                } else {
+                    avgCostUsd = parseFloat(stats.avgCostUsd);
+                }
+            }
+            const avgCostPts = avgCostUsd / USD_TO_POINTS_CONVERSION_RATE;
+
+            breakdown.push({ toolId, avgRuntimeMs, avgCostPts });
+            totalRuntimeMs += avgRuntimeMs;
+            totalCostPts += avgCostPts;
+        }
+
+        return {
+            spellId: spell._id,
+            totalRuntimeMs,
+            totalCostPts,
+            breakdown
+        };
+    }
 }
 
 module.exports = SpellsService; 

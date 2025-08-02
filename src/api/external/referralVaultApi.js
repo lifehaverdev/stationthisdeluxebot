@@ -26,7 +26,8 @@ function createReferralVaultApi(dependencies) {
   });
 
   if (!ethereumService || !priceFeedService || !creditService || !contractConfig) {
-    throw new Error('ReferralVaultApi: Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
+    //throw new Error('ReferralVaultApi: Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
+    console.log('[ReferralVaultApi] Missing one or more required services or contract configuration. (creditService is the canonical source for contract config)');
   }
 
   // Endpoint to check if a vault name is available

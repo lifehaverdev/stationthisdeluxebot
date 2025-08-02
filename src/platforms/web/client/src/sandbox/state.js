@@ -230,6 +230,9 @@ export function initState() {
     activeSubmenu = false;
     selectedNodeIds.clear();
     loadState();
+
+    // Record a baseline snapshot so the first undo doesn’t wipe the canvas.
+    pushHistory();
 }
 
 // State getters and setters

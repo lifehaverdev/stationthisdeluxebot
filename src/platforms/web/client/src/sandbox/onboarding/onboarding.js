@@ -7,7 +7,10 @@
 
 import ValuePropStep from './steps/valuePropStep.js';
 import UserTypeStep from './steps/userTypeStep.js';
-import WalletConnectStep from './steps/walletConnectStep.js';
+import AccountDropdownStep from './steps/accountDropdownStep.js';
+import BuyPointsModalStep from './steps/buyPointsModalStep.js';
+import WorkspaceTourStep from './steps/workspaceTourStep.js';
+import ToolWindowStep from './steps/toolWindowStep.js';
 
 // Persistence is disabled for testing so onboarding appears on every reload.
 
@@ -60,7 +63,7 @@ class OnboardingEngine {
   }
 }
 
-const steps = [new ValuePropStep(), new UserTypeStep(), new WalletConnectStep()];
+const steps = [new ValuePropStep(), new UserTypeStep(), new AccountDropdownStep(), new BuyPointsModalStep(), new WorkspaceTourStep(), new ToolWindowStep()];
 const engine = new OnboardingEngine(steps);
 
 export function show() {

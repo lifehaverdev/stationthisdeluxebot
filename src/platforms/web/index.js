@@ -94,6 +94,11 @@ function initializeWebPlatform(services, options = {}) {
         res.sendFile(path.join(publicPath, 'admin.html'));
       });
 
+      // Spell Execution Page
+      app.get('/spells/:slug', (req, res) => {
+        res.sendFile(path.join(publicPath, 'spell.html'));
+      });
+
       // Health check
       app.get('/api/health', (req, res) => {
         res.status(200).json({ status: 'ok' });

@@ -99,8 +99,10 @@ class SpellsDB extends BaseDB {
       tags: spellData.tags || [],
       usageCount: 0,
       rating: { avg: 0, count: 0 },
-      visibility: spellData.visibility || 'private', // Default to private
-      permissionType: spellData.permissionType || 'private', // Default to private access
+      visibility: spellData.visibility || (spellData.isPublic ? 'public' : 'private'),
+      permissionType: spellData.permissionType || (spellData.isPublic ? 'public' : 'private'),
+      isPublic: !!spellData.isPublic,
+      publicSlug: spellData.isPublic ? uniqueSlug : undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -116,6 +118,16 @@ class SpellsDB extends BaseDB {
 
   async findBySlug(slug) {
     return this.findOne({ slug });
+  }
+
+  /**
+   * Finds a spell by its publicSlug (shareable URL slug).
+   * @param {string} publicSlug
+   */
+  async findByPublicSlug(publicSlug){
+      return this.findOne({
+        $or: [ { publicSlug }, { slug: publicSlug } ]
+      });
   }
 
   /**
@@ -165,6 +177,14 @@ class SpellsDB extends BaseDB {
         ...updateData,
         updatedAt: new Date(),
     };
+
+    // If toggling public and publicSlug missing, generate one
+    if (updateData.isPublic === true && !updateData.publicSlug) {
+        const existing = await this.findById(spellId);
+        if (existing && !existing.publicSlug) {
+            dataToSet.publicSlug = existing.slug;
+        }
+    }
     // Ensure ObjectIds are correctly formatted if passed as strings
     if (dataToSet.ownedBy) dataToSet.ownedBy = new ObjectId(dataToSet.ownedBy);
     if (dataToSet.creatorId) dataToSet.creatorId = new ObjectId(dataToSet.creatorId);

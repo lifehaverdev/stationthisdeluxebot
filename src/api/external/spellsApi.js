@@ -32,6 +32,35 @@ function createSpellsApi(dependencies) {
         }
     });
 
+    // --- PUBLIC: Fetch a spell's metadata by slug ---
+    router.get('/:slug', async (req, res, next) => {
+        const { slug } = req.params;
+        try {
+            const response = await internalApiClient.get(`/internal/v1/data/spells/public/${slug}`);
+            res.status(response.status).json(response.data);
+        } catch (error) {
+            logger.error(`[externalSpellsApi] Failed to fetch spell ${slug}:`, error);
+            const statusCode = error.response ? error.response.status : 502;
+            const errorData = error.response ? error.response.data : { message: 'Unable to fetch spell.' };
+            res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+        }
+    });
+
+    // --- PUBLIC: Get quote for a spell by id/slug ---
+    router.post('/:spellIdentifier/quote', async (req, res) => {
+        const { spellIdentifier } = req.params;
+        const payload = req.body || {};
+        try {
+            const response = await internalApiClient.post(`/internal/v1/data/spells/${spellIdentifier}/quote`, payload);
+            res.status(response.status).json(response.data);
+        } catch (error) {
+            logger.error('[externalSpellsApi] Failed to get spell quote:', error);
+            const statusCode = error.response ? error.response.status : 502;
+            const errorData = error.response ? error.response.data : { message: 'Unable to get spell quote.' };
+            res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+        }
+    });
+
     // --- PROTECTED: All other spells endpoints ---
     router.use(dualAuth);
 

@@ -33,6 +33,9 @@ const TokenRiskEngine = require('./alchemy/tokenRiskEngine');
 const { contracts, getNetworkName } = require('../contracts');
 const WalletLinkingService = require('./walletLinkingService');
 const SaltMiningService = require('./alchemy/saltMiningService');
+const SpellStatsService = require('./analytics/SpellStatsService');
+// --- New Service: ModelDiscoveryService ---
+const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
 
 /**
  * Initialize all core services
@@ -63,6 +66,8 @@ async function initializeServices(options = {}) {
     });
     const pointsService = new PointsService({ logger });
     const comfyUIService = new ComfyUIService({ logger });
+    // Instantiate the unified ModelDiscoveryService (used by menus, quoting, etc.)
+    const modelDiscoveryService = new ModelDiscoveryService({ comfyService: comfyUIService });
     const openAIService = new OpenAIService({ logger });
     const storageService = new StorageService(logger); // Initialize StorageService
     
@@ -209,6 +214,11 @@ async function initializeServices(options = {}) {
     });
     logger.info('SpellsService initialized (pre-API).');
 
+    // After database services initialized and toolRegistry loaded, enrich tools with stats
+    const spellStatsService = new SpellStatsService({ generationOutputsDb: initializedDbServices.data.generationOutputs, logger });
+    spellStatsService.startAutoRefresh(toolRegistry);
+    logger.info('SpellStatsService initialized and ToolRegistry stats enrichment scheduled.');
+
     // Initialize API services, now with userSettingsService
     const apiServices = initializeAPI({
       logger,
@@ -230,7 +240,8 @@ async function initializeServices(options = {}) {
       saltMiningService,
       spellsService, // Inject spellsService so internal API can use it
       workflowExecutionService,
-      webSocketService // Add the service here
+      webSocketService, // Add the service here
+      modelDiscoveryService // Add the service here
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -281,11 +292,13 @@ async function initializeServices(options = {}) {
       dexService,
       tokenRiskEngine,
       walletLinkingService,
+      modelDiscoveryService, // expose ModelDiscoveryService
       logger,
       appStartTime,
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
       loraResolutionService,
-      webSocketService // Add the service here
+      webSocketService, // Add the service here
+      spellStatsService // expose SpellStatsService
     };
 
     // DIAGNOSTIC LOGGING REMOVED
@@ -318,4 +331,5 @@ module.exports = {
   TokenRiskEngine,
   WalletLinkingService,
   SaltMiningService,
+  ModelDiscoveryService,
 }; 

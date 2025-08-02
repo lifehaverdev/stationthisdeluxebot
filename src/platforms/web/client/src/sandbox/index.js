@@ -72,8 +72,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function screenToWorkspace(x, y) {
-        // Reverse the transform: first remove pan, then divide by scale.
-        return { x: (x / scale) - pan.x, y: (y / scale) - pan.y };
+        // Original mapping: workspace = (screen / scale) - pan
+        return {
+            x: (x / scale) - pan.x,
+            y: (y / scale) - pan.y
+        };
     }
 
     function renderAllWindows() {

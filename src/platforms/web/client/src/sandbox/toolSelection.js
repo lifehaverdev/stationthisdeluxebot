@@ -169,7 +169,8 @@ export function showToolsForConnection(connectionType, x, y) {
             button.appendChild(textContent);
 
             button.addEventListener('click', () => {
-                const newWindow = createToolWindow(tool, { x, y });
+                const workspacePos = window.sandbox && window.sandbox.screenToWorkspace ? window.sandbox.screenToWorkspace(x, y) : { x, y };
+                const newWindow = createToolWindow(tool, workspacePos);
                 modal.remove();
                 const activeConn = getActiveConnection();
                 if (activeConn && activeConn.fromWindow) {
@@ -295,7 +296,8 @@ export function showToolsForCategory(type, x, y) {
             button.appendChild(textContent);
 
             button.addEventListener('click', () => {
-                createToolWindow(tool, { x, y });
+                const workspacePos = window.sandbox && window.sandbox.screenToWorkspace ? window.sandbox.screenToWorkspace(x, y) : { x, y };
+                createToolWindow(tool, workspacePos);
                 modal.remove();
                 setActiveConnection(null);
             });

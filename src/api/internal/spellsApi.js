@@ -17,6 +17,22 @@ module.exports = function spellsApi(dependencies) {
 
   const router = express.Router();
 
+  // -------------------------------------------------------------
+  // PUBLIC: fetch by public slug without auth (MUST come BEFORE
+  // any generic ":spellIdentifier" route so it takes precedence)
+  // -------------------------------------------------------------
+  router.get('/public/:publicSlug', async (req, res) => {
+    const { publicSlug } = req.params;
+    try {
+      const spell = await spellsDb.findByPublicSlug(publicSlug);
+      if (!spell) return res.status(404).json({ error: 'Spell not found' });
+      res.status(200).json(spell);
+    } catch (err) {
+      logger.error(`[spellsApi] GET /public/${publicSlug}:`, err);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
   // POST /spells/cast - Execute a spell
   router.post('/cast', async (req, res) => {
     const { slug, context } = req.body;
@@ -86,6 +102,9 @@ module.exports = function spellsApi(dependencies) {
         spell = await spellsDb.findById(spellIdentifier);
       } else {
         spell = await spellsDb.findBySlug(spellIdentifier);
+        if(!spell){
+           spell = await spellsDb.findByPublicSlug(spellIdentifier);
+        }
       }
 
       if (!spell) {
@@ -129,6 +148,21 @@ module.exports = function spellsApi(dependencies) {
       };
       const newSpell = await spellsDb.createSpell(spellData);
       if (newSpell) {
+        // Immediately compute initial average cost/runtime and cache on the spell.
+        try {
+          if (spellsService && typeof spellsService.quoteSpell === 'function') {
+            const quote = await spellsService.quoteSpell(newSpell._id.toString(), { sampleSize: 10 });
+            await spellsDb.updateSpell(newSpell._id, {
+              avgRuntimeMsCached: quote.totalRuntimeMs,
+              avgCostPtsCached: quote.totalCostPts,
+            });
+            // Attach cached fields to response
+            newSpell.avgRuntimeMsCached = quote.totalRuntimeMs;
+            newSpell.avgCostPtsCached   = quote.totalCostPts;
+          }
+        } catch (quoteErr) {
+          logger.warn(`[spellsApi] Failed to compute initial quote for new spell ${newSpell._id}: ${quoteErr.message}`);
+        }
         res.status(201).json(newSpell);
       } else {
         res.status(500).json({ error: 'Failed to create spell.' });
@@ -336,6 +370,28 @@ module.exports = function spellsApi(dependencies) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
   });
+
+  // POST /:spellIdentifier/quote - Get estimated runtime & cost for the spell
+  router.post('/:spellIdentifier/quote', async (req, res) => {
+    const { spellIdentifier } = req.params;
+    const sampleSize = parseInt(req.body?.sampleSize, 10) || 10;
+
+    if (!spellsService) {
+      logger.error('[spellsApi] SpellsService is not available, cannot provide quote.');
+      return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Spell quote service is not available.' } });
+    }
+
+    try {
+      const quote = await spellsService.quoteSpell(spellIdentifier, { sampleSize });
+      res.status(200).json(quote);
+    } catch (error) {
+      logger.error(`[spellsApi] POST /${spellIdentifier}/quote: Error generating quote: ${error.message}`, { stack: error.stack });
+      const statusCode = error.message.includes('not found') ? 404 : 500;
+      res.status(statusCode).json({ error: { code: 'SPELL_QUOTE_FAILED', message: error.message } });
+    }
+  });
+
+  // (The public route is defined earlier to avoid being shadowed)
 
   logger.info('[spellsApi] Spells API routes initialized.');
   return router;

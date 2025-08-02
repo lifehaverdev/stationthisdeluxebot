@@ -224,7 +224,7 @@ The "Mint as Spell" FAB would disappear after lasso selection because the select
 - [ ] Handle spells with connected (non-static) exposed inputs
 - [ ] Validate error messages and user feedback for all failure cases
 - [ ] Undo/redo works for spell minting, adding, exploding, and deleting
-- [ ] Spell node UI is visually distinct and consistent with tool windows
+- [x] Spell node UI is visually distinct and consistent with tool windows
 - [ ] All spell features work on both desktop and mobile
 
 --- 

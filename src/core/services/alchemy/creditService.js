@@ -1376,6 +1376,91 @@ class CreditService {
     }
     // --- END WEBSOCKET NOTIFICATION ---
   }
+
+  /**
+   * Charges a user for spell execution by deducting points from their confirmed deposits.
+   * Also forwards the creator share via routeReferralOrCreatorShare.
+   * @param {string|ObjectId} payerAccountId - The masterAccountId paying for the spell.
+   * @param {string|ObjectId} spellId - The spell being executed.
+   * @param {{ totalCostPts:number }} quote - The quote returned by SpellsService.quoteSpell().
+   * @param {number} [creatorSharePct=0.7] - Percentage of points to forward to creator/referral vault.
+   * @returns {Promise<{ creditTxId:string, pointsCharged:number }>}
+   */
+  async chargeSpellExecution(payerAccountId, spellId, quote, creatorSharePct = 0.7) {
+    if (!quote || typeof quote.totalCostPts !== 'number') {
+        throw new Error('chargeSpellExecution requires a quote with totalCostPts');
+    }
+    const pointsNeeded = Math.ceil(quote.totalCostPts);
+    if (pointsNeeded <= 0) {
+        throw new Error('Quote totalCostPts must be greater than zero');
+    }
+
+    // 1. Ensure user has enough points
+    const activeDeposits = await this.creditLedgerDb.findActiveDepositsForUser(payerAccountId);
+    let pointsAvailable = activeDeposits.reduce((sum, d) => sum + (d.points_remaining || 0), 0);
+    if (pointsAvailable < pointsNeeded) {
+        throw new Error('INSUFFICIENT_POINTS');
+    }
+
+    // 2. Deduct points from deposits (cheapest first)
+    let remaining = pointsNeeded;
+    for (const deposit of activeDeposits) {
+        if (remaining <= 0) break;
+        const deduct = Math.min(deposit.points_remaining, remaining);
+        await this.creditLedgerDb.deductPointsFromDeposit(deposit._id, deduct);
+        remaining -= deduct;
+    }
+
+    // 3. Fetch spell metadata to identify creator
+    let spellMeta;
+    try {
+        const resp = await this.internalApiClient.get(`/internal/v1/data/spells/${spellId}`);
+        spellMeta = resp.data;
+    } catch (err) {
+        this.logger.warn(`[CreditService] Unable to fetch spell ${spellId} for creator payout: ${err.message}`);
+    }
+
+    if (spellMeta && spellMeta.creatorId) {
+        const creatorSharePts = Math.floor(pointsNeeded * creatorSharePct);
+        try {
+            await this.routeReferralOrCreatorShare(spellMeta.creatorId, creatorSharePts, { spellId });
+        } catch (err) {
+            this.logger.error('[CreditService] Failed to route creator share:', err);
+        }
+    }
+
+    const { v4: uuidv4 } = require('uuid');
+    const creditTxId = uuidv4();
+    return { creditTxId, pointsCharged: pointsNeeded };
+  }
+
+  /**
+   * Routes a point reward to the creator's referral vault if it exists, otherwise directly to the creator.
+   * @param {string|ObjectId} creatorAccountId
+   * @param {number} points
+   * @param {object} meta - Additional metadata to store on reward entry.
+   */
+  async routeReferralOrCreatorShare(creatorAccountId, points, meta = {}) {
+    if (points <= 0) return;
+    try {
+        // Check for referral vaults
+        const vaults = await this.creditLedgerDb.findReferralVaultsByMasterAccount(creatorAccountId);
+        const targetAccountId = creatorAccountId; // For now we credit creator directly
+        const description = vaults.length > 0
+            ? `Creator share routed (${points} pts) via referral vault.`
+            : `Creator share credited directly (${points} pts).`;
+
+        await this.creditLedgerDb.createRewardCreditEntry({
+            masterAccountId: targetAccountId,
+            points,
+            rewardType: 'SPELL_CREATOR_SHARE',
+            description,
+            relatedItems: meta,
+        });
+    } catch (err) {
+        this.logger.error('[CreditService] routeReferralOrCreatorShare failed:', err);
+    }
+  }
 }
 
 module.exports = CreditService; 

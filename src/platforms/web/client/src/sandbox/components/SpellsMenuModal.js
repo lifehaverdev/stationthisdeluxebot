@@ -14,6 +14,7 @@ export default class SpellsMenuModal {
             // For create form
             newSpellName: '',
             newSpellDescription: '',
+            newSpellIsPublic: false,
             subgraph: options.initialData?.subgraph || null,
             newSpellExposedInputs: {},
         };
@@ -64,7 +65,8 @@ export default class SpellsMenuModal {
                 credentials: 'include',
                 body: JSON.stringify({
                     name: selectedSpell.name,
-                    description: selectedSpell.description
+                    description: selectedSpell.description,
+                    isPublic: !!selectedSpell.isPublic,
                 })
             });
             if (!res.ok) throw new Error('Failed to save spell');
@@ -243,6 +245,7 @@ export default class SpellsMenuModal {
         if (this.state.view === 'create') {
             const nameInput = this.modalElement.querySelector('.create-spell-name');
             const descInput = this.modalElement.querySelector('.create-spell-desc');
+            const publicChk = this.modalElement.querySelector('.create-spell-public');
             if (nameInput) {
                 nameInput.oninput = (e) => {
                     this.state.newSpellName = e.target.value;
@@ -252,6 +255,9 @@ export default class SpellsMenuModal {
                 descInput.oninput = (e) => {
                     this.state.newSpellDescription = e.target.value;
                 };
+            }
+            if (publicChk) {
+                publicChk.onchange = (e)=>{ this.state.newSpellIsPublic = e.target.checked; };
             }
             // Handle exposed inputs checkboxes
             const inputCheckboxes = this.modalElement.querySelectorAll('.spell-input-checkbox');
@@ -273,6 +279,7 @@ export default class SpellsMenuModal {
         if (this.state.view === 'spellDetail' && this.state.selectedSpell) {
             const nameInput = this.modalElement.querySelector('.spell-detail-name');
             const descInput = this.modalElement.querySelector('.spell-detail-desc');
+            const publicChk = this.modalElement.querySelector('.spell-detail-public');
             if (nameInput) {
                 nameInput.oninput = (e) => {
                     this.state.selectedSpell.name = e.target.value;
@@ -283,15 +290,28 @@ export default class SpellsMenuModal {
                     this.state.selectedSpell.description = e.target.value;
                 };
             }
+            if (publicChk) {
+                publicChk.onchange = (e)=>{ this.state.selectedSpell.isPublic = e.target.checked; };
+            }
             const saveBtn = this.modalElement.querySelector('.save-spell-btn');
             const deleteBtn = this.modalElement.querySelector('.delete-spell-btn');
             const backBtn = this.modalElement.querySelector('.back-spell-btn');
+            const copyBtn = this.modalElement.querySelector('.copy-link-btn');
             if (saveBtn) saveBtn.onclick = () => this.handleSaveSpell();
             if (deleteBtn) deleteBtn.onclick = () => this.handleDeleteSpell();
             if (backBtn) backBtn.onclick = () => {
                 this.setState({ view: 'main', selectedSpell: null });
                 this.fetchUserSpells();
             };
+            if(copyBtn){
+                copyBtn.onclick = ()=>{
+                    const urlInput = this.modalElement.querySelector('.public-link input');
+                    urlInput.select();
+                    document.execCommand('copy');
+                    copyBtn.textContent='Copied!';
+                    setTimeout(()=>copyBtn.textContent='Copy',1500);
+                };
+            }
         }
     }
 
@@ -338,7 +358,7 @@ export default class SpellsMenuModal {
     }
 
     renderCreateView() {
-        const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs } = this.state;
+        const { newSpellName, newSpellDescription, subgraph, error, newSpellExposedInputs, newSpellIsPublic } = this.state;
         
         if (!subgraph || !subgraph.nodes) {
             return `<div class="create-spell-view"><h2>Mint New Spell</h2><div class="empty-message">No nodes were selected to create a spell.</div></div>`;
@@ -432,6 +452,9 @@ export default class SpellsMenuModal {
                     <label for="spell-desc">Description</label>
                     <textarea id="spell-desc" class="create-spell-desc" placeholder="A short description of what this spell does.">${newSpellDescription}</textarea>
                 </div>
+                <div class="form-group">
+                    <label><input type="checkbox" class="create-spell-public" ${newSpellIsPublic ? 'checked' : ''}/> Make spell public / shareable</label>
+                </div>
                 ${stepsHtml}
                 ${potentialInputsHtml}
                 <div class="form-actions">
@@ -459,6 +482,8 @@ export default class SpellsMenuModal {
             <div class="spell-detail-view">
                 <label>Name:<br><input type="text" class="spell-detail-name" value="${selectedSpell.name || ''}" /></label><br>
                 <label>Description:<br><textarea class="spell-detail-desc">${selectedSpell.description || ''}</textarea></label><br>
+                <label><input type="checkbox" class="spell-detail-public" ${selectedSpell.isPublic ? 'checked' : ''}/> Public / shareable</label><br>
+                ${selectedSpell.isPublic && (selectedSpell.publicSlug || selectedSpell.slug) ? `<div class="public-link"><input type="text" readonly value="${window.location.origin}/spells/${selectedSpell.publicSlug || selectedSpell.slug}" /> <button class="copy-link-btn">Copy</button></div>` : ''}
                 ${stepsHtml}
                 <div class="spell-detail-actions">
                     <button class="save-spell-btn">Save</button>
@@ -560,6 +585,7 @@ export default class SpellsMenuModal {
             const payload = {
                 name: newSpellName,
                 description: newSpellDescription,
+                isPublic: !!this.state.newSpellIsPublic,
                 steps: subgraph ? subgraph.nodes.map(n => ({ id: n.id, toolIdentifier: n.toolId, displayName: n.displayName, parameterMappings: n.parameterMappings })) : [],
                 connections: subgraph ? subgraph.connections : [],
                 exposedInputs: exposedInputs,

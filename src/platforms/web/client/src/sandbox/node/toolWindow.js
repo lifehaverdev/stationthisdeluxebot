@@ -16,6 +16,7 @@ import {
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
+import { createPermanentConnection } from '../connections/index.js';
 import { generationIdToWindowMap, registerWebSocketHandlers, generationCompletionManager } from './websocketHandlers.js';
 import { renderResultContent } from './resultContent.js';
 import { createParameterSection, showError } from './parameterInputs.js';
@@ -31,11 +32,7 @@ registerWebSocketHandlers();
 
 // Create a tool window
 export function createToolWindow(tool, position, id = null, output = null, parameterMappings = null) {
-    // If we're creating a new window (not restoring), it's a new action.
-    if (!id) {
-        pushHistory();
-    }
-
+    // Record state BEFORE mutation when creating brand-new window
     console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at workspace position:', position);
     const windowId = id || generateWindowId();
     const existingWindow = getToolWindow(windowId);
@@ -101,9 +98,9 @@ export function createToolWindow(tool, position, id = null, output = null, param
     };
     addToolWindow(windowData);
 
-    // If we created a new window, persist the state.
     if (!id) {
         persistState();
+        pushHistory(); // snapshot AFTER mutation so undo reverts correctly
     }
 
     toolWindowEl.style.left = `${position.x}px`;
@@ -159,7 +156,26 @@ export function createToolWindow(tool, position, id = null, output = null, param
             // Pass parameterMappings to duplicate
             const dupEl = createToolWindow(tool, dupPos, null, null, windowData.parameterMappings);
 
-            // ---- NEW: randomize seed in mappings for duplicate ----
+            // ---- Copy connections from the source node to duplicate ----
+            // a) incoming connections (parameterMappings)
+            Object.entries(windowData.parameterMappings || {}).forEach(([paramKey, mapping]) => {
+                if (mapping && mapping.type === 'nodeOutput') {
+                    const fromEl = document.getElementById(mapping.nodeId);
+                    if (fromEl) {
+                        createPermanentConnection(fromEl, dupEl, mapping.outputKey || paramKey);
+                    }
+                }
+            });
+
+            // b) outgoing connections
+            (getConnections() || []).filter(c => c.fromWindowId === windowId).forEach(conn => {
+                const toEl = document.getElementById(conn.toWindowId);
+                if (toEl) {
+                    createPermanentConnection(dupEl, toEl, conn.type);
+                }
+            });
+
+            // Randomise seed in duplicate mappings
             const dupWinData = getToolWindow(dupEl.id);
             if (dupWinData) {
                 randomizeSeedInMappings(dupWinData.parameterMappings);

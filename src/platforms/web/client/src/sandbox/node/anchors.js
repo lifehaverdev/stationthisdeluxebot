@@ -44,6 +44,7 @@ export function createInputAnchors(tool) {
         // Determine type for anchor
         let type = paramDef.type;
         // Normalize type (e.g., 'textany' -> 'text', 'numberslider' -> skip)
+        if (type === 'string') type = 'text';
         if (Array.isArray(type)) type = type[0];
         if (type === 'textany') type = 'text';
         if (type === 'numberslider' || type === 'integer' || type === 'number' || type === 'checkpoint' || type === 'seed') return; // skip granular types

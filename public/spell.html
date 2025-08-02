@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noema Spell</title>
+  <link rel="stylesheet" href="/index.css" />
+  <link rel="stylesheet" href="/css/spell-execute.css" />
+</head>
+<body>
+  <div class="app-container">
+    <header class="sandbox-header">
+      <div class="logo">Noema</div>
+      <nav class="main-nav"><a href="/landing">Explore</a></nav>
+    </header>
+    <main class="content-container">
+      <section id="spell-metadata" class="card"></section>
+      <section id="input-form" class="form-card"></section>
+      <div id="quote-section" class="card" style="display:none;"></div>
+      <button id="run-btn" class="btn btn-primary" style="display:none;">Run Spell</button>
+      <div id="output-section"></div>
+    </main>
+  </div>
+
+  <script src="/js/spell_execute.js" type="module"></script>
+</body>
+</html> 

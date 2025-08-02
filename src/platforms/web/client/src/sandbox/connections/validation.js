@@ -37,13 +37,23 @@ export function areTypesCompatible({ fromWindowId, toWindowId, type }) {
     const toTool = toWin.tool;
     // Use inputSchema if available
     if (toTool.inputSchema) {
-        // Check if any input in inputSchema accepts this type
-        for (const [inputName, param] of Object.entries(toTool.inputSchema)) {
-            if (param.type === type || (Array.isArray(param.type) && param.type.includes(type))) {
-                return true;
-            }
-            // Allow for custom allowedTypes or similar
-            if (param.allowedTypes && param.allowedTypes.includes(type)) {
+        // Helper to normalise parameter types (aliases, arrays, etc.)
+        const normalise = (t) => {
+            if (Array.isArray(t)) t = t[0];
+            if (t === 'string' || t === 'textany') return 'text';
+            return t;
+        };
+
+        const desiredType = normalise(type);
+
+        // Check if any input parameter accepts the desired type
+        for (const [, param] of Object.entries(toTool.inputSchema)) {
+            const paramTypes = Array.isArray(param.type) ? param.type : [param.type];
+            const matches = paramTypes.some(pt => normalise(pt) === desiredType);
+            if (matches) return true;
+
+            // Allow for explicit allowedTypes array
+            if (param.allowedTypes && param.allowedTypes.map(normalise).includes(desiredType)) {
                 return true;
             }
         }

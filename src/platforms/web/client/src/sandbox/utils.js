@@ -20,20 +20,30 @@ export function updateToolButtonHandlers(activateToolCallback) {
 
 // Calculate center position for new tool windows
 export function calculateCenterPosition(toolWindows) {
-    const sandbox = document.querySelector('.sandbox-content');
-    if (!sandbox) return { x: 0, y: 0 };
+    const sandboxContent = document.querySelector('.sandbox-content');
+    if (!sandboxContent) return { x: 0, y: 0 };
 
-    const rect = sandbox.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    // Calculate the screen-space centre of the visible sandbox
+    const rect = sandboxContent.getBoundingClientRect();
+    const screenCenterX = rect.left + rect.width / 2;
+    const screenCenterY = rect.top + rect.height / 2;
+
+    // Translate to workspace coordinates (pan/zoom aware)
+    let { x: centerX, y: centerY } = {
+        x: screenCenterX,
+        y: screenCenterY
+    };
+    if (window.sandbox && typeof window.sandbox.screenToWorkspace === 'function') {
+        ({ x: centerX, y: centerY } = window.sandbox.screenToWorkspace(screenCenterX, screenCenterY));
+    }
 
     if (toolWindows.length === 0) {
         return { x: centerX, y: centerY };
     }
 
-    // Calculate position in a circular pattern around the center
-    const radius = 150; // Distance from center
-    const angle = (toolWindows.length * (Math.PI * 2) / 8); // Divide circle into 8 positions
+    // Stagger subsequent nodes around the first one in a circle so they don’t overlap
+    const radius = 150; // px in workspace coords
+    const angle = (toolWindows.length * (Math.PI * 2)) / 8; // 8 slots around the circle
     return {
         x: centerX + radius * Math.cos(angle),
         y: centerY + radius * Math.sin(angle)

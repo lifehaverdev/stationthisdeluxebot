@@ -279,6 +279,19 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Admin API router not mounted due to missing dependencies.');
   }
 
+  // --- Public: Supported Assets (no auth required) ---
+  externalApiRouter.get('/points/supported-assets', async (req, res) => {
+    try {
+      const { TOKEN_CONFIG, TRUSTED_NFT_COLLECTIONS } = require('../../core/services/alchemy/tokenConfig');
+      const tokens = Object.values(TOKEN_CONFIG).map(({ symbol, decimals, fundingRate, iconUrl }) => ({ symbol, decimals, fundingRate, iconUrl }));
+      const nfts = Object.entries(TRUSTED_NFT_COLLECTIONS).map(([address, cfg]) => ({ address, name: cfg.name, fundingRate: cfg.fundingRate }));
+      return res.json({ tokens, nfts });
+    } catch (err) {
+      logger.error('Failed to build supported-assets payload', err);
+      return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+    }
+  });
+
   // Mount the Points API router (Protected by JWT or API Key)
   dependencies.internalApiClient = internalApiClient;
   const pointsRouter = createPointsApi({ internalApiClient, logger });
@@ -288,6 +301,8 @@ function initializeExternalApi(dependencies) {
   } else {
     logger.warn('External Points API router not mounted due to missing dependencies.');
   }
+
+  // --- END public route ---
 
   // Mount the Spells API router (Protected by JWT or API key, with dualAuth for protected endpoints)
   const spellsRouter = createSpellsApi({

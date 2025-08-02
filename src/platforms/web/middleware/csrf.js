@@ -22,6 +22,7 @@ const csrfExcluded = [
   '/internal/',// Add more as needed
   '/api/v1/webhook/alchemy',
   '/api/v1/webhook/comfydeploy',
+  '/api/v1/points/supported-assets',
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)

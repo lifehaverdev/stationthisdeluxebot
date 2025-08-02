@@ -1,6 +1,7 @@
 import { showImageOverlay } from './overlays/imageOverlay.js';
-import { getToolWindow } from '../state.js';
+import { getToolWindow, getConnections } from '../state.js';
 import { createToolWindow, executeNodeAndDependencies } from './toolWindow.js';
+import { createPermanentConnection } from '../connections/index.js';
 
 // Helper to duplicate a window with copied mappings + randomised seed and run it
 async function duplicateAndRun(windowId) {
@@ -25,6 +26,25 @@ async function duplicateAndRun(windowId) {
             });
         }
     }
+
+    // --- Duplicate incoming connections ---
+    Object.entries(dupWinData.parameterMappings).forEach(([paramKey, mapping]) => {
+        if (mapping && mapping.type === 'nodeOutput') {
+            const fromWinEl = document.getElementById(mapping.nodeId);
+            if (fromWinEl) {
+                createPermanentConnection(fromWinEl, dupEl, mapping.outputKey || paramKey);
+            }
+        }
+    });
+
+    // --- Duplicate outgoing connections (if any) ---
+    const existingConns = getConnections().filter(c => c.fromWindowId === srcWin.id);
+    existingConns.forEach(conn => {
+        const toWinEl = document.getElementById(conn.toWindowId);
+        if (toWinEl) {
+            createPermanentConnection(dupEl, toWinEl, conn.type);
+        }
+    });
 
     await executeNodeAndDependencies(dupEl.id);
 }
@@ -101,6 +121,44 @@ export function renderResultContent(resultContainer, output) {
             const text = document.createElement('div');
             text.className = 'result-text-output';
             text.textContent = value;
+
+            // Quick copy-to-clipboard UX
+            text.title = 'Click to copy';
+            text.style.cursor = 'pointer';
+            text.addEventListener('click', () => {
+                const feedback = () => {
+                    const original = text.textContent;
+                    text.textContent = 'Copied!';
+                    text.style.opacity = '0.6';
+                    setTimeout(() => {
+                        text.textContent = original;
+                        text.style.opacity = '1';
+                    }, 800);
+                };
+
+                // Try modern API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(value).then(feedback).catch(() => {
+                        // Fallback: legacy execCommand
+                        const textarea = document.createElement('textarea');
+                        textarea.value = value;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        try {
+                            document.execCommand('copy');
+                            feedback();
+                        } catch (err) {
+                            window.prompt('Copy to clipboard: Ctrl+C, Enter', value);
+                        }
+                        document.body.removeChild(textarea);
+                    });
+                } else {
+                    // Very old browsers
+                    window.prompt('Copy to clipboard: Ctrl+C, Enter', value);
+                }
+            });
             resultContainer.appendChild(text);
         }
     };

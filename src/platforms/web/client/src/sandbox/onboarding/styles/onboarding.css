@@ -77,4 +77,15 @@
 
 .st-onboard-selections button:hover {
   background: #e6e6e6;
+}
+
+.st-onboard-overlay.no-bg {
+  background: transparent;
+  pointer-events: none;
+}
+
+.st-onboarding-highlight {
+  outline: 3px solid #ff9800;
+  border-radius: 6px;
+  transition: outline 0.3s ease;
 } 
