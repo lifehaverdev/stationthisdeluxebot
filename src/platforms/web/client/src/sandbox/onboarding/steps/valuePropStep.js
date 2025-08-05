@@ -13,8 +13,8 @@ export default class ValuePropStep {
     root.innerHTML = `
       <div class="st-onboard-overlay">
         <div class="st-onboard-card">
-          <h2>Welcome to StationThis</h2>
-          <p>Generate, remix & monetise media across Telegram, Discord & Web Canvas – powered by AI workflows and on-chain credits.</p>
+          <h2>Welcome to NOEMA</h2>
+          <p>Manifest ideas—generate, remix & monetise media across Telegram, Discord & Web Canvas with AI workflows and on-chain credits.</p>
           <div class="st-onboard-actions">
             <button class="st-onboard-next">Next</button>
             <button class="st-onboard-skip">Skip</button>

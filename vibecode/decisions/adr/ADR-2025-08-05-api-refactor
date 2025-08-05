@@ -1,0 +1,76 @@
+# ADR-2025-08-05: Folder-Based API Re-organisation (v1)
+
+## Context
+Both `src/api/internal` and `src/api/external` contain ±12 large files (300-500 LOC each) with mixed naming.  
+Pain points:
+* Hard to see domain boundaries.
+* No local README / schema docs per domain.
+* Giant index files wire everything, complicating dependency injection.
+* Sparse colocated tests; current supertest suites live elsewhere.
+
+## Decision
+1. Introduce domain folders under both `internal/` and `external/`:
+
+   ```
+   src/api/internal/
+     auth/          users/         wallets/
+     economy/       generations/   loras/
+     spells/        storage/       teams/
+     system/
+   ```
+   (external mirrors the same set)
+
+2. Each folder contains:
+   * `index.js` – exports one or more Express routers.
+   * `README.md` – purpose, auth model, example curl calls.
+   * `validation/` – shared zod/Joi schemas (optional).
+   * `tests/` – supertest specs (optional for now).
+
+3. Root `internal/index.js` and `external/index.js` shrink to simple aggregators:
+   ```js
+   const router = require('express').Router();
+   router.use('/auth', require('./auth').router);
+   // ...
+   module.exports = router;
+   ```
+
+4. Adopt root import aliases via `module-alias` (`@api`, `@internal`, `@external`) to avoid `../../..` chains.
+
+5. Update all `require()` paths accordingly.  
+6. No functional changes to route handlers.
+
+## Consequences
+Positive:
+* Faster onboarding; domain docs live beside code.
+* Smaller files → easier reviews & unit tests.
+* Clearer DI; services don’t depend on file layout.
+
+Trade-offs:
+* ≈ 26 developer-hours moving files & fixing imports.
+* Large git diff; open PR will need review.
+* Open feature branches must rebase.
+
+## Alternatives Considered
+* Keep flat structure but add READMEs – still messy.
+* Generate OpenAPI spec first – valuable but orthogonal.
+* Split APIs into separate NPM packages – overkill today.
+
+## Migration Plan
+1. Create folder skeletons + placeholder `index.js` & `README.md`.
+2. Move files one domain at a time; run `npm test` (supertest) after each.
+3. Add `module-alias` with entries in `package.json`:
+   ```json
+   "_moduleAliases": {
+     "@api": "src/api",
+     "@internal": "src/api/internal",
+     "@external": "src/api/external"
+   }
+   ```
+4. Search-and-replace imports (`require('../../internal/...')` → `require('@internal/...')`).
+5. Run linter + full test suite; manual smoke of key routes.
+6. Write handoff doc & link demo.
+
+## Decisions on Former Open Questions
+
+* **Route structure** – External v1 routes will remain at `/api/v1/<legacy>` for this refactor. We have not launched publicly, so keeping the current path avoids unnecessary churn while preserving flexibility for a future `/v2` redesign.
+* **Validation strategy (Zod)** – Zod is a lightweight runtime schema-validation library for JavaScript/TypeScript that lets us declare object schemas and automatically validate/parse incoming data. We will adopt it incrementally, starting with new or heavily-modified domains during the re-org rather than gating the entire migration on full coverage.
