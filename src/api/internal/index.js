@@ -12,6 +12,7 @@ const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, cr
 const { createGenerationOutputsApiService, createGenerationExecutionApi, createGenerationOutputsApi } = require('./generations');
 // Removed deprecated Teams API and related DB service
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
+const { createModelsApiRouter } = require('./models');
 const { loraTriggerMapApi, lorasApiRouter, loraImportRouter } = require('./loras');
 // userPreferencesApi and userStatusReportApi now imported from './users' above
 const createTrainingsApi = require('./trainingsApi');
@@ -198,6 +199,15 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] Generation Outputs API service mounted to /v1/data/generations');
   } else {
     logger.error('[InternalAPI] Failed to create Generation Outputs API router.');
+  }
+
+  // Models API Service:
+  const modelsApiRouter = createModelsApiRouter(apiDependencies);
+  if (modelsApiRouter) {
+    v1DataRouter.use('/models', modelsApiRouter);
+    logger.info('[InternalAPI] Models API service mounted to /v1/data/models');
+  } else {
+    logger.error('[InternalAPI] Failed to create Models API router.');
   }
 
   // Storage API Service:

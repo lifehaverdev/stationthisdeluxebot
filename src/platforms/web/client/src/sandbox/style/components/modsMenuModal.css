@@ -1,0 +1,56 @@
+/* src/platforms/web/client/src/sandbox/style/components/modsMenuModal.css */
+.mods-modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 1001;
+    backdrop-filter: blur(5px);
+}
+
+.mods-modal-container {
+    background: #1a1a1a;
+    color: #f0f0f0;
+    padding: 20px;
+    border-radius: 12px;
+    width: 90%; max-width: 650px;
+    position: relative;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+    border: 1px solid #333;
+}
+
+.mods-modal-container .close-btn {
+    position: absolute;
+    top: 15px; right: 15px;
+    background: none; border: none;
+    color: #888; font-size: 24px; cursor: pointer;
+    transition: color 0.2s;
+}
+.mods-modal-container .close-btn:hover { color: #fff; }
+
+.mods-category-bar {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 15px;
+}
+.cat-btn {
+    background: #2a2a2a; border: 1px solid #444;
+    color: #f0f0f0; padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; font-size: 14px;
+}
+.cat-btn.active { background: #4a90e2; border-color: #4a90e2; }
+
+.mods-content { max-height: 50vh; overflow-y: auto; }
+.mods-list { list-style: none; padding: 0; margin: 0; }
+.mods-item {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #2a2a2a; border: 1px solid #444; padding: 10px; border-radius: 6px;
+    margin-bottom: 8px;
+}
+.add-mod-btn { background: #4a90e2; border: none; color:#fff; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.add-mod-btn:hover { background: #5aa1f2; }
+.mods-size { font-size: 12px; color: #aaa; margin-left: 8px; }
+.loading-spinner { text-align:center; padding:20px; }
+.error-message { color:#ff4d4d; text-align:center; padding:10px; }
+.empty-message { text-align:center; color:#888; padding:20px; }
+.intro-placeholder { text-align:center; color:#888; padding:20px; } 

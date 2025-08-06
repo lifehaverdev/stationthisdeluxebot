@@ -24,6 +24,7 @@ import { showToolsForCategory, renderSidebarTools } from './toolSelection.js';
 import AccountDropdown from './components/accountDropdown.js';
 import './components/BuyPointsModal/buyPointsModal.js';
 import SpellsMenuModal from './components/SpellsMenuModal.js';
+import ModsMenuModal from './components/ModsMenuModal.js';
 import { renderAllConnections } from './connections/index.js';
 import './components/ReferralVaultModal/referralVaultModal.js';
 import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
@@ -285,6 +286,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.preventDefault();
             const spellsModal = new SpellsMenuModal();
             spellsModal.show();
+        });
+    }
+
+    // Mods Menu link handler
+    const modsNavLink = document.querySelector('nav.main-nav a[href="#mods"]');
+    if (modsNavLink) {
+        modsNavLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modsModal = new ModsMenuModal({
+                onSelect: (model) => {
+                    console.log('[ModsMenuModal] selected', model);
+                    // TODO: integrate model addition logic (e.g., createToolWindow or update workflow params)
+                }
+            });
+            modsModal.show();
         });
     }
 

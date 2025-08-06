@@ -66,6 +66,27 @@ class ModelDiscoveryService {
     return [...names].map(n => ({ name: n, type: 'unknown', provider: 'workflow_enum' }));
   }
 
+  /** Fetch models from private model volume (Modal filesystem) */
+  async _fetchPrivateVolume () {
+    try {
+      const res = await this.comfy._makeApiRequest('/api/volume/private-models', {
+        headers: { 'Accept': 'application/json' }
+      });
+      const payload = await res.json();
+      if (!Array.isArray(payload)) return [];
+
+      // Normalise keys so downstream filters work identically to search-API results
+      return payload.map(rec => ({
+        ...rec,
+        save_path: rec.path || rec.save_path,
+        provider: 'private_volume'
+      }));
+    } catch (err) {
+      this.comfy.logger?.warn?.('[ModelDiscoveryService] private-volume fetch error:', err.message);
+      return [];
+    }
+  }
+
   /**
    * Composite list.
    * @param {Object} opts
@@ -83,12 +104,13 @@ class ModelDiscoveryService {
       return category ? this._filterByCategory(this._cache, category) : this._cache;
     }
 
-    const [catalogue, enumModels] = await Promise.all([
+    const [privateVol, catalogue, enumModels] = await Promise.all([
+      this._fetchPrivateVolume(),
       this._fetchSearchCatalogue({ provider }),
       includeWorkflowEnums ? this._extractWorkflowEnums() : Promise.resolve([])
     ]);
 
-    const combined = [...catalogue, ...enumModels];
+    const combined = [...privateVol, ...catalogue, ...enumModels];
 
     // cache results
     this._cache = combined;

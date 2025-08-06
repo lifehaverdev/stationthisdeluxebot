@@ -18,7 +18,7 @@ With more workflows depending on diverse model assets, users must be able to:
 ## Decision
 
 1. **Introduce a _Model Discovery Service_ in `comfyui.js`**
-   * Add a `listModels({ category })` method that queries the Comfy-Deploy API `GET /models/:category` (or falls back to enumerating the model directory on the active worker) and returns an array of `{ name, path, sizeBytes, sha256, category }`.
+   * Add a `listModels({ category })` method that queries the Comfy-Deploy Volumes endpoint `GET /volume/private-models` (and optionally merges `/api/search/model?provider=all`) to return an array of `{ path, sizeBytes, mtime, category }`.
    * Categories: `checkpoint`, `lora`, `upscale`, `tagger`, `embedding`, `vae`.
    * Cache responses for 10 min in memory (like `WorkflowCacheManager`).
 
@@ -53,7 +53,7 @@ With more workflows depending on diverse model assets, users must be able to:
 ## Implementation Progress (2025-08-01)
 
 * ✅ Added `ModelDiscoveryService` (see `src/core/services/comfydeploy/modelDiscoveryService.js`).
-  * Pulls `/api/search/model?provider=all` via existing ComfyUIService.
+  * Pulls `/api/volume/private-models` (Volumes API) **and** `/api/search/model?provider=all` via existing ComfyUIService.
   * Scrapes `WorkflowCacheManager` enum inputs for additional model names.
   * Provides `listModels({ category, provider })` with optional filtering.
 * 🔄 Next: expose this via ModsMenu (web & telegram) and cache results for 10-min TTL. 
@@ -61,21 +61,26 @@ With more workflows depending on diverse model assets, users must be able to:
 ### Progress Summary (2025-08-01 ‑ session)
 
 1. **Model catalogue access**
-   • Confirmed `/api/search/model?query=&provider=all` returns 571 items (checkpoints, LoRAs, VAEs, upscalers, taggers …).  
-   • Wrote `scripts/comfyui_api_utils/listModels.js` that instantiates the real ComfyUIService and displays counts / samples.
+   • Confirmed `/api/volume/private-models` returns 611 items (34 checkpoints, 284 LoRAs, 8 VAEs, 4 upscalers, 4 embeddings, plus misc dirs).  
+   • Updated `scripts/comfyui_api_utils/listModels.js` to call this endpoint directly and print category counts & full listings.
 
 2. **Combined discovery layer**  
    • Implemented `src/core/services/comfydeploy/modelDiscoveryService.js`  
-     – Pulls search-API catalogue.  
+     – Pulls private-volume list and search-API catalogue.  
      – Scrapes every `ComfyUIDeployExternalEnum` that looks like a *model selector* from `WorkflowCacheManager` to augment the list.  
      – Offers `listModels({ category, provider })` with checkpoint/lora/upscale/tagger/embedding/vae filters.  
      – Caches via WorkflowCacheManager, sharing the same initialisation path.
 
 3. **Probe script**  
    • Updated `scripts/comfyui_api_utils/listModels.js` to use `ModelDiscoveryService` and accept optional category arg.  
-   • Verified checkpoint listing works; counts show ~165 checkpoints in cloud catalogue.
+   • Verified checkpoint listing works; lists 34 checkpoints from private volume.
 
 4. **ADR updated** with implementation progress section.
+5. **Web UI integration**  (2025-08-06)  
+   • Implemented `ModsMenuModal` in web sandbox (`src/platforms/web/client/src/sandbox/components/ModsMenuModal.js`) with matching CSS.  
+   • External API `/api/models` hooked into modal; category counts and lists load from cache.  
+   • Added nav link handler in `sandbox/index.js` to open modal.  
+   • Next: selection callback will create appropriate nodes / parameters in canvas.
 
 ### Pain Points / Outstanding Issues
 

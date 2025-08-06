@@ -12,6 +12,7 @@ const { createStatusApi, createAdminApi, createWebhookApi } = require('./system'
 const { createReferralVaultApi } = require('./referralVaultApi');
 const { createAuthApi } = require('./auth');
 const { createUserApi } = require('./users');
+const createModelsApiRouter = require('./models');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 const { createPointsApi } = require('./economy');
 const createSpellsApi = require('./spells');
@@ -150,6 +151,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Referral Vault API router mounted at /referral-vault. (JWT or API key protected)');
   } else {
     logger.warn('External Referral Vault API router not mounted due to missing dependencies.');
+  }
+
+  // Models API (public but auth protected via dualAuth)
+  const modelsApiRouter = createModelsApiRouter(dependencies);
+  if (modelsApiRouter) {
+    externalApiRouter.use('/models', dualAuth, modelsApiRouter);
+    logger.info('External Models API router mounted at /models (JWT or API key protected)');
+  } else {
+    logger.warn('External Models API router not mounted due to missing dependencies.');
   }
 
   // --- Routes ---
