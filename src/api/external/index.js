@@ -5,19 +5,16 @@ const { createLogger } = require('../../utils/logger');
 // This enforces the canonical dependency injection pattern and avoids
 // accidental creation of multiple axios clients.
 const { createToolsApiRouter } = require('./toolsApi');
-const { createWalletConnectionApiRouter } = require('./walletConnectionApi');
-const createGenerationsApi = require('./generationsApi');
-const { createPublicStorageApi } = require('./storageApi');
-const { createWebhookApi } = require('./webhookApi');
-const { createStatusApi } = require('./statusApi');
-const { createAdminApi } = require('./adminApi');
+const { createWalletConnectionApiRouter } = require('./wallets');
+const { createGenerationsApi, createGenerationExecutionApi } = require('./generations');
+const { createPublicStorageApi } = require('./storage');
+const { createStatusApi, createAdminApi, createWebhookApi } = require('./system');
 const { createReferralVaultApi } = require('./referralVaultApi');
-const { createAuthApi } = require('./authApi');
-const { createUserApi } = require('./userApi');
+const { createAuthApi } = require('./auth');
+const { createUserApi } = require('./users');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
-const createPointsApi = require('./pointsApi');
-const createGenerationExecutionApi = require('./generationExecutionApi');
-const createSpellsApi = require('./spellsApi');
+const { createPointsApi } = require('./economy');
+const createSpellsApi = require('./spells');
 
 
 /**

@@ -7,35 +7,26 @@
 const express = require('express');
 const axios = require('axios');
 const createStatusService = require('./status');
-const createUserCoreApi = require('./userCoreApi');
-const createUserSessionsApi = require('./userSessionsApi');
-const createUserEventsApi = require('./userEventsApi');
-const createTransactionsApiService = require('./transactionsApi');
-const createGenerationOutputsApiService = require('./generationOutputsApi');
-const createTeamServiceDb = require('../../core/services/db/teamServiceDb');
-const createTeamsApi = require('./teamsApi');
+const { createUserCoreApi, createUserSessionsApi, createUserEventsApi, createUserPreferencesApiRouter, createUserStatusReportApiService } = require('./users');
+const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, createUserEconomyApi } = require('./economy');
+const { createGenerationOutputsApiService, createGenerationExecutionApi, createGenerationOutputsApi } = require('./generations');
+// Removed deprecated Teams API and related DB service
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
-const loraTriggerMapApi = require('./loraTriggerMapApi');
-const lorasApiRouter = require('./lorasApi');
-const createUserPreferencesApiRouter = require('./userPreferencesApi');
-const createUserStatusReportApiService = require('./userStatusReportApi');
-const loraImportRouter = require('./loraImportApi');
+const { loraTriggerMapApi, lorasApiRouter, loraImportRouter } = require('./loras');
+// userPreferencesApi and userStatusReportApi now imported from './users' above
 const createTrainingsApi = require('./trainingsApi');
-const createSpellsApi = require('./spellsApi'); // Import the new spells API
+const createSpellsApi = require('./spells'); // spells index now exports function
 const { initializeLlmApi } = require('./llm');
 const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
-const initializeWalletsApi = require('./walletsApi'); // Import the wallets API
-const { createAuthApi } = require('./authApi');
-const createCreditLedgerApi = require('./creditLedgerApi');
-const { createStorageApi } = require('./storageApi'); // Added storageApi
-const generationOutputsApi = require('./generationOutputsApi');
-const createPointsApi = require('./pointsApi');
-const generationExecutionApi = require('./generationExecutionApi'); // Import the new API
-const pointsApi = require('./pointsApi');
-const { createGenerationOutputsApi } = require('./generationOutputsApi');
-const { createSystemApi } = require('./systemApi');
-const { createActionsApi } = require('./actionsApi');
+const initializeWalletsApi = require('./wallets'); // path updated after folder reorg
+const { createAuthApi } = require('./auth');
+// createCreditLedgerApi and createPointsApi now from economy aggregator above
+const { createStorageApi } = require('./storage'); // path updated after folder reorg
+const generationExecutionApi = createGenerationExecutionApi; // from aggregator
+const pointsApi = require('./economy/pointsApi');
+const generationOutputsApi = createGenerationOutputsApi;
+const { createSystemApi, createActionsApi } = require('./system');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -107,15 +98,7 @@ function initializeInternalServices(dependencies = {}) {
 
   // Create an instance of teamServiceDb and add it to apiDependencies
   // This ensures that any API service needing teamServiceDb can access it.
-  if (dbDataServices) { // only if db is available
-    apiDependencies.teamServiceDb = createTeamServiceDb({ logger }); // Pass only logger
-    // Pass userSettingsService if it was initialized here and needed by userPreferencesApi
-    // apiDependencies.userSettingsService = getUserSettingsService({ toolRegistry: apiDependencies.toolRegistry, internalApiClient: apiClient /* or dedicated one */});
-  } else {
-    logger.warn('[InternalAPI] teamServiceDb not initialized because dbDataServices is not available.');
-    // We might want to handle this more gracefully, but for now, teamsApi will get undefined for teamServiceDb
-    // and should handle it (which it does by returning a 500 error router).
-  }
+  // Removed deprecated Teams API and related DB service
 
   // Pass the correctly structured apiDependencies to the service routers
 
@@ -236,13 +219,7 @@ function initializeInternalServices(dependencies = {}) {
   }
 
   // Teams API Service:
-  const teamsApiRouter = createTeamsApi(apiDependencies);
-  if (teamsApiRouter) {
-    v1DataRouter.use('/', teamsApiRouter);
-    logger.info('[InternalAPI] Teams API service mounted to /v1/data');
-  } else {
-    logger.error('[InternalAPI] Failed to create Teams API router.');
-  }
+  // Removed deprecated Teams API and related DB service
 
   // User Preferences API (includes UserSettingsService logic):
   // Assuming userPreferencesApi.js exports a function that takes apiDependencies and returns a router
