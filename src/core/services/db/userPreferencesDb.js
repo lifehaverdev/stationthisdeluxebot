@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const COLLECTION_NAME = 'userPreferences';
 const LORA_FAVORITES_KEY = 'loraFavoriteIds'; // Define a constant for the key
+const MODEL_FAVORITES_KEY = 'modelFavorites'; // Root key holding per-category arrays
 
 class UserPreferencesDB extends BaseDB {
   constructor(logger) {
@@ -302,6 +303,81 @@ class UserPreferencesDB extends BaseDB {
     }
   }
   // -- END NEW LORA FAVORITES METHODS --
+
+  // ++ GENERIC MODEL FAVORITES METHODS ++
+  /**
+   * Retrieves a user’s model favourites.
+   * @param {ObjectId} masterAccountId – The master account ID.
+   * @param {string} [category] – Optional category filter (checkpoint|lora|vae|upscale|embedding|controlnet|clipseg).
+   * @returns {Promise<Object|Array>} Entire favourites object or array for the category.
+   */
+  async getModelFavorites(masterAccountId, category = null) {
+    try {
+      const record = await this.findByMasterAccountId(masterAccountId);
+      const root = record?.preferences?.[MODEL_FAVORITES_KEY] || {};
+      return category ? (root[category] || []) : root;
+    } catch (err) {
+      this.logger.error(`[UserPreferencesDB] getModelFavorites error for MAID ${masterAccountId}:`, err);
+      return category ? [] : {};
+    }
+  }
+
+  /**
+   * Adds a model ID to a user’s favourites for the given category (idempotent).
+   */
+  async addModelFavorite(masterAccountId, category, modelId) {
+    if (!category || !modelId) {
+      this.logger.warn('[UserPreferencesDB] addModelFavorite called with empty category/modelId');
+      return false;
+    }
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const prefPath = `preferences.${MODEL_FAVORITES_KEY}.${category}`;
+      await this.updateOne(
+        { masterAccountId: MAID },
+        {
+          $addToSet: { [prefPath]: modelId },
+          $setOnInsert: {
+            masterAccountId: MAID,
+            // preferences root omitted to avoid path conflict when nested path is also in this update
+            createdAt: new Date(),
+          },
+          $currentDate: { updatedAt: true },
+        },
+        { upsert: true }
+      );
+      return true;
+    } catch (err) {
+      this.logger.error('[UserPreferencesDB] addModelFavorite error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Removes a model ID from a user’s favourites.
+   */
+  async removeModelFavorite(masterAccountId, category, modelId) {
+    if (!category || !modelId) {
+      this.logger.warn('[UserPreferencesDB] removeModelFavorite called with empty category/modelId');
+      return false;
+    }
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const prefPath = `preferences.${MODEL_FAVORITES_KEY}.${category}`;
+      await this.updateOne(
+        { masterAccountId: MAID },
+        {
+          $pull: { [prefPath]: modelId },
+          $currentDate: { updatedAt: true },
+        }
+      );
+      return true;
+    } catch (err) {
+      this.logger.error('[UserPreferencesDB] removeModelFavorite error:', err);
+      return false;
+    }
+  }
+  // -- END GENERIC MODEL FAVORITES METHODS --
 }
 
 module.exports = UserPreferencesDB; 

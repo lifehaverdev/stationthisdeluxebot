@@ -127,8 +127,8 @@ class ModelDiscoveryService {
     if (!category) return list;
     const catLower = category.toLowerCase();
     return list.filter(m => {
-      const path = (m.save_path || '').toLowerCase();
-      const type = (m.type || '').toLowerCase();
+      const path = (m.save_path || m.path || '').toString().toLowerCase();
+      const type = (m.type !== undefined && m.type !== null ? String(m.type) : '').toLowerCase();
       if (catLower === 'checkpoint') return /checkpoint|checkpoints/.test(type) || /checkpoints/.test(path);
       if (catLower === 'lora')       return /lora(s)?/.test(type) || /lora(s)?/.test(path);
       if (catLower === 'upscale')    return /upscale/.test(type) || /upscale/.test(path);

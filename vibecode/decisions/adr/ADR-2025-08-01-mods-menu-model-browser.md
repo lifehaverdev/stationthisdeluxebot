@@ -78,9 +78,23 @@ With more workflows depending on diverse model assets, users must be able to:
 4. **ADR updated** with implementation progress section.
 5. **Web UI integration**  (2025-08-06)  
    • Implemented `ModsMenuModal` in web sandbox (`src/platforms/web/client/src/sandbox/components/ModsMenuModal.js`) with matching CSS.  
-   • External API `/api/models` hooked into modal; category counts and lists load from cache.  
+   • External API `/api/v1/models` hooked into modal; category counts and lists load from cache.  
    • Added nav link handler in `sandbox/index.js` to open modal.  
    • Next: selection callback will create appropriate nodes / parameters in canvas.
+
+6. **Path-based filtering & DB LoRA integration** (2025-08-08)  
+   • Internal Models API now filters by exact volume sub-folders: `checkpoints/`, `upscale_models/`, `embeddings/`, `vae/`, `controlnet/`, `clipseg/`.  
+   • LoRA category now served from Mongo `loraModels` instead of filesystem.  
+   • Eliminated expensive `WorkflowCacheManager` calls on each request by skipping workflow-enum scraping for /models routes.  
+   • ModsMenuModal category list updated to: **checkpoint · lora · upscale · embedding · vae · controlnet · clipseg**.  
+   • First load is now ~2 s vs 15 s previously; no more ToolRegistry spam.
+
+7. **Favorites workflow shipped** (2025-08-08)
+   • Added generic `modelFavorites` structure in `UserPreferencesDB` with per-category arrays and API endpoints.
+   • Internal routes:`/internal/v1/data/users/:id/preferences/model-favorites` (GET/POST/DELETE).
+   • External proxy routes:`/api/v1/user/me/preferences/model-favorites`.
+   • `ModsMenuModal` now shows heart icons, fetches favorites, toggles state with CSRF protection and optimistic UI update.
+   • Upsert conflict fixed (`preferences` path) – verified 200/304 responses and correct DB writes.
 
 ### Pain Points / Outstanding Issues
 
@@ -106,10 +120,86 @@ With more workflows depending on diverse model assets, users must be able to:
    • `ModsMenuModal` & `ModsMenuManager` still hard-code LoRA APIs; need injection of `ModelDiscoveryService`.  
    • UI pagination & search UX to be designed.
 
-### Next Steps
+### Next Steps (planned)
 
-1. Retest after LoRA regex fix – ensure counts show expected ~200+ LoRAs.
-2. Add 10-min TTL memoisation inside `ModelDiscoveryService` to avoid repeated heavy workflow scraping.
-3. Expose `ModelDiscoveryService` via `initializeServices` so platform adapters can request it.
-4. Replace LoRA APIs in web & telegram menus with discovery-based catalogue (include category tabs).
-5. (Optional) Write unit tests for category classifier. 
+1. **Canvas Integration** – When a model is selected the modal should:
+   • For checkpoints / VAE / ControlNet etc.: inject a `StringSelector` input value in the active node or create a new *loader* node pre-wired.
+   • For LoRA: call LoRA resolution service to map slug → trigger string and pre-insert into prompt window.
+
+2. **Search & Pagination** – Add client-side search box and lazy loading for categories with >200 items (esp. LoRAs).
+
+3. **Preview Metadata** – Fetch `GET /models/:category/:name/meta` to display size, SHA256 and sample image (once available).
+
+4. **Caching** – Persist last successful `/models/stats` + category lists in localStorage with a 10 min TTL to avoid network calls while browsing.
+
+5. **Permissions** – Hide private LoRAs unless the current user has access (requires `loraPermissions` check via internal API). 
+
+### Planned Enhancements (2025-08-08)
+
+The following improvements have been identified for the next iteration of the Mods Menu & Model Browser:
+
+1. **Favorites Workflow**
+   • ✅ Replaced the “+” add button with a *heart* icon throughout Web UI (telegram pending).
+   • ✅ Clicking the heart toggles the model in the user’s *favorites* list, persisted via `UserPreferencesDB`.
+   • ✅ Extended `UserPreferencesDB` and related APIs to support per-category favorites (`checkpoint`, `lora`, `vae`, `upscale`, `embedding`, `controlnet`, `clipseg`).
+
+2. **LoRA Category Deep-Dive**
+   • LoRAs need richer metadata (trainer, trigger words, price, favourite status) and dedicated pagination.
+   • The LoRA section will fetch from `loraModels` collection instead of filesystem and allow filtering by tags, owner, and price tier.
+
+3. **Model Detail View**
+   • Selecting a model should open a detail panel/page showing description, preview samples, tags, ratings, size, SHA, and ownership info.
+   • For LoRAs, include trigger phrases and training provenance.
+   • Provide ‘Favourite’, ‘Purchase/Quote’, and ‘Insert into Canvas’ actions.
+
+These items will be tackled in order, starting with the Favorites workflow. 
+
+### LoRA Category Deep-Dive – Detailed Implementation Plan (2025-08-08)
+
+**Goal**  
+Provide a dedicated LoRA browser that supports server-side category filters, rich detail view, and feature parity across Web & Telegram.
+
+```
+Web / Telegram UI → External API (/api/v1/models/lora) → Internal API (/internal/v1/data/loras/…) → ModelDiscoveryService + loraModels DB
+```
+
+#### Implementation Checklist
+
+1. **DB & Data Model**  
+   • Add `category` enum field to `loraModels`.  
+   • Back-fill existing documents; add compound index `{ category, checkpoint, priceUSD, tags }`.
+
+2. **Service Layer**  
+   • Extend `ModelDiscoveryService.listLoras({ category, checkpoint, tags, priceTier, sort, page, limit, userId })`.  
+   • Cache results for 10 min keyed by full filter signature.
+
+3. **Internal API**  
+   • `/internal/v1/data/loras/list` accepts new query params (`category`, `tags`, `owner`, `priceTier`, `sort`).  
+   • `/internal/v1/data/loras/:id` already returns favourites flag; ensure it now includes `category`.
+
+4. **External API Gateway**  
+   • Add `/api/v1/models/lora` that proxies to the internal list endpoint with identical query options.
+
+5. **Telegram (`ModsMenuManager.js`)**  
+   • Replace hard-coded `type_character` / `type_style` with dynamic category list from `/internal/v1/data/loras/categories`.  
+   • Pass new filters to `/internal/v1/data/loras/list`.  
+   • Detail view continues using `/loras/:id`.
+
+6. **Web (`ModsMenuModal.js`)**  
+   • Fetch categories on modal open to render sidebar tabs.  
+   • On tab click call `/api/v1/models/lora?category=<tab>&…`.  
+   • Implement search box + infinite scroll; show favourites heart, price, owner.
+
+7. **Sorting & Popularity**  
+   • Pre-compute 30-day usage counts into Redis key `loraPopular:<date>` surfaced via `sort=popular`.
+
+8. **Testing**  
+   • Unit: `modelDiscoveryService.spec.js`, `userPreferencesDb.spec.js`.  
+   • Integration: extend `scripts/testing_helpers/run-tests.ps1` to spin up in-memory Mongo, insert sample data, and hit APIs.
+
+9. **Roll-out Steps**  
+   1. Deploy migration & indexes.  
+   2. Deploy backend services.  
+   3. Release Web assets.  
+   4. Restart Telegram bot.  
+   5. Monitor API logs & query performance. 

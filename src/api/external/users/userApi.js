@@ -227,6 +227,63 @@ function createUserApi(dependencies) {
     }
   });
 
+  /* -------------------------------------------------------
+   * Model Favorites (Preferences)
+   * -----------------------------------------------------*/
+
+  // Helper to compute internal path
+  const buildInternalPrefPath = (userId, suffix) => `/internal/v1/data/users/${userId}/preferences/model-favorites${suffix}`;
+
+  // GET /users/me/preferences/model-favorites(/:category)
+  router.get('/me/preferences/model-favorites/:category?', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+
+      const { category } = req.params;
+      const suffix = category ? `/${encodeURIComponent(category)}` : '';
+      const response = await internalApiClient.get(buildInternalPrefPath(userId, suffix));
+      res.status(200).json(response.data);
+    } catch (error) {
+      logger.error('[UserApi] GET model-favorites failed:', { errorMessage: error.message, responseData: error.response?.data, responseStatus: error.response?.status });
+      if (error.response) return res.status(error.response.status).json(error.response.data);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch model favorites.' } });
+    }
+  });
+
+  // POST /users/me/preferences/model-favorites/:category
+  router.post('/me/preferences/model-favorites/:category', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+
+      const { category } = req.params;
+      const { modelId } = req.body || {};
+      const response = await internalApiClient.post(buildInternalPrefPath(userId, `/${encodeURIComponent(category)}`), { modelId });
+      res.status(response.status).json(response.data);
+    } catch (error) {
+      logger.error('[UserApi] POST model-favorites failed:', { errorMessage: error.message, responseData: error.response?.data, responseStatus: error.response?.status });
+      if (error.response) return res.status(error.response.status).json(error.response.data);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to add model favorite.' } });
+    }
+  });
+
+  // DELETE /users/me/preferences/model-favorites/:category/:modelId
+  router.delete('/me/preferences/model-favorites/:category/:modelId', async (req, res) => {
+    try {
+      const userId = req.user && (req.user.userId || req.user.id || req.user._id);
+      if (!userId) return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not authenticated.' } });
+
+      const { category, modelId } = req.params;
+      const response = await internalApiClient.delete(buildInternalPrefPath(userId, `/${encodeURIComponent(category)}/${encodeURIComponent(modelId)}`));
+      res.status(response.status).send();
+    } catch (error) {
+      logger.error('[UserApi] DELETE model-favorites failed:', { errorMessage: error.message, responseData: error.response?.data, responseStatus: error.response?.status });
+      if (error.response) return res.status(error.response.status).json(error.response.data);
+      res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to remove model favorite.' } });
+    }
+  });
+
   return router;
 }
 

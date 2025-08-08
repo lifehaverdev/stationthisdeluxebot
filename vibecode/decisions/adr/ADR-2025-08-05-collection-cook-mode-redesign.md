@@ -60,6 +60,78 @@ We need a fresh design that embraces these capabilities while preserving proven 
 − **Initial Complexity** – Requires event bus, custom Mongo-backed queue, and multiple projections.
 − **Data Migration** – Must migrate existing `globalStatus.cooking` into event stream on first run.
 
+## Implementation Plan
+
+### Phase-oriented Roadmap
+| Phase | Goal |
+|-------|------|
+|0 – Scaffolding|Create `cook_events` & `cook_jobs` collections, register `/internal/cook` API namespace, spin up job-worker process watching Change Streams|
+|1 – Core Services|Implement `TraitEngine`, `CookJobStore`, `CookOrchestratorService`, `CookProjectionUpdater`|
+|2 – Web Integration|Public API routes under `/api/v1`, plain-JS web pages & optional WebSocket broadcaster|
+|3 – Review Loop|`ReviewService` endpoints + front-end gallery for approve/reject|
+|4 – Export Stub|`ExportService` that emits metadata to local disk (Cloudflare hook later)|
+
+### Mongo Collections
+```js
+// cook_events (append-only)
+{ _id, collectionId, userId, type, payload, ts }
+
+// cook_jobs (queue)
+{ _id, status: 'queued'|'running'|'done'|'failed',
+  spellIdOrToolId, userContext, collectionId, userId,
+  attempt, createdAt, updatedAt }
+
+// cook_status (projection)
+{ _id:{collectionId,userId}, state, generationCount, targetSupply,
+  lastGenerated, queued, approved, rejected, updatedAt }
+```
+
+### Service Modules (src/core/services/cook)
+* `TraitEngine.js` – selection, conflict resolution, parameter templating.
+* `CookJobStore.js` – Mongo queue helper with `enqueue`, `watch`, `markDone/Failed`.
+* `CookOrchestratorService.js` – FSM exposing `startCook`, `pauseCook`, `resumeCook`, `approvePiece`, `rejectPiece`.
+* `CookProjectionUpdater.js` – rebuilds & updates `cook_status` via event stream.
+* `ReviewService.js` – convenience wrappers for listing & updating piece status.
+* `ExportService.js` – metadata packaging to disk / Cloudflare R2.
+
+### Internal API Contracts
+```
+POST /internal/cook/start        { collectionId, userId, spellId?, toolId? }
+POST /internal/cook/pause        { collectionId, userId }
+POST /internal/cook/resume       { collectionId, userId }
+POST /internal/cook/approve      { pieceId,  userId }
+POST /internal/cook/reject       { pieceId,  userId }
+GET  /internal/cook/status       ?collectionId=&userId=
+```
+
+### External (Web) API
+```
+POST /api/v1/collections/:id/cook/start
+GET  /api/v1/collections/:id/cook/status
+POST /api/v1/pieces/:pieceId/approve
+POST /api/v1/pieces/:pieceId/reject
+```
+
+### Worker Skeleton
+```js
+CookJobStore.watch(async job => {
+  try {
+    const output = await ExecutionClient.run(job.spellIdOrToolId, job.userContext);
+    appendEvent('PieceGenerated', { collectionId:job.collectionId, … });
+    await CookJobStore.markDone(job._id);
+  } catch(e) {
+    await CookJobStore.markFailed(job._id);
+    appendEvent('GenerationFailed', { error:e.message, … });
+  }
+});
+```
+
+### Web-Front End (No React)
+* `public/js/cook.js` – fetch helpers & DOM updates.
+* New HTML templates in `src/platforms/web/client/collections/` for progress modal & review gallery.
+
+This plan satisfies all constraints: API-first, web-first, Mongo-only dependencies, no external queue library, and cleanly slots into the existing layered architecture.
+
 ## Alternatives Considered
 1. **Incremental Refactor of `CollectionCook`** – Faster but preserves monolith and single-workflow limitation.
 2. **Third-Party NFT Engine** (e.g., HashLips) – Would offload trait logic but introduces dependency hell and loses tight spell integration.

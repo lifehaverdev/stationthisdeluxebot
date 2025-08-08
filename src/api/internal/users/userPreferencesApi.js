@@ -364,8 +364,69 @@ module.exports = function userPreferencesApi(dependencies) {
     }
   });
 
+  // --- MODEL FAVORITES SUB-ROUTER ---
+  const modelFavoritesRouter = express.Router({ mergeParams: true });
+
+  /**
+   * GET /model-favorites – Retrieve all model favourites or by category
+   *    • /preferences/model-favorites            → { checkpoint: [...], lora: [...], ... }
+   *    • /preferences/model-favorites/:category → [ ...ids ]
+   */
+  modelFavoritesRouter.get('/:category?', async (req, res) => {
+    const { masterAccountId, category } = { ...req.params };
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const data = await userPreferencesDb.getModelFavorites(MAID, category);
+      res.status(200).json(category ? { favorites: data } : { favoritesByCategory: data });
+    } catch (err) {
+      logger.error('[UserPreferencesApi-ModelFav] GET error:', err);
+      if (err.name === 'BSONTypeError') return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      res.status(500).json({ error: 'Failed to retrieve model favorites.' });
+    }
+  });
+
+  /**
+   * POST /model-favorites/:category – Add a favourite
+   * Body: { "modelId": "identifier" }
+   */
+  modelFavoritesRouter.post('/:category', async (req, res) => {
+    const { masterAccountId, category } = req.params;
+    const { modelId } = req.body || {};
+    if (!modelId) return res.status(400).json({ error: 'modelId is required.' });
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const success = await userPreferencesDb.addModelFavorite(MAID, category, modelId);
+      if (success) return res.status(200).json({ message: 'Model favorited.', category, modelId });
+      res.status(500).json({ error: 'Failed to add favorite.' });
+    } catch (err) {
+      logger.error('[UserPreferencesApi-ModelFav] POST error:', err);
+      if (err.name === 'BSONTypeError') return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      res.status(500).json({ error: 'Failed to add favorite.' });
+    }
+  });
+
+  /**
+   * DELETE /model-favorites/:category/:modelId – Remove favourite
+   */
+  modelFavoritesRouter.delete('/:category/:modelId', async (req, res) => {
+    const { masterAccountId, category, modelId } = req.params;
+    if (!modelId) return res.status(400).json({ error: 'modelId param required.' });
+    try {
+      const MAID = new ObjectId(masterAccountId);
+      const success = await userPreferencesDb.removeModelFavorite(MAID, category, modelId);
+      if (success) return res.status(204).send();
+      res.status(500).json({ error: 'Failed to remove favorite.' });
+    } catch (err) {
+      logger.error('[UserPreferencesApi-ModelFav] DELETE error:', err);
+      if (err.name === 'BSONTypeError') return res.status(400).json({ error: 'Invalid masterAccountId format.' });
+      res.status(500).json({ error: 'Failed to remove favorite.' });
+    }
+  });
+
   // Mount the LoRA favorites sub-router under /preferences
-  router.use('/preferences/lora-favorites', loraFavoritesRouter);
+  router.use('/lora-favorites', loraFavoritesRouter);
+  // Mount the model favourites sub-router
+  router.use('/model-favorites', modelFavoritesRouter);
 
   logger.info('[userPreferencesApi] User Preferences API routes initialized.');
   return router;
