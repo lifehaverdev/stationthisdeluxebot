@@ -240,3 +240,22 @@ Users can now browse all LoRAs, refine by multiple tags, view details, and reque
    • Infinite scroll in modal.
 
 Permissions & visibility deferred; focus is on tagging/rating & import first. 
+
+#### 2025-08-12 – Issue Resolved: Tag/Rate endpoints accept slug or _id
+
+Observation
+• Front-end calls `/lora/<slug>/tag` but backend handler converts `loraId` to `ObjectId`, so when a slug (e.g. `diffusioN64-v2-merge`) is supplied `new ObjectId(slug)` throws BSONError → 500.
+• Resulting error path: tag route returns 500, modal refreshes detail (works via slug) but tag not saved.
+
+Action items
+1. In `lorasApi.js` tag & rate endpoints: detect whether `loraId` is 24-hex.  
+   ```js
+   const objFilter = /^[0-9a-fA-F]{24}$/;
+   const query = objFilter.test(loraId)
+        ? { _id: new ObjectId(loraId) }
+        : { slug: loraId };
+   ```
+2. Use that query for `updateOne` and for `addModelFavorite` store the canonical `_id` (fetch after update if found by slug).
+3. Same logic for rating endpoint.
+
+✅ Implemented in lorasApi (commit 2025-08-12). Tag + rating now work for both slug and _id URLs, verified via ModsMenuModal manual test. 

@@ -1,8 +1,7 @@
 export default class TraitTreeEditor {
-  constructor({ collection, onSave, paramOptions = [] }) {
+  constructor({ collection, onSave }) {
     this.collection = collection;
     this.onSave = onSave;
-    this.paramOptions = paramOptions;
     this.state = {
       categories: (collection?.config?.traitTree) || [],
       editingCatIdx: null, // index currently expanded
@@ -26,21 +25,16 @@ export default class TraitTreeEditor {
     const expanded = this.state.editingCatIdx === idx;
     const traitsHtml = expanded ? `
       <table class="trait-table">
-        <thead><tr><th>Name</th><th>Prompt</th><th>Rarity %</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Value</th><th>Rarity %</th><th></th></tr></thead>
         <tbody>
-        ${cat.traits.map((tr, tIdx)=>`<tr data-trait="${tIdx}"><td><input type="text" class="trait-name" value="${tr.name}"/></td><td><input type="text" class="trait-prompt" value="${tr.prompt||''}"/></td><td><input type="number" class="trait-rarity" min="0" max="100" value="${tr.rarity??''}"/></td><td><button class="clone-trait-btn" data-trait="${tIdx}">⧉</button> <button class="del-trait-btn" data-trait="${tIdx}">✕</button></td></tr>`).join('')}
-        <tr class="new-trait-row"><td><input type="text" class="new-trait-name" placeholder="Trait name"/></td><td><input type="text" class="new-trait-prompt" placeholder="Prompt override"/></td><td><input type="number" class="new-trait-rarity" min="0" max="100" placeholder=""/></td><td><button class="add-trait-btn">＋</button></td></tr>
+        ${cat.traits.map((tr, tIdx)=>`<tr data-trait="${tIdx}"><td><input type="text" class="trait-name" value="${tr.name}"/></td><td><input type="text" class="trait-value" value="${tr.value!==undefined?tr.value:(tr.prompt||'')}"/></td><td><input type="number" class="trait-rarity" min="0" max="100" value="${tr.rarity??''}"/></td><td><button class="clone-trait-btn" data-trait="${tIdx}">⧉</button> <button class="del-trait-btn" data-trait="${tIdx}">✕</button></td></tr>`).join('')}
+        <tr class="new-trait-row"><td><input type="text" class="new-trait-name" placeholder="Trait name"/></td><td><input type="text" class="new-trait-value" placeholder="Value (prompt, URL, etc.)"/></td><td><input type="number" class="new-trait-rarity" min="0" max="100" placeholder=""/></td><td><button class="add-trait-btn">＋</button></td></tr>
         </tbody></table>` : '';
-    const paramSelect = `<select class="cat-param-select">
-      <option value="">prompt</option>
-      ${this.paramOptions.map(p=>`<option value="${p}" ${cat.param===p?'selected':''}>${p}</option>`).join('')}
-    </select>`;
     return `
       <li data-cat="${idx}">
         <div class="cat-header">
           <span class="cat-toggle" data-toggle="${idx}">${expanded?'▼':'▶'}</span>
           <input type="text" class="cat-name-input" value="${cat.name}"/>
-          ${paramSelect}
           <button class="del-cat-btn" data-del="${idx}">✕</button>
         </div>
         ${traitsHtml}
@@ -62,10 +56,6 @@ export default class TraitTreeEditor {
     // Category name edits & expand/collapse
     container.querySelectorAll('.cat-name-input').forEach((inp, idx)=>{
       inp.oninput = ()=>{ this.state.categories[idx].name = inp.value; };
-    });
-    // Param select change
-    container.querySelectorAll('.cat-param-select').forEach((sel, idx)=>{
-      sel.onchange = ()=>{ this.state.categories[idx].param = sel.value || undefined; };
     });
     container.querySelectorAll('.cat-toggle').forEach(toggle=>{
       toggle.onclick=()=>{
@@ -92,14 +82,14 @@ export default class TraitTreeEditor {
         const catEl=btn.closest('li');
         const catIdx=Number(catEl.getAttribute('data-cat'));
         const nameEl=catEl.querySelector('.new-trait-name');
-        const promptEl=catEl.querySelector('.new-trait-prompt');
+        const valueEl=catEl.querySelector('.new-trait-value');
         const rarityEl=catEl.querySelector('.new-trait-rarity');
         const name=nameEl.value.trim(); if(!name) return;
-        const prompt=promptEl.value.trim();
+        const value=valueEl.value.trim();
         const rarityRaw=rarityEl.value.trim();
         const rarity=rarityRaw?Number(rarityRaw):undefined;
-        this.state.categories[catIdx].traits.push({ name, prompt, rarity });
-        nameEl.value=''; promptEl.value=''; rarityEl.value='';
+        this.state.categories[catIdx].traits.push({ name, value, rarity });
+        nameEl.value=''; valueEl.value=''; rarityEl.value='';
         this.attach(container);
       };
     });

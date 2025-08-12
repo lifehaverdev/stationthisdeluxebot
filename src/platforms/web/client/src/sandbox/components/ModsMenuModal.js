@@ -338,20 +338,24 @@ export default class ModsMenuModal {
         this.hide();
       };
       const userId = window.currentUserId || null;
+      const modelId = m._id || m.id || m.slug;
+
       const addTagBtn = this.modalElement.querySelector('.add-tag-btn');
       addTagBtn.onclick = async () => {
         const newTag = prompt('Add tag');
         if (!newTag) return;
         try {
-          await fetch(`/api/v1/models/lora/${m._id}/tag`, {
+          const csrfRes = await fetch('/api/v1/csrf-token');
+          const { csrfToken } = await csrfRes.json();
+          await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/tag`, {
             method:'POST',
-            headers:{ 'Content-Type':'application/json' },
-            body: JSON.stringify({ tag:newTag, userId }),
+            headers:{ 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify({ tag:newTag }),
             credentials:'include'
           });
           alert('Tag added!');
           // refresh detail
-          const res = await fetch(`/api/v1/models/lora/${m._id}`);
+          const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
           const data = await res.json();
           this.setState({ detailModel: { ...data.lora } });
           this.render();
@@ -363,14 +367,16 @@ export default class ModsMenuModal {
         const n = Number(val);
         if (![1,2,3].includes(n)) return;
         try {
-          await fetch(`/api/v1/models/lora/${m._id}/rate`, {
+          const csrfRes = await fetch('/api/v1/csrf-token');
+          const { csrfToken } = await csrfRes.json();
+          await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/rate`, {
             method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ stars:n, userId }),
+            headers:{'Content-Type':'application/json','x-csrf-token': csrfToken},
+            body: JSON.stringify({ stars:n }),
             credentials:'include'
           });
           alert('Thanks for rating!');
-          const res = await fetch(`/api/v1/models/lora/${m._id}`);
+          const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
           const data = await res.json();
           this.setState({ detailModel:{...data.lora} });
           this.render();

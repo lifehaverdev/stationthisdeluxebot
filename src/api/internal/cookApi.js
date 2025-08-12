@@ -114,6 +114,20 @@ function createCookApi(deps = {}) {
     }
   });
 
+  // DELETE /internal/cook/collections/:id – delete a collection
+  router.delete('/collections/:id', async (req, res) => {
+    try {
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collectionId = req.params.id;
+      const userId = req.user?.id || req.userId;
+      await cookDb.deleteCollection(collectionId, userId);
+      return res.json({ ok: true });
+    } catch (err) {
+      logger.error('[CookAPI] delete collection error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
   // GET /internal/cook/status?collectionId=&userId=
   router.get('/status', async (req, res) => {
     try {

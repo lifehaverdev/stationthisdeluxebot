@@ -14,10 +14,14 @@ export default class CookMenuModal {
             activeCooks: [],
             collections: [],
             selectedCollection: null,
-            detailTab: 'overview', // 'overview' | 'traitTree' | 'edit'
+            detailTab: 'overview', // 'overview' | 'traitTree'
             generatorType: null, // 'tool' | 'spell'
             toolOptions: [],
             selectedToolId: null,
+            paramOptions: [],
+            paramOverrides: {},
+            generatorDisplay:'',
+            showGenPicker:false,
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -168,15 +172,13 @@ export default class CookMenuModal {
     renderDetailView() {
         const { selectedCollection, detailTab = 'overview' } = this.state;
         if (!selectedCollection) return '<div class="error-message">Collection not found.</div>';
-        const tabs = ['overview','traitTree','edit'];
+        const tabs = ['overview','traitTree'];
         const tabsHtml = tabs.map(t=>`<button class="tab-btn${t===detailTab?' active':''}" data-tab="${t}">${t}</button>`).join('');
         let body='';
         if(detailTab==='overview'){
-           body=`<p>${selectedCollection.description||'<em>No description</em>'}</p>`;
+           body=this.renderOverviewBody();
         }else if(detailTab==='traitTree'){
            body=`<div id="trait-tree-container"></div>`;
-        }else if(detailTab==='edit'){
-          body=this.renderEditView();
         }
         return `
             <button class="back-btn">← Back</button>
@@ -198,6 +200,26 @@ export default class CookMenuModal {
           <button class="save-generator-btn" style="margin-top:10px;">Save Generator</button>`;
     }
 
+    renderOverviewBody(){
+        const { selectedCollection, paramOverrides, paramOptions, showGenPicker, toolOptions, selectedToolId }=this.state;
+        if(showGenPicker){
+            const optsHtml=toolOptions.length?toolOptions.map(t=>`<option value="${t.toolId}" ${t.toolId===selectedToolId?'selected':''}>${t.displayName}</option>`).join(''):'<option>(loading...)</option>';
+            return `<h3>Select Generator Tool</h3>
+                <select id="tool-select" style="width:100%;max-width:300px;">${optsHtml}</select>
+                <div style="margin-top:12px;">
+                    <button class="save-generator-btn">Save</button>
+                    <button class="cancel-generator-btn" style="margin-left:8px;">Cancel</button>
+                </div>`;
+        }
+        const metaRows=`
+          <tr><td>Description</td><td>${selectedCollection.description||''}</td><td><button class="edit-desc-btn">Edit</button></td></tr>
+          <tr><td>Total Supply*</td><td>${selectedCollection.totalSupply||''}</td><td><button class="edit-supply-btn">Edit</button></td></tr>`;
+        const genRow=`<tr><td>Generator</td><td>${this.state.generatorDisplay||'(none)'}</td><td><button class="edit-gen-btn">${this.state.generatorDisplay?'Change':'Set'}</button></td></tr>`;
+        const paramRows=paramOptions.map(p=>`<tr data-param="${p}"><td>${p}</td><td>${paramOverrides[p]||''}</td><td><button class="edit-param-btn">Edit</button></td></tr>`).join('');
+        return `<table class="meta-table">${metaRows}${genRow}${paramRows}</table>
+        <div style="margin-top:12px"><button class="test-btn">Test</button> <button class="start-cook-btn">Start Cook</button> <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button></div>`;
+    }
+
     attachCreateEvents() {
         const form = this.modalElement.querySelector('.create-collection-form');
         const cancelBtn = this.modalElement.querySelector('.cancel-btn');
@@ -217,6 +239,12 @@ export default class CookMenuModal {
     attachDetailEvents() {
         const back = this.modalElement.querySelector('.back-btn');
         if (back) back.onclick = () => this.setState({ view: 'home', selectedCollection: null });
+
+        // Always ensure generator / paramOptions loaded when entering detail view
+        if(!this.state.paramOptions.length || !this.state.generatorDisplay){
+            this.loadParamOptions();
+        }
+
         this.modalElement.querySelectorAll('.tab-btn').forEach(btn=>{
             btn.onclick=()=>{
                 this.state.detailTab=btn.getAttribute('data-tab');
@@ -225,20 +253,19 @@ export default class CookMenuModal {
         });
         if(this.state.detailTab==='traitTree'){
             const container=this.modalElement.querySelector('#trait-tree-container');
-            const paramOptions=['prompt','input_image','init_image','strength'];
-            const editor=new TraitTreeEditor({collection:this.state.selectedCollection,paramOptions,onSave:async (traits)=>{
+            const editor=new TraitTreeEditor({collection:this.state.selectedCollection,paramOptions:this.state.paramOptions,onSave:async (traits)=>{
                 await this.saveTraitTree(traits);
             }});
             editor.attach(container);
         }
-        // edit view events
-        if(this.state.detailTab==='edit'){
-            const radios=this.modalElement.querySelectorAll('input[name="gen-type"]');
-            radios.forEach(r=>r.onchange=()=>{this.state.generatorType=r.value;this.render();});
-            const toolSel=this.modalElement.querySelector('#tool-select');
-            if(toolSel) toolSel.onchange=()=>{this.state.selectedToolId=toolSel.value;};
-            const saveBtn=this.modalElement.querySelector('.save-generator-btn');
-            if(saveBtn) saveBtn.onclick=()=>this.saveGenerator();
+        // (generator edit UI will be integrated into overview later)
+        // ensure paramOptions loaded when entering traitTree
+        if(this.state.detailTab==='traitTree' && !this.state.paramOptions.length){
+            this.loadParamOptions();
+        }
+        // Overview edit handlers
+        if(this.state.detailTab==='overview'){
+            this.attachOverviewEvents();
         }
     }
 
@@ -425,11 +452,88 @@ export default class CookMenuModal {
             const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify({ generatorType:'tool', toolId:selectedToolId })});
             if(res.ok){
                 const updated=await res.json();
-                // refresh state and paramOptions
                 this.setState({selectedCollection:updated});
+                await this.loadParamOptions();
             }
         }catch(err){alert('Failed to save generator');}
     }
+
+    async loadParamOptions(){
+        const { selectedCollection }=this.state;
+        if(!selectedCollection) return;
+        if(selectedCollection.generatorType==='tool' && selectedCollection.toolId){
+            try{
+                const res=await fetch(`/api/v1/tools/registry/${encodeURIComponent(selectedCollection.toolId)}`);
+                if(res.ok){
+                    const def=await res.json();
+                    const params=def.inputSchema?Object.keys(def.inputSchema):['prompt'];
+                    this.setState({paramOptions:params,generatorDisplay:def.displayName||def.toolId});
+                    return;
+                }
+            }catch(e){console.warn('param fetch fail',e);}
+        }
+        // fallback
+        this.setState({paramOptions:['prompt']});
+    }
+
+    attachOverviewEvents(){
+        const modal=this.modalElement;
+        if(modal.querySelector('.edit-desc-btn')) modal.querySelector('.edit-desc-btn').onclick=async()=>{
+            const val=prompt('Description',this.state.selectedCollection.description||'');
+            if(val!==null){await this.updateCollection({description:val});}
+        };
+        if(modal.querySelector('.edit-supply-btn')) modal.querySelector('.edit-supply-btn').onclick=async()=>{
+            const val=prompt('Total supply',this.state.selectedCollection.totalSupply||'');
+            if(val!==null){await this.updateCollection({totalSupply:Number(val)});} };
+        if(modal.querySelector('.edit-gen-btn')) modal.querySelector('.edit-gen-btn').onclick=()=>{
+            this.setState({showGenPicker:true});
+            if(!this.state.toolOptions.length){this.fetchTools();}
+        };
+        if(modal.querySelector('.save-generator-btn')) modal.querySelector('.save-generator-btn').onclick=()=>{
+            const sel=modal.querySelector('#tool-select');
+            const id=sel?sel.value:'';
+            const opt=this.state.toolOptions.find(t=>t.toolId===id);
+            if(id){this.saveGeneratorSelection(id,opt?opt.displayName:id).then(()=>{this.setState({showGenPicker:false});});}
+        };
+        if(modal.querySelector('.cancel-generator-btn')) modal.querySelector('.cancel-generator-btn').onclick=()=>{
+            this.setState({showGenPicker:false});
+        };
+        modal.querySelectorAll('.edit-param-btn').forEach(btn=>{
+            btn.onclick=async()=>{
+                const param=btn.closest('tr').getAttribute('data-param');
+                const current=this.state.paramOverrides[param]||'';
+                const val=prompt(`Set value for ${param}`,current);
+                if(val!==null){
+                    const overrides={...this.state.paramOverrides,[param]:val};
+                    await this.updateCollection({paramOverrides:overrides});
+                }
+            };
+        });
+        if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{this.hide();import('./CollectionTestWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);});};
+        if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=()=>alert('Start Cook – coming soon');
+        if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{
+            const { selectedCollection } = this.state;
+            if(!selectedCollection) return;
+            this.deleteCook(selectedCollection.collectionId);
+            this.setState({ view:'home', selectedCollection:null });
+        };
+    }
+
+    async updateCollection(fields){
+        const csrf=await this.getCsrfToken();
+        const id=this.state.selectedCollection.collectionId;
+        const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(fields)});
+        if(res.ok){const updated=await res.json();this.setState({selectedCollection:updated,paramOverrides:updated.config?.paramOverrides||{}});} }
+
+    openToolPicker(){
+        if(!this.state.toolOptions.length){this.fetchTools().then(()=>this.openToolPicker());return;}
+        const names=this.state.toolOptions.map(t=>`${t.displayName} (${t.toolId})`).join('\n');
+        const chosen=prompt(`Enter toolId:\n${names}`,this.state.selectedToolId||'');
+        const tool=this.state.toolOptions.find(t=>t.toolId===chosen);
+        if(tool){this.saveGeneratorSelection(tool.toolId,tool.displayName);} }
+
+    async saveGeneratorSelection(toolId,displayName){
+        this.state.generatorType='tool';this.state.selectedToolId=toolId;this.state.generatorDisplay=displayName;await this.saveGenerator();}
 }
 
 // Expose globally for quick testing

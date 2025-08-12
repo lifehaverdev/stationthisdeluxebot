@@ -179,10 +179,13 @@ router.get('/list', async (req, res) => {
   try {
     const { 
       filterType, 
+      sort,
       checkpoint = 'All', 
       userId, // This is masterAccountId string
       q 
     } = req.query;
+    // Allow `search` as an alias for `q`
+    const searchTerm = q || req.query.search;
     const category = req.query.category;
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '10', 10);
@@ -223,11 +226,11 @@ router.get('/list', async (req, res) => {
       dbQuery.$or.push({ 'tags.tag': category });
     }
 
-    if (q) {
+    if (searchTerm) {
       dbQuery.$or = [
-        { name: { $regex: q, $options: 'i' } },
-        { slug: { $regex: q, $options: 'i' } },
-        { triggerWords: { $regex: q, $options: 'i' } }
+        { name: { $regex: searchTerm, $options: 'i' } },
+        { slug: { $regex: searchTerm, $options: 'i' } },
+        { triggerWords: { $regex: searchTerm, $options: 'i' } }
       ];
     }
 
@@ -250,6 +253,29 @@ router.get('/list', async (req, res) => {
         }
         dbQuery._id = { $in: userFavoriteIds.map(id => new ObjectId(id)) };
         sortOptions = { createdAt: -1 }; 
+      }
+    }
+
+    // -- NEW generic sort parameter (overrides filterType sort if present) --
+    if (sort) {
+      const sortMap = {
+        // common aliases
+        recent: { createdAt: -1 },
+        createdAt_desc: { createdAt: -1 },
+        createdAt_asc: { createdAt: 1 },
+        popular: { usageCount: -1 },
+        name_asc: { name: 1 },
+        name_desc: { name: -1 },
+        price_asc: { 'monetization.priceUSD': 1 },
+        price_desc: { 'monetization.priceUSD': -1 },
+        rating_desc: { 'rating.sum': -1 }, // uses total rating sum as proxy for avg
+        rating_asc: { 'rating.sum': 1 }
+      };
+      if (sortMap[sort]) {
+        sortOptions = sortMap[sort];
+      } else {
+        logger.warn(`[LorasApi] Unknown sort param '${sort}', defaulting to createdAt desc`);
+        sortOptions = { createdAt: -1 };
       }
     }
 
@@ -1118,18 +1144,22 @@ router.post('/:loraId/tag', async (req, res) => {
   try {
     const { loraId } = req.params;
     const { tag, userId } = req.body;
-    if (!tag || !userId) return res.status(400).json({ error: 'tag and userId required' });
-
-    const MAID = new ObjectId(userId);
+    const MAID = userId ? new ObjectId(userId) : (req.user && req.user.userId ? new ObjectId(req.user.userId) : null);
+    if (!tag || !MAID) return res.status(400).json({ error: 'tag and userId required' });
     const tagObj = { tag: tag.toLowerCase(), source: 'user', addedBy: MAID, addedAt: new Date() };
 
-    await loRAModelsDb.updateOne(
-      { _id: new ObjectId(loraId) },
-      { $addToSet: { tags: tagObj } }
-    );
+    // Support both Mongo ObjectId and slug identifiers
+    const objFilter = /^[0-9a-fA-F]{24}$/;
+    const query = objFilter.test(loraId) ? { _id: new ObjectId(loraId) } : { slug: loraId };
+
+    await loRAModelsDb.updateOne(query, { $addToSet: { tags: tagObj } });
+
+    // Fetch canonical _id so we always store ObjectId in user prefs
+    const loraDoc = await loRAModelsDb.findOne(query, { _id: 1 });
+    const canonicalId = loraDoc ? loraDoc._id.toString() : loraId;
 
     // Persist in user preferences
-    await userPreferencesDb.addModelFavorite(userId, 'loraAddedTags', { loraId, tag: tagObj.tag });
+    await userPreferencesDb.addModelFavorite(MAID, 'loraAddedTags', { loraId: canonicalId, tag: tagObj.tag });
 
     res.json({ ok: true, tag: tagObj.tag });
   } catch (err) {
@@ -1147,15 +1177,20 @@ router.post('/:loraId/rate', async (req, res) => {
     const { loraId } = req.params;
     const { stars, userId } = req.body;
     const n = Number(stars);
-    if (![1,2,3].includes(n) || !userId) return res.status(400).json({ error:'invalid stars or userId' });
+    const MAID = userId ? new ObjectId(userId) : (req.user && req.user.userId ? new ObjectId(req.user.userId) : null);
+    if (![1,2,3].includes(n) || !MAID) return res.status(400).json({ error:'invalid stars or userId' });
 
-    await loRAModelsDb.updateOne(
-      { _id: new ObjectId(loraId) },
-      { $inc: { 'rating.sum': n, 'rating.count': 1 } }
-    );
+    const objFilter = /^[0-9a-fA-F]{24}$/;
+    const query = objFilter.test(loraId) ? { _id: new ObjectId(loraId) } : { slug: loraId };
 
-    // store per-user rating
-    await userPreferencesDb.setPreferenceByKey(userId, 'loraRatings', { [loraId]: n });
+    await loRAModelsDb.updateOne(query, { $inc: { 'rating.sum': n, 'rating.count': 1 } });
+
+    // Determine canonical id for preference storage
+    const loraDoc = await loRAModelsDb.findOne(query, { _id: 1 });
+    const canonicalId = loraDoc ? loraDoc._id.toString() : loraId;
+
+    // store per-user rating keyed by canonical id
+    await userPreferencesDb.setPreferenceByKey(MAID, 'loraRatings', { [canonicalId]: n });
 
     res.json({ ok:true });
   } catch(err){

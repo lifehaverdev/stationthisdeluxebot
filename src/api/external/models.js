@@ -97,7 +97,9 @@ module.exports = function createModelsApiRouter(deps = {}) {
   // POST /models/lora/:id/tag
   router.post('/lora/:id/tag', async (req, res) => {
     try {
-      const response = await internalApiClient.post(`/internal/v1/data/loras/${req.params.id}/tag`, req.body);
+      const body = { ...req.body };
+      if (!body.userId && req.user?.userId) body.userId = req.user.userId;
+      const response = await internalApiClient.post(`/internal/v1/data/loras/${req.params.id}/tag`, body);
       res.json(response.data);
     } catch(err){
       const status = err.response?.status || 500;
@@ -108,7 +110,9 @@ module.exports = function createModelsApiRouter(deps = {}) {
   // POST /models/lora/:id/rate
   router.post('/lora/:id/rate', async (req, res) => {
     try {
-      const response = await internalApiClient.post(`/internal/v1/data/loras/${req.params.id}/rate`, req.body);
+      const body = { ...req.body };
+      if (!body.userId && req.user?.userId) body.userId = req.user.userId;
+      const response = await internalApiClient.post(`/internal/v1/data/loras/${req.params.id}/rate`, body);
       res.json(response.data);
     } catch(err){
       const status = err.response?.status || 500;

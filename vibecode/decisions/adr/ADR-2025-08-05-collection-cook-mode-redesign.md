@@ -295,3 +295,121 @@ Implications:
 4. API: `POST /internal/cook/test` accepts `{ collectionId, userId, paramOverrides }` and returns generation output.
 
 This design keeps the system future-proof for non-text inputs while preserving familiar random trait behaviour. 
+
+### Revised Collection Detail UI (2025-08-12)
+
+The Detail modal will be simplified to **two primary tabs** for MVP:
+
+1. **Overview** – generation controls, high-level metadata and parameter editing.
+2. **Trait Tree** – purely for metadata taxonomy (category → traits with name / value / rarity).  The tree is no longer coupled to the generator; it only supplies values that a user can reference with `[[category]]` placeholders inside any parameter value.
+
+Overview layout wireframe
+```
+┌───────────────────────────────────────────────┐
+│  ← Back          Cult Secretaries            ×│
+├───────────────────────────────────────────────┤
+│  overview  |  traitTree                      │
+├───────────────────────────────────────────────┤
+│  Description:   "My secretary cult…"   [edit]│
+│  Total supply:  1000                     [edit]│
+│                                               │
+│  Generator:  Tool 📦  comfy-txt2img       [edit]│
+│                                               │
+│  Parameters                                   │
+│    prompt:        "[[animal]] wearing [[outfit]]"   [edit]│
+│    guidance:      7.5                          [edit]│
+│    input_image:   (none)                       [edit]│
+│                                               │
+│  [ Test ]        [ Start Cook ]               │
+└───────────────────────────────────────────────┘
+```
+
+Rules
+* **Trait Tree is global** – categories exist regardless of which parameters reference them.
+* Any parameter value can embed `[[CategoryName]]` tokens to be substituted at runtime.
+* The *Test* button performs a dry-run using current parameter values (placeholders resolved).
+* *Start Cook* validates supply & generator, then queues cook jobs.
+
+Next tasks
+1. Re-work Overview tab UI to render description, supply, generator pickers and parameter list (editable inline).
+2. Move current generator selection UI from *edit* tab into Overview.
+3. Update collection schema:
+   ```
+   config: {
+     traitTree: …,
+     generator: { type:'tool', toolId:'xyz' },
+     paramOverrides: { prompt:"…", guidance:7.5, … }
+   }
+   ```
+4. TraitTreeEditor remains unchanged except it no longer exposes param binding dropdown (drop it).
+5. Implement `POST /internal/cook/test` to run dry-run.
+6. Cook start endpoint uses `paramOverrides` + randomised traits when generating jobs. 
+
+### Test Window UX (2025-08-12)
+
+A dedicated sandbox window (`collectionTestWindow.js`) will open on the canvas when the user presses **Test** in the Overview tab. The collection modal closes to give workspace focus.
+
+Window layout
+```
+┌───────────────────────────────────┐
+│  Cult Secretaries · Test          │
+├───────────────────────────────────┤
+│  Animal   [ Cat ▼ ]               │
+│  Outfit   [ Business suit ▼ ]     │
+│  Background [ Forest ▼ ]          │
+│                                   │
+│  🎲  (randomise all)    Execute ▶ │
+└───────────────────────────────────┘
+```
+Behavior
+1. Dropdowns list all traits for each category (plus “— random —”).
+2. Dice button selects random trait in every dropdown.
+3. Execute: constructs `paramOverrides` by taking existing collection overrides and injecting selected trait values where `[[Category]]` placeholders appear.
+4. Sends payload to new endpoint `POST /internal/cook/test` `{ collectionId, traitSelection }`.
+5. Response mirrors normal generation result; window shows progress and final output using the same duplication logic as `toolWindow.js` execution.
+
+If the generator is a spell, we execute the spell; if a tool, we run the tool directly.
+
+The window persists so the user can run multiple trials without rebuilding selections.
+
+Implementation order
+1. Add `/internal/cook/test` and `/api/v1/collections/:id/test` endpoints (dry-run flag, no DB writes).
+2. Create `collectionTestWindow.js` (fork of `toolWindow.js`):
+   • Header shows collection name + “Test”.
+   • Builds dropdowns from `traitTree.categories`.
+   • Execute logic described above.
+3. In CookMenuModal Overview, Test button closes modal and calls `createCollectionTestWindow(collection)` helper. 
+
+
+
+Progress summary (2025-08-12)
+Implemented since last checkpoint
+CookMenuModal
+Tabs reduced to Overview | Trait Tree.
+Overview now shows editable Description, Total Supply, Generator, parameter overrides, Test & Start buttons.
+Saving generator pulls full tool definition, populates parameter list, and persists config.generator / paramOverrides.
+Trait Tree uncoupled from generator (metadata-only).
+TraitTreeEditor
+Param dropdown removed to reflect new separation.
+Test Window
+CollectionTestWindow.js opens centered on canvas, lists categories, allows randomise & Execute.
+Executes selected tool via executionClient.execute, substitutes [[Category]] placeholders, shows progress/result (image or status).
+ADR updated with:
+Flexible trait values & generator binding schema.
+Revised Detail UI layout.
+Test Window UX spec and implementation checklist.
+Outstanding / next tasks
+Generator picker UI: replace prompt-for-toolId with a dropdown modal (reuse sandbox Action modal styles).
+Fix generator name display (load displayName from collection.config on initial render).
+Make Test Window draggable & center reliably; enhance result rendering (handle images array, error states).
+Start Cook button: validate supply + generator, queue cook jobs.
+Stats & progress in Overview.
+Spell support (picker + execution path).
+Export pipeline (metadata JSON + images).
+**Test Window logic** – 
+408a| • Gather current `paramOverrides` from collection.
+408b| • Resolve `[[Category]]` placeholders with selected trait values (or auto-randomise when dropdown set to "— random —").
+408c| • Fill in any missing parameters with defaults from tool input schema.
+408d| • POST to `/internal/cook/test` with full payload, subscribe to websocket updates like `toolWindow.js`.
+408e| • On final output, render using resultContent helpers; images clickable to open `imageOverlay.js` for full-size preview.
+

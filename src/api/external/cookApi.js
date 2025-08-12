@@ -77,6 +77,18 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  // DELETE /api/v1/collections/:id
+  router.delete('/collections/:id', async (req, res) => {
+    try {
+      const { data } = await internalApiClient.delete(`/internal/v1/data/cook/collections/${encodeURIComponent(req.params.id)}`);
+      return res.json(data);
+    } catch (err) {
+      logger.error('delete collection proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // Placeholder routes for pause/resume/delete etc.
   // They will proxy to internal cook routes when implemented.
 
