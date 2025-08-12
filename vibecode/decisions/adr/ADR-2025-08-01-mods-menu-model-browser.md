@@ -203,3 +203,40 @@ Web / Telegram UI → External API (/api/v1/models/lora) → Internal API (/inte
    3. Release Web assets.  
    4. Restart Telegram bot.  
    5. Monitor API logs & query performance. 
+
+### Progress Summary (2025-08-11)
+
+• Backend
+  – `LoRAModelDb.listCategories()` falls back to `tags.tag` and logs results.
+  – New `GET /internal/v1/data/loras/categories` and external proxy `/api/v1/models/lora/categories`.
+  – `/internal/v1/data/loras/list` accepts `category` param (matches both `category` field and `tags.tag`).
+  – External routes:
+       • `GET /api/v1/models/lora` (list)
+       • `POST /api/v1/models/lora/import` (proxy to import endpoint)
+
+• Web Sandbox – `ModsMenuModal`
+  – Dynamic tag bar for LoRA; default shows first 100 LoRAs.
+  – Progressive tag stacking (multi-tag filter) client-side.
+  – Detail panel with Back/Use.
+  – Import UI (Civitai / HF URL) hitting new import proxy.
+
+Users can now browse all LoRAs, refine by multiple tags, view details, and request new LoRA imports without leaving the modal. 
+
+### Next Deliverables (agreed 2025-08-11)
+
+1. Deliverable A – Community tagging & 3-star rating (Phase 1)  
+   • Extend `/loras/:id` payload (tags already there, rating avg/count).  
+   • `POST /internal/v1/data/loras/:id/tag` → append a tag object `{ tag, addedBy, addedAt }`.  
+   • `POST /internal/v1/data/loras/:id/rate` → update `{ rating.count++, rating.sum += stars }`.  
+   • Persist user-level choices inside `userPreferencesDb` (`preferences.loraRatings`, `preferences.loraAddedTags`).  
+   • No communityTags collection – we reuse main `tags` array.
+
+2. Deliverable B – Import flow  
+   • External `POST /api/v1/models/import` → internal `/import-from-url` (type + url).  
+   • Modal “＋ Import” wizard wired to that endpoint.
+
+3. Deliverable C – Sorting / Search / Pagination  
+   • Add `sort`, `search`, `page` params to `/loras/list`.  
+   • Infinite scroll in modal.
+
+Permissions & visibility deferred; focus is on tagging/rating & import first. 

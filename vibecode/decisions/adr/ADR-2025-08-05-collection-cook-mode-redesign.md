@@ -132,9 +132,166 @@ CookJobStore.watch(async job => {
 
 This plan satisfies all constraints: API-first, web-first, Mongo-only dependencies, no external queue library, and cleanly slots into the existing layered architecture.
 
+## Implementation Status (2025-08-05)
+
+✔ Phase 0 – Scaffolding
+  • `cook_events` & `cook_jobs` collections referenced (indexes auto-created).  
+  • `CookJobStore` with Change-Stream watcher implemented.  
+  • Internal Cook API (`/v1/data/cook`) exposes `/start`.  
+  • Worker skeleton logs queued jobs.
+
+▶ Phase 1 – Core Services (in progress)
+  • `TraitEngine` ported (selection & templating).  
+  • `CookOrchestratorService.startCook` generates first job & events.  
+  • CookProjectionUpdater implemented and auto-initialized at service startup.  
+  • CookMenuModal Home view + live polling + create-collection flow wired to `/api/v1/collections`.  
+  • Mongo-backed `cook_collections` persistence via `CookCollectionsDB`.  
+  • Internal & External Cook APIs implemented (`/internal/v1/data/cook/*`, `/api/v1/*`) including list/create/fetch.  
+  • Detail view scaffolded in CookMenuModal with back navigation.  
+  • Close button overlay + Esc work as expected.
+
+## Roadmap to Full Implementation
+
+1. **Backend REST Endpoints** (internal → external proxy) – Phase 1 DONE for list/create/fetch. Remaining:
+   - `GET /internal/cook/active` → list active cook_status docs.
+   - `GET /internal/collections` → user collections summary (id, name, supply, latest status).
+   - `POST /internal/collections` → create collection (basic metadata).
+   - `PUT /internal/collections/:id` → update metadata / config.
+   - `DELETE /internal/cook/:collectionId` → cancel & delete cook.
+   - `POST /internal/cook/:id/pause|resume` → state transitions.
+   - `POST /internal/cook/:id/review/:pieceId` → approve / reject piece.
+
+2. **CookMenuModal Enhancements** (partially done)
+   - ✔ Close on overlay click / Esc.  
+   - ✔ Live polling for active cooks / collections.  
+   - ✔ Pause / resume / delete hooks (API stubs).  
+   - ✔ Create-collection form + DB save.  
+   - ☐ Tabbed Detail view (Overview | Pieces | Edit | Trait Tree | Export).  
+   - ☐ Stats section (queued, generated, approved…).
+
+3. **Collection Detail Modal**
+   - Tabs with lazy loading; share code with existing modals for consistency.
+   - Overview tab: Start/Pause/Resume buttons → orchestrator.
+   - Pieces tab: infinite scroll thumbnails, approve/reject.
+   - Edit tab: inputs for name/description, attach spell/tool, totalSupply.
+   - Trait Tree tab: embed legacy editor UI (ported).
+
+4. **Trait Tree Management** (next focus)  
+   - Port trait tree editor component into sandbox as `TraitTreeEditor.js`.  
+   - Save trait config to `collections.config.traitTree`.  
+   - Add randomize & conflict-resolution preview.
+
+5. **Test Window** (next focus)  
+   - `collectionTestWindow.js` opens side canvas; allows generating a single piece using current trait selection.  
+   - Utilises orchestrator in dry-run mode (no DB write).
+
+6. **Controls & Stats**  
+   - Wire Start / Pause / Resume buttons; show progress bars.  
+   - Display generation counts, approve/reject metrics, points per gen.
+
+7. **Metadata & Launch Stub**  
+   - Editable collection metadata (description, supply, ticker).  
+   - Ownership sharing & “Launch” (export) button placeholder.
+
+8. **QA & E2E Tests**
+   - Cypress/Playwright flows: start cook, approve some pieces, pause/resume, export.
+   - Unit tests for TraitEngine edge cases.
+
+Target completion: Phase 1 end-of-week; full UI parity + export within two additional sprints.
+
 ## Alternatives Considered
 1. **Incremental Refactor of `CollectionCook`** – Faster but preserves monolith and single-workflow limitation.
 2. **Third-Party NFT Engine** (e.g., HashLips) – Would offload trait logic but introduces dependency hell and loses tight spell integration.
 3. **Keep Manual Exports** – Avoids Cloudflare work but continues large ZIP uploads via chat, which are brittle for >1 GB collections.
 
 We chose full redesign to align with the layered architecture and spells vision, unlocking long-term flexibility despite higher upfront cost. 
+
+## UI/UX Plan
+
+### Web Sandbox Modal (CookMenuModal)
+1. Home view
+   • Top list of **Active Cooks** – each shows progress bar, pause/resume, delete icons.
+   • Divider then **My Collections** grid – card per collection with status badge and "+" button to create new.
+   • Footer bar with Help "?" button.
+
+2. Collection Detail view
+   • Tabs: Overview | Pieces | Edit | Trait Tree | Export.
+   • Overview shows supply, progress, queued, buttons (Start/Pause, Review, Delete).
+   • Pieces tab shows paginated thumbs with approve/reject.
+   • Edit tab allows name, description, spell/tool mapping, workflow tweaks.
+   • Trait Tree editor re-uses same UI from legacy trait menu but polished.
+
+3. Trait Test Window
+   • New `collectionTestWindow.js` node similar to `toolWindow.js` which pulls trait schema, lets user randomize/lock traits, preview prompt/image.
+
+4. Piece Review Window
+   • `collectionReviewWindow.js` node that loads next pending piece, approve/reject with hotkeys.
+
+All components styled via existing modal/container CSS (`modsMenuModal.css` variants).
+
+Telemetry events: `cook.view`, `cook.start`, `cook.pause`, `cook.approve`, etc.
+
+These views will live under:
+```
+src/platforms/web/client/src/sandbox/components/
+  CookMenuModal.js
+  CollectionTestWindow.js
+  CollectionReviewWindow.js
+public/css/cookMenuModal.css
+```
+
+Telegram bot menu will mirror the same hierarchy with inline keyboards. 
+
+### Design Note – Flexible Trait Values & Tool/Spell Binding (2025-08-11)
+
+Problem: Legacy cook mode assumed a single *master prompt* string containing placeholders like `[[animal]]`.  Each trait category simply expanded to a prompt snippet.  In the refactored platform a cook might target **any** parameter of a tool or spell node – not just the text prompt – e.g. an image URL, a controlnet hint, or a numeric denoise strength.
+
+Proposed schema additions (saved under `collection.config.traitTree`):
+```json
+{
+  "categories": [
+    {
+      "name": "Animal",            // UI label
+      "param": "prompt",           // name of the tool/spell input the value maps to
+      "traits": [
+        { "name": "Cat",  "value": "a cute cat", "rarity": 20 },
+        { "name": "Dog",  "value": "a fluffy dog", "rarity": 20 },
+        { "name": "Owl",  "value": "a wise owl",  "rarity": 10 }
+      ]
+    },
+    {
+      "name": "Input Image",        // could map to an image parameter
+      "param": "input_image",
+      "traits": [
+        { "name": "Photo A", "value": "https://…/a.jpg" },
+        { "name": "Photo B", "value": "https://…/b.jpg" }
+      ]
+    }
+  ]
+}
+```
+
+Implications:
+1. **Category → Parameter binding** – Each category must specify which parameter it targets.  UI will expose a dropdown of available input names (derived from selected tool/spell).  If blank, treat as prompt replacement for backward-compat.
+2. **Trait `value` field** – Replaces fixed `prompt`.  Free-text; semantics depend on parameter type.
+3. **Rarity optional** – Default to uniform distribution when omitted.  UI: empty rarity cell = “common”.
+
+### Workflow for Users
+1. In *Edit* tab the user chooses a *generator*: either
+   • Pick a Tool from Tool Registry, **or**
+   • Pick an existing Spell they own.
+2. Trait Tree tab shows available input parameters on the right; when creating a category the user links it to one parameter.
+3. *Test Window* (`collectionTestWindow.js`):
+   • Displays quick-pick dropdown for every category (randomise / lock).  
+   • Runs orchestrator with the chosen trait values *without* writing cook events (dry-run flag).  
+   • Shows the generated output.
+
+### Next UI Tasks
+1. Extend `TraitTreeEditor`:
+   • Category row gains a “Param” select (populated once tool/spell chosen).  
+   • Trait rows use “Value” instead of hard-coded prompt column.
+2. Add *Edit* tab to Detail view: simple form to pick spell/tool and display Params list.
+3. Implement `collectionTestWindow.js` (opens from Detail header) – uses dry-run API `/internal/cook/test`.
+4. API: `POST /internal/cook/test` accepts `{ collectionId, userId, paramOverrides }` and returns generation output.
+
+This design keeps the system future-proof for non-text inputs while preserving familiar random trait behaviour. 

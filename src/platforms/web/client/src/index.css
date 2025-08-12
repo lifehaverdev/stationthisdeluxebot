@@ -13,6 +13,7 @@
 @import './sandbox/style/components/spellWindow.css';
 @import './sandbox/onboarding/styles/onboarding.css';
 @import './sandbox/style/components/modsMenuModal.css';
+@import './sandbox/style/components/cookMenuModal.css';
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

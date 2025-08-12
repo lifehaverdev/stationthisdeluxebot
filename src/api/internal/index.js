@@ -22,6 +22,7 @@ const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./wallets'); // path updated after folder reorg
 const { createAuthApi } = require('./auth');
+const { createCookApi } = require('./cookApi');
 // createCreditLedgerApi and createPointsApi now from economy aggregator above
 const { createStorageApi } = require('./storage'); // path updated after folder reorg
 const generationExecutionApi = createGenerationExecutionApi; // from aggregator
@@ -283,6 +284,19 @@ function initializeInternalServices(dependencies = {}) {
     }
   } catch (err) {
     logger.error('[InternalAPI] Error initializing or mounting Spells API:', err);
+  }
+
+  // After Spells API mount, add Cook API mount
+  try {
+    const cookApiRouter = createCookApi(apiDependencies);
+    if (cookApiRouter) {
+      v1DataRouter.use('/cook', cookApiRouter);
+      logger.info('[InternalAPI] Cook API service mounted to /v1/data/cook');
+    } else {
+      logger.error('[InternalAPI] Failed to create Cook API router.');
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error initializing or mounting Cook API:', err);
   }
 
   // Initialize and mount the LLM API within the data router

@@ -10,10 +10,16 @@ export default class ModsMenuModal {
   constructor(options = {}) {
     this.onSelect = options.onSelect || (() => {}); // callback when user picks a model
     this.state = {
-      view: 'intro', // 'intro' | 'category'
+      view: 'intro', // 'intro' | 'loraRoot' | 'category'
       categories: ['checkpoint', 'lora', 'upscale', 'embedding', 'vae', 'controlnet', 'clipseg'],
+      loraCategories: [],
       counts: {},
       currentCategory: null,
+      currentLoraCategory: null,
+      selectedTags: [],
+      extraTags: [],
+      detailModel: null,
+      importUrl: '',
       models: [],
       loading: false,
       error: null,
@@ -88,23 +94,81 @@ export default class ModsMenuModal {
     this.setState({ favoriteIds: newFavs });
   }
 
+  async fetchLoraCategories() {
+    try {
+      const res = await fetch(`/api/v1/models/lora/categories?_=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
+      if (res.status === 304) {
+        // Nothing changed; if we already have categories keep them
+        if (this.state.loraCategories.length) return;
+        throw new Error('No category data (304)');
+      }
+      if (!res.ok) throw new Error('Failed to fetch LoRA categories');
+      const data = await res.json();
+      console.log('[ModsMenuModal] LoRA categories response', data);
+      this.setState({ loraCategories: data.categories || [] });
+    } catch (err) {
+      console.warn('[ModsMenuModal] lora categories fetch error', err);
+      this.setState({ loraCategories: [], error: 'Could not load LoRA categories.' });
+    }
+  }
+
   getModelIdentifier(model) {
     return model._id || model.path || model.name || model.save_path || model.sha || JSON.stringify(model);
   }
 
-  async fetchModels(category) {
+  async fetchModels(category, subCategory = null) {
     this.setState({ loading: true, error: null, models: [] });
     try {
-      const url = category ? `/api/v1/models?category=${encodeURIComponent(category)}` : '/api/v1/models';
+      const limitParam = 'limit=100';
+      let url;
+      if (category === 'lora' && subCategory) {
+        url = `/api/v1/models/lora?category=${encodeURIComponent(subCategory)}&${limitParam}`;
+      } else if (category) {
+        url = `/api/v1/models?category=${encodeURIComponent(category)}&${limitParam}`;
+      } else {
+        url = `/api/v1/models?${limitParam}`;
+      }
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      this.setState({ models: data.models || [], loading: false });
+      const modelsData = data.loras || data.models || [];
+
+      let selectedTags = this.state.selectedTags.map(t => t.toLowerCase());
+      if (category === 'lora') {
+        selectedTags = subCategory ? [subCategory.toLowerCase()] : [];
+      }
+
+      const filtered = this.applyTagFilter(modelsData, selectedTags);
+      const extraTags = this.computeExtraTags(filtered, selectedTags);
+      console.log('[ModsMenuModal] extraTags', extraTags);
+      this.setState({ models: filtered, loading: false, selectedTags, extraTags });
+      // After models load, fetch favourites so we can sort
+      this.fetchFavorites(category);
       // After models load, fetch favourites so we can sort
       this.fetchFavorites(category);
     } catch (err) {
       this.setState({ loading: false, error: 'Failed to load models.' });
     }
+  }
+
+  applyTagFilter(models, selected) {
+    if (!selected || !selected.length) return models;
+    return models.filter(m => {
+      if (!m.tags || !m.tags.length) return false;
+      const tags = m.tags.map(t => (typeof t === 'string' ? t : t.tag).toLowerCase());
+      return selected.every(tag => tags.includes(tag));
+    });
+  }
+
+  computeExtraTags(models, selected) {
+    const tagSet = new Set();
+    models.forEach(m => {
+      (m.tags || []).forEach(t => {
+        const val = (typeof t === 'string' ? t : t.tag).toLowerCase();
+        if (!selected.includes(val)) tagSet.add(val);
+      });
+    });
+    return Array.from(tagSet).sort();
   }
 
   show() {
@@ -131,7 +195,7 @@ export default class ModsMenuModal {
   render() {
     if (!this.modalElement) return;
 
-    const { view, categories, currentCategory, counts, models, loading, error, favoriteIds } = this.state;
+    const { view, categories, currentCategory, currentLoraCategory, loraCategories, counts, models, loading, error, favoriteIds, selectedTags, extraTags } = this.state;
 
     // Category buttons
     const catButtons = categories.map(cat => {
@@ -139,6 +203,17 @@ export default class ModsMenuModal {
       const count = counts[cat] != null ? ` (${counts[cat]})` : '';
       return `<button class="cat-btn${active ? ' active' : ''}" data-cat="${cat}">${cat}${count}</button>`;
     }).join('');
+
+    // LoRA sub-category buttons (only when in loraRoot view)
+    let loraCatBar = '';
+    if (currentCategory === 'lora' && (view === 'loraRoot' || view === 'category')) {
+      loraCatBar = '<div class="lora-cat-bar">' + (
+        loraCategories.length ? loraCategories.map(cat => {
+          const active = cat === currentLoraCategory;
+          return `<button class="lora-sub-btn${active ? ' active' : ''}" data-loracat="${cat}">${cat}</button>`;
+        }).join('') : (loading ? '<em>Loading…</em>' : '<em>No categories found</em>')
+      ) + '</div>';
+    }
 
     // Model list
     let listHtml = '';
@@ -150,6 +225,7 @@ export default class ModsMenuModal {
       } else if (!models.length) {
         listHtml = '<div class="empty-message">No models found.</div>';
       } else {
+        const header = selectedTags.length ? `<h3 class="filter-header">${selectedTags.join(' + ')} (${models.length})</h3>` : '';
         const sortModels = [...models].sort((a, b) => {
           const idA = this.getModelIdentifier(a);
           const idB = this.getModelIdentifier(b);
@@ -166,6 +242,9 @@ export default class ModsMenuModal {
           const size = m.size ? `${(m.size / (1024**2)).toFixed(1)} MB` : '';
           return `<li class="mods-item" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> <button class="fav-btn" data-idx="${idx}">${heart}</button></li>`;
         }).join('') + '</ul>';
+        // Extra tag bar
+        const extraBar = extraTags.length ? `<div class="extra-tag-bar">` + extraTags.map(t => `<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('') + `</div>` : '';
+        listHtml = header + extraBar + listHtml;
       }
     }
 
@@ -175,15 +254,34 @@ export default class ModsMenuModal {
         <h2>Model Browser</h2>
         <p class="intro-text">Browse the models currently available on StationThis. Select a category to see assets and click + to add.</p>
         <div class="mods-category-bar">${catButtons}</div>
-        <div class="mods-content">${view === 'intro' ? '<div class="intro-placeholder">Select a category above.</div>' : listHtml}</div>
+        <div class="mods-content">
+          ${view === 'intro' ? '<div class="intro-placeholder">Select a category above.</div>' : ''}
+          ${currentCategory === 'lora' ? loraCatBar : ''}
+          ${view === 'category' ? listHtml : ''}
+        </div>
       </div>`;
 
     // Attach category btn events
     this.modalElement.querySelectorAll('.cat-btn').forEach(btn => {
       btn.onclick = () => {
         const cat = btn.getAttribute('data-cat');
-        this.setState({ view: 'category', currentCategory: cat });
+        if (cat === 'lora') {
+          this.setState({ view: 'category', currentCategory: 'lora', currentLoraCategory: null, selectedTags: [], extraTags: [], models: [] });
+          this.fetchLoraCategories();
+          this.fetchModels('lora'); // load all LoRAs
+          return;
+        }
+        this.setState({ view: 'category', currentCategory: cat, currentLoraCategory: null });
         this.fetchModels(cat);
+      };
+    });
+
+    // LoRA sub-category events
+    this.modalElement.querySelectorAll('.lora-sub-btn').forEach(btn => {
+      btn.onclick = () => {
+        const sub = btn.getAttribute('data-loracat');
+        this.setState({ view: 'category', currentLoraCategory: sub });
+        this.fetchModels('lora', sub);
       };
     });
 
@@ -196,9 +294,8 @@ export default class ModsMenuModal {
           const idx = Number(li.getAttribute('data-idx'));
           const model = this.state.models[idx];
           if (model) {
-            this.onSelect(model);
-            this.hide();
-          }
+            this.setState({ view: 'detail', detailModel: model });
+            }
         };
       });
       // Heart toggle handler
@@ -211,6 +308,130 @@ export default class ModsMenuModal {
           this.toggleFavorite(model, category);
         };
       });
+    }
+
+    if (view === 'detail' && this.state.detailModel) {
+      const m = this.state.detailModel;
+      const tags = (m.tags || []).map(t => (typeof t==='string'?t:t.tag)).join(', ');
+      const ratingAvg = (m.ratingAvg || 0).toFixed(2);
+      const ratingStars = '★'.repeat(Math.round(m.ratingAvg || 0)) + '☆'.repeat(3-Math.round(m.ratingAvg||0));
+      const html = `
+        <div class="mods-detail">
+          <button class="back-btn">← Back</button>
+          <h3>${m.name || m.slug}</h3>
+          <div class="rating-display">${ratingStars} <small>(${ratingAvg})</small></div>
+          <p><strong>Checkpoint:</strong> ${m.checkpoint || 'n/a'}</p>
+          <p><strong>Trigger:</strong> ${(m.triggerWords||[]).join(', ')}</p>
+          ${m.cognates && m.cognates.length ? `<p><strong>Cognates:</strong> ${m.cognates.map(c=>c.word).join(', ')}</p>` : ''}
+          <p><strong>Tags:</strong> ${tags}</p>
+          <button class="add-tag-btn">+ Tag</button>
+          <button class="rate-btn">Rate ★</button>
+          <button class="select-btn">Use</button>
+        </div>`;
+      this.modalElement.querySelector('.mods-content').innerHTML = html;
+      this.modalElement.querySelector('.back-btn').onclick = () => {
+        this.setState({ view: 'category', detailModel: null });
+        this.render();
+      };
+      this.modalElement.querySelector('.select-btn').onclick = () => {
+        this.onSelect(m);
+        this.hide();
+      };
+      const userId = window.currentUserId || null;
+      const addTagBtn = this.modalElement.querySelector('.add-tag-btn');
+      addTagBtn.onclick = async () => {
+        const newTag = prompt('Add tag');
+        if (!newTag) return;
+        try {
+          await fetch(`/api/v1/models/lora/${m._id}/tag`, {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify({ tag:newTag, userId }),
+            credentials:'include'
+          });
+          alert('Tag added!');
+          // refresh detail
+          const res = await fetch(`/api/v1/models/lora/${m._id}`);
+          const data = await res.json();
+          this.setState({ detailModel: { ...data.lora } });
+          this.render();
+        } catch(err){alert('failed');}
+      };
+
+      this.modalElement.querySelector('.rate-btn').onclick = async () => {
+        const val = prompt('Rate 1-3');
+        const n = Number(val);
+        if (![1,2,3].includes(n)) return;
+        try {
+          await fetch(`/api/v1/models/lora/${m._id}/rate`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ stars:n, userId }),
+            credentials:'include'
+          });
+          alert('Thanks for rating!');
+          const res = await fetch(`/api/v1/models/lora/${m._id}`);
+          const data = await res.json();
+          this.setState({ detailModel:{...data.lora} });
+          this.render();
+        }catch(err){alert('failed');}
+      };
+      return; // skip rest attach
+    }
+
+    // Extra tag click
+    this.modalElement.querySelectorAll('.extra-tag-btn').forEach(btn => {
+      btn.onclick = () => {
+        const tag = btn.getAttribute('data-tag').toLowerCase();
+        const newSelected = [...this.state.selectedTags.map(t=>t.toLowerCase()), tag];
+        const filtered = this.applyTagFilter(this.state.models, newSelected);
+        const remaining = this.computeExtraTags(filtered, newSelected);
+        this.setState({ selectedTags: newSelected, models: filtered, extraTags: remaining });
+      };
+    });
+
+    // Import button event
+    const importBtn = this.modalElement.querySelector('.import-btn');
+    if (importBtn) {
+      importBtn.onclick = () => {
+        this.setState({ view: 'importForm', importUrl: '' });
+        this.render();
+      };
+    }
+
+    if (view === 'importForm') {
+      const html = `
+        <div class="import-form">
+          <h3>Import LoRA</h3>
+          <input type="text" class="url-input" placeholder="Civitai or HuggingFace URL" value="${this.state.importUrl}">
+          <button class="submit-import">Import</button>
+          <button class="cancel-import">Cancel</button>
+        </div>`;
+      this.modalElement.querySelector('.mods-content').innerHTML = html;
+      const input = this.modalElement.querySelector('.url-input');
+      input.oninput = () => { this.state.importUrl = input.value; };
+      this.modalElement.querySelector('.cancel-import').onclick = () => {
+        this.setState({ view: 'intro' });
+        this.render();
+      };
+      this.modalElement.querySelector('.submit-import').onclick = async () => {
+        const url = input.value.trim();
+        if (!url) return;
+        try {
+          await fetch('/api/v1/models/lora/import', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json' },
+            body: JSON.stringify({ url }),
+            credentials: 'include'
+          });
+          alert('Import requested! Once approved it will appear in the list.');
+          this.setState({ view: 'intro' });
+          this.render();
+        } catch(err){
+          alert('Import failed');
+        }
+      };
+      return;
     }
   }
 

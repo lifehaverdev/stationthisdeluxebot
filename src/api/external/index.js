@@ -16,6 +16,7 @@ const createModelsApiRouter = require('./models');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
 const { createPointsApi } = require('./economy');
 const createSpellsApi = require('./spells');
+const createCookApiRouter = require('./cookApi');
 
 
 /**
@@ -321,6 +322,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Spells API router mounted at /spells. (JWT or API key protected, dualAuth)');
   } else {
     logger.warn('External Spells API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Cook API router (Public & JWT dualAuth for mutating routes)
+  const cookApiRouter = createCookApiRouter(dependencies);
+  if (cookApiRouter) {
+    externalApiRouter.use('/', cookApiRouter); // paths already prefixed inside router
+    logger.info('External Cook API router mounted (collections & cooks endpoints).');
+  } else {
+    logger.warn('External Cook API router not mounted due to missing dependencies.');
   }
 
   // Mount the Generation Execution API router (Protected by dualAuth)

@@ -27,34 +27,43 @@ At this point the workspace is fully interactive.
 sandbox/
 ├─ index.js                ← entry point / orchestrator
 ├─ state.js                ← single-source-of-truth (SSOT) for sandbox state
-├─ canvas.js               ← low-level canvas helpers (pan, zoom, ripple, connection line)
-├─ io.js                   ← networking (tool registry, file upload)
-├─ toolSelection.js        ← sidebar + context menus for creating tools
-├─ utils.js                ← small shared helpers
+├─ canvas.js               ← pan / zoom helpers & background grid
+├─ io.js                   ← networking (tool registry, file uploads)
+├─ subgraph.js             ← helper to traverse tool/spell graph
+├─ executionClient.js      ← lightweight client-side ExecutionClient proxy
+├─ toolSelection.js        ← sidebar & context menus for creating tools
+├─ utils.js                ← shared small utilities
 │
 ├─ node/                   ← **Node / Window subsystem**
 │   ├─ toolWindow.js       ← generic tool window implementation
-│   ├─ spellWindow.js      ← specialised wrapper for saved spells
+│   ├─ spellWindow.js      ← wrapper for saved spell windows
+│   ├─ resultContent.js    ← output rendering per-result type
 │   ├─ parameterInputs.js  ← dynamic form generation for tool params
+│   ├─ websocketHandlers.js← handles WS events for node updates
 │   ├─ drag.js, anchors.js ← behaviour helpers
 │   ├─ overlays/           ← live preview overlays (text / image)
 │   └─ index.js            ← exports + overlay bootstrap
 │
-├─ connections/            ← visual + logical linking of node outputs → inputs
+├─ connections/            ← visual & logical linking of node outputs → inputs
 │   ├─ manager.js          ← CRUD & persistence of Connection objects
 │   ├─ interaction.js      ← user gestures (click-drag to connect)
 │   ├─ drawing.js          ← painting straight/curved lines on canvas
 │   ├─ validation.js       ← simple type compatibility checks
 │   └─ anchors.js          ← DOM anchor utilities
 │
-├─ components/             ← Stand-alone UI widgets used inside the sandbox
+├─ components/             ← stand-alone UI widgets used inside the sandbox
 │   ├─ SpellsMenuModal.js
+│   ├─ ModsMenuModal.js
 │   ├─ MintSpellFAB.js
 │   ├─ AccountDropdown.js
-│   ├─ historyModal.js, image.js …
-│   └─ ReferralVault*/     ← marketing / referral flow modals
+│   ├─ historyModal.js
+│   ├─ image.js
+│   ├─ BuyPointsModal/
+│   ├─ ReferralVaultModal/
+│   └─ ReferralVaultDashboardModal/
 │
 ├─ onboarding/             ← product-led tour shown on first visit
+│   └─ steps/…             ← modular step definitions
 │
 ├─ style/                  ← vanilla CSS (scoped by convention)
 └─ README.md               ← you are here

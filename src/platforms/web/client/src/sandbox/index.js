@@ -30,6 +30,7 @@ import './components/ReferralVaultModal/referralVaultModal.js';
 import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
 import { MintSpellFAB } from './components/MintSpellFAB.js';
 import './onboarding/onboarding.js';
+import CookMenuModal from './components/CookMenuModal.js';
 
 let spacebarIsDown = false;
 let justLassoed = false;
@@ -301,6 +302,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
             modsModal.show();
+        });
+    }
+
+    // Cook Menu link handler
+    const cookNavLink = document.querySelector('nav.main-nav a[href="#cook"]');
+    if (cookNavLink) {
+        cookNavLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = new CookMenuModal();
+            modal.show();
         });
     }
 

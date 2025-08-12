@@ -17,6 +17,7 @@ const LoRAModelsDB = require('./loRAModelDb'); // Import LoRAModelsDB
 const LoRAPermissionsDB = require('./loRAPermissionsDb'); // Import LoRAPermissionsDB
 const SpellsDB = require('./spellsDb'); // Import SpellsDB
 const SpellPermissionsDB = require('./spellPermissionsDb'); // Import SpellPermissionsDB
+const CookCollectionsDB = require('./cookCollectionsDb');
 const WalletLinkingRequestDB = require('./walletLinkingRequestDb'); // Import WalletLinkingRequestDB
 
 // Import new on-chain DB services
@@ -56,6 +57,7 @@ function initializeDbServices(logger) {
     loraPermissions: LoRAPermissionsDB ? new LoRAPermissionsDB(logger) : null, // ADDED: Instantiate LoRAPermissionsDB
     spells: SpellsDB ? new SpellsDB(logger) : null, // ADDED: Instantiate SpellsDB
     spellPermissions: SpellPermissionsDB ? new SpellPermissionsDB(logger) : null, // ADDED: Instantiate SpellPermissionsDB
+    cookCollections: CookCollectionsDB ? new CookCollectionsDB(logger) : null,
     walletLinkingRequests: WalletLinkingRequestDB ? new WalletLinkingRequestDB(logger) : null,
     
     // On-chain services

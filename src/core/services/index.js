@@ -36,6 +36,7 @@ const SaltMiningService = require('./alchemy/saltMiningService');
 const SpellStatsService = require('./analytics/SpellStatsService');
 // --- New Service: ModelDiscoveryService ---
 const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
+const { initializeCookServices } = require('./cook');
 
 /**
  * Initialize all core services
@@ -302,6 +303,9 @@ async function initializeServices(options = {}) {
     };
 
     // DIAGNOSTIC LOGGING REMOVED
+
+    // Initialize Cook projection services
+    await initializeCookServices(logger);
 
     // Return instantiated services
     return returnedServices;

@@ -50,7 +50,11 @@ class OnboardingEngine {
       writeState(this.state);
       this.runStep();
     };
-    const skip = next; // same behavior for now
+
+    // End the onboarding immediately when the user chooses to skip.
+    const skip = () => {
+      this.finish();
+    };
     // clear root before rendering next step
     this.root.innerHTML = '';
     step.render(this.root, next, skip);

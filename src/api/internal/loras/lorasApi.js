@@ -183,6 +183,7 @@ router.get('/list', async (req, res) => {
       userId, // This is masterAccountId string
       q 
     } = req.query;
+    const category = req.query.category;
     const page = parseInt(req.query.page || '1', 10);
     const limit = parseInt(req.query.limit || '10', 10);
 
@@ -213,6 +214,13 @@ router.get('/list', async (req, res) => {
 
     if (checkpoint && checkpoint.toLowerCase() !== 'all') {
       dbQuery.checkpoint = checkpoint;
+    }
+
+    // NEW: explicit category filter (checks both dedicated field and tags.tag)
+    if (category && category.toLowerCase() !== 'all') {
+      dbQuery.$or = dbQuery.$or || [];
+      dbQuery.$or.push({ category: category });
+      dbQuery.$or.push({ 'tags.tag': category });
     }
 
     if (q) {
@@ -264,6 +272,7 @@ router.get('/list', async (req, res) => {
       name: lora.name, 
       triggerWords: lora.triggerWords || [],
       checkpoint: lora.checkpoint,
+      tags: lora.tags || [],
       createdAt: lora.createdAt,
       previewImageUrl: (lora.previewImages && lora.previewImages.length > 0) ? lora.previewImages[0] : null,
       ownedBy: lora.ownedBy ? lora.ownedBy.toString() : null, // Seller's ID
@@ -288,6 +297,19 @@ router.get('/list', async (req, res) => {
   } catch (error) {
     logger.error(`[LorasApi] Error in GET /list: ${error.message}`, error.stack);
     res.status(500).json({ error: 'Failed to fetch LoRAs', details: error.message });
+  }
+});
+
+/**
+ * GET /categories - Fetch distinct LoRA categories.
+ */
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await loRAModelsDb.listCategories();
+    res.status(200).json({ categories });
+  } catch (error) {
+    logger.error(`[LorasApi] Error in GET /categories: ${error.message}`, error.stack);
+    res.status(500).json({ error: 'Failed to fetch categories', details: error.message });
   }
 });
 
@@ -376,7 +398,8 @@ router.get('/:loraIdentifier', async (req, res) => {
       ownedBy: lora.ownedBy ? lora.ownedBy.toString() : null,
       usageCount: lora.usageCount || 0,
       lastUsedAt: lora.lastUsedAt,
-      rating: lora.rating, // Assuming rating is an object { average, count }
+      rating: lora.rating || { sum:0, count:0 },
+      ratingAvg: lora.rating && lora.rating.count ? (lora.rating.sum / lora.rating.count) : 0,
       previewImages: lora.previewImages || [],
       downloadUrl: lora.downloadUrl,
       civitaiPageUrl: lora.civitaiPageUrl,
@@ -1085,6 +1108,60 @@ router.post('/:loraId/grant-owner-access', async (req, res) => {
         }
         res.status(500).json({ message: `An error occurred: ${error.message}` });
     }
+});
+
+/**
+ * POST /:loraId/tag – Add a user tag to LoRA.
+ * Body: { tag: string, userId: string }
+ */
+router.post('/:loraId/tag', async (req, res) => {
+  try {
+    const { loraId } = req.params;
+    const { tag, userId } = req.body;
+    if (!tag || !userId) return res.status(400).json({ error: 'tag and userId required' });
+
+    const MAID = new ObjectId(userId);
+    const tagObj = { tag: tag.toLowerCase(), source: 'user', addedBy: MAID, addedAt: new Date() };
+
+    await loRAModelsDb.updateOne(
+      { _id: new ObjectId(loraId) },
+      { $addToSet: { tags: tagObj } }
+    );
+
+    // Persist in user preferences
+    await userPreferencesDb.addModelFavorite(userId, 'loraAddedTags', { loraId, tag: tagObj.tag });
+
+    res.json({ ok: true, tag: tagObj.tag });
+  } catch (err) {
+    logger.error('[LorasApi] add tag error', err);
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+/**
+ * POST /:loraId/rate – Rate LoRA 1-3 stars
+ * Body: { stars:1|2|3, userId }
+ */
+router.post('/:loraId/rate', async (req, res) => {
+  try {
+    const { loraId } = req.params;
+    const { stars, userId } = req.body;
+    const n = Number(stars);
+    if (![1,2,3].includes(n) || !userId) return res.status(400).json({ error:'invalid stars or userId' });
+
+    await loRAModelsDb.updateOne(
+      { _id: new ObjectId(loraId) },
+      { $inc: { 'rating.sum': n, 'rating.count': 1 } }
+    );
+
+    // store per-user rating
+    await userPreferencesDb.setPreferenceByKey(userId, 'loraRatings', { [loraId]: n });
+
+    res.json({ ok:true });
+  } catch(err){
+    logger.error('[LorasApi] rate error', err);
+    res.status(500).json({ error:'failed' });
+  }
 });
 
 module.exports = router; 

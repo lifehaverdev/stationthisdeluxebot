@@ -1,4 +1,5 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
+const { getCachedClient } = require('./utils/queue'); // ADD: for distinct queries
 
 /**
  * @class LoRAModelsDB
@@ -270,6 +271,28 @@ class LoRAModelsDB extends BaseDB {
       { _id: new ObjectId(modelId) },
       { $addToSet: { cognates: cognate } }
     );
+  }
+
+  async listCategories() {
+     // Returns distinct category values existing in collection, excluding null/undefined
+    return this.monitorOperation(async () => {
+      const client = await getCachedClient();
+      const collection = client.db(this.dbName).collection(this.collectionName);
+      let categories = await collection.distinct('category');
+      categories = categories.filter(c => !!c);
+
+      // Fallback: derive from tag list (e.g., 'character', 'style', etc.)
+      if (categories.length === 0) {
+        const tagCats = await collection.distinct('tags.tag');
+        categories = tagCats.filter(t => !!t).map(t => t.toLowerCase());
+      }
+
+      const uniq = Array.from(new Set(categories))
+        .map(t => t.toLowerCase())
+        .sort();
+      this.logger.info(`[LoRAModelDb] listCategories -> ${JSON.stringify(uniq)}`);
+      return uniq;
+    }, 'distinct');
   }
 }
 
