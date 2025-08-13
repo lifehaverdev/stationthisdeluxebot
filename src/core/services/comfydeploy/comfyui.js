@@ -543,6 +543,31 @@ class ComfyUIService {
   }
 
   /**
+   * Fetch a run by ID directly from ComfyDeploy API.
+   * Mirrors the webhook payload so we can poll locally when webhooks are unavailable.
+   * @param {string} runId
+   * @param {{ queue_position?: boolean }} [options]
+   * @returns {Promise<Object>} run object
+   */
+  async getRun(runId, options = {}) {
+    if (!runId) throw new APIError('runId is required', 400);
+    const qp = typeof options.queue_position === 'boolean' ? `?queue_position=${options.queue_position}` : '?queue_position=false';
+    // Use the internal request helper to include auth and timeouts
+    const res = await this._makeApiRequest(`/api/run/${encodeURIComponent(runId)}${qp}`, { method: 'GET' });
+    let json;
+    try {
+      json = await res.json();
+    } catch (e) {
+      throw new APIError('Invalid JSON from ComfyDeploy getRun', 502);
+    }
+    if (!res.ok) {
+      const msg = json?.message || `ComfyDeploy getRun failed with status ${res.status}`;
+      throw new APIError(msg, res.status);
+    }
+    return json;
+  }
+
+  /**
    * Make an API request to ComfyUI Deploy
    * @param {string} endpoint - API endpoint
    * @param {Object} options - Fetch options

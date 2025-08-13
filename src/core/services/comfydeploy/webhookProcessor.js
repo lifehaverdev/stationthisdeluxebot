@@ -1,9 +1,17 @@
 // src/core/services/comfydeploy/webhookProcessor.js
 
 const notificationEvents = require('../../events/notificationEvents');
+const { createLogger } = require('../../../utils/logger');
+const internalApiClient = require('../../../utils/internalApiClient');
+const { CookOrchestratorService } = require('../cook');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
+
+// Reusable wrapper that mirrors webhook processing for a given run payload
+async function processRunPayload(runPayload, deps){
+  return processComfyDeployWebhook(runPayload, deps);
+}
 
 // Dependencies: internalApiClient, logger, and websocketServer for real-time updates.
 async function processComfyDeployWebhook(payload, { internalApiClient, logger, webSocketService: websocketServer }) {
@@ -331,6 +339,32 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       logger.info(`[Webhook Processor] Debit skipped for generation ${generationId}: costUsd is ${costUsd}. Assuming free generation or no cost applicable.`);
     }
     // ADR-005: Debit logic ends here
+
+    if (generationRecord && updatePayload.status === 'completed') {
+      try {
+        const meta = generationRecord.metadata || {};
+        const collectionId = meta.collectionId;
+        const finishedJobId = meta.jobId;
+        if (collectionId && finishedJobId) {
+          await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, userId: String(generationRecord.masterAccountId), jobId: finishedJobId, generationId });
+          // Mark job done in queue store
+          try {
+            const { CookJobStore } = require('../cook');
+            await CookJobStore.markDone(finishedJobId);
+          } catch (e) {
+            logger.warn(`[Webhook Processor] Failed to mark cook job done: ${e.message}`);
+          }
+          // Schedule next piece
+          try {
+            await CookOrchestratorService.scheduleNext({ collectionId, userId: String(generationRecord.masterAccountId), finishedJobId, success: true });
+          } catch (e) {
+            logger.warn(`[Webhook Processor] scheduleNext error: ${e.message}`);
+          }
+        }
+      } catch (e) {
+        logger.warn(`[Webhook Processor] Cook scheduling hook failed: ${e.message}`);
+      }
+    }
   }
   return { success: true, statusCode: 200, data: { message: "Webhook processed successfully. DB record updated." } };
 }
@@ -586,5 +620,6 @@ async function issueSpend(masterAccountId, payload, { internalApiClient, logger 
 
 module.exports = {
   processComfyDeployWebhook,
+  processRunPayload,
   getActiveJobProgress: () => activeJobProgress
 }; 

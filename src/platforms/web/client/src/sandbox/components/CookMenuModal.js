@@ -505,12 +505,33 @@ export default class CookMenuModal {
                 const val=prompt(`Set value for ${param}`,current);
                 if(val!==null){
                     const overrides={...this.state.paramOverrides,[param]:val};
-                    await this.updateCollection({paramOverrides:overrides});
+                    await this.updateCollection({ 'config.paramOverrides': overrides });
                 }
             };
         });
         if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{this.hide();import('./CollectionTestWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);});};
-        if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=()=>alert('Start Cook – coming soon');
+        if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
+            const coll=this.state.selectedCollection; if(!coll) return;
+            if(!(coll.toolId||coll.spellId)){ alert('Please select a generator (tool or spell) before starting.'); return; }
+            const supply = Number(coll.totalSupply)||0; if(supply<=0){ alert('Please set a valid Total Supply (>0).'); return; }
+            const id=coll.collectionId;
+            try{
+                this.setState({ loading:true });
+                const csrf = await this.getCsrfToken();
+                const payload={
+                    toolId: coll.toolId,
+                    spellId: coll.spellId,
+                    traitTree: coll.config?.traitTree||[],
+                    paramOverrides: coll.config?.paramOverrides||this.state.paramOverrides||{},
+                    totalSupply: supply
+                };
+                const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/start`,{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(payload)});
+                const data = await res.json().catch(()=>({}));
+                if(!res.ok){throw new Error(data.error||'start failed');}
+                alert(`Cook started${typeof data.queued==='number'?` (queued ${data.queued})`:''}`);
+                await this.fetchActiveCooks();
+            }catch(e){alert('Failed to start cook: '+(e.message||'error'))}finally{this.setState({ loading:false });}
+        };
         if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{
             const { selectedCollection } = this.state;
             if(!selectedCollection) return;

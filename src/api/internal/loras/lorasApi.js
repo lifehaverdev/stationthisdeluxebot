@@ -184,6 +184,8 @@ router.get('/list', async (req, res) => {
       userId, // This is masterAccountId string
       q 
     } = req.query;
+    // Resolve user from query or authenticated context
+    const resolvedUserId = userId || (req.user && req.user.userId);
     // Allow `search` as an alias for `q`
     const searchTerm = q || req.query.search;
     const category = req.query.category;
@@ -196,11 +198,11 @@ router.get('/list', async (req, res) => {
     let sortOptions = {};
     let MAID = null;
 
-    if (userId) {
+    if (resolvedUserId) {
         try {
-            MAID = new ObjectId(userId);
+            MAID = new ObjectId(resolvedUserId);
             // If userId is present, fetch IDs of accessible private LoRAs and combine with public ones.
-            const accessibleLoraPermissions = await loRAPermissionsDb.listAccessibleLoRAs(userId);
+            const accessibleLoraPermissions = await loRAPermissionsDb.listAccessibleLoRAs(resolvedUserId);
             const accessiblePrivateLoraIds = accessibleLoraPermissions.map(p => p.loraId);
 
             dbQuery.$or = [
@@ -280,7 +282,73 @@ router.get('/list', async (req, res) => {
     }
 
     const skip = (page - 1) * limit;
-    
+
+    // Special default ordering when no explicit sort/filterType: 
+    // 1) user favorites, 2) newest within 30 days, 3) most popular
+    if (!sort && !filterType) {
+      const totalLoras = await loRAModelsDb.count(dbQuery);
+
+      let favoriteObjectIds = [];
+      if (MAID) {
+        try {
+          const favIds = await userPreferencesDb.getLoraFavoriteIds(MAID);
+          favoriteObjectIds = favIds
+            .filter(id => /^[0-9a-fA-F]{24}$/.test(id))
+            .map(id => new ObjectId(id));
+        } catch (favErr) {
+          logger.warn('[LorasApi] Failed to load favorite ids for special sort:', favErr.message);
+        }
+      }
+
+      const recentThreshold = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const pipeline = [
+        { $match: dbQuery },
+        { $addFields: {
+            isFavorite: favoriteObjectIds.length ? { $in: ['$_id', favoriteObjectIds] } : false,
+            isRecent: { $gte: ['$createdAt', recentThreshold] }
+        }},
+        { $sort: { isFavorite: -1, isRecent: -1, createdAt: -1, usageCount: -1 } },
+        { $skip: skip },
+        { $limit: limit }
+      ];
+
+      logger.debug(`[LorasApi] Executing special-sort aggregate. Match: ${JSON.stringify(dbQuery)}, Skip: ${skip}, Limit: ${limit}`);
+      const lorasFromDb = await loRAModelsDb.aggregate(pipeline);
+
+      let userFavoriteIdsSet = new Set();
+      if (MAID) {
+        const favIds = await userPreferencesDb.getLoraFavoriteIds(MAID);
+        userFavoriteIdsSet = new Set(favIds);
+      }
+
+      const loras = lorasFromDb.map(lora => ({
+        _id: lora._id.toString(),
+        slug: lora.slug,
+        name: lora.name, 
+        triggerWords: lora.triggerWords || [],
+        checkpoint: lora.checkpoint,
+        tags: lora.tags || [],
+        createdAt: lora.createdAt,
+        previewImageUrl: (lora.previewImages && lora.previewImages.length > 0) ? lora.previewImages[0] : null,
+        ownedBy: lora.ownedBy ? lora.ownedBy.toString() : null, // Seller's ID
+        monetization: lora.monetization, // Crucial for price display
+        isPurchased: userFavoriteIdsSet.has(lora._id.toString()),
+      }));
+
+      const totalPages = Math.ceil(totalLoras / limit);
+
+      return res.status(200).json({
+        loras,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalLoras,
+          limit
+        }
+      });
+    }
+
     logger.debug(`[LorasApi] Executing DB query: ${JSON.stringify(dbQuery)}, Sort: ${JSON.stringify(sortOptions)}, Skip: ${skip}, Limit: ${limit}`);
 
     const totalLoras = await loRAModelsDb.count(dbQuery);

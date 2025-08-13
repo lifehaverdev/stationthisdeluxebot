@@ -18,7 +18,7 @@ function createCookApiRouter(deps = {}) {
   // GET /api/v1/cooks/active
   router.get('/cooks/active', async (req, res) => {
     try {
-      const userId = req.user?.id || req.query.userId;
+      const userId = req.user?.userId || req.user?.id || req.query.userId;
       const { data } = await internalApiClient.get('/internal/v1/data/cook/active', { params: { userId } });
       return res.json(data);
     } catch (err) {
@@ -31,7 +31,7 @@ function createCookApiRouter(deps = {}) {
   // GET /api/v1/collections
   router.get('/collections', async (req, res) => {
     try {
-      const userId = req.user?.id || req.query.userId;
+      const userId = req.user?.userId || req.user?.id || req.query.userId;
       const { data } = await internalApiClient.get('/internal/v1/data/cook/collections', { params: { userId } });
       return res.json(data);
     } catch (err) {
@@ -84,6 +84,31 @@ function createCookApiRouter(deps = {}) {
       return res.json(data);
     } catch (err) {
       logger.error('delete collection proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /api/v1/collections/:id/cook/start
+  router.post('/collections/:id/cook/start', async (req, res) => {
+    try {
+      const id = req.params.id;
+      // Body may contain explicit toolId/traitTree/paramOverrides/totalSupply; if not, we rely on server-side defaults
+      const { toolId, spellId, traitTree, paramOverrides, totalSupply } = req.body || {};
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = {
+        collectionId: id,
+        userId,
+        toolId,
+        spellId,
+        traitTree: traitTree || undefined,
+        paramOverrides: paramOverrides || undefined,
+        totalSupply: Number.isFinite(totalSupply) ? totalSupply : undefined,
+      };
+      const { data } = await internalApiClient.post('/internal/v1/data/cook/start', payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cook start proxy error', err.response?.data || err.message);
       const status = err.response?.status || 500;
       return res.status(status).json(err.response?.data || { error: 'proxy-error' });
     }

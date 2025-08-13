@@ -324,10 +324,10 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Spells API router not mounted due to missing dependencies.');
   }
 
-  // Mount the Cook API router (Public & JWT dualAuth for mutating routes)
+  // Mount the Cook API router (JWT/API key protected)
   const cookApiRouter = createCookApiRouter(dependencies);
   if (cookApiRouter) {
-    externalApiRouter.use('/', cookApiRouter); // paths already prefixed inside router
+    externalApiRouter.use('/', authenticateUserOrApiKey, cookApiRouter); // ensure req.user is populated
     logger.info('External Cook API router mounted (collections & cooks endpoints).');
   } else {
     logger.warn('External Cook API router not mounted due to missing dependencies.');

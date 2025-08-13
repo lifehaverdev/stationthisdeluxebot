@@ -1,5 +1,7 @@
 const { dbQueue, getCachedClient } = require('../db/utils/queue');
 
+const ENABLE_POLL_LOGS = false;
+
 /**
  * CookJobStore
  * Lightweight Mongo-backed queue for cook generation jobs.
@@ -23,6 +25,7 @@ class CookJobStore {
           { key: { status: 1 } },
           { key: { collectionId: 1 } },
           { key: { userId: 1 } },
+          { key: { createdAt: 1 } },
         ]);
       });
     }
@@ -46,18 +49,93 @@ class CookJobStore {
     return doc;
   }
 
+  async getById(id, projection = {}) {
+    await this._init();
+    return this.collection.findOne({ _id: id }, { projection });
+  }
+
+  /**
+   * Atomically claim this specific job if it is queued. Returns the updated doc if claimed, or null if not queued.
+   */
+  async claimById(id) {
+    await this._init();
+    const res = await this.collection.findOneAndUpdate(
+      { _id: id, status: 'queued' },
+      { $set: { status: 'running', updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
+    const job = res.value || null;
+    if (job && ENABLE_POLL_LOGS) {
+      try { console.log(`[CookJobStore] Claimed specific job ${job._id} (collection ${job.collectionId}, user ${job.userId})`); } catch (_) {}
+    }
+    return job;
+  }
+
+  /**
+   * Atomically claim the next queued job (oldest first) by marking it running.
+   * Returns the claimed job document or null if none available.
+   */
+  async claimNextQueued() {
+    await this._init();
+    const res = await this.collection.findOneAndUpdate(
+      { status: 'queued' },
+      { $set: { status: 'running', updatedAt: new Date() } },
+      { sort: { createdAt: 1 }, returnDocument: 'after' }
+    );
+    const job = res.value || null;
+    if (job && ENABLE_POLL_LOGS) {
+      try { console.log(`[CookJobStore] Claimed queued job ${job._id} (collection ${job.collectionId}, user ${job.userId})`); } catch (_) {}
+    }
+    return job;
+  }
+
   /**
    * Watch for new queued jobs and invoke callback.
-   * Returns the Change Stream so caller can `.close()`.
+   * Returns a handle with .close(). Falls back to polling if change streams are not available or error.
    */
   async watchQueued(callback) {
     await this._init();
     const pipeline = [
       { $match: { 'fullDocument.status': 'queued' } },
     ];
-    const changeStream = this.collection.watch(pipeline, { fullDocument: 'updateLookup' });
-    changeStream.on('change', (change) => callback(change.fullDocument));
-    return changeStream;
+    const intervalMs = Number(process.env.COOK_QUEUE_POLL_MS) || 1000;
+
+    const startPolling = () => {
+      const timer = setInterval(async () => {
+        try {
+          const job = await this.claimNextQueued();
+          if (job) {
+            if (ENABLE_POLL_LOGS) {
+              try { console.log(`[CookJobStore] Poll claimed job ${job._id}`); } catch (_) {}
+            }
+            callback(job);
+          }
+        } catch (e) {
+          // continue polling silently
+        }
+      }, intervalMs);
+      return { close: () => clearInterval(timer) };
+    };
+
+    try {
+      const changeStream = this.collection.watch(pipeline, { fullDocument: 'updateLookup' });
+      let pollHandle = null;
+      changeStream.on('change', (change) => callback(change.fullDocument));
+      changeStream.on('error', () => {
+        // Switch to polling on runtime error
+        try { changeStream.close(); } catch (_) {}
+        if (!pollHandle) pollHandle = startPolling();
+      });
+      return {
+        close: () => {
+          try { changeStream.close(); } catch (_) {}
+          if (pollHandle) pollHandle.close();
+        }
+      };
+    } catch (err) {
+      // Fallback to polling when change streams are unavailable
+      return startPolling();
+    }
   }
 
   async markRunning(id) {
@@ -73,6 +151,31 @@ class CookJobStore {
   async markFailed(id, errorMsg) {
     await this._init();
     await this.collection.updateOne({ _id: id }, { $set: { status: 'failed', error: errorMsg, updatedAt: new Date() } });
+  }
+
+  // Debug helpers
+  async countByStatus(filter = {}) {
+    await this._init();
+    const statuses = ['queued', 'running', 'done', 'failed'];
+    const out = {};
+    for (const s of statuses) {
+      out[s] = await this.collection.countDocuments({ ...filter, status: s });
+    }
+    return out;
+  }
+
+  async peekNextQueued(filter = {}) {
+    await this._init();
+    return this.collection.findOne({ ...filter, status: 'queued' }, { sort: { createdAt: 1 }, projection: { userContext: 0 } });
+  }
+
+  async getQueueDebug(filter = {}) {
+    await this._init();
+    const [counts, next] = await Promise.all([
+      this.countByStatus(filter),
+      this.peekNextQueued(filter),
+    ]);
+    return { counts, next };
   }
 }
 

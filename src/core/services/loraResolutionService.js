@@ -151,7 +151,26 @@ async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel,
   // Split by spaces and punctuation, keeping them as separate tokens
   const segments = currentPromptText.split(SPLIT_KEEP_DELIMITERS_REGEX).filter(s => s && s.length > 0);
 
-  for (const segment of segments) {
+  // Merge decimal weight tokens broken by the split (e.g., "trigger:.4" or "trigger:0.4")
+  const mergedSegments = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const next = segments[i + 1];
+    const next2 = segments[i + 2];
+    const hasColon = seg && seg.includes(':');
+    const weightPrefixPattern = /^[a-zA-Z0-9_.-]+(?::\d*)?$/; // word with optional :digits (allow none after colon)
+
+    if (hasColon && weightPrefixPattern.test(seg) && next === '.' && next2 && /^\d+$/.test(next2)) {
+      // Combine into a single token to preserve decimal weights: "trigger:"+"."+"4" => "trigger:.4"
+      mergedSegments.push(seg + '.' + next2);
+      i += 2; // Skip the next two tokens we've merged
+      continue;
+    }
+
+    mergedSegments.push(seg);
+  }
+
+  for (const segment of mergedSegments) {
     if (LORA_TAG_REGEX.test(segment)) { // Skip already processed <lora:...> tags
         finalPromptParts.push(segment);
         continue;

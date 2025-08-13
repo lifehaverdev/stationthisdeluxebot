@@ -3,6 +3,7 @@ const { CookJobStore } = require('../../core/services/cook');
 const { CookOrchestratorService } = require('../../core/services/cook');
 const { CookProjectionUpdater } = require('../../core/services/cook');
 const { createLogger } = require('../../utils/logger');
+const { getCachedClient } = require('../../core/services/db/utils/queue');
 
 function createCookApi(deps = {}) {
   const router = express.Router();
@@ -20,7 +21,7 @@ function createCookApi(deps = {}) {
         return res.status(400).json({ error: 'spellId or toolId required' });
       }
 
-      const { traitTypes = [], paramsTemplate = {} } = req.body;
+      const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
 
       const result = await CookOrchestratorService.startCook({
         collectionId,
@@ -29,10 +30,13 @@ function createCookApi(deps = {}) {
         toolId,
         traitTypes,
         paramsTemplate,
+        traitTree,
+        paramOverrides,
+        totalSupply: Number.isFinite(totalSupply) ? totalSupply : 1,
       });
 
-      logger.info(`[CookAPI] Started cook. Job ${result.jobId}`);
-      return res.json({ jobId: result.jobId, status: 'queued' });
+      logger.info(`[CookAPI] Started cook. Queued ${result.queued} for collection ${collectionId} by user ${userId}`);
+      return res.json({ queued: result.queued, status: 'queued' });
     } catch (err) {
       logger.error('[CookAPI] start error', err);
       return res.status(500).json({ error: 'internal-error' });
@@ -42,28 +46,116 @@ function createCookApi(deps = {}) {
   // Health check / ping
   router.get('/ping', (req, res) => res.json({ ok: true }));
 
-  // GET /internal/cook/active - list active cook statuses for current user (stub implementation)
+  // GET /internal/cook/active - list active cook statuses for current user
   router.get('/active', async (req, res) => {
     try {
-      const userId = req.query.userId || req.user?.id || req.userId;
-      // TODO: query CookProjectionUpdater once permission/user scoping is solid
-      const active = []; // return empty list for now to unblock front-end
-      return res.json({ cooks: active });
+      const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+      if (!userId) return res.json({ cooks: [] });
+
+      // Ensure access to collections and job/events collections
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const client = await getCachedClient();
+      const dbName = process.env.MONGO_DB_NAME || 'station';
+      const db = client.db(dbName);
+      const eventsCol = db.collection('cook_events');
+
+      await CookJobStore._init?.();
+      const jobsCol = CookJobStore.collection || db.collection('cook_jobs');
+
+      // Base: collections owned by user
+      let collections = await cookDb.findByUser(userId);
+
+      // Augment with any collectionIds seen in jobs/events for this user (including legacy docs without userId)
+      const jobCollIds = await jobsCol.distinct('collectionId', { userId, status: { $in: ['queued', 'running'] } });
+      const eventCollIds = await eventsCol.distinct('collectionId', { userId });
+      const derivedIds = new Set([...(jobCollIds || []), ...(eventCollIds || [])]);
+      const knownIds = new Set((collections || []).map(c => c.collectionId));
+      const missing = Array.from(derivedIds).filter(id => !knownIds.has(id));
+      if (missing.length) {
+        try {
+          const extra = await cookDb.findMany({ collectionId: { $in: missing } }, { projection: { _id: 0 } });
+          collections = [...(collections || []), ...(extra || [])];
+        } catch (_) {
+          // If DB lookup fails, still proceed with minimal entries using just IDs
+          for (const id of missing) {
+            collections.push({ collectionId: id, name: 'Collection', description: '' });
+          }
+        }
+      }
+
+      // Build status per collection
+      const cooks = [];
+      for (const coll of (collections || [])) {
+        const collectionId = coll.collectionId;
+        const [queued, running, generated] = await Promise.all([
+          jobsCol.countDocuments({ userId, collectionId, status: 'queued' }),
+          jobsCol.countDocuments({ userId, collectionId, status: 'running' }),
+          eventsCol.countDocuments({ userId, collectionId, type: 'PieceGenerated' }),
+        ]);
+        const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
+        const generationCount = generated;
+        const isActive = (queued + running) > 0 || (targetSupply && generationCount < targetSupply);
+        if (isActive) {
+          cooks.push({
+            collectionId,
+            collectionName: coll.name || 'Untitled',
+            generationCount,
+            targetSupply,
+            queued,
+            running,
+            updatedAt: coll.updatedAt,
+          });
+        }
+      }
+
+      return res.json({ cooks });
     } catch (err) {
       logger.error('[CookAPI] active list error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });
 
-  // GET /internal/cook/collections – list collections for user (stub)
+  // GET /internal/cook/collections – list collections for user (fallback to all if none found to ease dev/testing)
   router.get('/collections', async (req, res) => {
     try {
       if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
-      const userId = req.query.userId || req.user?.id || req.userId;
-      const collections = await cookDb.findByUser(userId);
+      const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+      let collections = [];
+      if (userId) {
+        collections = await cookDb.findByUser(userId);
+        logger.info(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
+      }
+      if ((!collections || collections.length === 0)) {
+        // Fallback: include legacy docs created without userId during early dev
+        try {
+          const legacy = await cookDb.findMany({ $or: [ { userId: { $exists: false } }, { userId: null } ] }, { projection: { _id: 0 } });
+          if (Array.isArray(legacy) && legacy.length) {
+            logger.warn(`[CookAPI] Falling back to legacy collections without userId: ${legacy.length}`);
+            collections = legacy;
+          }
+        } catch (e) {
+          logger.warn('[CookAPI] Legacy fallback failed', e.message);
+        }
+      }
       return res.json({ collections });
     } catch (err) {
       logger.error('[CookAPI] collections list error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  // POST /internal/cook/collections – create collection
+  router.post('/collections', async (req, res) => {
+    try {
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const { name, description = '' } = req.body || {};
+      const userId = req.user?.userId || req.user?.id || req.userId || req.body?.userId;
+      if (!name) return res.status(400).json({ error: 'name required' });
+      if (!userId) return res.status(400).json({ error: 'userId required' });
+      const doc = await cookDb.createCollection({ name, description, userId });
+      return res.status(201).json(doc);
+    } catch (err) {
+      logger.error('[CookAPI] create collection error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });
@@ -77,22 +169,6 @@ function createCookApi(deps = {}) {
       return res.json(doc);
     } catch (err) {
       logger.error('[CookAPI] get collection error', err);
-      return res.status(500).json({ error: 'internal-error' });
-    }
-  });
-
-  // POST /internal/cook/collections – create collection (stub)
-  router.post('/collections', async (req, res) => {
-    try {
-      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
-      const { name, description = '' } = req.body;
-      const userId = req.user?.id || req.userId;
-      if (!name) return res.status(400).json({ error: 'name required' });
-
-      const doc = await cookDb.createCollection({ name, description, userId });
-      return res.status(201).json(doc);
-    } catch (err) {
-      logger.error('[CookAPI] create collection error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });
@@ -138,6 +214,19 @@ function createCookApi(deps = {}) {
       return res.json(status);
     } catch (err) {
       logger.error('[CookAPI] status error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  // DEV: GET /internal/cook/debug/queue
+  router.get('/debug/queue', async (req, res) => {
+    try {
+      const userId = req.query.userId;
+      const filter = userId ? { userId } : {};
+      const dbg = await CookJobStore.getQueueDebug(filter);
+      return res.json(dbg);
+    } catch (err) {
+      logger.error('[CookAPI] debug queue error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
   });

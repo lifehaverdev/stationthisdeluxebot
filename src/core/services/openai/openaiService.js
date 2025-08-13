@@ -42,7 +42,8 @@ class OpenAIService {
     }
 
     const messages = [
-      { "role": "system", "content": instructions },
+      { "role": "user", "content": instructions },
+      { "role": "system", "content": "Acknowledged. I will follow these instructions. Exactly how you instructed. Please provide your prompt."},
       { "role": "user", "content": prompt }
     ];
 

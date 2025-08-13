@@ -381,6 +381,72 @@ Implementation order
 3. In CookMenuModal Overview, Test button closes modal and calls `createCollectionTestWindow(collection)` helper. 
 
 
++### Dynamic Trait Generators (Numeric Ranges) — Deliverable (2025-08-13)
++
++Problem
++Users may need thousands of simple numeric trait values (e.g., `[[miladyid]]` as 0–9999) and cannot manually author one trait per value.
++
++Solution Overview
++- Add a Generated mode for categories in the trait tree. Categories can be Manual (existing list of traits) or Generated.
++- First generator type: numeric `range`.
++
++Schema additions (saved under `config.traitTree.categories[]`)
++```json
++{
++  "name": "miladyid",
++  "mode": "generated",
++  "generator": {
++    "type": "range",
++    "start": 0,
++    "end": 9999,
++    "step": 1,
++    "zeroPad": 0,
++    "uniqueAcrossCook": true,
++    "shuffleSeed": null
++  }
++}
++```
++
++Semantics
++- Range generates the sequence [start, end] inclusive using step.
++- `zeroPad` left-pads when substituted into strings (e.g., 0001).
++- `uniqueAcrossCook: true` ensures each piece in the cook uses a unique value until the set is exhausted. If supply exceeds set size, wrap or error per config (MVP: wrap=false → error).
++- `shuffleSeed` (optional) applies a stable shuffle to the sequence to avoid predictable ordering.
++
++Substitution
++- Values from generated categories are substituted anywhere `[[CategoryName]]` appears, same as manual traits. Example:
++  - Parameter value: `https://miladymaker.net/milady/[[miladyid]]`
++  - With `miladyid = 42` → `https://miladymaker.net/milady/42`
++
++UI/UX
++- TraitTreeEditor: Category Mode toggle (Manual | Generated). If Generated=Range, show fields: start, end, step, zeroPad, uniqueAcrossCook, shuffleSeed; show total count and a 5-item preview.
++- Test Window: For Generated categories, render a compact numeric input instead of a huge dropdown. Randomise picks a valid value; lock allows manual entry.
++- Overview: No change beyond existing parameter editing/substitution rules.
++
++Cook Orchestration
++- When starting a cook with `uniqueAcrossCook`, the orchestrator assigns values deterministically per piece index using the (optionally shuffled) range. No need to persist 10k trait rows; values are virtual.
++- Store assignment events (`CategoryValueAssigned`) to preserve provenance and resume accurately.
++- Queueing strategy: enqueue in chunks (e.g., 1k at a time) to avoid large bursts.
++
++Dry-run/Test
++- Test Window uses the same generator rules but does not reserve values. Users can type any valid value, or randomise.
++
++Performance & Storage
++- Do not materialise generated traits into the DB. Persist only the generator config. Projections compute counts on the fly.
++
++MVP Tasks
++1. TraitEngine: implement `generated: {type:'range'}` resolver (random selection for test; deterministic per-piece for cooks with optional shuffle).
++2. TraitTreeEditor: add Generated mode with Range fields, preview, count.
++3. CollectionTestWindow: render numeric input for generated categories; validate range.
++4. CookOrchestratorService: deterministic assignment across supply; emit assignment events; chunked enqueue.
++5. Validation: ensure supply ≤ generator cardinality when `uniqueAcrossCook` is true (or document wrap behavior once supported).
++
++Example
++```
++Category: miladyid → range(0..9999)
++Parameter: input_url = "https://miladymaker.net/milady/[[miladyid]]"
++```
++This yields 10,000 distinct inputs with unique IDs when cooked.
 
 Progress summary (2025-08-12)
 Implemented since last checkpoint
@@ -392,8 +458,7 @@ Trait Tree uncoupled from generator (metadata-only).
 TraitTreeEditor
 Param dropdown removed to reflect new separation.
 Test Window
-CollectionTestWindow.js opens centered on canvas, lists categories, allows randomise & Execute.
-Executes selected tool via executionClient.execute, substitutes [[Category]] placeholders, shows progress/result (image or status).
+CollectionTestWindow.js opens centered on canvas, is draggable/closable/refreshable, shows trait selectors, renders required parameter inputs with optional behind “show more”, supports text overlay for prompts, and executes with progress/result.
 ADR updated with:
 Flexible trait values & generator binding schema.
 Revised Detail UI layout.
@@ -407,9 +472,129 @@ Stats & progress in Overview.
 Spell support (picker + execution path).
 Export pipeline (metadata JSON + images).
 **Test Window logic** – 
-408a| • Gather current `paramOverrides` from collection.
-408b| • Resolve `[[Category]]` placeholders with selected trait values (or auto-randomise when dropdown set to "— random —").
-408c| • Fill in any missing parameters with defaults from tool input schema.
-408d| • POST to `/internal/cook/test` with full payload, subscribe to websocket updates like `toolWindow.js`.
-408e| • On final output, render using resultContent helpers; images clickable to open `imageOverlay.js` for full-size preview.
+408a| • Render required parameters as styled inputs; optional parameters behind a "show more" toggle.
+408b| • Inputs initialize from collection `paramOverrides` merged with tool schema defaults; text fields support prompt overlay on focus.
+408c| • Resolve `[[Category]]` placeholders in input values; auto-randomise unset trait dropdowns.
+408d| • Validate required inputs before execution; then execute via the unified execution client and subscribe for progress.
+408e| • On final output, render using resultContent helpers; images are clickable to open `imageOverlay.js` for full-size preview.
+409|
+409a|### Progress summary (2025-08-12 PM)
+409b|• Generator picker switched to dropdown; name persists on navigation.
+409c|• TraitTreeEditor now stores `value` not `prompt`; UI updated accordingly.
+409d|• CollectionTestWindow: required/optional param UI with show-more, prompt overlay binding; sends defaults + overrides; substitutes trait `value`; randomise works; added Refresh, Close, drag.
+409e|• WebSocket progress and result rendering integrated (image overlay supported).
+409f|• Overview tab gained Delete button (with confirm) – new internal/external DELETE endpoints implemented and verified.
+409g|• Bug fix: ensured generator & paramOptions reload on entering Detail view.
+409h|
+
+### Progress summary (2025-08-13)
+Implemented since last checkpoint
+- CookMenuModal
+  - Start Cook wired to POST `/api/v1/collections/:id/cook/start` (proxies to internal). Sends `toolId`, `config.traitTree`, `config.paramOverrides`, `totalSupply`.
+  - Overview param edits persist to `config.paramOverrides`.
+  - TraitTreeEditor supports Generated (Range) categories with count/preview.
+- CollectionTestWindow
+  - Required/optional parameter inputs with show-more; prompt overlay; trait selectors.
+  - Generated range support (numeric input, randomize, zeroPad when substituting).
+  - Header buttons: Save (persists `config.paramOverrides`), Refresh, Close.
+  - Execute runs tool via execution client with progress/result rendering.
+- Backend
+  - External start endpoint added; internal `/internal/v1/data/cook/start` accepts `traitTree` and `paramOverrides`.
+  - Orchestrator uses `TraitEngine.selectFromTraitTree` with deterministic selection for generated ranges.
+  - `TraitEngine` implements manual/weighted and generated range selection; zeroPad and optional shuffle mapping.
+
+Next focus
+- Orchestrator & Worker
+  - Queue chunking across `totalSupply`, uniqueAcrossCook deterministic assignments, and `CategoryValueAssigned` events.
+  - Worker consumption and status events end-to-end.
+- Projections & Status
+  - `CookProjectionUpdater` updates `cook_status`; wire `GET /internal/v1/data/cook/active` and surface in UI.
+- Review & Export
+  - Approve/reject endpoints and web UI; export stub to R2.
+- Spells
+  - Add spell picker and execution path parity.
+
+
+### Current Blocker (2025-08-13): Start Cook enqueues but no tool execution in dev
+
+Problem statement
+- Starting a cook from `CookMenuModal.js` returns 200 and logs “Cook started (queued 1)”. However:
+  - No subsequent POST to `/internal/v1/data/execute` is observed.
+  - The Active Cooks section remains empty.
+
+Observed logs (summarised)
+- Start endpoint hit successfully:
+  - `[CookAPI] Started cook. Queued 1 for collection <id> by user <userId>`
+- Embedded worker ensured and started:
+  - `[CookEmbeddedWorker] Starting cook job watcher in-process…` → `Watcher active.`
+- Mongo change streams not permitted in current env (AtlasError code 8000):
+  - `$changeStream is not allowed...`
+- After adding polling fallback, no crash, but still no “Submitting job …” log and no request to `/internal/v1/data/execute`.
+- Active cooks endpoint shows zero for user-scoped collections and falls back to a legacy collection without `userId` (not considered active for the authenticated user):
+  - `[CookAPI] collections list for user <userId> -> 0`
+  - `[CookAPI] Falling back to legacy collections without userId: 1`
+
+What’s working
+- External → internal routing for start is correct and includes `collectionId` and `userId`.
+- CSRF/session/JWT path is validated; `req.user` is populated on external routes.
+- Job enqueue to `cook_jobs` succeeds.
+
+What’s not working
+- In-process worker does not submit the queued job to `/internal/v1/data/execute` in this environment.
+- Active cooks view relies on `cook_collections` filtered by `userId`, so legacy docs (without `userId`) do not appear as “active”.
+
+Root-cause hypotheses
+1) Watcher delivery not triggering submission
+   - Change streams are disallowed; initial watcher crashed. A polling fallback was added, but there’s no evidence of the poller invoking the callback (no “Submitting job …” logs and no execute POST).
+   - Possibility: the poller started after the job was already transitioned, or a race/marking inconsistency prevents detection.
+2) Multiple ensure() calls vs single watcher
+   - `ensure()` currently fires on each start call. While guarded by a `started` flag, we should confirm a single loop is active and not torn down.
+3) Job shape or filters mismatch
+   - Poller uses `{ status: 'queued' }` oldest-first. If any code marks the job `running` before the poll loop can claim (or if the job lacks expected fields), it might be skipped.
+4) Execute pre-check fail not surfaced
+   - If execute pre-check (points/wallet/model) failed synchronously, there would be error logs. None observed, which suggests the submission never happened.
+
+Mitigations added so far
+- Embedded worker auto-started from `/internal/v1/data/cook/start` to support single-process dev.
+- `CookJobStore.watchQueued` now:
+  - Falls back to polling if change streams aren’t available.
+  - Switches to polling on change stream runtime error.
+  - Uses `claimNextQueued()` for atomic pickup to avoid dupes.
+- `/internal/v1/data/cook/active` implemented to surface active progress (queued/running/generated) when user-owned collections are present.
+
+Gaps/risks
+- Active cooks remain empty when collections were created earlier without `userId`. This blocks UI visibility but is orthogonal to execution.
+- Embedded worker logging doesn’t currently print queue length or claimed job id on each poll; diagnosing poll behavior is slower without this instrumentation.
+
+Proposed next steps
+1) Instrumentation (low risk)
+   - Add periodic debug in embedded worker: count of queued jobs and log when a job is claimed (`claimed job <_id>`), with backoff.
+   - Log execute POST attempt payload keys (toolId, masterAccountId) and status code.
+2) Hard “nudge” submission path (low risk)
+   - After enqueue, optionally attempt a one-shot `claimNextQueued()` and submit immediately (guarded by env flag `COOK_IMMEDIATE_SUBMIT=true`) to verify end-to-end path in dev.
+3) Active cooks robustness (medium)
+   - For Active endpoint, derive active collectionIds from `cook_jobs` and `cook_events` for the authenticated user and join with `cook_collections` when available; otherwise include minimal status by `collectionId` even if the collection doc lacks `userId`.
+4) Single watcher lifecycle (low)
+   - Move `ensure()` from the start endpoint to service initialization with a single-process guard, to avoid per-request triggering.
+5) Add `/internal/v1/data/cook/debug/queue` (dev-only)
+   - Return counts and the next candidate job document for quick verification.
+
+Exit criteria for this blocker
+- Start Cook yields: Active Cooks shows the collection with queued/running counts, and a subsequent POST to `/internal/v1/data/execute` is observed within a few seconds in dev (without running a separate worker service).
+
+
+### Progress summary (2025-08-13 late PM)
+- Start Cook now immediately submits the first job in dev/single-process via a targeted claim-by-id path in `CookOrchestratorService`.
+- Verified end-to-end submit to `/internal/v1/data/execute` with proper credit check and ComfyDeploy submission (Run ID observed).
+- Webhooks not received in test environment; completion and scheduling rely on webhook path in production.
+- Reduced log noise: embedded worker queue metrics gated behind a boolean; queue polling logs disabled by default. Kept a concise "[Cook] Submitted piece" info line.
+
+Next steps
+- Enable webhook endpoint in production and validate: `PieceGenerated` events, job markDone, and `scheduleNext` sequencing.
+- Add preflight gating before enqueuing/submitting next pieces:
+  - Points check (halt/emit `CookPaused` when insufficient)
+  - Supply/cadence guard (respect `totalSupply`, optional backoff)
+- Emit `CategoryValueAssigned` events for generated ranges (deterministic per piece) to support provenance and resume.
+- Chunked enqueue and/or tuned `maxConcurrent` to smooth bursts once webhooks flow is confirmed.
+- UI: surface concise active cook status from `cook_status` (queued/running/generated) and hide embedded worker metrics from logs in production.
 
