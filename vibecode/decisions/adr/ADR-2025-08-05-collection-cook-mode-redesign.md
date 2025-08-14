@@ -598,3 +598,47 @@ Next steps
 - Chunked enqueue and/or tuned `maxConcurrent` to smooth bursts once webhooks flow is confirmed.
 - UI: surface concise active cook status from `cook_status` (queued/running/generated) and hide embedded worker metrics from logs in production.
 
+
+### Course correction (2025-08-13 Night) — Remove worker; immediate-submission loop, tool-agnostic
+
+Revised architecture (supersedes queue/worker portions above):
+- Orchestrator-driven, no background worker
+  - On Start Cook: orchestrator builds params (TraitEngine), enqueues logical piece index, and immediately submits via the unified execution endpoint. No dependency on change streams or a polling worker to progress.
+  - On Completion: webhook (or immediate delivery for tools with `deliveryMode: 'immediate'`) updates the generation record, appends `PieceGenerated`, and the orchestrator schedules the next piece by immediately submitting it (until supply reached).
+- Minimal preflight gating
+  - Points/credit checks remain in the central execution path (internal `/execute`) for consistency across all tools.
+  - Orchestrator performs a lightweight gate before submit: ensure `generatedCount < totalSupply`. This prevents runaway requests for finite collections.
+- Tool-agnostic execution
+  - Execution uses `ToolDefinition` contracts. Generators may deliver via webhooks or immediate responses. Orchestrator does not assume Comfy-specific webhooks; it reacts to the system’s standard “generation completed” signal.
+  - Extend `ToolDefinition` as needed to support collection cooks (e.g., enriched `metadata` for provenance, confirmation of `deliveryMode`, and any per-tool hints helpful for batching or throttling).
+- Provenance
+  - Persist per-piece `selectedTraits` and the resolved parameter snapshot into `generation.metadata` (e.g., `{ collectionId, pieceIndex, selectedTraits, paramSnapshot }`) so we can reproduce and review/export later.
+
+Mongo collections (revised):
+- `cook_events` — append-only event stream (CookStarted, PieceQueued, PieceGenerated, CookCompleted, CookPaused/Halted).
+- `cook_status` — projection updated from events for progress (state, queued, generated, approved/rejected, lastGenerated).
+- Generation records — source of truth for outputs; flagged with collection metadata. No `cook_jobs` queue is required for progression.
+
+Service modules (revised):
+- `TraitEngine` — unchanged: selection, conflict resolution, templating (manual/weighted + generated ranges). Add explicit `selectedTraits` to generation metadata for each piece.
+- `CookOrchestratorService` — owns FSM and immediate submission on Start + scheduleNext. Performs supply gating pre-submit and emits events.
+- `CookProjectionUpdater` – unchanged: builds `cook_status` from `cook_events`.
+- `ReviewService` / `ExportService` – unchanged interfaces; operate on stored generation records and collection metadata.
+
+Deprecations:
+- Remove “Stateless Worker Containers” and any polling/Change-Stream dependent embedded worker from the critical path.
+- Remove reliance on `cook_jobs` as a live queue for progression. It may be kept only as an audit trail if desired, but is not required for scheduling.
+
+Execution flow (revised):
+1) Start Cook → Orchestrator validates supply, selects traits, resolves params, submits generation immediately.
+2) Completion (webhook or immediate) → Update generation record, append `PieceGenerated`, spend points (central system), then orchestrator immediate-submits the next piece if supply remains.
+3) When `generatedCount === totalSupply` and no running pieces → append `CookCompleted` and stop.
+
+ToolDefinition alignment:
+- Continue to rely on existing fields (`service`, `inputSchema`, `deliveryMode`, `costingModel`).
+- Permit additional `metadata` needed for collection cooking (e.g., hints for param substitution, recommended throttle). No Comfy-specific assumptions embedded in the orchestrator.
+
+Operational notes:
+- Logs are kept minimal (single submit line per piece). No periodic polling logs. Webhook-less tools must deliver via the immediate path, which is already supported by `deliveryMode: 'immediate'`.
+- UI status (e.g., 1/20) is driven by `cook_status` projection and generation records; scheduleNext submissions occur immediately after completion, without background workers.
+

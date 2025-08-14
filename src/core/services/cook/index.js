@@ -6,7 +6,7 @@ const { createLogger } = require('../../../utils/logger');
 const CookEmbeddedWorker = require('./CookEmbeddedWorker');
 
 // Local toggle: auto-start in-process embedded worker once (single-process dev)
-const EMBEDDED_WORKER_AUTO_START = true;
+const EMBEDDED_WORKER_AUTO_START = false;
 
 async function initializeCookServices(logger = console) {
   const log = logger.child ? logger.child({ service: 'Cook' }) : logger;

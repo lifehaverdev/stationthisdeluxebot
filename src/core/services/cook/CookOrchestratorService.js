@@ -39,7 +39,7 @@ class CookOrchestratorService {
   }
 
   /**
-   * Start cook with one initial job. Scheduler ramps to max 3 concurrent.
+   * Start cook with immediate submission of the first piece and orchestration-managed scheduling.
    */
   async startCook({ collectionId, userId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply = 1 }) {
     await this._init();
@@ -55,7 +55,7 @@ class CookOrchestratorService {
 
     await this.appendEvent('CookStarted', { collectionId, userId, totalSupply: supply });
 
-    // Enqueue first job only if within supply
+    // Submit first piece immediately if within supply
     if (state.nextIndex < state.total && (state.generatedCount + state.running.size) < state.total) {
       const enq = await this._enqueuePiece({ collectionId, userId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
       const enqueuedJobId = enq.jobId;
@@ -63,45 +63,13 @@ class CookOrchestratorService {
       state.nextIndex += 1;
       await this.appendEvent('PieceQueued', { collectionId, userId, jobId: enqueuedJobId, pieceIndex: 0 });
 
-      // Immediate submit in dev to bypass watcher reliance
       if (IMMEDIATE_SUBMIT) {
         try {
-          // Prefer to claim the exact job we just enqueued
-          let claimed = await CookJobStore.claimById(enqueuedJobId);
-          if (!claimed) {
-            // If someone already marked it running (race), read it back
-            const maybeRunning = await CookJobStore.getById(enqueuedJobId);
-            if (maybeRunning && maybeRunning.status === 'running') {
-              claimed = maybeRunning;
-            }
-          }
-          if (!claimed) {
-            // Final fallback: claim any next queued
-            claimed = await CookJobStore.claimNextQueued();
-          }
-
-          if (claimed) {
-            const { spellIdOrToolId, userContext } = claimed;
-            const payload = {
-              toolId: spellIdOrToolId,
-              inputs: userContext || {},
-              user: { masterAccountId: userId, platform: 'cook-orchestrator-immediate' },
-              metadata: {
-                source: 'cook',
-                collectionId,
-                jobId: String(claimed._id),
-                toolId: spellIdOrToolId,
-                traitTree,
-                paramOverrides,
-                totalSupply: supply,
-              },
-            };
-            if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${claimed._id} (tool ${spellIdOrToolId})`);
-            const resp = await internalApiClient.post('/internal/v1/data/execute', payload);
-            this.logger.info(`[Cook] Submitted piece. job=${claimed._id} resp=${resp?.status || 'ok'}`);
-          } else {
-            if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.warn('[CookOrchestrator] Immediate submit enabled but no job could be claimed or found');
-          }
+          // Build submission payload directly without waiting for any watcher
+          const submission = enq.submission;
+          if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
+          const resp = await internalApiClient.post('/internal/v1/data/execute', submission);
+          this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
         } catch (e) {
           this.logger.error(`[CookOrchestrator] Immediate submit failed: ${e.message}`);
         }
@@ -113,33 +81,61 @@ class CookOrchestratorService {
     return { queued: 0 };
   }
 
+  /**
+   * Prepare the next piece: select traits deterministically by index, resolve params, and persist an audit job.
+   * Returns { jobId, submission } where submission is the payload for the unified execute endpoint.
+   */
   async _enqueuePiece({ collectionId, userId, index, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate }) {
+    let selectedTraits;
     let finalParams;
+
     if (Array.isArray(traitTree) && traitTree.length) {
       const selection = TraitEngine.selectFromTraitTree(traitTree, { deterministicIndex: index });
+      selectedTraits = selection;
       finalParams = TraitEngine.applyTraitsToParams(paramOverrides || {}, selection);
     } else {
-      const { selectedTraits } = TraitEngine.generateTraitSelection(traitTypes);
+      const generated = TraitEngine.generateTraitSelection(traitTypes);
+      selectedTraits = generated.selectedTraits;
       const baseTemplate = Object.keys(paramOverrides||{}).length ? paramOverrides : paramsTemplate;
       finalParams = TraitEngine.applyTraitsToParams(baseTemplate, selectedTraits);
     }
 
+    // Build unified submission payload with provenance
+    const spellIdOrToolId = spellId || toolId;
+    const pieceIndex = index;
+    const submission = {
+      toolId: spellIdOrToolId,
+      inputs: finalParams || {},
+      user: { masterAccountId: userId, platform: 'cook-orchestrator' },
+      metadata: {
+        source: 'cook',
+        collectionId,
+        pieceIndex,
+        toolId: spellIdOrToolId,
+        selectedTraits,
+        paramSnapshot: finalParams || {},
+      }
+    };
+
+    // Keep cook_jobs as an audit trail only; not used for scheduling anymore
     const job = await CookJobStore.enqueue({
-      spellIdOrToolId: spellId || toolId,
+      spellIdOrToolId,
       userContext: finalParams,
       collectionId,
       userId,
       traitTree,
       paramOverrides,
-      totalSupply: undefined, // not needed per-job
-      pieceIndex: index,
+      pieceIndex,
     });
-    return { jobId: job._id };
+
+    // Link job id for legacy references
+    submission.metadata.jobId = String(job._id);
+
+    return { jobId: job._id, submission };
   }
 
   /**
-   * Called by webhook processor when a job completes or fails.
-   * Schedules next piece if below max concurrency and supply not exhausted.
+   * Called when a piece completes. Schedules the next submissions immediately (up to max concurrency) without any worker.
    */
   async scheduleNext({ collectionId, userId, finishedJobId, success = true }) {
     const key = this._getKey(collectionId, userId);
@@ -178,6 +174,14 @@ class CookOrchestratorService {
       state.nextIndex += 1;
       queued += 1;
       await this.appendEvent('PieceQueued', { collectionId, userId, jobId: enq.jobId, pieceIndex: idx });
+
+      // Immediate submit for newly queued pieces
+      try {
+        const resp = await internalApiClient.post('/internal/v1/data/execute', enq.submission);
+        this.logger.info(`[Cook] Submitted piece. job=${enq.jobId} resp=${resp?.status || 'ok'}`);
+      } catch (e) {
+        this.logger.error(`[CookOrchestrator] submit failed for job ${enq.jobId}: ${e.message}`);
+      }
     }
     return { queued };
   }

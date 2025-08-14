@@ -347,14 +347,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         const finishedJobId = meta.jobId;
         if (collectionId && finishedJobId) {
           await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, userId: String(generationRecord.masterAccountId), jobId: finishedJobId, generationId });
-          // Mark job done in queue store
-          try {
-            const { CookJobStore } = require('../cook');
-            await CookJobStore.markDone(finishedJobId);
-          } catch (e) {
-            logger.warn(`[Webhook Processor] Failed to mark cook job done: ${e.message}`);
-          }
-          // Schedule next piece
+          // Remove dependency on cook_jobs queue progression; keep audit only
+          // Schedule next piece immediately via orchestrator
           try {
             await CookOrchestratorService.scheduleNext({ collectionId, userId: String(generationRecord.masterAccountId), finishedJobId, success: true });
           } catch (e) {

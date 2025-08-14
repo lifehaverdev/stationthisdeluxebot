@@ -238,6 +238,19 @@ module.exports = function generationExecutionApi(dependencies) {
               payload: staticPayload
             });
           }
+
+          // If this was submitted by Cook orchestrator, schedule next immediately
+          try {
+            const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
+            if (isCook) {
+              const { CookOrchestratorService } = require('../../../core/services/cook');
+              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: staticPayload.generationId });
+              await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
+            }
+          } catch (e) {
+            logger.warn(`[Execute] Cook scheduleNext (static) error: ${e.message}`);
+          }
+
           return res.status(200).json(staticPayload);
         }
         case 'openai': {
@@ -328,6 +341,18 @@ module.exports = function generationExecutionApi(dependencies) {
                 toolId: tool.toolId,
               }
             });
+          }
+
+          // If this was submitted by Cook orchestrator, schedule next immediately
+          try {
+            const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
+            if (isCook) {
+              const { CookOrchestratorService } = require('../../../core/services/cook');
+              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: generationRecord._id.toString() });
+              await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
+            }
+          } catch (e) {
+            logger.warn(`[Execute] Cook scheduleNext (openai) error: ${e.message}`);
           }
 
           return res.status(200).json({
