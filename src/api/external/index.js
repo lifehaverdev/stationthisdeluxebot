@@ -52,6 +52,8 @@ function initializeExternalApi(dependencies) {
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message: { error: { code: 'TOO_MANY_REQUESTS', message: 'You have sent too many requests in a given amount of time. Please try again later.' } },
+    // Do not rate-limit webhook callbacks
+    skip: (req) => req.path.startsWith('/webhook/'),
   });
 
   // Apply the rate limiter to all routes in the external API router.
