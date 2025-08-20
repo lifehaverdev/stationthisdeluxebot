@@ -32,14 +32,43 @@
     backdrop-filter: var(--backdrop-blur);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
-    min-width: var(--tool-window-min-width);
+    width: var(--tool-window-fixed-width); /* Fixed width */
+    min-width: var(--tool-window-fixed-width);
     color: var(--text-color);
     font-family: var(--font-family-mono);
     z-index: var(--z-tool-window);
     user-select: none;
+    overflow: visible; /* keep anchors visible */
     -webkit-user-select: none; /* For Safari */
     -moz-user-select: none;    /* For Firefox */
     -ms-user-select: none;     /* For Internet Explorer/Edge */
+}
+
+/* Fullscreen mode */
+.tool-window.fullscreen {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+    z-index: calc(var(--z-modal) + 5);
+    overflow: visible; /* allow anchors outside */
+}
+
+/* Expand / collapse button */
+.expand-button {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: var(--font-size-large);
+    transition: all var(--transition-speed) var(--transition-timing);
+}
+
+.expand-button:hover {
+    color: var(--text-color-muted);
 }
 
 .tool-window-header {

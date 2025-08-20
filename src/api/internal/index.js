@@ -344,6 +344,12 @@ function initializeInternalServices(dependencies = {}) {
   }, 2000); // Timeout to allow all routes to register
 
   // Mount other specific internal APIs
+  // Model Import API
+  const modelImportRouter = require('./models/modelImportApi')(apiDependencies);
+  if (modelImportRouter && typeof modelImportRouter === 'function') {
+    v1DataRouter.use('/models', modelImportRouter);
+    logger.info('[InternalAPI] Model Import API mounted at /v1/data/models');
+  }
   // mainInternalRouter.use('/lora-trigger-map', loraTriggerMapRouter); // REVOVED: Redundant mounting, already on v1DataRouter
 
   // ++ MOUNT NEW LORAS API ROUTER ++

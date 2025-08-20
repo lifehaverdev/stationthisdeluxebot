@@ -226,6 +226,9 @@ export default class ModsMenuModal {
         listHtml = '<div class="empty-message">No models found.</div>';
       } else {
         const header = selectedTags.length ? `<h3 class="filter-header">${selectedTags.join(' + ')} (${models.length})</h3>` : '';
+        // Add an Import button for LoRA or Checkpoint categories
+        const showImport = ['lora','checkpoint'].includes(currentCategory);
+        const importButton = showImport ? '<button class="import-btn">＋ Import</button>' : '';
         const sortModels = [...models].sort((a, b) => {
           const idA = this.getModelIdentifier(a);
           const idB = this.getModelIdentifier(b);
@@ -244,7 +247,7 @@ export default class ModsMenuModal {
         }).join('') + '</ul>';
         // Extra tag bar
         const extraBar = extraTags.length ? `<div class="extra-tag-bar">` + extraTags.map(t => `<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('') + `</div>` : '';
-        listHtml = header + extraBar + listHtml;
+        listHtml = header + importButton + extraBar + listHtml;
       }
     }
 
@@ -406,9 +409,10 @@ export default class ModsMenuModal {
     }
 
     if (view === 'importForm') {
+      const importTitle = this.state.currentCategory === 'checkpoint' ? 'Import Checkpoint' : 'Import LoRA';
       const html = `
         <div class="import-form">
-          <h3>Import LoRA</h3>
+          <h3>${importTitle}</h3>
           <input type="text" class="url-input" placeholder="Civitai or HuggingFace URL" value="${this.state.importUrl}">
           <button class="submit-import">Import</button>
           <button class="cancel-import">Cancel</button>
@@ -424,9 +428,15 @@ export default class ModsMenuModal {
         const url = input.value.trim();
         if (!url) return;
         try {
-          await fetch('/api/v1/models/lora/import', {
+          const endpoint = this.state.currentCategory === 'checkpoint'
+            ? '/api/v1/models/checkpoint/import'
+            : '/api/v1/models/lora/import';
+          // CSRF-protected request (similar to favourites toggle)
+          const csrfRes = await fetch('/api/v1/csrf-token');
+          const { csrfToken } = await csrfRes.json();
+          await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type':'application/json' },
+            headers: { 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
             body: JSON.stringify({ url }),
             credentials: 'include'
           });

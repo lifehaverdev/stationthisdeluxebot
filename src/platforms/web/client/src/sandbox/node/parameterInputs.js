@@ -50,9 +50,41 @@ function createParameterInput(key, param, mapping, toolWindows) {
         input.placeholder = param.description || param.name;
 
         input.addEventListener('input', (e) => {
-            const toolWindow = getToolWindow(container.closest('.tool-window').id);
+            const toolWindowEl = container.closest('.tool-window');
+            const toolWindow = getToolWindow(toolWindowEl.id);
             if (toolWindow && toolWindow.parameterMappings[key]) {
                 toolWindow.parameterMappings[key].value = e.target.value;
+
+                // --- Versioning: create new pending version on parameter change ---
+                if (!Array.isArray(toolWindow.outputVersions)) {
+                    toolWindow.outputVersions = [];
+                }
+                const needsNewVersion = toolWindow.outputVersions.length === 0 ||
+                    (toolWindow.currentVersionIndex !== toolWindow.outputVersions.length - 1) ||
+                    (toolWindow.outputVersions[toolWindow.outputVersions.length - 1] && !toolWindow.outputVersions[toolWindow.outputVersions.length - 1]._pending);
+
+                if (needsNewVersion) {
+                    const snapshot = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
+                    const placeholder = { _pending: true, type: 'pending', params: snapshot };
+                    toolWindow.outputVersions.push(placeholder);
+                    toolWindow.currentVersionIndex = toolWindow.outputVersions.length - 1;
+                } else {
+                    // Update snapshot of existing pending version
+                    const lastIdx = toolWindow.outputVersions.length - 1;
+                    if (toolWindow.outputVersions[lastIdx] && toolWindow.outputVersions[lastIdx]._pending) {
+                        toolWindow.outputVersions[lastIdx].params = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
+                    }
+                }
+
+                // Refresh version selector UI if present
+                if (typeof document !== 'undefined') {
+                    if (toolWindowEl.versionSelector && toolWindowEl.versionSelector.querySelector) {
+                        const btn = toolWindowEl.versionSelector.querySelector('.version-button');
+                        if (btn && typeof btn.refreshDropdown === 'function') {
+                            btn.refreshDropdown();
+                        }
+                    }
+                }
             }
         });
 

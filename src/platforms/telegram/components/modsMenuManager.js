@@ -1326,6 +1326,9 @@ async function handleModImportReply(bot, msg, context, dependencies) {
     logger.info(`[ModsMenu] Received reply for mod import. MAID: ${masterAccountId}, URL: '${url}'`);
 
     try {
+        // NOTE: 2025-08-20 – This legacy endpoint now delegates internally to
+        // /internal/v1/data/models/lora/import (see modelImportApi.js). Telegram
+        // flow can keep using the original path for backward-compatibility.
         const result = await dependencies.internal.client.post('/internal/v1/data/loras/import', {
             url: url,
             userId: masterAccountId

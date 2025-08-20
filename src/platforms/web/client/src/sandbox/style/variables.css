@@ -19,6 +19,7 @@
   /* Dimensions */
   --sidebar-width: 300px;
   --tool-window-min-width: 300px;
+  --tool-window-fixed-width: 340px;
   --modal-padding: 16px;
   --border-radius: 12px;
   

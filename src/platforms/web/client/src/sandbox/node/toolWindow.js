@@ -16,7 +16,6 @@ import {
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
-import { createPermanentConnection } from '../connections/index.js';
 import { generationIdToWindowMap, registerWebSocketHandlers, generationCompletionManager } from './websocketHandlers.js';
 import { renderResultContent } from './resultContent.js';
 import { createParameterSection, showError } from './parameterInputs.js';
@@ -93,7 +92,16 @@ export function createToolWindow(tool, position, id = null, output = null, param
         element: toolWindowEl,
         workspaceX: position.x,
         workspaceY: position.y,
+        // Store the latest output for backward compatibility
         output: output || (existingWindow ? existingWindow.output : null),
+        // --- Versioning ---
+        outputVersions: (existingWindow && Array.isArray(existingWindow.outputVersions))
+            ? [...existingWindow.outputVersions]
+            : (output ? [output] : []),
+        currentVersionIndex: (existingWindow && typeof existingWindow.currentVersionIndex === 'number')
+            ? existingWindow.currentVersionIndex
+            : ((output) ? 0 : -1),
+        // -----------------------------------------
         parameterMappings: paramMappings
     };
     addToolWindow(windowData);
@@ -118,6 +126,13 @@ export function createToolWindow(tool, position, id = null, output = null, param
 
     // Create window components
     const header = createWindowHeader(tool.displayName);
+    // --- Version Selector UI ---
+    const versionSelector = createVersionSelector(windowData, toolWindowEl);
+    // Insert before the close button (last child)
+    header.insertBefore(versionSelector, header.lastChild);
+    // Store reference for easy refresh later
+    toolWindowEl.versionSelector = versionSelector;
+    // --------------------------------
     const requiredSection = createParameterSection(params.required, 'required-params', paramMappings, getToolWindows());
     const optionalSection = createParameterSection(params.optional, 'optional-params', paramMappings, getToolWindows());
     const showMoreBtn = createShowMoreButton(optionalSection);
@@ -148,43 +163,16 @@ export function createToolWindow(tool, position, id = null, output = null, param
         };
         toolWindowEl.appendChild(loadBtn);
     } else {
-        // Each click creates a *new* window (5px offset) and runs execution there.
+        // Each click now runs execution in the SAME window and stores a new version.
         executeBtn.addEventListener('click', async () => {
-            const OFFSET = 5;
-            // Create a duplicate window slightly offset so the previous result stays visible
-            const dupPos = { x: windowData.workspaceX + OFFSET, y: windowData.workspaceY + OFFSET };
-            // Pass parameterMappings to duplicate
-            const dupEl = createToolWindow(tool, dupPos, null, null, windowData.parameterMappings);
-
-            // ---- Copy connections from the source node to duplicate ----
-            // a) incoming connections (parameterMappings)
-            Object.entries(windowData.parameterMappings || {}).forEach(([paramKey, mapping]) => {
-                if (mapping && mapping.type === 'nodeOutput') {
-                    const fromEl = document.getElementById(mapping.nodeId);
-                    if (fromEl) {
-                        createPermanentConnection(fromEl, dupEl, mapping.outputKey || paramKey);
-                    }
-                }
-            });
-
-            // b) outgoing connections
-            (getConnections() || []).filter(c => c.fromWindowId === windowId).forEach(conn => {
-                const toEl = document.getElementById(conn.toWindowId);
-                if (toEl) {
-                    createPermanentConnection(dupEl, toEl, conn.type);
-                }
-            });
-
-            // Randomise seed in duplicate mappings
-            const dupWinData = getToolWindow(dupEl.id);
-            if (dupWinData) {
-                randomizeSeedInMappings(dupWinData.parameterMappings);
-                persistState();
+            // Randomise any seed-like static parameters to encourage variation between versions
+            randomizeSeedInMappings(windowData.parameterMappings);
+            persistState();
+            await executeNodeAndDependencies(windowId);
+            // Refresh version selector UI after new output is saved
+            if (toolWindowEl.versionSelector && toolWindowEl.versionSelector.querySelector('.version-button').refreshDropdown) {
+                toolWindowEl.versionSelector.querySelector('.version-button').refreshDropdown();
             }
-            // ------------------------------------------------------
-
-            // Execute the duplicate (includes dependencies)
-            await executeNodeAndDependencies(dupEl.id);
         });
         toolWindowEl.appendChild(executeBtn);
     }
@@ -403,6 +391,46 @@ function createWindowHeader(title) {
     titleElement.textContent = title;
     titleElement.style.fontWeight = 'bold';
 
+    // --- Fullscreen Toggle Button ---
+    const expandBtn = document.createElement('button');
+    expandBtn.textContent = '⤢'; // Unicode diagonal arrow (expand)
+    expandBtn.className = 'expand-button';
+    expandBtn.addEventListener('click', () => {
+        const winEl = header.parentElement;
+        if (!winEl) return;
+        const isFullscreen = winEl.classList.contains('fullscreen');
+        const optionalSection = winEl.querySelector('.optional-params');
+        const showMoreBtn = winEl.querySelector('.show-more-button');
+        const isOptVisible = optionalSection ? window.getComputedStyle(optionalSection).display !== 'none' : false;
+        if (!isFullscreen) {
+            // Store original size/position for restoration
+            winEl._origLeft = winEl.style.left;
+            winEl._origTop = winEl.style.top;
+            winEl._origWidth = winEl.style.width;
+            winEl._origHeight = winEl.style.height;
+            // Remember current visibility state
+            winEl._optExpandedBeforeFS = isOptVisible;
+            winEl.classList.add('fullscreen');
+            if (!isOptVisible && showMoreBtn) {
+                showMoreBtn.click();
+            }
+            expandBtn.textContent = '↙';
+        } else {
+            winEl.classList.remove('fullscreen');
+            if (winEl._origLeft !== undefined) winEl.style.left = winEl._origLeft;
+            if (winEl._origTop !== undefined) winEl.style.top = winEl._origTop;
+            if (winEl._origWidth !== undefined) winEl.style.width = winEl._origWidth;
+            if (winEl._origHeight !== undefined) winEl.style.height = winEl._origHeight;
+            const wasExpandedBefore = winEl._optExpandedBeforeFS;
+            if (!wasExpandedBefore && showMoreBtn && window.getComputedStyle(optionalSection).display !== 'none') {
+                showMoreBtn.click();
+            }
+            delete winEl._optExpandedBeforeFS;
+            expandBtn.textContent = '⤢';
+        }
+    });
+    // ---------------------------------
+
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
     closeBtn.className = 'close-button';
@@ -491,7 +519,8 @@ function createWindowHeader(title) {
         closeWindow();
     });
 
-    header.append(titleElement, closeBtn);
+    // Replace header append order to include expandBtn
+    header.append(titleElement, expandBtn, closeBtn);
     return header;
 }
 
@@ -517,6 +546,112 @@ function createExecuteButton() {
     button.className = 'execute-button';
     return button;
 }
+
+function applyParameterMappings(toolWindowEl, params) {
+    const winId = toolWindowEl.id;
+    const winData = getToolWindow(winId);
+    if (!winData) return;
+    winData.parameterMappings = JSON.parse(JSON.stringify(params));
+
+    // Update DOM inputs for static parameters
+    toolWindowEl.querySelectorAll('.parameter-input').forEach(container => {
+        const paramName = container.dataset.paramName;
+        const inp = container.querySelector('input');
+        if (inp && params[paramName] && params[paramName].type === 'static') {
+            inp.value = params[paramName].value ?? '';
+        }
+    });
+}
+
+// --- Version Selector ----------------------------------------------------
+function createVersionSelector(windowData, toolWindowEl) {
+    // Container to hold button and dropdown
+    const container = document.createElement('div');
+    container.className = 'version-selector';
+    container.style.position = 'relative';
+    container.style.marginLeft = '4px';
+
+    // Main button displaying current version
+    const btn = document.createElement('button');
+    btn.className = 'version-button';
+    btn.style.marginLeft = '0';
+
+    // Dropdown list
+    const dropdown = document.createElement('div');
+    dropdown.className = 'version-dropdown';
+    dropdown.style.position = 'absolute';
+    dropdown.style.top = '100%';
+    dropdown.style.left = '0';
+    dropdown.style.background = '#fff';
+    dropdown.style.border = '1px solid #ccc';
+    dropdown.style.display = 'none';
+    dropdown.style.minWidth = '80px';
+    dropdown.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    dropdown.style.padding = '4px 0';
+    dropdown.style.zIndex = 1000;
+
+    // Helper to (re)populate dropdown items and update button label
+    function refresh() {
+        const versions = windowData.outputVersions || [];
+        dropdown.innerHTML = '';
+        versions.forEach((vObj, idx) => {
+            const item = document.createElement('div');
+            item.className = 'version-item';
+            item.textContent = vObj && vObj._pending ? `v${idx + 1}*` : `v${idx + 1}`;
+            item.style.padding = '4px 8px';
+            item.style.cursor = 'pointer';
+            item.style.whiteSpace = 'nowrap';
+            item.style.color = '#000';
+            item.addEventListener('click', () => {
+                windowData.currentVersionIndex = idx;
+                // Restore parameter mappings
+                if (vObj && vObj.params) {
+                    applyParameterMappings(toolWindowEl, vObj.params);
+                }
+                // Render output if available (ignore pending)
+                if (vObj && vObj.output) {
+                    let resultContainer = toolWindowEl.querySelector('.result-container');
+                    if (!resultContainer) {
+                        resultContainer = document.createElement('div');
+                        resultContainer.className = 'result-container';
+                        toolWindowEl.appendChild(resultContainer);
+                    }
+                    resultContainer.innerHTML = '';
+                    renderResultContent(resultContainer, vObj.output);
+                }
+                dropdown.style.display = 'none';
+                refresh();
+            });
+            dropdown.appendChild(item);
+        });
+
+        if (versions.length > 0) {
+            const curIdx = windowData.currentVersionIndex >= 0 ? windowData.currentVersionIndex : versions.length - 1;
+            const curObj = versions[curIdx];
+            btn.textContent = curObj && curObj._pending ? `v${curIdx + 1}*` : `v${curIdx + 1}`;
+            btn.style.display = 'inline-block';
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Make refresh public so other modules can trigger it.
+    btn.refreshDropdown = refresh;
+
+    container.appendChild(btn);
+    container.appendChild(dropdown);
+
+    // Initial render
+    refresh();
+
+    return container;
+}
+// ------------------------------------------------------------------------
 
 // Rerender a tool window by ID
 export function rerenderToolWindowById(windowId) {

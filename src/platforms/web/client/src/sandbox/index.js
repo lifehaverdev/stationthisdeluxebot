@@ -31,6 +31,23 @@ import './components/ReferralVaultDashboardModal/vaultDashboardModal.js';
 import { MintSpellFAB } from './components/MintSpellFAB.js';
 import './onboarding/onboarding.js';
 import CookMenuModal from './components/CookMenuModal.js';
+import './components/ReauthModal.js';
+
+// Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
+(function interceptUnauthorized() {
+    if (window.__fetch401InterceptorAttached__) return;
+    window.__fetch401InterceptorAttached__ = true;
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+        const resp = await originalFetch.apply(this, args);
+        if (resp && resp.status === 401) {
+            if (typeof window.openReauthModal === 'function' && !window.__reauthModalOpen__) {
+                window.openReauthModal();
+            }
+        }
+        return resp;
+    };
+})();
 
 let spacebarIsDown = false;
 let justLassoed = false;

@@ -85,12 +85,15 @@ module.exports = function createModelsApiRouter(deps = {}) {
   // POST /models/lora/import -> proxy import endpoint (body: {url})
   router.post('/lora/import', async (req, res) => {
     try {
-      const response = await internalApiClient.post('/internal/v1/data/loras/import', req.body);
+      const body = { ...req.body };
+      if (!body.userId && req.user?.userId) body.userId = req.user.userId;
+      const csrfToken = req.headers['x-csrf-token'];
+      const response = await internalApiClient.post('/internal/v1/data/models/lora/import', body, { headers:{'x-csrf-token':csrfToken} });
       res.json(response.data);
     } catch (err) {
       logger.error('[external-modelsApi] LoRA import proxy error:', err.response?.status, err.message);
       const status = err.response?.status || 500;
-      res.status(status).json({ error: 'LoRA import failed', details: err.response?.data || err.message });
+      res.status(status).json({ error:'LoRA import failed', details: err.response?.data||err.message });
     }
   });
 
@@ -117,6 +120,20 @@ module.exports = function createModelsApiRouter(deps = {}) {
     } catch(err){
       const status = err.response?.status || 500;
       res.status(status).json({ error:'rate failed', details: err.response?.data||err.message });
+    }
+  });
+
+  // POST /models/checkpoint/import
+  router.post('/checkpoint/import', async (req, res) => {
+    try {
+      const body = { ...req.body };
+      if (!body.userId && req.user?.userId) body.userId = req.user.userId;
+      const csrfToken = req.headers['x-csrf-token'];
+      const response = await internalApiClient.post('/internal/v1/data/models/checkpoint/import', body, { headers:{'x-csrf-token':csrfToken} });
+      res.json(response.data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      res.status(status).json({ error:'Checkpoint import failed', details: err.response?.data||err.message });
     }
   });
 

@@ -217,7 +217,12 @@ export default class CookMenuModal {
         const genRow=`<tr><td>Generator</td><td>${this.state.generatorDisplay||'(none)'}</td><td><button class="edit-gen-btn">${this.state.generatorDisplay?'Change':'Set'}</button></td></tr>`;
         const paramRows=paramOptions.map(p=>`<tr data-param="${p}"><td>${p}</td><td>${paramOverrides[p]||''}</td><td><button class="edit-param-btn">Edit</button></td></tr>`).join('');
         return `<table class="meta-table">${metaRows}${genRow}${paramRows}</table>
-        <div style="margin-top:12px"><button class="test-btn">Test</button> <button class="start-cook-btn">Start Cook</button> <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button></div>`;
+        <div style="margin-top:12px">
+            <button class="test-btn">Test</button>
+            <button class="review-btn">Review</button>
+            <button class="start-cook-btn">Start Cook</button>
+            <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button>
+        </div>`;
     }
 
     attachCreateEvents() {
@@ -509,7 +514,14 @@ export default class CookMenuModal {
                 }
             };
         });
-        if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{this.hide();import('./CollectionTestWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);});};
+        if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{
+            this.hide();
+            import('./CollectionTestWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);} );
+        };
+        if(modal.querySelector('.review-btn')) modal.querySelector('.review-btn').onclick=()=>{
+            this.hide();
+            import('./CollectionReviewWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
+        };
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
             const coll=this.state.selectedCollection; if(!coll) return;
             if(!(coll.toolId||coll.spellId)){ alert('Please select a generator (tool or spell) before starting.'); return; }
@@ -525,8 +537,10 @@ export default class CookMenuModal {
                     paramOverrides: coll.config?.paramOverrides||this.state.paramOverrides||{},
                     totalSupply: supply
                 };
+                console.log('[CookMenuModal] startCook payload', payload);
                 const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/start`,{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(payload)});
                 const data = await res.json().catch(()=>({}));
+                console.log('[CookMenuModal] startCook response', data);
                 if(!res.ok){throw new Error(data.error||'start failed');}
                 alert(`Cook started${typeof data.queued==='number'?` (queued ${data.queued})`:''}`);
                 await this.fetchActiveCooks();

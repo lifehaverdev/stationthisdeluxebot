@@ -498,7 +498,34 @@ export function setConnectionLine(line) {
 export function setToolWindowOutput(id, output) {
     const win = getToolWindow(id);
     if (win) {
+        // --- Versioning Support ---
+        // Maintain an array of outputs (versions) instead of a single value.
+        if (!Array.isArray(win.outputVersions)) {
+            win.outputVersions = [];
+        }
+        const lastIdx = win.outputVersions.length - 1;
+        const versionObj = { output, params: JSON.parse(JSON.stringify(win.parameterMappings)) };
+
+        if (lastIdx >= 0 && win.outputVersions[lastIdx] && win.outputVersions[lastIdx]._pending) {
+            win.outputVersions[lastIdx] = versionObj;
+            win.currentVersionIndex = lastIdx;
+        } else {
+            win.outputVersions.push(versionObj);
+            win.currentVersionIndex = win.outputVersions.length - 1;
+        }
+        // Track latest single output for backward compatibility
         win.output = output;
+
+        // Attempt to refresh version selector UI if running in browser
+        if (typeof document !== 'undefined') {
+            const el = document.getElementById(id);
+            if (el && el.versionSelector && el.versionSelector.querySelector) {
+                const btn = el.versionSelector.querySelector('.version-button');
+                if (btn && typeof btn.refreshDropdown === 'function') {
+                    btn.refreshDropdown();
+                }
+            }
+        }
     }
 }
 

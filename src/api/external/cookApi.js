@@ -114,6 +114,57 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  /**
+   * GET /api/v1/collections/:id/pieces/unreviewed
+   * Returns oldest unreviewed generation outputs for a collection (status=completed & no metadata.reviewOutcome)
+   * Query params:
+   *   limit (optional) – number of pieces to return, default 1
+   */
+  router.get('/collections/:id/pieces/unreviewed', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const limit = Math.max(1, Math.min(parseInt(req.query.limit || '1', 10), 50));
+      const params = {
+        'metadata.collectionId': collectionId,
+        status: 'completed',
+        'metadata.reviewOutcome_ne': 'accepted'
+      };
+      const { data } = await internalApiClient.get('/internal/v1/data/generations', { params });
+      let gens = Array.isArray(data.generations) ? data.generations : [];
+      // Apply second _ne in memory and sort oldest first
+      gens = gens.filter(g => !['accepted', 'rejected'].includes(g.metadata?.reviewOutcome))
+                 .sort((a,b)=> new Date(a.requestTimestamp||a.createdAt||0) - new Date(b.requestTimestamp||b.createdAt||0))
+                 .slice(0, limit);
+      return res.json({ generations: gens });
+    } catch (err) {
+      logger.error('unreviewed pieces proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  /**
+   * PUT /api/v1/collections/:collectionId/pieces/:id/review
+   * Body: { outcome: 'accepted' | 'rejected' }
+   */
+  router.put('/collections/:collectionId/pieces/:id/review', async (req, res) => {
+    try {
+      const generationId = req.params.id;
+      const { outcome } = req.body || {};
+      if (!['accepted', 'rejected'].includes(outcome)) {
+        return res.status(400).json({ error: 'invalid_outcome' });
+      }
+      const payload = { 'metadata.reviewOutcome': outcome };
+      const { data } = await internalApiClient.put(`/internal/v1/data/generations/${encodeURIComponent(generationId)}`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('review outcome proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+
   // Placeholder routes for pause/resume/delete etc.
   // They will proxy to internal cook routes when implemented.
 
