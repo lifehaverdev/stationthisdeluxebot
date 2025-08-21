@@ -68,7 +68,15 @@ function createCookApiRouter(deps = {}) {
   // POST /api/v1/collections
   router.post('/collections', async (req, res) => {
     try {
-      const { data } = await internalApiClient.post('/internal/v1/data/cook/collections', req.body);
+      // Ensure userId is forwarded because internal API relies on it when req.user is absent.
+      // The internalApiClient call does not include authentication cookies/headers by default,
+      // so we extract it from the verified JWT populated by AuthMiddleware on the external route.
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+
+      // Merge the incoming body with userId (user-supplied userId, if any, wins for flexibility)
+      const payload = { ...req.body, userId: req.body?.userId || userId };
+
+      const { data } = await internalApiClient.post('/internal/v1/data/cook/collections', payload);
       return res.status(201).json(data);
     } catch (err) {
       logger.error('create collection proxy error', err.response?.data || err.message);

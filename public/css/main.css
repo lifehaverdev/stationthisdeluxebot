@@ -10,3 +10,57 @@
 
 @import url('variables.css');
 @import url('base.css'); 
+
+/* =============================================================
+   Readability overrides for About panel (NOEMA landing page)
+   ============================================================= */
+
+:root {
+  /* Darker accent variants for better contrast */
+  --color-peach-dark: #ff9c4d;
+  --color-mist-dark:  #8aa2c4;
+}
+
+/* Headings & sub-headings */
+.about-panel h2,
+.about-panel h3,
+.about-panel .manifesto-item h4 {
+  color: var(--color-peach-dark);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+
+/* Body copy */
+.about-panel .intro-paragraph,
+.about-panel .flywheel-list li,
+.about-panel .manifesto-item p {
+  color: var(--color-steel-text); /* dark for contrast */
+  opacity: 1;
+  max-width: 65ch;
+}
+
+/* Panel-specific background boost */
+.about-panel {
+  background-color: rgba(255,255,255,0.75); /* stronger backdrop for text */
+}
+
+/* Grid spacing */
+.about-panel .manifesto-grid {
+  gap: var(--space-8);
+}
+
+/* Outro background */
+.about-panel .outro-section {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+} 
+
+/* Links inside About panel */
+.about-panel a {
+  color: var(--color-peach-dark);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.about-panel a:hover {
+  color: var(--color-mist-dark);
+} 

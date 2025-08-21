@@ -12,7 +12,7 @@
 .collection-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;} 
 .collection-card{background:#2a2a2a;border:1px solid #444;padding:15px;border-radius:6px;cursor:pointer;min-width:120px;text-align:center;} 
 .collection-card:hover{background:#3a3a3a;} 
-.collection-card.new{background:#4a90e2;border-color:#4a90e2;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;} 
+.collection-card.new{background:#4a90e2;border-color:#4a90e2;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 100%;width:60px;height:60px;padding:0;margin:10px auto 0 auto;max-width:60px;} 
 .collection-card.new:hover{background:#5aa1f2;} 
 .footer{text-align:right;margin-top:15px;} 
 .help-btn{background:none;border:1px solid #555;color:#aaa;padding:4px 8px;border-radius:4px;cursor:pointer;} 

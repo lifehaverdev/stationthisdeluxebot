@@ -144,8 +144,6 @@ export default class ModsMenuModal {
       this.setState({ models: filtered, loading: false, selectedTags, extraTags });
       // After models load, fetch favourites so we can sort
       this.fetchFavorites(category);
-      // After models load, fetch favourites so we can sort
-      this.fetchFavorites(category);
     } catch (err) {
       this.setState({ loading: false, error: 'Failed to load models.' });
     }
@@ -229,7 +227,29 @@ export default class ModsMenuModal {
         // Add an Import button for LoRA or Checkpoint categories
         const showImport = ['lora','checkpoint'].includes(currentCategory);
         const importButton = showImport ? '<button class="import-btn">＋ Import</button>' : '';
-        const sortModels = [...models].sort((a, b) => {
+        const uid = window.currentUserId || null;
+        const isPrivate = (m)=>{
+          const raw=(m.path||m.save_path||'').toLowerCase();
+          if(!raw) return false;
+          const normalized = raw.replace(/\\/g,'/');
+          const inPrivateDir = normalized.includes('checkpoints/users/');
+          if(!inPrivateDir) return false;
+          if(!uid) return true; // unknown user id – treat any private dir as private
+          return normalized.includes(`checkpoints/users/${uid.toLowerCase()}/`);
+        };
+        // Filter out private checkpoints that belong to other users
+        const visibleModels = models.filter(m=>{
+          const p=(m.path||m.save_path||'').toLowerCase();
+          if(!p.includes('checkpoints/users/')) return true; // public model
+          if(!uid) return true; // no user context – show it (likely belongs to current user when SSR omitted id)
+          return p.includes(`checkpoints/users/${uid.toLowerCase()}/`);
+        });
+
+        const sortModels = [...visibleModels].sort((a,b)=>{
+          const privA = isPrivate(a);
+          const privB = isPrivate(b);
+          if(privA!==privB) return privA? -1:1; // private user models first
+
           const idA = this.getModelIdentifier(a);
           const idB = this.getModelIdentifier(b);
           const favA = favoriteIds.has(idA);
@@ -241,9 +261,12 @@ export default class ModsMenuModal {
           const id = this.getModelIdentifier(m);
           const isFav = favoriteIds.has(id);
           const heart = isFav ? '❤️' : '♡';
-          const display = m.path || m.name || m.save_path || 'unknown';
+          const displayPath = m.path || m.name || m.save_path || 'unknown';
+          const display = displayPath.split('/').pop();
           const size = m.size ? `${(m.size / (1024**2)).toFixed(1)} MB` : '';
-          return `<li class="mods-item" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> <button class="fav-btn" data-idx="${idx}">${heart}</button></li>`;
+          const isPriv = isPrivate(m);
+          const lockSpan = isPriv ? `<span class="priv-icon">🔒</span>` : '';
+          return `<li class="mods-item${isPriv ? ' private' : ''}" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> ${lockSpan} <button class="fav-btn" data-idx="${idx}">${heart}</button></li>`;
         }).join('') + '</ul>';
         // Extra tag bar
         const extraBar = extraTags.length ? `<div class="extra-tag-bar">` + extraTags.map(t => `<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('') + `</div>` : '';
