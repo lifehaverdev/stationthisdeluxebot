@@ -25,169 +25,28 @@ import { handleGenerationUpdate } from './websocketHandlers.js';
 import { bindPromptFieldOverlays } from './overlays/textOverlay.js';
 import { websocketClient } from '/js/websocketClient.js';
 import executionClient from '../executionClient.js';
+import ToolWindow from '../window/ToolWindow.js';
 
 // Call once to register the handlers
 registerWebSocketHandlers();
 
 // Create a tool window
 export function createToolWindow(tool, position, id = null, output = null, parameterMappings = null) {
-    // Record state BEFORE mutation when creating brand-new window
-    console.log('[node.js] createToolWindow called for tool:', tool && tool.toolId, 'at workspace position:', position);
-    const windowId = id || generateWindowId();
-    const existingWindow = getToolWindow(windowId);
-
-    // Allow re-creation for rerendering
-    const existing = document.getElementById(windowId);
-    if (existing) {
-        existing.remove();
-    }
-    
-    const toolWindowEl = document.createElement('div');
-    toolWindowEl.id = windowId;
-    toolWindowEl.className = 'tool-window';
-    toolWindowEl.setAttribute('data-displayname', tool.displayName || '');
-    // Store toolId for easier mapping of spell completion events
-    if (tool && tool.toolId) {
-        toolWindowEl.setAttribute('data-toolid', tool.toolId);
-    }
-
-    toolWindowEl.addEventListener('click', (e) => {
-        // Only handle left mouse button
-        if (e.button !== 0) return;
-        if (e.shiftKey) {
-            toggleNodeSelection(windowId);
-        } else {
-            selectNode(windowId, false);
-        }
-        e.stopPropagation();
+    // New implementation delegates to class-based ToolWindow while preserving API
+    console.log('[node.js] [ADAPTER] createToolWindow → ToolWindow class', tool?.toolId);
+    // If we are rehydrating on refresh, grab any stored version history
+    const existingWin = getToolWindow(id);
+    const win = new ToolWindow({
+        tool,
+        position,
+        id,
+        output: output || existingWin?.output || null,
+        parameterMappings: parameterMappings || existingWin?.parameterMappings || null,
+        outputVersions: existingWin?.outputVersions || null,
+        currentVersionIndex: existingWin?.currentVersionIndex || null,
     });
-
-    // Mobile: tap toggles selection (multi-select by default)
-    toolWindowEl.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        toggleNodeSelection(windowId);
-    });
-
-    // Use provided parameterMappings if present, otherwise use existingWindow or initialize from schema.
-    let paramMappings;
-    if (parameterMappings) {
-        paramMappings = JSON.parse(JSON.stringify(parameterMappings));
-    } else if (existingWindow) {
-        paramMappings = existingWindow.parameterMappings;
-    } else if (tool.inputSchema) {
-        paramMappings = {};
-        Object.entries(tool.inputSchema).forEach(([paramKey, paramDef]) => {
-            paramMappings[paramKey] = {
-                type: 'static',
-                value: paramDef.default !== undefined ? paramDef.default : ''
-            };
-        });
-    } else {
-        paramMappings = {};
-    }
-
-    const windowData = {
-        id: windowId,
-        tool: tool,
-        element: toolWindowEl,
-        workspaceX: position.x,
-        workspaceY: position.y,
-        // Store the latest output for backward compatibility
-        output: output || (existingWindow ? existingWindow.output : null),
-        // --- Versioning ---
-        outputVersions: (existingWindow && Array.isArray(existingWindow.outputVersions))
-            ? [...existingWindow.outputVersions]
-            : (output ? [output] : []),
-        currentVersionIndex: (existingWindow && typeof existingWindow.currentVersionIndex === 'number')
-            ? existingWindow.currentVersionIndex
-            : ((output) ? 0 : -1),
-        // -----------------------------------------
-        parameterMappings: paramMappings
-    };
-    addToolWindow(windowData);
-
-    if (!id) {
-        persistState();
-        pushHistory(); // snapshot AFTER mutation so undo reverts correctly
-    }
-
-    toolWindowEl.style.left = `${position.x}px`;
-    toolWindowEl.style.top = `${position.y}px`;
-
-    // Separate parameters into required and optional
-    const params = Object.entries(tool.inputSchema || {}).reduce((acc, [key, param]) => {
-        if (param.required) {
-            acc.required.push([key, param]);
-        } else {
-            acc.optional.push([key, param]);
-        }
-        return acc;
-    }, { required: [], optional: [] });
-
-    // Create window components
-    const header = createWindowHeader(tool.displayName);
-    // --- Version Selector UI ---
-    const versionSelector = createVersionSelector(windowData, toolWindowEl);
-    // Insert before the close button (last child)
-    header.insertBefore(versionSelector, header.lastChild);
-    // Store reference for easy refresh later
-    toolWindowEl.versionSelector = versionSelector;
-    // --------------------------------
-    const requiredSection = createParameterSection(params.required, 'required-params', paramMappings, getToolWindows());
-    const optionalSection = createParameterSection(params.optional, 'optional-params', paramMappings, getToolWindows());
-    const showMoreBtn = createShowMoreButton(optionalSection);
-    let executeBtn = createExecuteButton();
-    const anchorPoint = createAnchorPoint(tool, toolWindowEl);
-    const inputAnchors = createInputAnchors(tool);
-
-    // Assemble window
-    toolWindowEl.append(
-        header, 
-        requiredSection, 
-        showMoreBtn, 
-        optionalSection, 
-        anchorPoint, 
-        inputAnchors
-    );
-
-    if (output) {
-        const resultContainer = document.createElement('div');
-        resultContainer.className = 'result-container';
-        toolWindowEl.appendChild(resultContainer);
-        const loadBtn = document.createElement('button');
-        loadBtn.textContent = output.type === 'image' ? 'Load Image' : (output.type === 'text' ? 'Load Text' : 'Load Output');
-        loadBtn.className = 'execute-button'; // Match style
-        loadBtn.onclick = () => {
-            renderResultContent(resultContainer, output);
-            loadBtn.remove();
-        };
-        toolWindowEl.appendChild(loadBtn);
-    } else {
-        // Each click now runs execution in the SAME window and stores a new version.
-        executeBtn.addEventListener('click', async () => {
-            // Randomise any seed-like static parameters to encourage variation between versions
-            randomizeSeedInMappings(windowData.parameterMappings);
-            persistState();
-            await executeNodeAndDependencies(windowId);
-            // Refresh version selector UI after new output is saved
-            if (toolWindowEl.versionSelector && toolWindowEl.versionSelector.querySelector('.version-button').refreshDropdown) {
-                toolWindowEl.versionSelector.querySelector('.version-button').refreshDropdown();
-            }
-        });
-        toolWindowEl.appendChild(executeBtn);
-    }
-
-    setupDragging(windowData, header);
-
-    const canvas = document.querySelector('.sandbox-canvas');
-    if (canvas) {
-        canvas.appendChild(toolWindowEl);
-    } else {
-        document.body.appendChild(toolWindowEl); // Fallback
-    }
-    
-    bindPromptFieldOverlays();
-    return toolWindowEl;
+    win.mount();
+    return win.el;
 }
 
 async function executeNodeAndDependencies(startNodeId) {

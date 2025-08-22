@@ -69,6 +69,8 @@ export function persistState() {
             workspaceX: w.workspaceX,
             workspaceY: w.workspaceY,
             output: w.output || null,
+            outputVersions: w.outputVersions || [],
+            currentVersionIndex: w.currentVersionIndex ?? -1,
             parameterMappings: w.parameterMappings || {}
         };
     });
@@ -115,6 +117,8 @@ function loadState() {
                     workspaceX: w.workspaceX,
                     workspaceY: w.workspaceY,
                     output: w.output || null,
+                    outputVersions: w.outputVersions || [],
+                    currentVersionIndex: w.currentVersionIndex ?? -1,
                     parameterMappings: w.parameterMappings || {}
                 };
             });
@@ -150,6 +154,8 @@ function cloneState() {
                 workspaceX: w.workspaceX,
                 workspaceY: w.workspaceY,
                 output: w.output || null,
+                outputVersions: w.outputVersions || [],
+                currentVersionIndex: w.currentVersionIndex ?? -1,
                 parameterMappings: w.parameterMappings || {}
             };
         })))
@@ -468,11 +474,16 @@ export const OUTPUT_TYPE_MAPPING = {
 // Window and connection management
 export function addToolWindow(windowData) {
     const existingIndex = activeToolWindows.findIndex(w => w.id === windowData.id);
+    let model;
     if (existingIndex > -1) {
-        activeToolWindows[existingIndex] = windowData;
+        // Merge to preserve existing array/object references
+        model = activeToolWindows[existingIndex];
+        Object.assign(model, windowData);
     } else {
-        activeToolWindows.push(windowData);
+        model = windowData;
+        activeToolWindows.push(model);
     }
+    return model; // Return the canonical shared object
 }
 
 export function removeToolWindow(windowId) {
@@ -515,6 +526,11 @@ export function setToolWindowOutput(id, output) {
         }
         // Track latest single output for backward compatibility
         win.output = output;
+
+        // Persist updated versions so they survive page reload
+        try {
+            persistState();
+        } catch {}
 
         // Attempt to refresh version selector UI if running in browser
         if (typeof document !== 'undefined') {

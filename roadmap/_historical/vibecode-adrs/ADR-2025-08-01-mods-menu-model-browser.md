@@ -1,3 +1,5 @@
+> Imported from vibecode/decisions/adr/ADR-2025-08-01-mods-menu-model-browser.md on 2025-08-21
+
 # ADR-2025-08-01: Unified Mods Menu & ComfyUI Model Discovery
 
 ## Context
