@@ -87,7 +87,7 @@ flowchart TD
 | `src/api/`                              | Internal & External API routers (mounted by `app.js`) |
 | `src/workflows/`                        | Platform-agnostic business workflows |
 | `public/`                               | Web frontend assets (static HTML/CSS/JS) |
-| `docs/`, `vibecode/`, `reports/`        | ADRs, hand-offs, audits & project planning artifacts |
+| `roadmap/`                            | **Source of truth for planning** – master outline, roadmap, feature folders, templates & guides |
 | `archive/`                              | Legacy implementation kept for reference |
 
 ---
@@ -107,15 +107,109 @@ flowchart TD
    ETHEREUM_SIGNER_PRIVATE_KEY=0x...
    MONGO_PASS=mongodb+srv://user:pass@cluster/db
    ```
-3. **Run**
+3. **Start Dev Environment**  
    ```bash
-   node app.js
-   ```
+   ./run-dev.sh
+   ```  
+   This helper script will:  
+   • Export all variables from your `.env` into the current shell session  
+   • Unlock the keystore’s private key using `KEYSTORE_PASSWORD` (or prompt you interactively)  
+   • Launch the app with Nodemon so that code changes hot-reload during development
+
    • Web UI → http://localhost:4000  
    • Internal API → http://localhost:4000/internal  
    • External API → http://localhost:4000/api/v1  
    The bot signs-in to Telegram/Discord automatically.
 
+---
+
+## 🚢 Production Deployment (DigitalOcean)
+
+We run a single-node instance on a **DigitalOcean Droplet** with the following spec:
+
+| Image | Size (vCPU / RAM / Disk) | Region | Example Public IP |
+|-------|--------------------------|--------|-------------------|
+| Ubuntu Docker 22.04 | 1 vCPU, 1 GB, 25 GB SSD<br/>($6 / mo) | `NYC1` | _(assigned on creation)_
+
+Steps to deploy a fresh droplet:
+
+1. **Create Droplet** – choose the *Docker on Ubuntu 22.04* Marketplace image and the specs above. Enable IPv4 (mandatory), IPv6 / VPC networking if required.
+2. **SSH in**
+   ```bash
+   ssh root@<DROPLET_IP>
+   ```
+3. **Install Git & clone repo**
+   ```bash
+   apt update && apt install -y git
+   git clone https://github.com/<your-org>/stationthis.git
+   cd stationthis
+   ```
+4. **Prepare secrets**
+   • Copy your `.env` to the droplet (e.g. `scp .env root@<DROPLET_IP>:~/stationthis/`).  
+   • Copy the `keystore.json` file referenced by `ETHEREUM_KEYSTORE_PATH`.  
+   • Ensure `KEYSTORE_PASSWORD` is present in the `.env`.
+5. **Deploy**
+   ```bash
+   ./deploy.sh
+   ```
+   The script builds a production Docker image, runs database migrations (if any) and starts the container in detached mode.
+6. **Update / Redeploy**
+   ```bash
+   git pull
+   ./deploy.sh
+   ```
+   The existing container is replaced with an updated image with zero downtime.
+
+### Reverse Proxy & TLS with Caddy
+
+The droplet runs an **edge Caddy server** (installed via the [official script](https://caddyserver.com/docs/install#debian-ubuntu) or Docker). Caddy automatically provisions free Let’s Encrypt certificates and forwards traffic to the app container.
+
+1. Ensure DNS `A/AAAA` records for your domain point to the droplet IP.
+2. Place a `Caddyfile` in `/etc/caddy/Caddyfile` (or the repo root if using Docker) similar to:
+
+```Caddyfile
+yourdomain.com, www.yourdomain.com {
+    encode zstd gzip
+    reverse_proxy hyperbot:4000
+    log {
+        output file /var/log/caddy/access.log
+    }
+}
+```
+
+3. Reload Caddy after any change:
+```bash
+sudo systemctl reload caddy
+```
+
+With Caddy in front, your app is served over HTTPS at `https://yourdomain.com`.
+
+### Firewall Hardening (Recommended)
+
+For defence-in-depth you should also restrict inbound traffic at the droplet or Cloud-Firewall layer so only the services you actually expose are reachable.
+
+| Protocol | Port | Source | Purpose |
+|----------|------|--------|---------|
+| TCP | **22** | _Your workstation(s) only_ | SSH administration |
+| TCP | **80** | `0.0.0.0/0`, `::/0` | HTTP → Caddy |
+| TCP | **443** | `0.0.0.0/0`, `::/0` | HTTPS → Caddy |
+
+DigitalOcean makes this easy via **Networking → Firewalls → Create**:
+
+1. Add a new rule set with the table above.
+2. Attach the firewall to your droplet.
+
+Finding “your workstation IP”
+
+```bash
+curl -s https://ifconfig.me
+# or
+dig +short myip.opendns.com @resolver1.opendns.com
+```
+
+If you commonly connect from several places, create multiple rules (one per public IP). For a small office range you might use a CIDR like `203.0.113.0/28`.
+
+This complements the container-level hardening already provided by `deploy.sh` (`--cap-drop ALL`, `--security-opt no-new-privileges`, private Docker network with no published ports).
 
 ## 🛠  Adding a New Tool
 
@@ -140,11 +234,16 @@ coming...
 
 ## 🤝 Contributing
 
-We follow the collaborative rules in **`AGENT_COLLABORATION_PROTOCOL.md`**. All changes must include:
+We follow the collaborative rules in **`roadmap/_guides/AGENT_COLLABORATION_PROTOCOL_v3.md`**.
 
+All pull-requests **must**:
 
-• Updated docs / ADR where architecture changes occur.  
-• A handoff entry in `vibecode/handoffs/` summarising work.  
+1. Start the title with `[roadmap:<epic>/<module>]` (see PR template).
+2. Update the relevant module row in `roadmap/master-outline.md`.
+3. Append notes to the Implementation Log of any affected ADR (or create a new ADR using the template).
+4. Create a Handoff file in the current sprint folder summarising work.
+
+Refer to `roadmap/_guides/WORKFLOW_DECISION_TREE.md` for a quick decision flow (small fix vs large feature).
 
 ---
 

@@ -25,152 +25,23 @@ import { createParameterSection, showError } from './parameterInputs.js';
 import { createAnchorPoint, createInputAnchors } from './anchors.js';
 import { setupDragging } from './drag.js';
 import { createToolWindow, rerenderToolWindowById } from './toolWindow.js';
+import SpellWindow from '../window/SpellWindow.js';
 import { generationIdToWindowMap, generationCompletionManager } from './websocketHandlers.js';
 
 // TODO: Implement spell-specific execution logic
 // import { executeSpellAndDependencies } from './spellExecution.js'; 
 
-// Create a spell window
+// Adapter: createSpellWindow using class-based implementation
 export function createSpellWindow(spell, position, id = null, output = null) {
-    console.log('[spellWindow.js] createSpellWindow called for spell:', spell.name, 'at workspace position:', position);
-    
-    // If we're creating a new window (not restoring), it's a new action.
-    if (!id) {
-        pushHistory();
-    }
+  console.log('[spellWindow.js] [ADAPTER] createSpellWindow → SpellWindow class', spell.slug);
 
-    const windowId = id || generateWindowId('spell-');
-    const existingWindow = getToolWindow(windowId);
-
-    // Allow re-creation for rerendering
-    const existing = document.getElementById(windowId);
-    if (existing) {
-        existing.remove();
-    }
-    
-    const spellWindowEl = document.createElement('div');
-    spellWindowEl.id = windowId;
-    // Add both classes for styling inheritance and specific overrides
-    spellWindowEl.className = 'tool-window spell-window'; 
-    spellWindowEl.setAttribute('data-spell-id', spell._id);
-    spellWindowEl.setAttribute('data-displayname', spell.name || '');
-    // Provide toolId for websocket fallback lookups
-    spellWindowEl.setAttribute('data-toolid', `spell-${spell.slug}`);
-
-    spellWindowEl.addEventListener('click', (e) => {
-        if (e.button !== 0) return;
-        if (e.shiftKey) {
-            toggleNodeSelection(windowId);
-        } else {
-            selectNode(windowId, false);
-        }
-        e.stopPropagation();
-    });
-
-    spellWindowEl.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        toggleNodeSelection(windowId);
-    });
-
-    const availableTools = getAvailableTools();
-    // Build a map for quick lookup by both identifier and displayName (case-insensitive)
-    const toolMap = new Map();
-    availableTools.forEach(t => {
-        // Some loaders use t.toolId, others toolIdentifier – map both
-        const identifier = t.toolIdentifier || t.toolId;
-        if (identifier) toolMap.set(identifier, t);
-        if (t.displayName) {
-            toolMap.set(t.displayName.toLowerCase(), t);
-        }
-    });
-
-    // Map spell's exposedInputs to a format that createParameterSection understands.
-    const parameterMappings = existingWindow ? existingWindow.parameterMappings : {};
-    const spellInputSchemaForUI = {};
-
-    if (spell.exposedInputs) {
-        spell.exposedInputs.forEach(input => {
-            const originalNode = spell.steps.find(s => s.id === input.nodeId);
-            let originalTool = null;
-            if (originalNode) {
-                const identifier = originalNode.toolIdentifier || originalNode.toolId;
-                originalTool = toolMap.get(identifier) || toolMap.get((originalNode.displayName || '').toLowerCase());
-            }
-            const originalParam = originalTool ? originalTool.inputSchema[input.paramKey] : null;
-
-            if (originalParam) {
-                // The key for the UI and mapping will be unique to the spell node
-                const uiKey = `${input.nodeId}_${input.paramKey}`;
-                spellInputSchemaForUI[uiKey] = {
-                    ...originalParam,
-                    name: `${originalTool.displayName}: ${originalParam.displayName || input.paramKey}`
-                };
-
-                if (!existingWindow) {
-                    parameterMappings[uiKey] = {
-                        type: 'static',
-                        value: originalNode.parameterMappings[input.paramKey]?.value || originalParam.default || ''
-                    };
-                }
-            }
-        });
-    }
-
-    const windowData = {
-        id: windowId,
-        spell: spell, // Store the full spell object
-        element: spellWindowEl,
-        isSpell: true, // Flag to identify this as a spell window
-        workspaceX: position.x,
-        workspaceY: position.y,
-        output: output || (existingWindow ? existingWindow.output : null),
-        parameterMappings
-    };
-    addToolWindow(windowData);
-
-    if (!id) {
-        persistState();
-    }
-
-    spellWindowEl.style.left = `${position.x}px`;
-    spellWindowEl.style.top = `${position.y}px`;
-    
-    const header = createSpellWindowHeader(spell.name);
-    
-    // Create parameter section using the standard function
-    const paramsForUI = Object.entries(spellInputSchemaForUI);
-    const paramsSection = createParameterSection(paramsForUI, 'required-params', parameterMappings, getToolWindows());
-    
-    // Create input anchors based on the generated schema
-    const inputAnchors = createInputAnchors({ inputSchema: spellInputSchemaForUI });
-    
-    const { showMoreBtn, detailsContainer } = createShowMoreButtonForSpell(windowId, spell);
-    const executeBtn = createExecuteButton();
-
-    spellWindowEl.append(
-        header,
-        paramsSection,
-        inputAnchors,
-        detailsContainer, // Add the container, it's hidden by default
-        showMoreBtn,
-        executeBtn
-    );
-    
-    executeBtn.addEventListener('click', async () => {
-        await executeSpell(windowId);
-    });
-
-    setupDragging(windowData, header);
-    
-    const canvas = document.querySelector('.sandbox-canvas');
-    if (canvas) {
-        canvas.appendChild(spellWindowEl);
-    } else {
-        document.body.appendChild(spellWindowEl); // Fallback
-    }
-    
-    return spellWindowEl;
+  const win = new SpellWindow({ spell, position, id, output });
+  win.mount();
+  return win.el;
 }
+
+// Re-export internal helpers so new class-based SpellWindow can reuse them
+export { executeSpell, explodeSpell };
 
 function createSpellWindowHeader(title) {
     const header = document.createElement('div');
@@ -395,8 +266,15 @@ async function executeSpell(windowId) {
         return;
     }
 
+    // Determine slug: prefer slug, then publicSlug, then _id (legacy)
+    const spellSlug = spell.slug || spell.publicSlug || spell._id;
+    if (!spellSlug) {
+        alert('This spell is missing an identifier.');
+        return;
+    }
+
     const payload = {
-        slug: spell.slug,
+        slug: spellSlug,
         context: {
             masterAccountId,
             parameterOverrides: inputs,
@@ -408,6 +286,7 @@ async function executeSpell(windowId) {
         const spellWindowEl = document.getElementById(windowId);
         showError(spellWindowEl, ''); // Clear previous errors
 
+        // --- Progress UI bootstrap ---
         let progressIndicator = spellWindowEl.querySelector('.progress-indicator');
         if (!progressIndicator) {
             progressIndicator = document.createElement('div');
@@ -415,6 +294,33 @@ async function executeSpell(windowId) {
             spellWindowEl.appendChild(progressIndicator);
         }
         progressIndicator.textContent = 'Casting spell...';
+
+        // Create progress bar element once
+        let progBar = spellWindowEl.querySelector('.spell-progress-bar');
+        if(!progBar){
+           progBar = document.createElement('progress');
+           progBar.className='spell-progress-bar';
+           progBar.max=100;
+           progBar.value=0;
+           spellWindowEl.appendChild(progBar);
+        }
+
+        // Create step status list once
+        let stepList = spellWindowEl.querySelector('.spell-step-status');
+        if(!stepList){
+           stepList = document.createElement('ul');
+           stepList.className='spell-step-status';
+           // populate list items for each step
+           (spell.steps||[]).forEach((step,idx)=>{
+               const li=document.createElement('li');
+               li.dataset.stepId=step.id||idx;
+               li.dataset.toolId=step.toolIdentifier||step.toolId;
+               li.textContent=`${idx+1}. ${step.displayName||step.toolIdentifier||'step'}`;
+               li.className='pending';
+               stepList.appendChild(li);
+           });
+           spellWindowEl.appendChild(stepList);
+        }
 
         const csrfRes = await fetch('/api/v1/csrf-token');
         const { csrfToken } = await csrfRes.json();
@@ -430,7 +336,9 @@ async function executeSpell(windowId) {
         console.log('[spellWindow] Raw execution result:', result);
 
         if (!response.ok) {
-            throw new Error(result.error?.message || 'Spell execution failed.');
+            console.error('[spellWindow] Exec fetch failed', response.status, response.statusText, result);
+            const msg = result && result.error ? (result.error.message || JSON.stringify(result.error)) : 'Spell execution failed.';
+            throw new Error(`${response.status} ${response.statusText} – ${msg}`);
         }
 
         // If the execution is async (status processing/pending) we wait for websocket updates.
@@ -440,6 +348,7 @@ async function executeSpell(windowId) {
             // Map generationId to this spell window for future websocket updates
             generationIdToWindowMap[result.generationId] = document.getElementById(windowId);
             progressIndicator.textContent = `Status: ${result.status}`;
+            progBar.value=50;
             // Optional: wait until completion then remove indicator
             generationCompletionManager.createCompletionPromise(result.generationId).then(() => {
                 const progEl = document.getElementById(windowId)?.querySelector('.progress-indicator');
@@ -464,6 +373,16 @@ async function executeSpell(windowId) {
         }
 
         if (outputData) {
+            progBar.value=100;
+            // mark steps complete if we have breakdown
+            if(outputData.steps){
+               outputData.steps.forEach((stepRes,idx)=>{
+                   const li=stepList.children[idx];
+                   if(li) li.className='done';
+               });
+            } else {
+               stepList.querySelectorAll('li').forEach(li=>li.className='done');
+            }
             setToolWindowOutput(windowId, outputData);
             let resultContainer = spellWindowEl.querySelector('.result-container');
             if (!resultContainer) {
@@ -478,9 +397,17 @@ async function executeSpell(windowId) {
         console.error(`[spellWindow] Error executing spell:`, error);
         const spellWindowEl = document.getElementById(windowId);
         if (spellWindowEl) {
-            showError(spellWindowEl, error.message);
-            const progressIndicator = spellWindowEl.querySelector('.progress-indicator');
-            if (progressIndicator) progressIndicator.remove();
+            const isGateway=String(error.message||'').includes('502');
+            if(isGateway){
+                // Non-fatal: backend accepted but timed out. Keep indicator and wait for websockets.
+                let prog=spellWindowEl.querySelector('.progress-indicator');
+                if(!prog){prog=document.createElement('div');prog.className='progress-indicator';spellWindowEl.appendChild(prog);}                
+                prog.textContent='Spell accepted, awaiting updates...';
+            } else {
+                showError(spellWindowEl, error.message);
+                const progressIndicator = spellWindowEl.querySelector('.progress-indicator');
+                if (progressIndicator) progressIndicator.remove();
+            }
         }
     }
 }

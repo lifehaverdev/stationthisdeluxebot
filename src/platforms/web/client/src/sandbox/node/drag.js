@@ -15,8 +15,8 @@ export function setupDragging(windowData, handle) {
         dragStart = { x: clientX, y: clientY };
         initialWorkspacePos = { x: windowData.workspaceX, y: windowData.workspaceY };
         
-        windowData.element.style.cursor = 'grabbing';
-        handle.style.cursor = 'grabbing';
+        if(windowData.element){ windowData.element.style.cursor='grabbing'; }
+        if(handle){ handle.style.cursor='grabbing'; }
         if (isTouch) e.preventDefault();
     };
 
@@ -36,8 +36,7 @@ export function setupDragging(windowData, handle) {
         
         // Convert workspace → screen so the element tracks the cursor exactly
         const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(windowData.workspaceX, windowData.workspaceY);
-        windowData.element.style.left = `${screenX}px`;
-        windowData.element.style.top = `${screenY}px`;  
+        if(windowData.element){ windowData.element.style.left=`${screenX}px`; windowData.element.style.top=`${screenY}px`; }
 
         // Update all connections in real-time
         renderAllConnections();
@@ -61,12 +60,11 @@ export function setupDragging(windowData, handle) {
         
         // Final render after snap
         const { x: snapScreenX, y: snapScreenY } = window.sandbox.workspaceToScreen(finalX, finalY);
-        windowData.element.style.left = `${snapScreenX}px`;
-        windowData.element.style.top = `${snapScreenY}px`;  
+        if(windowData.element){ windowData.element.style.left = `${snapScreenX}px`; windowData.element.style.top = `${snapScreenY}px`;  }
         
         isDragging = false;
-        windowData.element.style.cursor = '';
-        handle.style.cursor = 'move';
+        if(windowData.element) windowData.element.style.cursor = '';
+        if(handle) handle.style.cursor = 'move';
     };
 
     // Mouse Events

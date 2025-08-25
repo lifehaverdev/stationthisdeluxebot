@@ -89,7 +89,11 @@ const SPLIT_KEEP_DELIMITERS_REGEX = /(\s+|[.,!?()[\]{}\'\"]+)/g;
  */
 async function resolveLoraTriggers(promptString, masterAccountId, toolBaseModel, dependencies) {
   const rawPrompt = promptString;
-  const internalApiClient = dependencies.internal.client;
+  const internalApiClient = dependencies && dependencies.internal ? dependencies.internal.client : null;
+  if(!internalApiClient){
+      logger.warn('[LoRAResolutionService] Missing internalApiClient dependency, skipping LoRA resolution.');
+      return { modifiedPrompt: rawPrompt, rawPrompt, appliedLoras: [], warnings: ['LoRA resolution skipped due to internal error'] };
+  }
   const appliedLoras = [];
   const warnings = [];
   const lorasAppliedThisRun = new Set(); // Tracks slugs of LoRAs applied in this run

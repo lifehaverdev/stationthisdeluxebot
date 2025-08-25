@@ -55,7 +55,68 @@ class WorkflowExecutionService {
 
         this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
-        const stepInput = { ...pipelineContext, ...step.parameterOverrides };
+        // --- NEW: resolve parameterMappings (preferred over parameterOverrides) ---
+        const resolvedParamInputs = {};
+        if (step.parameterMappings) {
+            Object.entries(step.parameterMappings).forEach(([paramKey, mapping]) => {
+                if (!mapping || typeof mapping !== 'object') return;
+                switch (mapping.type) {
+                    case 'static': {
+                        const v = mapping.value;
+                        const isEmptyString = typeof v === 'string' && v.trim() === '';
+                        if (v !== undefined && v !== null && !isEmptyString) {
+                            resolvedParamInputs[paramKey] = v;
+                        }
+                        break;
+                    }
+                    case 'nodeOutput': {
+                        const val =
+                            pipelineContext[mapping.outputKey] ||
+                            pipelineContext[`${mapping.nodeId}_${mapping.outputKey}`] ||
+                            pipelineContext[mapping.paramKey];
+                        if (val !== undefined) resolvedParamInputs[paramKey] = val;
+                        break;
+                    }
+                    default:
+                        // Unsupported mapping type – ignore silently for now
+                        break;
+                }
+            });
+        }
+
+        // Merge with precedence:
+        // 1) existing context from previous steps / user inputs
+        // 2) resolved mappings for this step (explicit wiring)
+        // 3) legacy parameterOverrides (highest priority)
+        let stepInput = { ...pipelineContext, ...resolvedParamInputs, ...step.parameterOverrides };
+
+        // ---- Schema-based pruning ----
+        if (tool && tool.inputSchema && Object.keys(tool.inputSchema).length > 0) {
+            const allowed = new Set(Object.keys(tool.inputSchema));
+            const pruned = {};
+            Object.entries(stepInput).forEach(([k, v]) => {
+                if (allowed.has(k)) pruned[k] = v;
+            });
+            const removed = Object.keys(stepInput).filter(k => !allowed.has(k));
+            if (removed.length) {
+                this.logger.debug(`[WorkflowExecution] Pruned unmapped inputs for ${tool.displayName}: ${removed.join(', ')}`);
+            }
+            stepInput = pruned;
+        }
+
+        // Still support nodeOutput objects inside legacy parameterOverrides
+        Object.entries(step.parameterOverrides || {}).forEach(([key, val]) => {
+            if (val && val.type === 'nodeOutput') {
+                const mappedVal =
+                    pipelineContext[val.outputKey] ||
+                    pipelineContext[val.paramKey] ||
+                    pipelineContext[`${val.nodeId}_${val.outputKey}`];
+                if (mappedVal !== undefined) {
+                    stepInput[key] = mappedVal;
+                }
+            }
+        });
+
         // Prepare tool run payload (may include LoRA resolution, etc.)
         const { inputs: finalInputs, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(
             tool.toolId,
@@ -131,7 +192,21 @@ class WorkflowExecutionService {
 
         // Handle immediate delivery tools (e.g., LLMs)
         if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
-            this.logger.info(`[WorkflowExecution] Immediate tool response for step ${stepIndex + 1}: ${JSON.stringify(executionResponse.data.response)}`);
+            this.logger.info(`[WorkflowExecution] Immediate tool response for step ${stepIndex + 1}: ${JSON.stringify(executionResponse.data.response).substring(0,200)}...`);
+
+            // --- NEW: persist responsePayload so downstream steps can consume it ---
+            try {
+                if(executionResponse.data.generationId){
+                    await this.internalApiClient.put(`/internal/v1/data/generations/${executionResponse.data.generationId}`, {
+                        responsePayload: { result: executionResponse.data.response }
+                    });
+                } else {
+                    this.logger.warn('[WorkflowExecution] No generationId returned for immediate tool; skipping DB update.');
+                }
+            } catch(err){
+                this.logger.error('[WorkflowExecution] Failed to update generation with immediate response:', err.message);
+            }
+
             // Send generalized tool-response via WebSocket
             try {
                 const websocketService = require('./websocket/server');
@@ -149,8 +224,22 @@ class WorkflowExecutionService {
             } catch (err) {
                 this.logger.error(`[WorkflowExecution] Failed to send tool-response via WebSocket: ${err.message}`);
             }
-            // Optionally, you could process the response here, chain to next step, or log it for audit.
-            // For now, just log and return.
+            return executionResponse.data.response;
+        }
+
+        // If immediate response handled, manually advance the spell since NotificationDispatcher will not yet have the payload.
+        if (tool.deliveryMode === 'immediate') {
+            const fakeGenerationRecord = {
+                _id: executionResponse.data.generationId,
+                responsePayload: { result: executionResponse.data.response },
+                metadata: {
+                   spell,
+                   stepIndex,
+                   pipelineContext,
+                   originalContext,
+                }
+            };
+            await this.continueExecution(fakeGenerationRecord);
             return executionResponse.data.response;
         }
         // For webhook tools, the NotificationDispatcher will handle the rest.
@@ -174,7 +263,21 @@ class WorkflowExecutionService {
         const currentStep = spell.steps[stepIndex];
         const outputMappings = currentStep.outputMappings || {};
         
-        const stepOutput = completedGeneration.responsePayload?.[0]?.data;
+        // Extract generic output formats
+        let stepOutput = (completedGeneration.responsePayload?.[0]?.data) || completedGeneration.responsePayload || {};
+
+        // --- Normalise to common fields ---
+        if(stepOutput === null) stepOutput = {};
+        // OpenAI/LLM variants
+        if(stepOutput.result && !stepOutput.text) stepOutput.text = stepOutput.result;
+        if(stepOutput.response && !stepOutput.text) stepOutput.text = stepOutput.response;
+        if(Array.isArray(stepOutput.choices) && stepOutput.choices[0]?.message?.content && !stepOutput.text){
+           stepOutput.text = stepOutput.choices[0].message.content;
+        }
+        if(stepOutput.output && typeof stepOutput.output === 'string' && !stepOutput.text){
+           stepOutput.text = stepOutput.output;
+        }
+
         const next_inputs = {};
         if (stepOutput) {
             this.logger.info(`[WorkflowExecution] Processing output from step ${stepIndex + 1}. Mappings: ${JSON.stringify(outputMappings)}`, { stepOutput });
@@ -208,9 +311,10 @@ class WorkflowExecutionService {
                     }
                 }
             }
+            // No hard-coded fallbacks here – mapping must be defined in spell JSON.
         }
         
-        const nextPipelineContext = { ...pipelineContext, ...next_inputs };
+        const nextPipelineContext = { ...pipelineContext, ...stepOutput, ...next_inputs };
         const nextStepIndex = stepIndex + 1;
 
         if (nextStepIndex < spell.steps.length) {

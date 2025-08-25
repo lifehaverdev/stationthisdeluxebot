@@ -16,6 +16,9 @@ export default class BaseWindow {
   constructor({ id, title, position = { x: 0, y: 0 }, classes = [], icon = '' }) {
     this.id = id;
     this.position = position;
+    // expose workspace coords for drag helpers
+    this.workspaceX = position.x;
+    this.workspaceY = position.y;
     this.title = title;
     this.icon = icon;
 

@@ -310,8 +310,12 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(500).json({ error: { code: 'OPENAI_ERROR', message: err.message } });
           }
 
+          // Persist final tool output where the spell engine expects it.
+          // responsePayload is required so WorkflowExecutionService can pick it up for the next step.
           const updatePayload = {
             status: 'completed',
+            responsePayload: { result: responseContent },
+            // Keep legacy field for any consumers still reading metadata.response
             'metadata.response': responseContent
           };
 

@@ -34,8 +34,23 @@ export { generationCompletionManager };
  */
 function handleGenerationProgress(payload) {
     console.log('[Sandbox] Generation progress received:', payload);
-    const { generationId, progress, status, liveStatus } = payload;
-    const toolWindow = generationIdToWindowMap[generationId];
+    const { generationId, progress, status, liveStatus, toolId, spellId } = payload;
+
+    let toolWindow = generationIdToWindowMap[generationId];
+
+    if (!toolWindow && spellId) {
+        toolWindow = document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
+        if (toolWindow) generationIdToWindowMap[generationId] = toolWindow;        
+    }
+
+    if (!toolWindow && toolId) {
+        // Fallback: find spell window containing this toolId in its step list
+        document.querySelectorAll('.spell-window').forEach(sw=>{
+            if(toolWindow) return;
+            const li=[...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
+            if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
+        });
+    }
 
     if (toolWindow) {
         let progressIndicator = toolWindow.querySelector('.progress-indicator');
@@ -54,17 +69,25 @@ function handleGenerationProgress(payload) {
  * @param {object} payload - The final result payload from the server.
  */
 export function handleGenerationUpdate(payload) {
-    const { generationId, outputs, status, toolId } = payload;
+    const { generationId, outputs, status, toolId, spellId } = payload;
     let toolWindowEl = generationIdToWindowMap[generationId];
+
+    if (!toolWindowEl && spellId){
+        toolWindowEl=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
+        if(toolWindowEl) generationIdToWindowMap[generationId]=toolWindowEl;
+    }
+    if(!toolWindowEl && toolId){
+        document.querySelectorAll('.spell-window').forEach(sw=>{
+            if(toolWindowEl) return;
+            if([...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
+               toolWindowEl=sw;
+               generationIdToWindowMap[generationId]=sw;
+            }
+        });
+    }
 
     // Debug
     console.log('[WS] generationUpdate received', { generationId, toolId });
-
-    // Fallback search by toolId – check spell-window first then any tool-window
-    if (!toolWindowEl && toolId) {
-        toolWindowEl = document.querySelector(`.spell-window[data-toolid="${toolId}"]`) ||
-                       document.querySelector(`.tool-window[data-toolid="${toolId}"]`);
-    }
 
     if (toolWindowEl) {
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');
@@ -95,6 +118,9 @@ export function handleGenerationUpdate(payload) {
             }
             
             setToolWindowOutput(toolWindowEl.id, outputData);
+            // mark step done
+            const li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId));
+            if(li) li.className='done';
             console.log('[WS] Rendering output', outputData);
             renderResultContent(resultContainer, outputData);
             
@@ -114,4 +140,61 @@ export function handleGenerationUpdate(payload) {
 export function registerWebSocketHandlers() {
     websocketClient.on('generationProgress', handleGenerationProgress);
     websocketClient.on('generationUpdate', handleGenerationUpdate);
+    websocketClient.on('tool-response', handleToolResponse);
+}
+
+// ---- TOOL RESPONSE (immediate path) --------------------
+function stepList(win){return win.querySelectorAll('.spell-step-status li');}
+
+function findSpellWindowByToolId(toolId){
+  let win=null;
+  document.querySelectorAll('.spell-window').forEach(sw=>{
+      if(win) return;
+      if(sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`)) win=sw;
+  });
+  return win;
+}
+
+function handleToolResponse({ toolId, output, requestId }){
+    let win=findSpellWindowByToolId(toolId);
+    if(!win){
+        // legacy fallback textIncludes
+        document.querySelectorAll('.spell-window').forEach(sw=>{
+            if(win) return;
+            if([...stepList(sw)].some(li=>li.textContent.includes(toolId))) win=sw;
+        });
+    }
+    if(!win) return;
+
+    const li=win.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...stepList(win)].find(li=>li.textContent.includes(toolId));
+    if(li) li.className='done';
+
+    // progress bar update
+    const bar=win.querySelector('.spell-progress-bar');
+    if(bar){
+        const total=stepList(win).length;
+        const done=win.querySelectorAll('.spell-step-status li.done').length;
+        bar.value=Math.round((done/total)*100);
+    }
+
+    // --- NEW: clear progress indicator once this step completes ---
+    const prog=win.querySelector('.progress-indicator');
+    if(prog){
+        // If there are still pending steps, update status text instead of removing
+        const total=stepList(win).length;
+        const done=win.querySelectorAll('.spell-step-status li.done').length;
+        if(done===total){
+            prog.remove();
+        }else{
+            prog.textContent=`In progress: ${done}/${total} steps complete`;
+        }
+    }
+
+    // render output
+    let rc=win.querySelector('.result-container');
+    if(!rc){rc=document.createElement('div');rc.className='result-container';win.appendChild(rc);}    
+    import('./resultContent.js').then(m=>{
+        const data=typeof output==='string'?{type:'text',text:output}:{...output};
+        m.renderResultContent(rc,data);
+    });
 } 

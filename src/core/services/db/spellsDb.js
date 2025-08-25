@@ -120,6 +120,10 @@ class SpellsDB extends BaseDB {
     return this.findOne({ slug });
   }
 
+  async findByName(name){
+    return this.findOne({ name });
+  }
+
   /**
    * Finds a spell by its publicSlug (shareable URL slug).
    * @param {string} publicSlug

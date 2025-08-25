@@ -157,7 +157,6 @@ function createSpellsApi(dependencies) {
                 return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing spell slug in request body.' } });
             }
 
-            // Ensure masterAccountId is set to the authenticated user
             const proxyPayload = {
                 slug,
                 context: {
@@ -168,8 +167,13 @@ function createSpellsApi(dependencies) {
                 }
             };
 
-            const response = await internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload);
-            res.status(response.status).json(response.data);
+            // Fire-and-forget: kick off internal cast but do not await result
+            internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload)
+                .then(r=>logger.debug('[externalSpellsApi] Spell cast accepted internally', r.data))
+                .catch(e=>logger.warn('[externalSpellsApi] Internal spell cast call errored after response sent', e.message));
+
+            // Respond immediately so frontend waits on websockets
+            return res.status(202).json({ status: 'processing' });
         } catch (error) {
             const statusCode = error.response ? error.response.status : 502;
             const errorData = error.response ? error.response.data : { message: 'Unable to cast spell.' };

@@ -91,7 +91,7 @@ export default class ToolWindow extends BaseWindow {
    * @param {object|null} [opts.output] – prior output data
    * @param {object|null} [opts.parameterMappings] – restored param mappings
    */
-  constructor({ tool, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null }) {
+  constructor({ tool, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null }, { register = true } = {}) {
     const windowId = id || generateWindowId();
     super({ id: windowId, title: tool.displayName, position, classes: [], icon: '' });
 
@@ -118,30 +118,34 @@ export default class ToolWindow extends BaseWindow {
 
     this.renderBody();
 
-    // Register in global state but keep parity with old arrays
-    this.model = addToolWindow({
-      id: windowId,
-      tool,
-      element: this.el,
-      workspaceX: position.x,
-      workspaceY: position.y,
-      output: this.output,
-      outputVersions: this.outputVersions,
-      currentVersionIndex: this.currentVersionIndex,
-      parameterMappings: this.parameterMappings,
-    });
-
-    // Rebind local refs to the authoritative state entry so further mutations (like new versions) stay in sync.
-    this.outputVersions = this.model.outputVersions;
-    this.currentVersionIndex = this.model.currentVersionIndex;
-
-    if (!id) {
-      persistState();
-      pushHistory();
+    // Prepare state model and register (subclasses may override timing)
+    if (register) {
+      this._registerWithState({
+        id: windowId,
+        tool,
+        element: this.el,
+        workspaceX: position.x,
+        workspaceY: position.y,
+        output: this.output,
+        outputVersions: this.outputVersions,
+        currentVersionIndex: this.currentVersionIndex,
+        parameterMappings: this.parameterMappings,
+      }, !id);
     }
 
     // Advanced drag (workspace-aware) — reuse old function
-    setupDragging(getToolWindows().find(w => w.id === windowId), this.header);
+    setupDragging(this, this.header);
+  }
+
+  _registerWithState(modelData, pushHist = true) {
+    this.model = addToolWindow(modelData);
+    this.outputVersions = this.model.outputVersions;
+    this.currentVersionIndex = this.model.currentVersionIndex;
+
+    if (pushHist) {
+      persistState();
+      pushHistory();
+    }
   }
 
   // ---------------------------------------------------------------------

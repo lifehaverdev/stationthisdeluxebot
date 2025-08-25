@@ -66,13 +66,13 @@ class WorkflowsService {
     // geniusoverhaul: Get ToolRegistry instance
     this.toolRegistry = ToolRegistry.getInstance();
     
-    // Instantiate the Cache Manager, passing relevant options
-    this.cacheManager = new WorkflowCacheManager({
+    // Obtain shared cache manager instance
+    this.cacheManager = WorkflowCacheManager.getInstance({
       apiUrl: this.apiUrl,
       apiKey: this.apiKey,
       timeout: this.timeout,
       logger: this.logger,
-      cacheConfig: options.cache // Pass the cache config sub-object
+      cacheConfig: options.cache
     });
     
     // Validate API key
@@ -623,18 +623,17 @@ class WorkflowsService {
     // For now, assume 'input_prompt' is common, or check metadata if available from workflowCacheManager.
     const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt'; // Fallback to input_prompt
     const originalUserPrompt = inputsToRun[promptInputKey];
-
-    if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Identified promptInputKey: ${promptInputKey}, Original User Prompt: "${originalUserPrompt ? originalUserPrompt.substring(0, 50) + '...' : '[No Prompt]'}"`);
+    const baseModelForLora = tool.metadata?.baseModel || tool.baseModel; // prefer metadata
 
     // ADR-009: LoRA Resolution Step
     if (tool.metadata?.hasLoraLoader && originalUserPrompt && typeof originalUserPrompt === 'string') {
-      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Tool ${toolId} has LoRA loader support. Attempting LoRA resolution. BaseModel: ${tool.baseModel}`);
+      if (DEBUG_LOGGING_ENABLED) this.logger.info(`[WorkflowsService] Tool ${toolId} has LoRA loader support. Attempting LoRA resolution. BaseModel: ${baseModelForLora}`);
       try {
         loraResolutionResult = await loraResolutionService.resolveLoraTriggers(
           originalUserPrompt,
           masterAccountId,
-          tool.baseModel, // Pass the tool's baseModel for filtering
-          dependencies.internal.client
+          baseModelForLora,
+          dependencies
         );
 
         if (loraResolutionResult) {

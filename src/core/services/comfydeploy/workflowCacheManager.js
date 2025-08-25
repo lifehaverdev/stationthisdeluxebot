@@ -102,6 +102,19 @@ function generateCommandName(displayName) {
 }
 
 class WorkflowCacheManager {
+  // --- Singleton support ---
+  static _instance=null;
+  /**
+   * Retrieve shared instance. Subsequent calls ignore options.
+   * @param {Object} [options] optional options only used on first construction
+   */
+  static getInstance(options={}){
+      if(!WorkflowCacheManager._instance){
+          WorkflowCacheManager._instance=new WorkflowCacheManager(options);
+      }
+      return WorkflowCacheManager._instance;
+  }
+
   /**
    * Initialize Workflow Cache Manager
    * 

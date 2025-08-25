@@ -17,11 +17,13 @@ class ModelDiscoveryService {
     if (workflowCache) {
       this.wfCache = workflowCache;
     } else {
-      this.wfCache = new WorkflowCacheManager({
-        apiUrl: comfyService.apiUrl,
-        apiKey: comfyService.apiKey,
-        timeout: comfyService.timeout,
-        logger: comfyService.logger || console
+      // Use shared WorkflowCacheManager instance
+      this.wfCache = WorkflowCacheManager.getInstance({
+          apiUrl: comfyService.apiUrl,
+          apiKey: comfyService.apiKey,
+          timeout: comfyService.timeout,
+          logger: comfyService.logger,
+          cacheConfig: comfyService.cacheConfig
       });
     }
 

@@ -18,7 +18,23 @@ class SpellsService {
         // 1. Find the spell
         let spell = await this.db.spells.findBySlug(slug);
 
-        // If not found, try a partial match for spells owned by the user
+        // If not found try direct name match (names are unique & act as slug)
+        if(!spell){
+            spell = await this.db.spells.findByName(slug);
+            if(spell){
+                this.logger.info(`[SpellsService] Found spell by unique name fallback: ${spell.name}`);
+            }
+        }
+
+        // If not found try by ObjectId (support legacy callers sending _id)
+        if (!spell && require('mongodb').ObjectId.isValid(slug)) {
+            spell = await this.db.spells.findById(slug);
+            if (spell) {
+                this.logger.info(`[SpellsService] Found spell by ObjectId fallback: ${spell.slug}`);
+            }
+        }
+
+        // If still not found, try a partial match for spells owned by the user
         if (!spell) {
             this.logger.info(`[SpellsService] Exact slug "${slug}" not found. Trying partial match for user ${context.masterAccountId}.`);
             const possibleSpells = await this.db.spells.findSpellsByOwnerAndPartialSlug(context.masterAccountId, slug);
