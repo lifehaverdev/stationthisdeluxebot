@@ -34,6 +34,25 @@ function createPublicStorageApi(services) {
     }
   });
 
+  // New preferred route for presigned uploads (alias for upload-url)
+  router.post('/uploads/sign', async (req, res) => {
+    const { fileName, contentType } = req.body;
+    if (!fileName || !contentType) {
+      return res.status(400).json({ error: 'fileName and contentType are required.' });
+    }
+    try {
+      const response = await internalApiClient.post('/internal/v1/data/storage/upload-url', {
+        fileName,
+        contentType,
+        userId: 'web-upload-user',
+      });
+      res.json(response.data);
+    } catch (error) {
+      logger.error('Error proxying uploads/sign:', error);
+      res.status(500).json({ error: 'Could not process upload request.' });
+    }
+  });
+
   return router;
 }
 

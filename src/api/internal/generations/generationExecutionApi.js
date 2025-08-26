@@ -381,7 +381,7 @@ module.exports = function generationExecutionApi(dependencies) {
               status: 'completed',
               service: 'string',
               toolId: tool.toolId,
-              outputs: [{ data: { result: resultStr } }],
+              outputs: { text: resultStr },
               message: 'String operation completed.'
             };
 

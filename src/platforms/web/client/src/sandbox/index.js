@@ -17,6 +17,7 @@ import {
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
 import { createToolWindow, createSpellWindow } from './node/index.js';
+import { createUploadWindow } from './window/index.js';
 import { createImageInSandbox } from './components/image.js';
 import { initCanvas, updateConnectionLine } from './canvas.js';
 import { calculateCenterPosition, hideModal } from './utils.js';
@@ -403,6 +404,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial check
     updateFAB();
+
+    // Upload button in action-modal
+    const uploadBtn = document.querySelector('.action-modal .upload-btn');
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', () => {
+            const pos = calculateCenterPosition(getToolWindows());
+            createUploadWindow({ id: `upload-${Date.now()}`, position: pos });
+            hideModal();
+        });
+    }
+
+    // Paste image to create upload window
+    document.addEventListener('paste', (e) => {
+        const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
+        if (!item) return;
+        const file = item.getAsFile();
+        const { x, y } = screenToWorkspace(e.clientX, e.clientY);
+        const win = createUploadWindow({ id: `upload-${Date.now()}`, position: { x, y } });
+        win.loadPastedFile?.(file);
+    });
 });
 
 function initLassoSelection() {

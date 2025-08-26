@@ -20,6 +20,46 @@ function createParameterInput(key, param, mapping, toolWindows) {
     container.className = 'parameter-input';
     container.dataset.paramName = key;
 
+    // Utility to update mapping and versioning when value changes
+    const handleChange = (value, containerEl) => {
+        const toolWindowEl = containerEl.closest('.tool-window');
+        const toolWindow = getToolWindow(toolWindowEl.id);
+        if (toolWindow && toolWindow.parameterMappings[key]) {
+            toolWindow.parameterMappings[key].value = value;
+
+            // --- Versioning logic (kept from original) ---
+            if (!Array.isArray(toolWindow.outputVersions)) {
+                toolWindow.outputVersions = [];
+            }
+            const needsNewVersion = toolWindow.outputVersions.length === 0 ||
+                (toolWindow.currentVersionIndex !== toolWindow.outputVersions.length - 1) ||
+                (toolWindow.outputVersions[toolWindow.outputVersions.length - 1] && !toolWindow.outputVersions[toolWindow.outputVersions.length - 1]._pending);
+
+            if (needsNewVersion) {
+                const snapshot = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
+                const placeholder = { _pending: true, type: 'pending', params: snapshot };
+                toolWindow.outputVersions.push(placeholder);
+                toolWindow.currentVersionIndex = toolWindow.outputVersions.length - 1;
+            } else {
+                // Update snapshot of existing pending version
+                const lastIdx = toolWindow.outputVersions.length - 1;
+                if (toolWindow.outputVersions[lastIdx] && toolWindow.outputVersions[lastIdx]._pending) {
+                    toolWindow.outputVersions[lastIdx].params = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
+                }
+            }
+
+            // Refresh version selector UI if present
+            if (typeof document !== 'undefined') {
+                if (toolWindowEl.versionSelector && toolWindowEl.versionSelector.querySelector) {
+                    const btn = toolWindowEl.versionSelector.querySelector('.version-button');
+                    if (btn && typeof btn.refreshDropdown === 'function') {
+                        btn.refreshDropdown();
+                    }
+                }
+            }
+        }
+    };
+
     // If mapped to node output, show as connected
     if (mapping && mapping.type === 'nodeOutput') {
         container.classList.add('parameter-connected');
@@ -43,52 +83,61 @@ function createParameterInput(key, param, mapping, toolWindows) {
         const label = document.createElement('label');
         label.textContent = param.name;
 
-        const input = document.createElement('input');
-        input.type = param.type === 'number' || param.type === 'integer' ? 'number' : 'text';
-        input.name = key;
-        input.value = mapping && mapping.value !== undefined ? mapping.value : (param.default || '');
-        input.placeholder = param.description || param.name;
+        let inputEl;
+        if (Array.isArray(param.enum) && param.enum.length) {
+            // Enum -> create select dropdown
+            const select = document.createElement('select');
+            select.name = key;
+            param.enum.forEach(opt => {
+                const optionEl = document.createElement('option');
+                optionEl.value = opt;
+                optionEl.textContent = opt;
+                select.appendChild(optionEl);
+            });
+            select.value = mapping && mapping.value !== undefined ? mapping.value : (param.default || param.enum[0]);
+            select.addEventListener('change', (e) => handleChange(e.target.value, container));
+            inputEl = select;
+        } else {
+            // Fallback to text/number input
+            const input = document.createElement('input');
+            input.type = param.type === 'number' || param.type === 'integer' ? 'number' : 'text';
+            input.name = key;
+            input.value = mapping && mapping.value !== undefined ? mapping.value : (param.default || '');
+            input.placeholder = param.description || param.name;
+            input.addEventListener('input', (e) => handleChange(e.target.value, container));
+            inputEl = input;
+        }
 
-        input.addEventListener('input', (e) => {
-            const toolWindowEl = container.closest('.tool-window');
-            const toolWindow = getToolWindow(toolWindowEl.id);
-            if (toolWindow && toolWindow.parameterMappings[key]) {
-                toolWindow.parameterMappings[key].value = e.target.value;
+        container.append(label, inputEl);
 
-                // --- Versioning: create new pending version on parameter change ---
-                if (!Array.isArray(toolWindow.outputVersions)) {
-                    toolWindow.outputVersions = [];
+        // --- Conditional visibility ---
+        if (param.visibleIf && param.visibleIf.field && Array.isArray(param.visibleIf.values)) {
+            const dependentField = param.visibleIf.field;
+            const updateVisibility = () => {
+                const root = container.closest('.tool-window');
+                if (!root) return;
+                const depEl = root.querySelector(`[name="${dependentField}"]`);
+                if (!depEl) return;
+                const depValue = depEl.value;
+                const shouldShow = param.visibleIf.values.includes(depValue);
+                container.style.display = shouldShow ? '' : 'none';
+            };
+
+            // Initial toggle after DOM attach microtask
+            setTimeout(updateVisibility, 0);
+
+            // Listen for changes on dependent field
+            container.addEventListener('visibilityCheck', updateVisibility);
+            // Attach listener to dep field
+            const root = document;
+            setTimeout(() => {
+                const depEl = container.closest('.tool-window')?.querySelector(`[name="${dependentField}"]`);
+                if (depEl) {
+                    depEl.addEventListener('change', updateVisibility);
+                    depEl.addEventListener('input', updateVisibility);
                 }
-                const needsNewVersion = toolWindow.outputVersions.length === 0 ||
-                    (toolWindow.currentVersionIndex !== toolWindow.outputVersions.length - 1) ||
-                    (toolWindow.outputVersions[toolWindow.outputVersions.length - 1] && !toolWindow.outputVersions[toolWindow.outputVersions.length - 1]._pending);
-
-                if (needsNewVersion) {
-                    const snapshot = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
-                    const placeholder = { _pending: true, type: 'pending', params: snapshot };
-                    toolWindow.outputVersions.push(placeholder);
-                    toolWindow.currentVersionIndex = toolWindow.outputVersions.length - 1;
-                } else {
-                    // Update snapshot of existing pending version
-                    const lastIdx = toolWindow.outputVersions.length - 1;
-                    if (toolWindow.outputVersions[lastIdx] && toolWindow.outputVersions[lastIdx]._pending) {
-                        toolWindow.outputVersions[lastIdx].params = JSON.parse(JSON.stringify(toolWindow.parameterMappings));
-                    }
-                }
-
-                // Refresh version selector UI if present
-                if (typeof document !== 'undefined') {
-                    if (toolWindowEl.versionSelector && toolWindowEl.versionSelector.querySelector) {
-                        const btn = toolWindowEl.versionSelector.querySelector('.version-button');
-                        if (btn && typeof btn.refreshDropdown === 'function') {
-                            btn.refreshDropdown();
-                        }
-                    }
-                }
-            }
-        });
-
-        container.append(label, input);
+            }, 0);
+        }
     }
     return container;
 }

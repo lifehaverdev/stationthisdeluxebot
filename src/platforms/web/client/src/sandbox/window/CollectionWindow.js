@@ -191,6 +191,18 @@ export default class CollectionWindow extends BaseWindow {
     outputDiv.style.marginTop = '10px';
     body.appendChild(outputDiv);
 
+    // Pre-create step status list so websocket handlers can update
+    const stepUl = document.createElement('ul');
+    stepUl.className = 'spell-step-status';
+    const stepLi = document.createElement('li');
+    stepLi.dataset.toolId = this.collection.toolId;
+    stepLi.textContent = `1. ${this.collection.toolId}`;
+    stepLi.className = 'pending';
+    stepUl.appendChild(stepLi);
+    body.appendChild(stepUl);
+
+    let progressIndicator; let progBar;
+
     // Randomise traits handler
     randBtn.onclick = () => {
       categories.forEach(cat => {
@@ -213,7 +225,23 @@ export default class CollectionWindow extends BaseWindow {
 
     // Execute handler ------------------------
     execBtn.onclick = async () => {
-      outputDiv.textContent = 'Running…';
+      // progress UI bootstrap
+      if (!progressIndicator) {
+        progressIndicator = document.createElement('div');
+        progressIndicator.className = 'progress-indicator';
+        body.appendChild(progressIndicator);
+      }
+      progressIndicator.textContent = 'Executing…';
+
+      if (!progBar) {
+        progBar = document.createElement('progress');
+        progBar.className = 'spell-progress-bar';
+        progBar.max = 100; progBar.value = 0;
+        body.appendChild(progBar);
+      }
+
+      outputDiv.textContent = '';
+
       const traitSel = {};
       categories.forEach(cat => {
         const el = selects[cat.name];

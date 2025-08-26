@@ -61,6 +61,17 @@ We will implement a two-step signed-URL upload pipeline backed by Cloudflare R2:
 
 All previous failure modes and their resolutions are captured here to avoid regressions.
 
+### 2025-08-26 Minimal v3 Flow & Creds Fix
+
+* **11:30** Swapped to new R2 API credentials — ensured `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` env vars loaded.
+* **11:45** Reverted to minimal AWS-SDK v3 presigner: Bucket/Key/ContentType only, no metadata, no extra headers.
+* **12:10** Discovered duplicate `uploads/` prefix in object key caused signature mismatch; fixed key → `<userId>/<uuid>-<file>`.
+* **12:20** Confirmed presigned URL with `X-Amz-SignedHeaders=host` and checksum params uploads successfully **without sending any extra headers**.
+* **12:25** CLI `scripts/cf-upload.js` trimmed to send PUT body only; upload returns HTTP 200 and prints CDN link.
+* **12:30** Added cleanup todos: frontend UploadModal, `/api/uploads/commit`, DB table.
+
+Checksum query params (`x-amz-sdk-checksum-algorithm`, `x-amz-checksum-crc32`) are tolerated by R2 when using default v3 signer.
+
 ## Alternatives Considered
 * **Continue using S3 public bucket** – Rejected: privacy & egress cost.
 * **Back-end proxy upload** – Rejected: doubles bandwidth usage, higher latency.

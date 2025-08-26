@@ -8,7 +8,7 @@ const stringPrimitiveTool = {
   inputSchema: {
     operation: {
       name: 'operation',
-      type: 'string',
+      type: 'enum',
       required: true,
       description: 'Operation to perform',
       enum: ['concat', 'replace']
@@ -23,13 +23,15 @@ const stringPrimitiveTool = {
       name: 'stringB',
       type: 'string',
       required: false,
-      description: 'Secondary string input or replacement value.'
+      description: 'Secondary string input or replacement value.',
+      visibleIf: { field: 'operation', values: ['concat', 'replace'] }
     },
     searchValue: {
       name: 'searchValue',
       type: 'string',
       required: false,
-      description: 'Substring or regex to search for (used in replace).'
+      description: 'Substring or regex to search for (used in replace).',
+      visibleIf: { field: 'operation', values: ['replace'] }
     }
   },
   outputSchema: {
@@ -40,9 +42,11 @@ const stringPrimitiveTool = {
     }
   },
   costingModel: {
-    rate: 0,
-    unit: 'call',
-    rateSource: 'static'
+    rateSource: 'static',
+    staticCost: {
+      amount: 0,
+      unit: 'token'
+    }
   },
   deliveryMode: 'immediate',
   webhookStrategy: {

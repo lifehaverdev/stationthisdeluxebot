@@ -31,6 +31,9 @@ Observed behaviour:
 
 _Preliminary choice: **Option A** (extend frontend)_
 
+### 2025-08-26 Update
+SpellWindow streaming implemented earlier now also covers Collection test windows via shared websocket handlers and the new CollectionWindow class. No backend changes required; front-end creates step status list & progress bar so `tool-response` and `generationUpdate` events update UI in real-time.
+
 Rationale: we can unblock user experience quickly by finalising `tool-response` mapping in `websocketHandlers.js`. Longer-term we may revisit a unified protocol (see Future Work).
 
 ## Consequences

@@ -64,6 +64,31 @@ export function createInputAnchors(tool) {
         tooltip.textContent = `${paramKey} (${type})`;
         anchor.appendChild(tooltip);
 
+        // --- Conditional visibility ---
+        if (paramDef.visibleIf && paramDef.visibleIf.field && Array.isArray(paramDef.visibleIf.values)) {
+            const dependentField = paramDef.visibleIf.field;
+            const updateVisibility = () => {
+                const root = container.closest('.tool-window');
+                if (!root) return;
+                const depEl = root.querySelector(`[name="${dependentField}"]`);
+                if (!depEl) return;
+                const depValue = depEl.value;
+                const shouldShow = paramDef.visibleIf.values.includes(depValue);
+                anchor.style.display = shouldShow ? '' : 'none';
+            };
+
+            setTimeout(updateVisibility, 0);
+
+            // Attach listeners to update on changes
+            setTimeout(() => {
+                const depEl = container.closest('.tool-window')?.querySelector(`[name="${dependentField}"]`);
+                if (depEl) {
+                    depEl.addEventListener('change', updateVisibility);
+                    depEl.addEventListener('input', updateVisibility);
+                }
+            }, 0);
+        }
+
         container.appendChild(anchor);
     });
 

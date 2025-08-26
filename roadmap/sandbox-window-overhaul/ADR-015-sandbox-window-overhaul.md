@@ -42,10 +42,10 @@ Extract a small window framework and migrate all windows onto it.
 | 1. Base utilities & BaseWindow | ✅ Done |
 | 2. Refactor ToolWindow | ✅ Done |
 | 3. Version selector & persistence | ✅ Done |
-| 4. SpellWindow class + execution | 🔄 In progress |
-| 5. Collection windows | ☐ |
-| 6. Consolidate CSS | ☐ |
-| 7. Cleanup & docs | ☐ |
+| 4. SpellWindow class + execution | ✅ Done |
+| 5. Collection windows | ✅ Done |
+| 6. Consolidate CSS | ✅ Done |
+| 7. Cleanup & docs | 🔄 In progress |
 
 ---
 
