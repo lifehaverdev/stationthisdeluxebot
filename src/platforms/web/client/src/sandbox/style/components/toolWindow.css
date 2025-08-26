@@ -33,7 +33,9 @@
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     width: var(--tool-window-fixed-width); /* Fixed width */
+    /* Use min-width so window can expand with content or zoom */
     min-width: var(--tool-window-fixed-width);
+    max-width: 480px;
     color: var(--text-color);
     font-family: var(--font-family-mono);
     z-index: var(--z-tool-window);
@@ -193,4 +195,15 @@
 .tool-window.node-selected {
     border-color: #4f8cff;
     box-shadow: 0 0 15px rgba(79, 140, 255, 0.5);
+} 
+
+.spell-window {
+    border-color: var(--primary-accent-color, #9b59b6);
+    box-shadow: 0 0 15px rgba(155, 89, 182, 0.4);
+}
+
+/* Collection window subtle teal accent */
+.collection-window {
+    border-color: var(--collection-accent-color, #16a085);
+    box-shadow: 0 0 12px rgba(22, 160, 133, 0.35);
 } 

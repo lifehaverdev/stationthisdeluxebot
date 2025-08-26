@@ -282,7 +282,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Restore tool and spell windows from state (localStorage)
     getToolWindows().forEach(win => {
         if (win.isSpell && win.spell) {
-            createSpellWindow(win.spell, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            createSpellWindow(
+                win.spell,
+                { x: win.workspaceX, y: win.workspaceY },
+                win.id,
+                win.output,
+                win.parameterMappings,
+                win.outputVersions,
+                win.currentVersionIndex
+            );
             return;
         }
         if (win.tool) {

@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 
 // This function initializes the routes for the centralized Generation Execution API
 module.exports = function generationExecutionApi(dependencies) {
-  const { logger, db, toolRegistry, comfyUIService, openaiService, internalApiClient, loraResolutionService, webSocketService: websocketServer } = dependencies;
+  const { logger, db, toolRegistry, comfyUIService, openaiService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer } = dependencies;
   const router = express.Router();
 
   // Check for essential dependencies
@@ -367,6 +367,37 @@ module.exports = function generationExecutionApi(dependencies) {
             response: responseContent,
             message: 'Your ChatGPT request was completed successfully.'
           });
+        }
+        case 'string': {
+          if (!stringService) {
+            logger.error('[Execute] StringService is not available.');
+            return res.status(500).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'String service unavailable.' } });
+          }
+
+          try {
+            const resultStr = stringService.execute(inputs);
+            const payload = {
+              generationId: 'string-primitive-' + Date.now(),
+              status: 'completed',
+              service: 'string',
+              toolId: tool.toolId,
+              outputs: [{ data: { result: resultStr } }],
+              message: 'String operation completed.'
+            };
+
+            // Send via websocket if available
+            if (websocketServer && user && user.masterAccountId) {
+              websocketServer.sendToUser(String(user.masterAccountId), {
+                type: 'generationUpdate',
+                payload
+              });
+            }
+
+            return res.status(200).json(payload);
+          } catch (err) {
+            logger.error('[Execute] Error executing StringService:', err);
+            return res.status(500).json({ error: { code: 'EXECUTION_FAILED', message: 'String operation failed.' } });
+          }
         }
         default:
           logger.error(`[Execute] Unrecognized service '${service}' for tool '${toolId}'.`);

@@ -43,6 +43,24 @@ We will implement a two-step signed-URL upload pipeline backed by Cloudflare R2:
 ## Implementation Log
 [Chronological notes taken while implementing this ADR.  Use timestamps or bullet points.]
 
+### 2025-08-25 Troubleshooting R2 Upload Flow
+
+* **14:00** Initial CLI (`scripts/cf-upload.js`) created; backend returned presigned URL but PUT → `401 Unauthorized` due to 
+  `x-amz-sdk-checksum-algorithm=CRC32` + `x-amz-checksum-crc32` query params that R2 does not support for single-part uploads.
+* **14:25** Removed `ChecksumAlgorithm: 'CRC32'` from `PutObjectCommand` – query params still appeared (SDK default).
+* **15:10** Stripped all `x-amz-*checksum*` params after `getSignedUrl` → checksums gone, but URL contained
+  `X-Amz-Content-Sha256=UNSIGNED-PAYLOAD`; R2 now required matching header.
+* **15:40** Client added `x-amz-content-sha256: UNSIGNED-PAYLOAD` header → signature mismatch (403) because header
+  was not included in `X-Amz-SignedHeaders` list.
+* **16:00** Tried `ChecksumSHA256` property – produced wrong header (`x-amz-checksum-sha256`).
+* **16:30** Final fix:
+  * Added `ContentSHA256: 'UNSIGNED-PAYLOAD'` on `PutObjectCommand` **and**
+    `signableHeaders: new Set(['host','x-amz-content-sha256'])` when calling `getSignedUrl`.
+  * Presigned URL now shows `X-Amz-SignedHeaders=host;x-amz-content-sha256`.
+  * CLI mirrors header – upload succeeds (HTTP 200).  🎉
+
+All previous failure modes and their resolutions are captured here to avoid regressions.
+
 ## Alternatives Considered
 * **Continue using S3 public bucket** – Rejected: privacy & egress cost.
 * **Back-end proxy upload** – Rejected: doubles bandwidth usage, higher latency.

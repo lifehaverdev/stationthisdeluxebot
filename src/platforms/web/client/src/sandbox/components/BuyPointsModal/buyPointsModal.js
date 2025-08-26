@@ -13,7 +13,7 @@ const buyPointsState = {
 };
 
 // --- DOM Element References ---
-let modal, modalContent, closeModalBtn, closeModalBtnBottom, step1, step2, step3, step4, step5, loader, errorDisplay;
+let modal, modalContent, walletInfoDiv, closeModalBtn, closeModalBtnBottom, step1, step2, step3, step4, step5, loader, errorDisplay;
 let assetSelection, amountInput, quoteDisplay, reviewSummary, txStatusDisplay, receiptDisplay;
 let customCoinBtn, customCoinInputContainer, customCoinAddress, customCoinSubmit;
 let selectedAssetDisplay, reviewPurchaseBtn, confirmPurchaseBtn;
@@ -87,7 +87,8 @@ function renderAssetSelection() {
         return assets.find(a => (a.symbol || a.name || '').toLowerCase() === symbol.toLowerCase());
     }
     // Render tokens by tier
-    const tokens = buyPointsState.supportedAssets.tokens || [];
+    const tokens = (buyPointsState.supportedAssets.tokens || []).filter(t => t && (t.symbol || t.name));
+    const renderedAddresses = new Set();
     tierOrder.forEach(tier => {
         const tierSymbols = tierAssets[tier];
         const tierTokens = tierSymbols
@@ -100,18 +101,39 @@ function renderAssetSelection() {
             tierTokens.forEach(asset => {
                 const btn = document.createElement('button');
                 btn.className = 'asset-btn';
-                btn.innerHTML = `<img src="${asset.iconUrl}" alt="${asset.symbol || asset.name}" class="asset-icon"> ${asset.symbol || asset.name}`;
+                const iconSrc = asset.iconUrl || '/images/sandbox/components/placeholder.png';
+                btn.innerHTML = `<img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon"> ${asset.symbol || asset.name}`;
                 btn.onclick = () => {
                     buyPointsState.selectedAsset = { ...asset, type: 'token' };
                     goToStep(2);
                 };
                 tierDiv.appendChild(btn);
+                renderedAddresses.add(asset.address.toLowerCase());
             });
             assetSelection.appendChild(tierDiv);
         }
     });
+    // Render any remaining tokens not in predefined tiers
+    const remainingTokens = tokens.filter(t => !renderedAddresses.has((t.address||'').toLowerCase()));
+    if (remainingTokens.length) {
+        const otherDiv = document.createElement('div');
+        otherDiv.className = 'asset-tier-group';
+        otherDiv.innerHTML = '<div class="asset-tier-heading">Other</div>';
+        remainingTokens.forEach(asset => {
+            const btn = document.createElement('button');
+            btn.className = 'asset-btn';
+            const iconSrc = asset.iconUrl || '/images/sandbox/components/placeholder.png';
+            btn.innerHTML = `<img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon"> ${asset.symbol || asset.name}`;
+            btn.onclick = () => {
+                buyPointsState.selectedAsset = { ...asset, type: 'token' };
+                goToStep(2);
+            };
+            otherDiv.appendChild(btn);
+        });
+        assetSelection.appendChild(otherDiv);
+    }
     // Render NFTs (after tokens)
-    const nfts = buyPointsState.supportedAssets.nfts || [];
+    const nfts = (buyPointsState.supportedAssets.nfts || []).filter(n => n && n.name);
     if (nfts.length > 0) {
         const nftDiv = document.createElement('div');
         nftDiv.className = 'asset-tier-group';
@@ -119,7 +141,7 @@ function renderAssetSelection() {
         nfts.forEach(asset => {
             const btn = document.createElement('button');
             btn.className = 'asset-btn';
-            btn.innerHTML = `<img src="${asset.iconUrl}" alt="${asset.name}" class="asset-icon"> ${asset.name}`;
+            btn.innerHTML = `<img src="${asset.iconUrl || '/images/sandbox/components/placeholder.png'}" alt="${asset.name}" class="asset-icon"> ${asset.name}`;
             btn.onclick = () => {
                 buyPointsState.selectedAsset = { ...asset, type: 'nft' };
                 goToStep(2);
@@ -225,6 +247,112 @@ function renderReceiptStep() {
 // --- API Functions ---
 const API_BASE_URL = '/api/v1/points';
 
+// ---------------- Network / Chain Helpers -----------------
+// This will be populated at runtime from backend
+let SUPPORTED_CHAINS = {};
+let SUPPORTED_CHAIN_IDS = [];
+let PREFERRED_CHAIN_ID = '11155111'; // fallback
+
+async function fetchSupportedChains() {
+    try {
+        const res = await fetch('/api/v1/points/supported-chains');
+        const data = await res.json();
+        if (data && Array.isArray(data.chains)) {
+            SUPPORTED_CHAINS = {};
+            data.chains.forEach(ch => {
+                SUPPORTED_CHAINS[ch.chainId] = ch.name;
+            });
+            SUPPORTED_CHAIN_IDS = Object.keys(SUPPORTED_CHAINS);
+            if (SUPPORTED_CHAIN_IDS.length && !SUPPORTED_CHAIN_IDS.includes(PREFERRED_CHAIN_ID)) {
+                PREFERRED_CHAIN_ID = SUPPORTED_CHAIN_IDS[0];
+            }
+        }
+    } catch (err) {
+        console.warn('[BuyPointsModal] Failed to fetch supported chains:', err);
+    }
+}
+
+function showNetworkAlert(currentId) {
+    // Remove existing alert if any
+    const existing = document.getElementById('network-alert');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'network-alert';
+    overlay.style = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+    const box = document.createElement('div');
+    box.style = 'background:#121212;padding:24px;border-radius:8px;max-width:320px;text-align:center;color:#fff;';
+    box.innerHTML = `<h3 style="margin-top:0">Unsupported network</h3><p>You are connected to chain ID ${currentId}.<br>Please switch to one of the supported networks:</p>`;
+
+    Object.entries(SUPPORTED_CHAINS).forEach(([id, name]) => {
+        const btn = document.createElement('button');
+        btn.textContent = name;
+        btn.style = 'display:block;width:100%;margin:6px 0;padding:8px;border:none;border-radius:4px;background:#2196f3;color:#fff;cursor:pointer;';
+        btn.onclick = async () => {
+            if (window.ethereum && window.ethereum.request) {
+                const hexChain = '0x' + parseInt(id).toString(16);
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: hexChain }]
+                    });
+                } catch (switchErr) {
+                    // If chain not added to wallet (error 4902), try adding it
+                    if (switchErr.code === 4902) {
+                        try {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{ chainId: hexChain, rpcUrls: [], chainName: SUPPORTED_CHAINS[id] }]
+                            });
+                        } catch (addErr) {
+                            console.warn('[BuyPointsModal] addEthereumChain failed:', addErr);
+                            return;
+                        }
+                    } else {
+                        console.warn('[BuyPointsModal] wallet_switchEthereumChain error:', switchErr);
+                        return;
+                    }
+                }
+                overlay.remove();
+                await refreshWalletInfo();
+                // Refetch assets for new chain
+                await fetchSupportedAssets();
+            }
+        };
+        box.appendChild(btn);
+    });
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style = 'margin-top:10px;padding:6px 12px;background:#555;border:none;border-radius:4px;color:#fff;cursor:pointer;';
+    closeBtn.onclick = () => overlay.remove();
+    box.appendChild(closeBtn);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
+
+async function getCurrentChainId() {
+    if (!window.ethereum) return null;
+    try {
+        const hexId = await window.ethereum.request({ method: 'eth_chainId' });
+        return parseInt(hexId, 16).toString();
+    } catch {
+        return null;
+    }
+}
+
+async function ensureCorrectNetwork() {
+    const chainId = await getCurrentChainId();
+    if (!chainId || SUPPORTED_CHAIN_IDS.includes(chainId)) {
+        return true; // supported
+    }
+
+    // Show custom alert with options
+    showNetworkAlert(chainId);
+    return false;
+}
 // --- Debounce Utility ---
 let debounceTimer = null;
 function debounce(fn, delay) {
@@ -234,11 +362,14 @@ function debounce(fn, delay) {
 
 async function fetchSupportedAssets() {
     try {
-        const res = await fetch(`${API_BASE_URL}/supported-assets`, {
-            credentials: 'include'
+        const chainId = await getCurrentChainId() || PREFERRED_CHAIN_ID;
+        const res = await fetch(`${API_BASE_URL}/supported-assets?chainId=${chainId}&t=${Date.now()}`, {
+            credentials: 'include',
+            headers: { 'Cache-Control': 'no-cache' }
         });
         if (!res.ok) throw new Error('Failed to fetch supported assets');
         const data = await res.json();
+        console.log('[BuyPointsModal] Supported assets response:', data);
         buyPointsState.supportedAssets = data;
         render();
     } catch (err) {
@@ -272,6 +403,7 @@ async function getUserWalletAddress() {
 
 async function fetchQuote() {
     if (!buyPointsState.selectedAsset || !buyPointsState.amount) return;
+    if (!(await ensureCorrectNetwork())) return;
     showLoader(true);
     try {
         let amountToSend = buyPointsState.amount;
@@ -322,6 +454,7 @@ async function sendTransaction(tx) {
 
 async function initiatePurchase() {
     if (!buyPointsState.quote) return;
+    if (!(await ensureCorrectNetwork())) return;
     showLoader(true);
     try {
         let amountToSend = buyPointsState.amount;
@@ -491,6 +624,7 @@ const buyPointsModalHTML = `
 <!-- Buy Points Modal -->
 <div id="buy-points-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
+        <div id="wallet-info" style="font-size:12px;color:#90caf9;margin-bottom:6px;"></div>
         <button class="modal-close-btn">&times;</button>
         
         <!-- Step 1: Select Asset -->
@@ -558,6 +692,7 @@ async function initBuyPointsModal() {
     document.body.insertAdjacentHTML('beforeend', buyPointsModalHTML);
     modal = document.getElementById('buy-points-modal');
     modalContent = modal.querySelector('.modal-content');
+    walletInfoDiv = document.getElementById('wallet-info');
     closeModalBtn = modal.querySelector('.modal-close-btn');
     closeModalBtnBottom = modal.querySelector('.modal-close-btn-bottom');
     step1 = document.getElementById('modal-step-1');
@@ -595,7 +730,11 @@ async function initBuyPointsModal() {
         console.log('[BuyPointsModal] Subscribed to pointsDepositUpdate events.');
     }
 
+    await fetchSupportedChains();
     modal.style.display = 'flex';
+    refreshWalletInfo();
+    // Immediately alert if on unsupported chain
+    await ensureCorrectNetwork();
     goToStep(1);
     showLoader(true);
     await fetchSupportedAssets();
@@ -604,3 +743,32 @@ async function initBuyPointsModal() {
 }
 
 window.openBuyPointsModal = initBuyPointsModal; 
+
+// Listen for external chain changes and refresh banner/assets
+if (window.ethereum && !window._buyPointsChainListener) {
+    window._buyPointsChainListener = true;
+    window.ethereum.on('chainChanged', async () => {
+        await refreshWalletInfo();
+        await fetchSupportedAssets();
+    });
+}
+
+// ---------------- Wallet / Network Banner -----------------
+async function refreshWalletInfo() {
+    if (!walletInfoDiv) return;
+    try {
+        const chainId = await getCurrentChainId();
+        let addr;
+        if (window.ethereum) {
+            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            if (accounts && accounts.length) addr = accounts[0];
+        }
+        const shortAddr = addr ? addr.slice(0, 6) + '…' + addr.slice(-4) : 'Not connected';
+        const chainName = SUPPORTED_CHAINS[chainId] || `Chain ${chainId || '?'}`;
+        walletInfoDiv.textContent = `${shortAddr} | ${chainName}`;
+    } catch (err) {
+        walletInfoDiv.textContent = 'Wallet not connected';
+    }
+}
+
+// At various points after network switch / wallet connection, refreshWalletInfo() is invoked inside ensureCorrectNetwork and showNetworkAlert handlers. 

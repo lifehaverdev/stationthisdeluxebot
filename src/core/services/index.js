@@ -37,6 +37,7 @@ const SpellStatsService = require('./analytics/SpellStatsService');
 // --- New Service: ModelDiscoveryService ---
 const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
 const { initializeCookServices } = require('./cook');
+const StringService = require('./stringService');
 
 /**
  * Initialize all core services
@@ -71,6 +72,7 @@ async function initializeServices(options = {}) {
     const modelDiscoveryService = new ModelDiscoveryService({ comfyService: comfyUIService });
     const openAIService = new OpenAIService({ logger });
     const storageService = new StorageService(logger); // Initialize StorageService
+    const stringService = new StringService({ logger });
     
     // Create a compatible logger for WorkflowsService if needed
     // The WorkflowsService expects logger to be a function, but we want to use logger.info method
@@ -242,7 +244,8 @@ async function initializeServices(options = {}) {
       spellsService, // Inject spellsService so internal API can use it
       workflowExecutionService,
       webSocketService, // Add the service here
-      modelDiscoveryService // Add the service here
+      modelDiscoveryService, // Add the service here
+      stringService // Add the service here
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -299,7 +302,8 @@ async function initializeServices(options = {}) {
       toolRegistry, // geniusoverhaul: Added toolRegistry to returned services
       loraResolutionService,
       webSocketService, // Add the service here
-      spellStatsService // expose SpellStatsService
+      spellStatsService, // expose SpellStatsService
+      stringService // expose StringService
     };
 
     // DIAGNOSTIC LOGGING REMOVED
@@ -336,4 +340,5 @@ module.exports = {
   WalletLinkingService,
   SaltMiningService,
   ModelDiscoveryService,
+  StringService,  // Export StringService
 }; 

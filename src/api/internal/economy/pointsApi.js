@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const foundationAbi = require('../../../core/contracts/abis/foundation.json');
 const { contracts } = require('../../../core/contracts');
-const { TOKEN_CONFIG, getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('../../../core/services/alchemy/tokenConfig');
+const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -42,24 +42,41 @@ module.exports = function pointsApi(dependencies) {
      * Returns a list of all tokens and NFTs supported for credit deposits.
      */
     router.get('/supported-assets', (req, res) => {
-        logger.info('[pointsApi] GET /supported-assets');
-        
-        const tokens = Object.entries(TOKEN_CONFIG).map(([address, { fundingRate, symbol, iconUrl, decimals }]) => ({
-            type: 'TOKEN',
-            address,
-            symbol,
-            fundingRate,
-            iconUrl,
-            decimals,
-        }));
+        const chainId = String(req.query.chainId || '1');
+        logger.info(`[pointsApi] /supported-assets requested for chainId=${chainId}`);
+        console.log('[pointsApi:/supported-assets] raw query params:', req.query);
 
-        const nfts = Object.entries(TRUSTED_NFT_COLLECTIONS).map(([address, { fundingRate, name, iconUrl }]) => ({
-            type: 'NFT',
-            address,
-            name,
-            fundingRate,
-            iconUrl,
-        }));
+        // Trace helper outputs
+        const tokensCfgRaw = getChainTokenConfig(chainId);
+        const nftsCfgRaw = getChainNftConfig(chainId);
+        console.log('[pointsApi:/supported-assets] tokensCfgRaw keys:', Object.keys(tokensCfgRaw || {}));
+        console.log('[pointsApi:/supported-assets] nftsCfgRaw keys:', Object.keys(nftsCfgRaw || {}));
+
+        // Defensive: if we accidentally received the root config object (keys are chainIds),
+        // narrow it down to the specific chainId we want so the response shape is correct.
+        if (tokensCfgRaw && ['1', '11155111'].every(key => Object.keys(tokensCfgRaw).includes(key))) {
+            tokensCfgRaw = tokensCfgRaw[chainId] || tokensCfgRaw['1'];
+        }
+        if (nftsCfgRaw && ['1', '11155111'].every(key => Object.keys(nftsCfgRaw).includes(key))) {
+            nftsCfgRaw = nftsCfgRaw[chainId] || {};
+        }
+
+        console.log('[pointsApi] tokensCfg for chain', chainId, tokensCfgRaw);
+        const tokens = Object.entries(tokensCfgRaw).map(([address, cfg]) => {
+            const { fundingRate, symbol, iconUrl, decimals } = cfg || {};
+            return { type: 'TOKEN', address, symbol, fundingRate, iconUrl, decimals };
+        });
+        console.log('[pointsApi] tokens array', tokens);
+
+        const nfts = Object.entries(nftsCfgRaw)
+            .filter(([, cfg]) => cfg && cfg.name)
+            .map(([address, { fundingRate, name, iconUrl }]) => ({
+                type: 'NFT',
+                address,
+                name,
+                fundingRate,
+                iconUrl: iconUrl || '/images/sandbox/components/nft-placeholder.png',
+            }));
 
         res.json({
             tokens,

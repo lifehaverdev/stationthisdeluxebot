@@ -104,6 +104,25 @@ class WorkflowExecutionService {
             stepInput = pruned;
         }
 
+        // ---- Runtime validation of required inputs ----
+        if (tool && tool.inputSchema) {
+            const missing = Object.entries(tool.inputSchema)
+                .filter(([key, def]) => {
+                    const required = def.required !== false; // default to required
+                    if (!required) return false;
+                    const val = stepInput[key];
+                    if (val === undefined || val === null) return true;
+                    if (typeof val === 'string' && val.trim() === '') return true;
+                    return false;
+                })
+                .map(([key]) => key);
+
+            if (missing.length) {
+                this.logger.warn(`[WorkflowExecution] Missing required inputs for tool '${tool.displayName}' (step ${step.stepId} of spell '${spell.name}'): ${missing.join(', ')}`);
+                // TODO: emit metric 'spell_missing_input' with tags { toolId, spellId }
+            }
+        }
+
         // Still support nodeOutput objects inside legacy parameterOverrides
         Object.entries(step.parameterOverrides || {}).forEach(([key, val]) => {
             if (val && val.type === 'nodeOutput') {

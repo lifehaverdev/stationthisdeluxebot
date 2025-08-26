@@ -292,14 +292,52 @@ function initializeExternalApi(dependencies) {
   // --- Public: Supported Assets (no auth required) ---
   externalApiRouter.get('/points/supported-assets', async (req, res) => {
     try {
-      const { TOKEN_CONFIG, TRUSTED_NFT_COLLECTIONS } = require('../../core/services/alchemy/tokenConfig');
-      const tokens = Object.values(TOKEN_CONFIG).map(({ symbol, decimals, fundingRate, iconUrl }) => ({ symbol, decimals, fundingRate, iconUrl }));
-      const nfts = Object.entries(TRUSTED_NFT_COLLECTIONS).map(([address, cfg]) => ({ address, name: cfg.name, fundingRate: cfg.fundingRate }));
-      return res.json({ tokens, nfts });
+      const { getChainTokenConfig, getChainNftConfig, DEFAULT_FUNDING_RATE } = require('../../core/services/alchemy/tokenConfig');
+      const chainId = String(req.query.chainId || '1');
+      logger.info(`[ExternalAPI] /points/supported-assets (public) for chainId=${chainId}`);
+
+      const tokensCfg = getChainTokenConfig(chainId) || {};
+      const nftsCfg = getChainNftConfig(chainId) || {};
+
+      const tokens = Object.entries(tokensCfg).map(([address, cfg]) => {
+        const { fundingRate, symbol, iconUrl, decimals } = cfg || {};
+        return { type: 'TOKEN', address, symbol, fundingRate: fundingRate ?? DEFAULT_FUNDING_RATE, iconUrl, decimals };
+      });
+
+      const nfts = Object.entries(nftsCfg)
+        .filter(([, cfg]) => cfg && cfg.name)
+        .map(([address, { fundingRate, name, iconUrl }]) => ({
+          type: 'NFT',
+          address,
+          name,
+          fundingRate,
+          iconUrl: iconUrl || '/images/sandbox/components/nft-placeholder.png',
+        }));
+
+      // Debug preview
+      console.log('[ExternalAPI] supported-assets preview:', {
+        chainId,
+        tokensLen: tokens.length,
+        nftsLen: nfts.length,
+        token0: tokens[0],
+        nft0: nfts[0]
+      });
+
+      return res.json({ tokens, nfts, defaults: { tokenFundingRate: DEFAULT_FUNDING_RATE } });
     } catch (err) {
       logger.error('Failed to build supported-assets payload', err);
       return res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
     }
+  });
+
+  // --- Public: Supported Chains (Foundation deployments) ---
+  externalApiRouter.get('/points/supported-chains', (req, res) => {
+    const { FOUNDATION_ADDRESSES } = require('../../core/services/alchemy/foundationConfig');
+    const chains = Object.entries(FOUNDATION_ADDRESSES).map(([chainId, address]) => {
+      const nameMap = { '1': 'Ethereum Mainnet', '11155111': 'Sepolia' };
+      return { chainId, name: nameMap[chainId] || `Chain ${chainId}`, foundationAddress: address };
+    });
+    return res.json({ chains });
   });
 
   // Mount the Points API router (Protected by JWT or API Key)

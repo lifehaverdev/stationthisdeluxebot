@@ -58,6 +58,8 @@ export function persistState() {
                 workspaceX: w.workspaceX,
                 workspaceY: w.workspaceY,
                 output: w.output || null,
+                outputVersions: w.outputVersions || [],
+                currentVersionIndex: w.currentVersionIndex ?? -1,
                 parameterMappings: w.parameterMappings || {}
             };
         }
@@ -105,6 +107,8 @@ function loadState() {
                         workspaceX: w.workspaceX,
                         workspaceY: w.workspaceY,
                         output: w.output || null,
+                        outputVersions: w.outputVersions || [],
+                        currentVersionIndex: w.currentVersionIndex ?? -1,
                         parameterMappings: w.parameterMappings || {}
                     };
                 }
@@ -144,6 +148,8 @@ function cloneState() {
                     workspaceX: w.workspaceX,
                     workspaceY: w.workspaceY,
                     output: w.output || null,
+                    outputVersions: w.outputVersions || [],
+                    currentVersionIndex: w.currentVersionIndex ?? -1,
                     parameterMappings: w.parameterMappings || {}
                 };
             }

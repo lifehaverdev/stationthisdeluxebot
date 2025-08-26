@@ -20,6 +20,8 @@ class StorageService {
         },
       });
       this.logger.info('StorageService initialized for Cloudflare R2.');
+
+      // use only v3 client
     }
   }
 
@@ -35,22 +37,18 @@ class StorageService {
       throw new Error('StorageService is not configured.');
     }
 
-    const key = `uploads/${userId}/${uuidv4()}-${fileName}`;
-    const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: key,
-      ContentType: contentType,
-      ChecksumAlgorithm: 'CRC32',
-      Metadata: {
-        'original-filename': fileName
-      }
-    });
-
+    const key = `${userId}/${uuidv4()}-${fileName}`;
     try {
-      const signedUrl = await getSignedUrl(this.s3Client, command, { 
-        expiresIn: 3600, // URL expires in 1 hour
-        signableHeaders: new Set(['host']),
-      }); 
+      const cmd = new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: key,
+        ContentType: contentType,
+      });
+
+      let signedUrl = await getSignedUrl(this.s3Client, cmd, { expiresIn: 3600 });
+      const urlObj = new URL(signedUrl);
+      this.logger.debug('[StorageService] Presigned URL:', signedUrl);
+      this.logger.debug('[StorageService] X-Amz-SignedHeaders:', urlObj.searchParams.get('X-Amz-SignedHeaders'));
       const permanentUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
       return { signedUrl, permanentUrl };
     } catch (error) {

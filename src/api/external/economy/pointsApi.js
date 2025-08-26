@@ -14,7 +14,23 @@ function createPointsApi(dependencies) {
      */
     router.get('/supported-assets', async (req, res, next) => {
         try {
-            const response = await internalApiClient.get('/internal/v1/data/points/supported-assets');
+            const { chainId } = req.query;
+            const url = chainId ? `/internal/v1/data/points/supported-assets?chainId=${chainId}` : '/internal/v1/data/points/supported-assets';
+            logger.info(`[pointsApi-external] /supported-assets forwarding -> ${url}`);
+            const response = await internalApiClient.get(url);
+            try {
+                const data = response.data || {};
+                const preview = {
+                    chainId: chainId || null,
+                    tokensLen: Array.isArray(data.tokens) ? data.tokens.length : 'NA',
+                    token0: Array.isArray(data.tokens) ? data.tokens[0] : undefined,
+                    nftsLen: Array.isArray(data.nfts) ? data.nfts.length : 'NA',
+                    nft0: Array.isArray(data.nfts) ? data.nfts[0] : undefined,
+                };
+                console.log('[pointsApi-external] supported-assets response preview:', preview);
+            } catch (e) {
+                console.warn('[pointsApi-external] Failed to log response preview:', e);
+            }
             res.json(response.data);
         } catch (error) {
             next(error);

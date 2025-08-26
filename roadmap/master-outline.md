@@ -198,6 +198,7 @@ _Add new epics/modules below as they are formalized._
 | Module | Status | Source Docs / Path |
 |--------|--------|--------------------|
 | Points Purchase Flow | Completed | Buy Points Modal, HANDOFF-2025-07-03-buy-points-modal.md |
+| Chain-Aware Modal & Token Config | Completed | HANDOFF-2025-08-26-chain-aware-modal.md |
 | Credit Checking Pre-execution | Completed | HANDOFF-2024-07-10-pre-execution-credit-check.md |
 | Referral Vault System | Operational | sandbox/components/ReferralVault* |
 

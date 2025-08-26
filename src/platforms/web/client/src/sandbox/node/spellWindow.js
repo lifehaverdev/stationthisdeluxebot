@@ -32,10 +32,10 @@ import { generationIdToWindowMap, generationCompletionManager } from './websocke
 // import { executeSpellAndDependencies } from './spellExecution.js'; 
 
 // Adapter: createSpellWindow using class-based implementation
-export function createSpellWindow(spell, position, id = null, output = null) {
+export function createSpellWindow(spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null) {
   console.log('[spellWindow.js] [ADAPTER] createSpellWindow → SpellWindow class', spell.slug);
 
-  const win = new SpellWindow({ spell, position, id, output });
+  const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex });
   win.mount();
   return win.el;
 }

@@ -25,3 +25,50 @@ _Date: 2025-08-22_
 
 ---
 _Logged per AGENT_COLLABORATION_PROTOCOL v3_
+
+### 2025-08-25 — Persist-refactor regressions
+
+**Symptoms**
+– Adding a spell from *SpellsMenuModal* logs:
+```text
+[SpellsMenuModal] Adding spell "<name>" to canvas.
+[spellWindow.js] [ADAPTER] createSpellWindow → SpellWindow class undefined
+```
+and **no node appears**.
+
+**Findings so far**
+1. `createSpellWindow(spell, pos)` is invoked with the correct object; inside the adapter the `spell` param is fine, but `spell.slug` is `undefined` for some older spells, so the debug line prints `undefined`.  That alone should not block rendering.
+2.  `SpellWindow` instance is created and `win.mount()` called, but the element never lands in `.sandbox-canvas` when the canvas does not yet exist (early modal use).  Result: node is appended to `<body>` and ends up hidden under the full-screen sandbox overlay.
+
+**Work attempted**
+– Refactored `BaseWindow.mount()` to relocate the element once the canvas appears.  Behaviour unchanged — still invisible.
+
+**Hypothesis**
+Relocation code fires before `.sandbox-canvas` is inserted (timing race).  Need MutationObserver or a post-`DOMContentLoaded` microtask to move windows after the canvas is re-parented by `index.js`.
+
+**Next steps**
+- Attach `MutationObserver` watching for `.sandbox-canvas` addition and move any orphaned `.tool-window` children.
+- Alternatively, defer `mount()` until after `initState()` and canvas injection when creating windows from the modal.
+
+---
+
+### 2025-08-26 — SpellWindow persists again 🎉
+
+**Issue**  Spell windows vanished immediately after creation due to placeholder model deletion in constructor.
+
+**Fix**  Instead of `removeToolWindow(id)` we now overwrite the existing placeholder model:
+```js
+const existing = getToolWindow(id);
+if (existing) {
+  Object.assign(existing, serialize(), { element: el });
+  persistState();
+} else {
+  _registerWindow();
+}
+```
+
+Result: spell windows stay on canvas; execution/casting works. Removed all debug console logs.
+
+**Next**  Clean up legacy adapter code and resume ADR-016 step-streaming tasks.
+
+---

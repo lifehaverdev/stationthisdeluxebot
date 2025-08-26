@@ -26,4 +26,4 @@ export {
 };
 
 export * from './toolWindow.js';
-export * from './spellWindow.js'; 
+export { createSpellWindow } from '../window/SpellWindow.js'; 

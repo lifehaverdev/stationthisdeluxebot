@@ -1,6 +1,6 @@
 // src/platforms/web/client/src/sandbox/components/SpellsMenuModal.js
 import { getAvailableTools, getLastClickPosition } from '../state.js';
-import { createSpellWindow } from '../node/spellWindow.js';
+import { createSpellWindow } from '../window/SpellWindow.js';
 
 export default class SpellsMenuModal {
     constructor(options = {}) {

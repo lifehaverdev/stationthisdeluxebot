@@ -1,18 +1,19 @@
 // src/platforms/web/client/src/sandbox/window/SpellWindow.js
 import ToolWindow from './ToolWindow.js';
-import { addToolWindow, persistState, pushHistory } from '../state.js';
+// state utils imported dynamically when needed
 // Detailed UI helpers will be migrated later; use basic header for now.
 import { createInputAnchors } from '../node/anchors.js';
 import { createParameterSection } from '../node/parameterInputs.js';
 import { setupDragging } from '../node/drag.js';
-import { executeSpell } from '../node/spellWindow.js';
+import { executeSpell } from '../logic/spellExecution.js';
 import { getToolWindows } from '../state.js';
+import createVersionSelector from './versionSelector.js';
 
 export default class SpellWindow extends ToolWindow {
-  constructor({ spell, position, id = null, output = null, parameterMappings = null }) {
-    // Basic ToolWindow initialisation (without state registration yet)
+  constructor({ spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null }) {
     const spellSlug = spell.slug || spell._id;
-    super({ tool: { displayName: spell.name, toolId: `spell-${spellSlug}` }, position, id, output, parameterMappings }, { register: false });
+    const initMappings = parameterMappings ? JSON.parse(JSON.stringify(parameterMappings)) : {};
+    super({ tool: { displayName: spell.name, toolId: `spell-${spellSlug}` }, position, id, output, parameterMappings: initMappings, outputVersions, currentVersionIndex }, { register: false });
     // Tag root element for easy lookup by websocket handlers
     this.el.classList.add('spell-window');
     this.el.dataset.spellId = spell._id || spell.slug || '';
@@ -26,38 +27,46 @@ export default class SpellWindow extends ToolWindow {
     // Remove placeholder model added by ToolWindow parent so we can replace with full spell model
     import('../state.js').then(mod=>{
         // Ensure we don’t accidentally delete the freshly mounted element.
-        // Only remove an existing model if one is already present (e.g. during re-hydration).
-        if (mod.getToolWindow(this.id)) {
-          mod.removeToolWindow(this.id);
+        // If a placeholder from ToolWindow exists, overwrite it instead of removing DOM.
+        const existing = mod.getToolWindow(this.id);
+        if (existing) {
+          Object.assign(existing, { ...this.serialize(), element: this.el });
+          mod.persistState();
+        } else {
+          // Register in global state via BaseWindow helper
+          this._registerWindow(!id);
         }
-
-        // Register once fully formed
-        this._registerWithState({
-          id: this.id,
-          spell,
-          isSpell: true,
-          tool: { displayName: spell.name, toolId: `spell-${spellSlug}` },
-          element: this.el,
-          workspaceX: position.x,
-          workspaceY: position.y,
-          output: this.output,
-          outputVersions: this.output ? [this.output] : [],
-          currentVersionIndex: this.output ? 0 : -1,
-          parameterMappings: this.parameterMappings
-        }, !id);
 
         // Re-render body now that model is in place
         this.body.innerHTML = '';
-        this.renderBody();
+        try {
+          this.renderBody();
+        } catch(err){
+          console.error('[SpellWindow] renderBody error', err);
+        }
     });
 
     
   }
 
+  // Persist spell-specific data
+  serialize() {
+    return {
+      ...super.serialize(),
+      type: 'spell',
+      spell: this.spell,
+      output: this.output,
+      outputVersions: this.outputVersions,
+      currentVersionIndex: this.currentVersionIndex,
+      parameterMappings: this.parameterMappings,
+      isSpell: true,
+    };
+  }
+
   renderBody() {
-    if (!this.spell) return; // first pass before constructor sets spell
+    if (!this.spell) return; // safety guard for initial placeholder call
     // Override to use exposedInputs mapping from original spellWindow.js
-    const paramMappings = this.parameterMappings;
+    const paramMappings = this.parameterMappings || (this.parameterMappings = {});
     const spellInputSchemaForUI = {};
     if (this.spell.exposedInputs) {
       this.spell.exposedInputs.forEach(input => {
@@ -97,6 +106,11 @@ export default class SpellWindow extends ToolWindow {
 
     this.body.append(requiredSection, showMoreBtn, optionalSection, inputAnchors);
 
+    const verSel = createVersionSelector(this);
+    this.versionSelector = verSel;
+    this.el.versionSelector = verSel;
+    this.header.insertBefore(verSel, this.header.lastChild);
+
     // Execute Spell button
     const execBtn = document.createElement('button');
     execBtn.textContent = 'Cast Spell';
@@ -106,4 +120,11 @@ export default class SpellWindow extends ToolWindow {
 
     import('../node/overlays/textOverlay.js').then(m=>m.bindPromptFieldOverlays()).catch(()=>{});
   }
+}
+
+// Helper for older callers
+export function createSpellWindow(spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null) {
+  const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex });
+  win.mount();
+  return win.el;
 }

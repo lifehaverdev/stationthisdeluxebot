@@ -13,7 +13,7 @@ export default class BaseWindow {
    * @param {string[]} [opts.classes] – extra CSS classes on root element
    * @param {string} [opts.icon] – optional emoji or char prefix
    */
-  constructor({ id, title, position = { x: 0, y: 0 }, classes = [], icon = '' }) {
+  constructor({ id, title, position = { x: 0, y: 0 }, classes = [], icon = '' }, { register = true } = {}) {
     this.id = id;
     this.position = position;
     // expose workspace coords for drag helpers
@@ -41,10 +41,15 @@ export default class BaseWindow {
     this.outputEl = el('div', { className: 'result-container' });
     this.el.append(this.errorEl, this.outputEl);
 
+    // Register with global state if requested (subclasses may defer by passing register:false and calling this._registerWindow() later)
+    if (register) {
+      this._registerWindow();
+    }
     // NOTE: Subclasses should call this.renderBody() *after* their own
     // initialization to avoid accessing unassigned fields here.
   }
 
+  // Build draggable header with title and close button
   buildHeader() {
     const header = el('div', { className: 'tool-window-header' });
     this.header = header;
@@ -62,16 +67,73 @@ export default class BaseWindow {
   }
 
   /**
-   * Attach window to DOM (defaults to sandbox canvas).
-   * @param {string|HTMLElement} [parent='.sandbox-canvas']
+   * Append the window element to DOM (defaults to sandbox canvas).
+   * Subclasses may override to customise target.
    */
   mount(parent = '.sandbox-canvas') {
     const parentEl = typeof parent === 'string' ? document.querySelector(parent) : parent;
-    (parentEl || document.body).appendChild(this.el);
+    if (parentEl) {
+      parentEl.appendChild(this.el);
+    } else {
+      // Fallback to body and move later when canvas exists
+      document.body.appendChild(this.el);
+      // Move the window once .sandbox-canvas exists (may be injected later)
+      const attemptRelocate = () => {
+        const canvas = document.querySelector('.sandbox-canvas');
+        if (canvas) {
+          canvas.appendChild(this.el);
+          return true;
+        }
+        return false;
+      };
+
+      // Try immediately after current task to cover fast canvas injection
+      setTimeout(() => {
+        if (attemptRelocate()) return;
+
+        // Observe DOM changes until the canvas is added then move once
+        const observer = new MutationObserver(() => {
+          if (attemptRelocate()) {
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }, 0);
+    }
   }
 
+  /**
+   * Return a plain-object representation that is persisted to localStorage.
+   * Subclasses should override to add their own fields but still call
+   * `super.serialize()` to get common props.
+   */
+  serialize() {
+    return {
+      id: this.id,
+      workspaceX: this.workspaceX,
+      workspaceY: this.workspaceY,
+      type: 'base'
+    };
+  }
+
+  _registerWindow(pushHist = true) {
+    // Dynamic import to avoid circular deps on first eval
+    import('../state.js').then(({ addToolWindow, persistState, pushHistory }) => {
+      // merge / upsert
+      this.model = addToolWindow({ ...this.serialize(), element: this.el });
+      if (pushHist) pushHistory();
+      persistState();
+    }).catch(console.error);
+  }
+
+  // When window is destroyed, remove from state
   destroy() {
     this.el.remove();
+    import('../state.js').then(({ removeToolWindow, persistState, pushHistory }) => {
+      pushHistory();
+      removeToolWindow(this.id);
+      persistState();
+    });
     this.onClose?.();
   }
 

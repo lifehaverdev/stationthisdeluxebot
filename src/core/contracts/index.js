@@ -1,14 +1,16 @@
 const foundationAbi = require('./abis/foundation.json');
 const charteredFundAbi = require('./abis/charteredFund.json');
 const uniswapV3QuoterV2Abi = require('./abis/uniswapV3QuoterV2.json');
+const { FOUNDATION_ADDRESSES, getFoundationAddress } = require('../services/alchemy/foundationConfig');
 
 const contracts = {
   foundation: {
     abi: foundationAbi,
     addresses: {
-      // e.g., mainnet: '0x...',
-      sepolia: process.env.FOUNDATION_ADDRESS || '0x011528b1d5822B3269d919e38872cC33bdec6d17', // Replace with actual new foundation address
-    }
+      // Keys correspond to getNetworkName outputs
+      sepolia: FOUNDATION_ADDRESSES['11155111'] || null,
+      // mainnet entry will be added when deployed
+    },
   },
   charteredFund: {
     abi: charteredFundAbi,
