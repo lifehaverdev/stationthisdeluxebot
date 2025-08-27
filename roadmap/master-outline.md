@@ -235,3 +235,8 @@ Planned
 #### Description
 Secure, private file uploads & CDN delivery via Cloudflare R2.
 
+### Onboarding Experience (Epic)
+| Module | Status | Source Docs |
+|--------|--------|------------|
+| Web Onboarding Redesign | In Progress | onboarding-experience/adr/ADR-2025-08-26-onboarding-redesign.md |
+

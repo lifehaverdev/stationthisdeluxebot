@@ -130,7 +130,7 @@ class SpellsDB extends BaseDB {
    */
   async findByPublicSlug(publicSlug){
       return this.findOne({
-        $or: [ { publicSlug }, { slug: publicSlug } ]
+        $or: [ { publicSlug }, { slug: publicSlug }, { name: publicSlug } ]
       });
   }
 

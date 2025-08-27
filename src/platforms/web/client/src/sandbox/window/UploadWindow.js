@@ -6,8 +6,20 @@ const getCsrfToken = () => document.cookie.split('; ').find(c=>c.startsWith('csr
 
 export default class UploadWindow extends BaseWindow {
   constructor(opts) {
-    super({ ...opts, title: 'Upload Media', icon: '📤', classes: ['upload-window'] });
+    super({ ...opts, title: 'Upload Media', icon: '📤', classes: ['upload-window'] }, { register: false });
+    // Provide minimal tool stub so execution planner expecting tool.displayName doesn't crash
+    this.tool = { displayName: 'Upload', metadata: { outputType: 'image' } };
     this.renderBody();
+    this._registerWindow();
+  }
+
+  serialize(){
+    return {
+      ...super.serialize(),
+      type:'upload',
+      tool:this.tool,
+      parameterMappings: {},
+    };
   }
 
   renderBody() {
@@ -22,14 +34,18 @@ export default class UploadWindow extends BaseWindow {
     this.overlay = el('canvas', { width: 300, height: 300, style: { position: 'absolute', left: 0, top: 0, pointerEvents: 'none' } });
     canvasWrapper.append(this.preview, this.overlay);
     this.body.appendChild(canvasWrapper);
+    // Status label
+    this.statusEl = el('div', { style:{marginTop:'4px',fontSize:'12px',color:'#4caf50',display:'none'}, innerText:'Uploaded ✓'});
+    this.body.appendChild(this.statusEl);
 
     // Toolbar
     const bar = el('div', { style: { marginBottom: '6px' } });
     const rectBtn = el('button', { innerText: 'Rect Mask' });
     const brushBtn = el('button', { innerText: 'Brush' });
-    const saveBtn  = el('button', { innerText: 'Save & Upload' });
+    const saveBtn  = el('button', { innerText: 'Save & Upload', className: 'execute-button' });
     bar.append(rectBtn, brushBtn, saveBtn);
     this.body.prepend(bar);
+    this.saveBtn = saveBtn;
 
     this.mode = 'rect';
     rectBtn.onclick = () => { this.mode = 'rect'; };
@@ -123,6 +139,12 @@ export default class UploadWindow extends BaseWindow {
       const h = img.height * ratio;
       ctx.drawImage(img, (width - w) / 2, (height - h) / 2, w, h);
       this.preview.style.display = 'block';
+      // Store for full-res merging
+      this.imgNaturalWidth = img.width;
+      this.imgNaturalHeight = img.height;
+      this.scaleRatio = ratio;
+      this.imgElement = img;
+      this.outputValue = { pendingUpload: true, windowId: this.id, fileName: file.name };
 
       // Add output anchor once preview is ready (only once)
       if (!this.outputAnchor) {
@@ -147,10 +169,20 @@ export default class UploadWindow extends BaseWindow {
     if(!this.file){alert('No image');return;}
     // Merge preview+overlay into new canvas
     const merge = document.createElement('canvas');
-    merge.width=this.preview.width; merge.height=this.preview.height;
+    // Preserve original resolution
+    const fullW=this.imgNaturalWidth||this.preview.width;
+    const fullH=this.imgNaturalHeight||this.preview.height;
+    merge.width=fullW; merge.height=fullH;
     const mctx=merge.getContext('2d');
-    mctx.drawImage(this.preview,0,0);
-    mctx.drawImage(this.overlay,0,0);
+    // Draw original image full size
+    mctx.drawImage(this.imgElement,0,0,fullW,fullH);
+    // Draw overlay scaled up to full res
+    if(this.scaleRatio){
+      mctx.save();
+      mctx.scale(1/this.scaleRatio,1/this.scaleRatio);
+      mctx.drawImage(this.overlay,0,0);
+      mctx.restore();
+    }
     merge.toBlob(blob=>{
       this.file=new File([blob],this.file.name,{type:'image/png'});
       this.uploadFile();
@@ -172,9 +204,28 @@ export default class UploadWindow extends BaseWindow {
       });
       if(!res.ok) throw new Error('sign failed');
       const {signedUrl,permanentUrl}=await res.json();
-      const put=await fetch(signedUrl,{method:'PUT',body:this.file});
+      const raw = await this.file.arrayBuffer();
+      const put=await fetch(signedUrl,{method:'PUT', body: raw});
       if(!put.ok) throw new Error('upload failed');
       console.log('Uploaded',permanentUrl);
       this.permanentUrl=permanentUrl;
+      this.output = { type:'image', url: permanentUrl };
+      // show status
+      this.statusEl.style.display='block';
+      this.saveBtn && (this.saveBtn.disabled=true);
+
+      // Update global state so other nodes can resolve this output
+      const stateMod = await import('../state.js');
+      stateMod.setToolWindowOutput(this.id, this.output);
+      stateMod.pushHistory();
+      stateMod.persistState();
+
+      // persist state so execution planner sees output
+      // (pushHistory/persistState now handled in above update)
+
+      this.outputValue = permanentUrl;
+      window.dispatchEvent(new CustomEvent('uploadCompleted',{detail:{windowId:this.id,url:permanentUrl}}));
     }catch(err){console.error(err);}  }
+
+  getOutputValue(){return this.outputValue;}
 }

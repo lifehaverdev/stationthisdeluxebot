@@ -76,3 +76,24 @@ Checksum query params (`x-amz-sdk-checksum-algorithm`, `x-amz-checksum-crc32`) a
 * **Continue using S3 public bucket** – Rejected: privacy & egress cost.
 * **Back-end proxy upload** – Rejected: doubles bandwidth usage, higher latency.
 * **Third-party image hosts (Imgur…)** – Rejected: loss of control, TOS risk.
+
+### 2025-08-27 Browser CORS & Signature Mismatch Marathon
+
+* **09:30** Initial UploadWindow prototype landed – file picker, preview, rect-mask, Save & Upload.
+* **10:15** Browser PUT → `403 SignatureDoesNotMatch` surfaced as CORS error.  CLI still worked.  Root cause: browser auto-adds `Content-Type` header; signature only covered `host`.
+* **11:00** Experimented with v3 `signableHeaders` to include `content-type`; fixed browser but broke CLI due to header divergence.  Rolled back.
+* **12:30** Added checksum-header reflection in UploadWindow; removed later when we confirmed CRC32 param was acceptable.
+* **13:00** Discovered SDK checksum params fine as long as request sends **no headers** beyond `host`.  Final rule: strip nothing, send raw ArrayBuffer so fetch won’t attach `Content-Type`.
+* **14:00** UploadWindow now:
+  * Generates presign via minimal v3 signer (host-only).
+  * PUTs ArrayBuffer with no headers → works in browser and CLI.
+  * After upload dispatches `uploadCompleted` → connections update.
+* **14:30** Implemented placeholder `{ pendingUpload:true }` so downstream ToolWindow shows *waiting for upload…* and auto-rerenders on completion.
+* **15:00** Added stub `tool.displayName = 'Upload'` and registered UploadWindow in state so execution planner handles upload nodes.
+* **Next Steps**
+  1. `/api/uploads/commit` endpoint + `user_uploads` table for metadata.
+  2. Blur brush & EXIF-strip in annotation toolbar.
+  3. Disable Execute button when any upstream value has `pendingUpload:true`.
+  4. Rotate R2 keys via env management; document long-lived Access Keys vs 24-h API tokens.
+
+Outcome: end-to-end browser upload, annotation, connection, and execution flow fully operational. 🎉

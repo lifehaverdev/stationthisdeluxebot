@@ -112,6 +112,35 @@ function getNodeExecutionOrder(startNodeId) {
 
 // This function will contain the logic from the original 'click' handler
 async function executeSingleNode(toolWindowEl) {
+    // Handle special case for UploadWindow (class 'upload-window')
+    if (toolWindowEl.classList.contains('upload-window')) {
+        return new Promise((resolve, reject) => {
+            const windowId = toolWindowEl.id;
+            const winData = getToolWindow(windowId);
+            // If already has output (image url), nothing to do
+            if (winData && winData.output && winData.output.url) {
+                resolve();
+                return;
+            }
+            // Click hidden execute button to start upload
+            const execBtn = toolWindowEl.querySelector('.execute-button');
+            if (execBtn) execBtn.click();
+
+            const handler = (e) => {
+                if (e.detail && e.detail.windowId === windowId) {
+                    window.removeEventListener('uploadCompleted', handler);
+                    resolve();
+                }
+            };
+            window.addEventListener('uploadCompleted', handler);
+
+            // Safety timeout (30s)
+            setTimeout(() => {
+                window.removeEventListener('uploadCompleted', handler);
+                reject(new Error('Upload timed out'));
+            }, 30000);
+        });
+    }
     return new Promise(async (resolve, reject) => {
         const windowId = toolWindowEl.id;
         const tool = getToolWindow(windowId).tool;
@@ -165,6 +194,29 @@ async function executeSingleNode(toolWindowEl) {
                     }
                 } else {
                     missingRequired = true;
+                    // If the source node is executable (e.g., UploadWindow) attempt to run it automatically, then retry once.
+                    if (sourceWin) {
+                        const srcEl = document.getElementById(sourceWin.id);
+                        try {
+                            await executeSingleNode(srcEl);
+                            if (sourceWin.output) {
+                                // Re-evaluate this parameter after successful execution.
+                                if (sourceWin.output.type === mapping.outputKey) {
+                                    if (sourceWin.output.type === 'image' && sourceWin.output.url) {
+                                        inputs[paramName] = sourceWin.output.url;
+                                    } else if (sourceWin.output.type === 'text' && sourceWin.output.text) {
+                                        inputs[paramName] = sourceWin.output.text;
+                                    } else {
+                                        inputs[paramName] = sourceWin.output.value || sourceWin.output;
+                                    }
+                                    missingRequired = false;
+                                    continue; // proceed to next param
+                                }
+                            }
+                        } catch (_) {
+                            /* fallthrough to error */
+                        }
+                    }
                     const sourceName = sourceWin ? sourceWin.tool.displayName : mapping.nodeId;
                     showError(toolWindowEl, `Missing output for parameter '${paramName}' from node '${sourceName}'. Run it first.`);
                     break;

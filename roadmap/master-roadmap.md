@@ -14,6 +14,7 @@ This roadmap aligns top-level objectives, target dates, and ownership across all
 | TBD | Privacy & Anonymity Hardening | Private uploads & delivery flow complete | 🚧 In Progress | @backend |
 | TBD | Self-Hosted ComfyUI Deploy | Full control of model exec infra | ⏳ Planned | @infra |
 | 2025-09-12 | Cloudflare Upload (Epic) | Private R2 uploads + CDN delivery | ⏳ Planned | @backend |
+| 2025-09-12 | Web Onboarding Redesign (Epic) | Interactive mobile-friendly tutorial shipped & analytics >70% completion | ⏳ Planned | @web-team |
 
 ## Migration Backlog
 | Legacy Area | Files Remaining | Status |

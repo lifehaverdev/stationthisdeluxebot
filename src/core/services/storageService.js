@@ -46,9 +46,10 @@ class StorageService {
       });
 
       let signedUrl = await getSignedUrl(this.s3Client, cmd, { expiresIn: 3600 });
-      const urlObj = new URL(signedUrl);
       this.logger.debug('[StorageService] Presigned URL:', signedUrl);
-      this.logger.debug('[StorageService] X-Amz-SignedHeaders:', urlObj.searchParams.get('X-Amz-SignedHeaders'));
+      // Log signed headers for debugging
+      const dbgObj=new URL(signedUrl);
+      this.logger.debug('[StorageService] X-Amz-SignedHeaders:', dbgObj.searchParams.get('X-Amz-SignedHeaders'));
       const permanentUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
       return { signedUrl, permanentUrl };
     } catch (error) {

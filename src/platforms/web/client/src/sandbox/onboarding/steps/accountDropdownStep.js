@@ -33,6 +33,13 @@ export default class AccountDropdownStep {
 
     const menu = btn.parentElement.querySelector('.account-dropdown-menu');
 
+    // Highlight the "Get More Points" link inside menu, if present
+    const pointsLink = menu && menu.querySelector('[data-action="get-more-points"]');
+    if (pointsLink) {
+      pointsLink.classList.add('st-onboarding-highlight');
+      this.cleanupFns.push(() => pointsLink.classList.remove('st-onboarding-highlight'));
+    }
+
     // Cleanup: close menu if still open
     this.cleanupFns.push(() => {
       if (menu) menu.hidden = true;

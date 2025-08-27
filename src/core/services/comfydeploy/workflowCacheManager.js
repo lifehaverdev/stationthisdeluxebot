@@ -758,13 +758,13 @@ class WorkflowCacheManager {
         return this.cache.workflows;
     }
 
+    // Clear potentially stale data before fetching (only if stale or first init)
+    this._clearCache();
+
     this.isLoading = true;
     if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] Initializing cache: Loading data from ComfyUI Deploy...');
 
     try {
-      // Clear potentially stale data before fetching
-      this._clearCache(); // Clear everything before full reload
-
       // Perform fetch operations (now methods of this class)
       await this._fetchAndProcessDeployments(); 
       await this._fetchMachines(); 

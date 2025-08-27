@@ -1,5 +1,25 @@
 function debounceFn(fn, wait=300){let t;return (...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),wait)}}
 
+// --- WebSocket live updates ---
+const ws = window.websocketClient;
+let lastRunTimestamp = 0;
+if(ws){
+  ws.on('generationUpdate', payload=>{
+     // Only react to updates after the last Run click
+     if(Date.now() - lastRunTimestamp < 60000){ // 1-min window is enough for small spells
+        renderOutput(payload);
+     }
+  });
+  ws.on('generationProgress', payload=>{
+     if(Date.now() - lastRunTimestamp < 60000){
+        quoteEl.innerHTML = `<p>Progress: ${(payload.progress||0).toFixed(0)}%</p>`;
+     }
+  });
+  ws.on('tool-response', payload=>{
+     renderOutput({outputs:payload});
+  });
+}
+
 const slug = window.location.pathname.split('/').pop();
 const metadataEl = document.getElementById('spell-metadata');
 const formEl = document.getElementById('input-form');
@@ -43,15 +63,17 @@ function renderMetadata(){
     <p><small>Creator: ${spellMeta.author||'Unknown'}</small></p>`;
 }
 
-function renderForm(){
+async function renderForm(){
   const exposed = spellMeta.exposedInputs || [];
   if(exposed.length===0){formEl.innerHTML='<p>No inputs required.</p>'; return;}
+
+  // Simple inline form renderer (no external deps)
   formEl.innerHTML='';
   exposed.forEach(input=>{
-     const id=`input-${input.nodeId}-${input.paramKey}`;
+     const id = `input-${input.paramKey}`;
      const wrapper=document.createElement('div');
      wrapper.className='form-group';
-     wrapper.innerHTML=`<label for="${id}">${input.paramKey}</label><input id="${id}" type="text" />`;
+     wrapper.innerHTML=`<label for="${id}">${input.paramKey}</label><input id="${id}" type="text" data-param="${input.paramKey}" class="form-control" />`;
      wrapper.querySelector('input').addEventListener('input', debounceFn(updateInputs,300));
      formEl.appendChild(wrapper);
   });
@@ -60,7 +82,7 @@ function renderForm(){
 function updateInputs(){
   const inputs=formEl.querySelectorAll('input');
   currentInputs={};
-  inputs.forEach(inp=>{currentInputs[inp.id]=inp.value;});
+  inputs.forEach(inp=>{currentInputs[inp.dataset.param]=inp.value;});
   fetchQuote();
 }
 
@@ -80,10 +102,28 @@ async function fetchQuote(){
   runBtn.style.display='inline-block';
 }
 
+function renderOutput(genPayload){
+  outputEl.style.display='block';
+  if(genPayload && genPayload.outputs){
+     // Simple rendering: if text field present show text, if image URLs array show images
+     if(typeof genPayload.outputs.text==='string'){
+        outputEl.textContent = genPayload.outputs.text;
+     }else if(Array.isArray(genPayload.outputs.images)){
+        outputEl.innerHTML = genPayload.outputs.images.map(src=>`<img src="${src}" />`).join('');
+     }else{
+        outputEl.textContent = JSON.stringify(genPayload.outputs,null,2);
+     }
+  }else{
+     outputEl.textContent = 'Spell execution completed.';
+  }
+}
+
 runBtn.addEventListener('click', async ()=>{
   if(!currentQuote) return;
   runBtn.disabled=true;
   runBtn.textContent='Running…';
+  outputEl.textContent='';
+  lastRunTimestamp = Date.now();
   try{
     // Pre-pay: charge points
     // TODO: implement points charge flow once backend endpoint is ready

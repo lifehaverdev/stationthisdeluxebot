@@ -4,91 +4,43 @@ export default class WorkspaceTourStep {
     this.stageIndex = 0;
     this.stages = [
       {
-        title: 'Open the Action Menu',
-        body: 'Click anywhere on the workspace to open the action menu.',
-        selector: '.sandbox-canvas, .sandbox-content',
-        afterWait: () => document.querySelector('.action-modal.active')
-      },
-      {
-        title: 'Choose “Create”',
-        body: 'In the menu, click the <b>Create</b> button to start a new generation.',
-        selector: '.action-modal.active .create-btn',
-        afterWait: () => document.querySelector('.create-submenu.active')
-      },
-      {
-        title: 'Select Image Output',
-        body: 'Pick the <b>Image</b> option – we want to generate a picture.',
-        selector: '.create-submenu.active [data-type="image"]',
-        afterWait: () => {
-          // wait a short moment for tools to render
-          return document.querySelector('.tool-button');
-        }
-      },
-      {
-        title: 'Pick “quickmake” Tool',
-        body: 'Click the <b>quickmake</b> tool – a fast image generator.',
-        selector: '.tool-button', // we will filter in code
-        filterFn: (el)=>el.textContent.toLowerCase().includes('quickmake'),
-        afterWait: () => Array.from(document.querySelectorAll('.tool-window')).some(w=>w.textContent.toLowerCase().includes('quickmake'))
+        title: 'Workspace Basics',
+        body: 'Tap or click anywhere on the canvas to open the Action Menu. From there you can launch tools, spells and more.',
+        selector: '.sandbox-canvas, .sandbox-content'
       }
     ];
   }
 
-  render(root, next) {
-    this.root = root;
-    this.next = next;
-    this.showCurrentStage();
-  }
+  render(root, next, skip) {
+    // Static version – no waiting for user interaction
+    const target=document.querySelector('.sandbox-canvas, .sandbox-content');
+    const overlay=document.createElement('div');
+    overlay.className='st-onboard-overlay no-bg';
+    root.appendChild(overlay);
 
-  showCurrentStage() {
-    this.cleanup();
-    if (this.stageIndex >= this.stages.length) {
-      this.next();
-      return;
-    }
-    const stage = this.stages[this.stageIndex];
-    const target = this.findTarget(stage);
-    if (!target) {
-      // retry until target appears
-      setTimeout(()=>this.showCurrentStage(), 300);
-      return;
-    }
-    // Highlight
-    target.classList.add('st-onboarding-highlight');
-    this.highlightEl = target;
+    if(target) target.classList.add('st-onboarding-highlight');
+    const cleanup=()=>{ if(target) target.classList.remove('st-onboarding-highlight'); };
 
-    // Position card
-    const rect = target.getBoundingClientRect();
-    const card = this.makeCard(stage.title, stage.body, rect);
+    const rect= target ? target.getBoundingClientRect() : { top:window.innerHeight/2-100, left:window.innerWidth/2-150, width:300, height:0};
+    const card=document.createElement('div');
+    card.className='st-onboard-card';
+    const margin=12;
+    let top=rect.top+margin;
+    let left=rect.left+margin;
+    if(top+200>window.innerHeight) top=window.innerHeight-220;
+    if(left+320>window.innerWidth) left=window.innerWidth-340;
+    if(top<20) top=20;
+    if(left<20) left=20;
+    card.style.position='fixed';
+    card.style.top=`${top}px`;
+    card.style.left=`${left}px`;
+    card.style.zIndex=10000;
+    card.innerHTML=`<h2>Workspace Basics</h2><p>Tap or click the canvas to open the Action Menu. From there you can launch tools, spells and more.</p><div class='st-onboard-actions' style='justify-content:flex-end;'><button class='st-onboard-next'>Next</button><button class='st-onboard-skip'>Skip</button></div>`;
+    root.appendChild(card);
 
-    // Skip listener
-    card.querySelector('.st-onboard-skip').addEventListener('click', ()=>{
-      this.next();
-    });
-
-    // Click listener to advance
-    const advance = ()=>{
-      target.removeEventListener('click', advanceWrapper, true);
-      // wait for afterWait condition if defined
-      const awaitCond = stage.afterWait;
-      if (awaitCond) {
-        this.waitFor(awaitCond, ()=>{
-          this.stageIndex++;
-          this.showCurrentStage();
-        });
-      } else {
-        this.stageIndex++;
-        this.showCurrentStage();
-      }
-    };
-    const advanceWrapper = ()=>setTimeout(advance, 50); // slight delay
-    target.addEventListener('click', advanceWrapper, true);
-    this.cleanupFns.push(()=>target.removeEventListener('click', advanceWrapper, true));
-
-    // Auto click fallback after 8s
-    this.autoTimer = setTimeout(()=>{
-      if (target) target.click();
-    }, 8000);
+    const finish=()=>{ cleanup(); card.remove(); next(); };
+    card.querySelector('.st-onboard-next').addEventListener('click',finish,{once:true});
+    card.querySelector('.st-onboard-skip').addEventListener('click',()=>{cleanup(); skip();},{once:true});
   }
 
   findTarget(stage){

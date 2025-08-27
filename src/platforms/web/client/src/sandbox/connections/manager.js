@@ -5,8 +5,24 @@ import {
     getToolWindow,
     persistState,
 } from '../state.js';
-import { rerenderToolWindowById } from '../node/index.js';
+import { rerenderToolWindowById } from '../node/toolWindow.js';
 import { renderAllConnections } from './drawing.js';
+
+// Listen for upload completion to swap placeholder value with real URL
+window.addEventListener('uploadCompleted', ({ detail }) => {
+  const { windowId, url } = detail;
+  const conns = getConnections();
+  conns.forEach(conn => {
+    if (conn.fromWindowId === windowId && conn.type === 'image') {
+      conn.resolvedUrl = url;
+      const tgtEl=document.getElementById(conn.toWindowId);
+      const isExecuting=tgtEl && tgtEl.querySelector('.progress-indicator');
+      if(!isExecuting){
+        rerenderToolWindowById(conn.toWindowId);
+      }
+    }
+  });
+});
 
 export function createPermanentConnection(fromWindow, toWindow, type, toAnchor = null) {
     // This is a top-level action, so it manages its own history.

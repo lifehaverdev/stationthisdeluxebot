@@ -73,7 +73,7 @@ function createParameterInput(key, param, mapping, toolWindows) {
         // Show source node/output info
         const sourceLabel = document.createElement('span');
         const sourceNode = toolWindows && toolWindows.find(w => w.id === mapping.nodeId);
-        const sourceName = sourceNode ? (sourceNode.tool.displayName || mapping.nodeId) : mapping.nodeId;
+        const sourceName = sourceNode ? ((sourceNode.tool && sourceNode.tool.displayName) || sourceNode.displayName || mapping.nodeId) : mapping.nodeId;
         sourceLabel.textContent = `from: ${sourceName}.${mapping.outputKey}`;
         sourceLabel.style.fontStyle = 'italic';
         container.appendChild(sourceLabel);
