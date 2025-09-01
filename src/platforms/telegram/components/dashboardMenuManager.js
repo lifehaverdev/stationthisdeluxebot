@@ -9,6 +9,8 @@ const {
     editEscapedMessageText
 } = require('../utils/messaging');
 
+const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
+
 /**
  * Handles the /account command.
  * @param {Object} bot - The Telegram bot instance.
@@ -118,15 +120,16 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
 
         // --- Process Data ---
         let walletStatus = 'Not Connected';
+        let walletAddr = null; // Track full wallet address for downstream API calls
         const primaryWallet = user.wallets?.find(w => w.isPrimary);
 
         if (primaryWallet) {
-            const addr = primaryWallet.address;
-            walletStatus = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+            walletAddr = primaryWallet.address;
+            walletStatus = `${walletAddr.slice(0, 6)}...${walletAddr.slice(-4)}`;
         } else if (user.wallets?.length > 0) {
             // Fallback to the first wallet if no primary is set
-            const addr = user.wallets[0].address;
-            walletStatus = `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+            walletAddr = user.wallets[0].address;
+            walletStatus = `${walletAddr.slice(0, 6)}...${walletAddr.slice(-4)}`;
         }
         
         // XP and Level - exp is in the economy object, not userCore
@@ -143,8 +146,22 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
             progressBar += i < levelProgressRatio * 6 ? '🟩' : '⬜️';
         }
 
-        // The economy API returns BSON types as objects, so we access the value inside.
-        const pointsBalance = parseFloat(economy.usdCredit?.$numberDecimal || economy.usdCredit || '0').toFixed(4);
+        // --- Points Balance ---
+        // Prefer ledger-based aggregation for accuracy; fall back to economy record on failure.
+        let pointsBalance = '0.0000';
+        try {
+            if (walletAddr) {
+                const pointsRes = await internal.client.get(`/internal/v1/data/ledger/points/by-wallet/${walletAddr}`);
+                const pointsValue = pointsRes.data?.points ?? pointsRes.data?.pointsBalance ?? 0;
+                pointsBalance = parseFloat(pointsValue).toFixed(4);
+            } else {
+                // No wallet associated; fallback to legacy economy balance
+                pointsBalance = parseFloat(economy.usdCredit?.$numberDecimal || economy.usdCredit || 0).toFixed(4);
+            }
+        } catch (pointsErr) {
+            logger.warn(`[DashboardMenu] Failed to fetch points for wallet ${walletAddr}: ${pointsErr.message}`);
+            pointsBalance = parseFloat(economy.usdCredit?.$numberDecimal || economy.usdCredit || 0).toFixed(4);
+        }
 
         // Aggregate earnings from transactions
         const calculateEarnings = (type) => transactions
@@ -156,18 +173,20 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
         const modelEarnings = calculateEarnings('model_reward'); // Assuming this transactionType
         const spellEarnings = calculateEarnings('spell_reward'); // Assuming this transactionType
         
-        // --- Build Message ---
+        // --- Build Message with partial escaping ---
+        const esc = escapeMarkdownV2;
+
         const text = [
-            `*${username}*`,
-            `Wallet: \`${walletStatus}\``,
+            `*${esc(username)}*`,
+            `Wallet: \`${esc(walletStatus)}\``,
             ``,
-            `Level: ${level}`,
-            `EXP: ${progressBar}`,
+            `Level: ${esc(String(level))}`,
+            `EXP: ${esc(progressBar)}`,
             ``,
-            `Points: \`${pointsBalance}\``,
-            `Lifetime Referral Rewards: \`${referralEarnings}\``,
-            `Lifetime Model Rewards: \`${modelEarnings}\``,
-            `Lifetime Spell Rewards: \`${spellEarnings}\``,
+            `Points: \`${esc(pointsBalance)}\``,
+            `Lifetime Referral Rewards: \`${esc(referralEarnings)}\``,
+            `Lifetime Model Rewards: \`${esc(modelEarnings)}\``,
+            `Lifetime Spell Rewards: \`${esc(spellEarnings)}\``,
         ].join('\n');
 
         // --- Build Keyboard ---
@@ -180,10 +199,10 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
         const reply_markup = { inline_keyboard: keyboard };
 
         if (isEdit) {
-            await editEscapedMessageText(bot, text, { chat_id: chatId, message_id: messageId, reply_markup });
+            await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, reply_markup, parse_mode: 'MarkdownV2' });
             await bot.answerCallbackQuery(messageOrQuery.id);
         } else {
-            await sendEscapedMessage(bot, chatId, text, { reply_markup });
+            await bot.sendMessage(chatId, text, { reply_markup, parse_mode: 'MarkdownV2' });
         }
 
     } catch (error) {

@@ -165,17 +165,21 @@ module.exports = function generationExecutionApi(dependencies) {
           // --- Create Generation Record ---
           const isSpellStep = metadata && metadata.isSpell;
 
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,
             toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
             requestPayload: finalInputs,
             status: 'pending',
-            deliveryStatus: 'pending', 
+            deliveryStatus: initialDeliveryStatus,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
             notificationPlatform: user.platform || 'none',
+            pointsSpent: 0,
+            protocolNetPoints: 0,
             costUsd: null,
             metadata: {
               ...tool.metadata,
@@ -215,12 +219,17 @@ module.exports = function generationExecutionApi(dependencies) {
           });
         }
         case 'static': {
-          // Hardcoded static image response for testing
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'sent' : 'skipped';
+          const defaultPoints = 0;
           const staticPayload = {
             generationId: 'static-image-test',
             status: 'completed',
             service: 'static',
             toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
+            pointsSpent: defaultPoints,
+            protocolNetPoints: defaultPoints,
+            deliveryStatus: initialDeliveryStatus,
             outputs: [
               {
                 data: {
@@ -265,17 +274,21 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });
           }
 
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
             ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
             serviceName: tool.service,
             toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
             requestPayload: { prompt, instructions, temperature, model },
             status: 'processing',
-            deliveryStatus: 'pending',
+            deliveryStatus: initialDeliveryStatus,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
             notificationPlatform: user.platform || 'none',
+            pointsSpent: 0,
+            protocolNetPoints: 0,
             costUsd: null,
             metadata: {
               ...tool.metadata,

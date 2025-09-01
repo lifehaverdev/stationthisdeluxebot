@@ -1,6 +1,7 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
 const executionClient = require('../../utils/serverExecutionClient');
+const InputCollector = require('./components/inputCollector');
 
 /**
  * A registry to hold dynamic command definitions and their handlers.
@@ -307,17 +308,40 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 inputs[textInputKey] = promptText.trim();
             }
 
-            // Handle image inputs
+            // Handle image inputs (main or supporting)
+            const missingImageKeys = [];
+
+            // If main image key is known
             if (imageInputKey) {
-                const fileUrl = await getTelegramFileUrl(bot, msg);
-                if (fileUrl) {
-                    inputs[imageInputKey] = fileUrl;
-                } else if (tool.inputSchema[imageInputKey]?.required && !inputs[imageInputKey]) {
-                    logger.warn(`[Telegram EXEC /${commandName}] Required image not found.`);
-                    await bot.sendMessage(chatId, `This command requires an image. Please use the command with an image or reply to one.`, { reply_to_message_id: msg.message_id });
-                    await setReaction(bot, chatId, msg.message_id, '😨');
-                    return;
-                }
+              const initialFile = await getTelegramFileUrl(bot, msg);
+              if (initialFile) {
+                inputs[imageInputKey] = initialFile;
+              }
+            }
+
+            // Evaluate all required image fields
+            for (const [key, def] of Object.entries(tool.inputSchema)) {
+              if (def.type?.toLowerCase?.() === 'image' && def.required && !inputs[key]) {
+                missingImageKeys.push(key);
+              }
+            }
+
+            if (missingImageKeys.length > 0) {
+              const collector = new InputCollector(bot, { logger, setReaction });
+              try {
+                await collector.collect({
+                  chatId,
+                  originatingMsg: msg,
+                  tool,
+                  currentInputs: inputs,
+                  missingInputKeys: missingImageKeys,
+                  timeoutMs: 60000
+                });
+              } catch (collectErr) {
+                logger.warn(`[Telegram EXEC /${commandName}] Input collection failed or timed out: ${collectErr.message}`);
+                await setReaction(bot, chatId, msg.message_id, '😨');
+                return;
+              }
             }
 
             logger.info(`[Telegram EXEC /${commandName}] Final inputs for submission: ${JSON.stringify(inputs)}`);

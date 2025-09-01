@@ -93,11 +93,15 @@ class GenerationOutputsDB extends BaseDB {
 
       dataToUpdate.ratings = ratings;
     }
+    const currentRecord = await this.findGenerationById(generationId);
     if (updateData.status && (updateData.status === 'success' || updateData.status === 'failed' || updateData.status === 'cancelled_by_user' || updateData.status === 'timeout')) {
         dataToUpdate.responseTimestamp = updateData.responseTimestamp || new Date();
-        // durationMs should ideally be calculated based on requestTimestamp stored in DB
-        // For simplicity here, if not provided, it won't be set by this basic update.
-        // A more sophisticated approach would fetch the record, calculate duration, then update.
+        if (currentRecord && currentRecord.requestTimestamp) {
+          const duration = dataToUpdate.responseTimestamp - new Date(currentRecord.requestTimestamp);
+          if (!isNaN(duration)) {
+            dataToUpdate.durationMs = duration;
+          }
+        }
     }
     return this.updateOne({ _id: generationId }, dataToUpdate);
   }

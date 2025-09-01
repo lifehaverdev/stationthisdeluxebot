@@ -62,7 +62,10 @@ function parseWorkflowStructure(workflowJson) {
       externalInputNodes: [],
       inputNodes: [],
       outputNodes: [],
-      hasRequiredImageOrVideoInput: false
+      hasRequiredImageOrVideoInput: false, // legacy flag (main image required)
+      mainImageRequired: false, // new explicit flag
+      supportingImageInputs: [], // store names of supporting images like style/control etc.
+      hasSupportingImages: false
     };
   }
 
@@ -77,7 +80,9 @@ function parseWorkflowStructure(workflowJson) {
   let outputType = 'unknown';
   const inputSchema = {};
   const requiredInputs = [];
-  let hasRequiredImageOrVideoInput = false;
+  let hasRequiredImageOrVideoInput = false; // legacy flag (main image required)
+  let mainImageRequired = false; // new explicit flag
+  const supportingImageInputs = []; // store names of supporting images like style/control etc.
 
   const isEffectivelyEmpty = (val) => val === null || val === undefined || (typeof val === 'string' && val.trim() === '');
 
@@ -101,7 +106,18 @@ function parseWorkflowStructure(workflowJson) {
       inputTypeCount[inputType] = (inputTypeCount[inputType] || 0) + 1;
 
       const isRequired = isEffectivelyEmpty(defaultValue);
-      if (isRequired && ['image', 'video'].includes(inputType)) {
+      if (inputType === 'image') {
+        const lowerName = inputName.toLowerCase();
+        const isMainImage = ['input_image', 'init_image', 'inputimage', 'initimage'].includes(lowerName);
+        const isSupportingImage = !isMainImage; // everything else treated as supporting image
+
+        if (isMainImage && isRequired) {
+          mainImageRequired = true;
+          hasRequiredImageOrVideoInput = true; // keep legacy field in sync
+        } else if (isSupportingImage) {
+          supportingImageInputs.push(inputName);
+        }
+      } else if (isRequired && inputType === 'video') {
         hasRequiredImageOrVideoInput = true;
       }
 
@@ -195,7 +211,10 @@ function parseWorkflowStructure(workflowJson) {
     externalInputNodes,
     inputNodes,
     outputNodes,
-    hasRequiredImageOrVideoInput
+    hasRequiredImageOrVideoInput,
+    mainImageRequired,
+    supportingImageInputs,
+    hasSupportingImages: supportingImageInputs.length > 0
   };
 }
 

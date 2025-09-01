@@ -36,7 +36,8 @@ export default class UploadWindow extends BaseWindow {
     this.body.appendChild(canvasWrapper);
     // Status label
     this.statusEl = el('div', { style:{marginTop:'4px',fontSize:'12px',color:'#4caf50',display:'none'}, innerText:'Uploaded ✓'});
-    this.body.appendChild(this.statusEl);
+    this.sizeEl = el('div', { style:{marginTop:'2px',fontSize:'12px',color:'#666',display:'none'} });
+    this.body.append(this.statusEl,this.sizeEl);
 
     // Toolbar
     const bar = el('div', { style: { marginBottom: '6px' } });
@@ -144,6 +145,9 @@ export default class UploadWindow extends BaseWindow {
       this.imgNaturalHeight = img.height;
       this.scaleRatio = ratio;
       this.imgElement = img;
+      // update size label
+      this.sizeEl.innerText=`${img.width}×${img.height}`;
+      this.sizeEl.style.display='block';
       this.outputValue = { pendingUpload: true, windowId: this.id, fileName: file.name };
 
       // Add output anchor once preview is ready (only once)

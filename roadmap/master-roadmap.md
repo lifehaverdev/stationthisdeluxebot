@@ -15,6 +15,7 @@ This roadmap aligns top-level objectives, target dates, and ownership across all
 | TBD | Self-Hosted ComfyUI Deploy | Full control of model exec infra | ⏳ Planned | @infra |
 | 2025-09-12 | Cloudflare Upload (Epic) | Private R2 uploads + CDN delivery | ⏳ Planned | @backend |
 | 2025-09-12 | Web Onboarding Redesign (Epic) | Interactive mobile-friendly tutorial shipped & analytics >70% completion | ⏳ Planned | @web-team |
+| 2025-09-07 | Generation Output DB Audit & Refactor (Module) | Audited metrics + schema migration merged | ⏳ Planned | @backend |
 
 ## Migration Backlog
 | Legacy Area | Files Remaining | Status |

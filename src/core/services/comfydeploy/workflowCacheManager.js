@@ -1057,7 +1057,11 @@ class WorkflowCacheManager {
   
     toolDefinition.platformHints = {
       primaryInput: structureInfo?.primaryInput || 'text',
-      supportsFileCaption: structureInfo?.hasRequiredImageOrVideoInput || false,
+      requiresMainImage: structureInfo?.mainImageRequired || false,
+      supportsSupportingImages: structureInfo?.hasSupportingImages || false,
+      supportingImageInputs: structureInfo?.supportingImageInputs || [],
+      // File captions are useful whenever the user needs to attach images (main or supporting)
+      supportsFileCaption: (structureInfo?.mainImageRequired || structureInfo?.hasSupportingImages) || false,
       supportsReplyWithCommand: true
     };
   
@@ -1071,7 +1075,10 @@ class WorkflowCacheManager {
       hasKSamplerNode: structureInfo?.hasKSamplerNode || false,
       hasLoraLoader: hasLoraLoader,
       baseModel: detectedBaseModel,
-      nodeTypes: structureInfo?.nodeTypes || []
+      nodeTypes: structureInfo?.nodeTypes || [],
+      mainImageRequired: structureInfo?.mainImageRequired || false,
+      supportingImageInputs: structureInfo?.supportingImageInputs || [],
+      hasSupportingImages: structureInfo?.hasSupportingImages || false
     };
   
     // === Costing Model ===

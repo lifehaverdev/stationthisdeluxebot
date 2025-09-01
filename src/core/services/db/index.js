@@ -19,6 +19,8 @@ const SpellsDB = require('./spellsDb'); // Import SpellsDB
 const SpellPermissionsDB = require('./spellPermissionsDb'); // Import SpellPermissionsDB
 const CookCollectionsDB = require('./cookCollectionsDb');
 const WalletLinkingRequestDB = require('./walletLinkingRequestDb'); // Import WalletLinkingRequestDB
+const CastsDB = require('./castsDb');
+const CooksDB = require('./cooksDb');
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -59,6 +61,8 @@ function initializeDbServices(logger) {
     spellPermissions: SpellPermissionsDB ? new SpellPermissionsDB(logger) : null, // ADDED: Instantiate SpellPermissionsDB
     cookCollections: CookCollectionsDB ? new CookCollectionsDB(logger) : null,
     walletLinkingRequests: WalletLinkingRequestDB ? new WalletLinkingRequestDB(logger) : null,
+    casts: CastsDB ? new CastsDB(logger) : null,
+    cooks: CooksDB ? new CooksDB(logger) : null,
     
     // On-chain services
     creditLedger: CreditLedgerDB ? new CreditLedgerDB(logger) : null,

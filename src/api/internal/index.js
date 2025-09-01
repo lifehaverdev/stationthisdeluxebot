@@ -7,7 +7,7 @@
 const express = require('express');
 const axios = require('axios');
 const createStatusService = require('./status');
-const { createUserCoreApi, createUserSessionsApi, createUserEventsApi, createUserPreferencesApiRouter, createUserStatusReportApiService } = require('./users');
+const { createUserCoreApi, createUserEventsApi, createUserPreferencesApiRouter, createUserStatusReportApiService } = require('./users');
 const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, createUserEconomyApi } = require('./economy');
 const { createGenerationOutputsApiService, createGenerationExecutionApi, createGenerationOutputsApi } = require('./generations');
 // Removed deprecated Teams API and related DB service
@@ -156,15 +156,6 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] User Core API service mounted to /v1/data/users');
   } else {
     logger.error('[InternalAPI] Failed to create User Core API router.');
-  }
-
-  // User Sessions API Service:
-  const userSessionsApiRouter = createUserSessionsApi(apiDependencies);
-  if (userSessionsApiRouter) {
-    v1DataRouter.use('/sessions', userSessionsApiRouter);
-    logger.info('[InternalAPI] User Sessions API service mounted to /v1/data/sessions');
-  } else {
-    logger.error('[InternalAPI] Failed to create User Sessions API router.');
   }
 
   // User Events API Service:

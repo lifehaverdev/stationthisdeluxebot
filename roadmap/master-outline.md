@@ -102,6 +102,7 @@ Pipeline that accepts ~20 user images, trains a new LoRA model, and registers it
 | Spell Execution Page | Completed | ADR-2025-07-30-spell-execution-page.md |
 | Mods Menu & Model Browser | Completed | ADR-2025-08-01-mods-menu-model-browser.md |
 | Collection Cook Mode Redesign | In Progress | ADR-2025-08-05-collection-cook-mode-redesign.md |
+|| Generation Output DB Audit & Refactor | Planned | generation-output-db-audit/outline.md |
 
 ---
 

@@ -137,7 +137,7 @@ class NotificationDispatcher {
         // Mark this step's generation record as complete so it isn't picked up again.
         const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
         await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-          deliveryStatus: 'complete', // 'complete' signifies it's been handled by the spell engine
+          deliveryStatus: 'sent', // spell step handled by engine
           deliveryTimestamp: new Date(),
         }, updateOptions);
 
@@ -159,15 +159,15 @@ class NotificationDispatcher {
 
     const notifier = this.platformNotifiers[record.notificationPlatform];
     if (!notifier || typeof notifier.sendNotification !== 'function') {
-      this.logger.warn(`[NotificationDispatcher] No notifier found or 'sendNotification' method missing for platform: '${record.notificationPlatform}' for generationId: ${recordId}. Setting deliveryStatus to 'skipped'.`);
+      this.logger.warn(`[NotificationDispatcher] No notifier found or 'sendNotification' method missing for platform: '${record.notificationPlatform}' for generationId: ${recordId}. Setting deliveryStatus to 'dropped'.`);
       try {
         const updateSkippedOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
         await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { 
-          deliveryStatus: 'skipped', 
+          deliveryStatus: 'dropped', 
           deliveryError: `No notifier for platform ${record.notificationPlatform}` 
         }, updateSkippedOptions);
       } catch (updateError) {
-        this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} to 'skipped' status:`, updateError.message);
+        this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} to 'dropped' status:`, updateError.message);
       }
       return;
     }
@@ -205,8 +205,8 @@ class NotificationDispatcher {
       };
 
       if (attempts >= MAX_DELIVERY_ATTEMPTS) {
-        this.logger.warn(`[NotificationDispatcher] Max delivery attempts (${MAX_DELIVERY_ATTEMPTS}) reached for generationId: ${recordId}. Setting status to 'failed'.`);
-        updatePayload.deliveryStatus = 'failed';
+        this.logger.warn(`[NotificationDispatcher] Max delivery attempts (${MAX_DELIVERY_ATTEMPTS}) reached for generationId: ${recordId}. Setting status to 'dropped'.`);
+        updatePayload.deliveryStatus = 'dropped';
       }
       try {
         const requestOptions = {

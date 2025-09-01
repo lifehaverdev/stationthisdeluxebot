@@ -7,6 +7,8 @@ module.exports = function spellsApi(dependencies) {
   // The 'db' object from dependencies should contain our instantiated DB services
   const spellsDb = db.spells;
   const spellPermissionsDb = db.spellPermissions;
+  const castsDb = db.casts;
+  if(!castsDb){ logger.warn('[spellsApi] castsDb not available – cast tracking disabled'); }
 
   if (!spellsDb || !spellPermissionsDb) {
     logger.error('[spellsApi] Critical dependency failure: spellsDb or spellPermissionsDb service is not available!');
@@ -52,6 +54,13 @@ module.exports = function spellsApi(dependencies) {
     }
 
     try {
+      let castId=context.castId;
+      if(!castId && castsDb){
+        try{ const newCast= await castsDb.createCast({ spellId: slug, initiatorAccountId: context.masterAccountId }); castId=newCast._id.toString(); }
+        catch(e){ logger.warn('cast creation failed',e.message); }
+      }
+      if(castId){ context.castId = castId; }
+
       const result = await spellsService.castSpell(slug, context);
       res.status(200).json(result);
     } catch (error) {
@@ -59,6 +68,31 @@ module.exports = function spellsApi(dependencies) {
       const statusCode = error.message.includes('not found') ? 404 : (error.message.includes('permission') ? 403 : 500);
       res.status(statusCode).json({ error: { code: 'SPELL_CAST_FAILED', message: error.message } });
     }
+  });
+
+  // ----------------------------------
+  // POST /spells/casts  – create a cast record
+  router.post('/casts', async (req,res)=>{
+    if(!castsDb) return res.status(503).json({ error:'service-unavailable' });
+    const { spellId, initiatorAccountId } = req.body||{};
+    if(!spellId||!initiatorAccountId) return res.status(400).json({ error:'spellId and initiatorAccountId required' });
+    try{
+      const cast = await castsDb.createCast({ spellId, initiatorAccountId });
+      res.status(201).json(cast);
+    }catch(e){ logger.error('create cast err',e); res.status(500).json({ error:'internal' }); }
+  });
+
+  // PUT /spells/casts/:castId – update cast progress / status
+  router.put('/casts/:castId', async (req,res)=>{
+    if(!castsDb) return res.status(503).json({ error:'service-unavailable' });
+    const castId=req.params.castId;
+    const { generationId, status, costDeltaUsd } = req.body||{};
+    const update={ updatedAt:new Date() };
+    if(generationId) update.$push={ stepGenerationIds: generationId };
+    if(costDeltaUsd!==undefined) update.$inc={ costUsd: costDeltaUsd };
+    if(status) update.status=status;
+    try{ await castsDb.updateOne({ _id:castId }, update); res.json({ ok:true }); }
+    catch(e){ logger.error('cast update err',e); res.status(500).json({ error:'internal' }); }
   });
 
   // GET /spells - Get public spells or spells owned by a user
