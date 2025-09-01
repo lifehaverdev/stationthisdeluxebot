@@ -6,7 +6,6 @@
 // Import the DB service CLASSES
 const UserCoreDB = require('./userCoreDb');
 // Assuming other DB files also export classes now or will be updated later
-const UserSessionsDB = require('./userSessionsDb'); 
 const UserEventsDB = require('./userEventsDb');       
 const GenerationOutputsDB = require('./generationOutputsDb'); 
 const UserEconomyDB = require('./userEconomyDb');
@@ -48,7 +47,6 @@ function initializeDbServices(logger) {
     userCore: new UserCoreDB(logger), // Instantiate with logger
     // Instantiate others similarly (assuming they accept logger or will be updated)
     // For now, handle potential errors if they don't accept logger gracefully
-    userSessions: UserSessionsDB ? new UserSessionsDB(logger) : null, // Add checks if unsure
     userEvents: UserEventsDB ? new UserEventsDB(logger) : null,
     generationOutputs: GenerationOutputsDB ? new GenerationOutputsDB(logger) : null,
     userEconomy: UserEconomyDB ? new UserEconomyDB(logger) : null,

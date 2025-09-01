@@ -9,6 +9,7 @@ function createCookApi(deps = {}) {
   const router = express.Router();
   const logger = deps.logger || createLogger('CookAPI');
   const cookDb = deps.db?.cookCollections;
+  const cooksDb = deps.db?.cooks;
 
   // POST /internal/cook/start
   router.post('/start', async (req, res) => {
@@ -23,9 +24,14 @@ function createCookApi(deps = {}) {
 
       const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
 
+      if(!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: totalSupply });
+      const cookId = cook._id;
+
       const result = await CookOrchestratorService.startCook({
         collectionId,
         userId,
+        cookId,
         spellId,
         toolId,
         traitTypes,
@@ -229,6 +235,18 @@ function createCookApi(deps = {}) {
       logger.error('[CookAPI] debug queue error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
+  });
+
+  router.put('/cooks/:cookId', async (req,res)=>{
+    if(!cooksDb) return res.status(503).json({ error: 'service-unavailable' });
+    const { cookId } = req.params;
+    const { generationId, status, costDeltaUsd } = req.body;
+    const update={};
+    if(generationId) update.$push = { generationIds: generationId };
+    if(costDeltaUsd!==undefined) update.$inc = { costUsd: costDeltaUsd, generatedCount:1 };
+    if(status) update.$set = { status, completedAt: status==='completed'?new Date():undefined };
+    try{ await cooksDb.updateOne({ _id:cookId }, update); res.json({ ok:true }); }
+    catch(e){ logger.error('cook update err',e); res.status(500).json({ error:'internal' }); }
   });
 
   return router;

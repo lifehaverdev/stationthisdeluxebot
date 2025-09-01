@@ -7,7 +7,6 @@ const initializeApiKeysApi = require('../apiKeysApi'); // path adjusted one leve
 const initializeUserEconomyApi = require('../economy/userEconomyApi.js'); // path adjusted
 const { createUserToolsApiRouter } = require('../userToolsApi'); // path adjusted
 const createTransactionsApiService = require('../economy/transactionsApi');
-const createUserSessionsApi = require('./userSessionsApi');
 
 /**
  * Creates and configures an Express router for User Core API endpoints.
@@ -20,7 +19,7 @@ function createUserCoreApiService(dependencies) {
   const router = express.Router();
 
   // Ensure all required DB services are present (add checks as needed for sub-routers)
-  if (!db || !db.userCore || !db.userSessions || !db.userEvents || !db.userEconomy || !db.transactions || !db.generationOutputs || !db.userPreferences) {
+  if (!db || !db.userCore || !db.userEvents || !db.userEconomy || !db.transactions || !db.generationOutputs || !db.userPreferences) {
     logger.error('[userCoreApi] One or more required DB services not found in dependencies. API may not function correctly.');
     // Consider checking specific dependencies needed by sub-routers as well.
     router.use((req, res) => {
@@ -38,11 +37,6 @@ function createUserCoreApiService(dependencies) {
   const transactionsApiRouter = createTransactionsApiService(dependencies);
   router.use('/:masterAccountId/transactions', transactionsApiRouter);
   logger.info('[userCoreApi] User-specific Transactions API service mounted.');
-
-  // Mount the user-specific session routes
-  const userSessionsApiRouter = createUserSessionsApi(dependencies);
-  router.use('/:masterAccountId/sessions', userSessionsApiRouter);
-  logger.info('[userCoreApi] User-specific Sessions API service mounted.');
 
   // Middleware to parse JSON bodies
   router.use(express.json());
@@ -353,80 +347,6 @@ function createUserCoreApiService(dependencies) {
         requestId: requestId,
       },
     });
-  });
-
-  // --- User Session Endpoints (Related to User) ---
-
-  // GET /users/{masterAccountId}/sessions - List ALL user sessions
-  // Note: This route now lives in userCoreApi but uses db.userSessions
-  router.get('/:masterAccountId/sessions', async (req, res, next) => {
-    const { masterAccountId: masterAccountIdStr } = req.params; // Get ID string from params
-    logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions - Received request (fetching all sessions)`);
-
-    // Inline validation for masterAccountId
-    if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
-      logger.warn(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions: Invalid masterAccountId format.`);
-      return res.status(400).json({
-         error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format. Must be a valid ObjectId.', details: { value: masterAccountIdStr } }
-       });
-    }
-    const masterAccountId = new ObjectId(masterAccountIdStr); // Convert to ObjectId for DB query
-
-    if (!db.userSessions) {
-      logger.error(`[userCoreApi] UserSessionsDB service not available for GET /users/${masterAccountIdStr}/sessions`);
-      return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserSessions database service is not available.' } });
-    }
-
-    try {
-      const sessions = await db.userSessions.findMany({ masterAccountId: masterAccountId }); // Use ObjectId
-      logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions: Found ${sessions.length} sessions.`);
-      res.status(200).json(sessions);
-    } catch (error) {
-      logger.error(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions: Error processing request. Error: ${error.message}`, error);
-      res.status(500).json({
-        error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while finding user sessions.' },
-      });
-    }
-  });
-
-  // GET /users/{masterAccountId}/sessions/active - Find active user sessions by platform
-  // Note: This route now lives in userCoreApi but uses db.userSessions
-  router.get('/:masterAccountId/sessions/active', async (req, res, next) => {
-    const { masterAccountId: masterAccountIdStr } = req.params; // Get ID string from params
-    const platform = req.query.platform;
-    logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions/active?platform=${platform} - Received request`);
-
-    // Inline validation for masterAccountId
-    if (!masterAccountIdStr || !ObjectId.isValid(masterAccountIdStr)) {
-        logger.warn(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions/active: Invalid masterAccountId format.`);
-      return res.status(400).json({
-         error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format. Must be a valid ObjectId.', details: { value: masterAccountIdStr } }
-        });
-    }
-    const masterAccountId = new ObjectId(masterAccountIdStr); // Convert to ObjectId for DB query
-
-    if (!db.userSessions) {
-      logger.error(`[userCoreApi] UserSessionsDB service not available for GET /users/${masterAccountIdStr}/sessions/active`);
-      return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserSessions database service is not available.' } });
-    }
-
-    if (!platform || typeof platform !== 'string' || platform.trim() === '') {
-      logger.warn(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions/active: Missing or invalid platform query parameter.`);
-      return res.status(400).json({
-        error: { code: 'INVALID_INPUT', message: 'Missing or invalid \'platform\' query parameter. Must be a non-empty string.', details: { field: 'platform', value: platform } },
-      });
-    }
-
-    try {
-      const activeSessions = await db.userSessions.findActiveSessionsByUserAndPlatform(masterAccountId, platform.trim()); // Use ObjectId
-      logger.info(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions/active?platform=${platform}: Found ${activeSessions.length} active sessions.`);
-      res.status(200).json(activeSessions);
-    } catch (error) {
-      logger.error(`[userCoreApi] GET /users/${masterAccountIdStr}/sessions/active?platform=${platform}: Error processing request. Error: ${error.message}`, error);
-      res.status(500).json({
-        error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while finding active sessions.' },
-      });
-    }
   });
 
   // --- User Event Listing Endpoint ---

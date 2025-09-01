@@ -240,7 +240,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
         const promptText = match && match[1] ? match[1].trim() : '';
         let masterAccountId;
-        let sessionId;
+        // sessions deprecated
         let initiatingEventId;
 
         try {
@@ -255,17 +255,9 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
           });
           masterAccountId = userResponse.data.masterAccountId;
 
-          // Step 2: Create a user session for this interaction
-          const sessionResponse = await apiClient.post('/internal/v1/data/sessions', {
-            masterAccountId: masterAccountId,
-            platform: 'telegram',
-          });
-          sessionId = sessionResponse.data._id;
-
-          // Step 3: Create the initiating event record
+          // Step 2: Create the initiating event record
           const eventResponse = await apiClient.post('/internal/v1/data/events', {
             masterAccountId,
-            sessionId,
             eventType: 'command_used',
             sourcePlatform: 'telegram',
             eventData: {
@@ -361,7 +353,6 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                   messageId: msg.message_id,
                 },
               },
-              sessionId: sessionId,
               eventId: initiatingEventId,
               metadata: {
                 // Pass notification context for the dispatcher to use upon completion

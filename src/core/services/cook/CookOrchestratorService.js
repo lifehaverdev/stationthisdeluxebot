@@ -65,7 +65,7 @@ class CookOrchestratorService {
   /**
    * Start cook with immediate submission of the first piece and orchestration-managed scheduling.
    */
-  async startCook({ collectionId, userId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply = 1 }) {
+  async startCook({ collectionId, userId, cookId, spellId, toolId, traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply = 1 }) {
     await this._init();
     if (!spellId && !toolId) throw new Error('spellId or toolId required');
 
@@ -74,7 +74,7 @@ class CookOrchestratorService {
     const producedSoFar = await this._getProducedCount(collectionId, userId);
     this.logger.info(`[Cook DEBUG] collection ${collectionId} supply=${supply} producedSoFar=${producedSoFar}`);
     if (!this.runningByCollection.has(key)) {
-      this.runningByCollection.set(key, { running: new Set(), nextIndex: producedSoFar, generatedCount: producedSoFar, total: supply, maxConcurrent: 3, toolId: toolId || null, spellId: spellId || null, traitTree, paramOverrides, traitTypes, paramsTemplate });
+      this.runningByCollection.set(key, { running: new Set(), nextIndex: producedSoFar, generatedCount: producedSoFar, total: supply, maxConcurrent: 3, toolId: toolId || null, cookId, spellId: spellId || null, traitTree, paramOverrides, traitTypes, paramsTemplate });
     }
     const state = this.runningByCollection.get(key);
     this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, total: state.total });
@@ -92,12 +92,12 @@ class CookOrchestratorService {
 
     // Submit first piece immediately if within supply
     if (state.nextIndex < state.total && (state.generatedCount + state.running.size) < state.total) {
-      const enq = await this._enqueuePiece({ collectionId, userId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
+      const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
       const enqueuedJobId = enq.jobId;
       state.running.add(String(enqueuedJobId));
       state.generatedCount = producedSoFar; // keep count in sync
       state.nextIndex += 1;
-      await this.appendEvent('PieceQueued', { collectionId, userId, jobId: enqueuedJobId, pieceIndex: 0 });
+      await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enqueuedJobId, pieceIndex: 0 });
 
       if (IMMEDIATE_SUBMIT) {
         try {
@@ -121,7 +121,7 @@ class CookOrchestratorService {
    * Prepare the next piece: select traits deterministically by index, resolve params, and persist an audit job.
    * Returns { jobId, submission } where submission is the payload for the unified execute endpoint.
    */
-  async _enqueuePiece({ collectionId, userId, index, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate }) {
+  async _enqueuePiece({ collectionId, userId, cookId, index, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate }) {
     let selectedTraits;
     let finalParams;
 
@@ -146,6 +146,7 @@ class CookOrchestratorService {
       metadata: {
         source: 'cook',
         collectionId,
+        cookId,
         pieceIndex,
         toolId: spellIdOrToolId,
         selectedTraits,
@@ -179,10 +180,45 @@ class CookOrchestratorService {
     if (!state) return;
     state.running.delete(String(finishedJobId));
 
+    // --- Update the parent cook document with the completed generation ---
+    if (state.cookId && finishedJobId) {
+      try {
+        // Ensure collections are initialised
+        await this._init();
+
+        // Look up the generation record that finished.
+        const generation = await this.outputsCol.findOne({ 'metadata.jobId': String(finishedJobId) }, { projection: { _id: 1, costUsd: 1 } });
+
+        if (!generation) {
+          this.logger.warn(`[CookOrchestrator] Generation for jobId ${finishedJobId} not found – parent cook will not be updated.`);
+        } else {
+          const costDelta = typeof generation.costUsd === 'number' ? generation.costUsd : 0;
+
+          // Update the cook document via internal API.
+          await internalApiClient.put(`/internal/v1/data/cooks/${state.cookId}`, {
+            generationId: generation._id.toString(),
+            costDeltaUsd: costDelta,
+          });
+
+          this.logger.info(`[CookOrchestrator] Updated cook ${state.cookId} with generation ${generation._id} (costUsd=${costDelta}).`);
+        }
+      } catch (err) {
+        this.logger.error(`[CookOrchestrator] Failed to update cook ${state.cookId}: ${err.message}`);
+      }
+    }
+
     // If done with supply and nothing running, emit completed
     const producedAfter = await this._getProducedCount(collectionId, userId);
     if (producedAfter >= state.total && state.running.size === 0) {
-      await this.appendEvent('CookCompleted', { collectionId, userId });
+      await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId });
+      // Final update to cook document
+      if (state.cookId) {
+          try {
+              await this.internalApiClient.put(`/internal/v1/data/cooks/${state.cookId}`, { status: 'completed' });
+          } catch(err) {
+              this.logger.error(`[CookOrchestrator] Failed to finalize cook ${state.cookId}:`, err.message);
+          }
+      }
       this.runningByCollection.delete(key);
       return;
     }
@@ -199,6 +235,7 @@ class CookOrchestratorService {
       const enq = await this._enqueuePiece({
         collectionId,
         userId,
+        cookId: state.cookId,
         index: idx,
         toolId: state.toolId,
         spellId: state.spellId,
@@ -212,7 +249,7 @@ class CookOrchestratorService {
       state.nextIndex += 1;
       state.generatedCount = producedNow; // update count
       queued += 1;
-      await this.appendEvent('PieceQueued', { collectionId, userId, jobId: enq.jobId, pieceIndex: idx });
+      await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enq.jobId, pieceIndex: idx });
 
       // Immediate submit for newly queued pieces
       try {

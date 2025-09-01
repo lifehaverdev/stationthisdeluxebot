@@ -144,28 +144,9 @@ class WorkflowExecutionService {
             { internal: { client: this.internalApiClient } }
         );
 
-        // Find or create a session for this execution
-        let sessionId;
-        try {
-            // Use query parameters instead of path segment to filter active sessions
-            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${originalContext.masterAccountId}/sessions`, {
-                params: { status: 'active', platform: originalContext.platform }
-            });
-            if (Array.isArray(activeSessionsResponse.data) && activeSessionsResponse.data.length > 0) {
-                sessionId = activeSessionsResponse.data[0]._id || activeSessionsResponse.data[0].sessionId;
-            }
-
-            if (!sessionId) {
-                const newSessionResponse = await this.internalApiClient.post('/internal/v1/data/sessions', { masterAccountId: originalContext.masterAccountId, platform: originalContext.platform, userAgent: 'Spell Execution' });
-                sessionId = newSessionResponse.data._id;
-            }
-        } catch (e) {
-            this.logger.error(`[WorkflowExecution] Could not get or create a session for MAID ${originalContext.masterAccountId}`, e.response ? e.response.data : e.message);
-        }
 
         const eventPayload = {
             masterAccountId: originalContext.masterAccountId,
-            sessionId: sessionId,
             eventType: 'spell_step_triggered',
             sourcePlatform: originalContext.platform,
             eventData: { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId }
@@ -183,10 +164,10 @@ class WorkflowExecutionService {
                 platformId: originalContext.platformId,
                 platformContext: originalContext.platformContext || {},
             },
-            sessionId: sessionId,
             eventId: eventId,
             metadata: {
                 isSpell: true,
+                castId: originalContext.castId || null,
                 spell: typeof spell.toObject === 'function' ? spell.toObject() : spell,
                 stepIndex,
                 pipelineContext,
@@ -272,6 +253,20 @@ class WorkflowExecutionService {
     async continueExecution(completedGeneration) {
         const { spell, stepIndex, pipelineContext, originalContext } = completedGeneration.metadata;
         this.logger.info(`[WorkflowExecution] Continuing spell "${spell.name}". Finished step ${stepIndex + 1}.`);
+        // --- Update parent cast document with newly completed step generation ---
+        if (completedGeneration.metadata?.castId) {
+            const castId = completedGeneration.metadata.castId;
+            try {
+                const costDelta = typeof completedGeneration.costUsd === 'number' ? completedGeneration.costUsd : 0;
+                await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+                    generationId: completedGeneration._id.toString(),
+                    costDeltaUsd: costDelta,
+                });
+                this.logger.info(`[WorkflowExecution] Updated cast ${castId} with generation ${completedGeneration._id} (costUsd=${costDelta}).`);
+            } catch (err) {
+                this.logger.error(`[WorkflowExecution] Failed to update cast ${castId}:`, err.message);
+            }
+        }
 
         // Accumulate step generation IDs
         const previousStepGenIds = (pipelineContext && pipelineContext.stepGenerationIds) ? pipelineContext.stepGenerationIds : [];
@@ -339,19 +334,33 @@ class WorkflowExecutionService {
         if (nextStepIndex < spell.steps.length) {
             // There are more steps, execute the next one.
             this.logger.info(`[WorkflowExecution] Proceeding to step ${nextStepIndex + 1} of "${spell.name}".`);
-            const contextForNextStep = { ...nextPipelineContext, stepGenerationIds };
+            // Propagate castId to the next step
+            const contextForNextStep = { ...nextPipelineContext, stepGenerationIds, castId: completedGeneration.metadata.castId };
             await this._executeStep(spell, nextStepIndex, contextForNextStep, originalContext);
         } else {
             // This was the last step. The spell is finished.
             this.logger.info(`[WorkflowExecution] Spell "${spell.name}" finished successfully. Creating final notification record.`);
             
+            // Final update to the cast document
+            const { castId } = completedGeneration.metadata;
+            if (castId) {
+                try {
+                    await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+                        status: 'completed',
+                        costDeltaUsd: '0' // Final cost is already summed up from steps
+                    });
+                } catch (err) {
+                    this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId}:`, err.message);
+                }
+            }
+
             // Create a *new* final generation record that the dispatcher will handle normally.
             const finalGenerationParams = {
                 masterAccountId: originalContext.masterAccountId,
-                sessionId: completedGeneration.sessionId,
                 initiatingEventId: completedGeneration.initiatingEventId,
                 serviceName: completedGeneration.serviceName,
                 toolId: `spell-${spell.slug}`,
+                castId: completedGeneration.metadata.castId || null,
                 requestPayload: originalContext.parameterOverrides,
                 responsePayload: completedGeneration.responsePayload,
                 status: 'completed',
@@ -379,20 +388,12 @@ class WorkflowExecutionService {
         const { masterAccountId, platform, notification } = originalContext;
 
         try {
-             // --- User & Session Handling ---
-            let sessionId;
-            const activeSessionsResponse = await this.internalApiClient.get(`/internal/v1/data/users/${masterAccountId}/sessions/active?platform=${platform}`);
-            if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
-                sessionId = activeSessionsResponse.data[0]._id;
-            } else {
-                const newSessionResponse = await this.internalApiClient.post('/internal/v1/data/sessions', { masterAccountId, platform, userAgent: 'GPT Execution' });
-                sessionId = newSessionResponse.data._id;
-            }
+             // --- User Handling ---
+            
 
             // --- Event Logging ---
             const eventPayload = {
                 masterAccountId: masterAccountId,
-                sessionId: sessionId,
                 eventType: 'gpt_execution_triggered',
                 sourcePlatform: platform,
                 eventData: {
@@ -409,7 +410,6 @@ class WorkflowExecutionService {
 
             const finalGenerationParams = {
                 masterAccountId: masterAccountId,
-                sessionId: sessionId,
                 initiatingEventId: eventId,
                 serviceName: 'openai',
                 toolId: tool.toolId,

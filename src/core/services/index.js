@@ -12,7 +12,6 @@ const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
 const WorkflowsService = require('./comfydeploy/workflows');
 const MediaService = require('./media');
-const SessionService = require('./session');
 const SpellsService = require('./SpellsService');
 const WorkflowExecutionService = require('./WorkflowExecutionService.js');
 const dbService = require('./db');
@@ -60,7 +59,6 @@ async function initializeServices(options = {}) {
     logger.info('Initializing core services...');
     
     // Initialize services with proper dependencies
-    const sessionService = new SessionService({ logger });
     const mediaService = new MediaService({ 
       logger,
       tempDir: options.mediaConfig?.tempDir,
@@ -275,7 +273,6 @@ async function initializeServices(options = {}) {
     logger.info('Core services created successfully');
     
     const returnedServices = {
-      session: sessionService,
       media: mediaService,
       points: pointsService,
       comfyUI: comfyUIService,
@@ -324,7 +321,6 @@ module.exports = {
   PointsService,
   WorkflowsService,
   MediaService,
-  SessionService,
   SpellsService,
   OpenAIService,
   WorkflowExecutionService,

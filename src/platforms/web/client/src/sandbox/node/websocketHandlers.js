@@ -59,6 +59,10 @@ function handleGenerationProgress(payload) {
             progressIndicator.className = 'progress-indicator';
             toolWindow.appendChild(progressIndicator);
         }
+        // Attach IDs for easier debugging and potential UI use
+        progressIndicator.dataset.generationId = generationId;
+        if(castId) progressIndicator.dataset.castId = castId;
+        if(cookId) progressIndicator.dataset.cookId = cookId;
         const progressPercent = progress ? `(${(progress * 100).toFixed(1)}%)` : '';
         progressIndicator.textContent = `Status: ${liveStatus || status} ${progressPercent}`;
     }
@@ -69,7 +73,7 @@ function handleGenerationProgress(payload) {
  * @param {object} payload - The final result payload from the server.
  */
 export function handleGenerationUpdate(payload) {
-    const { generationId, outputs, status, toolId, spellId } = payload;
+    const { generationId, outputs, status, toolId, spellId, castId, cookId } = payload;
     let toolWindowEl = generationIdToWindowMap[generationId];
 
     if (!toolWindowEl && spellId){
@@ -90,6 +94,9 @@ export function handleGenerationUpdate(payload) {
     console.log('[WS] generationUpdate received', { generationId, toolId });
 
     if (toolWindowEl) {
+        // also add to window for debugging
+        toolWindowEl.dataset.castId = castId;
+        toolWindowEl.dataset.cookId = cookId;
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');
         if (progressIndicator) progressIndicator.remove();
 

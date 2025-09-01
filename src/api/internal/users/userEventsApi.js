@@ -43,9 +43,6 @@ module.exports = function userEventsApi(dependencies) {
     if (!masterAccountId || !ObjectId.isValid(masterAccountId)) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid or missing masterAccountId.', details: { field: 'masterAccountId' } } });
     }
-    if (!sessionId || !ObjectId.isValid(sessionId)) {
-      return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid or missing sessionId.', details: { field: 'sessionId' } } });
-    }
     if (!eventType || typeof eventType !== 'string' || eventType.trim() === '') {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid or missing eventType.', details: { field: 'eventType' } } });
     }
@@ -67,7 +64,7 @@ module.exports = function userEventsApi(dependencies) {
     try {
       const eventDetails = {
         masterAccountId: new ObjectId(masterAccountId),
-        sessionId: new ObjectId(sessionId),
+        ...(sessionId && ObjectId.isValid(sessionId) && { sessionId: new ObjectId(sessionId) }),
         eventType: eventType.trim(),
         eventData: eventData, // Already validated as object
         sourcePlatform: sourcePlatform.trim(),
@@ -114,30 +111,10 @@ module.exports = function userEventsApi(dependencies) {
     }
   });
 
-  // --- Session Event Listing Endpoint ---
-  // GET /sessions/{sessionId}/events - List events for a session
-  // Note: Uses db.userEvents service
-  router.get('/:sessionId/events', validateObjectId('sessionId'), async (req, res, next) => {
-      const { sessionId } = req.locals;
-      // TODO: Add pagination query params (limit, skip/page, sort)
-      logger.info(`[userSessionsApi] GET /sessions/${sessionId}/events - Received request`);
-
-      if (!db.userEvents) {
-          logger.error(`[userSessionsApi] UserEventsDB service not available for GET /sessions/${sessionId}/events`);
-          return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'UserEvents database service is not available.' } });
-      }
-
-      try {
-          // Use the DB method, passing sessionId. Add options later for pagination.
-          const sessionEvents = await db.userEvents.findEventsBySession(sessionId);
-          logger.info(`[userSessionsApi] GET /sessions/${sessionId}/events: Found ${sessionEvents.length} events.`);
-          res.status(200).json(sessionEvents);
-      } catch (error) {
-          logger.error(`[userSessionsApi] GET /sessions/${sessionId}/events: Error processing request. Error: ${error.message}`, error);
-          res.status(500).json({
-              error: { code: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred while finding session events.' },
-          });
-      }
+  // --- Deprecated Session Event Listing Endpoint ---
+  // This route is deprecated since sessions have been removed.
+  router.get('/:sessionId/events', (req, res) => {
+      res.status(410).json({ error: { code: 'GONE', message: 'Session-centric events endpoint has been removed. Sessions are deprecated.' } });
   });
 
   // --- User/Session Specific Event Routes ---

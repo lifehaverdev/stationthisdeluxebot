@@ -87,10 +87,22 @@ module.exports = function spellsApi(dependencies) {
     if(!castsDb) return res.status(503).json({ error:'service-unavailable' });
     const castId=req.params.castId;
     const { generationId, status, costDeltaUsd } = req.body||{};
-    const update={ updatedAt:new Date() };
-    if(generationId) update.$push={ stepGenerationIds: generationId };
-    if(costDeltaUsd!==undefined) update.$inc={ costUsd: costDeltaUsd };
-    if(status) update.status=status;
+    const update = { $set: { updatedAt: new Date() } };
+    if (generationId) {
+        update.$push = { ...(update.$push||{}), stepGenerationIds: generationId };
+        // Optionally increment generatedCount if field exists
+        update.$inc = { ...(update.$inc||{}), generatedCount: 1 };
+    }
+    if (typeof costDeltaUsd !== 'undefined') {
+        update.$inc = { ...(update.$inc||{}), costUsd: costDeltaUsd };
+    }
+    if (status) {
+        update.$set.status = status;
+        if (status === 'completed') {
+            update.$set.completedAt = new Date();
+        }
+    }
+
     try{ await castsDb.updateOne({ _id:castId }, update); res.json({ ok:true }); }
     catch(e){ logger.error('cast update err',e); res.status(500).json({ error:'internal' }); }
   });

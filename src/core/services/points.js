@@ -17,12 +17,9 @@ class PointsService {
     // Dependencies to be injected
     this.userEconomyDB = options.userEconomyDB;
     this.floorplanDB = options.floorplanDB;
-    this.sessionService = options.sessionService; // Will be used instead of direct lobby access
-    
-    // Register with session service for events if available
-    if (this.sessionService) {
-      this._registerSessionEvents();
-    }
+
+    this.creditLedgerDb = options.creditLedgerDb; // NEW: canonical points balance
+
   }
 
   /**
@@ -31,10 +28,6 @@ class PointsService {
    * @returns {number} - Maximum balance
    */
   getMaxPoints(balance) {
-    if (this.sessionService) {
-      return this.sessionService.calculateMaxPoints(balance);
-    }
-    
     return Math.floor(
       (balance + this.options.noCoinerStarter) / this.options.pointMultiplier
     );
@@ -46,17 +39,26 @@ class PointsService {
    * @param {number} pointsNeeded - Points needed
    * @returns {boolean} - Whether user has enough points
    */
-  hasEnoughPoints(userId, pointsNeeded) {
-    if (!this.sessionService) {
-      throw new Error('SessionService is required for point checking');
+  async hasEnoughPoints(userId, pointsNeeded) {
+    if (this.creditLedgerDb) {
+      try {
+        const walletAddress = await this._resolveUserWallet(userId);
+        const remaining = await this.creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress);
+        return remaining >= pointsNeeded;
+      } catch (err) {
+        console.error('CreditLedgerDb check failed; falling back to legacy path', err);
+      }
     }
-    
-    const session = this.sessionService.getSession(userId);
-    const totalPoints = (session.points || 0) + (session.doints || 0);
-    const multipliedPoints = totalPoints * this.options.pointMultiplier;
-    const balance = session.balance || 0;
-    
-    return multipliedPoints <= (balance + this.options.noCoinerStarter);
+
+    // Fallback: use userEconomyDB balance directly if available
+    if (this.userEconomyDB) {
+      const userEco = this.userEconomyDB.findOneSync ? this.userEconomyDB.findOneSync({ userId: parseInt(userId) }) : null;
+      const balance = userEco ? (userEco.balance || 0) : 0;
+      const maxPoints = this.getMaxPoints(balance);
+      return maxPoints >= pointsNeeded;
+    }
+
+    return false;
   }
 
   /**
@@ -100,21 +102,6 @@ class PointsService {
   async addPointsToUser(userId, amount, options = {}) {
     const { source = 'manual', message = null } = options;
     
-    // If we have session service, use it
-    if (this.sessionService) {
-      const session = this.sessionService.getSession(userId);
-      
-      // Add points to session
-      session.points = (session.points || 0) + amount;
-      
-      return { 
-        userId,
-        newBalance: session.points,
-        source,
-        amountAdded: amount
-      };
-    }
-    
     // Fallback to database if no session service
     if (!this.userEconomyDB) {
       throw new Error('Either SessionService or UserEconomyDB is required to add points');
@@ -137,21 +124,7 @@ class PointsService {
    * @returns {Promise<Object>} - Updated balance info
    */
   async addQointsToUser(userId, amount, source = 'purchase') {
-    // If we have session service, use it
-    if (this.sessionService) {
-      const session = this.sessionService.getSession(userId);
-      
-      // Add qoints to session
-      session.qoints = (session.qoints || 0) + amount;
-      
-      return { 
-        userId,
-        newBalance: session.qoints,
-        source,
-        amountAdded: amount
-      };
-    }
-    
+    // Persist directly to DB (sessions removed)
     // Fallback to database
     if (!this.userEconomyDB) {
       throw new Error('Either SessionService or UserEconomyDB is required to add qoints');
@@ -211,22 +184,7 @@ class PointsService {
    * @private
    */
   async _handleAPIPointDeduction(userId, pointsToDeduct) {
-    // Try session first if available
-    if (this.sessionService && this.sessionService.hasSession(userId)) {
-      const session = this.sessionService.getSession(userId);
-      const oldQoints = session.qoints || 0;
-      
-      // Subtract points from user's qoints, but don't let it go below 0
-      session.qoints = Math.max(0, oldQoints - pointsToDeduct);
-      
-      return {
-        userId,
-        pointsSpent: pointsToDeduct,
-        newBalance: session.qoints,
-        source: 'api'
-      };
-    }
-    
+    // Sessions removed – operate directly on DB
     // Fallback to database
     if (!this.userEconomyDB) {
       throw new Error('UserEconomyDB dependency is required for API point deduction');
@@ -268,20 +226,7 @@ class PointsService {
    * @private
    */
   async _handleCookModePointDeduction(userId, pointsToDeduct, promptObj) {
-    // Try session first if available
-    if (this.sessionService && this.sessionService.hasSession(userId)) {
-      const session = this.sessionService.getSession(userId);
-      if (session.qoints !== undefined) {
-        session.qoints = Math.max(0, (session.qoints || 0) - pointsToDeduct);
-        return {
-          userId,
-          pointsSpent: pointsToDeduct,
-          newBalance: session.qoints,
-          source: 'cookMode'
-        };
-      }
-    }
-    
+    // Sessions removed – go straight to DB
     // Fallback to database
     if (!this.userEconomyDB) {
       throw new Error('UserEconomyDB dependency is required for cook mode point deduction');
@@ -317,48 +262,29 @@ class PointsService {
    * @private
    */
   async _handleStandardPointDeduction(userId, pointsToDeduct, message) {
-    if (!this.sessionService) {
-      throw new Error('SessionService dependency is required for standard point deduction');
-    }
-    
-    const session = this.sessionService.getSession(userId);
-    if (!session) {
-      throw new Error(`User ID ${userId} not found in session, unable to deduct points`);
+    // Sessions removed – update DB
+    // Fallback to database update
+    if (!this.userEconomyDB) {
+      throw new Error('UserEconomyDB dependency is required for standard point deduction without SessionService');
     }
 
-    // Update points
-    session.points = (session.points || 0) + pointsToDeduct;
-    
-    // Remove placeholder doints if they exist in the promptObj
-    if (message && message.promptObj && message.promptObj.dointsAdded) {
-      session.doints = Math.max(0, (session.doints || 0) - (message.promptObj.dointsAdded || 0));
+    const userEco = await this.userEconomyDB.findOne({ userId: parseInt(userId) });
+    if (!userEco) {
+      throw new Error(`No user economy found for user ${userId}`);
     }
-    
+
+    const newBalance = (userEco.points || 0) + pointsToDeduct;
+    await this.userEconomyDB.writePoints(userId, newBalance);
+
     return {
       userId,
       pointsSpent: pointsToDeduct,
-      newBalance: session.points,
-      source: 'standard'
+      newBalance,
+      source: 'standard-db'
     };
   }
 
-  /**
-   * Register for session service events
-   * @private
-   */
-  _registerSessionEvents() {
-    // Handle point replenishment
-    this.sessionService.on('pointsReplenished', (data) => {
-      console.log(`Points replenished for user ${data.userId}: ${data.oldPoints} -> ${data.newPoints}, Doints: ${data.oldDoints} -> ${data.newDoints}`);
-      // Additional logic if needed
-    });
-    
-    // Handle session cleaning
-    this.sessionService.on('sessionCleaned', (data) => {
-      console.log(`Session cleaned for user ${data.userId}`);
-      // Additional logic if needed
-    });
-  }
+  // _registerSessionEvents removed – sessions deprecated
 
   /**
    * Calculate initial points for new users

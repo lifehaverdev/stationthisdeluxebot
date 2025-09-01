@@ -34,16 +34,9 @@ function createGenerationsApi(dependencies) {
 
         let generationRecord;
         try {
-            // 3. Create Session and Records
-            const sessionResponse = await internalClient.post('/internal/v1/data/sessions', {
-                masterAccountId: user.masterAccountId,
-                platform: 'external_api',
-            });
-            const sessionId = sessionResponse.data._id;
-
+            // 3. Create initiating event record (sessions deprecated)
             const eventResponse = await internalClient.post('/internal/v1/data/events', {
                 masterAccountId: user.masterAccountId,
-                sessionId,
                 eventType: 'api_command_used',
                 sourcePlatform: 'external_api',
                 eventData: { toolId, delivery }
@@ -52,7 +45,6 @@ function createGenerationsApi(dependencies) {
 
             const generationRecordResponse = await internalClient.post('/internal/v1/data/generations', {
                 masterAccountId: user.masterAccountId,
-                sessionId,
                 initiatingEventId,
                 platform: 'external_api',
                 toolId: tool.toolId,

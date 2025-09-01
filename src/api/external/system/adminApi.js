@@ -223,81 +223,9 @@ function createAdminApi(dependencies) {
     }
   });
 
-  // User Sessions stats
-  adminRouter.get('/stats/user-sessions', async (req, res, next) => {
-    try {
-      const mongoClient = await getCachedClient();
-      if (!mongoClient) {
-        logger.error('[Admin UserSessions] Could not obtain MongoDB client');
-        return res.status(500).json({ error: 'Database client acquisition failed.' });
-      }
-      const db = mongoClient.db(process.env.BOT_NAME);
-      if (!db) {
-        logger.error('[Admin UserSessions] Failed to get Db object for BOT_NAME');
-        return res.status(500).json({ error: 'Database connection failed (db object).' });
-      }
-      logger.info(`[Admin UserSessions] Successfully connected to DB: ${db.databaseName}`);
-
-      const historyCollection = db.collection('history');
-
-      const daysToScan = parseInt(req.query.days) || 3;
-      const specificUserId = req.query.userId ? parseInt(req.query.userId) : null;
-      const INACTIVITY_TIMEOUT_MS = (parseInt(req.query.timeoutMinutes) || 30) * 60 * 1000;
-
-      const NDaysAgo = new Date();
-      NDaysAgo.setDate(NDaysAgo.getDate() - daysToScan);
-      logger.info(`[Admin UserSessions] Fetching history since ${NDaysAgo.toISOString()} for session analysis.`);
-
-      const matchQuery = {
-        timestamp: { $gte: NDaysAgo }
-      };
-      if (specificUserId) {
-        matchQuery.userId = specificUserId;
-      }
-
-      const userEvents = await historyCollection.find(matchQuery)
-        .sort({ userId: 1, timestamp: 1 })
-        .toArray();
-
-      if (userEvents.length === 0) {
-        return res.json({ sessions: [], message: 'No history events found for the specified criteria.' });
-      }
-      
-      logger.info(`[Admin UserSessions] Fetched ${userEvents.length} events for processing.`);
-
-      const allUserSessions = [];
-      let currentUserEvents = [];
-      let currentProcessingUserId = null;
-
-      for (const event of userEvents) {
-        if (currentProcessingUserId !== event.userId) {
-          if (currentUserEvents.length > 0 && currentProcessingUserId !== null) {
-            processEventsForUser(currentProcessingUserId, currentUserEvents, allUserSessions, INACTIVITY_TIMEOUT_MS);
-          }
-          currentProcessingUserId = event.userId;
-          currentUserEvents = [event];
-        } else {
-          currentUserEvents.push(event);
-        }
-      }
-
-      if (currentUserEvents.length > 0 && currentProcessingUserId !== null) {
-        processEventsForUser(currentProcessingUserId, currentUserEvents, allUserSessions, INACTIVITY_TIMEOUT_MS);
-      }
-
-      const distinctUserIdsInSessions = new Set(allUserSessions.map(session => session.userId));
-      logger.info(`[Admin UserSessions] Reconstructed ${allUserSessions.length} sessions for ${distinctUserIdsInSessions.size} unique users.`);
-
-      res.json({ 
-        message: "Session reconstruction completed.",
-        parameters: { daysToScan, specificUserId, inactivityTimeoutMinutes: INACTIVITY_TIMEOUT_MS / (60 * 1000) },
-        sessions: allUserSessions
-      });
-
-    } catch (error) {
-      logger.error('[Admin UserSessions] Error fetching user session data:', error);
-      next(error);
-    }
+  // Deprecated: User Sessions stats endpoint (sessions removed)
+  adminRouter.get('/stats/user-sessions', (req, res) => {
+    res.status(410).json({ error: { code: 'GONE', message: 'Sessions have been removed; this endpoint is deprecated.' } });
   });
 
   return adminRouter;
