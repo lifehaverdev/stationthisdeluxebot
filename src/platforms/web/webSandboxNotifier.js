@@ -48,6 +48,9 @@ class WebSandboxNotifier {
         status: generationRecord.status,
         outputs: generationRecord.responsePayload,
         toolId: generationRecord.toolId,
+        spellId: generationRecord.spellId || generationRecord.metadata?.spellId || generationRecord.metadata?.spell?._id || null,
+        castId: generationRecord.castId || generationRecord.metadata?.castId || null,
+        cookId: generationRecord.cookId || generationRecord.metadata?.cookId || null,
         costUsd: generationRecord.costUsd ?? null,
         finalEventTimestamp: generationRecord.responseTimestamp || new Date().toISOString(),
       };
