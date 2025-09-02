@@ -52,6 +52,10 @@ function handleGenerationProgress(payload) {
         });
     }
 
+    if (!toolWindow){
+        console.warn('[Sandbox] Progress: could not map to window', {generationId, spellId, toolId});
+    }
+
     if (toolWindow) {
         let progressIndicator = toolWindow.querySelector('.progress-indicator');
         if (!progressIndicator) {
