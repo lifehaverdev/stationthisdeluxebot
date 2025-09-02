@@ -160,9 +160,15 @@ export function handleGenerationUpdate(payload) {
         // so subsequent step updates (new generationIds) can still fall back to the
         // same window via spellId searches.
         const isSpellWindow = !!spellId || toolWindowEl.classList.contains('spell-window');
-        const isFinalSpellRecord = isSpellWindow && (status === 'completed' || status === 'success');
+        if (isSpellWindow) {
+            const stepsTotal = stepList(toolWindowEl).length;
+            const stepsDone  = toolWindowEl.querySelectorAll('.spell-step-status li.done').length;
+            const allStepsFinished = stepsTotal > 0 && stepsDone === stepsTotal;
 
-        if (!isSpellWindow || isFinalSpellRecord) {
+            if (allStepsFinished) {
+                delete generationIdToWindowMap[generationId];
+            }
+        } else {
             delete generationIdToWindowMap[generationId];
         }
     }
