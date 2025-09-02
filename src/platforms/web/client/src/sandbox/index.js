@@ -123,18 +123,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderAllWindows();
     }
     function setScale(newScale, centerX, centerY) {
-        // Optional: zoom to cursor
+        const prevScale = scale;
+        scale = Math.max(minScale, Math.min(maxScale, newScale));
+
+        // If zooming towards a focus point (mouse / touch centre)
         if (centerX !== undefined && centerY !== undefined) {
+            // Screen-space coordinates of the focus point relative to canvas origin
             const rect = canvas.getBoundingClientRect();
-            const offsetX = centerX - rect.left;
-            const offsetY = centerY - rect.top;
-            const prevScale = scale;
-            scale = Math.max(minScale, Math.min(maxScale, newScale));
-            pan.x = (pan.x - offsetX) * (scale / prevScale) + offsetX;
-            pan.y = (pan.y - offsetY) * (scale / prevScale) + offsetY;
-        } else {
-            scale = Math.max(minScale, Math.min(maxScale, newScale));
+            const screenX = centerX - rect.left;
+            const screenY = centerY - rect.top;
+
+            // Workspace coordinates of the focus point before zoom
+            const focusWorkspaceX = screenX / prevScale - pan.x;
+            const focusWorkspaceY = screenY / prevScale - pan.y;
+
+            // Compute new pan so the focus point stays under the cursor after zoom
+            pan.x = screenX / scale - focusWorkspaceX;
+            pan.y = screenY / scale - focusWorkspaceY;
         }
+
         updateTransform();
     }
     function resetZoomPan() {

@@ -95,16 +95,19 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
-    const { masterAccountId, sessionId, initiatingEventId, serviceName, toolId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
+    const { masterAccountId, initiatingEventId, serviceName, toolId, spellId, castId, cookId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
     const requiredFields = { masterAccountId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
       if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `Missing required field: ${field}.`, details: { field } } });
       }
     }
-    // Validate ObjectIds
+    // Validate ObjectIds (optional for spellId/castId/cookId)
     if (!ObjectId.isValid(masterAccountId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format.', details: { field: 'masterAccountId' } } });
     if (!ObjectId.isValid(initiatingEventId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid initiatingEventId format.', details: { field: 'initiatingEventId' } } });
+    if (spellId && !ObjectId.isValid(spellId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid spellId format.', details: { field: 'spellId' } } });
+    if (castId && !ObjectId.isValid(castId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid castId format.', details: { field: 'castId' } } });
+    if (cookId && !ObjectId.isValid(cookId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid cookId format.', details: { field: 'cookId' } } });
     
     // Validate types for core fields
     if (typeof serviceName !== 'string' || serviceName.trim() === '') return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'serviceName must be a non-empty string.', details: { field: 'serviceName' } } });
@@ -137,7 +140,10 @@ module.exports = function generationOutputsApi(dependencies) {
         masterAccountId: new ObjectId(masterAccountId),
         initiatingEventId: new ObjectId(initiatingEventId),
         serviceName: serviceName.trim(),
-        ...(toolId && { toolId: toolId }),
+        ...(toolId && { toolId }),
+        ...(spellId && { spellId }),
+        ...(castId && { castId }),
+        ...(cookId && { cookId }),
         requestPayload: requestPayload,
         ...(responsePayload && { responsePayload }),
         status: status || 'pending', // Honor status from body, otherwise default to pending
