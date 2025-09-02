@@ -34,7 +34,7 @@ export { generationCompletionManager };
  */
 function handleGenerationProgress(payload) {
     console.log('[Sandbox] Generation progress received:', payload);
-    const { generationId, progress, status, liveStatus, toolId, spellId } = payload;
+    const { generationId, progress, status, liveStatus, toolId, spellId, castId = null, cookId = null } = payload;
 
     let toolWindow = generationIdToWindowMap[generationId];
 
@@ -61,8 +61,8 @@ function handleGenerationProgress(payload) {
         }
         // Attach IDs for easier debugging and potential UI use
         progressIndicator.dataset.generationId = generationId;
-        if(castId) progressIndicator.dataset.castId = castId;
-        if(cookId) progressIndicator.dataset.cookId = cookId;
+        if (castId) progressIndicator.dataset.castId = castId;
+        if (cookId) progressIndicator.dataset.cookId = cookId;
         const progressPercent = progress ? `(${(progress * 100).toFixed(1)}%)` : '';
         progressIndicator.textContent = `Status: ${liveStatus || status} ${progressPercent}`;
     }

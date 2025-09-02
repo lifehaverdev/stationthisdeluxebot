@@ -516,11 +516,11 @@ export default class CookMenuModal {
         });
         if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{
             this.hide();
-            import('./CollectionTestWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);} );
+            import('../window/CollectionWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);} );
         };
         if(modal.querySelector('.review-btn')) modal.querySelector('.review-btn').onclick=()=>{
             this.hide();
-            import('./CollectionReviewWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
+            import('../window/CollectionWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
         };
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
             const coll=this.state.selectedCollection; if(!coll) return;

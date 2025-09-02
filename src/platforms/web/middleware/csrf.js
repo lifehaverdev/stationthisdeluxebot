@@ -35,7 +35,13 @@ const csrf = csurf({ cookie: true, ignoreMethods: ['GET', 'HEAD', 'OPTIONS'] });
 
 // Exported middleware
 function csrfProtection(req, res, next) {
-    console.log('[CSRF]', req.method, req.originalUrl, 'excluded:', isCsrfExcluded(req.originalUrl));
+    // Removed verbose console logging to reduce noise; enable only when LOG_LEVEL=debug.
+    /*
+    if (process.env.LOG_LEVEL === 'debug') {
+      // eslint-disable-next-line no-console
+      console.debug('[CSRF]', req.method, req.originalUrl, 'excluded:', isCsrfExcluded(req.originalUrl));
+    }
+    */
   if (isCsrfExcluded(req.originalUrl)) return next();
   return csrf(req, res, next);
 }
