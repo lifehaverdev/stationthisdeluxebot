@@ -69,7 +69,26 @@ export default class CollectionWindow extends BaseWindow {
       const resultDiv = document.createElement('div');
       resultDiv.className = 'result-container';
       body.appendChild(resultDiv);
-      renderResultContent(resultDiv, { type: 'text', text: gen.outputs?.text || gen.outputs?.response || '(unknown output)' });
+      // --- Normalise outputs similarly to websocketHandlers ---
+      const outputs = gen.outputs || {};
+      let outputData;
+      if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
+        outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId: gen._id };
+      } else if (Array.isArray(outputs.images) && outputs.images[0]?.url) {
+        outputData = { type: 'image', url: outputs.images[0].url, generationId: gen._id };
+      } else if (outputs.imageUrl) {
+        outputData = { type: 'image', url: outputs.imageUrl, generationId: gen._id };
+      } else if (outputs.text) {
+        outputData = { type: 'text', text: outputs.text, generationId: gen._id };
+      } else if (outputs.response) {
+        outputData = { type: 'text', text: outputs.response, generationId: gen._id };
+      } else if (outputs.steps && Array.isArray(outputs.steps)) {
+        outputData = { type: 'spell', steps: outputs.steps, generationId: gen._id };
+      } else {
+        outputData = { type: 'unknown', generationId: gen._id, ...outputs };
+      }
+
+      renderResultContent(resultDiv, outputData);
 
       const btnRow = document.createElement('div');
       const acceptBtn = document.createElement('button');

@@ -111,16 +111,31 @@ export function handleGenerationUpdate(payload) {
 
         if (status === 'completed' || status === 'success') {
             let outputData;
-            if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
+
+            // --- 1. Spell multi-step payload ---
+            if (outputs.steps && Array.isArray(outputs.steps)) {
+                outputData = { type: 'spell', steps: outputs.steps, ...(outputs.final ? { final: outputs.final } : {}), generationId };
+            }
+
+            // --- 2. Single-image array payload from ComfyDeploy ---
+            else if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
                 outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId };
-            } else if (outputs.imageUrl) {
+            }
+
+            // --- 3. Flat imageUrl field ---
+            else if (outputs.imageUrl) {
                 outputData = { type: 'image', url: outputs.imageUrl, generationId };
-            } else if (outputs.text) {
+            }
+
+            // --- 4. Text variants ---
+            else if (outputs.text) {
                 outputData = { type: 'text', text: outputs.text, generationId };
             } else if (outputs.response) {
-                // Handle text from a nested 'response' property
                 outputData = { type: 'text', text: outputs.response, generationId };
-            } else {
+            }
+
+            // --- 5. Fallback ---
+            else {
                 outputData = { type: 'unknown', generationId, ...outputs };
             }
             
