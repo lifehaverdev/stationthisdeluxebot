@@ -94,7 +94,10 @@ module.exports = function spellsApi(dependencies) {
         update.$inc = { ...(update.$inc||{}), generatedCount: 1 };
     }
     if (typeof costDeltaUsd !== 'undefined') {
-        update.$inc = { ...(update.$inc||{}), costUsd: costDeltaUsd };
+        const numericCost = typeof costDeltaUsd === 'string' ? parseFloat(costDeltaUsd) : costDeltaUsd;
+        if (!isNaN(numericCost) && numericCost !== 0) {
+            update.$inc = { ...(update.$inc||{}), costUsd: numericCost };
+        }
     }
     if (status) {
         update.$set.status = status;

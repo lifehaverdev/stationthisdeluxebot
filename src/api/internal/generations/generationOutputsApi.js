@@ -96,7 +96,7 @@ module.exports = function generationOutputsApi(dependencies) {
 
     // Validate required fields from ADR-003
     const { masterAccountId, sessionId, initiatingEventId, serviceName, toolId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
-    const requiredFields = { masterAccountId, sessionId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
+    const requiredFields = { masterAccountId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
       if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: `Missing required field: ${field}.`, details: { field } } });
@@ -104,7 +104,6 @@ module.exports = function generationOutputsApi(dependencies) {
     }
     // Validate ObjectIds
     if (!ObjectId.isValid(masterAccountId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format.', details: { field: 'masterAccountId' } } });
-    if (!ObjectId.isValid(sessionId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid sessionId format.', details: { field: 'sessionId' } } });
     if (!ObjectId.isValid(initiatingEventId)) return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Invalid initiatingEventId format.', details: { field: 'initiatingEventId' } } });
     
     // Validate types for core fields
@@ -136,7 +135,6 @@ module.exports = function generationOutputsApi(dependencies) {
     try {
       const dataToCreate = {
         masterAccountId: new ObjectId(masterAccountId),
-        sessionId: new ObjectId(sessionId),
         initiatingEventId: new ObjectId(initiatingEventId),
         serviceName: serviceName.trim(),
         ...(toolId && { toolId: toolId }),
