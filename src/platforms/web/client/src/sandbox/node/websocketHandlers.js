@@ -156,7 +156,15 @@ export function handleGenerationUpdate(payload) {
         generationCompletionManager.resolveCompletionPromise(generationId, { status, outputs });
         // ------------------------------------------
 
-        delete generationIdToWindowMap[generationId];
+        // For plain tool nodes we can remove the mapping now.  For spells we keep it
+        // so subsequent step updates (new generationIds) can still fall back to the
+        // same window via spellId searches.
+        const isSpellWindow = !!spellId || toolWindowEl.classList.contains('spell-window');
+        const isFinalSpellRecord = isSpellWindow && (status === 'completed' || status === 'success');
+
+        if (!isSpellWindow || isFinalSpellRecord) {
+            delete generationIdToWindowMap[generationId];
+        }
     }
 }
 
