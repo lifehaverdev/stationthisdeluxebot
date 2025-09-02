@@ -155,6 +155,13 @@ export function handleGenerationUpdate(payload) {
             // mark step done
             const li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId));
             if(li) li.className='done';
+            // NEW: update spell progress bar after marking step done
+            const bar=toolWindowEl.querySelector('.spell-progress-bar');
+            if(bar){
+                const total=stepList(toolWindowEl).length;
+                const done=toolWindowEl.querySelectorAll('.spell-step-status li.done').length;
+                bar.value=Math.round((done/total)*100);
+            }
             console.log('[WS] Rendering output', outputData);
             renderResultContent(resultContainer, outputData);
             
@@ -240,7 +247,12 @@ function handleToolResponse({ toolId, output, requestId }){
 
     // render output
     let rc=win.querySelector('.result-container');
-    if(!rc){rc=document.createElement('div');rc.className='result-container';win.appendChild(rc);}    
+    if(!rc){
+        const body=win.querySelector('.window-body')||win;
+        rc=document.createElement('div');
+        rc.className='result-container';
+        body.appendChild(rc);
+    }
     import('./resultContent.js').then(m=>{
         const data=typeof output==='string'?{type:'text',text:output}:{...output};
         m.renderResultContent(rc,data);
