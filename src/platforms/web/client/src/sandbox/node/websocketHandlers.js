@@ -104,14 +104,20 @@ export function handleGenerationUpdate(payload) {
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');
         if (progressIndicator) progressIndicator.remove();
 
-        // Always append result container at the end so it isn't hidden behind details panel
-        const containerParent = toolWindowEl.querySelector('.window-body') || toolWindowEl;
-        let resultContainer = containerParent.querySelector('.result-container');
+        // Re-use any existing result container (legacy or new) to avoid duplicates
+        let resultContainer = toolWindowEl.querySelector('.result-container');
+
+        // Decide where to place a new container if none exists
+        const containerParent = resultContainer
+              ? resultContainer.parentElement
+              : (toolWindowEl.querySelector('.window-body') || toolWindowEl);
+
         if (!resultContainer) {
             resultContainer = document.createElement('div');
             resultContainer.className = 'result-container';
             containerParent.appendChild(resultContainer);
         }
+        // ensure it's visible
         resultContainer.style.display = 'block';
 
         if (status === 'completed' || status === 'success') {
