@@ -101,11 +101,12 @@ export function handleGenerationUpdate(payload) {
         if (progressIndicator) progressIndicator.remove();
 
         // Always append result container at the end so it isn't hidden behind details panel
-        let resultContainer = toolWindowEl.querySelector('.result-container');
+        const containerParent = toolWindowEl.querySelector('.window-body') || toolWindowEl;
+        let resultContainer = containerParent.querySelector('.result-container');
         if (!resultContainer) {
             resultContainer = document.createElement('div');
             resultContainer.className = 'result-container';
-            toolWindowEl.appendChild(resultContainer);
+            containerParent.appendChild(resultContainer);
         }
         resultContainer.style.display = 'block';
 
