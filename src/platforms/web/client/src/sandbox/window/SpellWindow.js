@@ -124,6 +124,13 @@ export default class SpellWindow extends ToolWindow {
 
 // Helper for older callers
 export function createSpellWindow(spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null) {
+  // Check if a window for this spell already exists to avoid duplicates
+  const spellId=spell._id||spell.slug||'';
+  const existing=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
+  if(existing){
+     return existing; // reuse current window
+  }
+
   const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex });
   win.mount();
   return win.el;
