@@ -55,6 +55,8 @@ class WebSandboxNotifier {
         finalEventTimestamp: generationRecord.responseTimestamp || new Date().toISOString(),
       };
 
+      this.logger.info('[WebSandboxNotifier] DEBUG payload', JSON.stringify(payload));
+
       const sent = this.websocketService.sendToUser(masterAccountId, {
         type: 'generationUpdate',
         payload,

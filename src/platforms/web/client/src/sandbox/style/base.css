@@ -35,7 +35,7 @@
 }
 
 .sandbox-content:hover {
-    cursor: url('/images/workspace/cursor.svg') 64 64, auto;
+    cursor: pointer;
 }
 
 /* Click ripple effect */

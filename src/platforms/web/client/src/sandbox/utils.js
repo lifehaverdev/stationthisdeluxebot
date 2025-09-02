@@ -41,9 +41,14 @@ export function calculateCenterPosition(toolWindows) {
         return { x: centerX, y: centerY };
     }
 
-    // Stagger subsequent nodes around the first one in a circle so they don’t overlap
-    const radius = 150; // px in workspace coords
+    // Stagger subsequent nodes around the first one in a circle so they don’t overlap.
+    // Keep a roughly-constant on-screen distance regardless of current zoom level.
+    const scale = (window.sandbox && typeof window.sandbox.getScale === 'function') ? window.sandbox.getScale() : 1;
+    const radiusScreen = 180; // desired screen-pixel distance between nodes
+    const radius = radiusScreen / scale; // convert to workspace units
+
     const angle = (toolWindows.length * (Math.PI * 2)) / 8; // 8 slots around the circle
+
     return {
         x: centerX + radius * Math.cos(angle),
         y: centerY + radius * Math.sin(angle)

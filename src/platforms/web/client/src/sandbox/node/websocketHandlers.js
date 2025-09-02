@@ -113,6 +113,7 @@ export function handleGenerationUpdate(payload) {
             let outputData;
 
             // --- 1. Spell multi-step payload ---
+            console.log('[WS decode] analysing outputs', outputs);
             if (outputs.steps && Array.isArray(outputs.steps)) {
                 outputData = { type: 'spell', steps: outputs.steps, ...(outputs.final ? { final: outputs.final } : {}), generationId };
             }

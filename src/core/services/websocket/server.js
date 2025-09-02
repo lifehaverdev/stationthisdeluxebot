@@ -69,6 +69,7 @@ class WebSocketService {
     }
     const userConnections = this.connections.get(String(userId));
     if (userConnections && userConnections.size > 0) {
+      logger.info('[WebSocketService] DEBUG sendToUser payload', data);
       logger.info(`[WebSocketService] Sending data to user ${userId}. Connections: ${userConnections.size}`);
       const message = JSON.stringify(data);
       userConnections.forEach(connection => {

@@ -339,7 +339,7 @@ a:hover {
 
 /* Add hover state for custom cursor */
 .sandbox-content:hover {
-    cursor: url('/images/workspace/cursor.svg') 64 64, auto; /* Center the hotspot for the 128x128 cursor */
+    cursor: pointer;
 }
 
 .sandbox-sidebar {

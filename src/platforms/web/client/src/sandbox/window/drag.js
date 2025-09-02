@@ -13,16 +13,29 @@ export function enableDrag(target, handle) {
   handle.style.cursor = 'move';
   handle.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    const scale = (window.sandbox && window.sandbox.getScale) ? window.sandbox.getScale() : 1;
     dragging = true;
-    offset.x = e.clientX - target.offsetLeft;
-    offset.y = e.clientY - target.offsetTop;
+    offset.x = (e.clientX - target.offsetLeft * scale);
+    offset.y = (e.clientY - target.offsetTop * scale);
     handle.style.cursor = 'grabbing';
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!dragging) return;
-    target.style.left = `${e.clientX - offset.x}px`;
-    target.style.top = `${e.clientY - offset.y}px`;
+    const scale = (window.sandbox && window.sandbox.getScale) ? window.sandbox.getScale() : 1;
+    const newLeftScreen = e.clientX - offset.x;
+    const newTopScreen  = e.clientY - offset.y;
+
+    // Convert screen coords -> workspace (unscaled)
+    let newLeft = newLeftScreen, newTop = newTopScreen;
+    if (window.sandbox && typeof window.sandbox.screenToWorkspace === 'function') {
+      ({ x: newLeft, y: newTop } = window.sandbox.screenToWorkspace(newLeftScreen, newTopScreen));
+    } else {
+      newLeft /= scale; newTop /= scale;
+    }
+
+    target.style.left = `${newLeft}px`;
+    target.style.top  = `${newTop}px`;
   });
 
   document.addEventListener('mouseup', () => {
