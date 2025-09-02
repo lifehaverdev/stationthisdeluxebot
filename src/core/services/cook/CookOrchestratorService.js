@@ -249,7 +249,7 @@ class CookOrchestratorService {
       state.nextIndex += 1;
       state.generatedCount = producedNow; // update count
       queued += 1;
-      await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enq.jobId, pieceIndex: idx });
+      await this.appendEvent('PieceQueued', { collectionId, userId, cookId: state.cookId, jobId: enq.jobId, pieceIndex: idx });
 
       // Immediate submit for newly queued pieces
       try {
