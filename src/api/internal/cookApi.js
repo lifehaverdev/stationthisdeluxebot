@@ -64,17 +64,21 @@ function createCookApi(deps = {}) {
       const client = await getCachedClient();
       const dbName = process.env.MONGO_DB_NAME || 'station';
       const db = client.db(dbName);
-      const eventsCol = db.collection('cook_events');
-
-      await CookJobStore._init?.();
-      const jobsCol = CookJobStore.collection || db.collection('cook_jobs');
+      // New canonical source for generated pieces.
+      const genOutputsCol = db.collection('generationOutputs');
+      // Legacy cook_jobs queue is optional. Fall back gracefully if missing.
+      let jobsCol = null;
+      try {
+        await CookJobStore._init?.();
+        jobsCol = CookJobStore.collection || db.collection('cook_jobs');
+      } catch (_) {}
 
       // Base: collections owned by user
       let collections = await cookDb.findByUser(userId);
 
       // Augment with any collectionIds seen in jobs/events for this user (including legacy docs without userId)
-      const jobCollIds = await jobsCol.distinct('collectionId', { userId, status: { $in: ['queued', 'running'] } });
-      const eventCollIds = await eventsCol.distinct('collectionId', { userId });
+      const jobCollIds = jobsCol ? await jobsCol.distinct('collectionId', { userId, status: { $in: ['queued', 'running'] } }) : [];
+      const eventCollIds = await genOutputsCol.distinct('metadata.collectionId', { 'metadata.collectionId': { $exists: true }, masterAccountId: userId });
       const derivedIds = new Set([...(jobCollIds || []), ...(eventCollIds || [])]);
       const knownIds = new Set((collections || []).map(c => c.collectionId));
       const missing = Array.from(derivedIds).filter(id => !knownIds.has(id));
@@ -95,9 +99,13 @@ function createCookApi(deps = {}) {
       for (const coll of (collections || [])) {
         const collectionId = coll.collectionId;
         const [queued, running, generated] = await Promise.all([
-          jobsCol.countDocuments({ userId, collectionId, status: 'queued' }),
-          jobsCol.countDocuments({ userId, collectionId, status: 'running' }),
-          eventsCol.countDocuments({ userId, collectionId, type: 'PieceGenerated' }),
+          jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'queued' }) : 0,
+          jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'running' }) : 0,
+          genOutputsCol.countDocuments({
+            'metadata.collectionId': collectionId,
+            status: 'completed',
+            $or: [ { 'metadata.reviewOutcome': { $exists: false } }, { 'metadata.reviewOutcome': 'accepted' } ]
+          }),
         ]);
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
         const generationCount = generated;

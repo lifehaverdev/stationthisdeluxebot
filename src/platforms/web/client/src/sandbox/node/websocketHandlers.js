@@ -134,6 +134,11 @@ export function handleGenerationUpdate(payload) {
                 outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId };
             }
 
+            // --- 2b. Images array inside object (non-array payload) ---
+            else if (Array.isArray(outputs.images) && outputs.images[0]?.url) {
+                outputData = { type: 'image', url: outputs.images[0].url, generationId };
+            }
+
             // --- 3. Flat imageUrl field ---
             else if (outputs.imageUrl) {
                 outputData = { type: 'image', url: outputs.imageUrl, generationId };
