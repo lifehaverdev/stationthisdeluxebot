@@ -37,3 +37,22 @@ update.$set = { ...update.$set, updatedAt: new Date() };
 - [ ] Patch `src/api/internal/spells/spellsApi.js` update handler.
 - [ ] Re-run test to verify cast aggregation & completion.
 - [ ] Observe cook flow once spell layer stable.
+
+## 2025-09-02 Run – Cast End-to-End ✅
+Spell: `lazyoni` (2 steps)
+Cast Id: `68b6c15d1d67476c82a4cbdd`
+
+Observations
+1. Step 1 & Step 2 generations (68b6c15d… and 68b6c160…) completed and each triggered:
+   • PUT /spells/casts/:castId with `$push stepGenerationIds`, `$inc generatedCount`, cost.
+   • Response 200 both times.
+2. After final step, WorkflowExecution marked cast `status: completed` (second 200).
+3. Final notification generation (68b6c1b9…) created and delivered via Web-Socket (deliveryStatus→sent).
+4. generationOutputs records transitioned through pending→sent without errors.
+5. No Mongo errors; cast aggregation confirmed functional.
+
+Outcome: Parent `casts` collection now reliably aggregates child step generations and flips to completed.
+
+### Next Focus
+• Validate `cooks` (collection cook runs) parent updates mirror the same behaviour.
+• Run a multi-piece cook and capture DB/WS logs.

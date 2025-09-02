@@ -8,7 +8,8 @@ const { getCachedClient } = require('../../core/services/db/utils/queue');
 function createCookApi(deps = {}) {
   const router = express.Router();
   const logger = deps.logger || createLogger('CookAPI');
-  const cookDb = deps.db?.cookCollections;
+  // Collections database. Prefer the new `collections` service, falling back to legacy `cookCollections` for backward-compat.
+  const cookDb = deps.db?.collections || deps.db?.cookCollections;
   const cooksDb = deps.db?.cooks;
 
   // POST /internal/cook/start
@@ -208,6 +209,67 @@ function createCookApi(deps = {}) {
       logger.error('[CookAPI] delete collection error', err);
       return res.status(500).json({ error: 'internal-error' });
     }
+  });
+
+  // NEW: ----- Aliases for /collections root -----
+  // These routes mirror the /collections/* ones but are mounted at root when the router
+  // itself is mounted at `/collections` (e.g. /internal/v1/data/collections).
+
+  // GET /            – list collections for user (same as /collections)
+  router.get('/', async (req, res) => {
+    // Re-use original handler logic without losing query params
+    const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+    try {
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      let collections = [];
+      if (userId) {
+        collections = await cookDb.findByUser(userId);
+        logger.info(`[CookAPI] collections list for user ${userId} -> ${collections?.length || 0}`);
+      }
+      if ((!collections || collections.length === 0)) {
+        try {
+          const legacy = await cookDb.findMany({ $or: [ { userId: { $exists: false } }, { userId: null } ] }, { projection: { _id: 0 } });
+          if (Array.isArray(legacy) && legacy.length) {
+            logger.warn(`[CookAPI] Falling back to legacy collections without userId: ${legacy.length}`);
+            collections = legacy;
+          }
+        } catch (e) {
+          logger.warn('[CookAPI] Legacy fallback failed', e.message);
+        }
+      }
+      return res.json({ collections });
+    } catch (err) {
+      logger.error('[CookAPI] collections list error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  // POST /           – create collection
+  router.post('/', async (req, res) => {
+    req.url = '/collections';
+    return router.handle(req, res);
+  });
+
+  // GET /:id         – get collection by ID
+  router.get('/:id', async (req, res, next) => {
+    // Prevent collision with other explicit routes like /active, /start etc.
+    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    req.url = `/collections/${encodeURIComponent(req.params.id)}`;
+    return router.handle(req, res);
+  });
+
+  // PUT /:id         – update collection
+  router.put('/:id', async (req, res, next) => {
+    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    req.url = `/collections/${encodeURIComponent(req.params.id)}`;
+    return router.handle(req, res);
+  });
+
+  // DELETE /:id      – delete a collection
+  router.delete('/:id', async (req, res, next) => {
+    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    req.url = `/collections/${encodeURIComponent(req.params.id)}`;
+    return router.handle(req, res);
   });
 
   // GET /internal/cook/status?collectionId=&userId=

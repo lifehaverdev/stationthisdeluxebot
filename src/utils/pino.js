@@ -53,5 +53,22 @@ module.exports = require('pino-http')({
   },
   customErrorMessage: function (req, res, err) {
     return `${req.method} ${req.url} - ${res.statusCode} - ${err.message}`;
+  },
+  // Silence logs for requests that only serve static assets to reduce console noise
+  customLogLevel: function (req, res, err) {
+    // If an error occurred, always log it as error
+    if (err || res.statusCode >= 500) return 'error';
+
+    // Skip logging for common static asset extensions (css, js, images, fonts, maps)
+    const STATIC_ASSET_REGEXP = /\.(?:css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|ttf|otf|woff2?|eot)$/i;
+    if (STATIC_ASSET_REGEXP.test(req.url)) {
+      return 'silent';
+    }
+
+    // Warn for client errors
+    if (res.statusCode >= 400) return 'warn';
+
+    // Otherwise, use info for application/API requests
+    return 'info';
   }
 }); 

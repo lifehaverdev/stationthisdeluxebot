@@ -32,7 +32,7 @@ function createCookApiRouter(deps = {}) {
   router.get('/collections', async (req, res) => {
     try {
       const userId = req.user?.userId || req.user?.id || req.query.userId;
-      const { data } = await internalApiClient.get('/internal/v1/data/cook/collections', { params: { userId } });
+      const { data } = await internalApiClient.get('/internal/v1/data/collections', { params: { userId } });
       return res.json(data);
     } catch (err) {
       logger.error('collections list proxy error', err.response?.data || err.message);
@@ -44,7 +44,7 @@ function createCookApiRouter(deps = {}) {
   // GET /api/v1/collections/:id
   router.get('/collections/:id', async (req, res) => {
     try {
-      const { data } = await internalApiClient.get(`/internal/v1/data/cook/collections/${encodeURIComponent(req.params.id)}`);
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}`);
       return res.json(data);
     } catch (err) {
       logger.error('get collection proxy error', err.response?.data || err.message);
@@ -56,7 +56,7 @@ function createCookApiRouter(deps = {}) {
   // PUT /api/v1/collections/:id
   router.put('/collections/:id', async (req, res) => {
     try {
-      const { data } = await internalApiClient.put(`/internal/v1/data/cook/collections/${encodeURIComponent(req.params.id)}`, req.body);
+      const { data } = await internalApiClient.put(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}`, req.body);
       return res.json(data);
     } catch (err) {
       logger.error('update collection proxy error', err.response?.data || err.message);
@@ -76,7 +76,7 @@ function createCookApiRouter(deps = {}) {
       // Merge the incoming body with userId (user-supplied userId, if any, wins for flexibility)
       const payload = { ...req.body, userId: req.body?.userId || userId };
 
-      const { data } = await internalApiClient.post('/internal/v1/data/cook/collections', payload);
+      const { data } = await internalApiClient.post('/internal/v1/data/collections', payload);
       return res.status(201).json(data);
     } catch (err) {
       logger.error('create collection proxy error', err.response?.data || err.message);
@@ -88,7 +88,7 @@ function createCookApiRouter(deps = {}) {
   // DELETE /api/v1/collections/:id
   router.delete('/collections/:id', async (req, res) => {
     try {
-      const { data } = await internalApiClient.delete(`/internal/v1/data/cook/collections/${encodeURIComponent(req.params.id)}`);
+      const { data } = await internalApiClient.delete(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}`);
       return res.json(data);
     } catch (err) {
       logger.error('delete collection proxy error', err.response?.data || err.message);

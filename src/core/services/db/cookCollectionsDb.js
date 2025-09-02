@@ -3,8 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 
 class CookCollectionsDB extends BaseDB {
   constructor(logger) {
-    super('cook_collections');
+    // Use new consolidated collection name. Keep legacy class name for backward compatibility.
+    super('collections');
     this.logger = logger || console;
+    // Align DB name with other services (noema by default)
+    this.dbName = 'noema' || process.env.MONGO_DB_NAME || 'station';
   }
 
   /**

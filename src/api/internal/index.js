@@ -282,8 +282,11 @@ function initializeInternalServices(dependencies = {}) {
   try {
     const cookApiRouter = createCookApi(apiDependencies);
     if (cookApiRouter) {
+      // New preferred mount path
+      v1DataRouter.use('/collections', cookApiRouter);
+      // Legacy mount for backward compatibility (to be removed after migration)
       v1DataRouter.use('/cook', cookApiRouter);
-      logger.info('[InternalAPI] Cook API service mounted to /v1/data/cook');
+      logger.info('[InternalAPI] Cook API service mounted to /v1/data/collections and /v1/data/cook (legacy)');
     } else {
       logger.error('[InternalAPI] Failed to create Cook API router.');
     }
