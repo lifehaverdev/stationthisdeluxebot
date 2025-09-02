@@ -13,10 +13,10 @@ export function enableDrag(target, handle) {
   handle.style.cursor = 'move';
   handle.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
-    const scale = (window.sandbox && window.sandbox.getScale) ? window.sandbox.getScale() : 1;
+    const rect = target.getBoundingClientRect();
     dragging = true;
-    offset.x = (e.clientX - target.offsetLeft * scale);
-    offset.y = (e.clientY - target.offsetTop * scale);
+    offset.x = e.clientX - rect.left;
+    offset.y = e.clientY - rect.top;
     handle.style.cursor = 'grabbing';
   });
 

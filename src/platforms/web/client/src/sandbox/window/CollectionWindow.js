@@ -60,7 +60,9 @@ export default class CollectionWindow extends BaseWindow {
     try {
       const res = await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/unreviewed`);
       const json = await res.json();
+      console.log('[CollectionWindow] unreviewed API response', json);
       const gen = (json.generations || [])[0];
+      console.log('[CollectionWindow] selected generation', gen);
       if (!gen) {
         body.textContent = 'No unreviewed pieces 🎉';
         return;
@@ -70,12 +72,17 @@ export default class CollectionWindow extends BaseWindow {
       resultDiv.className = 'result-container';
       body.appendChild(resultDiv);
       // --- Normalise outputs similarly to websocketHandlers ---
-      const outputs = gen.outputs || {};
+      const outputs = gen.outputs || gen.responsePayload || gen.artifactUrls || {};
+      console.log('[CollectionWindow] raw outputs', outputs);
       let outputData;
       if (Array.isArray(outputs) && outputs[0]?.data?.images?.[0]?.url) {
         outputData = { type: 'image', url: outputs[0].data.images[0].url, generationId: gen._id };
-      } else if (Array.isArray(outputs.images) && outputs.images[0]?.url) {
-        outputData = { type: 'image', url: outputs.images[0].url, generationId: gen._id };
+      } else if (Array.isArray(outputs.images) && outputs.images.length) {
+        const firstImg = outputs.images[0];
+        outputData = { type: 'image', url: (typeof firstImg==='string'? firstImg : firstImg.url), generationId: gen._id };
+      } else if (outputs.image) {
+        // single image string field
+        outputData = { type: 'image', url: outputs.image, generationId: gen._id };
       } else if (outputs.imageUrl) {
         outputData = { type: 'image', url: outputs.imageUrl, generationId: gen._id };
       } else if (outputs.text) {
@@ -87,7 +94,7 @@ export default class CollectionWindow extends BaseWindow {
       } else {
         outputData = { type: 'unknown', generationId: gen._id, ...outputs };
       }
-
+      console.log('[CollectionWindow] outputData selected', outputData);
       renderResultContent(resultDiv, outputData);
 
       const btnRow = document.createElement('div');
@@ -98,9 +105,23 @@ export default class CollectionWindow extends BaseWindow {
       btnRow.append(acceptBtn, rejectBtn);
       body.appendChild(btnRow);
 
+      const getCsrfToken = async () => {
+        if (CollectionWindow._csrfToken) return CollectionWindow._csrfToken;
+        try {
+          const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+          const data = await res.json();
+          CollectionWindow._csrfToken = data.csrfToken;
+          return CollectionWindow._csrfToken;
+        } catch { return ''; }
+      };
+
       const mark = async (outcome) => {
+        const csrf = await getCsrfToken();
         await fetch(`/api/v1/collections/${encodeURIComponent(this.collection.collectionId)}/pieces/${encodeURIComponent(gen._id)}/review`, {
-          method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome })
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
+          body: JSON.stringify({ outcome })
         });
         this._loadNextReview();
       };

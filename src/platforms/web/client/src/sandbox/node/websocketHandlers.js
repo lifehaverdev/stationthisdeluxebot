@@ -153,7 +153,8 @@ export function handleGenerationUpdate(payload) {
             
             setToolWindowOutput(toolWindowEl.id, outputData);
             // mark step done
-            const li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId));
+            let li=toolWindowEl.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`);
+            if(!li){ li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId)); }
             if(li) li.className='done';
             // NEW: update spell progress bar after marking step done
             const bar=toolWindowEl.querySelector('.spell-progress-bar');

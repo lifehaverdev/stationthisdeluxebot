@@ -39,7 +39,7 @@ export default class BaseWindow {
     // Placeholder for error + output containers
     this.errorEl = el('div', { className: 'window-error' });
     this.outputEl = el('div', { className: 'result-container' });
-    this.el.append(this.errorEl, this.outputEl);
+    this.body.append(this.errorEl, this.outputEl);
 
     // Register with global state if requested (subclasses may defer by passing register:false and calling this._registerWindow() later)
     if (register) {
