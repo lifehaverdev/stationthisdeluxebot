@@ -195,7 +195,7 @@ class CookOrchestratorService {
           const costDelta = typeof generation.costUsd === 'number' ? generation.costUsd : 0;
 
           // Update the cook document via internal API.
-          await internalApiClient.put(`/internal/v1/data/cooks/${state.cookId}`, {
+          await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, {
             generationId: generation._id.toString(),
             costDeltaUsd: costDelta,
           });
@@ -214,7 +214,7 @@ class CookOrchestratorService {
       // Final update to cook document
       if (state.cookId) {
           try {
-              await this.internalApiClient.put(`/internal/v1/data/cooks/${state.cookId}`, { status: 'completed' });
+              await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, { status: 'completed' });
           } catch(err) {
               this.logger.error(`[CookOrchestrator] Failed to finalize cook ${state.cookId}:`, err.message);
           }
