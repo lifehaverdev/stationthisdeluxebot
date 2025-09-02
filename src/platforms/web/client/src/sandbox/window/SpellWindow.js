@@ -128,7 +128,7 @@ export function createSpellWindow(spell, position, id = null, output = null, par
   const spellId=spell._id||spell.slug||'';
   const existing=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
   if(existing){
-     return existing; // reuse current window
+     existing.remove();
   }
 
   const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex });
