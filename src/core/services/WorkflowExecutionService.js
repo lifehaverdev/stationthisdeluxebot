@@ -358,8 +358,9 @@ class WorkflowExecutionService {
             const finalGenerationParams = {
                 masterAccountId: originalContext.masterAccountId,
                 initiatingEventId: completedGeneration.initiatingEventId,
-                serviceName: completedGeneration.serviceName,
-                toolId: `spell-${spell.slug}`,
+                serviceName: 'comfyui',
+                toolId: `spell-${spell.slug || (spell._id && spell._id.toString())}`,
+                spellId: (spell._id && spell._id.toString()) || null,
                 castId: completedGeneration.metadata.castId || null,
                 requestPayload: originalContext.parameterOverrides,
                 responsePayload: completedGeneration.responsePayload,
