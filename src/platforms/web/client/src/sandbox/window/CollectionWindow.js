@@ -320,6 +320,9 @@ export default class CollectionWindow extends BaseWindow {
           });
 
           body.appendChild(stepUl);
+          // Mark first step as running
+          const firstLi = stepUl.querySelector('li');
+          if(firstLi) firstLi.className = 'running';
         } else {
           // reset to pending if re-executed
           stepUl.querySelectorAll('li').forEach(li => li.className = 'pending');

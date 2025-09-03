@@ -4,7 +4,8 @@ import { renderResultContent } from './resultContent.js';
 
 // A map to associate generation IDs with their corresponding tool window elements
 export const generationIdToWindowMap = {};
-
+// Map castId (unique per spell run) to window to improve lookup reliability
+export const castIdToWindowMap = {};
 // --- NEW: Generation Completion Manager ---
 const generationCompletionManager = {
     promises: new Map(),
@@ -36,18 +37,22 @@ function handleGenerationProgress(payload) {
     console.log('[Sandbox] Generation progress received:', payload);
     const { generationId, progress, status, liveStatus, toolId, spellId, castId = null, cookId = null } = payload;
 
-    let toolWindow = generationIdToWindowMap[generationId];
+    let toolWindow = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
+    // SpellId direct lookup (unique per spell definition but not per run)
     if (!toolWindow && spellId) {
         toolWindow = document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
-        if (toolWindow) generationIdToWindowMap[generationId] = toolWindow;        
+        if (toolWindow) {
+            generationIdToWindowMap[generationId] = toolWindow;
+        }
     }
 
+    // Restricted toolId fallback – only consider ACTIVE windows (have progress indicator)
     if (!toolWindow && toolId) {
-        // Fallback: find spell window containing this toolId in its step list
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindow) return;
-            const li=[...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
+            if(!sw.querySelector('.progress-indicator')) return; // ignore completed windows
+            const li=sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
             if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
         });
     }
@@ -78,6 +83,10 @@ function handleGenerationProgress(payload) {
             const frac  = (done + (progress || 0)) / total;
             bar.value = Math.round(frac * 100);
         }
+        // Cache by castId for subsequent steps
+        if (castId) {
+            castIdToWindowMap[castId] = toolWindow;
+        }
     }
 }
 
@@ -87,15 +96,17 @@ function handleGenerationProgress(payload) {
  */
 export function handleGenerationUpdate(payload) {
     const { generationId, outputs, status, toolId, spellId, castId, cookId } = payload;
-    let toolWindowEl = generationIdToWindowMap[generationId];
+    let toolWindowEl = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
     if (!toolWindowEl && spellId){
         toolWindowEl=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
         if(toolWindowEl) generationIdToWindowMap[generationId]=toolWindowEl;
     }
+
     if(!toolWindowEl && toolId){
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindowEl) return;
+            if(!sw.querySelector('.progress-indicator')) return;
             if([...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
                toolWindowEl=sw;
                generationIdToWindowMap[generationId]=sw;
@@ -108,8 +119,10 @@ export function handleGenerationUpdate(payload) {
 
     if (toolWindowEl) {
         // also add to window for debugging
-        toolWindowEl.dataset.castId = castId;
-        toolWindowEl.dataset.cookId = cookId;
+        if (castId) {
+            toolWindowEl.dataset.castId = castId;
+            castIdToWindowMap[castId] = toolWindowEl;
+        }
         const progressIndicator = toolWindowEl.querySelector('.progress-indicator');
         if (progressIndicator) progressIndicator.remove();
 
@@ -224,7 +237,10 @@ function findSpellWindowByToolId(toolId){
   let win=null;
   document.querySelectorAll('.spell-window').forEach(sw=>{
       if(win) return;
-      if(sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`)) win=sw;
+      if(!sw.querySelector('.progress-indicator')) return; // only active windows
+      if(sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
+         win=sw;
+      }
   });
   return win;
 }
