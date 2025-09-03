@@ -1,6 +1,9 @@
 const notificationEvents = require('../events/notificationEvents');
 const MAX_DELIVERY_ATTEMPTS = 3;
 
+// Ensure cook orchestrator can continue after internal 'cook' notifications
+const CookOrchestratorService = require('./cook/CookOrchestratorService');
+
 class NotificationDispatcher {
   constructor(services, options = {}) {
     if (!services || !services.internalApiClient) {
@@ -160,14 +163,11 @@ class NotificationDispatcher {
     const notifier = this.platformNotifiers[record.notificationPlatform];
     if (!notifier || typeof notifier.sendNotification !== 'function') {
       this.logger.warn(`[NotificationDispatcher] No notifier found or 'sendNotification' method missing for platform: '${record.notificationPlatform}' for generationId: ${recordId}. Setting deliveryStatus to 'dropped'.`);
+      // Even though no external notification is sent, if this was a cook piece we must advance the cook.
       try {
-        const updateSkippedOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, { 
-          deliveryStatus: 'dropped', 
-          deliveryError: `No notifier for platform ${record.notificationPlatform}` 
-        }, updateSkippedOptions);
-      } catch (updateError) {
-        this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} to 'dropped' status:`, updateError.message);
+        await this._maybeAdvanceCook(record);
+      } catch (advErr) {
+        this.logger.error(`[NotificationDispatcher] Cook advance failed for gen ${recordId}:`, advErr.message);
       }
       return;
     }
@@ -218,6 +218,39 @@ class NotificationDispatcher {
       } catch (updateError) {
         this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} after dispatch error:`, updateError.message);
       }
+      // Regardless of notification failure, attempt to progress cook flow.
+      try {
+        await this._maybeAdvanceCook(record);
+      } catch (advErr) {
+        this.logger.error(`[NotificationDispatcher] Cook advance failed for gen ${recordId}:`, advErr.message);
+      }
+      return;
+    }
+
+    // Success path – after notification sent, advance cook if applicable
+    try {
+      await this._maybeAdvanceCook(record);
+    } catch (advErr) {
+      this.logger.error(`[NotificationDispatcher] Cook advance failed for gen ${recordId}:`, advErr.message);
+    }
+  }
+
+  /**
+   * If the generation belongs to a cook (notificationPlatform==='cook'), append event and schedule next piece.
+   */
+  async _maybeAdvanceCook(record) {
+    if (record.notificationPlatform !== 'cook') return;
+    const meta = record.metadata || {};
+    const { collectionId, cookId, jobId } = meta;
+    const userId = String(record.masterAccountId || '') || null;
+    if (!collectionId || !userId || !jobId) return;
+
+    try {
+      await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, userId, jobId, generationId: record._id });
+      await CookOrchestratorService.scheduleNext({ collectionId, userId, finishedJobId: jobId, success: record.status === 'completed' });
+      this.logger.info(`[NotificationDispatcher] Cook orchestration progressed for collection ${collectionId}, job ${jobId}`);
+    } catch (err) {
+      this.logger.error(`[NotificationDispatcher] Error advancing cook for collection ${collectionId}:`, err.message);
     }
   }
 }
