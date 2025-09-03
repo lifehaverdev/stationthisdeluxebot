@@ -39,14 +39,6 @@ function handleGenerationProgress(payload) {
 
     let toolWindow = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
-    // SpellId direct lookup (unique per spell definition but not per run)
-    if (!toolWindow && spellId) {
-        toolWindow = document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
-        if (toolWindow) {
-            generationIdToWindowMap[generationId] = toolWindow;
-        }
-    }
-
     // Restricted toolId fallback – only consider ACTIVE windows (have progress indicator)
     if (!toolWindow && toolId) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
@@ -98,10 +90,7 @@ export function handleGenerationUpdate(payload) {
     const { generationId, outputs, status, toolId, spellId, castId, cookId } = payload;
     let toolWindowEl = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
-    if (!toolWindowEl && spellId){
-        toolWindowEl=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
-        if(toolWindowEl) generationIdToWindowMap[generationId]=toolWindowEl;
-    }
+    // spellId fallback removed
 
     if(!toolWindowEl && toolId){
         document.querySelectorAll('.spell-window').forEach(sw=>{

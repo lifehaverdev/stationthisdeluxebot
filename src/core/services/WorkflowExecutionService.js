@@ -178,6 +178,11 @@ class WorkflowExecutionService {
                     spellId: spell._id,
                     stepIndex,
                 },
+                // --- Cook integration ---
+                ...(originalContext.collectionId ? { collectionId: originalContext.collectionId } : {}),
+                ...(originalContext.cookId ? { cookId: originalContext.cookId } : {}),
+                ...(originalContext.jobId ? { jobId: originalContext.jobId } : {}),
+                ...(originalContext.pieceIndex!==undefined ? { pieceIndex: originalContext.pieceIndex } : {}),
             },
         };
 
@@ -377,6 +382,12 @@ class WorkflowExecutionService {
                         chatId: originalContext.telegramContext?.chatId,
                         replyToMessageId: originalContext.telegramContext?.messageId
                     }
+                    ,
+                    // Cook linkage
+                    ...(originalContext.collectionId ? { collectionId: originalContext.collectionId } : {}),
+                    ...(originalContext.cookId ? { cookId: originalContext.cookId } : {}),
+                    ...(originalContext.jobId ? { jobId: originalContext.jobId } : {}),
+                    ...(originalContext.pieceIndex!==undefined ? { pieceIndex: originalContext.pieceIndex } : {})
                 }
             };
             await this.internalApiClient.post('/internal/v1/data/generations', finalGenerationParams);
