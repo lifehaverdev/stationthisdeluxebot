@@ -161,7 +161,8 @@ export default class SpellsMenuModal {
                 return;
             }
             const data = await res.json();
-            this.setState({ spells: data.spells || [], loading: false });
+            const list = Array.isArray(data.spells)?data.spells:data;
+            this.setState({ spells: list || [], loading: false });
         } catch (err) {
             this.setState({ error: 'Failed to fetch your spells.', loading: false });
         }

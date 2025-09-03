@@ -20,8 +20,20 @@ module.exports = function spellsApi(dependencies) {
   const router = express.Router();
 
   // -------------------------------------------------------------
-  // PUBLIC: fetch by public slug without auth (MUST come BEFORE
-  // any generic ":spellIdentifier" route so it takes precedence)
+  // PUBLIC: list all public spells (no auth) – used by marketplace & registry
+  // -------------------------------------------------------------
+  router.get('/public', async (req, res) => {
+    try {
+      const spells = await spellsDb.findPublicSpells();
+      return res.status(200).json({ spells });
+    } catch (err) {
+      logger.error('[spellsApi] GET /public list error', err);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // PUBLIC: fetch single by slug (must appear after list route)
   // -------------------------------------------------------------
   router.get('/public/:publicSlug', async (req, res) => {
     const { publicSlug } = req.params;

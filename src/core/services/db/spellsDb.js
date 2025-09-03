@@ -167,7 +167,13 @@ class SpellsDB extends BaseDB {
    * @returns {Promise<Array>} A list of public spells.
    */
   async findPublicSpells(filter = {}, options = {}) {
-    return this.findMany({ visibility: 'public', 'moderation.status': 'approved', ...filter }, options);
+    const baseFilter = {
+      $and: [
+        { $or: [ { visibility: 'public' }, { isPublic: true }, { visibility: { $exists: false } } ] },
+        { $or: [ { 'moderation.status': { $exists: false } }, { 'moderation.status': 'approved' } ] }
+      ]
+    };
+    return this.findMany({ ...baseFilter, ...filter }, options);
   }
 
   /**

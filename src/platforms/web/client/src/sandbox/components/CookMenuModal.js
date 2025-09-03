@@ -18,6 +18,8 @@ export default class CookMenuModal {
             generatorType: null, // 'tool' | 'spell'
             toolOptions: [],
             selectedToolId: null,
+            spellOptions: [], // NEW
+            selectedSpellId: null, // NEW
             paramOptions: [],
             paramOverrides: {},
             generatorDisplay:'',
@@ -26,6 +28,11 @@ export default class CookMenuModal {
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.pollInterval = null; // store polling timer id
+        // Robust fetch guard flags to avoid infinite loops
+        this._loadingTools = false;
+        this._toolsFetched = false;
+        this._loadingSpells = false;
+        this._spellsFetched = false;
     }
 
     setState(newState) {
@@ -203,9 +210,22 @@ export default class CookMenuModal {
     renderOverviewBody(){
         const { selectedCollection, paramOverrides, paramOptions, showGenPicker, toolOptions, selectedToolId }=this.state;
         if(showGenPicker){
-            const optsHtml=toolOptions.length?toolOptions.map(t=>`<option value="${t.toolId}" ${t.toolId===selectedToolId?'selected':''}>${t.displayName}</option>`).join(''):'<option>(loading...)</option>';
-            return `<h3>Select Generator Tool</h3>
-                <select id="tool-select" style="width:100%;max-width:300px;">${optsHtml}</select>
+            // NEW generator picker supporting tool or spell
+            const { generatorType, toolOptions, spellOptions, selectedToolId, selectedSpellId } = this.state;
+            const ensureDataLoaded=()=>{
+                if(generatorType==='tool'&&!toolOptions.length){this.fetchTools();}
+                if(generatorType==='spell'&&!spellOptions.length){this.fetchSpells();}
+            };
+            ensureDataLoaded();
+            const opts=(generatorType==='tool'?toolOptions:spellOptions);
+            const selId=generatorType==='tool'?selectedToolId:selectedSpellId;
+            const optionsHtml=opts.length?opts.map(o=>`<option value="${o.toolId||o.spellId}" ${ (o.toolId||o.spellId)===selId?'selected':''}>${o.displayName}</option>`).join(''):'<option>(loading...)</option>';
+            return `<h3>Select Generator</h3>
+                <label><input type="radio" name="gen-type" value="tool" ${generatorType==='tool'?'checked':''}/> Tool</label>
+                <label style="margin-left:12px"><input type="radio" name="gen-type" value="spell" ${generatorType==='spell'?'checked':''}/> Spell</label>
+                <div style="margin-top:8px;">
+                    <select id="gen-select" style="width:100%;max-width:320px;">${optionsHtml}</select>
+                </div>
                 <div style="margin-top:12px;">
                     <button class="save-generator-btn">Save</button>
                     <button class="cancel-generator-btn" style="margin-left:8px;">Cancel</button>
@@ -441,20 +461,41 @@ export default class CookMenuModal {
     }
 
     async fetchTools(){
+        if(this._loadingTools || this._toolsFetched) return;
+        this._loadingTools=true;
         try{
-            const res=await fetch('/api/v1/tools/registry');
+            const res=await fetch('/api/v1/tools/registry', { credentials:'include' });
+            if(!res.ok) throw new Error('tools fetch failed');
             const data=await res.json();
-            this.setState({toolOptions:data});
+            if(Array.isArray(data)) this.setState({toolOptions:data});
+            this._toolsFetched=true;
         }catch(e){console.warn('tool fetch fail',e);}
+        finally{ this._loadingTools=false; }
+    }
+
+    async fetchSpells(){
+        if(this._loadingSpells || this._spellsFetched) return;
+        this._loadingSpells=true;
+        try{
+            const res=await fetch('/api/v1/spells/registry', { credentials:'include' });
+            if(!res.ok) throw new Error('spells fetch failed');
+            const data=await res.json();
+            if(Array.isArray(data)) this.setState({spellOptions:data});
+            this._spellsFetched=true;
+        }catch(e){console.warn('spell fetch fail',e);} 
+        finally{ this._loadingSpells=false; }
     }
 
     async saveGenerator(){
-        const { generatorType, selectedToolId }=this.state;
-        if(generatorType!=='tool'||!selectedToolId) return;
+        const { generatorType, selectedToolId, selectedSpellId }=this.state;
+        let payload={};
+        if(generatorType==='tool'&&selectedToolId){payload={ generatorType:'tool', toolId:selectedToolId };}
+        if(generatorType==='spell'&&selectedSpellId){payload={ generatorType:'spell', spellId:selectedSpellId };}
+        if(!Object.keys(payload).length) return;
         try{
             const csrf=await this.getCsrfToken();
             const id=this.state.selectedCollection.collectionId;
-            const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify({ generatorType:'tool', toolId:selectedToolId })});
+            const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(payload)});
             if(res.ok){
                 const updated=await res.json();
                 this.setState({selectedCollection:updated});
@@ -471,15 +512,34 @@ export default class CookMenuModal {
                 const res=await fetch(`/api/v1/tools/registry/${encodeURIComponent(selectedCollection.toolId)}`);
                 if(res.ok){
                     const def=await res.json();
-                    const params=def.inputSchema?Object.keys(def.inputSchema):['prompt'];
+                    let params;
+                    if(def.inputSchema && Object.keys(def.inputSchema).length){
+                       params = Object.keys(def.inputSchema);
+                    } else if(Array.isArray(def.exposedInputs) && def.exposedInputs.length){
+                       params = def.exposedInputs.map(e=>e.paramKey);
+                    } else { params=['prompt']; }
                     this.setState({paramOptions:params,generatorDisplay:def.displayName||def.toolId});
                     return;
                 }
             }catch(e){console.warn('param fetch fail',e);}
         }
-        // fallback
-        this.setState({paramOptions:['prompt']});
-    }
+        if(selectedCollection.generatorType==='spell' && selectedCollection.spellId){
+            try{
+                const res=await fetch(`/api/v1/spells/registry/${encodeURIComponent(selectedCollection.spellId)}`);
+                if(res.ok){
+                    const def=await res.json();
+                    let params;
+                    if(def.inputSchema && Object.keys(def.inputSchema).length){
+                       params = Object.keys(def.inputSchema);
+                    } else if(Array.isArray(def.exposedInputs) && def.exposedInputs.length){
+                       params = def.exposedInputs.map(e=>e.paramKey);
+                    } else { params=['prompt']; }
+                    this.setState({paramOptions:params,generatorDisplay:def.displayName||def.spellId});
+                    return;
+                }
+            }catch(e){console.warn('param fetch fail',e);}
+        }
+        this.setState({paramOptions:['prompt']}); }
 
     attachOverviewEvents(){
         const modal=this.modalElement;
@@ -494,11 +554,27 @@ export default class CookMenuModal {
             this.setState({showGenPicker:true});
             if(!this.state.toolOptions.length){this.fetchTools();}
         };
+        if(modal.querySelector('#gen-select')){
+            modal.querySelector('#gen-select').onchange=(e)=>{
+                const val=e.target.value;
+                if(this.state.generatorType==='tool'){
+                    this.setState({ selectedToolId: val });
+                } else {
+                    this.setState({ selectedSpellId: val });
+                }
+            };
+        }
+        // radio change
+        modal.querySelectorAll('input[name="gen-type"]').forEach(r=>{r.onchange=(e)=>{this.state.generatorType=e.target.value;this.render();};});
         if(modal.querySelector('.save-generator-btn')) modal.querySelector('.save-generator-btn').onclick=()=>{
-            const sel=modal.querySelector('#tool-select');
-            const id=sel?sel.value:'';
-            const opt=this.state.toolOptions.find(t=>t.toolId===id);
-            if(id){this.saveGeneratorSelection(id,opt?opt.displayName:id).then(()=>{this.setState({showGenPicker:false});});}
+            let id=this.state.generatorType==='tool'?this.state.selectedToolId:this.state.selectedSpellId;
+            if(!id){ // fallback read from select directly
+                const selEl = modal.querySelector('#gen-select');
+                if(selEl) id = selEl.value;
+            }
+            if(!id){alert('Choose an option');return;}
+            const disp=(this.state.generatorType==='tool'?this.state.toolOptions.find(t=>t.toolId===id):this.state.spellOptions.find(s=>s.spellId===id))?.displayName||id;
+            this.saveGeneratorSelection(id,disp).then(()=>{this.setState({showGenPicker:false});});
         };
         if(modal.querySelector('.cancel-generator-btn')) modal.querySelector('.cancel-generator-btn').onclick=()=>{
             this.setState({showGenPicker:false});
@@ -567,8 +643,14 @@ export default class CookMenuModal {
         const tool=this.state.toolOptions.find(t=>t.toolId===chosen);
         if(tool){this.saveGeneratorSelection(tool.toolId,tool.displayName);} }
 
-    async saveGeneratorSelection(toolId,displayName){
-        this.state.generatorType='tool';this.state.selectedToolId=toolId;this.state.generatorDisplay=displayName;await this.saveGenerator();}
+    async saveGeneratorSelection(id, displayName){
+        if(this.state.generatorType==='tool'){
+            this.setState({ selectedToolId: id });
+        } else {
+            this.setState({ selectedSpellId: id });
+        }
+        this.setState({ generatorDisplay: displayName });
+        await this.saveGenerator(); }
 }
 
 // Expose globally for quick testing

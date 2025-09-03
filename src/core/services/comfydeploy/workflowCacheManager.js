@@ -104,6 +104,7 @@ function generateCommandName(displayName) {
 class WorkflowCacheManager {
   // --- Singleton support ---
   static _instance=null;
+  _currentRefreshPromise = null; // tracks in-flight background refresh
   /**
    * Retrieve shared instance. Subsequent calls ignore options.
    * @param {Object} [options] optional options only used on first construction
@@ -820,24 +821,27 @@ class WorkflowCacheManager {
     if (this.isInitialized && !this._isCacheStale()) { 
       return; 
     }
-    
-    // If currently loading, wait.
+    // If a refresh is already running, don't wait – just return.
     if (this.isLoading) {
-      if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] ensureInitialized: Waiting for ongoing initialization...');
-      while (this.isLoading) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      // After waiting, check again if initialization was successful and cache is fresh
-       if (this.isInitialized && !this._isCacheStale()) { 
-         return; 
-       }
-       // If it failed or became stale immediately, fall through to re-initialize
-       if (DEBUG_LOGGING_ENABLED) this.logger.info('[WorkflowCacheManager] ensureInitialized: Initialization finished, but cache is stale or failed. Proceeding to initialize.');
+      return; // caller proceeds with possibly stale cache
     }
+    // Trigger refresh asynchronously
+    this.refreshInBackground();
+  }
 
-    // If never initialized, or if it's stale, or if previous load failed, initialize.
-    // The initialize method itself handles the isLoading flag.
-    await this.initialize();
+  /**
+   * Kick off a cache refresh but do not await its completion.
+   * Returns the promise so other code can optionally await.
+   */
+  refreshInBackground() {
+    if (this.isLoading) {
+      return this._currentRefreshPromise; // existing in-flight
+    }
+    // Save promise so others can share
+    this._currentRefreshPromise = this.initialize().catch(err => {
+      this.logger.error('[WorkflowCacheManager] Background refresh failed:', err);
+    });
+    return this._currentRefreshPromise;
   }
 
   // geniusoverhaul: Added helper to get cost rate for a deployment

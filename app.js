@@ -78,9 +78,8 @@ async function startApp() {
 
     // Explicitly initialize WorkflowsService and wait for it
     if (services.workflows && typeof services.workflows.initialize === 'function') {
-      logger.info('Initializing WorkflowsService cache...');
-      await services.workflows.initialize();
-      logger.info('WorkflowsService cache initialized.');
+      logger.info('Initializing WorkflowsService cache in background...');
+      services.workflows.initialize().catch(err => logger.error('Background workflow cache init failed', err));
     } else {
       logger.warn('WorkflowsService not found or does not have an initialize method.');
     }

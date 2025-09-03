@@ -56,3 +56,26 @@ Outcome: Parent `casts` collection now reliably aggregates child step generation
 ### Next Focus
 • Validate `cooks` (collection cook runs) parent updates mirror the same behaviour.
 • Run a multi-piece cook and capture DB/WS logs.
+
+## 2025-09-02 Cook Flow – Success ✅
+Collection Id: `3b66bea2-…`  |  Cook Id: `68b74234a4c261af87434386`
+
+• startCook queued 5-piece supply (targetSupply=5).  
+• For each piece: generation completed, webhook updated generationOutputs, CookOrchestrator pushed generationId & cost to cook, generatedCount incremented.  
+• After 5 pieces, cook status set to `completed`, completedAt stamped.  
+• WebSocket updates delivered with cookId for real-time UI.
+
+Cook document sample after run:
+```json
+{
+  _id: "68b74234a4c261af87434386",
+  generatedCount: 5,
+  targetSupply: 5,
+  status: "completed",
+  generationIds: [ "68b73d2d…", "68b73d75…", … ],
+  costUsd: 0.091,
+  completedAt: "2025-09-02T19:19:15Z"
+}
+```
+
+All acceptance criteria for parent linking met.

@@ -1,5 +1,6 @@
 const { getCachedClient } = require('../db/utils/queue');
-const CookJobStore = require('./CookJobStore');
+// Legacy CookJobStore removed – generate ephemeral jobIds instead of writing to cook_jobs
+// const CookJobStore = require('./CookJobStore');
 const TraitEngine = require('./TraitEngine');
 const { v4: uuidv4 } = require('uuid');
 const internalApiClient = require('../../../utils/internalApiClient');
@@ -8,6 +9,25 @@ const { createLogger } = require('../../../utils/logger');
 // Local dev toggle: enable immediate submit after enqueue (avoids watcher dependency)
 const IMMEDIATE_SUBMIT = true;
 const ENABLE_VERBOSE_SUBMIT_LOGS = false;
+
+// Helper: submit either a tool execute or spell cast based on spellId
+async function submitPiece({ spellId, submission }) {
+  if (spellId) {
+    // Build spell cast payload from submission
+    const { inputs, user, metadata } = submission;
+    return internalApiClient.post('/internal/v1/data/spells/cast', {
+      slug: spellId,
+      context: {
+        masterAccountId: user.masterAccountId || user.userId || user.id,
+        platform: 'cook',
+        parameterOverrides: inputs,
+        ...metadata,
+      },
+    });
+  }
+  // Tool path
+  return internalApiClient.post('/internal/v1/data/execute', submission);
+}
 
 class CookOrchestratorService {
   constructor() {
@@ -104,7 +124,7 @@ class CookOrchestratorService {
           // Build submission payload directly without waiting for any watcher
           const submission = enq.submission;
           if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
-          const resp = await internalApiClient.post('/internal/v1/data/execute', submission);
+          const resp = await submitPiece({ spellId: spellId, submission });
           this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
         } catch (e) {
           this.logger.error(`[CookOrchestrator] Immediate submit failed: ${e.message}`);
@@ -154,21 +174,11 @@ class CookOrchestratorService {
       }
     };
 
-    // Keep cook_jobs as an audit trail only; not used for scheduling anymore
-    const job = await CookJobStore.enqueue({
-      spellIdOrToolId,
-      userContext: finalParams,
-      collectionId,
-      userId,
-      traitTree,
-      paramOverrides,
-      pieceIndex,
-    });
+    // Deterministic per-piece key: cookId:index
+    const pieceKey = `${cookId || 'nocook'}:${index}`;
+    submission.metadata.jobId = pieceKey; // keep field name for compatibility
 
-    // Link job id for legacy references
-    submission.metadata.jobId = String(job._id);
-
-    return { jobId: job._id, submission };
+    return { jobId: pieceKey, submission };
   }
 
   /**
@@ -253,7 +263,7 @@ class CookOrchestratorService {
 
       // Immediate submit for newly queued pieces
       try {
-        const resp = await internalApiClient.post('/internal/v1/data/execute', enq.submission);
+        const resp = await submitPiece({ spellId: state.spellId, submission: enq.submission });
         this.logger.info(`[Cook] Submitted piece. job=${enq.jobId} resp=${resp?.status || 'ok'}`);
       } catch (e) {
         this.logger.error(`[CookOrchestrator] submit failed for job ${enq.jobId}: ${e.message}`);

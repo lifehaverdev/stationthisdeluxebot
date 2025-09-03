@@ -69,6 +69,15 @@ function handleGenerationProgress(payload) {
         if (cookId) progressIndicator.dataset.cookId = cookId;
         const progressPercent = progress ? `(${(progress * 100).toFixed(1)}%)` : '';
         progressIndicator.textContent = `Status: ${liveStatus || status} ${progressPercent}`;
+
+        // --- NEW: update spell progress bar continuously ---
+        const bar = toolWindow.querySelector('.spell-progress-bar');
+        if(bar){
+            const total = stepList(toolWindow).length || 1;
+            const done  = toolWindow.querySelectorAll('.spell-step-status li.done').length;
+            const frac  = (done + (progress || 0)) / total;
+            bar.value = Math.round(frac * 100);
+        }
     }
 }
 
@@ -160,6 +169,10 @@ export function handleGenerationUpdate(payload) {
             // mark step done
             let li=toolWindowEl.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`);
             if(!li){ li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId)); }
+            if(!li){
+                // Fallback: mark first pending step as done
+                li=[...stepList(toolWindowEl)].find(li=>li.classList.contains('pending'));
+            }
             if(li) li.className='done';
             // NEW: update spell progress bar after marking step done
             const bar=toolWindowEl.querySelector('.spell-progress-bar');

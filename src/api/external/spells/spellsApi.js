@@ -33,6 +33,73 @@ function createSpellsApi(dependencies) {
         }
     });
 
+    // --- REGISTRY: Full spell definitions for UI builders (mirrors /tools/registry) ---
+    router.get('/registry', async (req, res) => {
+        try {
+            const ownedBy = req.user?.userId;
+            const requests = [];
+            if (ownedBy) {
+                requests.push(internalApiClient.get(`/internal/v1/data/spells?ownedBy=${ownedBy}`));
+            }
+            // Always include public spells for discovery / fallback
+            requests.push(internalApiClient.get('/internal/v1/data/spells/public'));
+
+            const results = await Promise.allSettled(requests);
+            const collected = [];
+            for (const r of results) {
+                if (r.status === 'fulfilled') {
+                    const arr = r.value.data?.spells || r.value.data || [];
+                    if (Array.isArray(arr)) collected.push(...arr);
+                }
+            }
+            // Dedupe by spellId/_id
+            const seen = new Set();
+            const unique = collected.filter(s => {
+                const id = s.spellId || s._id || s.id;
+                if (!id || seen.has(id)) return false;
+                seen.add(id); return true;
+            });
+            const simplified = unique.map(s => ({
+                spellId: s.spellId || s._id || s.id,
+                displayName: s.name || s.displayName || 'Spell',
+                description: (s.description || '').split('\n')[0],
+                inputSchema: s.inputSchema || s.paramsSchema || null,
+                exposedInputs: s.exposedInputs || [],
+            }));
+            res.status(200).json(simplified);
+        } catch (error) {
+            logger.error('[externalSpellsApi] Failed to fetch spells registry:', error);
+            const status = error.response?.status || 502;
+            res.status(status).json({ error: { code: 'BAD_GATEWAY', message: 'Unable to fetch spells registry.' } });
+        }
+    });
+
+    router.get('/registry/:spellId', async (req, res) => {
+        const { spellId } = req.params;
+        try {
+            const response = await internalApiClient.get(`/internal/v1/data/spells/${spellId}`);
+            const s = response.data || {};
+            const def = {
+                spellId: s.spellId || s._id || spellId,
+                displayName: s.name || s.displayName || 'Spell',
+                description: s.description || '',
+                inputSchema: s.inputSchema || s.paramsSchema || null,
+                exposedInputs: s.exposedInputs || [],
+                // --- NEW: include steps and connections for client progress UI ---
+                steps: s.steps || [],
+                connections: s.connections || [],
+            };
+            res.status(200).json(def);
+        } catch (error) {
+            if (error.response?.status === 404) {
+                return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Spell with ID '${spellId}' not found.` } });
+            }
+            logger.error(`[externalSpellsApi] Failed to fetch registry data for spell ${spellId}:`, error);
+            const status = error.response?.status || 502;
+            res.status(status).json({ error: { code: 'BAD_GATEWAY', message: 'Unable to fetch spell definition.' } });
+        }
+    });
+
     // --- PUBLIC: Fetch a spell's metadata by slug ---
     router.get('/:slug', async (req, res, next) => {
         const { slug } = req.params;
@@ -160,10 +227,10 @@ function createSpellsApi(dependencies) {
             const proxyPayload = {
                 slug,
                 context: {
+                    ...context,
                     masterAccountId: user.userId,
                     platform: context.platform || 'web-sandbox',
                     parameterOverrides: context.parameterOverrides || {},
-                    ...context,
                 }
             };
 

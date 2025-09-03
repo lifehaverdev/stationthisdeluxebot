@@ -21,6 +21,13 @@ export default class CollectionWindow extends BaseWindow {
 
     this.mode = mode;
     this.collection = collection;
+    // Tag as spell window to enable shared websocket progress handling when testing a spell
+    if (mode === 'test' && collection.generatorType === 'spell') {
+      this.el.classList.add('spell-window');
+      if (collection.spellId) {
+        this.el.dataset.spellId = collection.spellId;
+      }
+    }
 
     this.renderBody();
   }
@@ -189,11 +196,21 @@ export default class CollectionWindow extends BaseWindow {
     // Fetch tool definition for parameter schema ----------
     let toolDef;
     try {
-      const res = await fetch(`/api/v1/tools/registry/${encodeURIComponent(this.collection.toolId)}`);
+      let res;
+      if (this.collection.generatorType==='spell' && this.collection.spellId) {
+        res = await fetch(`/api/v1/spells/registry/${encodeURIComponent(this.collection.spellId)}`);
+      } else {
+        res = await fetch(`/api/v1/tools/registry/${encodeURIComponent(this.collection.toolId)}`);
+      }
       if (res.ok) toolDef = await res.json();
     } catch {}
     const overrides = this.collection.config?.paramOverrides || {};
-    const schema = toolDef?.inputSchema || {};
+    let schema = toolDef?.inputSchema || {};
+    if(Object.keys(schema).length===0 && Array.isArray(toolDef?.exposedInputs)){
+      // create minimal schema objects marking them required
+      schema = {};
+      toolDef.exposedInputs.forEach(({ paramKey })=>{ schema[paramKey]={ required:true }; });
+    }
     const paramEntries = Object.entries(schema).reduce((acc, [k, d]) => {
       (d?.required ? acc.req : acc.opt).push([k, d]);
       return acc;
@@ -231,17 +248,9 @@ export default class CollectionWindow extends BaseWindow {
     outputDiv.style.marginTop = '10px';
     body.appendChild(outputDiv);
 
-    // Pre-create step status list so websocket handlers can update
-    const stepUl = document.createElement('ul');
-    stepUl.className = 'spell-step-status';
-    const stepLi = document.createElement('li');
-    stepLi.dataset.toolId = this.collection.toolId;
-    stepLi.textContent = `1. ${this.collection.toolId}`;
-    stepLi.className = 'pending';
-    stepUl.appendChild(stepLi);
-    body.appendChild(stepUl);
-
-    let progressIndicator; let progBar;
+    let stepUl; // will be created on execute for spells
+    let progressIndicator;
+    let progBar;
 
     // Randomise traits handler
     randBtn.onclick = () => {
@@ -265,7 +274,7 @@ export default class CollectionWindow extends BaseWindow {
 
     // Execute handler ------------------------
     execBtn.onclick = async () => {
-      // progress UI bootstrap
+      // --- Progress UI bootstrap ---
       if (!progressIndicator) {
         progressIndicator = document.createElement('div');
         progressIndicator.className = 'progress-indicator';
@@ -278,6 +287,43 @@ export default class CollectionWindow extends BaseWindow {
         progBar.className = 'spell-progress-bar';
         progBar.max = 100; progBar.value = 0;
         body.appendChild(progBar);
+      }
+
+      // Ensure we have step definitions for spell so we can build the status list
+      let stepsArr = [];
+      if (this.collection.generatorType === 'spell') {
+        if (Array.isArray(toolDef?.steps) && toolDef.steps.length) {
+          stepsArr = toolDef.steps;
+        } else try {
+          const resSteps = await fetch(`/api/v1/spells/registry/${encodeURIComponent(this.collection.spellId)}`);
+          if (resSteps.ok) {
+            const jd = await resSteps.json();
+            stepsArr = Array.isArray(jd.steps) ? jd.steps : [];
+            toolDef = jd; // cache for future reuse
+          }
+        } catch {}
+      }
+
+      // For spell generator type, build or reset step status list
+      if (this.collection.generatorType === 'spell' && stepsArr.length) {
+        if (!stepUl) {
+          stepUl = document.createElement('ul');
+          stepUl.className = 'spell-step-status';
+
+          stepsArr.forEach((step, idx) => {
+            const li = document.createElement('li');
+            li.dataset.stepId = step.id || idx;
+            li.dataset.toolId = step.toolIdentifier || step.toolId;
+            li.textContent = `${idx + 1}. ${step.displayName || step.toolIdentifier || 'step'}`;
+            li.className = 'pending';
+            stepUl.appendChild(li);
+          });
+
+          body.appendChild(stepUl);
+        } else {
+          // reset to pending if re-executed
+          stepUl.querySelectorAll('li').forEach(li => li.className = 'pending');
+        }
       }
 
       outputDiv.textContent = '';
@@ -309,10 +355,27 @@ export default class CollectionWindow extends BaseWindow {
       // Execute via executionClient (ensure dynamically imported)
       try {
         const { default: execClient } = await import('../executionClient.js');
-        const payload = { toolId: this.collection.toolId, inputs: paramOverrides, metadata: { platform: 'cook-test', traitSel } };
-        const res = await execClient.execute(payload);
-        outputDiv.innerHTML = '';
-        renderResultContent(outputDiv, res.outputs?.[0]?.data || { type: 'text', text: 'Done' });
+        let outputs;
+        if (this.collection.generatorType==='spell' && this.collection.spellId) {
+          const resp = await execClient.castSpell({ slug: this.collection.spellId, context: { masterAccountId: (window.__currentUserId||'unknown'), platform:'cook-test', parameterOverrides: paramOverrides } });
+          // Map generationId to this window for subsequent WS updates
+          if (!resp.final && resp.generationId) {
+            try {
+              const { generationIdToWindowMap, generationCompletionManager } = await import('../node/websocketHandlers.js');
+              generationIdToWindowMap[resp.generationId] = this.el;
+              // remove indicator when done
+              generationCompletionManager?.createCompletionPromise?.(resp.generationId)?.then(()=>{
+                this.el.querySelector('.progress-indicator')?.remove();
+              });
+            } catch(e){ console.warn('Map generationId failed', e); }
+          }
+          outputs = resp.outputs?.[0]?.data || resp;
+        } else {
+          const resp = await execClient.execute({ toolId: this.collection.toolId, inputs: paramOverrides, metadata:{ platform:'cook-test', traitSel } });
+          outputs = resp.outputs?.[0]?.data || resp;
+        }
+        outputDiv.innerHTML='';
+        renderResultContent(outputDiv, outputs);
       } catch (e) {
         outputDiv.textContent = e.message || 'Error';
       }

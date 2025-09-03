@@ -102,9 +102,21 @@ function createCookApi(deps = {}) {
           jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'queued' }) : 0,
           jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'running' }) : 0,
           genOutputsCol.countDocuments({
-            'metadata.collectionId': collectionId,
-            status: 'completed',
-            $or: [ { 'metadata.reviewOutcome': { $exists: false } }, { 'metadata.reviewOutcome': 'accepted' } ]
+            $and: [
+              {
+                $or: [
+                  { 'metadata.collectionId': collectionId },
+                  { collectionId } // legacy flat field
+                ]
+              },
+              { status: { $in: ['completed', 'success'] } },
+              {
+                $or: [
+                  { 'metadata.reviewOutcome': { $exists: false } },
+                  { 'metadata.reviewOutcome': 'accepted' }
+                ]
+              }
+            ]
           }),
         ]);
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
@@ -310,12 +322,14 @@ function createCookApi(deps = {}) {
   router.put('/cooks/:cookId', async (req,res)=>{
     if(!cooksDb) return res.status(503).json({ error: 'service-unavailable' });
     const { cookId } = req.params;
+    const { ObjectId } = require('mongodb');
+    const idFilter = { _id: new ObjectId(cookId) };
     const { generationId, status, costDeltaUsd } = req.body;
     const update={};
     if(generationId) update.$push = { generationIds: generationId };
     if(costDeltaUsd!==undefined) update.$inc = { costUsd: costDeltaUsd, generatedCount:1 };
     if(status) update.$set = { status, completedAt: status==='completed'?new Date():undefined };
-    try{ await cooksDb.updateOne({ _id:cookId }, update); res.json({ ok:true }); }
+    try{ await cooksDb.updateOne(idFilter, update); res.json({ ok:true }); }
     catch(e){ logger.error('cook update err',e); res.status(500).json({ error:'internal' }); }
   });
 

@@ -27,6 +27,11 @@ class ToolRegistry {
    */
   registerTool(tool) {
     if (this.tools.has(tool.toolId)) {
+      const existing = this.tools.get(tool.toolId);
+      // Skip registration if the definition is identical to avoid noisy overwrites
+      if (existing && JSON.stringify(existing) === JSON.stringify(tool)) {
+        return; // No changes – keep existing reference
+      }
       console.warn(`ToolRegistry: Tool with ID ${tool.toolId} is being overwritten.`);
     }
     this.tools.set(tool.toolId, tool);
