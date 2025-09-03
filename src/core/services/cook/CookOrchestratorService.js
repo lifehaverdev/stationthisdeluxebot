@@ -15,12 +15,28 @@ async function submitPiece({ spellId, submission }) {
   if (spellId) {
     // Build spell cast payload from submission
     const { inputs, user, metadata } = submission;
+
+    // Ensure we have a castId so downstream websocket packets can be routed.
+    let castId;
+    try {
+      const res = await internalApiClient.post(
+        '/internal/v1/data/spells/casts',
+        { spellId, initiatorAccountId: user.masterAccountId || user.userId || user.id },
+        { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } }
+      );
+      castId = res.data?._id?.toString() || res.data?.id;
+    } catch (err) {
+      // Fallback to random id if casts service unavailable – still unique for routing
+      castId = require('crypto').randomBytes(12).toString('hex');
+    }
+
     return internalApiClient.post('/internal/v1/data/spells/cast', {
       slug: spellId,
       context: {
         masterAccountId: user.masterAccountId || user.userId || user.id,
         platform: 'cook',
         parameterOverrides: inputs,
+        castId,
         ...metadata,
       },
     });

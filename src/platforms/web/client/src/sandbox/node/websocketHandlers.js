@@ -40,11 +40,11 @@ function handleGenerationProgress(payload) {
     let toolWindow = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
     // Restricted toolId fallback – only consider ACTIVE windows (have progress indicator)
-    if (!toolWindow && toolId) {
+    if (castId && !toolWindow && toolId) { // only attempt if castId known
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindow) return;
-            if(!sw.querySelector('.progress-indicator')) return; // ignore completed windows
-            if(castId && sw.dataset.castId && sw.dataset.castId !== String(castId)) return; // only match same castId
+            if(!sw.querySelector('.progress-indicator')) return;
+            if(sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
             const li=sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
             if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
         });
@@ -93,11 +93,11 @@ export function handleGenerationUpdate(payload) {
 
     // spellId fallback removed
 
-    if(!toolWindowEl && toolId){
+    if(castId && !toolWindowEl && toolId){
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindowEl) return;
             if(!sw.querySelector('.progress-indicator')) return;
-            if(castId && sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
+            if(sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
             if([...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
                toolWindowEl=sw;
                generationIdToWindowMap[generationId]=sw;
@@ -148,13 +148,25 @@ export function handleGenerationUpdate(payload) {
             }
 
             // --- 2b. Images array inside object (non-array payload) ---
-            else if (Array.isArray(outputs.images) && outputs.images[0]?.url) {
-                outputData = { type: 'image', url: outputs.images[0].url, generationId };
+            else if (Array.isArray(outputs.images)) {
+                const first = outputs.images[0];
+                const url = typeof first==='string'? first : first.url;
+                if(url) outputData = { type: 'image', url, generationId };
             }
 
             // --- 3. Flat imageUrl field ---
             else if (outputs.imageUrl) {
                 outputData = { type: 'image', url: outputs.imageUrl, generationId };
+            }
+
+            // --- 3b. Flat 'image' field ---
+            else if (outputs.image) {
+                outputData = { type: 'image', url: outputs.image, generationId };
+            }
+
+            // --- 3c. artifactUrls array ---
+            else if (Array.isArray(outputs.artifactUrls) && outputs.artifactUrls.length) {
+                outputData = { type: 'image', url: outputs.artifactUrls[0], generationId };
             }
 
             // --- 4. Text variants ---
