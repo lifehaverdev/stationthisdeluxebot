@@ -135,6 +135,7 @@ function createCookApiRouter(deps = {}) {
       const params = {
         'metadata.collectionId': collectionId,
         status: 'completed',
+        deliveryStrategy_ne: 'spell_step',
         'metadata.reviewOutcome_ne': 'accepted'
       };
       const { data } = await internalApiClient.get('/internal/v1/data/generations', { params });

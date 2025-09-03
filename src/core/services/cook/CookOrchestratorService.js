@@ -78,6 +78,7 @@ class CookOrchestratorService {
           { reviewOutcome: { $exists: false } },
           { reviewOutcome: { $ne: 'rejected' } },
         ]},
+        { deliveryStrategy: { $ne: 'spell_step' } },
       ],
     });
   }

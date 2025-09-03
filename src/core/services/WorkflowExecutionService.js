@@ -372,6 +372,7 @@ class WorkflowExecutionService {
                 status: 'completed',
                 deliveryStatus: 'pending', // So the dispatcher picks it up
                 notificationPlatform: originalContext.platform,
+                deliveryStrategy: 'cook_piece',
                 metadata: {
                     isSpell: true,
                     spellName: spell.name,
