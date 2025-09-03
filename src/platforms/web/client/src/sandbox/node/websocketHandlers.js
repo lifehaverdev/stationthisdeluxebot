@@ -44,6 +44,7 @@ function handleGenerationProgress(payload) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindow) return;
             if(!sw.querySelector('.progress-indicator')) return; // ignore completed windows
+            if(castId && sw.dataset.castId && sw.dataset.castId !== String(castId)) return; // only match same castId
             const li=sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
             if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
         });
@@ -96,6 +97,7 @@ export function handleGenerationUpdate(payload) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindowEl) return;
             if(!sw.querySelector('.progress-indicator')) return;
+            if(castId && sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
             if([...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
                toolWindowEl=sw;
                generationIdToWindowMap[generationId]=sw;
@@ -227,6 +229,7 @@ function findSpellWindowByToolId(toolId){
   document.querySelectorAll('.spell-window').forEach(sw=>{
       if(win) return;
       if(!sw.querySelector('.progress-indicator')) return; // only active windows
+      if(window._wsCurrentCastId && sw.dataset.castId && sw.dataset.castId !== String(window._wsCurrentCastId)) return;
       if(sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
          win=sw;
       }

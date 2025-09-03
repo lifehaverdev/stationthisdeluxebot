@@ -110,6 +110,7 @@ function createCookApi(deps = {}) {
                 ]
               },
               { status: { $in: ['completed', 'success'] } },
+              { deliveryStrategy: { $ne: 'spell_step' } },
               {
                 $or: [
                   { 'metadata.reviewOutcome': { $exists: false } },
