@@ -30,14 +30,18 @@ async function submitPiece({ spellId, submission }) {
       castId = require('crypto').randomBytes(12).toString('hex');
     }
 
+    const cleanMeta = { ...metadata };
+    delete cleanMeta.castId; // ensure no stale or duplicate castId
+
     return internalApiClient.post('/internal/v1/data/spells/cast', {
       slug: spellId,
       context: {
         masterAccountId: user.masterAccountId || user.userId || user.id,
         platform: 'cook',
         parameterOverrides: inputs,
+        cookId: metadata.cookId, // preserve cookId if present
         castId,
-        ...metadata,
+        ...cleanMeta,
       },
     });
   }
