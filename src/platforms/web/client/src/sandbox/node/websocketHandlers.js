@@ -83,6 +83,7 @@ function handleGenerationProgress(payload) {
         }
         // Cache by castId for subsequent steps
         if (castId) {
+            toolWindow.dataset.castId = castId;
             castIdToWindowMap[castId] = toolWindow;
         }
     }
