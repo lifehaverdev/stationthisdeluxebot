@@ -10,7 +10,8 @@ export default class ModsMenuModal {
   constructor(options = {}) {
     this.onSelect = options.onSelect || (() => {}); // callback when user picks a model
     this.state = {
-      view: 'intro', // 'intro' | 'loraRoot' | 'category'
+      rootTab: 'browse', // NEW: 'browse' | 'train'
+      view: 'intro', // 'intro' | 'loraRoot' | 'category' | 'trainDash'
       categories: ['checkpoint', 'lora', 'upscale', 'embedding', 'vae', 'controlnet', 'clipseg'],
       loraCategories: [],
       counts: {},
@@ -24,6 +25,8 @@ export default class ModsMenuModal {
       loading: false,
       error: null,
       favoriteIds: new Set(), // store ids liked by user
+      trainings: [], // NEW
+      datasets: [],  // NEW
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -112,6 +115,15 @@ export default class ModsMenuModal {
     }
   }
 
+  async fetchDatasets() { // NEW helper
+    try {
+      const res = await fetch('/api/v1/datasets', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      this.setState({ datasets: data.datasets || [] });
+    } catch(err){ console.warn('[ModsMenuModal] fetchDatasets error', err); }
+  }
+
   getModelIdentifier(model) {
     return model._id || model.path || model.name || model.save_path || model.sha || JSON.stringify(model);
   }
@@ -177,6 +189,7 @@ export default class ModsMenuModal {
     this.render();
     this.attachCloseEvents();
     this.fetchStats();
+    if(this.state.rootTab==='train') this.fetchDatasets(); // prefetch
   }
 
   hide() {
@@ -193,7 +206,14 @@ export default class ModsMenuModal {
   render() {
     if (!this.modalElement) return;
 
-    const { view, categories, currentCategory, currentLoraCategory, loraCategories, counts, models, loading, error, favoriteIds, selectedTags, extraTags } = this.state;
+    const { rootTab, view, categories, currentCategory, currentLoraCategory, loraCategories, counts, models, loading, error, favoriteIds, selectedTags, extraTags } = this.state;
+
+    // Top tab bar
+    const tabBar = `
+      <div class="mods-root-tabs">
+        <button class="root-tab-btn${rootTab==='browse'?' active':''}" data-tab="browse">Browse</button>
+        <button class="root-tab-btn${rootTab==='train'?' active':''}" data-tab="train">Train</button>
+      </div>`;
 
     // Category buttons
     const catButtons = categories.map(cat => {
@@ -274,203 +294,253 @@ export default class ModsMenuModal {
       }
     }
 
+    let mainContent = '';
+    if(rootTab==='browse') {
+      // base modal html
+      this.modalElement.innerHTML = `
+        <div class="mods-modal-container">
+          <button class="close-btn" aria-label="Close">×</button>
+          ${tabBar}
+          <div class="mods-content">
+            <h2>Model Browser</h2>
+            <p class="intro-text">Browse the models currently available on StationThis. Select a category to see assets and click + to add.</p>
+            <div class="mods-category-bar">${catButtons}</div>
+            ${currentCategory === 'lora' ? loraCatBar : ''}
+            ${view === 'category' ? listHtml : ''}
+          </div>
+        </div>`;
+
+      // Attach category btn events
+      this.modalElement.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.onclick = () => {
+          const cat = btn.getAttribute('data-cat');
+          if (cat === 'lora') {
+            this.setState({ view: 'category', currentCategory: 'lora', currentLoraCategory: null, selectedTags: [], extraTags: [], models: [] });
+            this.fetchLoraCategories();
+            this.fetchModels('lora'); // load all LoRAs
+            return;
+          }
+          this.setState({ view: 'category', currentCategory: cat, currentLoraCategory: null });
+          this.fetchModels(cat);
+        };
+      });
+
+      // LoRA sub-category events
+      this.modalElement.querySelectorAll('.lora-sub-btn').forEach(btn => {
+        btn.onclick = () => {
+          const sub = btn.getAttribute('data-loracat');
+          this.setState({ view: 'category', currentLoraCategory: sub });
+          this.fetchModels('lora', sub);
+        };
+      });
+
+      // Attach add buttons
+      if (view === 'category') {
+        // Row click to select
+        this.modalElement.querySelectorAll('.mods-item').forEach(li => {
+          li.onclick = (e) => {
+            if (e.target.closest('.fav-btn')) return; // ignore clicks on heart
+            const idx = Number(li.getAttribute('data-idx'));
+            const model = this.state.models[idx];
+            if (model) {
+              this.setState({ view: 'detail', detailModel: model });
+              }
+          };
+        });
+        // Heart toggle handler
+        this.modalElement.querySelectorAll('.fav-btn').forEach(btn => {
+          btn.onclick = (e) => {
+            e.stopPropagation();
+            const idx = Number(btn.getAttribute('data-idx'));
+            const model = this.state.models[idx];
+            const category = this.state.currentCategory;
+            this.toggleFavorite(model, category);
+          };
+        });
+      }
+
+      if (view === 'detail' && this.state.detailModel) {
+        const m = this.state.detailModel;
+        const tags = (m.tags || []).map(t => (typeof t==='string'?t:t.tag)).join(', ');
+        const ratingAvg = (m.ratingAvg || 0).toFixed(2);
+        const ratingStars = '★'.repeat(Math.round(m.ratingAvg || 0)) + '☆'.repeat(3-Math.round(m.ratingAvg||0));
+        const html = `
+          <div class="mods-detail">
+            <button class="back-btn">← Back</button>
+            <h3>${m.name || m.slug}</h3>
+            <div class="rating-display">${ratingStars} <small>(${ratingAvg})</small></div>
+            <p><strong>Checkpoint:</strong> ${m.checkpoint || 'n/a'}</p>
+            <p><strong>Trigger:</strong> ${(m.triggerWords||[]).join(', ')}</p>
+            ${m.cognates && m.cognates.length ? `<p><strong>Cognates:</strong> ${m.cognates.map(c=>c.word).join(', ')}</p>` : ''}
+            <p><strong>Tags:</strong> ${tags}</p>
+            <button class="add-tag-btn">+ Tag</button>
+            <button class="rate-btn">Rate ★</button>
+            <button class="select-btn">Use</button>
+          </div>`;
+        this.modalElement.querySelector('.mods-content').innerHTML = html;
+        this.modalElement.querySelector('.back-btn').onclick = () => {
+          this.setState({ view: 'category', detailModel: null });
+          this.render();
+        };
+        this.modalElement.querySelector('.select-btn').onclick = () => {
+          this.onSelect(m);
+          this.hide();
+        };
+        const userId = window.currentUserId || null;
+        const modelId = m._id || m.id || m.slug;
+
+        const addTagBtn = this.modalElement.querySelector('.add-tag-btn');
+        addTagBtn.onclick = async () => {
+          const newTag = prompt('Add tag');
+          if (!newTag) return;
+          try {
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/tag`, {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
+              body: JSON.stringify({ tag:newTag }),
+              credentials:'include'
+            });
+            alert('Tag added!');
+            // refresh detail
+            const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
+            const data = await res.json();
+            this.setState({ detailModel: { ...data.lora } });
+            this.render();
+          } catch(err){alert('failed');}
+        };
+
+        this.modalElement.querySelector('.rate-btn').onclick = async () => {
+          const val = prompt('Rate 1-3');
+          const n = Number(val);
+          if (![1,2,3].includes(n)) return;
+          try {
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/rate`, {
+              method:'POST',
+              headers:{'Content-Type':'application/json','x-csrf-token': csrfToken},
+              body: JSON.stringify({ stars:n }),
+              credentials:'include'
+            });
+            alert('Thanks for rating!');
+            const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
+            const data = await res.json();
+            this.setState({ detailModel:{...data.lora} });
+            this.render();
+          }catch(err){alert('failed');}
+        };
+        return; // skip rest attach
+      }
+
+      // Extra tag click
+      this.modalElement.querySelectorAll('.extra-tag-btn').forEach(btn => {
+        btn.onclick = () => {
+          const tag = btn.getAttribute('data-tag').toLowerCase();
+          const newSelected = [...this.state.selectedTags.map(t=>t.toLowerCase()), tag];
+          const filtered = this.applyTagFilter(this.state.models, newSelected);
+          const remaining = this.computeExtraTags(filtered, newSelected);
+          this.setState({ selectedTags: newSelected, models: filtered, extraTags: remaining });
+        };
+      });
+
+      // Import button event
+      const importBtn = this.modalElement.querySelector('.import-btn');
+      if (importBtn) {
+        importBtn.onclick = () => {
+          this.setState({ view: 'importForm', importUrl: '' });
+          this.render();
+        };
+      }
+
+      if (view === 'importForm') {
+        const importTitle = this.state.currentCategory === 'checkpoint' ? 'Import Checkpoint' : 'Import LoRA';
+        const html = `
+          <div class="import-form">
+            <h3>${importTitle}</h3>
+            <input type="text" class="url-input" placeholder="Civitai or HuggingFace URL" value="${this.state.importUrl}">
+            <button class="submit-import">Import</button>
+            <button class="cancel-import">Cancel</button>
+          </div>`;
+        this.modalElement.querySelector('.mods-content').innerHTML = html;
+        const input = this.modalElement.querySelector('.url-input');
+        input.oninput = () => { this.state.importUrl = input.value; };
+        this.modalElement.querySelector('.cancel-import').onclick = () => {
+          this.setState({ view: 'intro' });
+          this.render();
+        };
+        this.modalElement.querySelector('.submit-import').onclick = async () => {
+          const url = input.value.trim();
+          if (!url) return;
+          try {
+            const endpoint = this.state.currentCategory === 'checkpoint'
+              ? '/api/v1/models/checkpoint/import'
+              : '/api/v1/models/lora/import';
+            // CSRF-protected request (similar to favourites toggle)
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
+              body: JSON.stringify({ url }),
+              credentials: 'include'
+            });
+            alert('Import requested! Once approved it will appear in the list.');
+            this.setState({ view: 'intro' });
+            this.render();
+          } catch(err){
+            alert('Import failed');
+          }
+        };
+        return;
+      }
+    } else if(rootTab==='train') {
+      const { datasets } = this.state;
+      const dsList = datasets.length ? `<ul class="dataset-list">${datasets.map(d=>`<li>${d.name} (${(d.images||[]).length} imgs)</li>`).join('')}</ul>` : '<p>No datasets yet.</p>';
+      mainContent = `
+        <div class="train-dashboard">
+          <h3>Your Datasets</h3>
+          ${dsList}
+          <button class="add-dataset-btn">＋ Dataset</button>
+          <h3 style="margin-top:1em;">Your Trainings</h3>
+          <p>Coming soon…</p>
+          <button class="add-training-btn">＋ Training</button>
+        </div>`;
+    }
+
+    // base modal html
     this.modalElement.innerHTML = `
       <div class="mods-modal-container">
         <button class="close-btn" aria-label="Close">×</button>
-        <h2>Model Browser</h2>
-        <p class="intro-text">Browse the models currently available on StationThis. Select a category to see assets and click + to add.</p>
-        <div class="mods-category-bar">${catButtons}</div>
-        <div class="mods-content">
-          ${view === 'intro' ? '<div class="intro-placeholder">Select a category above.</div>' : ''}
-          ${currentCategory === 'lora' ? loraCatBar : ''}
-          ${view === 'category' ? listHtml : ''}
-        </div>
+        ${tabBar}
+        <div class="mods-content"></div>
       </div>`;
 
-    // Attach category btn events
-    this.modalElement.querySelectorAll('.cat-btn').forEach(btn => {
-      btn.onclick = () => {
-        const cat = btn.getAttribute('data-cat');
-        if (cat === 'lora') {
-          this.setState({ view: 'category', currentCategory: 'lora', currentLoraCategory: null, selectedTags: [], extraTags: [], models: [] });
-          this.fetchLoraCategories();
-          this.fetchModels('lora'); // load all LoRAs
-          return;
-        }
-        this.setState({ view: 'category', currentCategory: cat, currentLoraCategory: null });
-        this.fetchModels(cat);
-      };
-    });
-
-    // LoRA sub-category events
-    this.modalElement.querySelectorAll('.lora-sub-btn').forEach(btn => {
-      btn.onclick = () => {
-        const sub = btn.getAttribute('data-loracat');
-        this.setState({ view: 'category', currentLoraCategory: sub });
-        this.fetchModels('lora', sub);
-      };
-    });
-
-    // Attach add buttons
-    if (view === 'category') {
-      // Row click to select
-      this.modalElement.querySelectorAll('.mods-item').forEach(li => {
-        li.onclick = (e) => {
-          if (e.target.closest('.fav-btn')) return; // ignore clicks on heart
-          const idx = Number(li.getAttribute('data-idx'));
-          const model = this.state.models[idx];
-          if (model) {
-            this.setState({ view: 'detail', detailModel: model });
-            }
-        };
-      });
-      // Heart toggle handler
-      this.modalElement.querySelectorAll('.fav-btn').forEach(btn => {
-        btn.onclick = (e) => {
-          e.stopPropagation();
-          const idx = Number(btn.getAttribute('data-idx'));
-          const model = this.state.models[idx];
-          const category = this.state.currentCategory;
-          this.toggleFavorite(model, category);
-        };
-      });
+    const contentEl = this.modalElement.querySelector('.mods-content');
+    if(rootTab==='browse') {
+      // reuse existing rendering logic by temporarily storing, call old browse renderer
+      // to keep diff minimal, we simply call original renderBrowse if existed, else keep placeholder
+      contentEl.innerHTML = '<p>Browse view loading…</p>';
+    } else {
+      contentEl.innerHTML = mainContent;
     }
 
-    if (view === 'detail' && this.state.detailModel) {
-      const m = this.state.detailModel;
-      const tags = (m.tags || []).map(t => (typeof t==='string'?t:t.tag)).join(', ');
-      const ratingAvg = (m.ratingAvg || 0).toFixed(2);
-      const ratingStars = '★'.repeat(Math.round(m.ratingAvg || 0)) + '☆'.repeat(3-Math.round(m.ratingAvg||0));
-      const html = `
-        <div class="mods-detail">
-          <button class="back-btn">← Back</button>
-          <h3>${m.name || m.slug}</h3>
-          <div class="rating-display">${ratingStars} <small>(${ratingAvg})</small></div>
-          <p><strong>Checkpoint:</strong> ${m.checkpoint || 'n/a'}</p>
-          <p><strong>Trigger:</strong> ${(m.triggerWords||[]).join(', ')}</p>
-          ${m.cognates && m.cognates.length ? `<p><strong>Cognates:</strong> ${m.cognates.map(c=>c.word).join(', ')}</p>` : ''}
-          <p><strong>Tags:</strong> ${tags}</p>
-          <button class="add-tag-btn">+ Tag</button>
-          <button class="rate-btn">Rate ★</button>
-          <button class="select-btn">Use</button>
-        </div>`;
-      this.modalElement.querySelector('.mods-content').innerHTML = html;
-      this.modalElement.querySelector('.back-btn').onclick = () => {
-        this.setState({ view: 'category', detailModel: null });
-        this.render();
-      };
-      this.modalElement.querySelector('.select-btn').onclick = () => {
-        this.onSelect(m);
-        this.hide();
-      };
-      const userId = window.currentUserId || null;
-      const modelId = m._id || m.id || m.slug;
-
-      const addTagBtn = this.modalElement.querySelector('.add-tag-btn');
-      addTagBtn.onclick = async () => {
-        const newTag = prompt('Add tag');
-        if (!newTag) return;
-        try {
-          const csrfRes = await fetch('/api/v1/csrf-token');
-          const { csrfToken } = await csrfRes.json();
-          await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/tag`, {
-            method:'POST',
-            headers:{ 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
-            body: JSON.stringify({ tag:newTag }),
-            credentials:'include'
-          });
-          alert('Tag added!');
-          // refresh detail
-          const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
-          const data = await res.json();
-          this.setState({ detailModel: { ...data.lora } });
-          this.render();
-        } catch(err){alert('failed');}
-      };
-
-      this.modalElement.querySelector('.rate-btn').onclick = async () => {
-        const val = prompt('Rate 1-3');
-        const n = Number(val);
-        if (![1,2,3].includes(n)) return;
-        try {
-          const csrfRes = await fetch('/api/v1/csrf-token');
-          const { csrfToken } = await csrfRes.json();
-          await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}/rate`, {
-            method:'POST',
-            headers:{'Content-Type':'application/json','x-csrf-token': csrfToken},
-            body: JSON.stringify({ stars:n }),
-            credentials:'include'
-          });
-          alert('Thanks for rating!');
-          const res = await fetch(`/api/v1/models/lora/${encodeURIComponent(modelId)}`);
-          const data = await res.json();
-          this.setState({ detailModel:{...data.lora} });
-          this.render();
-        }catch(err){alert('failed');}
-      };
-      return; // skip rest attach
-    }
-
-    // Extra tag click
-    this.modalElement.querySelectorAll('.extra-tag-btn').forEach(btn => {
-      btn.onclick = () => {
-        const tag = btn.getAttribute('data-tag').toLowerCase();
-        const newSelected = [...this.state.selectedTags.map(t=>t.toLowerCase()), tag];
-        const filtered = this.applyTagFilter(this.state.models, newSelected);
-        const remaining = this.computeExtraTags(filtered, newSelected);
-        this.setState({ selectedTags: newSelected, models: filtered, extraTags: remaining });
-      };
-    });
-
-    // Import button event
-    const importBtn = this.modalElement.querySelector('.import-btn');
-    if (importBtn) {
-      importBtn.onclick = () => {
-        this.setState({ view: 'importForm', importUrl: '' });
-        this.render();
-      };
-    }
-
-    if (view === 'importForm') {
-      const importTitle = this.state.currentCategory === 'checkpoint' ? 'Import Checkpoint' : 'Import LoRA';
-      const html = `
-        <div class="import-form">
-          <h3>${importTitle}</h3>
-          <input type="text" class="url-input" placeholder="Civitai or HuggingFace URL" value="${this.state.importUrl}">
-          <button class="submit-import">Import</button>
-          <button class="cancel-import">Cancel</button>
-        </div>`;
-      this.modalElement.querySelector('.mods-content').innerHTML = html;
-      const input = this.modalElement.querySelector('.url-input');
-      input.oninput = () => { this.state.importUrl = input.value; };
-      this.modalElement.querySelector('.cancel-import').onclick = () => {
-        this.setState({ view: 'intro' });
-        this.render();
-      };
-      this.modalElement.querySelector('.submit-import').onclick = async () => {
-        const url = input.value.trim();
-        if (!url) return;
-        try {
-          const endpoint = this.state.currentCategory === 'checkpoint'
-            ? '/api/v1/models/checkpoint/import'
-            : '/api/v1/models/lora/import';
-          // CSRF-protected request (similar to favourites toggle)
-          const csrfRes = await fetch('/api/v1/csrf-token');
-          const { csrfToken } = await csrfRes.json();
-          await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type':'application/json', 'x-csrf-token': csrfToken },
-            body: JSON.stringify({ url }),
-            credentials: 'include'
-          });
-          alert('Import requested! Once approved it will appear in the list.');
-          this.setState({ view: 'intro' });
-          this.render();
-        } catch(err){
-          alert('Import failed');
+    // Tab button events
+    this.modalElement.querySelectorAll('.root-tab-btn').forEach(btn=>{
+      btn.onclick = ()=>{
+        const tab = btn.getAttribute('data-tab');
+        if(tab!==this.state.rootTab){
+          this.setState({ rootTab: tab, view: tab==='browse'? 'intro':'trainDash' });
+          if(tab==='train') this.fetchDatasets();
         }
       };
-      return;
+    });
+
+    // Add Dataset button
+    const addDsBtn = this.modalElement.querySelector('.add-dataset-btn');
+    if(addDsBtn){
+      addDsBtn.onclick = ()=> alert('Dataset form coming soon');
     }
   }
 

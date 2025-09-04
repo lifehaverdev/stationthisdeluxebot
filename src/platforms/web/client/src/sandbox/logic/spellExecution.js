@@ -54,14 +54,18 @@ export async function executeSpell(windowId) {
     return;
   }
   const clientCastId = `cid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
-  spellWindow.dataset.castId = clientCastId;
-  import('../node/websocketHandlers.js').then(m=>{ m.castIdToWindowMap[clientCastId]=spellWindow; window._wsCurrentCastId=clientCastId; });
   const payload = {
     slug: spellSlug,
     context: { masterAccountId, parameterOverrides: inputs, platform: 'web-sandbox', castId: clientCastId }
   };
   try {
     const spellWindowEl = document.getElementById(windowId);
+    // --- assign castId mapping now that we have element ---
+    if (spellWindowEl) {
+       spellWindowEl.dataset.castId = clientCastId;
+       (await import('../node/websocketHandlers.js')).castIdToWindowMap[clientCastId] = spellWindowEl;
+       window._wsCurrentCastId = clientCastId;
+    }
     showError(spellWindowEl, '');
     let progressIndicator = spellWindowEl.querySelector('.progress-indicator');
     if (!progressIndicator) {
