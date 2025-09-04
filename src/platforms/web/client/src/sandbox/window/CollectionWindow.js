@@ -368,12 +368,22 @@ export default class CollectionWindow extends BaseWindow {
             exposedInputs: Array.isArray(toolDef?.exposedInputs) ? toolDef.exposedInputs : []
           };
           const model = addToolWindow({ id: this.id, type:'spell', spell: spellObj });
-          // merge parameter mappings after
-          model.parameterMappings = model.parameterMappings || {};
-          const mappings = model.parameterMappings;
+          // Build parameterMappings keyed by nodeId_paramKey, matching executeSpell expectations
+          const mappings = (model.parameterMappings = {});
+          // 1. create lookup of form values
+          const formValues = {};
           paramsWrap.querySelectorAll('.parameter-input input').forEach(inp=>{
-            mappings[inp.name]={ type:'static', value: inp.type==='number'? Number(inp.value): inp.value };
+            formValues[inp.name] = inp.type==='number'? Number(inp.value) : inp.value;
           });
+          // 2. map over exposedInputs to create proper keys
+          (spellObj.exposedInputs || []).forEach(inpDef=>{
+            const val=formValues[inpDef.paramKey];
+            if(val!==undefined){
+              mappings[`${inpDef.nodeId}_${inpDef.paramKey}`]={ type:'static', value: val };
+            }
+          });
+          // Fallback: also include plain keys so ToolWindow UI shows defaults if needed
+          Object.entries(formValues).forEach(([k,v])=>{ if(!mappings[k]) mappings[k]={type:'static', value:v}; });
           (await import('../state.js')).persistState();
 
           // --- Reuse central spell execution flow ---
