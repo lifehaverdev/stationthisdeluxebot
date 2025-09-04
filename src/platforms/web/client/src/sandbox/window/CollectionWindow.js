@@ -274,14 +274,33 @@ export default class CollectionWindow extends BaseWindow {
 
     // Execute handler ------------------------
     execBtn.onclick = async () => {
-      // --- Seed placeholder castId to avoid hijacking by foreign websocket packets ---
-      const placeholderCastId = `pending-${Date.now()}-${Math.floor(Math.random()*1e4)}`;
-      this.el.dataset.castId = placeholderCastId;
-      // Inform websocket handler maps immediately
-      try {
-        const { castIdToWindowMap } = await import('../node/websocketHandlers.js');
-        castIdToWindowMap[placeholderCastId] = this.el;
-      } catch(e) { console.warn('Failed to map placeholder castId', e); }
+      // --- Obtain a real castId record from server upfront (aligns with SpellWindow flow) ---
+      let preCastId = null;
+      if (this.collection.generatorType === 'spell' && this.collection.spellId) {
+        try {
+          // fetch CSRF
+          const csrfRes = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+          const { csrfToken } = await csrfRes.json();
+          const maid = window.__currentUserId || 'unknown';
+          const castRes = await fetch('/api/v1/spells/casts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+            credentials: 'include',
+            body: JSON.stringify({ spellId: this.collection.spellId, initiatorAccountId: maid })
+          });
+          if (castRes.ok) {
+            const castData = await castRes.json();
+            preCastId = castData._id || castData.id || null;
+          }
+        } catch(err){ console.warn('[CollectionWindow] pre-castId fetch failed', err); }
+      }
+      if (preCastId) {
+        this.el.dataset.castId = preCastId;
+        try {
+          const { castIdToWindowMap } = await import('../node/websocketHandlers.js');
+          castIdToWindowMap[preCastId] = this.el;
+        } catch {}
+      }
       // --- Progress UI bootstrap ---
       if (!progressIndicator) {
         progressIndicator = document.createElement('div');
@@ -368,7 +387,7 @@ export default class CollectionWindow extends BaseWindow {
         const { default: execClient } = await import('../executionClient.js');
         let outputs;
         if (this.collection.generatorType==='spell' && this.collection.spellId) {
-          const resp = await execClient.castSpell({ slug: this.collection.spellId, context: { masterAccountId: (window.__currentUserId||'unknown'), platform:'cook-test', parameterOverrides: paramOverrides } });
+          const resp = await execClient.castSpell({ slug: this.collection.spellId, context: { masterAccountId: (window.__currentUserId||'unknown'), platform:'cook-test', parameterOverrides: paramOverrides, ...(preCastId?{castId:preCastId}:{}) } });
           // Map generationId to this window for subsequent WS updates
           if (!resp.final && resp.generationId) {
             try {

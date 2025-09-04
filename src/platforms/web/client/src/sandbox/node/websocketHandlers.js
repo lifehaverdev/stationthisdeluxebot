@@ -49,7 +49,7 @@ function handleGenerationProgress(payload) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindow) return;
             if(!sw.querySelector('.progress-indicator')) return;
-            if(sw.dataset.castId && (sw.dataset.castId.startsWith('pending-') || sw.dataset.castId !== String(castId))) return;
+            if(sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
             const li=sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
             if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
         });
