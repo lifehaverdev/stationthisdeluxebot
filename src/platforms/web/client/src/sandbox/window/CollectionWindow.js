@@ -356,31 +356,35 @@ export default class CollectionWindow extends BaseWindow {
         }
       });
 
-      // Execute via executionClient (ensure dynamically imported)
       try {
-        const { default: execClient } = await import('../executionClient.js');
-        let outputs;
         if (this.collection.generatorType==='spell' && this.collection.spellId) {
-          const resp = await execClient.castSpell({ slug: this.collection.spellId, context: { masterAccountId: (window.__currentUserId||'unknown'), platform:'cook-test', parameterOverrides: paramOverrides } });
-          // Map generationId to this window for subsequent WS updates
-          if (!resp.final && resp.generationId) {
-            try {
-              const { generationIdToWindowMap, generationCompletionManager } = await import('../node/websocketHandlers.js');
-              generationIdToWindowMap[resp.generationId] = this.el;
-              // remove indicator when done
-              generationCompletionManager?.createCompletionPromise?.(resp.generationId)?.then(()=>{
-                this.el.querySelector('.progress-indicator')?.remove();
-              });
-            } catch(e){ console.warn('Map generationId failed', e); }
+          // --- Register as spell window in global state (if not already) ---
+          const { addToolWindow, getToolWindow } = await import('../state.js');
+          let model = getToolWindow(this.id);
+          if(!model){
+            model = addToolWindow({ id: this.id, type:'spell', spell: toolDef||{ slug:this.collection.spellId, name:this.collection.name||'Spell' }, parameterMappings:{} });
           }
-          outputs = resp.outputs?.[0]?.data || resp;
+          // Build parameterMappings from UI inputs (static values only)
+          const mappings={};
+          paramsWrap.querySelectorAll('.parameter-input input').forEach(inp=>{
+             mappings[inp.name]={ type:'static', value: inp.type==='number'? Number(inp.value): inp.value };
+          });
+          model.parameterMappings = mappings;
+          // Persist
+          (await import('../state.js')).persistState();
+
+          // --- Reuse central spell execution flow ---
+          const { executeSpell } = await import('../logic/spellExecution.js');
+          executeSpell(this.id);
         } else {
+          // --- Tool path stays inline ---
+          const { default: execClient } = await import('../executionClient.js');
           const resp = await execClient.execute({ toolId: this.collection.toolId, inputs: paramOverrides, metadata:{ platform:'cook-test', traitSel } });
-          outputs = resp.outputs?.[0]?.data || resp;
+          const outputs = resp.outputs?.[0]?.data || resp;
+          outputDiv.innerHTML='';
+          renderResultContent(outputDiv, outputs);
         }
-        outputDiv.innerHTML='';
-        renderResultContent(outputDiv, outputs);
-      } catch (e) {
+      } catch(e){
         outputDiv.textContent = e.message || 'Error';
       }
     };
