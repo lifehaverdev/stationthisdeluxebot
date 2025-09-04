@@ -59,12 +59,7 @@ export async function executeSpell(windowId) {
   };
   try {
     const spellWindowEl = document.getElementById(windowId);
-    // --- assign castId mapping now that we have element ---
-    if (spellWindowEl) {
-       spellWindowEl.dataset.castId = clientCastId;
-       (await import('../node/websocketHandlers.js')).castIdToWindowMap[clientCastId] = spellWindowEl;
-       window._wsCurrentCastId = clientCastId;
-    }
+    // mapping will be done after backend returns castId
     showError(spellWindowEl, '');
     let progressIndicator = spellWindowEl.querySelector('.progress-indicator');
     if (!progressIndicator) {
