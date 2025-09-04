@@ -53,10 +53,9 @@ export async function executeSpell(windowId) {
     alert('This spell is missing an identifier.');
     return;
   }
-  const clientCastId = `cid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
   const payload = {
     slug: spellSlug,
-    context: { masterAccountId, parameterOverrides: inputs, platform: 'web-sandbox', castId: clientCastId }
+    context: { masterAccountId, parameterOverrides: inputs, platform: 'web-sandbox' }
   };
   try {
     const spellWindowEl = document.getElementById(windowId);
@@ -106,6 +105,13 @@ export async function executeSpell(windowId) {
       body: JSON.stringify(payload)
     });
     const result = await response.json();
+
+    // --- Register castId returned from backend (ObjectId) ---
+    if (result.castId) {
+        spellWindowEl.dataset.castId = result.castId;
+        (await import('../node/websocketHandlers.js')).castIdToWindowMap[result.castId] = spellWindowEl;
+        window._wsCurrentCastId = result.castId;
+    }
     if (!response.ok) {
       console.error('[spellExecution] Exec fetch failed', response.status, response.statusText, result);
       const msg = result?.error ? (result.error.message || JSON.stringify(result.error)) : 'Spell execution failed.';

@@ -74,7 +74,17 @@ module.exports = function spellsApi(dependencies) {
       if(castId){ context.castId = castId; }
 
       const result = await spellsService.castSpell(slug, context);
-      res.status(200).json(result);
+
+      // Ensure the client receives the newly-created castId immediately so it can
+      // subscribe to progress updates without polling additional endpoints.
+      const responsePayload = (result && typeof result === 'object') ? result : { status: 'running' };
+
+      // Attach castId generated above (if any) when it was injected into context
+      if (context.castId && !responsePayload.castId) {
+        responsePayload.castId = context.castId;
+      }
+
+      res.status(200).json(responsePayload);
     } catch (error) {
       logger.error(`[spellsApi] POST /cast: Error casting spell "${slug}": ${error.message}`, { stack: error.stack });
       const statusCode = error.message.includes('not found') ? 404 : (error.message.includes('permission') ? 403 : 500);

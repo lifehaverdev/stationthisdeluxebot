@@ -160,7 +160,7 @@ _Add new epics/modules below as they are formalized._
 | Account Dropdown | Completed | src/platforms/web/client/src/sandbox/components/accountDropdown.js |
 | Buy Points Modal | Completed | sandbox/components/BuyPointsModal/ |
 | Mods Menu Modal | Completed | sandbox/components/ModsMenuModal.js |
-| Cook Menu Modal | In Progress | sandbox/components/CookMenuModal.js |
+| Cook Menu Modal | Completed | sandbox/components/CookMenuModal.js |
 | Referral Vault Dashboard | In Progress | sandbox/components/ReferralVaultDashboardModal/ |
 | Onboarding Tour | Completed | sandbox/onboarding/ |
 | Trait Tree Editor | Planned | sandbox/components/TraitTreeEditor.js |

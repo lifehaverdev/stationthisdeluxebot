@@ -52,3 +52,4 @@ Allow a Collection to reference either a Tool **or** a Spell as its generator.  
 
 ## Implementation Log (ongoing)
 - 2025-09-02 Initial investigation completed; outline drafted.
+- 2025-09-02 Spell cook flow operational – CookMenuModal spell picker, deterministic pieceKey (cookId:index), generationOutputs counting logic, submitPiece helper routing execute vs cast.

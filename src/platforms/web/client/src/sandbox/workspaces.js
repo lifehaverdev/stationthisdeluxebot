@@ -11,6 +11,14 @@ async function getCsrfToken() {
   } catch { return ''; }
 }
 
+function sanitiseOutput(o) {
+  if (!o) return null;
+  const { type, url, text, generationId } = o;
+  // strip data URLs – only keep if it's a remote/link
+  const safeUrl = (url && url.startsWith('data:')) ? undefined : url;
+  return { type, url: safeUrl, text, generationId };
+}
+
 function buildSnapshot() {
   // Make serializable clones like persistState does
   const connections = getConnections().map(({ element, ...rest }) => rest);
@@ -19,16 +27,20 @@ function buildSnapshot() {
       id: w.id,
       workspaceX: w.workspaceX,
       workspaceY: w.workspaceY,
-      output: w.output || null,
-      outputVersions: w.outputVersions || [],
+      output: sanitiseOutput(w.output),
+      // keep at most 5 recent versions and sanitise
+      outputVersions: (w.outputVersions || []).slice(-5).map(v => ({
+        ...v,
+        output: sanitiseOutput(v.output)
+      })),
       currentVersionIndex: w.currentVersionIndex ?? -1,
       parameterMappings: w.parameterMappings || {}
     };
     if (w.isSpell) {
-      return { ...base, isSpell: true, spell: w.spell };
+      return { ...base, isSpell: true, spell: { _id: w.spell._id, name: w.spell.name } };
     }
     if (w.type === 'collection') {
-      return { ...base, type: 'collection', mode: w.mode, collection: w.collection };
+      return { ...base, type: 'collection', mode: w.mode, collection: { collectionId: w.collection?.collectionId, name: w.collection?.name } };
     }
     return { ...base, displayName: w.tool?.displayName || '', toolId: w.tool?.toolId || '' };
   });

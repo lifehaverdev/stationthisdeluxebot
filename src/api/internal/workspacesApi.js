@@ -4,6 +4,8 @@ const WorkspacesDB = require('../../core/services/db/workspacesDb');
 
 function createWorkspacesApi(deps = {}) {
   const router = express.Router();
+  // Larger JSON payload to allow snapshots (~1MB)
+  router.use(express.json({ limit: '1mb' }));
   const logger = deps.logger || createLogger('WorkspacesAPI');
 
   const workspacesDb = deps.db?.workspaces || new WorkspacesDB(logger);
