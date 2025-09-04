@@ -50,6 +50,22 @@ async function duplicateAndRun(windowId) {
 }
 
 export function renderResultContent(resultContainer, output) {
+    // --- Auto-normalise common image/text wrappers when type missing ---
+    if (!output.type) {
+        if (Array.isArray(output.artifactUrls) && output.artifactUrls.length) {
+            output = { type: 'image', url: output.artifactUrls[0], ...output };
+        } else if (Array.isArray(output.images) && output.images.length) {
+            const first = output.images[0];
+            output = { type: 'image', url: (typeof first==='string' ? first : first.url), ...output };
+        } else if (output.imageUrl) {
+            output = { type: 'image', url: output.imageUrl, ...output };
+        } else if (output.image) {
+            output = { type: 'image', url: output.image, ...output };
+        } else if (output.text || output.response) {
+            output = { type: 'text', text: output.text || output.response, ...output };
+        }
+    }
+
     resultContainer.innerHTML = '';
 
     // If this is a spell with multiple step outputs, build a step selector UI and return early

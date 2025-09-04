@@ -37,6 +37,11 @@ function handleGenerationProgress(payload) {
     console.log('[Sandbox] Generation progress received:', payload);
     const { generationId, progress, status, liveStatus, toolId, spellId, castId = null, cookId = null } = payload;
 
+    // Ignore cook-driven tool runs (cookId present but no castId) – they belong to backend only
+    if (cookId && !castId) {
+        return; // do not route into sandbox windows
+    }
+
     let toolWindow = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
     // Restricted toolId fallback – only consider ACTIVE windows (have progress indicator)
@@ -44,7 +49,7 @@ function handleGenerationProgress(payload) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindow) return;
             if(!sw.querySelector('.progress-indicator')) return;
-            if(sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
+            if(sw.dataset.castId && (sw.dataset.castId.startsWith('pending-') || sw.dataset.castId !== String(castId))) return;
             const li=sw.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...sw.querySelectorAll('.spell-step-status li')].find(li=>li.textContent.includes(toolId));
             if(li){ toolWindow=sw; generationIdToWindowMap[generationId]=sw; }
         });
@@ -89,6 +94,12 @@ function handleGenerationProgress(payload) {
  */
 export function handleGenerationUpdate(payload) {
     const { generationId, outputs, status, toolId, spellId, castId, cookId } = payload;
+
+    // Ignore cook-driven tool updates that have cookId but no castId
+    if (cookId && !castId) {
+        return;
+    }
+
     let toolWindowEl = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
 
     // spellId fallback removed
@@ -97,7 +108,7 @@ export function handleGenerationUpdate(payload) {
         document.querySelectorAll('.spell-window').forEach(sw=>{
             if(toolWindowEl) return;
             if(!sw.querySelector('.progress-indicator')) return;
-            if(sw.dataset.castId && sw.dataset.castId !== String(castId)) return;
+            if(sw.dataset.castId && (sw.dataset.castId.startsWith('pending-') || sw.dataset.castId !== String(castId))) return;
             if([...sw.querySelectorAll('.spell-step-status li')].some(li=>li.textContent.includes(toolId))){
                toolWindowEl=sw;
                generationIdToWindowMap[generationId]=sw;

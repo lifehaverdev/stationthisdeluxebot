@@ -274,6 +274,14 @@ export default class CollectionWindow extends BaseWindow {
 
     // Execute handler ------------------------
     execBtn.onclick = async () => {
+      // --- Seed placeholder castId to avoid hijacking by foreign websocket packets ---
+      const placeholderCastId = `pending-${Date.now()}-${Math.floor(Math.random()*1e4)}`;
+      this.el.dataset.castId = placeholderCastId;
+      // Inform websocket handler maps immediately
+      try {
+        const { castIdToWindowMap } = await import('../node/websocketHandlers.js');
+        castIdToWindowMap[placeholderCastId] = this.el;
+      } catch(e) { console.warn('Failed to map placeholder castId', e); }
       // --- Progress UI bootstrap ---
       if (!progressIndicator) {
         progressIndicator = document.createElement('div');
