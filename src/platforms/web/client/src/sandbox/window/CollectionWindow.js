@@ -362,7 +362,14 @@ export default class CollectionWindow extends BaseWindow {
           const { addToolWindow, getToolWindow } = await import('../state.js');
           let model = getToolWindow(this.id);
           if(!model){
-            model = addToolWindow({ id: this.id, type:'spell', spell: toolDef||{ slug:this.collection.spellId, name:this.collection.name||'Spell' }, parameterMappings:{} });
+            const spellObj = {
+              _id: this.collection.spellId,
+              slug: this.collection.spellId,
+              name: this.collection.name || 'Spell',
+              steps: stepsArr,
+              exposedInputs: Array.isArray(toolDef?.exposedInputs) ? toolDef.exposedInputs : []
+            };
+            model = addToolWindow({ id: this.id, type:'spell', spell: spellObj, parameterMappings:{} });
           }
           // Build parameterMappings from UI inputs (static values only)
           const mappings={};
