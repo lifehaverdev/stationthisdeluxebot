@@ -53,9 +53,12 @@ export async function executeSpell(windowId) {
     alert('This spell is missing an identifier.');
     return;
   }
+  const clientCastId = `cid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
+  spellWindow.dataset.castId = clientCastId;
+  import('../node/websocketHandlers.js').then(m=>{ m.castIdToWindowMap[clientCastId]=spellWindow; window._wsCurrentCastId=clientCastId; });
   const payload = {
     slug: spellSlug,
-    context: { masterAccountId, parameterOverrides: inputs, platform: 'web-sandbox' }
+    context: { masterAccountId, parameterOverrides: inputs, platform: 'web-sandbox', castId: clientCastId }
   };
   try {
     const spellWindowEl = document.getElementById(windowId);

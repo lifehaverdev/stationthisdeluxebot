@@ -263,17 +263,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     initCanvas();
 
     // --- Workspace Save/Load Buttons ---
-    const header = document.querySelector('.sandbox-header') || document.body;
     const wsBar = document.createElement('div');
     wsBar.className = 'workspace-bar';
-    wsBar.style.position = 'fixed';
+    wsBar.style.position = 'absolute';
     wsBar.style.top = '8px';
-    wsBar.style.right = '8px';
+    wsBar.style.left = '8px';
     wsBar.style.zIndex = 1000;
     wsBar.innerHTML = `
       <button title="Save Workspace" class="ws-save-btn" style="margin-right:4px;">💾</button>
       <button title="Load Workspace" class="ws-load-btn">📂</button>`;
-    header.appendChild(wsBar);
+    // Ensure canvas is positioning context
+    if (getComputedStyle(canvas).position === 'static') {
+        canvas.style.position = 'relative';
+    }
+    canvas.appendChild(wsBar);
 
     wsBar.querySelector('.ws-save-btn').addEventListener('click', () => saveWorkspace());
     wsBar.querySelector('.ws-load-btn').addEventListener('click', () => {

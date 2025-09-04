@@ -1,0 +1,81 @@
+const express = require('express');
+const { createLogger } = require('../../utils/logger');
+
+function createDatasetsApiRouter(deps = {}) {
+  const router = express.Router();
+  const client = deps.internalApiClient || (deps.internal && deps.internal.client);
+  const logger = (deps.logger || console).child ? (deps.logger || console).child({ mod: 'ExternalDatasetsApi' }) : (deps.logger || console);
+
+  if (!client) {
+    logger.error('[ExternalDatasetsApi] internalApiClient missing – router disabled');
+    return null;
+  }
+
+  // GET /datasets (list mine)
+  router.get('/datasets', async (req, res) => {
+    const user = req.user;
+    if (!user || !user.userId && !user.masterAccountId) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const { data } = await client.get(`/internal/v1/data/datasets/owner/${encodeURIComponent(ownerId)}`);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('list datasets proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // GET /datasets/:id
+  router.get('/datasets/:id', async (req, res) => {
+    try {
+      const { data } = await client.get(`/internal/v1/data/datasets/${encodeURIComponent(req.params.id)}`);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('get dataset proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /datasets (create)
+  router.post('/datasets', async (req, res) => {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const payload = { ...req.body, ownerAccountId: ownerId };
+      const { data } = await client.post('/internal/v1/data/datasets', payload);
+      res.status(201).json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('create dataset proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // POST /datasets/:id/images
+  router.post('/datasets/:id/images', async (req, res) => {
+    const { id } = req.params;
+    const { imageUrls } = req.body;
+    if (!Array.isArray(imageUrls) || !imageUrls.length) {
+      return res.status(400).json({ error: 'imageUrls array required' });
+    }
+    try {
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/images`, { imageUrls });
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('add images proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  return router;
+}
+
+module.exports = createDatasetsApiRouter;
