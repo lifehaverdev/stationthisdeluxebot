@@ -234,13 +234,10 @@ function createSpellsApi(dependencies) {
                 }
             };
 
-            // Fire-and-forget: kick off internal cast but do not await result
-            internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload)
-                .then(r=>logger.debug('[externalSpellsApi] Spell cast accepted internally', r.data))
-                .catch(e=>logger.warn('[externalSpellsApi] Internal spell cast call errored after response sent', e.message));
-
-            // Respond immediately so frontend waits on websockets
-            return res.status(202).json({ status: 'processing' });
+            // Forward FULL response from internal API so frontend immediately knows castId / generationId
+            const internalResp = await internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload);
+            // Typical success -> 200 OK with body { castId, generationId?, status }
+            return res.status(internalResp.status || 200).json(internalResp.data);
         } catch (error) {
             const statusCode = error.response ? error.response.status : 502;
             const errorData = error.response ? error.response.data : { message: 'Unable to cast spell.' };
