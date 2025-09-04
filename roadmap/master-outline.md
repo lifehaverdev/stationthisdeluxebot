@@ -241,3 +241,5 @@ Secure, private file uploads & CDN delivery via Cloudflare R2.
 |--------|--------|------------|
 | Web Onboarding Redesign | In Progress | onboarding-experience/adr/ADR-2025-08-26-onboarding-redesign.md |
 
+| dataset-training | Dataset & Training Suite | 🟡 In Progress | M1 due 2025-09-08 |
+

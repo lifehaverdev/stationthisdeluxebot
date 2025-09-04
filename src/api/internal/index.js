@@ -29,6 +29,7 @@ const generationExecutionApi = createGenerationExecutionApi; // from aggregator
 const pointsApi = require('./economy/pointsApi');
 const generationOutputsApi = createGenerationOutputsApi;
 const { createSystemApi, createActionsApi } = require('./system');
+const createDatasetsApi = require('./datasetsApi'); // NEW
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -433,6 +434,15 @@ function initializeInternalServices(dependencies = {}) {
     v1DataRouter.use('/workspaces', workspacesRouter);
     logger.info('[InternalAPI] Workspaces API mounted to /v1/data/workspaces');
   } catch(err){ logger.error('[InternalAPI] Failed to init Workspaces API', err); }
+
+  // Datasets API Service:
+  const datasetsApi = createDatasetsApi(apiDependencies);
+  if (datasetsApi) {
+    v1DataRouter.use('/datasets', datasetsApi);
+    logger.info('[InternalAPI] Datasets API service mounted to /v1/data/datasets');
+  } else {
+    logger.error('[InternalAPI] Failed to create Datasets API router.');
+  }
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

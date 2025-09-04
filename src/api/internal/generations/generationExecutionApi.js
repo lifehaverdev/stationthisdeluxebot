@@ -362,6 +362,7 @@ module.exports = function generationExecutionApi(dependencies) {
                 outputs: { response: responseContent }, 
                 service: tool.service,
                 toolId: tool.toolId,
+                castId: metadata.castId || null,
               }
             });
           }

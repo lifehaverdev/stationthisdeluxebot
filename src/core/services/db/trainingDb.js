@@ -1,169 +1,78 @@
 const { BaseDB, ObjectId } = require('./BaseDB');
 
 /**
- * @class LoRATrainingsDB
+ * @class TrainingDB
  *
- * This class manages LoRA training sessions, which are user-submitted datasets used to train one or more LoRA models.
- * Each session can produce multiple outputs (e.g., Flux light, SDXL full), and contain multiple caption variants.
+ * Tracks lifecycle of training jobs that convert a Dataset → Model.
+ * Consumed by training worker which polls for `status: QUEUED` jobs.
  *
- * New additions support:
- * - Future marketplace integration (via `collectionId`, `ownedBy`)
- * - Provenance tracking (authorship vs. ownership)
- * - Publishing eligibility (`allowPublishing`)
- *
+ * SCHEMA:
  * {
  *   _id: ObjectId,
- *   name: string,
- *   userId: ObjectId,
- *   ownedBy?: ObjectId,               // Defaults to userId unless sold/transferred
- *   collectionId?: ObjectId,          // Optional FK to model collection
- *   images: [ObjectId],
- *   captionSets: [
- *     {
- *       _id: string,
- *       name: string,
- *       captions: [string],
- *       createdAt: Date
- *     }
- *   ],
- *   trainingRuns: [
- *     {
- *       _id: string,
- *       tool: string,
- *       modelType: string,
- *       checkpoint: string,
- *       steps: number,
- *       captionSetId: string,
- *       outputLoRAId?: ObjectId,
- *       status: "queued" | "complete" | "failed",
- *       trainedAt: Date
- *     }
- *   ],
- *   status: "draft" | "submitted" | "training" | "complete" | "failed",
- *   preferredTrigger: string,
- *   tags: [string],
- *   allowPublishing: boolean,
- *   notes?: string,
+ *   datasetId: ObjectId,
+ *   ownerAccountId: ObjectId,
+ *   offeringId: string,                  // key from trainingOfferings config
+ *   baseModel: string,                   // e.g. "SD1.5", "SDXL"
+ *   status: 'QUEUED'|'RUNNING'|'FAILED'|'COMPLETED',
+ *   progress?: number,                   // 0-100
+ *   failureReason?: string,
  *   createdAt: Date,
- *   updatedAt?: Date,
- *   submittedAt?: Date,
- *   completedAt?: Date
+ *   updatedAt: Date,
+ *   startedAt?: Date,
+ *   completedAt?: Date,
+ *
+ *   // Financials
+ *   costPoints?: number,
+ *   paidAt?: Date,
+ *
+ *   // Output linkage
+ *   loraModelId?: ObjectId,             // FK to LoRAModelDb
+ *   modelRepoUrl?: string,              // hf repo
+ *   triggerWords?: [string],
+ *   previewImages?: [string]
  * }
  */
-
-class LoRATrainingsDB extends BaseDB {
+class TrainingDB extends BaseDB {
   constructor(logger) {
-    super('loraTrainings');
+    super('trainingJobs');
     this.logger = logger || console;
   }
 
-  async createTrainingSession(trainingData) {
+  async queueJob(data) {
     const now = new Date();
-    const userIdAsObjectId = typeof trainingData.userId === 'string' ? new ObjectId(trainingData.userId) : trainingData.userId;
-    const dataToInsert = {
+    const payload = {
+      status: 'QUEUED',
       createdAt: now,
       updatedAt: now,
-      status: 'draft',
-      captionSets: [],
-      trainingRuns: [],
-      ownedBy: userIdAsObjectId, // Store as ObjectId
-      ...trainingData,
-      userId: userIdAsObjectId, // Ensure userId from trainingData is also ObjectId
+      progress: 0,
+      ...data,
     };
-    // Remove masterAccountId if it's part of ...trainingData and we are using userId consistently
-    if (dataToInsert.masterAccountId && dataToInsert.userId) {
-        // Assuming userId is canonical, we might remove masterAccountId to avoid confusion
-        // For now, let's leave it if present, but ensure userId is the ObjectId one.
-        // Or, if trainingData comes with masterAccountId string, ensure it's not overriding the ObjectId userId.
-        // The spread ...trainingData comes AFTER ownedBy and userId are set from userIdAsObjectId if trainingData.userId was the source.
-        // If trainingData itself has a masterAccountId field, and it's also a string, that might be an issue.
-        // Let's explicitly ensure the primary identifier `userId` is ObjectId.
-    }
-    dataToInsert.userId = userIdAsObjectId; // Explicitly set/overwrite to ensure it's ObjectId
-
-    const result = await this.insertOne(dataToInsert);
-    return result.insertedId ? { _id: result.insertedId, ...dataToInsert } : null;
+    const result = await this.insertOne(payload);
+    return result.insertedId ? { _id: result.insertedId, ...payload } : null;
   }
 
-  async findTrainingById(trainingId) {
-    return this.findOne({ _id: new ObjectId(trainingId) });
+  async setStatus(jobId, status, extra = {}) {
+    const patch = { status, updatedAt: new Date(), ...extra };
+    return this.updateOne({ _id: new ObjectId(jobId) }, { $set: patch });
   }
 
-  async addCaptionSet(trainingId, captionSet) {
+  async incrementProgress(jobId, progress) {
     return this.updateOne(
-      { _id: new ObjectId(trainingId) },
-      {
-        $push: { captionSets: captionSet },
-        $set: { updatedAt: new Date() }
-      }
+      { _id: new ObjectId(jobId) },
+      { $set: { progress, updatedAt: new Date() } }
     );
   }
 
-  async addTrainingRun(trainingId, trainingRun) {
+  async attachModel(jobId, loraModelId, repoUrl) {
     return this.updateOne(
-      { _id: new ObjectId(trainingId) },
-      {
-        $push: { trainingRuns: trainingRun },
-        $set: { updatedAt: new Date() }
-      }
+      { _id: new ObjectId(jobId) },
+      { $set: { loraModelId: new ObjectId(loraModelId), modelRepoUrl: repoUrl, updatedAt: new Date() } }
     );
   }
 
-  async updateTrainingStatus(trainingId, status) {
-    return this.updateOne(
-      { _id: new ObjectId(trainingId) },
-      {
-        $set: { status, updatedAt: new Date() }
-      }
-    );
-  }
-
-  async attachLoRAOutput(trainingId, runId, loraId) {
-    return this.updateOne(
-      { _id: new ObjectId(trainingId), 'trainingRuns._id': runId },
-      {
-        $set: {
-          'trainingRuns.$.outputLoRAId': new ObjectId(loraId),
-          updatedAt: new Date()
-        }
-      }
-    );
-  }
-
-  async findTrainingsByUser(userId, options = {}) {
-    // Ensure userId is an ObjectId for the query
-    const idAsObjectId = typeof userId === 'string' ? new ObjectId(userId) : userId;
-    return this.findMany({
-      $or: [
-        { userId: idAsObjectId },
-        { masterAccountId: idAsObjectId }
-      ]
-    }, options);
-  }
-
-  async transferOwnership(trainingId, newOwnerId) {
-    return this.updateOne(
-      { _id: new ObjectId(trainingId) },
-      {
-        $set: {
-          ownedBy: new ObjectId(newOwnerId),
-          updatedAt: new Date()
-        }
-      }
-    );
-  }
-
-  async assignToCollection(trainingId, collectionId) {
-    return this.updateOne(
-      { _id: new ObjectId(trainingId) },
-      {
-        $set: {
-          collectionId: new ObjectId(collectionId),
-          updatedAt: new Date()
-        }
-      }
-    );
+  async fetchQueued(limit = 3) {
+    return this.findMany({ status: 'QUEUED' }, { limit, sort: { createdAt: 1 } });
   }
 }
 
-module.exports = LoRATrainingsDB;
+module.exports = TrainingDB;

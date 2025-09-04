@@ -33,6 +33,7 @@ import { MintSpellFAB } from './components/MintSpellFAB.js';
 import './onboarding/onboarding.js';
 import CookMenuModal from './components/CookMenuModal.js';
 import './components/ReauthModal.js';
+import { saveWorkspace, loadWorkspace } from './workspaces.js';
 
 // Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
 (function interceptUnauthorized() {
@@ -260,6 +261,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize canvas
     initCanvas();
+
+    // --- Workspace Save/Load Buttons ---
+    const header = document.querySelector('.sandbox-header') || document.body;
+    const wsBar = document.createElement('div');
+    wsBar.className = 'workspace-bar';
+    wsBar.style.position = 'fixed';
+    wsBar.style.top = '8px';
+    wsBar.style.right = '8px';
+    wsBar.style.zIndex = 1000;
+    wsBar.innerHTML = `
+      <button title="Save Workspace" class="ws-save-btn" style="margin-right:4px;">💾</button>
+      <button title="Load Workspace" class="ws-load-btn">📂</button>`;
+    header.appendChild(wsBar);
+
+    wsBar.querySelector('.ws-save-btn').addEventListener('click', () => saveWorkspace());
+    wsBar.querySelector('.ws-load-btn').addEventListener('click', () => {
+      const slug = prompt('Enter workspace ID / URL:', '');
+      if (!slug) return;
+      const id = slug.includes('/') ? slug.split(/workspace=|\//).pop() : slug;
+      loadWorkspace(id.trim());
+    });
 
     // Initialize sidebar in collapsed state
     const sidebar = document.getElementById('sidebar');

@@ -77,7 +77,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 liveStatus: live_status,
                 toolId: generationRecordForProgress.toolId || generationRecordForProgress.metadata?.toolId || null,
                 spellId: generationRecordForProgress.metadata?.spell?._id || generationRecordForProgress.metadata?.spellId || null,
-                castId: generationRecordForProgress.metadata?.castId || null,
+                castId: generationRecordForProgress.metadata?.castId || generationRecordForProgress.castId || null,
                 cookId: generationRecordForProgress.metadata?.cookId || null
             }
         });
@@ -260,7 +260,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 finalEventTimestamp: finalEventTimestamp,
                 toolId: generationRecord.toolId || generationRecord.metadata?.toolId || null,
                 spellId: generationRecord.metadata?.spell?._id || generationRecord.metadata?.spellId || null,
-                castId: generationRecord.metadata?.castId || null,
+                castId: generationRecord.metadata?.castId || generationRecord.castId || null,
                 cookId: generationRecord.metadata?.cookId || null
             }
         });

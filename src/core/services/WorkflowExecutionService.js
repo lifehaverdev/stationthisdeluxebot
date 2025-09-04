@@ -222,7 +222,8 @@ class WorkflowExecutionService {
                         payload: {
                             toolId: tool.toolId,
                             output: executionResponse.data.response,
-                            requestId: originalContext.requestId || null
+                            requestId: originalContext.requestId || null,
+                            castId: originalContext.castId || null
                         }
                     }
                 );

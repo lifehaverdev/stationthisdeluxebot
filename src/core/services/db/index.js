@@ -21,6 +21,7 @@ const WalletLinkingRequestDB = require('./walletLinkingRequestDb'); // Import Wa
 const CastsDB = require('./castsDb');
 const CooksDB = require('./cooksDb');
 const WorkspacesDB = require('./workspacesDb');
+const DatasetDB = require('./datasetDb'); // ADDED: dataset service
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -54,6 +55,7 @@ function initializeDbServices(logger) {
     userPreferences: UserPreferencesDB ? new UserPreferencesDB(logger) : null,
     transactions: TransactionsDB ? new TransactionsDB(logger) : null,
     loraTrainings: LoRATrainingsDB ? new LoRATrainingsDB(logger) : null, // ADDED: Instantiate LoRATrainingsDB
+    dataset: DatasetDB ? new DatasetDB(logger) : null, // ADDED
     loraModels: LoRAModelsDB ? new LoRAModelsDB(logger) : null, // ADDED: Instantiate LoRAModelsDB
     loraPermissions: LoRAPermissionsDB ? new LoRAPermissionsDB(logger) : null, // ADDED: Instantiate LoRAPermissionsDB
     spells: SpellsDB ? new SpellsDB(logger) : null, // ADDED: Instantiate SpellsDB
