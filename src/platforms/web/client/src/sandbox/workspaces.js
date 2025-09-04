@@ -49,6 +49,16 @@ function buildSnapshot() {
 
 export async function saveWorkspace() {
   const snapshot = buildSnapshot();
+  const byteSize = obj => new Blob([JSON.stringify(obj)]).size;
+  const totalSize = byteSize(snapshot);
+  const connSize = byteSize(snapshot.connections);
+  const windowsSize = byteSize(snapshot.toolWindows);
+  console.group('[Workspace] Snapshot debug');
+  console.log(`Total ${totalSize} bytes (connections ${connSize}, windows ${windowsSize})`);
+  snapshot.toolWindows.forEach(w => {
+    console.log(`  win ${w.id} (${w.isSpell ? 'spell' : w.displayName || w.type}) -> ${byteSize(w)} bytes`);
+  });
+  console.groupEnd();
   // avoid saving completely empty workspaces
   if (snapshot.toolWindows.length === 0 && snapshot.connections.length === 0) {
     alert('Nothing to save yet! Add some tools first.');

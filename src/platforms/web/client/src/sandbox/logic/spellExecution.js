@@ -106,6 +106,11 @@ export async function executeSpell(windowId) {
         spellWindowEl.dataset.castId = result.castId;
         (await import('../node/websocketHandlers.js')).castIdToWindowMap[result.castId] = spellWindowEl;
         window._wsCurrentCastId = result.castId;
+        // DEBUG: verify mapping is established before any WS messages arrive
+        try {
+          const { castIdToWindowMap } = await import('../node/websocketHandlers.js');
+          console.log('[DEBUG spellExecution] castId mapped', result.castId, 'current keys', Object.keys(castIdToWindowMap));
+        } catch(e){ console.warn('[DEBUG spellExecution] failed to inspect castIdToWindowMap', e); }
     }
     if (!response.ok) {
       console.error('[spellExecution] Exec fetch failed', response.status, response.statusText, result);

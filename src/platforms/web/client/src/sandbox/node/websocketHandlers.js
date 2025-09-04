@@ -35,6 +35,7 @@ export { generationCompletionManager };
  */
 function handleGenerationProgress(payload) {
     console.log('[Sandbox] Generation progress received:', payload);
+    console.log('[DEBUG progress] map keys', Object.keys(castIdToWindowMap));
     const { generationId, progress, status, liveStatus, toolId, spellId, castId = null, cookId = null } = payload;
 
     // Ignore cook-driven tool runs (cookId present but no castId) – they belong to backend only
@@ -43,6 +44,9 @@ function handleGenerationProgress(payload) {
     }
 
     let toolWindow = generationIdToWindowMap[generationId] || (castId && castIdToWindowMap[castId]);
+    if(!toolWindow && castId){
+        console.log('[DEBUG progress] lookup failed for castId', castId, 'map has', castIdToWindowMap[castId]);
+    }
 
     // Restricted toolId fallback – only consider ACTIVE windows (have progress indicator)
     if (castId && !toolWindow && toolId) { // only attempt if castId known
