@@ -20,6 +20,7 @@ const CookCollectionsDB = require('./cookCollectionsDb');
 const WalletLinkingRequestDB = require('./walletLinkingRequestDb'); // Import WalletLinkingRequestDB
 const CastsDB = require('./castsDb');
 const CooksDB = require('./cooksDb');
+const WorkspacesDB = require('./workspacesDb');
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -61,6 +62,7 @@ function initializeDbServices(logger) {
     walletLinkingRequests: WalletLinkingRequestDB ? new WalletLinkingRequestDB(logger) : null,
     casts: CastsDB ? new CastsDB(logger) : null,
     cooks: CooksDB ? new CooksDB(logger) : null,
+    workspaces: WorkspacesDB ? new WorkspacesDB(logger) : null,
     
     // On-chain services
     creditLedger: CreditLedgerDB ? new CreditLedgerDB(logger) : null,
@@ -94,3 +96,4 @@ function initializeDbServices(logger) {
 
 // Export the initialization function instead of the direct object
 module.exports = { initializeDbServices }; 
+module.exports.WorkspacesDB = WorkspacesDB; 

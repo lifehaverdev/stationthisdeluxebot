@@ -426,6 +426,14 @@ function initializeInternalServices(dependencies = {}) {
     logger.error('[InternalAPI] Failed to create Actions API router.');
   }
 
+  // Workspaces API Service:
+  const { createWorkspacesApi } = require('./workspacesApi');
+  try {
+    const workspacesRouter = createWorkspacesApi(apiDependencies);
+    v1DataRouter.use('/workspaces', workspacesRouter);
+    logger.info('[InternalAPI] Workspaces API mounted to /v1/data/workspaces');
+  } catch(err){ logger.error('[InternalAPI] Failed to init Workspaces API', err); }
+
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
   mainInternalRouter.use((req, res, next) => {

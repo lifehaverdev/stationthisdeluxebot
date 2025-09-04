@@ -360,24 +360,20 @@ export default class CollectionWindow extends BaseWindow {
         if (this.collection.generatorType==='spell' && this.collection.spellId) {
           // --- Register as spell window in global state (if not already) ---
           const { addToolWindow, getToolWindow } = await import('../state.js');
-          let model = getToolWindow(this.id);
-          if(!model){
-            const spellObj = {
-              _id: this.collection.spellId,
-              slug: this.collection.spellId,
-              name: this.collection.name || 'Spell',
-              steps: stepsArr,
-              exposedInputs: Array.isArray(toolDef?.exposedInputs) ? toolDef.exposedInputs : []
-            };
-            model = addToolWindow({ id: this.id, type:'spell', spell: spellObj, parameterMappings:{} });
-          }
-          // Build parameterMappings from UI inputs (static values only)
-          const mappings={};
+          const spellObj = {
+            _id: this.collection.spellId,
+            slug: this.collection.spellId,
+            name: this.collection.name || 'Spell',
+            steps: stepsArr,
+            exposedInputs: Array.isArray(toolDef?.exposedInputs) ? toolDef.exposedInputs : []
+          };
+          const model = addToolWindow({ id: this.id, type:'spell', spell: spellObj });
+          // merge parameter mappings after
+          model.parameterMappings = model.parameterMappings || {};
+          const mappings = model.parameterMappings;
           paramsWrap.querySelectorAll('.parameter-input input').forEach(inp=>{
-             mappings[inp.name]={ type:'static', value: inp.type==='number'? Number(inp.value): inp.value };
+            mappings[inp.name]={ type:'static', value: inp.type==='number'? Number(inp.value): inp.value };
           });
-          model.parameterMappings = mappings;
-          // Persist
           (await import('../state.js')).persistState();
 
           // --- Reuse central spell execution flow ---

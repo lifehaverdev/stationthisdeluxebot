@@ -38,3 +38,6 @@ Introduce server-side persisted *Workspaces* that can be created, saved, loaded,
 - Auth middleware for protected endpoints.
 - Existing sandbox state serialization logic.
 - Rate-limit & storage quota utilities (for anonymous users).
+
+## Implementation Log
+- 2025-09-04: WorkspaceDB created with CRUD, internal & external API routers mounted.

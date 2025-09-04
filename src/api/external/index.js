@@ -17,6 +17,7 @@ const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/
 const { createPointsApi } = require('./economy');
 const createSpellsApi = require('./spells');
 const createCookApiRouter = require('./cookApi');
+const createWorkspacesApiRouter = require('./workspacesApi');
 
 
 /**
@@ -380,6 +381,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Generation Execution API router mounted at /api/v1/generation/. (Dual Auth)');
   } else {
     logger.warn('External Generation Execution API router not mounted due to missing dependencies.');
+  }
+
+  // Mount Workspaces API (public GET, auth POST handled inside router)
+  const workspacesRouter = createWorkspacesApiRouter(dependencies);
+  if (workspacesRouter) {
+    externalApiRouter.use('/', workspacesRouter);
+    logger.info('External Workspaces API router mounted (GET public, POST auth via internal proxy).');
+  } else {
+    logger.warn('External Workspaces API router not mounted due to missing dependencies.');
   }
 
   logger.info('External API router initialized.');
