@@ -34,6 +34,7 @@ import './onboarding/onboarding.js';
 import CookMenuModal from './components/CookMenuModal.js';
 import './components/ReauthModal.js';
 import { saveWorkspace, loadWorkspace } from './workspaces.js';
+import initWorkspaceTabs from './components/WorkspaceTabs.js';
 
 // Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
 (function interceptUnauthorized() {
@@ -263,28 +264,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     initCanvas();
 
     // --- Workspace Save/Load Buttons ---
-    const wsBar = document.createElement('div');
-    wsBar.className = 'workspace-bar';
-    wsBar.style.position = 'absolute';
-    wsBar.style.top = '8px';
-    wsBar.style.left = '8px';
-    wsBar.style.zIndex = 1000;
-    wsBar.innerHTML = `
-      <button title="Save Workspace" class="ws-save-btn" style="margin-right:4px;">💾</button>
-      <button title="Load Workspace" class="ws-load-btn">📂</button>`;
-    // Ensure canvas is positioning context
-    if (getComputedStyle(canvas).position === 'static') {
-        canvas.style.position = 'relative';
+    // Workspace Tabs bar under header
+    const headerEl = document.querySelector('.sandbox-header');
+    let suite;
+    if(headerEl){
+       suite=document.createElement('div');
+       suite.className='workspace-suite';
+       headerEl.parentNode.insertBefore(suite, headerEl.nextSibling);
+       initWorkspaceTabs(suite);
     }
-    canvas.appendChild(wsBar);
 
-    wsBar.querySelector('.ws-save-btn').addEventListener('click', () => saveWorkspace());
-    wsBar.querySelector('.ws-load-btn').addEventListener('click', () => {
-      const slug = prompt('Enter workspace ID / URL:', '');
-      if (!slug) return;
-      const id = slug.includes('/') ? slug.split(/workspace=|\//).pop() : slug;
-      loadWorkspace(id.trim());
-    });
+    // Save/Load handled inside WorkspaceTabs component
 
     // Initialize sidebar in collapsed state
     const sidebar = document.getElementById('sidebar');

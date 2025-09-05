@@ -1,5 +1,7 @@
 /* Feature Section */
-.features-grid {
+/* shared horizontal scroller */
+.features-grid,
+.reviews-scroller {
   display: flex;
   gap: var(--space-6);
   overflow-x: auto;
@@ -8,32 +10,37 @@
   
   /* A more subtle scrollbar */
   scrollbar-width: thin;
-  scrollbar-color: var(--color-mist) transparent;
+  scrollbar-color: #999 transparent;
 }
-.features-grid::-webkit-scrollbar { height: 8px; }
-.features-grid::-webkit-scrollbar-track { background: transparent; }
-.features-grid::-webkit-scrollbar-thumb { background-color: var(--color-mist); border-radius: 10px; }
+.features-grid::-webkit-scrollbar,
+.reviews-scroller::-webkit-scrollbar { height: 8px; }
+.features-grid::-webkit-scrollbar-track,
+.reviews-scroller::-webkit-scrollbar-track { background: transparent; }
+.features-grid::-webkit-scrollbar-thumb,
+.reviews-scroller::-webkit-scrollbar-thumb { background-color: #999; border-radius: 10px; }
 
 /* On larger screens, we can remove the media queries as flexbox handles it */
 /* @media (min-width: 768px) { ... } */
 /* @media (min-width: 1024px) { ... } */
 
 .feature-tile {
-  flex: 0 0 80%; /* On mobile, a tile takes up 80% of the container width */
-  background-color: var(--color-teal);
-  color: var(--color-white);
+  flex: 0 0 80%;
+  background-color: rgba(255,255,255,0.6);
+  color: #000;
   padding: var(--space-6);
+  border: 2px solid #000;
   border-radius: 12px;
   text-align: left;
   min-height: 200px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  transition: transform 0.2s ease-in-out;
+  justify-content: space-between; /* title top, desc bottom */
+  transition: transform 0.2s ease-in-out, background-color 0.3s ease;
 }
 
 .feature-tile:hover {
   transform: translateY(-5px);
+  background-color: rgba(255,255,255,0.85);
 }
 
 @media (min-width: 768px) {
@@ -48,10 +55,11 @@
 }
 
 .feature-tile h4 {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 1.25em;
   margin: 0 0 var(--space-2) 0;
   color: inherit;
+  text-transform: lowercase;
 }
 
 .feature-tile p {
@@ -61,9 +69,4 @@
   opacity: 0.8;
 }
 
-/* Assigning different background colors from our theme */
-.feature-tile:nth-child(5n + 1) { background-color: var(--color-teal); }
-.feature-tile:nth-child(5n + 2) { background-color: var(--color-coral-glow); }
-.feature-tile:nth-child(5n + 3) { background-color: var(--color-pink); color: var(--color-steel-bg-dark); }
-.feature-tile:nth-child(5n + 4) { background-color: var(--color-mist); color: var(--color-steel-bg-dark); }
-.feature-tile:nth-child(5n + 5) { background-color: #778899; /* A slate gray as a new accent */ } 
+/* remove old color cycle */ 

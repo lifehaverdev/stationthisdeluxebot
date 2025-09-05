@@ -251,4 +251,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Update event listeners or login flows to use these helpers
   // ...
+
+  /* ============================================================
+     Auto-scroll & Shuffle for “Available Tools” feature tiles
+     ============================================================ */
+  const featuresContainer = document.getElementById('features-container');
+
+  if (featuresContainer) {
+    // 1. Filter out unwanted tools
+    let tiles = Array.from(featuresContainer.querySelectorAll('.feature-tile'));
+    tiles = tiles.filter(tile => {
+      const title = tile.querySelector('h4')?.textContent || '';
+      if (title.includes('Static Image')) return false;
+      if (/_COOK|_API/i.test(title)) return false;
+      return true;
+    });
+
+    // 2. Shuffle tiles (Fisher–Yates)
+    for (let i = tiles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+
+    // 3. Re-attach in new order
+    featuresContainer.innerHTML = '';
+    tiles.forEach(t => featuresContainer.appendChild(t));
+
+    // 4. Continuous bi-directional auto-scroll
+    let dir = 1; // 1 => right, -1 => left
+    const SPEED = 0.5; // px per frame
+
+    function autoScroll() {
+      const max = featuresContainer.scrollWidth - featuresContainer.clientWidth;
+      // Reverse at edges
+      if (featuresContainer.scrollLeft >= max) dir = -1;
+      else if (featuresContainer.scrollLeft <= 0) dir = 1;
+
+      featuresContainer.scrollLeft += SPEED * dir;
+      requestAnimationFrame(autoScroll);
+    }
+
+    // Kick off after slight delay to ensure layout ready
+    setTimeout(() => requestAnimationFrame(autoScroll), 300);
+  }
+
+  /* ---------------- Reviews auto-scroll ---------------- */
+  const reviewsContainer = document.getElementById('reviews-container');
+  if (reviewsContainer) {
+    let dirR = 1;
+    const SPEED_R = 0.4;
+
+    function autoScrollReviews() {
+      const max = reviewsContainer.scrollWidth - reviewsContainer.clientWidth;
+      if (reviewsContainer.scrollLeft >= max) dirR = -1;
+      else if (reviewsContainer.scrollLeft <= 0) dirR = 1;
+      reviewsContainer.scrollLeft += SPEED_R * dirR;
+      requestAnimationFrame(autoScrollReviews);
+    }
+    setTimeout(() => requestAnimationFrame(autoScrollReviews), 500);
+  }
 }); 

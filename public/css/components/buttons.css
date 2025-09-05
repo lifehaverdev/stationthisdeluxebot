@@ -1,9 +1,15 @@
 /* Call to Action Section */
 .cta-panel {
+  margin-top: -8vh;               /* pull closer to hero */
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: var(--space-4);
+  padding: 0;                    /* no frosted backdrop */
+}
+
+/***** CTA Panel *****/
+.cta-panel {
+  margin-bottom: 12vh;          /* extra spacing after CTA */
 }
 
 /* Buttons */
@@ -43,4 +49,53 @@
 .button-small {
   padding: 0.5rem 1rem;
   font-size: 0.8em;
+}
+
+/***** CTA Button *****/
+.btn-cta {
+  position: relative;
+  font-family: 'BodyFont', var(--font-sans);
+  font-weight: 600;
+  font-size: clamp(20px, 3vw, 28px); /* larger */
+  letter-spacing: 0.03em;
+  color: var(--color-white);
+  padding: var(--space-4) var(--space-12);
+  border: none;
+  border-radius: 999px;          /* pill */
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  box-shadow: 0 0 12px rgba(255,244,230,0.3), 0 0 24px rgba(255,244,230,0.2); /* warm egg white glow */
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.3s ease;
+  text-shadow:
+      1px 1px 1px rgba(0,0,0,0.45),  /* inner shadow bottom-right */
+     -1px -1px 1px rgba(255,255,255,0.6); /* highlight top-left */
+}
+
+/* moving reflective sheen */
+.btn-cta::after {
+  content: "";
+  position: absolute;
+  top: -120%;
+  left: -120%;
+  width: 240%;
+  height: 240%;
+  background: linear-gradient(120deg, transparent 45%, rgba(255,255,255,0.8) 50%, transparent 55%);
+  transform: rotate(25deg);
+  opacity: 0;
+  animation: sheenMove 1.5s ease-in-out infinite;
+}
+
+.btn-cta:hover {
+  transform: scale(1.05);
+}
+
+@keyframes sheenMove {
+  0%   { opacity: 0;   transform: translate(-100%, -100%) rotate(25deg); }
+  15%  { opacity: 0.7; }
+  50%  { opacity: 0.4; }
+  85%  { opacity: 0; }
+  100% { opacity: 0;   transform: translate(100%, 100%) rotate(25deg); }
 } 

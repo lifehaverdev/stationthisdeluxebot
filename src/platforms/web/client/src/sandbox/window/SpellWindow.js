@@ -21,6 +21,26 @@ export default class SpellWindow extends ToolWindow {
     this.isSpell = true;
     this.spell = spell;
 
+    // Lazy-load full metadata if exposedInputs missing (e.g., restored from slim snapshot)
+    if (!this.spell.exposedInputs) {
+      (async () => {
+        try {
+          const id = this.spell._id || this.spell.slug;
+          if (!id) return;
+          const res = await fetch(`/api/v1/spells/registry/${encodeURIComponent(id)}`);
+          if (!res.ok) return;
+          const full = await res.json();
+          // merge fields but keep original _id/slug
+          Object.assign(this.spell, full);
+          // Rerender inputs section
+          this.body.innerHTML = '';
+          this.renderBody();
+        } catch (e) {
+          console.warn('[SpellWindow] metadata fetch failed', e);
+        }
+      })();
+    }
+
     // enable drag after mount
     setupDragging(this, this.header);
 

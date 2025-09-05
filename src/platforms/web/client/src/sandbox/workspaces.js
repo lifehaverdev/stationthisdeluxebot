@@ -90,16 +90,19 @@ export async function loadWorkspace(slug) {
   try {
     const res = await fetch(`/api/v1/workspaces/${encodeURIComponent(slug)}`);
     if (!res.ok) throw new Error('Load failed');
-    const doc = await res.json();
-    const { snapshot } = doc;
+    const { snapshot } = await res.json();
     if (!snapshot) throw new Error('Invalid snapshot');
-    const stateMod = await import('./state.js');
-    pushHistory();
-    stateMod.connections = snapshot.connections || [];
-    stateMod.activeToolWindows = snapshot.toolWindows || [];
-    persistState();
-    // Force full rerender
-    window.location.href = `${window.location.pathname}?workspace=${slug}`;
+
+    // Write snapshot directly to localStorage using same keys as persistState
+    const CONNECTIONS_KEY = 'sandbox_connections';
+    const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(snapshot.connections || []));
+    localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(snapshot.toolWindows || []));
+
+    // Reload with workspace param for shareability
+    const url = new URL(window.location.href);
+    url.searchParams.set('workspace', slug);
+    window.location.href = url.toString();
   } catch (e) {
     console.error('[loadWorkspace] error', e);
     alert('Failed to load workspace');

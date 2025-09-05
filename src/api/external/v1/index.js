@@ -13,6 +13,7 @@ const apiModules = {
   tools: { path: './tools', auth: 'none' },
   users: { path: './users', auth: 'userOrApiKey' },
   webhooks: { path: './webhooks', auth: 'none' },
+  datasets: { path: '../datasetsApi', auth: 'userOrApiKey' },
 };
 
 function initializeV1Api(dependencies) {

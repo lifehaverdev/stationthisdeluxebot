@@ -1,18 +1,36 @@
 /* Hero Section */
 .hero {
   text-align: center;
-  padding: 128px var(--space-8);
+  display: flex;               /* center content vertically */
+  flex-direction: column;
+  justify-content: center;
+  padding: 20vh var(--space-8); /* mobile-first: tall hero */
+  min-height: 60vh;            /* ensure presence on short screens */
+}
+
+/* Desktop adjustments */
+@media (min-width: 768px) {
+  .hero {
+    padding: 12vh var(--space-12);
+    min-height: 40vh;          /* shorter hero on wide screens */
+  }
 }
 
 .hero h1 {
-  font-size: 4em;
+  font-size: clamp(36px, 8vw, 66px); /* scales with viewport, caps at ~50pt */
   color: var(--color-white);
   text-shadow: 0 2px 8px rgba(0,0,0,0.2);
   margin: 0;
 }
 
+@media (min-width: 768px) {
+  .hero h1 {
+    font-size: clamp(48px, 6vw, 66px); /* slightly larger floor on desktop */
+  }
+}
+
 .hero h3 {
-  font-size: 1.5em;
-  color: var(--color-mist);
-  margin-top: var(--space-2);
+  font-size: 1.2em;
+  color: #666;
+  margin-top: calc(var(--space-2) / 2);
 } 

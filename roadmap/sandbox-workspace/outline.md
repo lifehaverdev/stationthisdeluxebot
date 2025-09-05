@@ -41,3 +41,9 @@ Introduce server-side persisted *Workspaces* that can be created, saved, loaded,
 
 ## Implementation Log
 - 2025-09-04: WorkspaceDB created with CRUD, internal & external API routers mounted.
+- 2025-09-04: Front-end Save/Load buttons + WorkspaceTabs component with auto-save, slim snapshot, CSS component `workspaceSuite`. Basic multi-workspace switching working.
+- 2025-09-05: Removed undo/redo history from `state.js`; `pushHistory` now persists immediately, `undo/redo` no-op. `removeToolWindow` now calls `persistState` to prevent ghost windows. Verified via console:
+  * Created three demo workspaces (img, txt, audio) -> saved
+  * Reloaded page as guest with `?workspace=` param for each slug; canvases loaded correctly
+  * Switched tabs; observed `sandbox_connections` and `sandbox_tool_windows` keys update per tab, no history pollution
+  * Removed windows; ensured they did not reappear after reload.

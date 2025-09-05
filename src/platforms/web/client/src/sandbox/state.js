@@ -131,73 +131,22 @@ function loadState() {
     }
 }
 
-// --- Undo/Redo History Stack ---
-const historyStack = [];
-const redoStack = [];
-
-function cloneState() {
-    // Deep clone connections and tool windows, including spell definitions where present
-    return {
-        connections: JSON.parse(JSON.stringify(connections.map(({ element, ...rest }) => rest))),
-        activeToolWindows: JSON.parse(JSON.stringify(activeToolWindows.map(w => {
-            if (w.isSpell) {
-                return {
-                    id: w.id,
-                    spell: w.spell,
-                    isSpell: true,
-                    workspaceX: w.workspaceX,
-                    workspaceY: w.workspaceY,
-                    output: w.output || null,
-                    outputVersions: w.outputVersions || [],
-                    currentVersionIndex: w.currentVersionIndex ?? -1,
-                    parameterMappings: w.parameterMappings || {}
-                };
-            }
-            return {
-                id: w.id,
-                displayName: w.tool?.displayName || '',
-                toolId: w.tool?.toolId || '',
-                workspaceX: w.workspaceX,
-                workspaceY: w.workspaceY,
-                output: w.output || null,
-                outputVersions: w.outputVersions || [],
-                currentVersionIndex: w.currentVersionIndex ?? -1,
-                parameterMappings: w.parameterMappings || {}
-            };
-        })))
-    };
-}
+// --- Undo/Redo History Stack (REMOVED) ---
+// The sandbox previously maintained a 50-entry undo/redo history. This logic has been
+// removed to reduce memory usage and prevent snapshot bloat in localStorage. The
+// exported functions remain as thin stubs so that existing calls don’t break.
 
 export function pushHistory() {
-    // A new action clears the redo stack.
-    redoStack.length = 0;
-    historyStack.push(cloneState());
-    // Optional: Limit history size to prevent memory issues
-    if (historyStack.length > 50) {
-        historyStack.shift();
-    }
+    // With the history system removed, treat a history push as an immediate persist.
+    persistState();
 }
 
 export function undo() {
-    if (historyStack.length < 1) return;
-    // Push the current state onto the redo stack before we travel back in time.
-    redoStack.push(cloneState());
-    const prevState = historyStack.pop();
-    // Now, restore the previous state.
-    connections = prevState.connections;
-    activeToolWindows = prevState.activeToolWindows;
-    persistState();
+    console.warn('[state.js] undo() called but history has been removed. No-op.');
 }
 
 export function redo() {
-    if (redoStack.length < 1) return;
-    // Push the current state back to history before we travel forward.
-    historyStack.push(cloneState());
-    const nextState = redoStack.pop();
-    // Now, restore the future state.
-    connections = nextState.connections;
-    activeToolWindows = nextState.activeToolWindows;
-    persistState();
+    console.warn('[state.js] redo() called but history has been removed. No-op.');
 }
 
 // Patch add/remove/clear to push history
@@ -243,8 +192,7 @@ export function initState() {
     selectedNodeIds.clear();
     loadState();
 
-    // Record a baseline snapshot so the first undo doesn’t wipe the canvas.
-    pushHistory();
+    // History system removed – no baseline snapshot required.
 }
 
 // State getters and setters
@@ -498,6 +446,10 @@ export function removeToolWindow(windowId) {
     if (windowEl) {
         windowEl.remove();
     }
+    // Persist immediately so closed windows don’t resurrect on reload.
+    try {
+        persistState();
+    } catch {}
 }
 
 export function setActiveConnection(connection) {

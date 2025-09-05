@@ -351,6 +351,16 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Points API router not mounted due to missing dependencies.');
   }
 
+  // Mount Datasets API (auth required)
+  const datasetsApi = require('./datasetsApi');
+  if (datasetsApi) {
+    const dsRouter = datasetsApi(dependencies);
+    if (dsRouter) {
+      externalApiRouter.use('/datasets', dualAuth, dsRouter);
+      logger.info('External Datasets API router mounted at /datasets.');
+    }
+  }
+
   // --- END public route ---
 
   // Mount the Spells API router (Protected by JWT or API key, with dualAuth for protected endpoints)

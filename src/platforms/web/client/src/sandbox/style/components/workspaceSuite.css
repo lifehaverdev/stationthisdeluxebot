@@ -1,0 +1,44 @@
+.workspace-suite {
+  position: fixed;
+  top: 70px; /* just below header */
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  background: none;
+  z-index: 1500;
+}
+
+.workspace-suite > * {
+  flex: 0 0 auto;
+}
+
+.workspace-suite .ws-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.workspace-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  margin-top: -25px;
+}
+
+.workspace-tab,
+.workspace-add {
+  padding: 5px 10px;
+  background: var(--color-steel-3, #cfcfcf);
+  border: none;
+  font-size: 18px;
+  clip-path: polygon(0 0,100% 0,100% 80%,90% 100%,10% 100%,0 80%);
+  cursor: pointer;
+}
+
+.workspace-tab.active {
+  background: var(--color-steel-1, #e8e8e8);
+}

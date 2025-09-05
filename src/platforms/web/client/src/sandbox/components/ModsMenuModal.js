@@ -270,7 +270,13 @@ export default class ModsMenuModal {
     }
 
     // Decide mainContent
-    let mainContent = rootTab==='browse' ? browseContent : mainContent; // mainContent from earlier train path
+    let mainContent = '';
+    if (rootTab === 'train') {
+      // This part of the code was not provided in the original file,
+      // so we'll just set mainContent to an empty string for now.
+      // In a real scenario, you would build the train dashboard content here.
+      mainContent = '<div class="train-dashboard-placeholder">Train Dashboard Placeholder</div>';
+    }
 
     // base modal html
     this.modalElement.innerHTML = `
@@ -282,11 +288,43 @@ export default class ModsMenuModal {
 
     const contentEl = this.modalElement.querySelector('.mods-content');
     if(rootTab==='browse') {
-      // reuse existing rendering logic by temporarily storing, call old browse renderer
-      // to keep diff minimal, we simply call original renderBrowse if existed, else keep placeholder
-      contentEl.innerHTML = '<p>Browse view loading…</p>';
+      contentEl.innerHTML = browseContent;
     } else {
       contentEl.innerHTML = mainContent;
+    }
+
+    // Attach category btn events if browse
+    if(rootTab==='browse') {
+      this.modalElement.querySelectorAll('.cat-btn').forEach(btn => {
+        btn.onclick = () => {
+          const cat = btn.getAttribute('data-cat');
+          if (cat === 'lora') {
+            this.setState({ view: 'category', currentCategory: 'lora', currentLoraCategory: null, selectedTags: [], extraTags: [], models: [] });
+            this.fetchLoraCategories();
+            this.fetchModels('lora');
+            return;
+          }
+          this.setState({ view: 'category', currentCategory: cat, currentLoraCategory: null });
+          this.fetchModels(cat);
+        };
+      });
+      this.modalElement.querySelectorAll('.lora-sub-btn').forEach(btn => {
+        btn.onclick = () => {
+          const sub = btn.getAttribute('data-loracat');
+          this.setState({ view: 'category', currentLoraCategory: sub });
+          this.fetchModels('lora', sub);
+        };
+      });
+      // Extra tag click
+      this.modalElement.querySelectorAll('.extra-tag-btn').forEach(btn=>{
+        btn.onclick = () => {
+          const tag = btn.getAttribute('data-tag').toLowerCase();
+          const newSelected = [...this.state.selectedTags.map(t=>t.toLowerCase()), tag];
+          const filtered = this.applyTagFilter(this.state.models, newSelected);
+          const remaining = this.computeExtraTags(filtered, newSelected);
+          this.setState({ selectedTags: newSelected, models: filtered, extraTags: remaining });
+        };
+      });
     }
 
     // Tab button events
