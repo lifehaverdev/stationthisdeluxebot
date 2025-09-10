@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const platformId = jwtSub || anonId;
       try {
-        const res = await fetch('/internal/v1/data/users/find-or-create', {
+        const res = await fetch('/api/v1/auth/ensure-user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

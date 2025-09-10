@@ -25,6 +25,33 @@ function createAuthApi(dependencies) {
   const router = express.Router();
 
   /**
+   * POST /ensure-user
+   * Public endpoint for web clients to obtain/ensure a UserCore record.
+   * Expects { platform: 'web', platformId: 'uuid-or-jwt-sub', platformContext?: {...} }
+   * Returns { masterAccountId, isNewUser }
+   */
+  router.post('/ensure-user', async (req, res) => {
+    try {
+      const { platform, platformId, platformContext = {} } = req.body || {};
+      if (!platform || !platformId) {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'platform and platformId are required.' } });
+      }
+
+      // Proxy to internal find-or-create using service credentials
+      const resp = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+        platform,
+        platformId,
+        platformContext,
+      });
+      return res.status(resp.status || 200).json({ masterAccountId: resp.data.masterAccountId, isNewUser: resp.data.isNewUser });
+    } catch (err) {
+      const status = err.response ? err.response.status : 500;
+      const msg = err.response?.data?.error?.message || err.message;
+      res.status(status).json({ error: { code: 'USER_CORE_ERROR', message: msg } });
+    }
+  });
+
+  /**
    * POST /web3/nonce
    * Generates a nonce for the client to sign.
    * Expects { address: "0x..." } in the body.

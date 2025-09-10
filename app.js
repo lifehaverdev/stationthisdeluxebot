@@ -214,6 +214,7 @@ async function startApp() {
 
     // --- Internal API Auth Middleware (defined within startApp to access logger if needed, and be close to its usage) ---
     const internalApiAuthMiddleware = (req, res, next) => {
+      // No public bypasses – all internal routes require X-Internal-Client-Key
       const requestId = uuidv4(); // Generate request ID for error logging
       // Ensure logger is available, fallback to console if services.logger is not yet initialized or passed
       const currentLogger = services && services.logger ? services.logger : logger; // Use app logger as fallback
