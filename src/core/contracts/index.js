@@ -11,6 +11,10 @@ const contracts = {
       '11155111': FOUNDATION_ADDRESSES['11155111'] || null,
       '8453': FOUNDATION_ADDRESSES['8453'] || null,
       '42161': FOUNDATION_ADDRESSES['42161'] || null,
+      mainnet: FOUNDATION_ADDRESSES['1'] || null,
+      sepolia: FOUNDATION_ADDRESSES['11155111'] || null,
+      base: FOUNDATION_ADDRESSES['8453'] || null,
+      arbitrum: FOUNDATION_ADDRESSES['42161'] || null,
     },
   },
   charteredFund: {
