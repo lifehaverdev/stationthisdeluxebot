@@ -17,6 +17,7 @@ const csrfExcluded = [
   '/api/v1/auth/web3/verify',
   '/api/v1/auth/password',
   '/api/v1/auth/apikey',
+  '/api/v1/auth/ensure-user',
   '/api/v1/auth/refresh',
   '/api/v1/auth/register', // Add registration if/when implemented
   '/internal/',// Add more as needed
