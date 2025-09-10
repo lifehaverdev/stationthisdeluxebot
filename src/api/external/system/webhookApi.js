@@ -67,59 +67,67 @@ function createWebhookApi(dependencies) {
     ethereumService: ethereumServices[cid] || legacyEth,
   });
 
-  const alchemySigningKey = process.env.ALCHEMY_SIGNING_KEY;
-  if (!alchemySigningKey) {
-    logger.warn('[WebhookAPI] ALCHEMY_SIGNING_KEY not set. The /alchemy endpoint will be disabled.');
-  } else {
-    // Route now includes optional chainId parameter -> /webhook/alchemy/:chainId?
-    webhookRouter.post('/alchemy/:chainId?',
-      (req, res, next) => {
-        const logger = dependencies.logger || console;
-        logger.info('[AlchemyWebhook] Incoming request', {
-          headers: req.headers,
-          method: req.method,
-          url: req.originalUrl
-        });
-        next();
-      },
-      (req, res, next) => {
-        const logger = dependencies.logger || console;
-        logger.info('[AlchemyWebhook] Before signature validation', {
-          signature: req.header('X-Alchemy-Signature'),
-          hasRawBody: !!req.rawBody,
-          rawBodyLength: req.rawBody ? req.rawBody.length : 0
-        });
-        next();
-      },
-      validateAlchemySignature(alchemySigningKey),
-      async (req, res) => {
-        const logger = dependencies.logger || console;
-        logger.info('[AlchemyWebhook] Handler start', {
-          body: req.body,
-          rawBody: req.rawBody ? req.rawBody.toString('hex').slice(0, 64) + '...' : undefined
-        });
-        try {
-          const chainId = String(req.params.chainId || '1');
-          const { creditService } = getChainServices(chainId);
-          if (!creditService) {
-            logger.error('[AlchemyWebhook] CreditService not available');
-            throw new Error('CreditService not available');
-          }
-          const result = await creditService.handleEventWebhook(req.body);
-          logger.info('[AlchemyWebhook] Handler result', { chainId, result });
-          res.json(result);
-        } catch (error) {
-          logger.error('[AlchemyWebhook] Error processing webhook:', error);
-          res.status(500).json({
-            success: false,
-            message: 'Internal server error processing webhook',
-            detail: error.message
-          });
-        }
+  // Resolve signing key per chainId: ENV vars like ALCHEMY_SIGNING_KEY_1, fallback to ALCHEMY_SIGNING_KEY
+  const getSigningKey = (cid='1') => process.env[`ALCHEMY_SIGNING_KEY_${cid}`] || process.env.ALCHEMY_SIGNING_KEY;
+
+  // Always mount route; reject if no key for cid at runtime
+  webhookRouter.post('/alchemy/:chainId?',
+    (req, res, next) => {
+      const logger = dependencies.logger || console;
+      logger.info('[AlchemyWebhook] Incoming request', {
+        headers: req.headers,
+        method: req.method,
+        url: req.originalUrl
+      });
+      next();
+    },
+    (req, res, next) => {
+      const logger = dependencies.logger || console;
+      logger.info('[AlchemyWebhook] Before signature validation', {
+        signature: req.header('X-Alchemy-Signature'),
+        hasRawBody: !!req.rawBody,
+        rawBodyLength: req.rawBody ? req.rawBody.length : 0
+      });
+      next();
+    },
+    async (req, res, next) => {
+      const chainId = String(req.params.chainId || '1');
+      const signingKey = getSigningKey(chainId);
+      if (!signingKey) {
+        return res.status(403).json({ success:false, message:`No signing key configured for chain ${chainId}`});
       }
-    );
-    logger.info('[WebhookAPI] Alchemy webhook handler mounted at /alchemy/:chainId?');
-  }
+      // run signature validator
+      try {
+        validateAlchemySignature(signingKey)(req,res,next);
+      } catch(err){ return; }
+    },
+    async (req, res) => {
+      const logger = dependencies.logger || console;
+      logger.info('[AlchemyWebhook] Handler start', {
+        body: req.body,
+        rawBody: req.rawBody ? req.rawBody.toString('hex').slice(0, 64) + '...' : undefined
+      });
+      try {
+        const chainId = String(req.params.chainId || '1');
+        const { creditService } = getChainServices(chainId);
+        if (!creditService) {
+          logger.error('[AlchemyWebhook] CreditService not available');
+          throw new Error('CreditService not available');
+        }
+        const result = await creditService.handleEventWebhook(req.body);
+        logger.info('[AlchemyWebhook] Handler result', { chainId, result });
+        res.json(result);
+      } catch (error) {
+        logger.error('[AlchemyWebhook] Error processing webhook:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Internal server error processing webhook',
+          detail: error.message
+        });
+      }
+    }
+  );
+  logger.info('[WebhookAPI] Alchemy webhook handler mounted at /alchemy/:chainId?');
 
   logger.info('Webhook API router initialized.');
   return webhookRouter;
