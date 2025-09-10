@@ -41,6 +41,7 @@ function createPointsApi(dependencies) {
      * @route POST /api/external/points/quote
      * @description Provides a real-time quote for a deposit.
      * @access Private (JWT or API Key)
+     * @param {string} [mode=contribute] - Operation mode: 'contribute' for standard deposit flow (default) or 'donate' for irrevocable one-tx donation with boosted funding rate.
      */
     router.post('/quote', async (req, res, next) => {
         try {
@@ -80,7 +81,8 @@ function createPointsApi(dependencies) {
             const payload = {
                 ...req.body,
                 userId: req.user.id,
-                referralCode
+                referralCode,
+                mode: req.body.mode || 'contribute',
             };
             const response = await internalApiClient.post('/internal/v1/data/points/purchase', payload);
             res.json(response.data);

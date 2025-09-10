@@ -643,3 +643,35 @@ a:hover {
     animation: none;
     box-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
 } 
+
+/* ---- Sandbox Header Mobile Navigation ---- */
+.sandbox-menu-toggle {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #f5f5f5;
+  cursor: pointer;
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 640px) {
+  .sandbox-menu-toggle { display: block; margin-right: 1rem; }
+  .sandbox-header .main-nav { display: none; flex-direction: column; gap: 1rem; width:100%; }
+  .sandbox-header.is-open .main-nav { display: flex; margin-top: 1rem; }
+  .sandbox-header.is-open { flex-wrap: wrap; }
+}
+
+/* Wallet / account button */
+.account-web3-btn {
+  background: transparent;
+  border: 1px solid #444;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-family: var(--ff-sans);
+  font-size: 0.9rem;
+  color: #f5f5f5;
+  display: flex; align-items: center; gap: 0.4rem;
+  transition: background 0.2s, border-color 0.2s;
+}
+.account-web3-btn:hover { background: rgba(255,255,255,0.1); border-color: #666; }
+.account-web3-btn .wallet-icon { font-size: 1rem; } 

@@ -4,6 +4,13 @@
 // We now nest configs by `chainId` (string).  Helper functions preserve the
 // original API surface while optionally accepting a `chainId` argument so that
 // existing callers remain functional (they default to MAINNET_CHAIN_ID).
+//
+// New in Donate v1 — 2025-09-08:
+// • Each token may now specify `donationFundingRate`, the boosted rate applied
+//   when users choose the one-tx *donate* path (see credit-donate ADR).
+// • Helper `getDonationFundingRate(address, chainId)` added. It looks up the
+//   token’s `donationFundingRate` and falls back to `fundingRate` when the
+//   boosted value is not present.
 
 const MAINNET_CHAIN_ID = '1';
 const SEPOLIA_CHAIN_ID = '11155111';
@@ -13,36 +20,36 @@ const SEPOLIA_CHAIN_ID = '11155111';
 const TOKEN_CONFIG = {
   [MAINNET_CHAIN_ID]: {
     '0x0000000000000000000000000000000000000000': { // ETH
-      symbol: 'ETH', decimals: 18, fundingRate: 0.7, iconUrl: '/images/sandbox/components/eth.png',
+      symbol: 'ETH', decimals: 18, fundingRate: 0.85, donationFundingRate: 0.9, iconUrl: '/images/sandbox/components/eth.png',
     },
     '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { // USDC
-      symbol: 'USDC', decimals: 6, fundingRate: 0.7, iconUrl: '/images/sandbox/components/usdc.png',
+      symbol: 'USDC', decimals: 6, fundingRate: 0.85, donationFundingRate: 0.9, iconUrl: '/images/sandbox/components/usdc.png',
     },
     '0x0000000000c5dc95539589fbD24BE07c6C14eCa4': { // CULT
-      symbol: 'CULT', decimals: 18, fundingRate: 0.95, iconUrl: '/images/sandbox/components/cult.png',
+      symbol: 'CULT', decimals: 18, fundingRate: 0.93, donationFundingRate: 0.95, iconUrl: '/images/sandbox/components/cult.png',
     },
     '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': { // MS2
-      symbol: 'MS2', decimals: 9, fundingRate: 0.95, iconUrl: '/images/sandbox/components/ms2.png',
+      symbol: 'MS2', decimals: 9, fundingRate: 0.93, donationFundingRate: 0.95, iconUrl: '/images/sandbox/components/ms2.png',
     },
     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { // WETH
-      symbol: 'WETH', decimals: 18, fundingRate: 0.7, iconUrl: '/images/sandbox/components/weth.png',
+      symbol: 'WETH', decimals: 18, fundingRate: 0.85, donationFundingRate: 0.9, iconUrl: '/images/sandbox/components/weth.png',
     },
     '0xdac17f958d2ee523a2206206994597c13d831ec7': { // USDT
-      symbol: 'USDT', decimals: 6, fundingRate: 0.7, iconUrl: '/images/sandbox/components/usdt.png',
+      symbol: 'USDT', decimals: 6, fundingRate: 0.85, donationFundingRate: 0.9, iconUrl: '/images/sandbox/components/usdt.png',
     },
     '0x6982508145454ce325ddbe47a25d4ec3d2311933': { // PEPE
-      symbol: 'PEPE', decimals: 18, fundingRate: 0.6, iconUrl: '/images/sandbox/components/pepe.png',
+      symbol: 'PEPE', decimals: 18, fundingRate: 0.75, donationFundingRate: 0.85, iconUrl: '/images/sandbox/components/pepe.png',
     },
     '0xaaeE1A9723aaDB7afA2810263653A34bA2C21C7a': { // MOG
-      symbol: 'MOG', decimals: 18, fundingRate: 0.6, iconUrl: '/images/sandbox/components/mog.png',
+      symbol: 'MOG', decimals: 18, fundingRate: 0.75, donationFundingRate: 0.85, iconUrl: '/images/sandbox/components/mog.png',
     },
     '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': { // SPX6900
-      symbol: 'SPX6900', decimals: 18, fundingRate: 0.6, iconUrl: '/images/sandbox/components/spx6900.png',
+      symbol: 'SPX6900', decimals: 18, fundingRate: 0.7, donationFundingRate: 0.85, iconUrl: '/images/sandbox/components/spx6900.png',
     },
   },
   [SEPOLIA_CHAIN_ID]: {
     // ETH (Sepolia ether uses the zero-address same as mainnet)
-    '0x0000000000000000000000000000000000000000': { symbol: 'ETH', decimals: 18, fundingRate: 0.7, iconUrl: '/images/sandbox/components/eth.png' },
+    '0x0000000000000000000000000000000000000000': { symbol: 'ETH', decimals: 18, fundingRate: 0.7, donationFundingRate: 0.8, iconUrl: '/images/sandbox/components/eth.png' },
   },
 };
 
@@ -104,6 +111,14 @@ function getFundingRate(address, chainId = MAINNET_CHAIN_ID) {
   return cfg ? cfg.fundingRate : DEFAULT_FUNDING_RATE;
 }
 
+function getDonationFundingRate(address, chainId = MAINNET_CHAIN_ID) {
+  const cfg = getTokenConfig(address, chainId);
+  if (!cfg) return DEFAULT_FUNDING_RATE;
+  return (typeof cfg.donationFundingRate === 'number')
+    ? cfg.donationFundingRate
+    : Math.min(1.05, cfg.fundingRate * 1.05); // default 5% boost capped at 1.05
+}
+
 function getDecimals(address, chainId = MAINNET_CHAIN_ID) {
   const cfg = getTokenConfig(address, chainId);
   return cfg ? cfg.decimals : 18;
@@ -138,6 +153,7 @@ module.exports = {
   // Helpers
   getTokenConfig,
   getFundingRate,
+  getDonationFundingRate,
   getDecimals,
   getChainTokenConfig,
   getChainNftConfig,

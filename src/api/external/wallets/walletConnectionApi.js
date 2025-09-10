@@ -11,11 +11,11 @@ const logger = createLogger('WalletConnectionApi');
  */
 function createWalletConnectionApiRouter(dependencies) {
   const router = express.Router();
-  const { walletLinkingService } = dependencies;
+  const internalApiClient = dependencies.internalApiClient || (dependencies.internal && dependencies.internal.client);
 
-  if (!walletLinkingService) {
-    logger.error('[WalletConnectionApi] Critical: WalletLinkingService not provided. This API will be disabled.');
-    return router; // Return an empty but valid router
+  if (!internalApiClient) {
+    logger.error('[WalletConnectionApi] internalApiClient dependency missing.');
+    return router;
   }
 
   /**
@@ -24,18 +24,30 @@ function createWalletConnectionApiRouter(dependencies) {
    */
   router.post('/initiate', async (req, res) => {
     try {
-      const { requestId, magicAmountWei, tokenAddress, expiresAt } = await walletLinkingService.initiateLinking();
-      
+      // Require authentication (dualAuth applied at parent router) to get masterAccountId
+      const masterAccountId = req.user?.masterAccountId;
+      if (!masterAccountId) {
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User authentication required.' } });
+      }
+
+      const { tokenAddress = '0x0000000000000000000000000000000000000000', expiresInSeconds } = req.body || {};
+
+      // Proxy to internal API
+      const response = await internalApiClient.post(`/internal/v1/data/users/${masterAccountId}/wallets/requests/magic-amount`, { tokenAddress, expiresInSeconds });
+
+      const { requestId, magicAmountWei, expiresAt } = response.data;
+
       res.status(200).json({
         requestId,
-        magicAmount: ethers.formatEther(magicAmountWei), // Convert to ETH for user-friendliness
+        magicAmount: ethers.formatEther(magicAmountWei),
         tokenAddress,
         expiresAt,
         depositToAddress: process.env.CREDIT_VAULT_CONTRACT_ADDRESS,
       });
     } catch (error) {
-      logger.error('[WalletConnectionApi] /initiate failed:', error);
-      res.status(500).json({ error: { code: 'INITIATION_FAILED', message: 'Failed to initiate wallet connection process.' } });
+      logger.error('[WalletConnectionApi] /initiate proxy failed:', error.response?.data || error);
+      const status = error.response?.status || 500;
+      res.status(status).json({ error: { code: 'INITIATION_FAILED', message: 'Failed to initiate wallet connection process.' } });
     }
   });
 

@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const foundationAbi = require('../../../core/contracts/abis/foundation.json');
 const { contracts } = require('../../../core/contracts');
-const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
+const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -95,7 +95,14 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/quote', async (req, res, next) => {
         try {
-            const { type, assetAddress, amount, tokenId, userWalletAddress } = req.body;
+            const { type, assetAddress, amount, tokenId, userWalletAddress, mode = 'contribute' } = req.body;
+
+            // --- Donate-mode validation & funding-rate helper -----------------
+            const SUPPORTED_MODES = ['contribute', 'donate'];
+            if (!SUPPORTED_MODES.includes(mode)) {
+                return res.status(400).json({ message: `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.` });
+            }
+
             console.log('[pointsApi:/quote] Incoming request:', req.body);
             if (!type || !assetAddress || (type === 'token' && !amount)) {
                 return res.status(400).json({ message: 'Missing required fields.' });
@@ -106,7 +113,7 @@ module.exports = function pointsApi(dependencies) {
             let userReceivesUsd, pointsCredited;
 
             if (type === 'token') {
-                fundingRate = getFundingRate(assetAddress);
+                fundingRate = (mode === 'donate') ? getDonationFundingRate(assetAddress) : getFundingRate(assetAddress);
                 decimals = getDecimals(assetAddress);
                 // Fix: Use floating point division for assetAmount
                 assetAmount = Number(amount) / 10 ** decimals;
@@ -198,6 +205,7 @@ module.exports = function pointsApi(dependencies) {
             const quoteId = 'qid_' + crypto.randomBytes(8).toString('hex');
 
             res.json({
+                mode,
                 pointsCredited,
                 asset: { symbol, amount: assetAmount.toString() },
                 usdValue: { gross: grossUsd, netAfterFundingRate },
@@ -228,7 +236,12 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/purchase', async (req, res, next) => {
         try {
-            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode } = req.body;
+            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode, mode = 'contribute' } = req.body;
+            const SUPPORTED_MODES = ['contribute', 'donate'];
+            if (!SUPPORTED_MODES.includes(mode)) {
+                logger.warn(`[pointsApi] /purchase unsupported mode '${mode}'. Allowed: ${SUPPORTED_MODES.join(', ')}`);
+                return res.status(400).json({ message: `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.` });
+            }
             logger.info(`[pointsApi] /purchase called with:`, req.body);
             // Debug: Log the full request body
             console.log('[pointsApi] /purchase received body:', req.body);
@@ -246,7 +259,8 @@ module.exports = function pointsApi(dependencies) {
 
             let approvalRequired = false;
             let approvalTx = null;
-            let depositTx = null;
+            let depositTx = null; // For contribute mode
+            let donationTx = null; // For donate mode
             const purchaseId = 'pid_' + crypto.randomBytes(8).toString('hex');
             const iface = new ethers.Interface(foundationAbi);
 
@@ -285,12 +299,26 @@ module.exports = function pointsApi(dependencies) {
                 if (assetAddress === '0x0000000000000000000000000000000000000000') {
                     // Native currency (ETH) deposit
                     logger.info(`[pointsApi] /purchase processing native currency (ETH) deposit for amount: ${amount}`);
-                    depositTx = {
-                        from: userWalletAddress,
-                        to: toAddress,
-                        value: amount, // Amount is already in wei
-                        data: '0x', // No data for native transfer
-                    };
+
+                    if (mode === 'donate') {
+                        // Include metadata & isNFT=false per ABI; also send ETH value
+                        const zeroMeta = '0x' + '0'.repeat(64);
+                        const dataEncoded = iface.encodeFunctionData('donate', [assetAddress, amount, zeroMeta, false]);
+                        donationTx = {
+                            from: userWalletAddress,
+                            to: toAddress,
+                            data: dataEncoded,
+                            value: amount,
+                        };
+                    } else {
+                        const dataEncoded = iface.encodeFunctionData('deposit', [assetAddress, amount]);
+                        depositTx = {
+                            from: userWalletAddress,
+                            to: toAddress,
+                            data: dataEncoded,
+                            value: amount,
+                        };
+                    }
                 } else {
                     // ERC20 token deposit
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
@@ -309,12 +337,23 @@ module.exports = function pointsApi(dependencies) {
                         logger.info(`[pointsApi] /purchase approval required for ${amount}. Approval tx:`, approvalTx);
                     }
 
-                    const depositData = iface.encodeFunctionData("deposit", [assetAddress, amount]);
-                    depositTx = {
-                        from: userWalletAddress,
-                        to: toAddress,
-                        data: depositData,
-                    };
+                    if (mode === 'donate') {
+                        // donate(address token,uint256 amount,bytes32 metadata,bool isNFT)
+                        const zeroMeta = '0x' + '0'.repeat(64);
+                        const dataEncoded = iface.encodeFunctionData('donate', [assetAddress, amount, zeroMeta, false]);
+                        donationTx = {
+                            from: userWalletAddress,
+                            to: toAddress,
+                            data: dataEncoded,
+                        };
+                    } else {
+                        const dataEncoded = iface.encodeFunctionData('deposit', [assetAddress, amount]);
+                        depositTx = {
+                            from: userWalletAddress,
+                            to: toAddress,
+                            data: dataEncoded,
+                        };
+                    }
                 }
             } else if (type === 'nft') {
                 const erc721Abi = ['function isApprovedForAll(address owner, address operator) view returns (bool)', 'function setApprovalForAll(address operator, bool approved)'];
@@ -333,24 +372,36 @@ module.exports = function pointsApi(dependencies) {
                     logger.info(`[pointsApi] /purchase NFT approval required. Approval tx:`, approvalTx);
                 }
 
-                const depositData = iface.encodeFunctionData("depositNFT", [assetAddress, tokenId]);
-                depositTx = {
+                const functionName = (mode === 'donate') ? 'donateNFT' : 'depositNFT';
+                const dataEncoded = iface.encodeFunctionData(functionName, [assetAddress, tokenId]);
+                const txObject = {
                     from: userWalletAddress,
                     to: toAddress,
-                    data: depositData,
+                    data: dataEncoded,
                 };
+                if (mode === 'donate') {
+                    donationTx = txObject;
+                } else {
+                    depositTx = txObject;
+                }
             } else {
                 logger.warn('[pointsApi] /purchase invalid type.');
                 return res.status(400).json({ message: 'Invalid type.' });
             }
 
             logger.info(`[pointsApi] /purchase returning tx data for purchaseId ${purchaseId}`);
-            res.json({
+            const responsePayload = {
                 approvalRequired,
                 approvalTx,
-                depositTx,
-                purchaseId
-            });
+                purchaseId,
+            };
+            if (mode === 'donate') {
+                responsePayload.donationTx = donationTx;
+            } else {
+                responsePayload.depositTx = depositTx;
+            }
+
+            res.json(responsePayload);
         } catch (error) {
             logger.error('[pointsApi] /purchase error:', error);
             next(error);

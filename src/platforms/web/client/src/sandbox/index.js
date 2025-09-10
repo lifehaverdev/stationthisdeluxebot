@@ -267,11 +267,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Workspace Tabs bar under header
     const headerEl = document.querySelector('.sandbox-header');
     let suite;
-    if(headerEl){
-       suite=document.createElement('div');
-       suite.className='workspace-suite';
-       headerEl.parentNode.insertBefore(suite, headerEl.nextSibling);
-       initWorkspaceTabs(suite);
+
+    function syncSuitePosition() {
+      const rect = headerEl.getBoundingClientRect();
+      document.documentElement.style.setProperty('--sandbox-header-bottom', `${rect.bottom}px`);
+
+      // Align suite's left edge with header inner content (padding-left)
+      const padLeft = parseFloat(getComputedStyle(headerEl).paddingLeft) || 0;
+      if (suite) {
+        suite.style.left = `${rect.left + padLeft}px`;
+      }
+    }
+
+    if (headerEl) {
+      // Create workspace-suite container once header exists
+      suite = document.createElement('div');
+      suite.className = 'workspace-suite';
+      headerEl.parentNode.insertBefore(suite, headerEl.nextSibling);
+      initWorkspaceTabs(suite);
+
+      /* ---------------- Mobile nav (hamburger) ---------------- */
+      const burger = document.createElement('button');
+      burger.className = 'sandbox-menu-toggle';
+      burger.setAttribute('aria-label','Toggle navigation');
+      burger.innerHTML = '☰';
+      headerEl.insertBefore(burger, headerEl.firstChild);
+
+      burger.addEventListener('click', ()=>{
+        headerEl.classList.toggle('is-open');
+        const expanded = headerEl.classList.contains('is-open');
+        burger.setAttribute('aria-expanded', expanded);
+      });
+
+      // Observe header size/position changes (fonts load, dynamic menu, orientation) 
+      const ro = new ResizeObserver(syncSuitePosition);
+      ro.observe(headerEl);
+
+      // Also keep in sync with full-window resizes
+      window.addEventListener('resize', syncSuitePosition);
+
+      // Initial run (after current frame so layout is settled)
+      requestAnimationFrame(syncSuitePosition);
     }
 
     // Save/Load handled inside WorkspaceTabs component
@@ -283,7 +319,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sidebar && sidebarToggle) {
         // Collapse the sidebar by default on page load
         sidebar.classList.add('collapsed');
-        sidebarToggle.textContent = '>';
+        sidebarToggle.textContent = '⚒︎';
 
         // Add click event listener to the toggle button
         sidebarToggle.addEventListener('click', () => {
@@ -291,9 +327,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Change the toggle button text based on the state
             if (sidebar.classList.contains('collapsed')) {
-                sidebarToggle.textContent = '>';
+                sidebarToggle.textContent = '⚒︎';
             } else {
-                sidebarToggle.textContent = '<';
+                sidebarToggle.textContent = '✕';
             }
         });
     }
@@ -364,11 +400,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const userMenu = document.querySelector('.user-menu');
+    let accountDropdownInstance;
     if (userMenu) {
-        // Clear existing content (e.g., 'Account' text)
         userMenu.innerHTML = '';
-        new AccountDropdown(userMenu);
+        accountDropdownInstance = new AccountDropdown(userMenu);
     }
+
+    // Refresh account info when re-auth modal succeeds
+    window.addEventListener('reauth-success', () => {
+        if (accountDropdownInstance) {
+            accountDropdownInstance.fetchDashboard?.();
+        } else if (userMenu) {
+            userMenu.innerHTML = '';
+            accountDropdownInstance = new AccountDropdown(userMenu);
+        }
+    });
 
     // After restoring tool windows/nodes on page load:
     renderAllConnections();
@@ -426,6 +472,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial check
     updateFAB();
+
+    // Provide global reload helper for WorkspaceTabs hydration
+    window.__reloadSandboxState = async () => {
+        // Remove all existing tool windows and connection lines
+        document.querySelectorAll('.tool-window, .connection-line').forEach(el => el.remove());
+
+        // Re-initialize state from localStorage
+        initState();
+
+        // Reload available tools so we can map toolIds to definitions
+        await initializeTools();
+
+        // Re-create windows and connections
+        getToolWindows().forEach(win => {
+            if (win.isSpell && win.spell) {
+                createSpellWindow(
+                    win.spell,
+                    { x: win.workspaceX, y: win.workspaceY },
+                    win.id,
+                    win.output,
+                    win.parameterMappings,
+                    win.outputVersions,
+                    win.currentVersionIndex
+                );
+                return;
+            }
+            if (win.tool) {
+                const tool = getAvailableTools().find(t => t.toolId === win.tool.toolId || t.displayName === win.tool.displayName);
+                if (tool) {
+                    createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+                }
+            }
+        });
+
+        renderAllConnections();
+    };
+
+    window.addEventListener('sandboxSnapshotUpdated', () => {
+        window.__reloadSandboxState();
+    });
 
     // Upload button in action-modal
     const uploadBtn = document.querySelector('.action-modal .upload-btn');

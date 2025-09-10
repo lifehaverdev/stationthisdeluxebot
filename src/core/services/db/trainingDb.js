@@ -38,6 +38,40 @@ class TrainingDB extends BaseDB {
     this.logger = logger || console;
   }
 
+  /**
+   * Return all training jobs owned by a given user / master account.
+   * Compatible with internal API expectation: findTrainingsByUser(masterAccountId)
+   */
+  async findTrainingsByUser(masterAccountId, options = {}) {
+    try {
+      const filter = { ownerAccountId: new ObjectId(masterAccountId) };
+      return this.findMany(filter, options);
+    } catch (err) {
+      this.logger.error('[TrainingDB] findTrainingsByUser error', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Fetch single training by id
+   */
+  async findTrainingById(trainingId) {
+    try {
+      return this.findOne({ _id: new ObjectId(trainingId) });
+    } catch (err) {
+      this.logger.error('[TrainingDB] findTrainingById error', err);
+      throw err;
+    }
+  }
+
+  /**
+   * createTrainingSession expected by internal API.
+   * Convenience wrapper for queueJob with userId/masterAccountId fields.
+   */
+  async createTrainingSession(data) {
+    return this.queueJob(data);
+  }
+
   async queueJob(data) {
     const now = new Date();
     const payload = {

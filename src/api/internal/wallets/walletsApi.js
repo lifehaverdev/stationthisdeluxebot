@@ -2,6 +2,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { ObjectId } = require('mongodb');
 const { PRIORITY } = require('../../../core/services/db/utils/queue'); // Import PRIORITY
+const crypto = require('crypto');
 
 // This function initializes the routes for the User Wallets API
 module.exports = function initializeWalletsApi(dependencies) {
@@ -121,6 +122,60 @@ module.exports = function initializeWalletsApi(dependencies) {
         }
     });
 
+  // POST /requests/magic-amount - Creates a new wallet linking request
+  userScopedRouter.post('/requests/magic-amount', async (req, res) => {
+    const requestId = uuidv4();
+    const masterAccountId = getMasterAccountId(req, res);
+    if (!masterAccountId) return;
+
+    const { tokenAddress, expiresInSeconds } = req.body;
+    const masterAccountIdStr = masterAccountId.toString();
+
+    logger.info(`[userWalletsApi] POST /users/${masterAccountIdStr}/wallets/requests/magic-amount called, requestId: ${requestId}`);
+
+    if (!tokenAddress) {
+        return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'tokenAddress is a required field.' } });
+    }
+
+    try {
+        // Generate a cryptographically secure random 6-byte number as wei string
+        const randomBuffer = crypto.randomBytes(6);
+        const magicAmountWei = BigInt('0x' + randomBuffer.toString('hex')).toString();
+
+        const requestData = {
+            masterAccountId,
+            magicAmountWei,
+            tokenAddress,
+            expiresInSeconds,
+        };
+
+        // Persist via dedicated collection/service on db.walletLinkingRequests if available
+        if (!db.walletLinkingRequests || !db.walletLinkingRequests.createRequest) {
+          logger.error('[userWalletsApi] walletLinkingRequests service missing.');
+          return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Wallet linking service unavailable.' } });
+        }
+
+        const newRequest = await db.walletLinkingRequests.createRequest(requestData);
+
+        if (!newRequest) {
+          logger.error('[userWalletsApi] Failed to create magic amount request – collision?');
+          return res.status(500).json({ error: { code: 'REQUEST_CREATION_FAILED', message: 'Failed to generate wallet linking request.' } });
+        }
+
+        logger.info(`[userWalletsApi] Magic amount request created for user ${masterAccountIdStr}.`);
+        res.status(201).json({
+          requestId,
+          magicAmountWei: newRequest.magic_amount_wei,
+          tokenAddress: newRequest.token_address,
+          expiresAt: newRequest.expires_at,
+        });
+
+    } catch (error) {
+        logger.error(`[userWalletsApi] Error creating magic amount request: ${error.message}`, error);
+        res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'An unexpected error occurred.' } });
+    }
+  });
+
   // POST / - Adds a wallet
   userScopedRouter.post('/', async (req, res) => {
     const requestId = uuidv4();
@@ -174,9 +229,20 @@ module.exports = function initializeWalletsApi(dependencies) {
 
     } catch (error) {
       logger.error(`[userWalletsApi] POST /users/${masterAccountIdStr}/wallets: Error adding wallet. Error: ${error.message}. requestId: ${requestId}`, error);
-       if (error.message && error.message.includes('Wallet address already exists')) { 
+       // Detect duplicate wallet conflicts – either our service-level error, or a low-level MongoDB duplicate-key error
+       const duplicateError = (
+           (error.message && (error.message.includes('Wallet address already exists') || error.message.includes('E11000'))) ||
+           error.code === 11000
+       );
+
+       if (duplicateError) {
            return res.status(409).json({
-               error: { code: 'CONFLICT', message: 'Wallet address already exists for this user.', details: { address: walletData.address }, requestId },
+               error: {
+                   code: 'CONFLICT',
+                   message: 'Wallet address already exists.',
+                   details: { address: (walletData.address || '').toLowerCase() },
+                   requestId,
+               },
            });
        }
       res.status(500).json({

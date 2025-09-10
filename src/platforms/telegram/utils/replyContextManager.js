@@ -68,8 +68,13 @@ function removeContext(repliedToMessage) {
     pendingReplyContexts.delete(key);
 }
 
+function setContext(sentMessage, context, ttl) {
+    addContext(sentMessage, context, ttl);
+}
+
 module.exports = {
     addContext,
     getContext,
     removeContext,
+    setContext,
 }; 

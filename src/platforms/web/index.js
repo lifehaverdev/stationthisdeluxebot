@@ -63,6 +63,14 @@ function initializeWebPlatform(services, options = {}) {
     app,
     initializeRoutes: async () => {
       // --- Page Routes ---
+      // Allow anonymous access to sandbox when ?workspace=<id>
+      app.get('/', (req, res, next) => {
+        if (req.query.workspace) {
+          return res.sendFile(path.join(__dirname, 'client', 'index.html'));
+        }
+        return next();
+      });
+
       app.get('/', authenticateUser, (req, res) => {
         // Auth middleware has run, so if we're here, the user is authenticated.
         res.sendFile(path.join(__dirname, 'client', 'index.html'));

@@ -9,7 +9,11 @@ const buyPointsState = {
     txStatus: null,
     error: null,
     isLoading: false,
-    pollInterval: null
+    pollInterval: null,
+    // New: operation mode – 'contribute' (default) or 'donate'
+    mode: 'contribute',
+    // Holds donate-mode quote for comparison
+    donateQuote: null
 };
 
 // --- DOM Element References ---
@@ -178,6 +182,46 @@ function renderAmountStep() {
     quoteDisplay.innerHTML = buyPointsState.quote ?
         `<div>Points: <b>${buyPointsState.quote.pointsCredited ?? '-'}</b><br>Funding Rate: ${buyPointsState.quote.fundingRate ?? '-'}<br>USD Value: $${safeToFixed(buyPointsState.quote.usdValue?.gross)}<br>Fees: $${safeToFixed(buyPointsState.quote.fees?.totalFeesUsd)}</div>`
         : '<div>Enter an amount to get a quote.</div>';
+
+    // --- Donate Deal Banner ---
+    let banner = document.getElementById('donate-deal-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'donate-deal-banner';
+        banner.style = 'display:none;margin-top:10px;padding:10px;border-radius:6px;background:#263238;color:#fff;';
+        quoteDisplay.parentNode.insertBefore(banner, quoteDisplay.nextSibling);
+    }
+
+    const isEligible = buyPointsState.mode === 'contribute' && buyPointsState.quote && buyPointsState.donateQuote && buyPointsState.donateQuote.pointsCredited > buyPointsState.quote.pointsCredited;
+
+    if (isEligible) {
+        const boost = buyPointsState.donateQuote.pointsCredited - buyPointsState.quote.pointsCredited;
+        banner.innerHTML = `
+            <span style="font-weight:bold;">Get +${boost} more points by donating </span>
+            <span title="Donating is irreversible. You will not be able to withdraw your deposit." style="cursor:help;margin-left:4px;">ℹ︎</span>
+            <button id="accept-donate-deal-btn" style="margin-left:10px;background:#4caf50;border:none;color:#fff;padding:6px 12px;border-radius:4px;cursor:pointer;">Accept Deal</button>
+        `;
+        banner.style.display = 'block';
+        const acceptBtn = document.getElementById('accept-donate-deal-btn');
+        acceptBtn.onclick = () => {
+            buyPointsState.mode = 'donate';
+            buyPointsState.quote = null;
+            buyPointsState.donateQuote = null;
+            render();
+            fetchQuote(); // re-fetch in donate mode
+        };
+    } else {
+        banner.style.display = 'none';
+    }
+
+    // Show network alert if on unsupported chain and not in donate mode
+    if (!buyPointsState.donateQuote && buyPointsState.quote && buyPointsState.quote.fundingRate) {
+        getCurrentChainId().then(currentChainId => {
+            if (currentChainId && !SUPPORTED_CHAIN_IDS.includes(currentChainId)) {
+                showNetworkAlert(currentChainId);
+            }
+        });
+    }
 }
 
 function renderReviewStep() {
@@ -191,7 +235,7 @@ function renderReviewStep() {
     reviewSummary.innerHTML = `
         <div>Asset: ${buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name}</div>
         <div>Amount: ${buyPointsState.amount}</div>
-        <div>Points: <b>${q.pointsCredited}</b></div>
+        <div>Points: <b style="color:#4caf50;">${q.pointsCredited}</b>${buyPointsState.mode==='donate' ? ' <span style="font-size:12px;color:#90caf9;">(boosted)</span>' : ''}</div>
         <hr>
         <div>Gross USD: <b>$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}</b></div>
         <div>Funding Rate Deduction: <b>-$${safeToFixed(b.fundingRateDeduction ?? 0)}</b></div>
@@ -199,6 +243,11 @@ function renderReviewStep() {
         <div>Estimated Gas Fee: <b>-$${safeToFixed(b.estimatedGasUsd ?? q.fees?.estimatedGasUsd)}</b></div>
         <div style="font-weight:bold; color:#4caf50;">User Receives: $${safeToFixed(b.userReceivesUsd ?? q.userReceivesUsd)}</div>
     `;
+
+    // Update CTA text based on mode
+    if (confirmPurchaseBtn) {
+        confirmPurchaseBtn.textContent = buyPointsState.mode === 'donate' ? 'Donate & Buy Points' : 'Buy Points';
+    }
 }
 
 function renderTxStatusStep() {
@@ -415,7 +464,9 @@ async function fetchQuote() {
         const body = {
             type: buyPointsState.selectedAsset.type,
             assetAddress: buyPointsState.selectedAsset.address,
-            amount: amountToSend
+            amount: amountToSend,
+            mode: buyPointsState.mode
+            // userId should be filled by backend session if needed
         };
         const token = await window.auth.ensureCsrfToken();
         const res = await fetch(`${API_BASE_URL}/quote`, {
@@ -429,6 +480,29 @@ async function fetchQuote() {
         });
         if (!res.ok) throw new Error('Failed to fetch quote');
         buyPointsState.quote = await res.json();
+
+        // If current mode is contribute, fetch a donate quote in parallel for comparison
+        if (buyPointsState.mode === 'contribute') {
+            try {
+                const donateBody = { ...body, mode: 'donate' };
+                const donateRes = await fetch(`${API_BASE_URL}/quote`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': token
+                    },
+                    body: JSON.stringify(donateBody),
+                    credentials: 'include'
+                });
+                if (donateRes.ok) {
+                    buyPointsState.donateQuote = await donateRes.json();
+                }
+            } catch (e) {
+                console.warn('[BuyPointsModal] Failed to fetch donate quote:', e);
+            }
+        } else {
+            buyPointsState.donateQuote = null; // clear if switched to donate
+        }
         showLoader(false);
         render();
     } catch (err) {
@@ -478,7 +552,8 @@ async function initiatePurchase() {
             type: buyPointsState.selectedAsset.type,
             assetAddress: buyPointsState.selectedAsset.address,
             amount: amountToSend,
-            userWalletAddress
+            userWalletAddress,
+            mode: buyPointsState.mode
             // userId should be filled by backend session if needed
         };
         console.log('[BuyPointsModal] Sending purchase payload:', body);
@@ -496,7 +571,7 @@ async function initiatePurchase() {
         buyPointsState.purchase = await res.json();
         showLoader(false);
         // --- Prompt user to sign transactions ---
-        const { approvalRequired, approvalTx, depositTx } = buyPointsState.purchase;
+        const { approvalRequired, approvalTx, depositTx, donationTx } = buyPointsState.purchase;
         let txHash;
         if (approvalRequired && approvalTx) {
             try {
@@ -511,11 +586,14 @@ async function initiatePurchase() {
                 return;
             }
         }
+        const finalTx = buyPointsState.mode === 'donate' ? donationTx || depositTx : depositTx;
+
         try {
             showLoader(true);
-            showError('Please sign the deposit transaction in your wallet.');
-            txHash = await sendTransaction(depositTx);
-            console.log('[BuyPointsModal] Deposit tx sent:', txHash);
+            const actionLabel = buyPointsState.mode === 'donate' ? 'donation' : 'deposit';
+            showError(`Please sign the ${actionLabel} transaction in your wallet.`);
+            txHash = await sendTransaction(finalTx);
+            console.log('[BuyPointsModal] ${actionLabel} tx sent:', txHash);
             buyPointsState.txStatus = { 
                 status: 'submitted', 
                 txHash: txHash, 
@@ -523,7 +601,7 @@ async function initiatePurchase() {
             };
         } catch (err) {
             showLoader(false);
-            showError('Deposit transaction was rejected or failed.');
+            showError('Transaction was rejected or failed.');
             return;
         }
         showLoader(false);

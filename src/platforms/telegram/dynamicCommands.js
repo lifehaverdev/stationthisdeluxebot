@@ -65,7 +65,7 @@ class CommandRegistry {
  * @returns {Promise<Array<object>>} - A promise that resolves to the list of commands for API registration.
  */
 async function setupDynamicCommands(commandRegistry, dependencies) {
-  const { workflows, comfyUI, logger, toolRegistry, userSettingsService, openaiService, loraResolutionService } = dependencies;
+  const { workflows, comfyUI, logger, toolRegistry, userSettingsService, openaiService, loraResolutionService, disabledFeatures = {} } = dependencies;
   
   // Backwards compatibility for services structure if needed, but prefer flat dependencies.
   const workflowsService = workflows || dependencies.workflowsService;
@@ -219,6 +219,10 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
     const registeredCommandsList = [];
 
     for (const tool of commandableTools) {
+      if (disabledFeatures.cook && (tool.displayName.toLowerCase().includes('cook') || tool.toolId?.toLowerCase?.().includes('cook'))) {
+        logger.info(`[Telegram] Skipping dynamic command for tool '${tool.displayName}' due to cook feature toggle.`);
+        continue;
+      }
       const commandName = sanitizeCommandName(tool.displayName);
       if (!commandName) {
         logger.warn(`[Telegram] Skipping tool with invalid or empty sanitized name: ${tool.displayName} (ID: ${tool.toolId})`);
@@ -391,7 +395,9 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
       const regex = new RegExp(`^/${commandName}(?:@\\w+)?(?:\\s+(.*))?$`, 'is');
       commandRegistry.register(commandName, regex, commandHandler);
 
-      registeredCommandsList.push({ command: commandName, description: tool.description?.split('\\n')[0] || `Runs the ${tool.displayName} tool.` });
+      const rawDesc = tool.description?.split('\n')[0] || `Runs the ${tool.displayName} tool.`;
+      const trimmedDesc = rawDesc.length > 256 ? rawDesc.slice(0, 253) + '...' : rawDesc;
+      registeredCommandsList.push({ command: commandName, description: trimmedDesc });
     }
 
     logger.info(`[Telegram] Successfully registered ${registeredCommandsList.length} dynamic commands in the registry.`);

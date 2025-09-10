@@ -16,6 +16,10 @@ const logger = createLogger('AuthMiddleware');
  * @param {Function} next - Express next function
  */
 function authenticateUser(req, res, next) {
+  // Public read-only route: allow anonymous GET to /api/v1/workspaces/:slug
+  if (req.method === 'GET' && /^\/(api\/v1\/)?workspaces\/[\w-]+$/.test(req.originalUrl)) {
+    return next();
+  }
   try {
     // Prefer JWT from HTTP-only cookie
     let token = req.cookies && req.cookies.jwt;
@@ -136,6 +140,10 @@ function requireInternal(req, res, next) {
  * If both are present, JWT/session takes precedence.
  */
 async function authenticateUserOrApiKey(req, res, next) {
+  // Public read-only access for workspace snapshots
+  if (req.method === 'GET' && /^\/(api\/v1\/)?workspaces\/[\w-]+$/.test(req.originalUrl)) {
+    return next();
+  }
   // 1. Try JWT/session auth first
   try {
     let token = req.cookies && req.cookies.jwt;

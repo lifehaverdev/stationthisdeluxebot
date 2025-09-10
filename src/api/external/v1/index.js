@@ -14,6 +14,7 @@ const apiModules = {
   users: { path: './users', auth: 'userOrApiKey' },
   webhooks: { path: './webhooks', auth: 'none' },
   datasets: { path: '../datasetsApi', auth: 'userOrApiKey' },
+  trainings: { path: '../trainingsApi', auth: 'userOrApiKey' },
 };
 
 function initializeV1Api(dependencies) {

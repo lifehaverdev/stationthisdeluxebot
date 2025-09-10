@@ -57,32 +57,30 @@ function createUserStatusReportApiService(dependencies) {
     try {
       const masterAccountObjId = new ObjectId(masterAccountId);
 
-      // 1. Fetch User Economy Data (Points & EXP)
+      // 1. Fetch EXP via User Economy (EXP only, points handled via ledger based on wallet)
       const economyRecord = await db.userEconomy.findByMasterAccountId(masterAccountObjId);
       let points = 0;
       let exp = 0;
 
-      if (economyRecord) {
-        if (economyRecord.usdCredit) {
-          const usdCreditAsNumber = parseFloat(economyRecord.usdCredit.toString());
-          points = Math.floor(usdCreditAsNumber / USD_CREDIT_TO_POINTS_RATE);
-        }
-        if (economyRecord.exp) {
-          if (economyRecord.exp instanceof Decimal128) {
-            exp = Math.floor(parseFloat(economyRecord.exp.toString()));
-          } else if (typeof economyRecord.exp === 'number') {
-            exp = Math.floor(economyRecord.exp);
+      if (economyRecord && economyRecord.exp) {
+        if (economyRecord.exp instanceof Decimal128) {
+          exp = Math.floor(parseFloat(economyRecord.exp.toString()));
+        } else if (typeof economyRecord.exp === 'number') {
+          exp = Math.floor(economyRecord.exp);
+        } else {
+          const parsedExp = parseFloat(economyRecord.exp);
+          if (!isNaN(parsedExp)) {
+            exp = Math.floor(parsedExp);
           } else {
-            const parsedExp = parseFloat(economyRecord.exp);
-            if (!isNaN(parsedExp)) {
-              exp = Math.floor(parsedExp);
-            } else {
-              logger.warn(`[userStatusReportApi] Non-numeric EXP value found: ${economyRecord.exp} for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
-            }
+            logger.warn(`[userStatusReportApi] Non-numeric EXP value found: ${economyRecord.exp} for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
           }
         }
-      } else {
-        logger.warn(`[userStatusReportApi] Economy record not found for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
+      }
+
+      // 1b. Fetch Points via CreditLedger using primary wallet (matches UserApi /dashboard)
+      const creditLedgerDb = db.creditLedger;
+      if (!creditLedgerDb) {
+        logger.warn('[userStatusReportApi] creditLedgerDb not available in dependencies – falling back to economy.usdCredit conversion.');
       }
 
       // 2. Fetch User Core Data (Wallet Address)
@@ -110,6 +108,29 @@ function createUserStatusReportApiService(dependencies) {
         logger.warn(`[userStatusReportApi] User core record or wallets array not found for masterAccountId: ${masterAccountId}, requestId: ${requestId}`);
       }
       
+      // Fetch wallet address (already attempted earlier when userCoreRecord obtained)
+      // walletAddress variable already set above.
+
+      if (walletAddress && creditLedgerDb && typeof creditLedgerDb.sumPointsRemainingForWalletAddress === 'function') {
+        try {
+          const ledgerPoints = await creditLedgerDb.sumPointsRemainingForWalletAddress(walletAddress);
+          if (typeof ledgerPoints === 'number' && !isNaN(ledgerPoints)) {
+            points = ledgerPoints;
+          } else {
+            logger.warn(`[userStatusReportApi] Ledger points for wallet ${walletAddress} returned non-numeric value: ${ledgerPoints}. Using fallback. requestId: ${requestId}`);
+          }
+        } catch (ledgerErr) {
+          logger.error(`[userStatusReportApi] Error fetching points from creditLedgerDb for wallet ${walletAddress}: ${ledgerErr.message}. Falling back. requestId: ${requestId}`);
+        }
+      }
+
+      // Fallback: Legacy USD credit conversion if points still zero
+      if (points === 0 && economyRecord && economyRecord.usdCredit) {
+        const usdCreditAsNumber = parseFloat(economyRecord.usdCredit.toString());
+        if (!isNaN(usdCreditAsNumber)) {
+          points = Math.floor(usdCreditAsNumber / USD_CREDIT_TO_POINTS_RATE);
+        }
+      }
 
       // 3. Fetch Live Generation Tasks
       let liveTasks = [];
@@ -153,6 +174,10 @@ function createUserStatusReportApiService(dependencies) {
                 status: task.status,
                 costUsd: costUsd,
                 progress,
+                sourcePlatform: task.notificationPlatform || task.sourcePlatform || null,
+                updatedAt: task.updatedAt || task.responseTimestamp || task.requestTimestamp || null,
+                startedAt: task.requestTimestamp || null,
+                toolId: task.toolId || null,
               };
             });
         }

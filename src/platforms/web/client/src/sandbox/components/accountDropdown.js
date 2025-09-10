@@ -184,7 +184,18 @@ export default class AccountDropdown {
             getMorePointsBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.closeDropdown();
-                if (window.openBuyPointsModal) window.openBuyPointsModal();
+                if (window.openBuyPointsModal) {
+                    (async () => {
+                      if (window.auth && !window.auth.getMasterAccountId()) {
+                        const id = await window.auth.ensureUserCore();
+                        if (!id) {
+                          alert('Unable to initialise user profile. Please try again later.');
+                          return;
+                        }
+                      }
+                      window.openBuyPointsModal();
+                    })();
+                }
             });
         }
         // ... add other action handlers here

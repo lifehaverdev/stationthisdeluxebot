@@ -4,6 +4,55 @@
 // Opens on-demand inside the sandbox so the workspace remains intact.
 
 (function () {
+  /* --------------------------------------------------------- */
+  /*  Scoped styles so only the modal adopts landing aesthetics */
+  /* --------------------------------------------------------- */
+  function injectScopedStyles() {
+    if (document.getElementById('reauth-modal-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'reauth-modal-styles';
+    style.textContent = `
+      /* Overlay */
+      #reauth-login-modal.modal-overlay {
+        position: fixed;
+        top: 0;left: 0;width: 100%;height: 100%;
+        background-color: rgba(0,0,0,0.6);
+        display: flex;justify-content: center;align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(8px);
+        visibility: hidden;opacity: 0;
+        transition: visibility 0s 0.3s, opacity 0.3s;
+      }
+      #reauth-login-modal.modal-overlay.is-visible {
+        visibility: visible;opacity: 1;transition: opacity 0.3s;
+      }
+
+      /* Panel & content */
+      #reauth-login-modal .panel {
+        background-color: rgba(255,255,255,0.4);
+        border:1px solid #000;border-radius:12px;
+        padding: var(--space-8,32px);
+        max-width:500px;
+        color:#000;
+      }
+
+      #reauth-login-modal .modal-close {
+        position:absolute;top:var(--space-2,8px);right:var(--space-4,16px);
+        background:none;border:none;font-size:2em;color:var(--color-steel-text,#333);cursor:pointer;
+      }
+      #reauth-login-modal .modal-body {display:flex;flex-direction:column;gap:var(--space-6,24px);text-align:center;}
+
+      #reauth-login-modal .btn-wallet {padding:var(--space-5,20px)var(--space-8,32px);font-size:1.2em;}
+
+      /* Hide alt logins same as landing */
+      #reauth-login-modal .alternative-logins,
+      #reauth-login-modal #password-login-form,
+      #reauth-login-modal #apikey-login-form {display:none !important;}
+    `;
+    document.head.appendChild(style);
+  }
+
+  injectScopedStyles();
   // Prevent double-init
   if (window.openReauthModal) return;
 
@@ -109,11 +158,12 @@
   }
 
   /* ----------------- Modal HTML ----------------- */
+  // Modal markup copied from public/landing.html (#login-modal) so styling is identical
   const modalHTML = `
-  <div id="reauth-login-modal" class="modal-overlay" style="display:none;">
+  <div id="reauth-login-modal" class="modal-overlay">
     <div class="modal-content panel">
       <button class="modal-close">&times;</button>
-      <h2>Connect to Continue</h2>
+      <h2>Connect your Ethereum Wallet</h2>
       <div class="modal-body">
         <div id="initial-auth-options">
           <button class="btn btn-primary btn-wallet">Connect Wallet</button>
@@ -233,13 +283,20 @@
     window.__reauthModalOpen__ = true;
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     const modal = document.getElementById('reauth-login-modal');
-    modal.style.display = 'flex';
+    // Show with same transition class as landing page
+    requestAnimationFrame(() => {
+      modal.classList.add('is-visible');
+    });
     attachLogic(modal);
   }
   function closeModal() {
     const modal = document.getElementById('reauth-login-modal');
     if (!modal) return;
-    modal.parentNode.removeChild(modal);
+    // Fade out then remove for smooth UX
+    modal.classList.remove('is-visible');
+    setTimeout(() => {
+      if (modal.parentNode) modal.parentNode.removeChild(modal);
+    }, 300);
     state.isOpen = false;
     window.__reauthModalOpen__ = false;
   }

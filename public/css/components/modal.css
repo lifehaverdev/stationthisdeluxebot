@@ -10,7 +10,10 @@
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  
+
+  /* Blur everything behind the modal for better legibility */
+  backdrop-filter: blur(8px);
+
   /* Hidden by default */
   visibility: hidden;
   opacity: 0;
@@ -58,4 +61,21 @@
 .alternative-logins a {
   color: var(--color-steel-text);
   text-decoration: underline;
+}
+
+/* -------------------------------------------------- */
+/* Temporary: hide username/password & API key paths  */
+/* -------------------------------------------------- */
+.alternative-logins,
+#password-login-form,
+#apikey-login-form {
+  display: none !important;
+}
+
+/* Heading aesthetics & alignment */
+.modal-content > h2 {
+  font-family: var(--ff-sans);
+  text-align: center;
+  font-size: clamp(1.5rem, 2.5vw + 0.5rem, 2rem);
+  margin: var(--space-6) 0;
 } 

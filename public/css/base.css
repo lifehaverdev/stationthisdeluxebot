@@ -39,9 +39,9 @@ html, body {
 
 body {
   margin: 0;
-  padding: 0 var(--space-4);
-  color: #000;
-  font-family: var(--font-mono);
+  padding: 0 var(--size-4);
+  color: var(--clr-text);
+  font-family: var(--ff-mono);
   line-height: 1.6;
   
   /* The "Ambient Cognition Field" Background */
@@ -63,9 +63,9 @@ body {
 }
 
 h1, h2, h3, h4, h5 {
-  font-family: var(--font-sans);
+  font-family: var(--ff-sans);
   font-weight: 600;
-  margin: var(--space-6) 0;
+  margin: var(--size-6) 0;
   color: #000;
   text-shadow: none;
 }
@@ -75,7 +75,7 @@ h2 { font-size: 2.25em; }
 h3 { font-size: 1.75em; }
 
 a {
-  color: #000;
+  color: var(--clr-text);
   text-decoration: underline;
 }
 

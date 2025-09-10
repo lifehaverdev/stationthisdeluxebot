@@ -378,6 +378,21 @@ class UserPreferencesDB extends BaseDB {
     }
   }
   // -- END GENERIC MODEL FAVORITES METHODS --
+
+  /**
+   * Retrieves the stored keyboard version for a user. Returns 0 if not set.
+   */
+  async getKeyboardVersion(masterAccountId) {
+    const version = await this.getPreference(masterAccountId, 'keyboardVersion');
+    return typeof version === 'number' ? version : 0;
+  }
+
+  /**
+   * Sets the user's keyboard version preference.
+   */
+  async setKeyboardVersion(masterAccountId, version) {
+    return this.setPreference(masterAccountId, 'keyboardVersion', version);
+  }
 }
 
 module.exports = UserPreferencesDB; 

@@ -455,6 +455,10 @@ async function handleTrainCommand(bot, message, masterAccountId, dependencies = 
 }
 
 function registerHandlers(dispatcherInstances, dependencies) {
+  if (dependencies.disabledFeatures?.train) {
+    dependencies.logger?.info?.('[TrainingMenu] /train feature is disabled via toggle. Skipping handler registration.');
+    return;
+  }
     const { commandDispatcher, callbackQueryDispatcher, messageReplyDispatcher } = dispatcherInstances;
 
     const apiClient = dependencies.internalApiClient || dependencies.internal?.client;

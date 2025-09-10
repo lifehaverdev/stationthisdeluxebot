@@ -15,6 +15,55 @@ function formatNumberWithCommas(num) {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+// Time window constant: 5 minutes in milliseconds
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+/**
+ * Filters live tasks according to Telegram /status criteria.
+ *
+ * Criteria:
+ *  - status === "processing"
+ *  - updatedAt OR startedAt is within the last 5 minutes relative to currentTime
+ *  - sourcePlatform === "telegram"
+ *  - (optional) masterAccountId matches if the field is present on the task object
+ *
+ * @param {Array<Object>} tasks - Raw tasks array from the status-report endpoint.
+ * @param {Object} options
+ * @param {string} options.masterAccountId - Master account id of the requesting user.
+ * @param {number} [options.currentTime=Date.now()] - Overrideable current timestamp (ms) for testing.
+ * @returns {Array<Object>} Filtered tasks array.
+ */
+function filterLiveTasks(tasks, { masterAccountId, currentTime = Date.now() } = {}) {
+  if (!Array.isArray(tasks)) return [];
+
+  return tasks.filter((task) => {
+    if (!task) return false;
+
+    const statusLower = (task.status || '').toString().toLowerCase();
+    const deliveryLower = (task.deliveryStatus || '').toString().toLowerCase();
+
+    // Exclude tasks already delivered or explicitly failed
+    if (deliveryLower === 'delivered' || statusLower === 'failed') return false;
+
+    // We want anything still in flight: processing, running, queued, pending, or completed-but-not-delivered
+    const liveLikeStatuses = ['processing', 'running', 'queued', 'pending', 'completed'];
+    if (!liveLikeStatuses.includes(statusLower)) return false;
+
+    // 2. sourcePlatform must be telegram (default to include only telegram tasks)
+    if (task.sourcePlatform !== 'telegram') return false;
+
+    // 3. masterAccountId match (if task object carries it)
+    if (task.masterAccountId && masterAccountId && task.masterAccountId !== masterAccountId) return false;
+
+    // 4. updatedAt/startedAt within last 5 minutes
+    const tsStr = task.updatedAt || task.startedAt;
+    if (!tsStr) return false;
+    const ts = new Date(tsStr).getTime();
+    if (isNaN(ts)) return false;
+    return currentTime - ts <= FIVE_MINUTES_MS;
+  });
+}
+
 /**
  * Create status command handler for Telegram
  * @param {Object} dependencies - Injected dependencies
@@ -39,7 +88,7 @@ function createStatusCommandHandler(dependencies) {
     }
     const telegramUserId = message.from.id;
     let masterAccountId;
-    let sessionId;
+    // sessions were deprecated; no session tracking needed
     const platformIdStr = telegramUserId.toString();
     const platform = 'telegram';
 
@@ -59,57 +108,7 @@ function createStatusCommandHandler(dependencies) {
       const isNewUser = findOrCreateResponse.data.isNewUser;
       logger.info(`[statusCommand] Got masterAccountId: ${masterAccountId}. New user: ${isNewUser}`);
 
-      // 2. Find or Create Session via Internal API
-      logger.debug(`[statusCommand] Checking for active session for masterAccountId: ${masterAccountId}...`);
-      const activeSessionsResponse = await apiClient.get(`/internal/v1/data/users/${masterAccountId}/sessions/active?platform=${platform}`);
-      
-      if (activeSessionsResponse.data && activeSessionsResponse.data.length > 0) {
-        sessionId = activeSessionsResponse.data[0]._id; // Use the first active session
-        logger.debug(`[statusCommand] Found active session: ${sessionId}`);
-        if (activeSessionsResponse.data.length > 1) {
-            logger.warn(`[statusCommand] Multiple active Telegram sessions found for masterAccountId: ${masterAccountId}. Using session: ${sessionId}`);
-        }
-      } else {
-        logger.debug(`[statusCommand] No active session found. Creating new session for masterAccountId: ${masterAccountId}...`);
-        const newSessionResponse = await apiClient.post('/internal/v1/data/sessions', {
-          masterAccountId: masterAccountId,
-          platform: platform,
-          userAgent: 'Telegram Bot Command' // Example user agent
-        });
-        sessionId = newSessionResponse.data._id;
-        logger.info(`[statusCommand] New session created: ${sessionId} for masterAccountId: ${masterAccountId}`);
-        
-        // Log session_started event via Internal API
-        try {
-          logger.debug(`[statusCommand] Logging session_started event for sessionId: ${sessionId}...`);
-          await apiClient.post('/internal/v1/data/events', {
-            masterAccountId: masterAccountId,
-            sessionId: sessionId,
-            eventType: 'session_started',
-            sourcePlatform: platform,
-            eventData: { 
-              platform: platform,
-              startMethod: 'command_interaction'
-            }
-          });
-          logger.info(`[statusCommand] session_started event logged for sessionId: ${sessionId}`);
-        } catch (eventError) {
-          // Log the error but don't block the status command
-          logger.error(`[statusCommand] Failed to log session_started event via API for sessionId: ${sessionId}. API Error: ${eventError.message}`);
-        }
-      }
-
-      // 3. Update Last Activity via Internal API
-      if (sessionId) {
-        logger.debug(`[statusCommand] Updating activity for session: ${sessionId}...`);
-        try {
-          await apiClient.put(`/internal/v1/data/sessions/${sessionId}/activity`, {});
-          logger.debug(`[statusCommand] Activity updated for session: ${sessionId}`);
-        } catch (activityError) {
-          // Log the error but don't block the status command
-           logger.error(`[statusCommand] Failed to update activity via API for sessionId: ${sessionId}. API Error: ${activityError.message}`);
-        }
-      }
+      // NOTE: Session management removed as per deprecation.
 
       // 4. Get Enhanced Status Info via new Internal API Endpoint
       logger.debug(`[statusCommand] Getting enhanced status report for masterAccountId: ${masterAccountId}...`);
@@ -118,6 +117,12 @@ function createStatusCommandHandler(dependencies) {
 
       // 5. Format and Send Response
       let messageText = '\n\n';
+      if (statusData.walletAddress) {
+        let abbreviatedWallet = statusData.walletAddress.slice(0, 6) + '...' + statusData.walletAddress.slice(-4);
+        messageText += `🔗 Wallet: ${abbreviatedWallet}\n`;
+      } else {
+        messageText += '🔗 Wallet: Not set\n';
+      }
       messageText += `💰 Points: ${formatNumberWithCommas(statusData.points)}\n\n`;
       
       // Calculate Level and EXP Bar
@@ -143,24 +148,32 @@ function createStatusCommandHandler(dependencies) {
       for (let i = 0; i < whiteSegments; i++) expProgressBar += '⬜️';
 
       messageText += `🌟 Level: ${level}\n`;
-      messageText += `✨ ${expProgressBar}\n\n`;
+      messageText += `✨\n`
+      messageText += `${expProgressBar}\n\n`;
       
-      if (statusData.walletAddress) {
-        messageText += `🔗 Wallet: ${statusData.walletAddress}\n`;
-      } else {
-        messageText += '🔗 Wallet: Not set\n';
-      }
 
-      messageText += '\n📡 Active Tasks:\n';
-      if (statusData.liveTasks && statusData.liveTasks.length > 0) {
-        statusData.liveTasks.forEach(task => {
-          const progressInfo = task.progress !== null ? ` (${task.progress}%)` : '';
-          // Format costUsd to 2 decimal places, or show N/A if null
-          const costDisplay = task.costUsd !== null ? `$${parseFloat(task.costUsd).toFixed(2)}` : '$N/A';
-          messageText += `• ${task.idHash} – ${task.status}${progressInfo} – ${costDisplay}\n`;
-        });
+
+      
+
+      const filteredTasks = filterLiveTasks(statusData.liveTasks, { masterAccountId });
+
+      if (filteredTasks.length === 0) {
+        messageText += '\nStationthis is Standing by.\n';
       } else {
-        messageText += 'No active tasks at the moment.\n';
+        messageText += '\n📡 Active Tasks:\n';
+        const tasksToShow = filteredTasks.slice(0, 10);
+        tasksToShow.forEach((task) => {
+          // Future enhancement: include progress %, ETA, and cost once UI finalized (see ADR-???)
+          // const progressInfo = task.progress !== null && task.progress !== undefined ? ` (${task.progress}%)` : '';
+          // const etaPart = ''; // calculated ETA placeholder
+
+          messageText += `• ${task.idHash} – ${task.status}\n`;
+        });
+
+        if (filteredTasks.length > tasksToShow.length) {
+          const remaining = filteredTasks.length - tasksToShow.length;
+          messageText += `…and ${remaining} more\n`;
+        }
       }
       
       // Send the richer status message
@@ -173,7 +186,7 @@ function createStatusCommandHandler(dependencies) {
           parse_mode: 'Markdown' // Optional: if you want to use Markdown for formatting (e.g. bolding titles)
         }
       );
-      logger.info(`[statusCommand] Successfully processed /status with enhanced report for masterAccountId: ${masterAccountId}, sessionId: ${sessionId}`);
+      logger.info(`[statusCommand] Successfully processed /status for masterAccountId: ${masterAccountId}`);
 
     } catch (error) {
       logger.error(`[statusCommand] Error processing /status for telegramUserId ${platformIdStr}: ${error.response ? JSON.stringify(error.response.data) : error.message} ${error.stack}`);
@@ -190,5 +203,8 @@ function createStatusCommandHandler(dependencies) {
     }
   };
 }
+
+// Expose the helper for unit testing purposes without altering default export semantics
+createStatusCommandHandler.filterLiveTasks = filterLiveTasks;
 
 module.exports = createStatusCommandHandler; 

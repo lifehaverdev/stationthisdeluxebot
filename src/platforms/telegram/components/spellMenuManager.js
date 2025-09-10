@@ -736,6 +736,10 @@ async function spellCallbackHandler(bot, callbackQuery, masterAccountId, depende
  * @param {object} dependencies - The canonical dependencies object.
  */
 function registerHandlers(dispatcherInstances, dependencies) {
+    if (dependencies.disabledFeatures?.spells) {
+        dependencies.logger?.info?.('[SpellMenu] /spells feature disabled via toggle. Skipping registration.');
+        return;
+    }
     // Canonical internalApiClient wiring for legacy code
     const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
     if (!apiClient) {

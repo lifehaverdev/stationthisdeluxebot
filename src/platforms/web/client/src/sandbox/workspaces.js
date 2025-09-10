@@ -47,7 +47,32 @@ function buildSnapshot() {
   return { connections, toolWindows };
 }
 
-export async function saveWorkspace() {
+// --- Snapshot hydration (no page reload) ---
+function hydrateSnapshot(snapshot, slug = null) {
+  const CONNECTIONS_KEY = 'sandbox_connections';
+  const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+  localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(snapshot.connections || []));
+  localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(snapshot.toolWindows || []));
+
+  // Notify sandbox to redraw from updated storage without full reload.
+  window.dispatchEvent(new Event('sandboxSnapshotUpdated'));
+
+  // If sandbox has a hot-reload helper, invoke it so DOM updates without page refresh.
+  if (typeof window.__reloadSandboxState === 'function') {
+    window.__reloadSandboxState();
+  }
+
+  // Update URL (historic state) if slug provided
+  if (slug) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('workspace', slug);
+    window.history.pushState({}, '', url);
+  }
+}
+
+export { hydrateSnapshot };
+
+export async function saveWorkspace(existingSlug = null, { silent = false } = {}) {
   const snapshot = buildSnapshot();
   const byteSize = obj => new Blob([JSON.stringify(obj)]).size;
   const totalSize = byteSize(snapshot);
@@ -61,8 +86,10 @@ export async function saveWorkspace() {
   console.groupEnd();
   // avoid saving completely empty workspaces
   if (snapshot.toolWindows.length === 0 && snapshot.connections.length === 0) {
-    alert('Nothing to save yet! Add some tools first.');
-    return;
+    if(!silent){
+      alert('Nothing to save yet! Add some tools first.');
+    }
+    return null;
   }
   try {
     const csrf = await getCsrfToken();
@@ -70,19 +97,23 @@ export async function saveWorkspace() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrf },
-      body: JSON.stringify({ snapshot })
+      body: JSON.stringify({ snapshot, slug: existingSlug || undefined })
     });
     if (!res.ok) throw new Error('Save failed');
     const { slug } = await res.json();
+    const savedSlug = slug || existingSlug;
     // Update URL
     const url = new URL(window.location.href);
     url.searchParams.set('workspace', slug);
     window.history.pushState({}, '', url);
-    alert(`Workspace saved! Shareable link copied to clipboard:\n${url}`);
-    navigator.clipboard?.writeText(url.toString());
+    if (!silent) {
+      if (!existingSlug) navigator.clipboard?.writeText(url.toString());
+      alert(`Workspace saved! Shareable link copied to clipboard:\n${url}`);
+    }
+    return savedSlug;
   } catch (e) {
     console.error('[saveWorkspace] error', e);
-    alert('Failed to save workspace.');
+    if (!silent) alert('Failed to save workspace.');
   }
 }
 
@@ -93,18 +124,15 @@ export async function loadWorkspace(slug) {
     const { snapshot } = await res.json();
     if (!snapshot) throw new Error('Invalid snapshot');
 
-    // Write snapshot directly to localStorage using same keys as persistState
-    const CONNECTIONS_KEY = 'sandbox_connections';
-    const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
-    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(snapshot.connections || []));
-    localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(snapshot.toolWindows || []));
-
-    // Reload with workspace param for shareability
-    const url = new URL(window.location.href);
-    url.searchParams.set('workspace', slug);
-    window.location.href = url.toString();
+    hydrateSnapshot(snapshot, slug);
+    return slug;
   } catch (e) {
     console.error('[loadWorkspace] error', e);
     alert('Failed to load workspace');
   }
+}
+
+// Expose blank workspace helper
+export function loadBlankWorkspace() {
+  hydrateSnapshot({ connections: [], toolWindows: [] });
 }

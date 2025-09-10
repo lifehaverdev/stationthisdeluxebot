@@ -27,6 +27,13 @@ export default class ModsMenuModal {
       favoriteIds: new Set(), // store ids liked by user
       trainings: [], // NEW
       datasets: [],  // NEW
+      loadingTrain:false,
+      trainError:null,
+      formMode:null, // 'new-dataset'|'edit-dataset'|'new-training'|'edit-training'
+      formValues:{},
+      formError:null,
+      submitting:false,
+      newImageUrls:[],
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -124,6 +131,19 @@ export default class ModsMenuModal {
     } catch(err){ console.warn('[ModsMenuModal] fetchDatasets error', err); }
   }
 
+  async fetchTrainings(){
+    this.setState({loadingTrain:true,trainError:null});
+    try{
+      const res= await fetch('/api/v1/trainings',{credentials:'include'});
+      if(!res.ok) throw new Error('Failed');
+      const data= await res.json();
+      this.setState({trainings:data.trainings||[],loadingTrain:false});
+    }catch(err){
+      console.warn('[ModsMenuModal] fetchTrainings error',err);
+      this.setState({loadingTrain:false,trainError:'Could not load trainings.'});
+    }
+  }
+
   getModelIdentifier(model) {
     return model._id || model.path || model.name || model.save_path || model.sha || JSON.stringify(model);
   }
@@ -189,7 +209,7 @@ export default class ModsMenuModal {
     this.render();
     this.attachCloseEvents();
     this.fetchStats();
-    if(this.state.rootTab==='train') this.fetchDatasets(); // prefetch
+    if(this.state.rootTab==='train') { this.fetchDatasets(); this.fetchTrainings(); }
   }
 
   hide() {
@@ -272,10 +292,48 @@ export default class ModsMenuModal {
     // Decide mainContent
     let mainContent = '';
     if (rootTab === 'train') {
-      // This part of the code was not provided in the original file,
-      // so we'll just set mainContent to an empty string for now.
-      // In a real scenario, you would build the train dashboard content here.
-      mainContent = '<div class="train-dashboard-placeholder">Train Dashboard Placeholder</div>';
+      const { formMode, formValues, formError, submitting } = this.state;
+      if(formMode){
+        const isDataset=formMode.includes('dataset');
+        const legend=isDataset? (formMode==='new-dataset'?'New Dataset':'Edit Dataset') : (formMode==='new-training'?'New Training':'Edit Training');
+        const dsOptions=this.state.datasets.map(d=>`<option value="${d._id}" ${formValues.datasetId===d._id?'selected':''}>${d.name}</option>`).join('');
+        const imageGallery=isDataset && formMode==='edit-dataset' ? `<div class="image-gallery">${(formValues.previewImages||[]).map(url=>`<img src="${url}" class="thumb" />`).join('')}</div>` : '';
+        const addImagesSection=isDataset && formMode==='edit-dataset' ? `
+          <label>Add Images (URLs comma or space separated):<br><textarea name="_imgInput"></textarea></label>
+          <button type="button" class="add-img-btn">Add Images</button>
+          <div class="new-img-preview">${this.state.newImageUrls.map(u=>`<img src="${u}" class="thumb" />`).join('')}</div>` : '';
+        mainContent=`<h2>${legend}</h2>
+          ${formError?`<div class="error-message">${formError}</div>`:''}
+          <form class="train-form">
+            <label>Name:<br><input type="text" name="name" value="${formValues.name||''}" /></label><br>
+            ${isDataset?'<label>Description:<br><textarea name="description">'+(formValues.description||'')+'</textarea></label><br>':
+              `<label>Dataset:<br><select name="datasetId">${dsOptions}</select></label><br>
+               <label>Base Model:<br><input name="baseModel" value="${formValues.baseModel||''}" /></label><br>
+               <label>Offering ID:<br><input name="offeringId" value="${formValues.offeringId||''}" /></label><br>`}
+            ${imageGallery}
+            ${addImagesSection}
+            <button type="submit" ${submitting?'disabled':''}>${submitting?'Saving…':'Save'}</button>
+            <button type="button" class="cancel-btn">Cancel</button>
+          </form>`;
+      } else {
+        const { datasets, trainings, loadingTrain, trainError } = this.state;
+        const dsList = loadingTrain ? '<div class="loading-spinner">Loading…</div>' : trainError ? `<div class="error-message">${trainError}</div>` : (
+          datasets.length ? '<ul class="ds-list">'+datasets.map(ds=>`<li class="ds-item">${ds.name||'Unnamed Dataset'} (${ds.numImages||0} imgs)</li>`).join('')+'</ul>' : '<div class="empty-message">No datasets yet.</div>'
+        );
+        const trList = loadingTrain ? '' : trainError ? '' : (
+          trainings.length ? '<ul class="train-list">'+trainings.map(tr=>`<li class="train-item">${tr.name||'Training'} - <em>${tr.status||'draft'}</em></li>`).join('')+'</ul>' : '<div class="empty-message">No trainings yet.</div>'
+        );
+        mainContent = `
+          <h2>Train Dashboard</h2>
+          <div class="train-section">
+            <div class="train-section-header"><h3>Datasets</h3><button class="add-dataset-btn">＋</button></div>
+            ${dsList}
+          </div>
+          <div class="train-section">
+            <div class="train-section-header"><h3>Trainings</h3><button class="add-training-btn">＋</button></div>
+            ${trList}
+          </div>`;
+      }
     }
 
     // base modal html
@@ -333,7 +391,7 @@ export default class ModsMenuModal {
         const tab = btn.getAttribute('data-tab');
         if(tab!==this.state.rootTab){
           this.setState({ rootTab: tab, view: tab==='browse'? 'intro':'trainDash' });
-          if(tab==='train') this.fetchDatasets();
+          if(tab==='train') { this.fetchDatasets(); this.fetchTrainings(); }
         }
       };
     });
@@ -341,8 +399,32 @@ export default class ModsMenuModal {
     // Add Dataset button
     const addDsBtn = this.modalElement.querySelector('.add-dataset-btn');
     if(addDsBtn){
-      addDsBtn.onclick = ()=> alert('Dataset form coming soon');
+      addDsBtn.onclick = ()=> this.openDatasetForm();
     }
+    const addTrBtn = this.modalElement.querySelector('.add-training-btn');
+    if(addTrBtn){
+      addTrBtn.onclick = ()=> this.openTrainingForm();
+    }
+
+    // Form input bindings
+    const formEl=this.modalElement.querySelector('.train-form');
+    if(formEl){
+      formEl.oninput=(e)=>{
+        const {name,value}=e.target;
+        // Mutate formValues directly to avoid full re-render and caret loss
+        this.state.formValues[name]=value;
+      };
+      formEl.onsubmit=(e)=>{e.preventDefault(); this.submitForm();};
+      this.modalElement.querySelector('.cancel-btn').onclick=()=>this.resetForm();
+    }
+
+    // Click row to edit
+    this.modalElement.querySelectorAll('.ds-item').forEach((li,idx)=>{
+      li.onclick=()=>{ const ds=this.state.datasets[idx]; this.openDatasetForm(ds); };
+    });
+    this.modalElement.querySelectorAll('.train-item').forEach((li,idx)=>{
+      li.onclick=()=>{ const tr=this.state.trainings[idx]; this.openTrainingForm(tr); };
+    });
   }
 
   attachCloseEvents() {
@@ -351,5 +433,50 @@ export default class ModsMenuModal {
       if (e.target === this.modalElement) this.hide();
     });
     document.addEventListener('keydown', this.handleKeyDown);
+  }
+
+  resetForm(){ this.setState({formMode:null,formValues:{},formError:null,submitting:false}); }
+
+  openDatasetForm(ds=null){
+    if(ds){ this.setState({formMode:'edit-dataset',formValues:{...ds}}); }
+    else { this.setState({formMode:'new-dataset',formValues:{name:'',description:''}});} }
+
+  openTrainingForm(tr=null){
+    if(tr){ this.setState({formMode:'edit-training',formValues:{...tr}}); }
+    else { const firstDs=this.state.datasets[0]; this.setState({formMode:'new-training',formValues:{name:'',datasetId:firstDs?firstDs._id:'',baseModel:'SD1.5',offeringId:''}});} }
+
+  addImageUrls(urls){
+    const clean=urls.split(/\s|,/).map(u=>u.trim()).filter(Boolean);
+    this.setState({newImageUrls:[...this.state.newImageUrls,...clean]});
+  }
+
+  async submitForm(){
+    const { formMode, formValues } = this.state;
+    this.setState({submitting:true,formError:null});
+    try{
+      let url='',method='POST',payload=formValues;
+      if(formMode==='new-dataset') url='/api/v1/datasets';
+      else if(formMode==='edit-dataset'){ url=`/api/v1/datasets/${encodeURIComponent(formValues._id)}`; method='PUT'; }
+      else if(formMode==='new-training') url='/api/v1/trainings';
+      else if(formMode==='edit-training'){ url=`/api/v1/trainings/${encodeURIComponent(formValues._id)}`; method='PUT'; }
+
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+
+      const res= await fetch(url,{method,credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify(payload)});
+      if(!res.ok) throw new Error(`save-failed-${res.status}`);
+
+      // If dataset edit and we have new images, send them
+      if(formMode==='edit-dataset' && this.state.newImageUrls.length){
+        await fetch(`/api/v1/datasets/${encodeURIComponent(formValues._id)}/images`,{
+          method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
+          body:JSON.stringify({imageUrls:this.state.newImageUrls})
+        });
+      }
+
+      this.resetForm();
+      this.fetchDatasets();
+      this.fetchTrainings();
+    }catch(err){ this.setState({formError:'Save failed',submitting:false}); }
   }
 } 

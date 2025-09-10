@@ -5,31 +5,57 @@ import { lastClickPosition } from './state.js';
 
 // Initialize tools from API
 export async function initializeTools() {
-    console.log('Initializing tools...');
+    console.log('[initializeTools] start');
+
+    const CACHE_KEY = 'sandbox_tool_cache';
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+    // 1. Try cache first
     try {
-        // Use the registry endpoint to get full tool data
-        const response = await fetch('/api/v1/tools/registry');
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Failed to fetch tools:', response.status, response.statusText, errorText);
-            throw new Error(`Failed to fetch tools: ${response.status} ${response.statusText} - ${errorText}`);
+        const cacheRaw = localStorage.getItem(CACHE_KEY);
+        if (cacheRaw) {
+            const { updatedAt, tools } = JSON.parse(cacheRaw);
+            if (Array.isArray(tools) && Date.now() - updatedAt < CACHE_TTL_MS) {
+                console.log('[initializeTools] using cached tool list');
+                setAvailableTools(tools);
+                // Fire-and-forget refresh in background
+                refreshCache();
+                return tools;
+            }
         }
-        const tools = await response.json();
-        console.log('Fetched tools with full registry data:', tools);
-        setAvailableTools(tools);
-        return tools;
-    } catch (error) {
-        console.error('Error initializing tools:', error);
-        // Show the error in the UI
+    } catch (e) {
+        console.warn('[initializeTools] failed to parse cache', e);
+    }
+
+    // 2. No valid cache – fetch now
+    return await refreshCache();
+
+    async function refreshCache() {
+        try {
+            const response = await fetch('/api/v1/tools/registry');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            const tools = await response.json();
+            setAvailableTools(tools);
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ updatedAt: Date.now(), tools }));
+            } catch {}
+            console.log('[initializeTools] fetched and cached', tools.length, 'tools');
+            return tools;
+        } catch (error) {
+            console.error('[initializeTools] error', error);
+            showError(error);
+            return [];
+        }
+    }
+
+    function showError(error) {
         const toolsContainer = document.querySelector('.tools-container');
         if (toolsContainer) {
-            toolsContainer.innerHTML = `
-                <div style="color: #ff6b6b; padding: 16px; text-align: center; font-family: monospace;">
-                    Failed to load tools: ${error.message}
-                </div>
-            `;
+            toolsContainer.innerHTML = `<div style="color:#ff6b6b;padding:16px;text-align:center;font-family:monospace;">Failed to load tools: ${error.message}</div>`;
         }
-        return [];
     }
 }
 

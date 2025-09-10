@@ -4,7 +4,7 @@ const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
 const WalletLinkingRequestDB = require('../db/walletLinkingRequestDb');
 const WalletLinkingService = require('../walletLinkingService');
-const { getFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('./tokenConfig');
+const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('./tokenConfig');
 // const NoemaUserCoreDB = require('../db/noemaUserCoreDb'); // To be implemented
 // const NoemaUserEconomyDB = require('../db/noemaUserEconomyDb'); // To be implemented
 
@@ -211,21 +211,24 @@ class CreditService {
 
     // Get event fragments for all events we're interested in
     const depositEventFragment = this.ethereumService.getEventFragment('ContributionRecorded', this.contractConfig.abi);
+    const donationEventFragment = this.ethereumService.getEventFragment('Donation', this.contractConfig.abi);
     const withdrawalEventFragment = this.ethereumService.getEventFragment('RescissionRequested', this.contractConfig.abi);
     const vaultCreatedEventFragment = this.ethereumService.getEventFragment('FundChartered', this.contractConfig.abi); 
     // const nftDepositEventFragment = this.ethereumService.getEventFragment('NFTDepositRecorded', this.contractConfig.abi);
 
-    if (!depositEventFragment || !withdrawalEventFragment || !vaultCreatedEventFragment ) {//|| !nftDepositEventFragment) {
+    if (!depositEventFragment || !donationEventFragment || !withdrawalEventFragment || !vaultCreatedEventFragment ) {//|| !nftDepositEventFragment) {
         this.logger.error("[CreditService] Event fragments not found in ABI. Cannot process webhook.");
         return { success: false, message: "Server configuration error: ABI issue.", detail: null };
     }
 
     const depositEventHash = this.ethereumService.getEventTopic(depositEventFragment);
+    const donationEventHash = this.ethereumService.getEventTopic(donationEventFragment);
     const withdrawalEventHash = this.ethereumService.getEventTopic(withdrawalEventFragment);
     const vaultCreatedEventHash = this.ethereumService.getEventTopic(vaultCreatedEventFragment); 
     //const nftDepositEventHash = this.ethereumService.getEventTopic(nftDepositEventFragment);
 
     let processedDeposits = 0;
+    let processedDonations = 0;
     let processedWithdrawals = 0;
     let processedVaultCreations = 0;
     //let processedNftDeposits = 0;
@@ -241,7 +244,12 @@ class CreditService {
         }
 
         try {
-            if (topics[0] === depositEventHash) {
+            if (topics[0] === donationEventHash) {
+                // Process donation event (instant credit)
+                const decodedLog = this.ethereumService.decodeEventLog(donationEventFragment, data, topics, this.contractConfig.abi);
+                await this._processDonationEvent(decodedLog, transactionHash, blockNumber, logIndex);
+                processedDonations++;
+            } else if (topics[0] === depositEventHash) {
                 // Process deposit event
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
                 await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
@@ -278,8 +286,8 @@ class CreditService {
 
     return {
         success: true,
-        message: `Processed ${processedDeposits} deposits, ${processedVaultCreations} vault creations, and ${processedWithdrawals} withdrawals.`,
-        detail: { processedDeposits, processedWithdrawals, processedVaultCreations }
+        message: `Processed ${processedDeposits} deposits, ${processedDonations} donations, ${processedVaultCreations} vault creations, and ${processedWithdrawals} withdrawals.`,
+        detail: { processedDeposits, processedDonations, processedWithdrawals, processedVaultCreations }
     };
   }
 
@@ -329,6 +337,73 @@ class CreditService {
     });
 
     this.logger.info(`[CreditService] Successfully acknowledged new deposit from webhook: ${transactionHash}`);
+  }
+
+  /**
+   * Internal helper to process a single Donation event (instant credit)
+   * @private
+   */
+  async _processDonationEvent(decodedLog, transactionHash, blockNumber, logIndex) {
+    const { funder: user, token, amount } = decodedLog;
+
+    // Check duplicate
+    try {
+      const resp = await this.internalApiClient.get(`/internal/v1/data/ledger/entries/${transactionHash}`);
+      if (resp.data.entry) {
+        this.logger.info(`[CreditService] Skipping donation event for tx ${transactionHash}; already processed.`);
+        return;
+      }
+    } catch (err) {
+      if (err.response?.status !== 404) throw err;
+    }
+
+    // Lookup user account
+    let masterAccountId;
+    try {
+      const resp = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${user}`);
+      masterAccountId = resp.data.masterAccountId;
+    } catch (err) {
+      if (err.response?.status === 404) {
+        this.logger.warn(`[CreditService] Donation from unknown wallet ${user}; ignoring.`);
+        return;
+      }
+      throw err;
+    }
+
+    // Price & funding rate
+    const priceInUsd = await this.priceFeedService.getPriceInUsd(token);
+    const fundingRate = getDonationFundingRate(token);
+    const grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+    const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
+    const userCreditedUsd = adjustedGrossDepositUsd;
+    const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
+
+    const ledgerEntry = {
+      deposit_tx_hash: transactionHash,
+      deposit_log_index: logIndex,
+      deposit_block_number: blockNumber,
+      vault_account: this.contractConfig.address,
+      depositor_address: user,
+      master_account_id: masterAccountId,
+      token_address: token,
+      deposit_amount_wei: amount.toString(),
+      deposit_type: 'TOKEN_DONATION',
+      status: 'CONFIRMED',
+      funding_rate_applied: fundingRate,
+      gross_deposit_usd: grossDepositUsd,
+      adjusted_gross_deposit_usd: adjustedGrossDepositUsd,
+      user_credited_usd: userCreditedUsd,
+      points_credited: pointsCredited,
+      points_remaining: pointsCredited,
+    };
+
+    await this.creditLedgerDb.createLedgerEntry(ledgerEntry);
+    addTxToCache(transactionHash);
+
+    // Notify user
+    this._sendDepositNotification(masterAccountId, 'confirmed', ledgerEntry);
+
+    this.logger.info(`[CreditService] Donation processed instantly for user ${masterAccountId}. Points credited: ${pointsCredited}`);
   }
 
   /**
@@ -483,7 +558,8 @@ class CreditService {
    */
   async processPendingConfirmations() {
       this.logger.info(`[CreditService] Checking for deposits pending confirmation or in error state...`);
-      const pendingDeposits = await this.creditLedgerDb.findProcessableEntries();
+      const pendingDepositsAll = await this.creditLedgerDb.findProcessableEntries();
+      const pendingDeposits = pendingDepositsAll.filter(d => d.deposit_type !== 'TOKEN_DONATION');
 
       if (pendingDeposits.length === 0) {
           this.logger.info('[CreditService] No deposits are pending confirmation or in error state.');

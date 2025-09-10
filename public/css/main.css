@@ -107,3 +107,9 @@ body, h4 {
     text-align: left;
   }
 } 
+
+/* Responsive list spacing */
+@media(max-width:600px){
+  .panel li{display:flex;flex-direction:column;gap:4px;line-height:1.4;}
+  .panel li strong{display:block;margin-bottom:2px;}
+} 

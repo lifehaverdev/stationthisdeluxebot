@@ -229,15 +229,41 @@ class UserCoreDB extends BaseDB {
    * @returns {Promise<Object|null>} Updated userCore document.
    */
   async addWallet(masterAccountId, walletData) {
+    if (!walletData || typeof walletData.address !== 'string') {
+        throw new Error('walletData.address must be provided as a string');
+    }
+
+    // 1. Normalise the wallet address for uniqueness checks/storage
+    const normalisedAddress = walletData.address.toLowerCase();
+    // mutate original object so upstream callers see lowercase too (important for post-insert lookup)
+    walletData.address = normalisedAddress;
+
+    // 2. Check if the wallet already exists on ANOTHER user
+    const existingUser = await this.findUserCoreByWalletAddress(normalisedAddress);
+    if (existingUser && existingUser._id.toString() !== masterAccountId.toString()) {
+        // Graceful conflict that upstream maps to 409
+        throw new Error('Wallet address already exists');
+    }
+
+    // 3. Prepare the wallet object (store the normalised address)
     const newWallet = {
         addedAt: new Date(),
-        verified: false, // Default to not verified
-        isPrimary: false, // Default to not primary
+        verified: false,
+        isPrimary: false,
         ...walletData,
+        address: normalisedAddress, // ensure stored lower-case
     };
-    // Potentially add logic here to ensure only one primary wallet if isPrimary is true.
-    // This might involve multiple operations or more complex update logic.
-    return this.updateUserCore(masterAccountId, { $push: { wallets: newWallet } });
+
+    try {
+        // 4. Use $addToSet to avoid duplicates within the SAME document
+        return await this.updateUserCore(masterAccountId, { $addToSet: { wallets: newWallet } });
+    } catch (error) {
+        // 5. Handle race-condition duplicate key error from unique index
+        if (error.code === 11000 || (error.message && error.message.includes('E11000'))) {
+            throw new Error('Wallet address already exists');
+        }
+        throw error;
+    }
   }
 
   /**

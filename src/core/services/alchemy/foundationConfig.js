@@ -6,6 +6,14 @@ const FOUNDATION_ADDRESSES = {
   // Add mainnet and other networks when deployed
 };
 
+// Human-readable chain names mapped by chainId
+const CHAIN_NAMES = {
+  '1': 'Ethereum Mainnet',
+  '11155111': 'Sepolia',
+  '42161': 'Arbitrum One',
+  '8453': 'Base',
+};
+
 function getFoundationAddress(chainId) {
   const addr = FOUNDATION_ADDRESSES[String(chainId)] || null;
   if (!addr) {
@@ -17,4 +25,5 @@ function getFoundationAddress(chainId) {
 module.exports = {
   FOUNDATION_ADDRESSES,
   getFoundationAddress,
+  CHAIN_NAMES,
 };

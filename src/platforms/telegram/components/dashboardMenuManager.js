@@ -10,6 +10,7 @@ const {
 } = require('../utils/messaging');
 
 const { escapeMarkdownV2 } = require('../../../utils/stringUtils');
+const walletManager = require('./walletManager');
 
 /**
  * Handles the /account command.
@@ -71,8 +72,13 @@ async function handleDashboardCallback(bot, callbackQuery, masterAccountId, depe
             await bot.answerCallbackQuery(callbackQuery.id, { text: 'Settings coming soon!', show_alert: true });
             break;
         case 'connect':
-            // Placeholder for connect menu
-            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Connection management coming soon!', show_alert: true });
+            await bot.answerCallbackQuery(callbackQuery.id);
+            await walletManager.promptForWallet(bot, callbackQuery.message.chat.id, callbackQuery.message.message_id, masterAccountId, dependencies);
+            break;
+        case 'buy':
+            await bot.answerCallbackQuery(callbackQuery.id);
+            const buyPointsManager = require('./buyPointsManager');
+            await buyPointsManager.startFlow(bot, callbackQuery.message.chat.id, masterAccountId, dependencies);
             break;
         case 'help':
             // Placeholder for help menu
@@ -190,8 +196,11 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
         ].join('\n');
 
         // --- Build Keyboard ---
+        const actionLabel = walletAddr ? 'Buy Points' : 'Connect';
+        const actionCallback = walletAddr ? 'dash:buy' : 'dash:connect';
+
         const keyboard = [
-            [{ text: 'Connect', callback_data: 'dash:connect' }, { text: 'History', callback_data: 'dash:history' }],
+            [{ text: actionLabel, callback_data: actionCallback }, { text: 'History', callback_data: 'dash:history' }],
             [{ text: 'Referral', callback_data: 'dash:referral' }, { text: 'Settings', callback_data: 'dash:settings' }],
             [{ text: 'ℹ', callback_data: 'dash:help' }, { text: 'Ⓧ', callback_data: 'dash:close' }]
         ];

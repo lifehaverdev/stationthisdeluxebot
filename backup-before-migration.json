@@ -1,0 +1,690 @@
+[
+  {
+    "userId": 6801534575,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 2771.3819999999996,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.933956
+  },
+  {
+    "userId": 7189178571,
+    "wallet": "0x6daf98df5bafd85f8d0203746a2c54eb76a7f911",
+    "exp": 881.481,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.297059
+  },
+  {
+    "userId": 6471483724,
+    "wallet": "0x785cd1c6959c4d38aedecec0dd966a77ddd1902a",
+    "exp": 241832.43600000092,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 81.497531
+  },
+  {
+    "userId": 6725503130,
+    "wallet": "0xe8306d0cba02c1f5a23b38dc3d0f4d6c5fa7a092",
+    "exp": 79.81,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.026896
+  },
+  {
+    "userId": "6513380243",
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 465.59000000000003,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.156904
+  },
+  {
+    "userId": 98408399,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 406.866,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.137114
+  },
+  {
+    "userId": 5043730848,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 470.327,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.1585
+  },
+  {
+    "userId": 1129109037,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 37,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.012469
+  },
+  {
+    "userId": 7350043045,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 895.122,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.301656
+  },
+  {
+    "userId": 5823567031,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 68.583,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.023112
+  },
+  {
+    "userId": 7822246873,
+    "wallet": "0x236565f3941c67e9f5f312f5dece52fea828b3f3",
+    "exp": 6315.535999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 2.128336
+  },
+  {
+    "userId": 1681581280,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 1214.694,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.409352
+  },
+  {
+    "userId": 879943795,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 420.342,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.141655
+  },
+  {
+    "userId": 6864982796,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 220.005,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.074142
+  },
+  {
+    "userId": 6513380243,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 17267.401,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 5.819114
+  },
+  {
+    "userId": 5841304648,
+    "wallet": "0x9117cf613dd798c6456121307f3f7f38896b6e5c",
+    "exp": 982552.7720000015,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 331.120284
+  },
+  {
+    "userId": 1648606499,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 1026.22,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.345836
+  },
+  {
+    "userId": 7358070225,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 3554.427999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.197842
+  },
+  {
+    "userId": 6014708959,
+    "wallet": "0x6f1b9877bcdf0885cb88cdc5b2cfbed20a34854f",
+    "exp": 1308372.4310000008,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 440.921509
+  },
+  {
+    "userId": 5472638766,
+    "wallet": "0x1821bd18cbdd267ce4e389f893ddfe7beb333ab6",
+    "exp": 1522562.736,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 513.103642
+  },
+  {
+    "userId": 6416727231,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 337.488,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.113733
+  },
+  {
+    "userId": 5957925538,
+    "wallet": "0x46130a909d027bf5dad826e37e826b65d73417ac",
+    "exp": 28749.206,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 9.688482
+  },
+  {
+    "userId": 5495767246,
+    "wallet": "0xd53F9Af0764b6e8f63CAB179596c1B828Ef144D5",
+    "exp": 168278.55000000005,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 56.709871
+  },
+  {
+    "userId": 596755614,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 290.23799999999994,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.09781
+  },
+  {
+    "userId": 6454467312,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 4278.801,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.441956
+  },
+  {
+    "userId": 1790818156,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 6721.917,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 2.265286
+  },
+  {
+    "userId": 5667124294,
+    "wallet": "0x02f5790534e1366d578614a6479b85e2f20695cb",
+    "exp": 10717.572,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 3.611822
+  },
+  {
+    "userId": 6968965972,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 850.2539999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.286536
+  },
+  {
+    "userId": 1604181978,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 41.698,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.014052
+  },
+  {
+    "userId": 7466085168,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 4533.708,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.52786
+  },
+  {
+    "userId": 7774955053,
+    "wallet": "0x1ee83d67ffa76cf97192f2ef14edb01c482f5412",
+    "exp": 69096.616,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 23.28556
+  },
+  {
+    "userId": 1697393207,
+    "wallet": "0xa218d6a3ad14cfbfc96017d5d7bceee1484bd6a5",
+    "exp": 564759.2019999993,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 190.323851
+  },
+  {
+    "userId": 1367530424,
+    "wallet": "0x7fda73e53f71a5606358f956e736bbf54a8bdfe6",
+    "exp": 135800.847,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 45.764885
+  },
+  {
+    "userId": 6731472558,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 44.152,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.014879
+  },
+  {
+    "userId": 1736525394,
+    "wallet": "0x11c8921a1f37fe15615d001e8ddc3883f2232294",
+    "exp": 13688.336,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 4.612969
+  },
+  {
+    "userId": 7021209903,
+    "wallet": "0xa9d181b2714fbd4b649c925e1fdd7869cd0a2503",
+    "exp": 65702.59700000002,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 22.141775
+  },
+  {
+    "userId": 1199810367,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 2887.309,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.973023
+  },
+  {
+    "userId": 6187573602,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 84.234,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.028387
+  },
+  {
+    "userId": 5969567249,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 300.915,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.101408
+  },
+  {
+    "userId": 581146098,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 189.08700000000002,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.063722
+  },
+  {
+    "userId": 5340588358,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 85.75999999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.028901
+  },
+  {
+    "userId": 5049265165,
+    "wallet": "0xf39fbf3bd9f7bfda4fd5cb30df587c9f6d6abbbe",
+    "exp": 65982.142,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 22.235982
+  },
+  {
+    "userId": 459887626,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 1043.565,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.351681
+  },
+  {
+    "userId": 1066097083,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 890.172,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.299988
+  },
+  {
+    "userId": 721550253,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 470.763,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.158647
+  },
+  {
+    "userId": 5537382462,
+    "wallet": "0xcdb628839edcae057387ef654ee453dc264e3fd0",
+    "exp": 90230.12099999998,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 30.407551
+  },
+  {
+    "userId": 1558081230,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 18138.235999999997,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 6.112586
+  },
+  {
+    "userId": 5079655617,
+    "wallet": "0x4c17cecba2527e5895988c4c88423089ad2faecc",
+    "exp": 132969.15800000005,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 44.810606
+  },
+  {
+    "userId": 5617106270,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 697.087,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.234918
+  },
+  {
+    "userId": 5766461708,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 57127.10999999997,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 19.251836
+  },
+  {
+    "userId": 1614028006,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 532.8979999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.179587
+  },
+  {
+    "userId": 6370490193,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 111,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.037407
+  },
+  {
+    "userId": 34860195,
+    "wallet": "0xb2aef4ebd50d979c5c5e212ace1f77ece6f51c3b",
+    "exp": 65889.96799999996,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 22.204919
+  },
+  {
+    "userId": 760535930,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 925.9399999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.312042
+  },
+  {
+    "userId": 6734558934,
+    "wallet": "0x43463a299ace12f914b57ac1ca2f37830970ecb4",
+    "exp": 2410.9080000000004,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.812476
+  },
+  {
+    "userId": 2140687323,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 420.195,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.141606
+  },
+  {
+    "userId": 7364905336,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 471.764,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.158984
+  },
+  {
+    "userId": 5380719469,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 211.88700000000003,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.071406
+  },
+  {
+    "userId": 6939428999,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 4998.135,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.684371
+  },
+  {
+    "userId": 723746538,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 399.612,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.134669
+  },
+  {
+    "userId": 1336739879,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 78.993,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.026621
+  },
+  {
+    "userId": 7061765865,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 71200.70700000001,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 23.994638
+  },
+  {
+    "userId": 276208886,
+    "wallet": "0xb3623d62ff30fadb5b2e127c07cab0d1b0808276",
+    "exp": 343.167,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.115647
+  },
+  {
+    "userId": 386220350,
+    "wallet": "0xe47f7be8c10845f3abf533d6baf06334b79e4bb9",
+    "exp": 4315.948,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.454474
+  },
+  {
+    "userId": 1854998584,
+    "wallet": "0x43ac641951f48bc20198c15ee1c99acad7071865",
+    "exp": 343159.7179999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 115.644825
+  },
+  {
+    "userId": 7628397596,
+    "wallet": "0x16a01f080e6a52592f3472009aee064fe8afd072",
+    "exp": 4975.617,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.676783
+  },
+  {
+    "userId": 7606906706,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 126.14999999999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.042513
+  },
+  {
+    "userId": 7446840630,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 116.121,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.039133
+  },
+  {
+    "userId": 7180816836,
+    "wallet": "0xc36db0bdb9b3002ff46e444f3b66bf207bb4d014",
+    "exp": 41539.99399999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 13.998978
+  },
+  {
+    "userId": 12967539,
+    "wallet": "0x8ebe8b747cab6d473483aa3889870cf31c05d1c6",
+    "exp": 11739.194000000001,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 3.956108
+  },
+  {
+    "userId": 1770985667,
+    "wallet": "0x34a2d70f474bc0c35ec27915fcf2c87f227fd9ea",
+    "exp": 339828.94899999956,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 114.522356
+  },
+  {
+    "userId": 1848145997,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 739.736,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.249291
+  },
+  {
+    "userId": 7669585518,
+    "wallet": "0x9f63692895d66b9ae549f78d602cabb884272902",
+    "exp": 95273.80799999996,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 32.107273
+  },
+  {
+    "userId": 813875813,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 24388.206000000002,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 8.218825
+  },
+  {
+    "userId": 6715657025,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 345.534,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.116445
+  },
+  {
+    "userId": 5718631432,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 653.547,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.220245
+  },
+  {
+    "userId": 1098858514,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 601.575,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.202731
+  },
+  {
+    "userId": 740025659,
+    "wallet": "0x07e27fcaeac05237b6499ad7ce8671ceeccf6678",
+    "exp": 2198.778,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.740988
+  },
+  {
+    "userId": 4783103,
+    "wallet": "0x30e3784b28332b7cb268988f9e81eeff9e3bf2dc",
+    "exp": 76812.89899999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 25.885947
+  },
+  {
+    "userId": 837563973,
+    "wallet": "0x05be328816dff73d8518d4ebb09fc1111c2bffbb",
+    "exp": 164097.7419999999,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 55.300939
+  },
+  {
+    "userId": 8072069430,
+    "wallet": "0x962b1162d07fc04173e06af9b25269bf019caffd",
+    "exp": 193.452,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 0.065193
+  },
+  {
+    "userId": 6801970846,
+    "wallet": "0x1eaa08043ff2ac37e396a85782d7c1687d6c0823",
+    "exp": 10402.542,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 3.505657
+  },
+  {
+    "userId": 6143161868,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 3867.621,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.303388
+  },
+  {
+    "userId": 1822332491,
+    "wallet": "0x0e4d080ee98edc50689e104d011f077db1ea3a82",
+    "exp": 5704.1849999999995,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.92231
+  },
+  {
+    "userId": 5047773120,
+    "wallet": "0x70aac42c779af2cc1e43529ef8942dbeaa0ef697",
+    "exp": 772056.4210000025,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 260.183014
+  },
+  {
+    "userId": 1328932949,
+    "wallet": "0xa779fc675db318dab004ab8d538cb320d0013f42",
+    "exp": 3957.0640000000003,
+    "hasWallet": true,
+    "migrationTarget": true,
+    "usdCredit": 1.333531
+  }
+]

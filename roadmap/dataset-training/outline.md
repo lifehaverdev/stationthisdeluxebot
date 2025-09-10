@@ -36,3 +36,38 @@ Current platform supports LoRA training only through legacy Telegram flows. Ther
 - Worker environment with GPU & comfy-ui extensions
 - Updated LoRAResolutionService cache invalidation after model publish
 - CSRF & auth middleware for new endpoints
+
+## Progress (Sprint 2025-09-05)
+
+- External API endpoints for Datasets (`/api/v1/datasets`) and Trainings (`/api/v1/trainings`) completed and wired through versioned router.
+- TrainingDB DAO updated with helpers `findTrainingsByUser`, `findTrainingById`, `createTrainingSession` to unblock internal API.
+- Sandbox ModsMenu “Train” tab:
+  - Dashboard lists user datasets and trainings.
+  - Forms for creating datasets & trainings implemented (basic layout).
+  - Dataset edit view supports image upload via URL list and persists via `POST /datasets/:id/images`.
+- Added `train-form.css` and hooked into component bundle for baseline styling.
+
+## Next Sprint Focus (2025-09-08 → 2025-09-15)
+
+1. UX Polish
+   - Replace textarea image input with drag-&-drop / paste drop-zone (supports files & URLs).
+   - Real-time thumbnail previews with remove button.
+   - Responsive form styling aligned with `style-overhaul` guidelines.
+
+2. Upload Pipeline
+   - Implement `/datasets/:id/images` to accept multipart upload and proxy to storage, returning CDN URLs.
+   - Client: drop-zone uploads files directly before attaching URLs.
+
+3. Training Form Enhancements
+   - Fetch training offering registry (`/api/v1/training-offerings`) and populate dropdown.
+   - Cost display and balance check via pointsApi before submit.
+
+4. Worker & Status
+   - Stub worker that marks queued jobs as completed for integration testing.
+   - Poll `/trainings/:id` for status; dashboard auto-refresh.
+
+5. Testing & Docs
+   - Cypress smoke test: create dataset → upload image → submit training.
+   - Update ADR & Guides with new flows.
+
+Risks: storage quota limits, CSRF token expiry, large file uploads on slow connections.

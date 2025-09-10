@@ -360,6 +360,15 @@ function initializeExternalApi(dependencies) {
       logger.info('External Datasets API router mounted at /datasets.');
     }
   }
+  // Mount Trainings API (auth required)
+  const trainingsApi = require('./trainingsApi');
+  if (trainingsApi) {
+    const trRouter = trainingsApi(dependencies);
+    if (trRouter) {
+      externalApiRouter.use('/trainings', dualAuth, trRouter);
+      logger.info('External Trainings API router mounted at /trainings.');
+    }
+  }
 
   // --- END public route ---
 

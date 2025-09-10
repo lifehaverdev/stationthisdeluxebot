@@ -47,3 +47,11 @@ Introduce server-side persisted *Workspaces* that can be created, saved, loaded,
   * Reloaded page as guest with `?workspace=` param for each slug; canvases loaded correctly
   * Switched tabs; observed `sandbox_connections` and `sandbox_tool_windows` keys update per tab, no history pollution
   * Removed windows; ensured they did not reappear after reload.
+- 2025-09-08: Tab UX & Guest Access completed.
+  * Added WorkspaceTabs close button (hover '×'), blank-tab isolation, localStorage + in-memory reset.
+  * Silent autosave, clipboard alert only on first manual save.
+  * CSS: tab close hover, z-index layering over modals.
+  * Public snapshot view: middleware bypass for `GET /api/v1/workspaces/:slug` and root route, auto-load slug for tab 0.
+  * Guest flow verified – no onboarding/connect prompts block view; exec APIs 401 as expected.
+  * Close Tab removes tab & persists state; cannot close last tab.
+Status: MVP feature COMPLETE – ready for demo.

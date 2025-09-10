@@ -15,6 +15,7 @@ const TelegramBot = require('node-telegram-bot-api');
 // --- Refactored Imports ---
 const { CallbackQueryDispatcher, MessageReplyDispatcher, CommandDispatcher, DynamicCommandDispatcher } = require('./dispatcher');
 const replyContextManager = require('./utils/replyContextManager.js');
+const { ensureCleanKeyboard } = require('./utils/keyboardContextManager');
 
 // Import all feature managers
 const settingsMenuManager = require('./components/settingsMenuManager');
@@ -24,6 +25,9 @@ const trainingMenuManager = require('./components/trainingMenuManager');
 const collectionMenuManager = require('./components/collectionMenuManager');
 const adminManager = require('./components/adminManager');
 const dashboardMenuManager = require('./components/dashboardMenuManager');
+const walletManager = require('./components/walletManager');
+const buyPointsManager = require('./components/buyPointsManager');
+const toolsMenuManager = require('./components/toolsMenuManager');
 // Delivery Menu Managers
 const globalMenuManager = require('./components/deliveryMenu/globalMenuManager');
 const infoManager = require('./components/deliveryMenu/infoManager');
@@ -59,14 +63,25 @@ function createTelegramBot(dependencies, token, options = {}) {
     const dispatcherInstances = { callbackQueryDispatcher, messageReplyDispatcher, commandDispatcher, dynamicCommandDispatcher };
     const allDependencies = { ...dependencies, bot, replyContextManager };
 
-    // Register component managers
+    const { disabledFeatures = {} } = dependencies;
+
+    // Register component managers conditionally based on feature toggles
     settingsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     modsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
-    spellMenuManager.registerHandlers(dispatcherInstances, allDependencies);
-    trainingMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    toolsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+
+    if (!disabledFeatures.spells) {
+      spellMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    }
+    if (!disabledFeatures.train) {
+      trainingMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    }
+
     collectionMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     adminManager.registerHandlers(dispatcherInstances, allDependencies);
     dashboardMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    walletManager.registerHandlers(dispatcherInstances, allDependencies);
+    buyPointsManager.registerHandlers(dispatcherInstances, allDependencies);
 
     // Register delivery menu managers
     globalMenuManager.registerHandlers(dispatcherInstances, allDependencies);
@@ -83,6 +98,14 @@ function createTelegramBot(dependencies, token, options = {}) {
   }
 
   registerAllHandlers();
+
+  const canonicalCommands = [
+    { command: 'account', description: 'Manage your account' },
+    { command: 'status', description: 'View your status' },
+    { command: 'settings', description: 'Configure preferences' },
+    { command: 'tools', description: 'Utilities & extras' }
+  ];
+  bot.setMyCommands(canonicalCommands, { scope: { type: 'all_private_chats' } }).catch(console.error);
 
   // --- Refactored Event Handlers ---
 
@@ -103,6 +126,9 @@ function createTelegramBot(dependencies, token, options = {}) {
       if (!message.caption) return;
 
       const fullDependencies = { ...dependencies, replyContextManager };
+
+      // CLEAN KEYBOARD FOR PHOTOS
+      await ensureCleanKeyboard(bot, message, fullDependencies);
 
       // Check for replies with a specific context first
       if (message.reply_to_message) {
@@ -137,6 +163,9 @@ function createTelegramBot(dependencies, token, options = {}) {
       if (!message.text) return;
 
       const fullDependencies = { ...dependencies, replyContextManager };
+
+      // CLEAN KEYBOARD FOR TEXT MESSAGES
+      await ensureCleanKeyboard(bot, message, fullDependencies);
 
       // Check for replies with a specific context first
       if (message.reply_to_message) {

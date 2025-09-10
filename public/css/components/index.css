@@ -12,6 +12,7 @@
 @import url('reviews.css');
 @import url('usedby.css');
 @import url('about.css');
+@import url('train-form.css');
 
 .feature-card {
     display: flex;

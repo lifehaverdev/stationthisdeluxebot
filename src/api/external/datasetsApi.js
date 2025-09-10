@@ -11,8 +11,8 @@ function createDatasetsApiRouter(deps = {}) {
     return null;
   }
 
-  // GET /datasets (list mine)
-  router.get('/datasets', async (req, res) => {
+  // GET / (list datasets for authenticated user)
+  router.get('/', async (req, res) => {
     const user = req.user;
     if (!user || !user.userId && !user.masterAccountId) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
@@ -28,8 +28,8 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
-  // GET /datasets/:id
-  router.get('/datasets/:id', async (req, res) => {
+  // GET /:id (fetch dataset by id)
+  router.get('/:id', async (req, res) => {
     try {
       const { data } = await client.get(`/internal/v1/data/datasets/${encodeURIComponent(req.params.id)}`);
       res.json(data);
@@ -40,8 +40,8 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
-  // POST /datasets (create)
-  router.post('/datasets', async (req, res) => {
+  // POST / (create new dataset)
+  router.post('/', async (req, res) => {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
@@ -58,8 +58,8 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
-  // POST /datasets/:id/images
-  router.post('/datasets/:id/images', async (req, res) => {
+  // POST /:id/images (add images to dataset)
+  router.post('/:id/images', async (req, res) => {
     const { id } = req.params;
     const { imageUrls } = req.body;
     if (!Array.isArray(imageUrls) || !imageUrls.length) {
