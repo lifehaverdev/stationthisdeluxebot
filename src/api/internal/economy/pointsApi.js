@@ -19,13 +19,19 @@ const BASELINE_NFT_FUNDING_RATE = 0.70;
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
 
 module.exports = function pointsApi(dependencies) {
-    const { logger, priceFeedService, nftPriceService, creditService, ethereumService, db } = dependencies;
+    const { logger, priceFeedService, nftPriceService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth, db } = dependencies;
+    // Helper to resolve chainId -> services, falling back to legacy singletons
+    function getChainServices(chainId = '1') {
+        const cs = creditServices[String(chainId)] || legacyCredit;
+        const es = ethereumServices[String(chainId)] || legacyEth;
+        return { creditService: cs, ethereumService: es };
+    }
     const creditLedgerDb = db.creditLedger;
     logger.info('[pointsApi] Initializing with dependencies:', {
         priceFeedService: !!priceFeedService,
         nftPriceService: !!nftPriceService,
-        creditService: !!creditService,
-        ethereumService: !!ethereumService,
+        creditService: !!legacyCredit,
+        ethereumService: !!legacyEth,
         creditLedgerDb: !!creditLedgerDb
     });
     const router = express.Router();
@@ -43,6 +49,7 @@ module.exports = function pointsApi(dependencies) {
      */
     router.get('/supported-assets', (req, res) => {
         const chainId = String(req.query.chainId || '1');
+        const { creditService, ethereumService } = getChainServices(chainId);
         logger.info(`[pointsApi] /supported-assets requested for chainId=${chainId}`);
         console.log('[pointsApi:/supported-assets] raw query params:', req.query);
 
@@ -95,7 +102,9 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/quote', async (req, res, next) => {
         try {
-            const { type, assetAddress, amount, tokenId, userWalletAddress, mode = 'contribute' } = req.body;
+            const { type, assetAddress, amount, tokenId, userWalletAddress, mode = 'contribute', chainId: bodyChainId } = req.body;
+            const chainId = String(bodyChainId || '1');
+            const { creditService, ethereumService } = getChainServices(chainId);
 
             // --- Donate-mode validation & funding-rate helper -----------------
             const SUPPORTED_MODES = ['contribute', 'donate'];
@@ -236,7 +245,9 @@ module.exports = function pointsApi(dependencies) {
      */
     router.post('/purchase', async (req, res, next) => {
         try {
-            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode, mode = 'contribute' } = req.body;
+            const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode, mode = 'contribute', chainId: bodyChainId } = req.body;
+            const chainId = String(bodyChainId || '1');
+            const { creditService, ethereumService } = getChainServices(chainId);
             const SUPPORTED_MODES = ['contribute', 'donate'];
             if (!SUPPORTED_MODES.includes(mode)) {
                 logger.warn(`[pointsApi] /purchase unsupported mode '${mode}'. Allowed: ${SUPPORTED_MODES.join(', ')}`);
@@ -265,7 +276,8 @@ module.exports = function pointsApi(dependencies) {
             const iface = new ethers.Interface(foundationAbi);
 
             // Determine the foundation address once
-            const vaultNetwork = 'sepolia'; // TODO: dynamically detect network if needed
+            const { getNetworkName } = require('../../../core/contracts');
+            const vaultNetwork = getNetworkName(chainId) || 'mainnet';
             const foundationAddress = contracts.foundation.addresses[vaultNetwork];
             let toAddress = foundationAddress;
 

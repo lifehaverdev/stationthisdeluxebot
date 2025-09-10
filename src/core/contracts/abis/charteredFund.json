@@ -1,21 +1,5 @@
 [
   {
-    "type": "constructor",
-    "inputs": [
-      {
-        "name": "_foundation",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "payable"
-  },
-  {
     "type": "receive",
     "stateMutability": "payable"
   },
@@ -74,7 +58,12 @@
         "internalType": "uint256"
       },
       {
-        "name": "fee",
+        "name": "charterFee",
+        "type": "uint128",
+        "internalType": "uint128"
+      },
+      {
+        "name": "protocolFee",
         "type": "uint128",
         "internalType": "uint128"
       },
@@ -200,6 +189,24 @@
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "initialize",
+    "inputs": [
+      {
+        "name": "_foundation",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -360,6 +367,19 @@
   },
   {
     "type": "function",
+    "name": "sweepProtocolFees",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "transferOwnership",
     "inputs": [
       {
@@ -372,20 +392,44 @@
     "stateMutability": "payable"
   },
   {
-    "type": "event",
-    "name": "BackendStatusChanged",
+    "type": "function",
+    "name": "withdrawCharterFees",
     "inputs": [
       {
-        "name": "backend",
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "CharterFeeWithdrawn",
+    "inputs": [
+      {
+        "name": "owner",
         "type": "address",
         "indexed": true,
         "internalType": "address"
       },
       {
-        "name": "isAuthorized",
-        "type": "bool",
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
         "indexed": false,
-        "internalType": "bool"
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -596,6 +640,25 @@
   },
   {
     "type": "event",
+    "name": "MarshalStatusChanged",
+    "inputs": [
+      {
+        "name": "marshal",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "isAuthorized",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OperatorFreeze",
     "inputs": [
       {
@@ -648,6 +711,25 @@
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProtocolFeeSwept",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -723,6 +805,21 @@
   {
     "type": "error",
     "name": "AlreadyInitialized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Auth",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Fail",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Math",
     "inputs": []
   },
   {

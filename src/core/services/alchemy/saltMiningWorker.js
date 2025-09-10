@@ -1,40 +1,30 @@
-const { ethers, keccak256, getCreate2Address } = require('ethers');
+const { ethers } = require('ethers');
 const { workerData, parentPort } = require('worker_threads');
+const { predictDeterministicAddressERC1967BeaconProxy, encodeCharteredFundInitArgs, hasVanityPrefix } = require('./beaconProxyHelper');
 
 // Get data passed to worker
-const { ownerAddress, foundationAddress, targetPrefix, creationBytecode } = workerData;
+const { ownerAddress, foundationAddress, beaconAddress } = workerData;
 
-if (!creationBytecode) {
-    throw new Error('SaltMiningWorker: Missing creationBytecode from workerData.');
+if (!beaconAddress) {
+    throw new Error('SaltMiningWorker: Missing beaconAddress from workerData.');
 }
 
-// --- Pre-calculate the initCodeHash once, as it's constant for this worker run ---
-// The constructor for CharteredFund takes (address foundation, address ownerAddress)
-const constructorArgTypes = ['address', 'address'];
-const constructorArgs = [foundationAddress, ownerAddress];
-const encodedArgs = ethers.AbiCoder.defaultAbiCoder().encode(constructorArgTypes, constructorArgs);
-const initCode = creationBytecode + encodedArgs.slice(2);
-const initCodeHash = ethers.keccak256(initCode);
-// --- End pre-calculation ---
-
+// Pre-calculate the initialization args once, as they're constant for this worker run
+const initArgs = encodeCharteredFundInitArgs(foundationAddress, ownerAddress);
 
 /**
- * Computes the CREATE2 address for a new CharteredFund.
- * This function must perfectly replicate the on-chain logic.
+ * Computes the predicted address for a new CharteredFund beacon proxy.
  * @param {string} salt - The 32-byte salt, as a hex string.
- * @returns {string} The predicted contract address.
+ * @returns {string} The predicted proxy address.
  */
-function computeCreate2Address(salt) {
-    // Use the pre-calculated initCodeHash
-    const predictedAddress = ethers.getCreate2Address(
-        foundationAddress, // The address of the factory contract (CharteredFund)
-        salt,               // The salt
-        initCodeHash        // The hash of the init code
+function computeProxyAddress(salt) {
+    return predictDeterministicAddressERC1967BeaconProxy(
+        beaconAddress,
+        initArgs,
+        salt,
+        foundationAddress // The foundation contract is the deployer
     );
-
-    return predictedAddress;
 }
-
 
 // Mine for a salt that generates an address with the target prefix
 function mineSalt() {
@@ -47,10 +37,10 @@ function mineSalt() {
         const saltHex = ethers.hexlify(salt);
 
         // Compute the address that would be created
-        const predictedAddress = computeCreate2Address(saltHex);
+        const predictedAddress = computeProxyAddress(saltHex);
 
-        // Check if it matches our target prefix (case-insensitive)
-        if (predictedAddress.toLowerCase().startsWith(targetPrefix.toLowerCase())) {
+        // Check if it has our vanity prefix
+        if (hasVanityPrefix(predictedAddress)) {
             return {
                 salt: saltHex,
                 predictedAddress
@@ -60,7 +50,7 @@ function mineSalt() {
         attempts++;
     }
 
-    throw new Error(`Failed to find a salt for prefix ${targetPrefix} within ${maxAttempts} attempts.`);
+    throw new Error(`Failed to find a salt with vanity prefix within ${maxAttempts} attempts.`);
 }
 
 // Start mining and send result back to main thread
@@ -70,4 +60,4 @@ try {
 } catch (error) {
     // Post the error back to the main thread so it can be properly handled
     parentPort.postMessage({ error: error.message });
-} 
+}

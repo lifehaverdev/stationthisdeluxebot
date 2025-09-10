@@ -13,10 +13,16 @@ const logger = createLogger('ActionsApi');
  */
 function createActionsApi(dependencies) {
   const router = express.Router();
-  const { db, creditService, saltMiningService } = dependencies;
+  const { db, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth, saltMiningService } = dependencies;
 
-  if (!db || !creditService || !saltMiningService) {
-    logger.error('[ActionsApi] Missing critical dependencies (db, creditService, or saltMiningService).');
+  // Helper to grab correct chain services (default 1)
+  const getChainServices = (cid = '1') => ({
+    creditService: creditServices[cid] || legacyCredit,
+    ethereumService: ethereumServices[cid] || legacyEth,
+  });
+
+  if (!db || !saltMiningService) {
+    logger.error('[ActionsApi] Missing critical dependencies (db or saltMiningService).');
     router.use((req, res) => res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'A critical service is not available.' }}));
     return router;
   }
@@ -51,8 +57,10 @@ function createActionsApi(dependencies) {
       const { salt, predictedAddress } = await saltMiningService.getSalt(ownerAddress);
       logger.info(`[ActionsApi] Mined salt ${salt}, predicted address ${predictedAddress}`, { requestId });
 
-      // 4. Call creditService to deploy the vault (this method will need to be created)
-      // It will handle the on-chain tx and saving the record to the DB
+      // 4. Call chain-aware creditService to deploy the vault
+      const chainId = String(req.body?.chainId || '1');
+      const { creditService } = getChainServices(chainId);
+
       const newVault = await creditService.deployReferralVault({
         masterAccountId: new ObjectId(masterAccountId),
         ownerAddress,
@@ -61,7 +69,7 @@ function createActionsApi(dependencies) {
         predictedAddress
       });
 
-      res.status(201).json(newVault);
+      res.status(201).json({ ...newVault, chainId });
 
     } catch (error) {
       logger.error(`[ActionsApi] Failed to create referral vault for MAID ${masterAccountId}.`, { error: error.message, stack: error.stack, requestId });

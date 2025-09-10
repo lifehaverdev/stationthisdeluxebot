@@ -1,28 +1,10 @@
 const { ethers } = require('ethers');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const path = require('path');
-const os = require('os');
 
 // Cache for pre-mined salts
 const SALT_CACHE_SIZE = 10;
 const MINING_TIMEOUT_MS = 30000; // 30 seconds
-const TARGET_PREFIX = '0x1152';
-
-// Load the creation bytecode for the CharteredFund contract
-let charteredFundBytecode;
-try {
-  // Try loading from a direct string first (e.g., from an env var or a simple JSON file)
-  const bytecodeJson = require('../../contracts/abis/bytecode/charteredFund.bytecode.json');
-  charteredFundBytecode = typeof bytecodeJson === 'string' ? bytecodeJson : bytecodeJson.object;
-  if (!charteredFundBytecode || !charteredFundBytecode.startsWith('0x')) {
-    throw new Error('Bytecode is not in the expected format.');
-  }
-} catch (error) {
-    console.error('[SaltMiningService] CRITICAL ERROR: Could not load CharteredFund bytecode.', error);
-    // Set to null to prevent the service from starting if bytecode is essential
-    charteredFundBytecode = null;
-}
-
 
 /**
  * @class SaltMiningService
@@ -32,30 +14,30 @@ class SaltMiningService {
   /**
    * @param {object} config - Configuration object.
    * @param {string} config.foundationAddress - The address of the Foundation contract
-   * @param {Array} config.foundationAbi - The ABI of the Foundation contract
+   * @param {string} config.charterBeacon - The address of the CharteredFund beacon contract
    * @param {object} logger - A logger instance.
    */
   constructor(config, logger) {
     this.logger = logger || console;
     
-    if (!charteredFundBytecode) {
-        throw new Error('[SaltMiningService] Service cannot start because CharteredFund bytecode is not loaded.');
+    if (!config.foundationAddress || !config.charterBeacon) {
+        throw new Error('[SaltMiningService] Missing foundationAddress or charterBeacon in config.');
     }
 
-    if (!config.foundationAddress || !config.foundationAbi) {
-        throw new Error('[SaltMiningService] Missing foundationAddress or foundationAbi in config.');
+    if (!ethers.isAddress(config.charterBeacon)) {
+        throw new Error('[SaltMiningService] Invalid charterBeacon address format.');
     }
     
     this.contractConfig = {
         address: config.foundationAddress,
-        abi: config.foundationAbi
+        beaconAddress: config.charterBeacon
     };
 
     this.workerPath = path.resolve(__dirname, 'saltMiningWorker.js');
     this.saltQueue = []; // A queue to hold pre-mined salts
     this.isMining = false;
 
-    this.logger.info(`[SaltMiningService] Initialized with Foundation address: ${this.contractConfig.address}`);
+    this.logger.info(`[SaltMiningService] Initialized with Foundation: ${this.contractConfig.address}, Beacon: ${this.contractConfig.beaconAddress}`);
   }
 
   /**
@@ -104,8 +86,7 @@ class SaltMiningService {
         workerData: {
           ownerAddress: ownerAddress,
           foundationAddress: this.contractConfig.address,
-          targetPrefix: TARGET_PREFIX,
-          creationBytecode: charteredFundBytecode
+          beaconAddress: this.contractConfig.beaconAddress
         }
       });
 
@@ -143,53 +124,53 @@ class SaltMiningService {
     });
   }
 
-    /**
-     * Starts background cache filling process
-     * @private
-     */
-    async startCacheFilling() {
-        // Fill cache for any owner addresses we're tracking
-        const fillAll = async () => {
-            const addresses = Array.from(this.saltCache.keys());
-            for (const address of addresses) {
-                try {
-                    await this.fillCache(address);
-                } catch (err) {
-                    this.logger.error(`[SaltMiningService] Failed to fill cache for ${address}:`, err);
-                }
-            }
-        };
+  /**
+   * Starts background cache filling process
+   * @private
+   */
+  async startCacheFilling() {
+    // Fill cache for any owner addresses we're tracking
+    const fillAll = async () => {
+      const addresses = Array.from(this.saltCache.keys());
+      for (const address of addresses) {
+        try {
+          await this.fillCache(address);
+        } catch (err) {
+          this.logger.error(`[SaltMiningService] Failed to fill cache for ${address}:`, err);
+        }
+      }
+    };
 
-        // Run initial fill
-        fillAll().catch(err => {
-            this.logger.error('[SaltMiningService] Initial cache fill failed:', err);
-        });
+    // Run initial fill
+    fillAll().catch(err => {
+      this.logger.error('[SaltMiningService] Initial cache fill failed:', err);
+    });
 
-        // Schedule periodic fills
-        setInterval(fillAll, 5 * 60 * 1000); // Every 5 minutes
+    // Schedule periodic fills
+    setInterval(fillAll, 5 * 60 * 1000); // Every 5 minutes
+  }
+
+  /**
+   * Fills the salt cache for a given owner address
+   * @param {string} ownerAddress - The address to fill cache for
+   * @private
+   */
+  async fillCache(ownerAddress) {
+    if (!this.saltCache.has(ownerAddress)) {
+      this.saltCache.set(ownerAddress, []);
     }
 
-    /**
-     * Fills the salt cache for a given owner address
-     * @param {string} ownerAddress - The address to fill cache for
-     * @private
-     */
-    async fillCache(ownerAddress) {
-        if (!this.saltCache.has(ownerAddress)) {
-            this.saltCache.set(ownerAddress, []);
-        }
-
-        const cache = this.saltCache.get(ownerAddress);
-        while (cache.length < SALT_CACHE_SIZE) {
-            try {
-                const result = await this.mineSalt(ownerAddress);
-                cache.push(result);
-            } catch (err) {
-                this.logger.error(`[SaltMiningService] Failed to mine salt for cache:`, err);
-                break;
-            }
-        }
+    const cache = this.saltCache.get(ownerAddress);
+    while (cache.length < SALT_CACHE_SIZE) {
+      try {
+        const result = await this.mineSalt(ownerAddress);
+        cache.push(result);
+      } catch (err) {
+        this.logger.error(`[SaltMiningService] Failed to mine salt for cache:`, err);
+        break;
+      }
     }
+  }
 }
 
-module.exports = SaltMiningService; 
+module.exports = SaltMiningService;

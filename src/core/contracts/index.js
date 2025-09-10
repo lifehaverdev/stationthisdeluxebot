@@ -7,9 +7,10 @@ const contracts = {
   foundation: {
     abi: foundationAbi,
     addresses: {
-      // Keys correspond to getNetworkName outputs
-      sepolia: FOUNDATION_ADDRESSES['11155111'] || null,
-      // mainnet entry will be added when deployed
+      '1': FOUNDATION_ADDRESSES['1'] || null,
+      '11155111': FOUNDATION_ADDRESSES['11155111'] || null,
+      '8453': FOUNDATION_ADDRESSES['8453'] || null,
+      '42161': FOUNDATION_ADDRESSES['42161'] || null,
     },
   },
   charteredFund: {

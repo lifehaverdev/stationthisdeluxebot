@@ -5,6 +5,13 @@
   },
   {
     "type": "function",
+    "name": "adoptBeacon",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "allocate",
     "inputs": [
       {
@@ -28,13 +35,13 @@
   },
   {
     "type": "function",
-    "name": "backendAllowed",
+    "name": "charterBeacon",
     "inputs": [],
     "outputs": [
       {
         "name": "",
-        "type": "bool",
-        "internalType": "bool"
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -56,7 +63,7 @@
     ],
     "outputs": [
       {
-        "name": "",
+        "name": "fund",
         "type": "address",
         "internalType": "address"
       }
@@ -226,6 +233,11 @@
         "name": "_ownerTokenId",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "_charterBeacon",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -233,7 +245,7 @@
   },
   {
     "type": "function",
-    "name": "isBackend",
+    "name": "isCharteredFund",
     "inputs": [
       {
         "name": "",
@@ -252,7 +264,7 @@
   },
   {
     "type": "function",
-    "name": "isCharteredFund",
+    "name": "isMarshal",
     "inputs": [
       {
         "name": "",
@@ -260,6 +272,19 @@
         "internalType": "address"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "marshalFrozen",
+    "inputs": [],
     "outputs": [
       {
         "name": "",
@@ -579,15 +604,10 @@
   },
   {
     "type": "function",
-    "name": "setBackend",
+    "name": "setFreeze",
     "inputs": [
       {
-        "name": "_backend",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "_isAuthorized",
+        "name": "isFrozen",
         "type": "bool",
         "internalType": "bool"
       }
@@ -597,10 +617,15 @@
   },
   {
     "type": "function",
-    "name": "setFreeze",
+    "name": "setMarshal",
     "inputs": [
       {
-        "name": "isFrozen",
+        "name": "_marshal",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_isAuthorized",
         "type": "bool",
         "internalType": "bool"
       }
@@ -623,6 +648,19 @@
   },
   {
     "type": "function",
+    "name": "upgradeCharterImplementation",
+    "inputs": [
+      {
+        "name": "newImpl",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "upgradeToAndCall",
     "inputs": [
       {
@@ -638,25 +676,6 @@
     ],
     "outputs": [],
     "stateMutability": "payable"
-  },
-  {
-    "type": "event",
-    "name": "BackendStatusChanged",
-    "inputs": [
-      {
-        "name": "backend",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "isAuthorized",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
   },
   {
     "type": "event",
@@ -877,6 +896,25 @@
   },
   {
     "type": "event",
+    "name": "MarshalStatusChanged",
+    "inputs": [
+      {
+        "name": "marshal",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "isAuthorized",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OperatorFreeze",
     "inputs": [
       {
@@ -984,27 +1022,22 @@
   },
   {
     "type": "error",
-    "name": "BadFeeMath",
+    "name": "AlreadyInit",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "Create2Failed",
+    "name": "Auth",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InsufficientEscrowBalance",
+    "name": "Fail",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InsufficientUserOwnedBalance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InvalidFundAddressPrefix",
+    "name": "InvalidBeacon",
     "inputs": []
   },
   {
@@ -1014,42 +1047,12 @@
   },
   {
     "type": "error",
-    "name": "MulticallFailed",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "MulticallOnlyByOrigin",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotBackend",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotCharteredFund",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotEnoughInProtocolEscrow",
+    "name": "Math",
     "inputs": []
   },
   {
     "type": "error",
     "name": "NotInitializing",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotOwner",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "OperatorFrozen",
     "inputs": []
   },
   {
@@ -1065,6 +1068,11 @@
   {
     "type": "error",
     "name": "UpgradeFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Vanity",
     "inputs": []
   }
 ]

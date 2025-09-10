@@ -7,7 +7,17 @@ const logger = createLogger('ReferralVaultApi');
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function createReferralVaultApi(dependencies) {
-  const { internalApiClient, ethereumService, priceFeedService, creditService } = dependencies;
+  const { internalApiClient, priceFeedService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
+
+  // Multichain service resolver
+  const getChainServices = (cid = '1') => ({
+    creditService: creditServices[cid] || legacyCredit,
+    ethereumService: ethereumServices[cid] || legacyEth,
+  });
+
+  // Default to mainnet services
+  const { creditService, ethereumService } = getChainServices('1');
+
   if (!internalApiClient) {
     throw new Error('[ReferralVaultApi] internalApiClient dependency missing');
   }

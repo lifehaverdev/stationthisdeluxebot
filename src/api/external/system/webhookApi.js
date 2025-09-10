@@ -53,11 +53,26 @@ function createWebhookApi(dependencies) {
   });
 
   // --- Alchemy Webhook Handler ---
+  // Support multichain credit services. Expose :chainId route param (defaults to "1")
+
+  const { creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
+
+  /**
+   * Helper to grab the correct service pair for a given chain.
+   * Falls back to the legacy singleton for backward-compatibility.
+   * @param {string|number} cid
+   */
+  const getChainServices = (cid = '1') => ({
+    creditService: creditServices[cid] || legacyCredit,
+    ethereumService: ethereumServices[cid] || legacyEth,
+  });
+
   const alchemySigningKey = process.env.ALCHEMY_SIGNING_KEY;
   if (!alchemySigningKey) {
     logger.warn('[WebhookAPI] ALCHEMY_SIGNING_KEY not set. The /alchemy endpoint will be disabled.');
   } else {
-    webhookRouter.post('/alchemy',
+    // Route now includes optional chainId parameter -> /webhook/alchemy/:chainId?
+    webhookRouter.post('/alchemy/:chainId?',
       (req, res, next) => {
         const logger = dependencies.logger || console;
         logger.info('[AlchemyWebhook] Incoming request', {
@@ -84,13 +99,14 @@ function createWebhookApi(dependencies) {
           rawBody: req.rawBody ? req.rawBody.toString('hex').slice(0, 64) + '...' : undefined
         });
         try {
-          const creditService = dependencies.creditService;
+          const chainId = String(req.params.chainId || '1');
+          const { creditService } = getChainServices(chainId);
           if (!creditService) {
             logger.error('[AlchemyWebhook] CreditService not available');
             throw new Error('CreditService not available');
           }
           const result = await creditService.handleEventWebhook(req.body);
-          logger.info('[AlchemyWebhook] Handler result', result);
+          logger.info('[AlchemyWebhook] Handler result', { chainId, result });
           res.json(result);
         } catch (error) {
           logger.error('[AlchemyWebhook] Error processing webhook:', error);
@@ -102,7 +118,7 @@ function createWebhookApi(dependencies) {
         }
       }
     );
-    logger.info('[WebhookAPI] Alchemy webhook handler mounted at /alchemy.');
+    logger.info('[WebhookAPI] Alchemy webhook handler mounted at /alchemy/:chainId?');
   }
 
   logger.info('Webhook API router initialized.');

@@ -94,8 +94,8 @@ async function initializeServices(options = {}) {
     logger.info('Database services initialized.');
 
     // --- Initialize On-Chain Services ---
-    let ethereumService;
-    let creditService;
+    const ethereumServices = {}; // chainId -> EthereumService
+    const creditServices = {};   // chainId -> CreditService
     let priceFeedService;
     let nftPriceService;
     let dexService;
@@ -106,81 +106,68 @@ async function initializeServices(options = {}) {
     try {
       logger.info('Initializing on-chain services (Ethereum, Credit)...');
       
-      const ethConfig = {
-        rpcUrl: process.env.ETHEREUM_RPC_URL,
-        chainId: process.env.ETHEREUM_CHAIN_ID,
-      };
+      // --- MULTICHAIN INITIALISATION ---
+      const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress } = require('./alchemy/foundationConfig');
+      const targetChains = Object.keys(contracts.foundation.addresses).filter(cid => contracts.foundation.addresses[cid]);
 
-      if (!ethConfig.rpcUrl || !process.env.ETHEREUM_SIGNER_PRIVATE_KEY) {
-        logger.warn('[EthereumService] Not initialized: ETHEREUM_RPC_URL or ETHEREUM_SIGNER_PRIVATE_KEY is missing from .env. On-chain features will be disabled.');
-      } else {
-        // 1. Initialize services with no dependencies first.
-        priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
-        nftPriceService = new NftPriceService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, { priceFeedService }, logger);
-        // 2. Initialize EthereumService, which now requires priceFeedService for gas estimates.
-        const ethereumServiceDependencies = { priceFeedService };
-        ethereumService = new EthereumService(ethConfig, ethereumServiceDependencies, logger);
+      priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
+      nftPriceService = new NftPriceService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, { priceFeedService }, logger);
+      dexService = null; // Will be instantiated when mainnet EthereumService is ready
+      tokenRiskEngine = null; // Defer until dexService ready
 
-        // 3. Initialize remaining services that depend on the above.
-        dexService = new DexService({ ethereumService }, logger);
-        tokenRiskEngine = new TokenRiskEngine({ priceFeedService, dexService }, logger);
-
-        // 4. Initialize CreditService
-        const networkName = getNetworkName(ethereumService.chainId);
-        logger.info(`[initializeServices] networkName: ${networkName}`);
-        const creditServiceConfig = {
-          foundationAddress: contracts.foundation.addresses[networkName],
+      // --- Instantiate shared SaltMiningService (mainnet assumed) ---
+      try {
+        saltMiningService = new SaltMiningService({
+          foundationAddress: getFoundationAddress('1'),
           foundationAbi: contracts.foundation.abi,
-          systemStateDb: initializedDbServices.data.systemState,
-          priceFeedService,
-          nftPriceService,
-          tokenRiskEngine,
-          internalApiClient,
-          userCoreDb: initializedDbServices.data.userCore,
-          walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
-          walletLinkingService,
-        };
-        logger.info(`[initializeServices] creditServiceConfig.foundationAddress: ${creditServiceConfig.foundationAddress}`);
-        
-        // Pass the salt mining service to the credit service
-        creditServiceConfig.saltMiningService = saltMiningService;
-        
-        // --- Instantiate SaltMiningService ---
-        try {
-          saltMiningService = new SaltMiningService(
-            {
-              foundationAddress: contracts.foundation.addresses[networkName],
-              foundationAbi: contracts.foundation.abi
-            },
-            logger
-          );
-        } catch (err) {
-          logger.error('[SaltMiningService] Failed to initialize:', err);
-          saltMiningService = null;
-        }
-        // --- End SaltMiningService ---
-        
-        if (!creditServiceConfig.foundationAddress || !creditServiceConfig.foundationAbi || creditServiceConfig.foundationAbi.length === 0) {
-            logger.warn(`[CreditService] Not initialized: Could not find contract address or ABI for network '${networkName}'. Credit service will be disabled.`);
-        } else {
-            const creditServiceDependencies = {
-                ethereumService,
-                creditLedgerDb: initializedDbServices.data.creditLedger,
-                systemStateDb: initializedDbServices.data.systemState,
-                priceFeedService,
-                nftPriceService,
-                tokenRiskEngine,
-                internalApiClient,
-                userCoreDb: initializedDbServices.data.userCore,
-                walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
-                walletLinkingService,
-                saltMiningService,
-                webSocketService // Add the service here
-            };
-            creditService = new CreditService(creditServiceDependencies, creditServiceConfig, logger);
-        }
-        logger.info('On-chain services initialized.');
+          charterBeacon: getCharterBeaconAddress('1'),
+        }, logger);
+        logger.info('[initializeServices] SaltMiningService initialized.');
+      } catch (err) {
+        logger.error('[initializeServices] Failed to initialize SaltMiningService:', err);
       }
+
+      for (const chainId of targetChains) {
+        try {
+          const rpcUrl = getRpcUrl(chainId);
+          const ethConfig = { rpcUrl, chainId };
+          const ethereumServiceDependencies = { priceFeedService };
+          const ethService = new EthereumService(ethConfig, ethereumServiceDependencies, logger);
+          ethereumServices[chainId] = ethService;
+
+          // Lazily instantiate shared dexService & tokenRiskEngine using the first available EthereumService (prefer mainnet)
+          if (!dexService) {
+            dexService = new DexService({ ethereumService: ethService }, logger);
+            logger.info('[initializeServices] DexService initialized.');
+          }
+          if (!tokenRiskEngine) {
+            tokenRiskEngine = new TokenRiskEngine({ dexService, priceFeedService }, logger);
+            logger.info('[initializeServices] TokenRiskEngine initialized.');
+          }
+
+          const creditServiceConfig = {
+            foundationAddress: getFoundationAddress(chainId),
+            foundationAbi: contracts.foundation.abi,
+          };
+          const creditDeps = {
+            ethereumService: ethService,
+            creditLedgerDb: initializedDbServices.data.creditLedger,
+            systemStateDb: initializedDbServices.data.systemState,
+            priceFeedService,
+            tokenRiskEngine,
+            internalApiClient,
+            userCoreDb: initializedDbServices.data.userCore,
+            walletLinkingRequestDb: initializedDbServices.data.walletLinkingRequests,
+            walletLinkingService,
+            webSocketService,
+            saltMiningService,
+          };
+          creditServices[chainId] = new CreditService(creditDeps, creditServiceConfig, logger);
+        } catch (err) {
+          logger.error(`[initializeServices] Failed to init on-chain services for chain ${chainId}:`, err);
+        }
+      }
+      logger.info('On-chain services initialized.');
     } catch (error) {
         logger.error('Failed to initialize on-chain services:', error);
         // Continue without on-chain features
@@ -235,8 +222,9 @@ async function initializeServices(options = {}) {
       walletLinkingService,
       storageService, // Pass the storage service to the API layer
       priceFeedService,
-      creditService,
-      ethereumService,
+      creditServices: creditServices, // map
+      creditService: creditServices['1'] || null, // legacy singleton for mainnet
+      ethereumService: ethereumServices, // Pass the multi-chain ethereum services
       nftPriceService,
       saltMiningService,
       spellsService, // Inject spellsService so internal API can use it
@@ -286,8 +274,8 @@ async function initializeServices(options = {}) {
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService
       storageService, // Add new service
-      ethereumService, // Add new service
-      creditService, // Add new service
+      ethereumService: ethereumServices, // Add new service
+      creditService: creditServices, // Add new service
       priceFeedService,
       nftPriceService,
       dexService,
