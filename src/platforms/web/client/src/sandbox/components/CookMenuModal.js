@@ -119,12 +119,13 @@ export default class CookMenuModal {
 
     // --- Rendering ------------------------------------------------------
     render() {
-        const { view, loading, error } = this.state;
+        const { view, loading, error, saveSuccess } = this.state;
         this.modalElement.innerHTML = `
             <div class="cook-modal-container">
                 <button class="close-btn" aria-label="Close">×</button>
-                ${loading ? '<div class="loading-spinner">Loading…</div>' : ''}
-                ${error ? `<div class="error-message">${error}</div>` : ''}
+                ${loading ? '<div class="loading-spinner">Saving changes...</div>' : ''}
+                ${error ? `<div class="error-message"><span class="error-icon">⚠️</span> ${error}</div>` : ''}
+                ${saveSuccess ? '<div class="success-message"><span class="success-icon">✓</span> Changes saved successfully</div>' : ''}
                 ${view === 'home' ? this.renderHomeView() : ''}
                 ${view === 'create' ? this.renderCreateView() : ''}
                 ${view === 'detail' ? this.renderDetailView() : ''}
@@ -296,15 +297,42 @@ export default class CookMenuModal {
     }
 
     async saveTraitTree(traits){
-        try{
-           const csrf=await this.getCsrfToken();
-           const id=this.state.selectedCollection.collectionId;
-           const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify({config:{traitTree:traits}})});
-           if(res.ok){
-              const updated=await res.json();
-              this.setState({selectedCollection:updated});
-           }
-        }catch(err){alert('Failed to save traits');}
+        try {
+            this.setState({ loading: true, error: null });
+            const csrf = await this.getCsrfToken();
+            const id = this.state.selectedCollection.collectionId;
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, {
+                method: 'PUT',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf 
+                },
+                credentials: 'include',
+                body: JSON.stringify({config:{traitTree:traits}})
+            });
+            
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to save traits');
+            }
+            
+            this.setState({
+                selectedCollection: data,
+                loading: false,
+                saveSuccess: true
+            });
+            
+            // Clear success message after 2 seconds
+            setTimeout(() => {
+                this.setState({ saveSuccess: false });
+            }, 2000);
+        } catch (err) {
+            console.error('[CookMenuModal] saveTraitTree error:', err);
+            this.setState({
+                loading: false,
+                error: err.message || 'Failed to save traits. Please try again.'
+            });
+        }
     }
 
     // --- Event handlers -------------------------------------------------

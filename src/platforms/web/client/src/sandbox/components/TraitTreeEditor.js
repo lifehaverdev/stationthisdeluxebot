@@ -5,7 +5,38 @@ export default class TraitTreeEditor {
     this.state = {
       categories: (collection?.config?.traitTree) || [],
       editingCatIdx: null, // index currently expanded
+      validationErrors: {}, // Store validation errors by category and trait
+      isDirty: false // Track if there are unsaved changes
     };
+  }
+
+  validateTrait(trait, categoryName) {
+    const errors = [];
+    if (!trait.name || trait.name.trim().length === 0) {
+      errors.push('Name is required');
+    }
+    if (trait.name && trait.name.length > 50) {
+      errors.push('Name must be less than 50 characters');
+    }
+    if (trait.value && trait.value.length > 1000) {
+      errors.push('Value must be less than 1000 characters');
+    }
+    if (trait.rarity !== undefined) {
+      const rarity = Number(trait.rarity);
+      if (isNaN(rarity) || rarity < 0 || rarity > 100) {
+        errors.push('Rarity must be between 0 and 100');
+      }
+    }
+    return errors;
+  }
+
+  setValidationError(categoryIdx, traitIdx, errors) {
+    const key = `${categoryIdx}:${traitIdx}`;
+    if (errors && errors.length) {
+      this.state.validationErrors[key] = errors;
+    } else {
+      delete this.state.validationErrors[key];
+    }
   }
 
   // ---------- Render helpers ----------
@@ -50,13 +81,62 @@ export default class TraitTreeEditor {
             <div style="margin-top:8px;color:#aaa;">Count: ${count} · Preview: ${preview}</div>
           </div>`;
       } else {
+        const traitRows = (cat.traits||[]).map((tr, tIdx) => {
+          const errorKey = `${idx}:${tIdx}`;
+          const errors = this.state.validationErrors[errorKey] || [];
+          const errorHtml = errors.length ? 
+            `<div class="validation-error">${errors.join(', ')}</div>` : '';
+          
+          return `
+            <tr data-trait="${tIdx}" class="${errors.length ? 'has-error' : ''}">
+              <td>
+                <input type="text" class="trait-name" value="${tr.name}" maxlength="50"/>
+                ${errorHtml}
+              </td>
+              <td>
+                <input type="text" class="trait-value" value="${tr.value!==undefined?tr.value:(tr.prompt||'')}" maxlength="1000"/>
+              </td>
+              <td>
+                <input type="number" class="trait-rarity" min="0" max="100" value="${tr.rarity??''}" step="0.1"/>
+              </td>
+              <td class="actions">
+                <button class="clone-trait-btn" data-trait="${tIdx}" title="Clone trait">⧉</button>
+                <button class="del-trait-btn" data-trait="${tIdx}" title="Delete trait">✕</button>
+              </td>
+            </tr>`;
+        }).join('');
+
         bodyHtml = `
-          <table class="trait-table">
-            <thead><tr><th>Name</th><th>Value</th><th>Rarity %</th><th></th></tr></thead>
-            <tbody>
-            ${(cat.traits||[]).map((tr, tIdx)=>`<tr data-trait="${tIdx}"><td><input type="text" class="trait-name" value="${tr.name}"/></td><td><input type="text" class="trait-value" value="${tr.value!==undefined?tr.value:(tr.prompt||'')}"/></td><td><input type="number" class="trait-rarity" min="0" max="100" value="${tr.rarity??''}"/></td><td><button class="clone-trait-btn" data-trait="${tIdx}">⧉</button> <button class="del-trait-btn" data-trait="${tIdx}">✕</button></td></tr>`).join('')}
-            <tr class="new-trait-row"><td><input type="text" class="new-trait-name" placeholder="Trait name"/></td><td><input type="text" class="new-trait-value" placeholder="Value (prompt, URL, etc.)"/></td><td><input type="number" class="new-trait-rarity" min="0" max="100" placeholder=""/></td><td><button class="add-trait-btn">＋</button></td></tr>
-            </tbody></table>`;
+          <div class="trait-table-wrapper">
+            <table class="trait-table">
+              <thead>
+                <tr>
+                  <th>Name <span class="required">*</span></th>
+                  <th>Value</th>
+                  <th>Rarity %</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${traitRows}
+                <tr class="new-trait-row">
+                  <td>
+                    <input type="text" class="new-trait-name" placeholder="Trait name" maxlength="50"/>
+                  </td>
+                  <td>
+                    <input type="text" class="new-trait-value" placeholder="Value (prompt, URL, etc.)" maxlength="1000"/>
+                  </td>
+                  <td>
+                    <input type="number" class="new-trait-rarity" min="0" max="100" step="0.1" placeholder=""/>
+                  </td>
+                  <td class="actions">
+                    <button class="add-trait-btn" title="Add trait">＋</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            ${this.state.isDirty ? '<div class="unsaved-changes">You have unsaved changes</div>' : ''}
+          </div>`;
       }
     }
 
@@ -173,14 +253,31 @@ export default class TraitTreeEditor {
         const nameEl=catEl.querySelector('.new-trait-name');
         const valueEl=catEl.querySelector('.new-trait-value');
         const rarityEl=catEl.querySelector('.new-trait-rarity');
-        const name=nameEl.value.trim(); if(!name) return;
+        const name=nameEl.value.trim();
         const value=valueEl.value.trim();
         const rarityRaw=rarityEl.value.trim();
         const rarity=rarityRaw?Number(rarityRaw):undefined;
+        
+        const newTrait = { name, value, rarity };
+        const errors = this.validateTrait(newTrait);
+        
+        if (errors.length) {
+          // Show validation errors on the new trait row
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'validation-error';
+          errorDiv.textContent = errors.join(', ');
+          const td = nameEl.parentElement;
+          const existingError = td.querySelector('.validation-error');
+          if (existingError) td.removeChild(existingError);
+          td.appendChild(errorDiv);
+          return;
+        }
+        
         const cat=this.state.categories[catIdx];
         cat.traits = cat.traits || [];
-        cat.traits.push({ name, value, rarity });
+        cat.traits.push(newTrait);
         nameEl.value=''; valueEl.value=''; rarityEl.value='';
+        this.state.isDirty = true;
         this.attach(container);
       };
     });

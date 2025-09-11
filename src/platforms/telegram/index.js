@@ -40,6 +40,24 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   const { setReaction } = require('./utils/telegramUtils');
   const executionClient = require('../../utils/serverExecutionClient');
 
+  // Admin check helper function
+  async function isAdmin(userId, internalApiClient) {
+    try {
+      // Find or get master account
+      const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+        platform: 'telegram',
+        platformId: userId.toString(),
+      });
+      const masterAccountId = userResponse.data.masterAccountId;
+
+      // Check admin flag in userCore
+      const userCoreResponse = await internalApiClient.get(`/internal/v1/data/users/core/${masterAccountId}`);
+      return userCoreResponse.data?.isAdmin === true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   bot.onText(/^\/feedback(?:@\w+)?\s+(.+)$/, async (msg, match) => {
     const chatId = msg.chat.id;
     const feedbackText = match[1];
@@ -170,12 +188,123 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   logger.info('Telegram platform initialized');
   
   // Return an object with the bot and a setup function for dynamic commands
-  // Register feedback command in menu
-  const feedbackCommand = {
-    command: 'feedback',
-    description: 'Send feedback about the bot'
-  };
-  bot.setMyCommands([feedbackCommand]);
+  // Register user-facing commands in menu
+  const commands = [
+    {
+      command: 'account',
+      description: 'View your account information'
+    },
+    {
+      command: 'buypoints',
+      description: 'Purchase points'
+    },
+    {
+      command: 'status',
+      description: 'View your status'
+    },
+    {
+      command: 'settings',
+      description: 'View your settings'
+    },
+    {
+      command: 'tools',
+      description: 'View your tools'
+    },
+    {
+      command: 'again',
+      description: 'Repeat your last request'
+    },
+    {
+      command: 'feedback',
+      description: 'Send feedback about the bot'
+    }
+  ];
+  bot.setMyCommands(commands);
+
+  // Admin command: chatInfo
+  bot.onText(/^\/chatInfo(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🔍');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '🚫');
+        return;
+      }
+
+      const chatInfo = JSON.stringify(msg, null, 2);
+      await bot.sendMessage(chatId, `Chat Info:\n\`\`\`json\n${chatInfo}\n\`\`\``, {
+        reply_to_message_id: msg.message_id,
+        parse_mode: 'Markdown'
+      });
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /chatInfo] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error retrieving chat info.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
+
+  // Admin command: gift points
+  bot.onText(/^\/gift(?:@\w+)?\s+(\d+)$/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+    const points = parseInt(match[1], 10);
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🎁');
+
+      if (!msg.reply_to_message) {
+        await bot.sendMessage(chatId, 'Please reply to a message from the user you want to gift points to.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '❌');
+        return;
+      }
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '🚫');
+        return;
+      }
+
+      const targetUserId = msg.reply_to_message.from.id;
+      
+      // Get target user's master account
+      const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+        platform: 'telegram',
+        platformId: targetUserId.toString(),
+        platformContext: {
+          firstName: msg.reply_to_message.from.first_name,
+          username: msg.reply_to_message.from.username,
+        },
+      });
+      const masterAccountId = userResponse.data.masterAccountId;
+
+      // Create ledger entry
+      await internalApiClient.post('/internal/v1/data/credit/ledger', {
+        master_account_id: masterAccountId,
+        status: 'CONFIRMED',
+        type: 'ADMIN_GIFT',
+        description: `Admin gift from ${msg.from.first_name}`,
+        points_credited: points,
+        points_remaining: points,
+        source: 'admin_gift',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await bot.sendMessage(chatId, `Successfully gifted ${points} points to user.`, { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '✅');
+
+    } catch (err) {
+      logger.error(`[Telegram /gift] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error processing gift command.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
 
   return {
     bot,

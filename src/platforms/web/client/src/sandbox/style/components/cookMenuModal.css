@@ -45,3 +45,113 @@
 .tab-btn{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
 .tab-btn.active{background:#4a90e2;border-color:#4a90e2;color:#fff;}
 .tab-btn:hover:not(.active){background:#3a3a3a;} 
+
+/* Trait Tree Editor Improvements */
+.trait-table-wrapper {
+    position: relative;
+    margin-top: 8px;
+}
+
+.trait-table td {
+    position: relative;
+    vertical-align: top;
+}
+
+.trait-table tr.has-error td {
+    background-color: rgba(255, 0, 0, 0.1);
+}
+
+.validation-error {
+    color: #ff6b6b;
+    font-size: 11px;
+    margin-top: 4px;
+    line-height: 1.2;
+}
+
+.required {
+    color: #ff6b6b;
+    font-size: 14px;
+    margin-left: 2px;
+}
+
+.unsaved-changes {
+    background: rgba(255, 255, 0, 0.1);
+    color: #ffeb3b;
+    padding: 8px;
+    margin-top: 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: center;
+}
+
+.trait-table .actions {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.trait-table .actions button {
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.trait-table tr:hover .actions button {
+    opacity: 1;
+}
+
+.trait-table input {
+    transition: border-color 0.2s;
+}
+
+.trait-table tr.has-error input {
+    border-color: #ff6b6b;
+}
+
+/* Status messages */
+.loading-spinner {
+    background: #2a2a2a;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+    text-align: center;
+    animation: pulse 1.5s infinite;
+}
+
+.error-message {
+    background: #442222;
+    color: #ff9999;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.success-message {
+    background: #224422;
+    color: #99ff99;
+    padding: 8px 12px;
+    border-radius: 4px;
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: fadeOut 2s forwards;
+}
+
+.error-icon, .success-icon {
+    font-size: 16px;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+}
