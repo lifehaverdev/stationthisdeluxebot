@@ -142,9 +142,10 @@ export default class CookMenuModal {
             <div class="cook-status-item">
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
                 <div class="cook-actions">
-                    <button data-action="pause" data-id="${c.collectionId}">⏸</button>
-                    <button data-action="resume" data-id="${c.collectionId}">▶️</button>
-                    <button data-action="delete" data-id="${c.collectionId}">🗑</button>
+                    ${c.status === 'running' ? 
+                        `<button data-action="pause" data-id="${c.collectionId}" title="Pause Cook">⏸</button>` :
+                        `<button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>`
+                    }
                 </div>
             </div>
         `).join('') : '<div class="empty-message">No active cooks.</div>';
@@ -334,7 +335,6 @@ export default class CookMenuModal {
                 const id = btn.getAttribute('data-id');
                 if (action === 'pause') this.pauseCook(id);
                 if (action === 'resume') this.resumeCook(id);
-                if (action === 'delete') this.deleteCook(id);
             });
         }
 
@@ -384,32 +384,70 @@ export default class CookMenuModal {
     async pauseCook(id) {
         if (!id) return;
         try {
+            this.setState({ loading: true });
             const csrf = await this.getCsrfToken();
+            const cook = this.state.activeCooks.find(c => c.collectionId === id);
+            if (!cook) throw new Error('Cook not found');
+            
             const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/pause`, {
                 method: 'POST',
-                headers: { 'x-csrf-token': csrf },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf 
+                },
                 credentials: 'include',
+                body: JSON.stringify({
+                    toolId: cook.toolId,
+                    spellId: cook.spellId,
+                    traitTree: cook.config?.traitTree || [],
+                    paramOverrides: cook.config?.paramOverrides || {},
+                    totalSupply: cook.targetSupply
+                })
             });
-            if (!res.ok) throw new Error('pause failed');
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'pause failed');
+            }
             await this.fetchActiveCooks();
         } catch (err) {
-            alert('Failed to pause cook');
+            alert('Failed to pause cook: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
         }
     }
 
     async resumeCook(id) {
         if (!id) return;
         try {
+            this.setState({ loading: true });
             const csrf = await this.getCsrfToken();
+            const cook = this.state.activeCooks.find(c => c.collectionId === id);
+            if (!cook) throw new Error('Cook not found');
+            
             const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
                 method: 'POST',
-                headers: { 'x-csrf-token': csrf },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf 
+                },
                 credentials: 'include',
+                body: JSON.stringify({
+                    toolId: cook.toolId,
+                    spellId: cook.spellId,
+                    traitTree: cook.config?.traitTree || [],
+                    paramOverrides: cook.config?.paramOverrides || {},
+                    totalSupply: cook.targetSupply
+                })
             });
-            if (!res.ok) throw new Error('resume failed');
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'resume failed');
+            }
             await this.fetchActiveCooks();
         } catch (err) {
-            alert('Failed to resume cook');
+            alert('Failed to resume cook: ' + (err.message || 'error'));
+        } finally {
+            this.setState({ loading: false });
         }
     }
 
