@@ -13,7 +13,8 @@ const WorkflowCacheManager = require('../../core/services/comfydeploy/workflowCa
 const DISABLED_FEATURES = {
   train: true,   // Disables the /train command & training menu
   cook: true,    // Disables the /cook dynamic command
-  spells: true   // Disables the /spells menu
+  spells: true,  // Disables the /spells menu
+  again: false   // Controls the /again command
 };
 
 /**
@@ -35,9 +36,147 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   // Initialize the bot with the canonical dependencies object
   const bot = createTelegramBot({ ...dependencies, disabledFeatures: DISABLED_FEATURES }, token, { polling: true, ...options });
   
+  // Register feedback command
+  const { setReaction } = require('./utils/telegramUtils');
+  const executionClient = require('../../utils/serverExecutionClient');
+
+  bot.onText(/^\/feedback(?:@\w+)?\s+(.+)$/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const feedbackText = match[1];
+    const feedbackChatId = process.env.TELEGRAM_FEEDBACK_CHAT_ID;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '📝');
+
+      if (!feedbackChatId) {
+        logger.error('TELEGRAM_FEEDBACK_CHAT_ID not set');
+        await bot.sendMessage(chatId, 'Sorry, feedback system is not properly configured.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '😨');
+        return;
+      }
+
+      const feedbackMessage = `Feedback from ${msg.from.first_name} (@${msg.from.username || 'no_username'}):\n\n${feedbackText}`;
+      await bot.sendMessage(feedbackChatId, feedbackMessage);
+      await bot.sendMessage(chatId, 'Thank you for your feedback!', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /feedback] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Sorry, something went wrong while sending your feedback.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
+
+  // Register /again command if not disabled
+  if (!DISABLED_FEATURES.again) {
+    bot.onText(/^\/again(?:@\w+)?$/, async (msg) => {
+      const chatId = msg.chat.id;
+      const { logger, internalApiClient } = dependencies;
+
+      try {
+        await setReaction(bot, chatId, msg.message_id, '🤔');
+
+        // Find or create user to get masterAccountId
+        const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
+          platform: 'telegram',
+          platformId: msg.from.id.toString(),
+          platformContext: {
+            firstName: msg.from.first_name,
+            username: msg.from.username,
+          },
+        });
+        const masterAccountId = userResponse.data.masterAccountId;
+
+        // Get user's last generation
+        const lastGenResponse = await internalApiClient.get(`/internal/v1/data/generations/last/${masterAccountId}?platform=telegram`);
+        const lastGen = lastGenResponse.data;
+
+        if (!lastGen) {
+          await bot.sendMessage(chatId, "You haven't made any requests yet!", { reply_to_message_id: msg.message_id });
+          await setReaction(bot, chatId, msg.message_id, '😅');
+          return;
+        }
+
+        // Create new event for tracking
+        const eventResponse = await internalApiClient.post('/internal/v1/data/events', {
+          masterAccountId,
+          eventType: 'command_used',
+          sourcePlatform: 'telegram',
+          eventData: {
+            command: 'again',
+            toolId: lastGen.toolId
+          }
+        });
+
+        // Prepare execution payload with shuffled seed
+        const inputs = { ...lastGen.requestPayload };
+        if (inputs.input_seed !== undefined) {
+          inputs.input_seed = Math.floor(Math.random() * 1000000000);
+        }
+
+        const executionPayload = {
+          toolId: lastGen.toolId,
+          inputs,
+          user: {
+            masterAccountId,
+            platform: 'telegram',
+            platformId: msg.from.id.toString(),
+            platformContext: {
+              firstName: msg.from.first_name,
+              username: msg.from.username,
+              chatId: msg.chat.id,
+              messageId: msg.message_id,
+            },
+          },
+          eventId: eventResponse.data._id,
+          metadata: {
+            notificationContext: {
+              chatId: msg.chat.id,
+              messageId: msg.message_id,
+              replyToMessageId: msg.message_id,
+              userId: msg.from.id,
+            }
+          }
+        };
+
+        // Execute via central ExecutionClient
+        const execResult = await executionClient.execute(executionPayload);
+
+        if (execResult.final && execResult.outputs && execResult.outputs.response) {
+          await bot.sendMessage(chatId, execResult.outputs.response, { reply_to_message_id: msg.message_id });
+          await setReaction(bot, chatId, msg.message_id, '👌');
+          return;
+        }
+
+        logger.info(`[Telegram /again] Job submitted via execution service. Gen ID: ${execResult.generationId}`);
+        await setReaction(bot, chatId, msg.message_id, '👌');
+
+      } catch (err) {
+        let userMessage = 'Sorry, something went wrong while repeating your last request.';
+        
+        if (err.response?.data?.error?.code === 'INSUFFICIENT_FUNDS') {
+          userMessage = 'You do not have enough points to run this. Purchase more with /buypoints or view your balance with /account.';
+        } else if (err.response?.data?.error?.code === 'WALLET_NOT_FOUND') {
+          userMessage = 'You need to connect a wallet before running this. Link your wallet using /account, then purchase points with /buypoints.';
+        }
+
+        logger.error(`[Telegram /again] Error: ${err.message}`, { stack: err.stack });
+        await bot.sendMessage(chatId, userMessage, { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '😨');
+      }
+    });
+  }
+  
   logger.info('Telegram platform initialized');
   
   // Return an object with the bot and a setup function for dynamic commands
+  // Register feedback command in menu
+  const feedbackCommand = {
+    command: 'feedback',
+    description: 'Send feedback about the bot'
+  };
+  bot.setMyCommands([feedbackCommand]);
+
   return {
     bot,
     async setupCommands() {
