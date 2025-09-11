@@ -104,7 +104,7 @@ export async function saveWorkspace(existingSlug = null, { silent = false } = {}
     const savedSlug = slug || existingSlug;
     // Update URL
     const url = new URL(window.location.href);
-    url.searchParams.set('workspace', slug);
+    url.searchParams.set('workspace', savedSlug);
     window.history.pushState({}, '', url);
     if (!silent) {
       if (!existingSlug) navigator.clipboard?.writeText(url.toString());

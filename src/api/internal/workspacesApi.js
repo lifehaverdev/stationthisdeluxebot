@@ -37,8 +37,13 @@ function createWorkspacesApi(deps = {}) {
           await workspacesDb.updateSnapshot(slug, snapshot, userId);
           return res.json({ slug, updated: true });
         } catch (e) {
-          // If forbidden or not found, fall through to create
-          logger.info('[WorkspacesAPI] updateSnapshot failed, creating new', e.message);
+          if (e.message === 'Forbidden') {
+            return res.status(403).json({ error: 'forbidden' });
+          } else if (e.message === 'Workspace not found') {
+            return res.status(404).json({ error: 'not-found' });
+          }
+          logger.error('[WorkspacesAPI] updateSnapshot error', e);
+          return res.status(500).json({ error: 'internal-error' });
         }
       }
 

@@ -90,6 +90,45 @@ module.exports = function generationOutputsApi(dependencies) {
     }
   });
 
+  // GET /last/:masterAccountId - Get the last generation for a user
+  router.get('/last/:masterAccountId', async (req, res) => {
+    const { masterAccountId } = req.params;
+    const { platform } = req.query;
+
+    if (!ObjectId.isValid(masterAccountId)) {
+      return res.status(400).json({
+        error: { code: 'INVALID_INPUT', message: 'Invalid masterAccountId format.' }
+      });
+    }
+
+    try {
+      // Find the most recent generation for this user
+      const generations = await db.generationOutputs.findGenerations(
+        { 
+          masterAccountId: new ObjectId(masterAccountId),
+          ...(platform && { 'metadata.platformContext.platform': platform })
+        },
+        { 
+          sort: { requestTimestamp: -1 },
+          limit: 1
+        }
+      );
+
+      if (!generations || generations.length === 0) {
+        return res.status(404).json({
+          error: { code: 'NOT_FOUND', message: 'No previous generations found for this user.' }
+        });
+      }
+
+      res.json(generations[0]);
+    } catch (error) {
+      logger.error(`[generationOutputsApi] Error fetching last generation for user ${masterAccountId}: ${error.message}`, error);
+      res.status(500).json({
+        error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to fetch last generation.' }
+      });
+    }
+  });
+
   // POST / - Logs a new generation task
   router.post('/', async (req, res, next) => {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
