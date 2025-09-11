@@ -79,13 +79,16 @@ async function handleViewGenInfoCallback(bot, callbackQuery, masterAccountId, de
         if (generationRecord.requestPayload) {
             infoMessage += `\\n*Parameters Used:*\\n`;
             for (const [key, value] of Object.entries(generationRecord.requestPayload)) {
-                if (key === 'invoked_tool_id' || key === 'tool_id') continue;
-                
+                if (['invoked_tool_id', 'tool_id', 'input_image', 'image', 'images', 'animations', 'videos'].includes(key)) continue;
+                const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                if (valueStr.startsWith('http://') || valueStr.startsWith('https://')) continue; // skip URLs to avoid leaking tokens
+
                 let displayKey = key.startsWith('input_') ? key.substring(6) : key;
                 const valueToShow = (key === 'input_prompt' && generationRecord.metadata?.userInputPrompt) ? generationRecord.metadata.userInputPrompt : value;
                 const displayValue = typeof valueToShow === 'object' ? JSON.stringify(valueToShow) : String(valueToShow);
 
-                infoMessage += `  • *${escapeMarkdownV2(displayKey)}*: \`${escapeMarkdownV2(displayValue)}\`\\n`;
+                infoMessage += `  • *${escapeMarkdownV2(displayKey)}*: \
+\`${escapeMarkdownV2(displayValue)}\`\\n`;
             }
         }
         

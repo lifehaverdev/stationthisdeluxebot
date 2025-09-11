@@ -64,6 +64,8 @@ const NOEMA_DB = 'noema';
       points_remaining: points,
       related_items: { original_exp: user.exp },
       source: 'legacy_migration_2025-09-05',
+      // Ensure spending services can find these points by wallet lookup
+      depositor_address: user.wallet,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -108,6 +110,11 @@ const NOEMA_DB = 'noema';
       const existingLedger = await ledgerCol.findOne({ master_account_id: masterId, type: 'MIGRATION_BONUS', source: ledgerBody.source });
       if (!existingLedger) {
         await ledgerCol.insertOne(ledgerEntry);
+      } else if (!existingLedger.depositor_address) {
+        await ledgerCol.updateOne(
+          { _id: existingLedger._id },
+          { $set: { depositor_address: user.wallet, updatedAt: new Date() } }
+        );
       }
 
       success++;
