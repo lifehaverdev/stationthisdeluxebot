@@ -323,7 +323,7 @@ module.exports = function pointsApi(dependencies) {
                             value: amount,
                         };
                     } else {
-                        const dataEncoded = iface.encodeFunctionData('deposit', [assetAddress, amount]);
+                        const dataEncoded = iface.encodeFunctionData('contribute', [assetAddress, amount]);
                         depositTx = {
                             from: userWalletAddress,
                             to: toAddress,
@@ -359,7 +359,7 @@ module.exports = function pointsApi(dependencies) {
                             data: dataEncoded,
                         };
                     } else {
-                        const dataEncoded = iface.encodeFunctionData('deposit', [assetAddress, amount]);
+                        const dataEncoded = iface.encodeFunctionData('contribute', [assetAddress, amount]);
                         depositTx = {
                             from: userWalletAddress,
                             to: toAddress,

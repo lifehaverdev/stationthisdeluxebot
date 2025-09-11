@@ -13,7 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { MongoClient } = require('mongodb');
+const { MongoClient, Decimal128 } = require('mongodb');
 
 const argv = process.argv.slice(2);
 const dryRun = argv.includes('--dry-run');
@@ -40,6 +40,7 @@ const NOEMA_DB = 'noema';
   const db = client.db(NOEMA_DB);
   const userCoreCol = db.collection('userCore');
   const ledgerCol = db.collection('credit_ledger');
+  const economyCol = db.collection('userEconomy');
 
   let success = 0;
   for (const user of users) {
@@ -82,9 +83,32 @@ const NOEMA_DB = 'noema';
         masterId = insertRes.insertedId;
       }
 
+      // Upsert or create user economy record with EXP
+      const now = new Date();
+      const expInt = Math.floor(user.exp);
+      const expBigInt = BigInt(expInt);
+      const existingEconomy = await economyCol.findOne({ masterAccountId: masterId });
+      if (existingEconomy) {
+        await economyCol.updateOne(
+          { _id: existingEconomy._id },
+          { $set: { exp: expBigInt, updatedAt: now } }
+        );
+      } else {
+        await economyCol.insertOne({
+          masterAccountId: masterId,
+          usdCredit: Decimal128.fromString('0'),
+          exp: expBigInt,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
       // Insert credit ledger entry
       const ledgerEntry = { ...ledgerBody, master_account_id: masterId };
-      await ledgerCol.insertOne(ledgerEntry);
+      const existingLedger = await ledgerCol.findOne({ master_account_id: masterId, type: 'MIGRATION_BONUS', source: ledgerBody.source });
+      if (!existingLedger) {
+        await ledgerCol.insertOne(ledgerEntry);
+      }
 
       success++;
       console.log(`Migrated user ${user.userId} -> masterAccount ${masterId}`);
