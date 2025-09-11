@@ -235,7 +235,7 @@ class CreditService {
 
     for (const log of logs) {
         const { transaction, topics, data, index: logIndex } = log;
-        const { hash: transactionHash, blockNumber } = transaction;
+        const { hash: transactionHash } = transaction;
 
         // --- Debounce duplicate webhook processing ---
         if (isTxInCache(transactionHash)) {
@@ -247,12 +247,12 @@ class CreditService {
             if (topics[0] === donationEventHash) {
                 // Process donation event (instant credit)
                 const decodedLog = this.ethereumService.decodeEventLog(donationEventFragment, data, topics, this.contractConfig.abi);
-                await this._processDonationEvent(decodedLog, transactionHash, blockNumber, logIndex);
+                await this._processDonationEvent(decodedLog, transactionHash, logIndex);
                 processedDonations++;
             } else if (topics[0] === depositEventHash) {
                 // Process deposit event
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
-                await this._processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex);
+                await this._processDepositEvent(decodedLog, transactionHash, logIndex);
                 processedDeposits++;
             // } else if (topics[0] === nftDepositEventHash) {
             //     // Process NFT deposit event
@@ -263,7 +263,7 @@ class CreditService {
             } else if (topics[0] === withdrawalEventHash) {
                 // Process withdrawal event
                 const decodedLog = this.ethereumService.decodeEventLog(withdrawalEventFragment, data, topics, this.contractConfig.abi);
-                await this._processWithdrawalEvent(decodedLog, transactionHash, blockNumber);
+                await this._processWithdrawalEvent(decodedLog, transactionHash);
                 processedWithdrawals++;
             } else if (topics[0] === vaultCreatedEventHash) {
                 // Process vault creation event
@@ -295,7 +295,7 @@ class CreditService {
    * Internal helper to process a single deposit event
    * @private
    */
-  async _processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
+  async _processDepositEvent(decodedLog, transactionHash, logIndex) {
     let { fundAddress, user, token, amount } = decodedLog;
 
     // Check for existing entry
@@ -343,7 +343,7 @@ class CreditService {
    * Internal helper to process a single Donation event (instant credit)
    * @private
    */
-  async _processDonationEvent(decodedLog, transactionHash, blockNumber, logIndex) {
+  async _processDonationEvent(decodedLog, transactionHash, logIndex) {
     const { funder: user, token, amount } = decodedLog;
 
     // Check duplicate
@@ -488,7 +488,7 @@ class CreditService {
    * Internal helper to process a single withdrawal event
    * @private
    */
-  async _processWithdrawalEvent(decodedLog, transactionHash, blockNumber) {
+  async _processWithdrawalEvent(decodedLog, transactionHash) {
     const { fundAddress, user: userAddress, token: tokenAddress } = decodedLog;
 
     // Check for existing request through internal API
@@ -1008,7 +1008,9 @@ class CreditService {
 
     for (const log of logs) {
         const { transaction, topics, data, index: logIndex } = log;
-        const { hash: transactionHash, blockNumber } = transaction;
+        const { hash: transactionHash } = transaction;
+        // Use the parent block.number because Alchemy GraphQL logs omit transaction.blockNumber
+        const blockNumber = (eventPayload.event && eventPayload.event.data && eventPayload.event.data.block && eventPayload.event.data.block.number) || null;
 
         if (topics[0] !== eventSignatureHash) {
             continue;

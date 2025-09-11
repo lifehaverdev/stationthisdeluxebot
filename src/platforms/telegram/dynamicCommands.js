@@ -2,6 +2,7 @@ const { sanitizeCommandName } = require('../../utils/stringUtils');
 const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
 const executionClient = require('../../utils/serverExecutionClient');
 const InputCollector = require('./components/inputCollector');
+const { ExecutionError } = require('../../utils/ExecutionClient');
 
 /**
  * A registry to hold dynamic command definitions and their handlers.
@@ -383,10 +384,26 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             await setReaction(bot, chatId, msg.message_id, '👌');
 
         } catch (err) {
-            const errorMessage = err.response ? JSON.stringify(err.response.data.error) : err.message;
-            logger.error(`[Telegram EXEC /${commandName}] An error occurred during job submission via execution service: ${errorMessage}`, { stack: err.stack });
+            let userMessage = 'Sorry, something went wrong while starting the task.';
+            // Provide more specific feedback for common credit-related issues
+            if (err instanceof ExecutionError && err.payload && err.payload.error) {
+              const { code, message } = err.payload.error;
+              switch (code) {
+                case 'INSUFFICIENT_FUNDS':
+                  userMessage = 'You do not have enough points to run this. Purchase more with /buypoints or view your balance with /account.';
+                  break;
+                case 'WALLET_NOT_FOUND':
+                  userMessage = 'You need to connect a wallet before running this. Link your wallet using /account, then purchase points with /buypoints.';
+                  break;
+                default:
+                  userMessage = message || userMessage;
+              }
+            }
 
-            await bot.sendMessage(msg.chat.id, `Sorry, something went wrong while starting the task.`, { reply_to_message_id: msg.message_id });
+            const errorLog = err.payload ? JSON.stringify(err.payload.error || err.payload) : err.message;
+            logger.error(`[Telegram EXEC /${commandName}] Job submission error: ${errorLog}`, { stack: err.stack });
+
+            await bot.sendMessage(msg.chat.id, userMessage, { reply_to_message_id: msg.message_id });
             await setReaction(bot, chatId, msg.message_id, '😨');
         }
       };

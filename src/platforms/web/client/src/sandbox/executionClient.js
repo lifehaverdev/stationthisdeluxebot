@@ -15,7 +15,9 @@ export async function execute(payload) {
 
   const data = await res.json();
   if (!res.ok) {
-    const err = new Error(data.error?.message || `Execution failed with status ${res.status}`);
+    let msg = data.error?.message || `Execution failed with status ${res.status}`;
+    msg = msg.replace(/sk-[a-zA-Z0-9-]{20,}/g, 'sk-************************************');
+    const err = new Error(msg);
     err.status = res.status;
     err.data = data;
     throw err;

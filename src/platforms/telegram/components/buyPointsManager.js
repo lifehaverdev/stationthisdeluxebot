@@ -29,7 +29,8 @@ async function startFlow(bot, chatId, masterAccountId, deps = {}) {
     const { getFoundationAddress } = require('../../../core/services/alchemy/foundationConfig');
     let depositAddress;
     try {
-      depositAddress = getFoundationAddress('11155111');
+      // Use Ethereum mainnet chainId by default
+      depositAddress = getFoundationAddress('1');
     } catch (_) {
       depositAddress = 'N/A';
     }
@@ -122,7 +123,7 @@ async function amountReplyHandler(bot, message, context, deps = {}) {
     const amountWei = ethers.parseEther(amount.toString()).toString();
     const quoteRes = await deps.internal.client.post('/internal/v1/data/points/quote', { type: 'token', assetAddress, amount: amountWei, mode: 'contribute' });
     const quote = quoteRes.data;
-    const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('11155111');
+    const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('1');
     const text = [
       'Buy Points',
       '',
@@ -193,7 +194,7 @@ async function buyPointsReplyHandler(bot, message, context, deps = {}) {
       state.decimals = quote.asset.decimals || 18;
       flowStates.set(chatId, state);
 
-      const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('11155111');
+      const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('1');
 
       const newText = [
         'Purchase Points via Contribution',
@@ -239,7 +240,7 @@ async function buyPointsReplyHandler(bot, message, context, deps = {}) {
       });
       const quote = quoteRes.data;
 
-      const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('11155111');
+      const depositAddress = require('../../../core/services/alchemy/foundationConfig').getFoundationAddress('1');
 
       const assetLabel = state.assetAddress === '0x0000000000000000000000000000000000000000' ? 'native ETH' : `token at ${state.assetAddress}`;
 

@@ -63,8 +63,12 @@ class OpenAIService {
         throw new Error('Received an empty response from OpenAI.');
       }
     } catch (error) {
-      this.logger.error('Error calling OpenAI API:', error);
-      throw error; // Re-throw the error to be handled by the caller
+      // Sanitize potential API key leakage in error messages
+      const sanitizedMessage = String(error.message).replace(/sk-[a-zA-Z0-9-]{20,}/g, 'sk-************************************');
+      this.logger.error('Error calling OpenAI API:', sanitizedMessage);
+      const err = new Error(sanitizedMessage);
+      err.original = error;
+      throw err; // Re-throw sanitized error to be handled by the caller
     }
   }
 }
