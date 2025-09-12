@@ -308,6 +308,9 @@ module.exports = function pointsApi(dependencies) {
             }
 
             if (type === 'token') {
+                // Get token decimals
+                const decimals = getDecimals(assetAddress);
+                
                 if (assetAddress === '0x0000000000000000000000000000000000000000') {
                     // Native currency (ETH) deposit
                     logger.info(`[pointsApi] /purchase processing native currency (ETH) deposit for amount: ${amount}`);
@@ -336,30 +339,36 @@ module.exports = function pointsApi(dependencies) {
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
                     const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
 
-                    logger.info(`[pointsApi] /purchase ERC20 allowance check: allowance=${allowance}, amount=${amount}`);
+                    // Adjust amount for token decimals
+                    const adjustedAmount = ethers.parseUnits(
+                        ethers.formatUnits(amount, 18), // Convert from 18 decimals to human readable
+                        decimals // Convert to token's decimals
+                    ).toString();
 
-                    if (ethers.toBigInt(allowance) < ethers.toBigInt(amount)) {
+                    logger.info(`[pointsApi] /purchase ERC20 allowance check: allowance=${allowance}, amount=${adjustedAmount} (original=${amount})`);
+
+                    if (ethers.toBigInt(allowance) < ethers.toBigInt(adjustedAmount)) {
                         approvalRequired = true;
-                        const approveData = tokenContract.interface.encodeFunctionData('approve', [toAddress, amount]);
+                        const approveData = tokenContract.interface.encodeFunctionData('approve', [toAddress, adjustedAmount]);
                         approvalTx = {
                             from: userWalletAddress,
                             to: assetAddress,
                             data: approveData,
                         };
-                        logger.info(`[pointsApi] /purchase approval required for ${amount}. Approval tx:`, approvalTx);
+                        logger.info(`[pointsApi] /purchase approval required for ${adjustedAmount}. Approval tx:`, approvalTx);
                     }
 
                     if (mode === 'donate') {
                         // donate(address token,uint256 amount,bytes32 metadata,bool isNFT)
                         const zeroMeta = '0x' + '0'.repeat(64);
-                        const dataEncoded = iface.encodeFunctionData('donate', [assetAddress, amount, zeroMeta, false]);
+                        const dataEncoded = iface.encodeFunctionData('donate', [assetAddress, adjustedAmount, zeroMeta, false]);
                         donationTx = {
                             from: userWalletAddress,
                             to: toAddress,
                             data: dataEncoded,
                         };
                     } else {
-                        const dataEncoded = iface.encodeFunctionData('contribute', [assetAddress, amount]);
+                        const dataEncoded = iface.encodeFunctionData('contribute', [assetAddress, adjustedAmount]);
                         depositTx = {
                             from: userWalletAddress,
                             to: toAddress,
