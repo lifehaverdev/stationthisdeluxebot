@@ -233,6 +233,9 @@ class CreditService {
     let processedVaultCreations = 0;
     //let processedNftDeposits = 0;
 
+    // Parent block number is available on the GraphQL wrapper itself (applies to all logs)
+    const parentBlockNumber = eventPayload.event?.data?.block?.number || null;
+
     for (const log of logs) {
         const { transaction, topics, data, index: logIndex } = log;
         const { hash: transactionHash } = transaction;
@@ -247,12 +250,12 @@ class CreditService {
             if (topics[0] === donationEventHash) {
                 // Process donation event (instant credit)
                 const decodedLog = this.ethereumService.decodeEventLog(donationEventFragment, data, topics, this.contractConfig.abi);
-                await this._processDonationEvent(decodedLog, transactionHash, logIndex);
+                await this._processDonationEvent(decodedLog, transactionHash, parentBlockNumber, logIndex);
                 processedDonations++;
             } else if (topics[0] === depositEventHash) {
                 // Process deposit event
                 const decodedLog = this.ethereumService.decodeEventLog(depositEventFragment, data, topics, this.contractConfig.abi);
-                await this._processDepositEvent(decodedLog, transactionHash, logIndex);
+                await this._processDepositEvent(decodedLog, transactionHash, parentBlockNumber, logIndex);
                 processedDeposits++;
             // } else if (topics[0] === nftDepositEventHash) {
             //     // Process NFT deposit event
@@ -295,7 +298,7 @@ class CreditService {
    * Internal helper to process a single deposit event
    * @private
    */
-  async _processDepositEvent(decodedLog, transactionHash, logIndex) {
+  async _processDepositEvent(decodedLog, transactionHash, blockNumber, logIndex) {
     let { fundAddress, user, token, amount } = decodedLog;
 
     // Check for existing entry
@@ -343,7 +346,7 @@ class CreditService {
    * Internal helper to process a single Donation event (instant credit)
    * @private
    */
-  async _processDonationEvent(decodedLog, transactionHash, logIndex) {
+  async _processDonationEvent(decodedLog, transactionHash, blockNumber, logIndex) {
     const { funder: user, token, amount } = decodedLog;
 
     // Check duplicate

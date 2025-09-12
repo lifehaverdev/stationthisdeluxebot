@@ -17,6 +17,9 @@ CADDY_CONTAINER="caddy_proxy"
 CADDY_IMAGE="caddy:latest"
 CADDYFILE_PATH="$(pwd)/Caddyfile"
 
+# Enable Docker BuildKit for faster, cached builds
+export DOCKER_BUILDKIT=1
+
 # Networking
 NETWORK_NAME="hyperbot_network"
 CONTAINER_ALIAS="hyperbot"
@@ -46,23 +49,28 @@ git checkout main >> "${LOG_FILE}" 2>&1
 git reset --hard origin/main >> "${LOG_FILE}" 2>&1
 git pull origin main >> "${LOG_FILE}" 2>&1
 
-echo "🔨 Building new Docker image..."
-docker build -t "${IMAGE_NAME}" . >> "${LOG_FILE}" 2>&1
+echo "🛑 Stopping and removing old container (if running) *before* building new image..."
+if is_container_running "${OLD_CONTAINER}"; then
+  docker stop "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1
+fi
+# Remove any stopped old container so its name is free
+docker rm "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
+
+echo "🔨 Building new Docker image using cache from previous build..."
+# Tag the current image as cache-source (if it exists) so BuildKit can use it
+if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
+  CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1 --cache-from ${IMAGE_NAME}:latest"
+else
+  CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1"
+fi
+
+docker build ${CACHE_FROM_ARG} -t "${IMAGE_NAME}:latest" . >> "${LOG_FILE}" 2>&1
 
 echo "🌐 Ensuring network ${NETWORK_NAME} exists..."
 docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}"
 
 echo "🧹 Cleaning up any existing temporary containers..."
 docker rm -f "${NEW_CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
-
-if is_container_running "${OLD_CONTAINER}"; then
-  echo "🛑 Stopping and removing old container..."
-  docker stop "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1
-  docker rm "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1
-else
-  echo "ℹ️  No old container running, cleaning up if it exists..."
-  docker rm "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
-fi
 
 # --- Deploy / Update Caddy ---------------------------------------------------
 
@@ -123,8 +131,8 @@ if is_container_running "${NEW_CONTAINER}"; then
   docker rmi "${OLD_IMAGE_NAME}" >> "${LOG_FILE}" 2>&1 || true
   docker tag "${IMAGE_NAME}" "${OLD_IMAGE_NAME}" >> "${LOG_FILE}" 2>&1
 
-  echo "🧹 Pruning unused builds..."
-  docker builder prune -a -f >> "${LOG_FILE}" 2>&1
+  echo "🧹 Pruning dangling images to free space (keeping last build for cache)..."
+  docker image prune -f >> "${LOG_FILE}" 2>&1
 
   echo "✨ Deployment completed successfully!"
   echo "📝 Tailing logs from the new container (first 400 seconds):"
