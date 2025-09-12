@@ -5,6 +5,12 @@ const fetch = require('node-fetch');
 // This is the address for native ETH in many contexts.
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+// MS2 token addresses
+const MS2_ADDRESSES = {
+  ETH: '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820',
+  SOL: 'AbktLHcNzEoZc9qfVgNaQhJbqDTEmLwsARY7JcTndsPg'
+};
+
 /**
  * @class PriceFeedService
  * @description A dedicated service for fetching real-time and historical token prices.
@@ -82,9 +88,44 @@ class PriceFeedService {
    * @param {string} tokenAddress - The address of the ERC20 token contract, or the zero address for native ETH.
    * @returns {Promise<number>} The price of the token in USD. Returns 0 if no price can be found.
    */
+  /**
+   * Fetches MS2 token price from CoinGecko
+   * @returns {Promise<number>} The price of MS2 in USD
+   * @private
+   */
+  async _getMS2Price() {
+    try {
+      const response = await fetch(
+        'https://api.coingecko.com/api/v3/simple/price?ids=station-this&vs_currencies=usd'
+      );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const json = await response.json();
+      const price = json['station-this']?.usd;
+      
+      if (!price) {
+        throw new Error('Could not parse MS2 price from CoinGecko response.');
+      }
+      
+      return parseFloat(price);
+    } catch (error) {
+      this.logger.error('[PriceFeedService] Failed to fetch MS2 price from CoinGecko:', error);
+      return 0;
+    }
+  }
+
   async getPriceInUsd(tokenAddress) {
     this.logger.info(`[PriceFeedService] Fetching price for token: ${tokenAddress}`);
     const network = 'eth-mainnet'; // This should be configured if supporting other chains
+
+    // Check if this is MS2 token
+    if (tokenAddress.toLowerCase() === MS2_ADDRESSES.ETH.toLowerCase()) {
+      this.logger.info('[PriceFeedService] Identified MS2 token, using CoinGecko price feed.');
+      return this._getMS2Price();
+    }
 
     if (tokenAddress.toLowerCase() === NATIVE_ETH_ADDRESS) {
       // Use "Token Prices By Symbol" for native ETH

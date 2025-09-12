@@ -1,44 +1,361 @@
 /* cookMenuModal.css */
-.cook-modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);display:flex;justify-content:center;align-items:center;z-index:1002;backdrop-filter:blur(5px);} 
-.cook-modal-container{background:#1a1a1a;color:#f0f0f0;padding:20px;border-radius:12px;width:90%;max-width:700px;position:relative;box-shadow:0 5px 20px rgba(0,0,0,.4);border:1px solid #333;max-height:80vh;overflow-y:auto;} 
-.cook-modal-container .close-btn{position:absolute;top:15px;right:15px;background:none;border:none;color:#888;font-size:24px;cursor:pointer;transition:color .2s;} 
-.cook-modal-container .close-btn:hover{color:#fff;} 
-.loading-spinner{text-align:center;padding:20px;} 
-.error-message{color:#ff4d4d;text-align:center;padding:10px;} 
-.empty-message{text-align:center;color:#888;padding:20px;} 
-.cook-status-item{display:flex;justify-content:space-between;align-items:center;background:#2a2a2a;border:1px solid #444;padding:10px;border-radius:6px;margin-bottom:8px;} 
-.cook-status-item .cook-actions button{margin-left:5px;background:#444;border:none;color:#fff;padding:4px 6px;border-radius:4px;cursor:pointer;} 
-.cook-status-item .cook-actions button:hover{background:#666;} 
-.collection-grid{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;} 
-.collection-card{background:#2a2a2a;border:1px solid #444;padding:15px;border-radius:6px;cursor:pointer;min-width:120px;text-align:center;} 
-.collection-card:hover{background:#3a3a3a;} 
-.collection-card.new{background:#4a90e2;border-color:#4a90e2;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex:0 0 100%;width:60px;height:60px;padding:0;margin:10px auto 0 auto;max-width:60px;} 
-.collection-card.new:hover{background:#5aa1f2;} 
-.footer{text-align:right;margin-top:15px;} 
-.help-btn{background:none;border:1px solid #555;color:#aaa;padding:4px 8px;border-radius:4px;cursor:pointer;} 
-.help-btn:hover{color:#fff;border-color:#777;} 
+.cook-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1002;
+    backdrop-filter: blur(8px);
+}
+
+.cook-modal-container {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    padding: 24px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 800px;
+    position: relative;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    border: 1px solid #2a2a2a;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.cook-modal-container .close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+}
+
+.cook-modal-container .close-btn:hover {
+    color: #fff;
+    background: #3a3a3a;
+    border-color: #4a90e2;
+    transform: translateY(-1px);
+}
+
+.cook-status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.cook-status-item:hover {
+    border-color: #4a90e2;
+    transform: translateY(-1px);
+}
+
+.cook-status-item .cook-actions button {
+    background: #4a90e2;
+    border: none;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    margin-left: 8px;
+}
+
+.cook-status-item .cook-actions button:hover {
+    background: #357abd;
+    transform: translateY(-1px);
+}
+
+.collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.collection-card {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    padding: 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+    font-weight: 500;
+}
+
+.collection-card:hover {
+    background: #3a3a3a;
+    border-color: #4a90e2;
+    transform: translateY(-2px);
+}
+
+.collection-card.new {
+    border: 2px dashed #4a90e2;
+    background: none;
+    color: #4a90e2;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.collection-card.new:hover {
+    background: rgba(74, 144, 226, 0.1);
+    transform: translateY(-2px);
+}
+
+.footer {
+    text-align: right;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid #2a2a2a;
+}
+
+.help-btn {
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: #e0e0e0;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.help-btn:hover {
+    background: #3a3a3a;
+    border-color: #4a90e2;
+    color: #fff;
+    transform: translateY(-1px);
+}
 
 /* -- Trait Tree Editor styles -- */
-.trait-tree-editor{font-size:14px;}
-.trait-tree-editor h3{margin:6px 0 8px;font-size:16px;font-weight:600;}
-.cat-list{list-style:none;padding:0;margin:0;}
-.cat-header{display:flex;align-items:center;gap:6px;margin:4px 0;}
-.cat-header input.cat-name-input{flex:1;background:#00000030;border:1px solid #555;color:#fff;padding:4px 6px;border-radius:4px;}
-.cat-toggle{cursor:pointer;font-size:12px;color:#ccc;user-select:none;}
-.trait-table{width:100%;border-collapse:collapse;margin-top:4px;font-size:12px;}
-.trait-table th,.trait-table td{padding:4px 6px;text-align:left;border-bottom:1px solid #333;}
-.trait-table tbody tr:last-child td{border-bottom:none;}
-.trait-table tbody tr:nth-child(odd){background:#242424;}
-.trait-table thead{background:#2c2c2c;}
-.trait-table th{font-weight:500;color:#ccc;}
-.trait-table input{width:100%;background:#00000030;border:1px solid #555;color:#fff;padding:2px 4px;border-radius:3px;}
-.add-cat-row{display:flex;gap:6px;margin-top:8px;}
-.add-cat-row .new-cat-input{flex:1;background:#00000030;border:1px solid #555;color:#fff;padding:4px 6px;border-radius:4px;}
+.trait-tree-editor {
+    font-size: 14px;
+    color: #e0e0e0;
+}
+
+.trait-tree-editor h3 {
+    margin: 12px 0 16px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    border-bottom: 2px solid #4a90e2;
+    padding-bottom: 8px;
+}
+
+.cat-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.cat-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    background: #2a2a2a;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #3a3a3a;
+}
+
+.cat-header input.cat-name-input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.cat-header input.cat-name-input:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.cat-toggle {
+    cursor: pointer;
+    font-size: 14px;
+    color: #4a90e2;
+    user-select: none;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.cat-toggle:hover {
+    background: #3a3a3a;
+}
+
+.trait-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 8px;
+    font-size: 13px;
+    background: #1a1a1a;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #2a2a2a;
+}
+
+.trait-table th,
+.trait-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid #2a2a2a;
+}
+
+.trait-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.trait-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.trait-table tbody tr:hover {
+    background: #2a2a2a;
+}
+
+.trait-table thead {
+    background: #2a2a2a;
+}
+
+.trait-table th {
+    font-weight: 600;
+    color: #4a90e2;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+.trait-table input {
+    width: 100%;
+    background: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.trait-table input:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+.add-cat-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 12px;
+    background: #2a2a2a;
+    border-radius: 6px;
+    border: 1px solid #3a3a3a;
+}
+
+.add-cat-row .new-cat-input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid #3a3a3a;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.add-cat-row .new-cat-input:focus {
+    border-color: #4a90e2;
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
 
 /* Buttons in editor */
-.trait-tree-editor button{background:#444;border:none;color:#fff;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:12px;}
-.trait-tree-editor button:hover{background:#666;}
-.trait-tree-editor button:disabled{opacity:0.4;cursor:default;}
+.trait-tree-editor button {
+    background: #4a90e2;
+    border: none;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+}
+
+.trait-tree-editor button:hover {
+    background: #357abd;
+    transform: translateY(-1px);
+}
+
+.trait-tree-editor button:active {
+    transform: translateY(0);
+}
+
+.trait-tree-editor button.del-cat-btn,
+.trait-tree-editor button.del-trait-btn {
+    background: #e74c3c;
+}
+
+.trait-tree-editor button.del-cat-btn:hover,
+.trait-tree-editor button.del-trait-btn:hover {
+    background: #c0392b;
+}
+
+.trait-tree-editor button:disabled {
+    opacity: 0.4;
+    cursor: default;
+    transform: none;
+}
+
+.trait-tree-editor .save-traits-btn {
+    background: #27ae60;
+    padding: 8px 16px;
+    font-size: 14px;
+    margin-top: 20px;
+}
+
+.trait-tree-editor .save-traits-btn:hover {
+    background: #219a52;
+}
 
 /* Tab bar improvements */
 .tab-bar{display:flex;gap:8px;margin:8px 0;}
