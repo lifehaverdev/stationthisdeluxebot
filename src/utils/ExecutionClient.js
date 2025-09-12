@@ -64,6 +64,13 @@ class ExecutionClient {
    * @returns {Promise<Object>} Normalised envelope { final, status, outputs, generationId, ... }
    */
   async execute(params = {}) {
+    // Inject random seed if workflow expects input_seed but not provided
+    if (params.inputs) {
+      if (!Object.prototype.hasOwnProperty.call(params.inputs, 'input_seed')) {
+        // Generate a pseudo-random 32-bit integer seed (0 – 2^31-1)
+        params.inputs.input_seed = Math.floor(Math.random() * 0x7fffffff);
+      }
+    }
     const headers = { 'Content-Type': 'application/json', ...(await this._resolveAuthHeaders()) };
     const res = await this.fetch(`${this.baseUrl}/execute`, {
       method: 'POST',

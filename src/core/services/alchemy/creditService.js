@@ -381,7 +381,7 @@ class CreditService {
     const userCreditedUsd = adjustedGrossDepositUsd;
     const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
 
-    const ledgerEntry = {
+    const ledgerEntryBase = {
       deposit_tx_hash: transactionHash,
       deposit_log_index: logIndex,
       deposit_block_number: blockNumber,
@@ -391,7 +391,6 @@ class CreditService {
       token_address: token,
       deposit_amount_wei: amount.toString(),
       deposit_type: 'TOKEN_DONATION',
-      status: 'CONFIRMED',
       funding_rate_applied: fundingRate,
       gross_deposit_usd: grossDepositUsd,
       adjusted_gross_deposit_usd: adjustedGrossDepositUsd,
@@ -400,11 +399,14 @@ class CreditService {
       points_remaining: pointsCredited,
     };
 
-    await this.creditLedgerDb.createLedgerEntry(ledgerEntry);
+    // Some DB schemas override status to a default. Persist first then explicitly mark CONFIRMED.
+    await this.creditLedgerDb.createLedgerEntry({ ...ledgerEntryBase, status: 'PENDING_CONFIRMATION' });
+    await this.creditLedgerDb.updateLedgerStatus(transactionHash, 'CONFIRMED');
+
     addTxToCache(transactionHash);
 
     // Notify user
-    this._sendDepositNotification(masterAccountId, 'confirmed', ledgerEntry);
+    this._sendDepositNotification(masterAccountId, 'confirmed', ledgerEntryBase);
 
     this.logger.info(`[CreditService] Donation processed instantly for user ${masterAccountId}. Points credited: ${pointsCredited}`);
   }
