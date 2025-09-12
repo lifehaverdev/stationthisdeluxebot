@@ -124,8 +124,9 @@ module.exports = function pointsApi(dependencies) {
             if (type === 'token') {
                 fundingRate = (mode === 'donate') ? getDonationFundingRate(assetAddress) : getFundingRate(assetAddress);
                 decimals = getDecimals(assetAddress);
-                // Fix: Use floating point division for assetAmount
-                assetAmount = Number(amount) / 10 ** decimals;
+                // Convert amount from 18 decimals to token's decimals for display
+                const humanReadable = ethers.formatUnits(amount, 18);
+                assetAmount = parseFloat(humanReadable);
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 console.log('[pointsApi:/quote] Price fetched for', assetAddress, ':', price);
@@ -339,13 +340,19 @@ module.exports = function pointsApi(dependencies) {
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
                     const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
 
-                    // Adjust amount for token decimals
-                    const adjustedAmount = ethers.parseUnits(
-                        ethers.formatUnits(amount, 18), // Convert from 18 decimals to human readable
-                        decimals // Convert to token's decimals
-                    ).toString();
+                    // Convert amount to human readable first
+                    const humanReadable = ethers.formatUnits(amount, 18);
+                    // Then convert to token's decimals
+                    const adjustedAmount = ethers.parseUnits(humanReadable, decimals).toString();
 
-                    logger.info(`[pointsApi] /purchase ERC20 allowance check: allowance=${allowance}, amount=${adjustedAmount} (original=${amount})`);
+                    logger.info(`[pointsApi] /purchase ERC20 token details:`, {
+                        token: assetAddress,
+                        decimals,
+                        originalAmount: amount,
+                        humanReadable,
+                        adjustedAmount,
+                        allowance: allowance.toString()
+                    });
 
                     if (ethers.toBigInt(allowance) < ethers.toBigInt(adjustedAmount)) {
                         approvalRequired = true;
@@ -355,7 +362,11 @@ module.exports = function pointsApi(dependencies) {
                             to: assetAddress,
                             data: approveData,
                         };
-                        logger.info(`[pointsApi] /purchase approval required for ${adjustedAmount}. Approval tx:`, approvalTx);
+                        logger.info(`[pointsApi] /purchase approval required. Tx:`, {
+                            token: assetAddress,
+                            amount: adjustedAmount,
+                            tx: approvalTx
+                        });
                     }
 
                     if (mode === 'donate') {

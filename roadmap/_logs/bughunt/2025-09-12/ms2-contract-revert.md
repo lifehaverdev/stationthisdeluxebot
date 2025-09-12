@@ -37,25 +37,38 @@
    - User may be blacklisted
    - Contribution limits may be enforced
 
-## Fix Implemented
-1. Root Cause Confirmed:
-   - Input amount was using 18 decimals (Ethereum standard)
-   - MS2 token uses 9 decimals
-   - Amount was not being adjusted for token decimals before contract call
+## Fix Implementation - Update 2
+1. Previous Issues:
+   - Quote calculation using wrong decimal base
+   - Display amount calculation incorrect
+   - Transaction amount not properly adjusted
 
-2. Changes Made:
-   - Added decimal adjustment in pointsApi.js
-   - Convert amount from 18 decimals to human readable
-   - Convert back to token's specific decimals
-   - Apply adjustment to both approval and contribution calls
+2. Latest Changes:
+   - Improved decimal handling in transaction data
+   - Added detailed logging for token operations
+   - Fixed amount conversion for both display and contract calls
 
 3. Code Changes:
    ```javascript
-   const adjustedAmount = ethers.parseUnits(
-       ethers.formatUnits(amount, 18), // Convert from 18 decimals to human readable
-       decimals // Convert to token's decimals
-   ).toString();
+   // Convert amount to human readable first
+   const humanReadable = ethers.formatUnits(amount, 18);
+   // Then convert to token's decimals
+   const adjustedAmount = ethers.parseUnits(humanReadable, decimals).toString();
    ```
+
+4. Transaction Analysis:
+   - Function: contribute(address,uint256)
+   - Selector: 0x8418cd99
+   - Token: 0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820 (MS2)
+   - Original Amount: 100000000000000 (0.0001 in 18 decimals)
+   - Adjusted Amount: Will be converted to 9 decimals
+   - Error: 0x7939f424 (unknown custom error)
+
+5. Improved Logging:
+   - Added token details to logs
+   - Tracking original and adjusted amounts
+   - Monitoring allowance values
+   - Better error context
 
 ## Verification Steps
 1. Test MS2 contribution with small amount
