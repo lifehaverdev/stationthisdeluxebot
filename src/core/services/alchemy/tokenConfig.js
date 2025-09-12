@@ -103,7 +103,13 @@ getChainTokenConfig = function(chainId = MAINNET_CHAIN_ID) {
 function getTokenConfig(address, chainId = MAINNET_CHAIN_ID) {
   if (!address) return null;
   const chainConfig = getChainTokenConfig(chainId);
-  return chainConfig[normaliseAddress(address)] || null;
+  const normalized = normaliseAddress(address);
+  return (
+    chainConfig[normalized] ||
+    chainConfig[address] || // fallback to original-case key (legacy configs)
+    Object.entries(chainConfig).find(([key]) => key.toLowerCase() === normalized)?.[1] ||
+    null
+  );
 }
 
 function getFundingRate(address, chainId = MAINNET_CHAIN_ID) {

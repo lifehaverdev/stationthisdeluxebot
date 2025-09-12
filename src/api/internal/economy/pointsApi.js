@@ -123,27 +123,60 @@ module.exports = function pointsApi(dependencies) {
 
             if (type === 'token') {
                 fundingRate = (mode === 'donate') ? getDonationFundingRate(assetAddress) : getFundingRate(assetAddress);
-                decimals = getDecimals(assetAddress);
-                // Convert amount from 18 decimals to token's decimals for display
-                const humanReadable = ethers.formatUnits(amount, 18);
-                assetAmount = parseFloat(humanReadable);
+                let decimals = getDecimals(assetAddress);
+                
+                // Special handling for MS2 token which has 9 decimals
+                const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
+                if (isMS2) {
+                    decimals = 9; // Override decimals for MS2
+                }
+
+                let humanReadable;
+                let adjustedAmount;
+                // For MS2, amount is already in the token's decimals (9)
+                if (isMS2) {
+                    humanReadable = ethers.formatUnits(amount, 9);
+                    assetAmount = parseFloat(humanReadable);
+                    adjustedAmount = amount;
+                } else {
+                    // For other tokens, convert from 18 decimals
+                    humanReadable = ethers.formatUnits(amount, 18);
+                    adjustedAmount = ethers.parseUnits(humanReadable, decimals);
+                    assetAmount = parseFloat(ethers.formatUnits(adjustedAmount, decimals));
+                }
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
+                
+                logger.info(`[pointsApi:/quote] Amount conversion:`, {
+                    token: assetAddress,
+                    isMS2,
+                    decimals,
+                    originalAmount: amount,
+                    humanReadable,
+                    adjustedAmount: adjustedAmount.toString(),
+                    assetAmount
+                });
                 console.log('[pointsApi:/quote] Price fetched for', assetAddress, ':', price);
                 grossUsd = assetAmount * price;
                 netAfterFundingRate = grossUsd * fundingRate;
                 // --- Dynamic gas estimation ---
-                try {
-                    if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
-                    estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
-                        type,
-                        assetAddress,
-                        amount,
-                        userWalletAddress
-                    });
-                    console.log('[pointsApi:/quote] Dynamic gas estimate (USD):', estimatedGasUsd);
-                } catch (err) {
-                    console.warn('[pointsApi:/quote] Failed to estimate gas dynamically, using fallback:', err);
+                // Skip gas estimation for MS2 token since we want it regardless of gas cost
+                if (assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase()) {
+                    logger.info('[pointsApi:/quote] Skipping gas estimation for MS2 token');
+                    estimatedGasUsd = 0; // Don't factor gas into the quote for MS2
+                } else {
+                    try {
+                        if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
+                        estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
+                            type,
+                            assetAddress,
+                            amount,
+                            userWalletAddress
+                        });
+                        console.log('[pointsApi:/quote] Dynamic gas estimate (USD):', estimatedGasUsd);
+                    } catch (err) {
+                        console.warn('[pointsApi:/quote] Failed to estimate gas dynamically, using fallback:', err);
+                    }
                 }
             } else if (type === 'nft') {
                 // Lookup NFT config
@@ -189,11 +222,23 @@ module.exports = function pointsApi(dependencies) {
             // Only deduct gas after funding rate
             userReceivesUsd = netAfterFundingRate - estimatedGasUsd;
 
-            // Ensure pointsCredited is always set and valid
-            if (typeof USD_TO_POINTS_CONVERSION_RATE === 'number' && USD_TO_POINTS_CONVERSION_RATE > 0 && typeof userReceivesUsd === 'number' && userReceivesUsd > 0) {
-                pointsCredited = Math.max(0, Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE));
+            // Special handling for MS2 token - we want it regardless of USD value
+            const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
+            if (isMS2) {
+                // For MS2, credit points based on token amount directly
+                // 1 MS2 = 1000 points (adjust this ratio as needed)
+                pointsCredited = Math.floor(assetAmount * 1000);
+                logger.info(`[pointsApi:/quote] MS2 points calculation:`, {
+                    assetAmount,
+                    pointsCredited
+                });
             } else {
-                pointsCredited = 0;
+                // Normal USD-based point calculation for other tokens
+                if (typeof USD_TO_POINTS_CONVERSION_RATE === 'number' && USD_TO_POINTS_CONVERSION_RATE > 0 && typeof userReceivesUsd === 'number' && userReceivesUsd > 0) {
+                    pointsCredited = Math.max(0, Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE));
+                } else {
+                    pointsCredited = 0;
+                }
             }
 
             // Log all intermediate values
@@ -310,7 +355,7 @@ module.exports = function pointsApi(dependencies) {
 
             if (type === 'token') {
                 // Get token decimals
-                const decimals = getDecimals(assetAddress);
+                let decimals = getDecimals(assetAddress);
                 
                 if (assetAddress === '0x0000000000000000000000000000000000000000') {
                     // Native currency (ETH) deposit
@@ -340,6 +385,12 @@ module.exports = function pointsApi(dependencies) {
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
                     const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
 
+                    // Special handling for MS2 token which has 9 decimals
+                    const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
+                    if (isMS2) {
+                        decimals = 9; // Override decimals for MS2
+                    }
+
                     // Convert amount to human readable first
                     const humanReadable = ethers.formatUnits(amount, 18);
                     // Then convert to token's decimals
@@ -347,6 +398,7 @@ module.exports = function pointsApi(dependencies) {
 
                     logger.info(`[pointsApi] /purchase ERC20 token details:`, {
                         token: assetAddress,
+                        isMS2,
                         decimals,
                         originalAmount: amount,
                         humanReadable,
