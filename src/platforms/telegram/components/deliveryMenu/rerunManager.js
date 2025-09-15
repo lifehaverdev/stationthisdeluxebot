@@ -3,7 +3,7 @@
  * @description Handles the callback for re-running a generation.
  */
 
-const { v4: uuidv4 } = require('uuid');
+const { ObjectId } = require('mongodb');
 
 /**
  * Handles the 'rerun_gen:' callback.
@@ -42,58 +42,118 @@ async function handleRerunGenCallback(bot, callbackQuery, masterAccountId, depen
             throw new Error("Original generation record is missing the 'metadata' object.");
         }
 
-        // Robustly resolve toolId
-        const toolId = originalRecord.metadata?.toolId || originalRecord.requestPayload?.invoked_tool_id || originalRecord.requestPayload?.tool_id || originalRecord.serviceName;
-        if (!toolId) {
-            throw new Error('Could not resolve toolId for original generation.');
+        // Get the tool's displayName and current configuration
+        const { toolRegistry } = dependencies;
+        if (!toolRegistry) {
+            throw new Error('toolRegistry dependency is missing');
         }
 
-        const { telegramMessageId, telegramChatId, platformContext, userInputPrompt } = originalRecord.metadata;
+        // Get the tool's displayName from the generation record
+        const toolDisplayName = originalRecord.toolDisplayName;
+        if (!toolDisplayName) {
+            throw new Error('Generation record is missing toolDisplayName');
+        }
+        
+        logger.info(`[RerunManager] Looking for tool with displayName: ${toolDisplayName}`);
+        const currentTool = toolRegistry.findByDisplayName(toolDisplayName);
+        
+        if (!currentTool) {
+            throw new Error(`Could not find current tool with displayName: ${toolDisplayName}`);
+        }
+        
+        logger.info(`[RerunManager] Found current tool by displayName: ${currentTool.displayName}`);
+        const toolId = currentTool.toolId;
+
+        // Extract message and chat IDs from either direct metadata or platformContext
+        const telegramMessageId = originalRecord.metadata.telegramMessageId || originalRecord.metadata.platformContext?.messageId;
+        const telegramChatId = originalRecord.metadata.telegramChatId || originalRecord.metadata.platformContext?.chatId;
+        const { platformContext, userInputPrompt } = originalRecord.metadata;
+
         if (!telegramMessageId || !telegramChatId) {
-            throw new Error("Critical context (messageId, chatId) missing from original generation.");
+            const error = new Error("Critical context (messageId, chatId) missing from original generation.");
+            error.originalRecord = originalRecord;
+            throw error;
         }
 
         const newRequestPayload = { ...originalRecord.requestPayload, input_seed: Math.floor(Math.random() * 1000000000) };
         const userFacingPrompt = userInputPrompt || newRequestPayload.input_prompt;
 
+        // Create metadata with notificationContext for proper reply chain
         const rerunMetadata = {
             telegramMessageId, telegramChatId, platformContext, toolId,
             parentGenerationId: originalGenerationId,
             isRerun: true,
-            initiatingEventId: originalRecord.metadata.initiatingEventId || uuidv4(),
             userInputPrompt: userFacingPrompt,
             rerunCount: (originalRecord.metadata?.rerunCount || 0) + 1,
+            notificationContext: {
+                chatId: telegramChatId,
+                messageId: telegramMessageId,
+                replyToMessageId: originalRecord.metadata.notificationContext?.replyToMessageId || telegramMessageId
+            }
         };
 
-        const newGenPayload = {
-            toolId,
-            requestPayload: newRequestPayload,
+        // Create an event record for this rerun action
+        const eventResponse = await internal.client.post('/internal/v1/data/events', {
             masterAccountId,
-            platform: 'telegram',
-            status: 'pending',
-            deliveryStatus: 'pending',
-            notificationPlatform: 'telegram',
-            serviceName: originalRecord.serviceName,
-            metadata: rerunMetadata
+            eventType: 'rerun_clicked',
+            sourcePlatform: 'telegram',
+            eventData: {
+                originalGenerationId: originalGenerationId,
+                toolId: currentTool.toolId,
+                toolDisplayName: currentTool.displayName
+            }
+        });
+
+        // Get user preferences first
+        let inputs = { ...newRequestPayload };
+        try {
+            const encodedDisplayName = encodeURIComponent(currentTool.displayName);
+            const preferencesResponse = await internal.client.get(`/internal/v1/data/users/${masterAccountId}/preferences/${encodedDisplayName}`);
+            if (preferencesResponse.data && typeof preferencesResponse.data === 'object') {
+                // Merge preferences with our inputs, but let our inputs take precedence
+                inputs = { ...preferencesResponse.data, ...inputs };
+            }
+        } catch (error) {
+            if (!error.response || error.response.status !== 404) {
+                logger.warn(`[RerunManager] Could not fetch user preferences for '${currentTool.displayName}': ${error.message}`);
+            }
+        }
+
+        // Construct execution payload similar to dynamicCommands.js
+        const executionPayload = {
+            toolId: currentTool.toolId,
+            inputs,
+            user: {
+                masterAccountId,
+                platform: 'telegram',
+                platformId: callbackQuery.from.id.toString(),
+                platformContext: {
+                    firstName: callbackQuery.from.first_name,
+                    username: callbackQuery.from.username,
+                    chatId: message.chat.id,
+                    messageId: message.message_id,
+                },
+            },
+            eventId: eventResponse.data._id,
+            metadata: {
+                notificationContext: {
+                    chatId: message.chat.id,
+                    messageId: message.message_id,
+                    replyToMessageId: message.message_id,
+                    userId: callbackQuery.from.id,
+                },
+                parentGenerationId: originalGenerationId,
+                isRerun: true,
+                rerunCount: (originalRecord.metadata?.rerunCount || 0) + 1,
+            }
         };
 
-        const newGenResponse = await internal.client.post('/internal/v1/data/generations', newGenPayload);
-        const newGeneratedId = newGenResponse.data._id;
-        logger.info(`[RerunManager] New generation (rerun) logged with ID: ${newGeneratedId}`);
-        
-        let deploymentId = originalRecord.metadata?.deploymentId || toolId;
-        if (deploymentId.startsWith('comfy-')) {
-            deploymentId = deploymentId.substring(6);
-        }
-
-        const submissionResult = await services.comfyui.submitRequest({ deploymentId, inputs: newRequestPayload });
-        const run_id = submissionResult?.run_id;
-        if (!run_id) {
-            throw new Error(`ComfyUI submission failed for rerun. Reason: ${submissionResult?.error || 'Unknown'}`);
-        }
-        logger.info(`[RerunManager] ComfyUI submission successful for new GenID ${newGeneratedId}. Run ID: ${run_id}`);
-        
-        await internal.client.put(`/internal/v1/data/generations/${newGeneratedId}`, { "metadata.run_id": run_id, status: 'processing' });
+        // Execute via internal API
+        const execResult = await internal.client.post('/internal/v1/data/execute', {
+            ...executionPayload,
+            toolDisplayName: currentTool.displayName // Ensure toolDisplayName is included
+        });
+        logger.info(`[RerunManager] Job submitted via execution service. Gen ID: ${execResult.data.generationId}`);
         
         const newPressCount = pressCount + 1;
         const newKeyboard = JSON.parse(JSON.stringify(message.reply_markup.inline_keyboard));
@@ -125,9 +185,12 @@ async function handleRerunGenCallback(bot, callbackQuery, masterAccountId, depen
             err: { 
                 message: error.message, 
                 stack: error.stack, 
-                response: error.response?.data 
+                response: error.response?.data,
+                submissionResult: error.submissionResult,
+                originalRecord: error.originalRecord,
+                newRequestPayload: error.newRequestPayload
             } 
-        }, `[RerunManager] Error in rerun_gen for GenID ${originalGenerationId}`);
+        }, `[RerunManager] Error in rerun_gen for GenID ${originalGenerationId}. Error: ${error.message}`);
         await bot.answerCallbackQuery(callbackQuery.id, { text: "Error rerunning generation.", show_alert: true });
     }
 }

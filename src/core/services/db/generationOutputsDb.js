@@ -19,6 +19,8 @@ class GenerationOutputsDB extends BaseDB {
    * @param {ObjectId} outputData.sessionId - FK to userSessions.sessionId.
    * @param {ObjectId} outputData.initiatingEventId - FK to userEvents.eventId.
    * @param {string} outputData.serviceName - Identifier for the generation service.
+   * @param {string} outputData.toolId - The ID of the tool used for generation.
+   * @param {string} outputData.toolDisplayName - The stable display name of the tool (used for reruns).
    * @param {string} outputData.status - Initial status (e.g., 'pending', 'processing').
    * @param {string} outputData.notificationPlatform - Platform for notifications (e.g., 'telegram', 'discord', 'none').
    * @param {string} outputData.deliveryStatus - Initial delivery status (e.g., 'pending', 'skipped', 'none').
@@ -30,12 +32,20 @@ class GenerationOutputsDB extends BaseDB {
    * @returns {Promise<Object>} The created generation output document.
    */
   async createGenerationOutput(outputData) {
+    // Validate required fields
+    if (!outputData.toolDisplayName) {
+      this.logger.error('[GenerationOutputsDB] Attempted to create generation without toolDisplayName');
+      throw new Error('toolDisplayName is required for generation records');
+    }
+
     const dataToInsert = {
       // generationId will be handled by BaseDB as _id
       requestTimestamp: new Date(),
       ...outputData,
       // Ensure required fields from schema have defaults or are passed in
       status: outputData.status || 'pending', // Default initial status
+      // Ensure toolDisplayName is at the root level
+      toolDisplayName: outputData.toolDisplayName,
     };
     const result = await this.insertOne(dataToInsert);
     if (result.insertedId) {

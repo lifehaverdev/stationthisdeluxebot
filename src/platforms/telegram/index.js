@@ -40,23 +40,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   const { setReaction } = require('./utils/telegramUtils');
   const executionClient = require('../../utils/serverExecutionClient');
 
-  // Admin check helper function
-  async function isAdmin(userId, internalApiClient) {
-    try {
-      // Find or get master account
-      const userResponse = await internalApiClient.post('/internal/v1/data/users/find-or-create', {
-        platform: 'telegram',
-        platformId: userId.toString(),
-      });
-      const masterAccountId = userResponse.data.masterAccountId;
-
-      // Check admin flag in userCore
-      const userCoreResponse = await internalApiClient.get(`/internal/v1/data/users/core/${masterAccountId}`);
-      return userCoreResponse.data?.isAdmin === true;
-    } catch (err) {
-      return false;
-    }
-  }
+  const { isAdmin, removeKeyboard, updateBotCommands, resetChatState, getChatDetails, deleteAllScopedCommands } = require('./utils/adminUtils');
 
   bot.onText(/^\/feedback(?:@\w+)?\s+(.+)$/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -105,13 +89,31 @@ function initializeTelegramPlatform(dependencies, options = {}) {
         });
         const masterAccountId = userResponse.data.masterAccountId;
 
-        // Get user's last generation
+        // Get user's last generation (may not exist yet)
+        let lastGen = null;
+        try {
+          // 1st attempt: filter by platform
         const lastGenResponse = await internalApiClient.get(`/internal/v1/data/generations/last/${masterAccountId}?platform=telegram`);
-        const lastGen = lastGenResponse.data;
+          lastGen = lastGenResponse.data;
+        } catch (fetchErr) {
+          if (fetchErr?.response?.status === 404) {
+            // Fallback: retry without platform filter (older records)
+            try {
+              const fallbackRes = await internalApiClient.get(`/internal/v1/data/generations/last/${masterAccountId}`);
+              lastGen = fallbackRes.data;
+            } catch (fallbackErr) {
+              if (fallbackErr?.response?.status !== 404) {
+                throw fallbackErr;
+              }
+            }
+          } else {
+            throw fetchErr; // Other error types propagate
+          }
+        }
 
         if (!lastGen) {
           await bot.sendMessage(chatId, "You haven't made any requests yet!", { reply_to_message_id: msg.message_id });
-          await setReaction(bot, chatId, msg.message_id, '😅');
+          await setReaction(bot, chatId, msg.message_id, '😨');
           return;
         }
 
@@ -148,6 +150,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
           },
           eventId: eventResponse.data._id,
           metadata: {
+            platform: 'telegram',
             notificationContext: {
               chatId: msg.chat.id,
               messageId: msg.message_id,
@@ -188,38 +191,224 @@ function initializeTelegramPlatform(dependencies, options = {}) {
   logger.info('Telegram platform initialized');
   
   // Return an object with the bot and a setup function for dynamic commands
-  // Register user-facing commands in menu
-  const commands = [
-    {
-      command: 'account',
-      description: 'View your account information'
-    },
-    {
-      command: 'buypoints',
-      description: 'Purchase points'
-    },
-    {
-      command: 'status',
-      description: 'View your status'
-    },
-    {
-      command: 'settings',
-      description: 'View your settings'
-    },
-    {
-      command: 'tools',
-      description: 'View your tools'
-    },
-    {
-      command: 'again',
-      description: 'Repeat your last request'
-    },
-    {
-      command: 'feedback',
-      description: 'Send feedback about the bot'
+  // Note: We no longer set commands at startup - use /updateCommands instead
+
+  // Admin command: resetKeyboard - Removes stuck keyboard
+  bot.onText(/^\/resetKeyboard(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🤔');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '👎');
+        return;
+      }
+
+      await removeKeyboard(bot, chatId);
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /resetKeyboard] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error removing keyboard.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
     }
-  ];
-  bot.setMyCommands(commands);
+  });
+
+  // Admin command: resetChat - Full chat state reset
+  bot.onText(/^\/resetChat(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🤔');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '👎');
+        return;
+      }
+
+      await resetChatState(bot, chatId);
+      await bot.sendMessage(chatId, 'Chat state has been reset.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /resetChat] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error resetting chat state.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
+
+  // Admin command: deleteCommands - Delete all bot commands
+  bot.onText(/^\/deleteCommands(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🤔');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '👎');
+        return;
+      }
+
+      await deleteAllScopedCommands(bot);
+      await bot.sendMessage(chatId, 'All bot commands have been deleted.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /deleteCommands] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error deleting bot commands.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
+
+  // Admin command: updateCommands - Force update bot commands
+  bot.onText(/^\/updateCommands(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🤔');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '👎');
+        return;
+      }
+
+      // Re-register all commands
+  const commands = [
+        { command: 'account', description: 'View your account information' },
+        { command: 'buypoints', description: 'Purchase points' },
+        { command: 'status', description: 'View your status' },
+        { command: 'settings', description: 'View your settings' },
+        { command: 'tools', description: 'View your tools' },
+        { command: 'again', description: 'Repeat your last request' },
+        { command: 'feedback', description: 'Send feedback about the bot' }
+      ];
+
+      // First delete all commands from all scopes
+      const scopes = [
+        { type: 'default' },
+        { type: 'all_private_chats' },
+        { type: 'all_group_chats' },
+        { type: 'all_chat_administrators' }
+      ];
+
+      // Delete from all scopes
+      for (const scope of scopes) {
+        await bot.deleteMyCommands({ scope });
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait between deletions
+      }
+
+      // Wait a bit longer for cache invalidation
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Set commands only for private chats since that's where we're testing
+      await updateBotCommands(bot, commands, { type: 'all_private_chats' });
+      await bot.sendMessage(chatId, 'Bot commands have been updated.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /updateCommands] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error updating bot commands.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
+
+  // Admin command: inspectCommands - Get detailed command info
+  bot.onText(/^\/inspectCommands(?:@\w+)?$/, async (msg) => {
+    const chatId = msg.chat.id;
+    const { logger, internalApiClient } = dependencies;
+
+    try {
+      await setReaction(bot, chatId, msg.message_id, '🤔');
+
+      if (!await isAdmin(msg.from.id, internalApiClient)) {
+        await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
+        await setReaction(bot, chatId, msg.message_id, '👎');
+        return;
+      }
+
+      const scopes = [
+        { type: 'default' },
+        { type: 'all_private_chats' },
+        { type: 'all_group_chats' },
+        { type: 'all_chat_administrators' }
+      ];
+
+      const languages = ['', 'en'];
+      const results = {};
+
+      // Check each scope and language combination
+      for (const scope of scopes) {
+        results[scope.type] = {};
+        // Try with no language code
+        try {
+          results[scope.type]['no_lang'] = await bot.getMyCommands({ scope });
+        } catch (err) {
+          results[scope.type]['no_lang'] = `Error: ${err.message}`;
+        }
+        
+        // Try with specific languages
+        for (const lang of languages) {
+          try {
+            results[scope.type][lang || 'empty'] = await bot.getMyCommands({ scope, language_code: lang });
+          } catch (err) {
+            results[scope.type][lang || 'empty'] = `Error: ${err.message}`;
+          }
+        }
+      }
+
+      // Try without any scope
+      try {
+        results['no_scope'] = await bot.getMyCommands();
+      } catch (err) {
+        results['no_scope'] = `Error: ${err.message}`;
+      }
+
+      // Format a summary message
+      let summary = 'Command Configuration Summary:\n\n';
+      
+      for (const [scopeName, scopeData] of Object.entries(results)) {
+        summary += `Scope: ${scopeName}\n`;
+        if (typeof scopeData === 'object') {
+          for (const [langName, commands] of Object.entries(scopeData)) {
+            if (Array.isArray(commands) && commands.length > 0) {
+              summary += `  ${langName}:\n    ${commands.map(c => c.command).join(', ')}\n`;
+            } else if (Array.isArray(commands) && commands.length === 0) {
+              summary += `  ${langName}: No commands\n`;
+            } else {
+              summary += `  ${langName}: ${commands}\n`;
+            }
+          }
+        } else if (Array.isArray(scopeData)) {
+          summary += `  Commands: ${scopeData.map(c => c.command).join(', ')}\n`;
+        } else {
+          summary += `  ${scopeData}\n`;
+        }
+        summary += '\n';
+      }
+
+      // Send as a single formatted message
+      await bot.sendMessage(chatId, `\`\`\`\n${summary}\`\`\``, {
+        parse_mode: 'Markdown',
+        reply_to_message_id: msg.message_id
+      });
+
+      await setReaction(bot, chatId, msg.message_id, '👌');
+
+    } catch (err) {
+      logger.error(`[Telegram /inspectCommands] Error: ${err.message}`, { stack: err.stack });
+      await bot.sendMessage(chatId, 'Error inspecting commands.', { reply_to_message_id: msg.message_id });
+      await setReaction(bot, chatId, msg.message_id, '😨');
+    }
+  });
 
   // Admin command: chatInfo
   bot.onText(/^\/chatInfo(?:@\w+)?$/, async (msg) => {
@@ -231,7 +420,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
 
       if (!await isAdmin(msg.from.id, internalApiClient)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
-        await setReaction(bot, chatId, msg.message_id, '🚫');
+        await setReaction(bot, chatId, msg.message_id, '👎');
         return;
       }
 
@@ -266,7 +455,7 @@ function initializeTelegramPlatform(dependencies, options = {}) {
 
       if (!await isAdmin(msg.from.id, internalApiClient)) {
         await bot.sendMessage(chatId, 'This command is only available to admins.', { reply_to_message_id: msg.message_id });
-        await setReaction(bot, chatId, msg.message_id, '🚫');
+        await setReaction(bot, chatId, msg.message_id, '👎');
         return;
       }
 

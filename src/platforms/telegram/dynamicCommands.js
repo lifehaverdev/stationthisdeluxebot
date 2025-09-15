@@ -1,6 +1,6 @@
 const { sanitizeCommandName } = require('../../utils/stringUtils');
 const { getTelegramFileUrl, setReaction } = require('./utils/telegramUtils');
-const executionClient = require('../../utils/serverExecutionClient');
+// Using internal API client directly instead of making HTTP requests
 const InputCollector = require('./components/inputCollector');
 const { ExecutionError } = require('../../utils/ExecutionClient');
 
@@ -371,7 +371,7 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             };
 
             // 4. Execute via central ExecutionClient (wraps internal endpoint)
-            const execResult = await executionClient.execute(executionPayload);
+            const execResult = await apiClient.post('/internal/v1/data/execute', executionPayload);
 
             if (execResult.final && execResult.outputs && execResult.outputs.response) {
               await bot.sendMessage(chatId, execResult.outputs.response, { reply_to_message_id: msg.message_id });

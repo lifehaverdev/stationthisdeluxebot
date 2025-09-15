@@ -106,7 +106,8 @@ module.exports = function generationOutputsApi(dependencies) {
       const generations = await db.generationOutputs.findGenerations(
         { 
           masterAccountId: new ObjectId(masterAccountId),
-          ...(platform && { 'metadata.platformContext.platform': platform })
+          // Platform now stored at metadata.platform (not metadata.platformContext.platform)
+          ...(platform && { 'metadata.platform': platform })
         },
         { 
           sort: { requestTimestamp: -1 },
