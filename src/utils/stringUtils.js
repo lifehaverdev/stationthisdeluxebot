@@ -69,9 +69,21 @@ function stripHtml(str) {
     return str.replace(/<[^>]*>/g, '');
 }
 
+/**
+ * Escapes only the characters that need escaping inside a MarkdownV2 `code` span.
+ * According to Telegram, only backslash and backtick must be escaped there.
+ * @param {string|number|null|undefined} text
+ * @returns {string}
+ */
+function escapeMarkdownV2ForCode(text) {
+    if (typeof text !== 'string') return '';
+    return text.replace(/([\\`.])/g, '\\$1');
+}
+
 module.exports = {
     sanitizeCommandName,
     slugify,
     escapeMarkdownV2,
+    escapeMarkdownV2ForCode,
     stripHtml,
 };

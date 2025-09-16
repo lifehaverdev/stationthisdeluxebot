@@ -81,13 +81,7 @@ Account & Points:
 
 Creation Tools:
 • /tools - Access available creation tools and workflows
-• /collections - Manage your image collections
 • /settings - Configure your preferences
-
-Generation Commands:
-• /rate - Rate generated images
-• /rerun - Regenerate a previous creation
-• /tweak - Modify parameters of a previous generation
 
 Need more help? Feel free to check our documentation or join our community!
 `;

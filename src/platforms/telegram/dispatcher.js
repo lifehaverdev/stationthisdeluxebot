@@ -39,34 +39,36 @@ class CallbackQueryDispatcher {
     if (!data) {
       return null;
     }
+    let matchedHandler = null;
+    let longestMatchLength = -1;
     for (const [prefix, handler] of this.handlers.entries()) {
-      if (data.startsWith(prefix)) {
-        return handler;
+      if (data.startsWith(prefix) && prefix.length > longestMatchLength) {
+        longestMatchLength = prefix.length;
+        matchedHandler = handler;
       }
     }
-    return null;
+    return matchedHandler;
   }
 
   async handle(bot, callbackQuery, dependencies) {
     const { data, from } = callbackQuery;
-    for (const [prefix, handler] of this.handlers.entries()) {
-      if (data.startsWith(prefix)) {
-        const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
-        if (!apiClient) {
-          throw new Error('[CallbackQueryDispatcher] internalApiClient dependency missing');
-        }
-        const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
-          platform: 'telegram',
-          platformId: from.id.toString(),
-          platformContext: { firstName: from.first_name, username: from.username }
-        });
-        const masterAccountId = findOrCreateResponse.data.masterAccountId;
-        await handler(bot, callbackQuery, masterAccountId, dependencies);
-        return true;
-      }
+    const matchedHandler = this.findHandler(data);
+    if (!matchedHandler) {
+      this.logger.warn(`[CallbackQueryDispatcher] No handler found for callback data: ${data}`);
+      return false;
     }
-    this.logger.warn(`[CallbackQueryDispatcher] No handler found for callback data: ${data}`);
-    return false;
+    const apiClient = dependencies.internalApiClient || dependencies.internal?.client;
+    if (!apiClient) {
+      throw new Error('[CallbackQueryDispatcher] internalApiClient dependency missing');
+    }
+    const findOrCreateResponse = await apiClient.post('/internal/v1/data/users/find-or-create', {
+      platform: 'telegram',
+      platformId: from.id.toString(),
+      platformContext: { firstName: from.first_name, username: from.username }
+    });
+    const masterAccountId = findOrCreateResponse.data.masterAccountId;
+    await matchedHandler(bot, callbackQuery, masterAccountId, dependencies);
+    return true;
   }
 }
 

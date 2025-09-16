@@ -251,6 +251,45 @@ function extractNotes(workflowJson) {
   return notes;
 }
 
+// BEGIN ADDITION: Directive parsing helper
+/**
+ * Parse @bot directive lines from workflow notes.
+ * Syntax: "@bot <scope> <key>=<value>[,<key>=<value>...]"
+ * Example: "@bot telegram send-as=document,filename=rmbg.png"
+ *
+ * @param {string[]} notes Array of note strings extracted via extractNotes().
+ * @returns {object} Map of scopes to key/value pairs, e.g. { telegram: { 'send-as': 'document' } }
+ */
+function parseNoteDirectives(notes = []) {
+  const directives = {};
+  const directiveRegex = /^@bot\s+(\w+)\s+(.+)$/i;
+
+  for (const note of notes) {
+    if (typeof note !== 'string') continue;
+    const trimmed = note.trim();
+    const match = trimmed.match(directiveRegex);
+    if (!match) continue;
+
+    const scope = match[1].toLowerCase();
+    const kvPart = match[2];
+    if (!directives[scope]) directives[scope] = {};
+
+    // Split by comma to get key=value pairs
+    kvPart.split(',').forEach(pair => {
+      const [rawKey, ...rest] = pair.split('=');
+      if (!rawKey) return;
+      const key = rawKey.trim();
+      const value = rest.join('=')?.trim(); // allow = in value
+      if (key) {
+        directives[scope][key] = value ?? true; // if no value provided, set true
+      }
+    });
+  }
+
+  return directives;
+}
+// END ADDITION
+
 /**
  * Get appropriate machine for specific workflow based on routing rules
  * 
@@ -303,5 +342,6 @@ module.exports = {
   standardizeWorkflowName,
   parseWorkflowStructure,
   extractNotes,
+  parseNoteDirectives, // added export
   getMachineForWorkflow
 }; 

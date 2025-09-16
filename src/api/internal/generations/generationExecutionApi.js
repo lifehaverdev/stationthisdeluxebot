@@ -210,13 +210,15 @@ module.exports = function generationExecutionApi(dependencies) {
           });
 
           // --- Respond ---
+          const est = (typeof estimatedSeconds === 'number' && Number.isFinite(estimatedSeconds)) ? estimatedSeconds : null;
           return res.status(202).json({
             generationId: generationRecord._id.toString(),
             status: 'processing',
             service: tool.service,
-            runId: runId,
+            runId,
             toolId: tool.toolId,
             queuedAt: generationRecord.requestTimestamp,
+            ...(est !== null ? { estimatedDurationSeconds: est, checkAfterMs: est * 1000 } : {}),
             message: 'Your request has been accepted and is being processed.',
           });
         }

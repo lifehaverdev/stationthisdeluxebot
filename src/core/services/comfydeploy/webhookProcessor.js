@@ -205,6 +205,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       responseTimestamp: finalEventTimestamp,
       responsePayload: status === 'success' ? (outputs || null) : (payload.error_details || payload.error || null),
       costUsd: costUsd,
+      ...(runDurationSeconds && runDurationSeconds > 0 ? { durationMs: Math.round(runDurationSeconds * 1000) } : {})
       // The ADR specifies `deliveryStatus` etc. should be part of generationRecord.
       // `webhookProcessor` sets the final state. The initial `deliveryStatus: 'pending'` 
       // and `notificationPlatform`/`notificationContext` should be set when the job is first created.

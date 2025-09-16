@@ -7,8 +7,26 @@
 const { escapeMarkdownV2, stripHtml } = require('../../../../utils/stringUtils');
 const { v4: uuidv4 } = require('uuid');
 
+// Map short tokens to sessionKeys to keep callback_data under Telegram's 64-byte limit
+const tokenToSessionKey = new Map();
+const sessionKeyToToken = new Map();
+function getSessionToken(sessionKey) {
+    if (sessionKeyToToken.has(sessionKey)) return sessionKeyToToken.get(sessionKey);
+    const token = uuidv4().split('-')[0]; // 8 chars
+    tokenToSessionKey.set(token, sessionKey);
+    sessionKeyToToken.set(sessionKey, token);
+    return token;
+}
+function resolveSessionKey(token) {
+    return tokenToSessionKey.get(token);
+}
+
 // In-memory store for pending tweaks. Key: `generationId_masterAccountId`
 const pendingTweaks = {};
+
+function formatParamName(param) {
+    return param.replace(/^input_/, '').replace(/_/g, ' ');
+}
 
 // --- UI Builder ---
 
@@ -19,31 +37,42 @@ const pendingTweaks = {};
  * @param {object} dependencies - Shared dependencies.
  * @returns {object} - { text, reply_markup }
  */
-function buildTweakUIMenu(generationId, masterAccountId, currentParams, dependencies) {
-    const { logger } = dependencies;
+function buildTweakUIMenu(generationId, masterAccountId, currentParams, toolDef, hasPendingChanges = false, dependencies = {}) {
     const sessionKey = `${generationId}_${masterAccountId}`;
+    const token = getSessionToken(sessionKey);
 
-    let text = '*Tweak Generation Parameters*\\n\\n';
-    text += 'Modify the parameters below and then click Apply\\. \\n';
-    
-    const prompt = currentParams.input_prompt || '(No prompt)';
-    const seed = currentParams.input_seed || '(Random)';
-    
-    text += `*Prompt:* \`\`\`\n${escapeMarkdownV2(prompt)}\n\`\`\`\n`;
-    text += `*Seed:* \`${escapeMarkdownV2(String(seed))}\`\\n`;
+    const keyboard = [];
 
-    const keyboard = [
-        [
-            { text: '✏️ Edit Prompt', callback_data: `tweak_param_edit_start:${sessionKey}:input_prompt` },
-            { text: '🎲 Edit Seed', callback_data: `tweak_param_edit_start:${sessionKey}:input_seed` }
-        ],
-        [
-            { text: '✅ Apply Tweaks', callback_data: `tweak_apply:${sessionKey}` },
-            { text: '❌ Close Menu', callback_data: `hide_menu` }
-        ]
-    ];
+    const { logger } = dependencies;
+    if (!toolDef) {
+        logger?.warn(`[TweakManager] buildTweakUIMenu: toolDef null for generation ${generationId}`);
+    } else {
+        logger?.info(`[TweakManager] buildTweakUIMenu: tool ${toolDef.displayName} params ${Object.keys(toolDef.inputSchema||{}).join(',')}`);
+    }
 
-    return { text, reply_markup: { inline_keyboard: keyboard } };
+    if (toolDef && toolDef.inputSchema) {
+        for (const param of Object.keys(toolDef.inputSchema)) {
+            logger?.info(`[TweakManager] adding param button ${param} value=${currentParams[param]}`);
+            const rawVal = currentParams[param];
+            let label;
+            if (typeof rawVal === 'string' && rawVal.startsWith('http')) {
+                label = `${formatParamName(param)}: link`;
+            } else if (rawVal === undefined || rawVal === null || rawVal === '') {
+                label = `${formatParamName(param)}: (none)`;
+            } else {
+                const str = String(rawVal);
+                label = `${formatParamName(param)}: ${str.length>15?str.slice(0,12)+'…':str}`;
+            }
+            keyboard.push([{ text: label, callback_data: `tpe_${token}_${param}` }]);
+        }
+    }
+
+    if (hasPendingChanges) {
+        keyboard.push([{ text: 'Send', callback_data: `tweak_apply:${token}` }]);
+    }
+    keyboard.push([{ text: '❌ Cancel', callback_data: `tweak_cancel:${token}` }]);
+
+    return { text: '🔧 Tweak parameters', reply_markup: { inline_keyboard: keyboard } };
 }
 
 
@@ -55,7 +84,8 @@ async function handleRenderTweakMenuCallback(bot, callbackQuery, masterAccountId
 
     const parts = data.split(':');
     const generationId = parts[1];
-    const sessionKey = `${generationId}_${masterAccountId}`;
+    const token = parts[1];
+    const sessionKey = resolveSessionKey(token);
 
     logger.info(`[TweakManager] Tweak menu render request for GenID: ${generationId}`);
 
@@ -74,14 +104,20 @@ async function handleRenderTweakMenuCallback(bot, callbackQuery, masterAccountId
         // If the session was lost, re-initialize it from the record
         if (!currentTweaks) {
             const userFacingPrompt = generationRecord.metadata?.userInputPrompt || generationRecord.requestPayload?.input_prompt;
+            const toolDisplayName = generationRecord.toolDisplayName || generationRecord.metadata?.toolDisplayName;
+            const toolDefForInit = dependencies.toolRegistry.findByDisplayName(toolDisplayName);
             pendingTweaks[sessionKey] = { 
                 ...(generationRecord.requestPayload || {}),
                 input_prompt: userFacingPrompt,
-             };
+                toolDisplayName,
+                __canonicalToolId__: toolDefForInit ? toolDefForInit.toolId : generationRecord.metadata?.toolId,
+            };
             logger.info(`[TweakManager] Re-initialized lost session: ${sessionKey}`);
         }
 
-        const refreshedMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[sessionKey], dependencies);
+        const toolDisplayName = generationRecord.toolDisplayName || generationRecord.metadata?.toolDisplayName;
+        const toolDef = dependencies.toolRegistry.findByDisplayName(toolDisplayName);
+        const refreshedMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[sessionKey], toolDef, false, dependencies);
 
         await bot.editMessageText(refreshedMenu.text, {
             chat_id: message.chat.id,
@@ -103,13 +139,14 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
     const { data, message } = callbackQuery;
 
     const parts = data.split(':');
-    const sessionKey = parts[1];
-    const [generationId] = sessionKey.split('_');
+    const token = parts[1];
+    const sessionKey = resolveSessionKey(token);
+    const [generationId] = sessionKey ? sessionKey.split('_') : [];
 
-    const finalTweakedParams = pendingTweaks[sessionKey];
+    const finalTweakedParams = sessionKey ? pendingTweaks[sessionKey] : undefined;
     logger.info(`[TweakManager] Applying tweaks for session: ${sessionKey}`);
 
-    if (!finalTweakedParams) {
+    if (!sessionKey || !finalTweakedParams) {
         logger.warn(`[TweakManager] tweak_apply: No pending tweak session found.`);
         await bot.editMessageText("Error: Your tweak session has expired.", {
             chat_id: message.chat.id,
@@ -132,8 +169,12 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
 
         const { telegramMessageId, telegramChatId, platformContext, initiatingEventId } = originalRecord.metadata;
 
-        const servicePayload = { ...finalTweakedParams };
-        delete servicePayload.__canonicalToolId__;
+        // Build payload containing only valid input params (no internal metadata)
+        const permittedKeys = new Set(Object.keys(toolDef.inputSchema || {}));
+        const servicePayload = {};
+        for (const [k,v] of Object.entries(finalTweakedParams)) {
+            if (permittedKeys.has(k)) servicePayload[k]=v;
+        }
 
         const newGenMetadata = {
             telegramMessageId, telegramChatId, platformContext,
@@ -145,6 +186,20 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
         };
 
         // --- Refactored: Use centralized execution endpoint ---
+        // --- Create an event so we have a valid ObjectId ---
+        let eventId;
+        try {
+            const evResp = await internal.client.post('/internal/v1/data/events', {
+                masterAccountId,
+                eventType: 'tweak_submitted',
+                sourcePlatform: 'telegram',
+                eventData: { parentGenerationId: generationId, toolId }
+            });
+            eventId = evResp.data._id;
+        } catch (e) {
+            logger.warn('[TweakManager] failed to create event for tweak submission:', e.message);
+        }
+
         const executionPayload = {
             toolId,
             inputs: servicePayload,
@@ -155,7 +210,7 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
                 platformContext: platformContext || {},
             },
             sessionId: originalRecord.sessionId,
-            eventId: initiatingEventId || uuidv4(),
+            ...(eventId ? { eventId } : {}),
             metadata: newGenMetadata
         };
 
@@ -193,6 +248,30 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             });
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Applying tweaks...", show_alert: false });
         }
+
+        // Restore or delete menu
+        const { __menuChatId, __menuMsgId, __origKeyboard, __isNewMenu } = finalTweakedParams;
+        if (__isNewMenu && __menuChatId && __menuMsgId) {
+            try { await bot.deleteMessage(__menuChatId, __menuMsgId); } catch(e){ logger.warn('Failed to delete tweak menu:', e.message);}    
+        } else if (!__isNewMenu && __menuChatId && __menuMsgId && __origKeyboard) {
+            // increment ✎ counter
+            const newKb = JSON.parse(JSON.stringify(__origKeyboard));
+            let updated=false;
+            for (const row of newKb) {
+                for (const btn of row) {
+                    if (btn.callback_data && btn.callback_data.startsWith('tweak_gen:')) {
+                        const match = btn.text.match(/^✎(\d+)?$/);
+                        if (match) {
+                            const n = parseInt(match[1]||'0',10)+1;
+                            btn.text = `✎${n}`;
+                        }
+                        updated=true; break;
+                    }
+                }
+                if(updated) break;
+            }
+            try { await bot.editMessageReplyMarkup({ inline_keyboard: newKb }, { chat_id: __menuChatId, message_id: __menuMsgId }); } catch(e) { logger.warn('Failed to restore delivery menu:', e.message);}        
+        }
         delete pendingTweaks[sessionKey];
         logger.info(`[TweakManager] Cleared pendingTweaks for sessionKey: ${sessionKey}`);
 
@@ -226,9 +305,17 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
 
         // 2. Extract necessary info
         const originalParams = generationRecord.requestPayload || {};
-        const toolId = generationRecord.metadata?.toolId || originalParams.invoked_tool_id || originalParams.tool_id || generationRecord.serviceName;
-        const originalUserCommandMessageId = generationRecord.metadata?.telegramMessageId;
-        const originalUserCommandChatId = generationRecord.metadata?.telegramChatId;
+        const toolDisplayName = generationRecord.toolDisplayName || generationRecord.metadata?.toolDisplayName;
+        // Resolve the original Telegram message/chat IDs from multiple possible metadata locations
+        const originalUserCommandMessageId =
+            generationRecord.metadata?.telegramMessageId ??
+            generationRecord.metadata?.notificationContext?.messageId ??
+            generationRecord.metadata?.platformContext?.messageId;
+
+        const originalUserCommandChatId =
+            generationRecord.metadata?.telegramChatId ??
+            generationRecord.metadata?.notificationContext?.chatId ??
+            generationRecord.metadata?.platformContext?.chatId;
 
         if (!originalUserCommandMessageId || !originalUserCommandChatId) {
             throw new Error(`Original command context missing in metadata for ${generationId}.`);
@@ -238,22 +325,56 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
         const tweakSessionKey = `${generationId}_${masterAccountId}`;
         const userFacingPrompt = generationRecord.metadata?.userInputPrompt || originalParams.input_prompt;
         
+        const toolDefForInit = dependencies.toolRegistry.findByDisplayName(toolDisplayName);
         pendingTweaks[tweakSessionKey] = { 
             ...originalParams,
             input_prompt: userFacingPrompt,
+            toolDisplayName,
+            __canonicalToolId__: toolDefForInit ? toolDefForInit.toolId : generationRecord.metadata?.toolId
         }; 
         logger.info(`[TweakManager] Initialized pendingTweaks for sessionKey: ${tweakSessionKey}`);
 
         // 4. Build and send the Tweak UI Menu
-        const tweakMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[tweakSessionKey], dependencies);
+        const toolDef = dependencies.toolRegistry.findByDisplayName(
+            pendingTweaks[tweakSessionKey].toolDisplayName || toolDisplayName
+        );
+        const tweakMenu = buildTweakUIMenu(
+            generationId,
+            masterAccountId,
+            pendingTweaks[tweakSessionKey],
+            toolDef,
+            false,
+            dependencies
+        );
 
-        if (tweakMenu && tweakMenu.text && tweakMenu.reply_markup) {
-            await bot.sendMessage(originalUserCommandChatId, tweakMenu.text, { 
-                parse_mode: 'MarkdownV2',
-                reply_markup: tweakMenu.reply_markup,
-                reply_to_message_id: originalUserCommandMessageId 
-            });
-            await bot.answerCallbackQuery(callbackQuery.id, { text: "Opening tweak menu..." });
+        if (tweakMenu && tweakMenu.reply_markup) {
+            try {
+                // Store original keyboard before overwrite
+                pendingTweaks[tweakSessionKey].__origKeyboard = message.reply_markup?.inline_keyboard;
+                await bot.editMessageReplyMarkup(tweakMenu.reply_markup, {
+                    chat_id: originalUserCommandChatId,
+                    message_id: originalUserCommandMessageId,
+                });
+                pendingTweaks[tweakSessionKey].__menuChatId = originalUserCommandChatId;
+                pendingTweaks[tweakSessionKey].__menuMsgId = originalUserCommandMessageId;
+                pendingTweaks[tweakSessionKey].__isNewMenu = false;
+            } catch (err) {
+                const msg = err.response?.body?.description || err.message;
+                if (msg.includes("can't be edited")) {
+                    logger.info('[TweakManager] Message too old to edit, sending new tweak menu');
+                    const sent = await bot.sendMessage(originalUserCommandChatId, '🔧 Tweak parameters', {
+                        reply_markup: tweakMenu.reply_markup,
+                        reply_to_message_id: originalUserCommandMessageId,
+                    });
+                    pendingTweaks[tweakSessionKey].__menuChatId = sent.chat.id;
+                    pendingTweaks[tweakSessionKey].__menuMsgId = sent.message_id;
+                    pendingTweaks[tweakSessionKey].__isNewMenu = true;
+                } else {
+                    logger.error('[TweakManager] editMessageReplyMarkup error:', msg);
+                    throw err;
+                }
+            }
+            await bot.answerCallbackQuery(callbackQuery.id);
         } else {
             delete pendingTweaks[tweakSessionKey];
             throw new Error('Failed to build tweak UI menu.');
@@ -280,17 +401,19 @@ function registerHandlers(dispatchers, dependencies) {
     callbackQueryDispatcher.register('tweak_gen:', handleTweakGenCallback);
     callbackQueryDispatcher.register('tweak_gen_menu_render:', (bot, cbq, maid) => handleRenderTweakMenuCallback(bot, cbq, maid, dependencies));
     
-    // Stubs for future logic
-    callbackQueryDispatcher.register('tweak_param_edit_start:', async (bot, cbq) => {
-        logger.warn(`[TweakManager] 'tweak_param_edit_start' not fully implemented.`);
-        await bot.answerCallbackQuery(cbq.id, {text: "Editing not implemented yet.", show_alert: true});
+    callbackQueryDispatcher.register('tpe_', async (bot, cbq) => {
+        await handleParamEditStart(bot, cbq, dependencies);
     });
     callbackQueryDispatcher.register('tweak_apply:', (bot, cbq, maid) => handleApplyTweaks(bot, cbq, maid, dependencies));
+    // register reply handler for param edit
+    messageReplyDispatcher.register('tweak_param_edit', (bot, msg, ctx) => handleParamEditReply(bot, msg, ctx, dependencies));
+
     callbackQueryDispatcher.register('tweak_cancel:', async (bot, callbackQuery, masterAccountId, dependencies) => {
         const { data } = callbackQuery;
         const parts = data.split(':');
-        const sessionKey = parts[1];
-        const [generationId] = sessionKey.split('_');
+        const token = parts[1];
+        const sessionKey = resolveSessionKey(token);
+        const generationId = sessionKey ? sessionKey.split('_')[0] : undefined;
 
         // Re-route to the render function to show the main menu again
         const renderData = `tweak_gen_menu_render:${generationId}`;
@@ -304,3 +427,83 @@ function registerHandlers(dispatchers, dependencies) {
 module.exports = {
     registerHandlers,
 }; 
+
+// --- Param Edit Handlers ---
+
+async function handleParamEditStart(bot, callbackQuery, dependencies) {
+    const { logger, replyContextManager, toolRegistry } = dependencies;
+    const { data, message } = callbackQuery;
+
+    // data format: tpe_<token>_<paramName> where paramName may contain underscores
+    const match = data.match(/^tpe_([^_]+)_(.+)$/);
+    if (!match) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Invalid callback.', show_alert: true });
+        return;
+    }
+    const [, token, paramName] = match;
+    const sessionKey = resolveSessionKey(token);
+    if (!sessionKey) {
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Session expired.', show_alert: true });
+        return;
+    }
+    const [generationId, masterAccountId] = sessionKey.split('_');
+    const currentParams = pendingTweaks[sessionKey] || {};
+
+    const menuChatId = currentParams.__menuChatId;
+    const menuMsgId = currentParams.__menuMsgId;
+
+    const generationResp = await dependencies.internal.client.get(`/internal/v1/data/generations/${generationId}`);
+    const generationRecord = generationResp.data;
+    const toolDisplayName = generationRecord.toolDisplayName || generationRecord.metadata?.toolDisplayName;
+    const toolDef = toolRegistry.findByDisplayName(toolDisplayName);
+
+    let currentVal = currentParams[paramName];
+    if (currentVal === undefined) {
+        // fallback to original request payload from generation record
+        currentVal = generationRecord.requestPayload?.[paramName];
+    }
+    // Redact Telegram file links containing bot token
+    if (typeof currentVal === 'string' && currentVal.startsWith('https://api.telegram.org')) {
+        currentVal = '(telegram file)';
+    }
+    const { escapeMarkdownV2ForCode } = require('../../../../utils/stringUtils');
+    const safeLabel = escapeMarkdownV2(paramName);
+    const safeValCode = currentVal !== undefined ? escapeMarkdownV2ForCode(String(currentVal)) : '(none)';
+    const promptText = `Current value for *${safeLabel}*:\n\`${safeValCode}\`\n\nReply with the new value`;
+
+    const sent = await bot.sendMessage(message.chat.id, promptText, { parse_mode: 'MarkdownV2', reply_to_message_id: message.message_id });
+
+    replyContextManager.addContext(sent, { type: 'tweak_param_edit', token, paramName, sessionKey, generationId, masterAccountId, menuChatId, menuMsgId });
+
+    await bot.answerCallbackQuery(callbackQuery.id);
+}
+
+async function handleParamEditReply(bot, msg, context, dependencies) {
+    const { logger, replyContextManager } = dependencies;
+    const { token, paramName, sessionKey, generationId, masterAccountId, menuChatId, menuMsgId } = context;
+    const newValue = msg.text?.trim();
+    if (!sessionKey || !pendingTweaks[sessionKey]) {
+        await bot.sendMessage(msg.chat.id, 'Session expired.', { reply_to_message_id: msg.message_id });
+        return;
+    }
+    pendingTweaks[sessionKey][paramName] = newValue;
+
+    // Delete the instruction prompt (reply_to_message) and clear context
+    if (msg.reply_to_message) {
+        try { await bot.deleteMessage(msg.chat.id, msg.reply_to_message.message_id); } catch(e){ logger?.warn('Failed to delete prompt:', e.message);} 
+    }
+    replyContextManager.removeContext(msg.reply_to_message);
+
+    // Rebuild menu with Send button
+    const toolDisplayName = pendingTweaks[sessionKey].toolDisplayName;
+    const toolDef = dependencies.toolRegistry.findByDisplayName(toolDisplayName);
+    const tweakMenu = buildTweakUIMenu(generationId, masterAccountId, pendingTweaks[sessionKey], toolDef, true, dependencies);
+
+    if (menuChatId && menuMsgId) {
+        try {
+            await bot.editMessageReplyMarkup(tweakMenu.reply_markup, { chat_id: menuChatId, message_id: menuMsgId });
+        } catch (e) {
+            logger.error('[TweakManager] failed to refresh menu:', e.message);
+        }
+    }
+} 

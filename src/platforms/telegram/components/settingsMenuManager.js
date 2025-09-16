@@ -817,9 +817,27 @@ async function buildTweakParamEditPrompt(masterAccountId, generationId, canonica
  * @param {object} msg - The message object from the command.
  * @param {object} dependencies - The canonical dependencies object.
  */
-async function settingsCommandHandler(bot, msg, dependencies) {
+async function settingsCommandHandler(bot, msg, dependencies, match) {
     const { logger } = dependencies;
     const username = msg.from.username || msg.from.first_name;
+
+    // In group or supergroup chats, ensure the command explicitly mentions the bot (e.g., /settings@MyBot)
+    // Telegram group chat IDs are negative numbers. If chatId < 0, treat as group context.
+    // The `match` param comes from CommandDispatcher and contains the regex match result.
+    if (msg.chat.id < 0) {
+        const botNameEnv = (process.env.BOT_NAME || '').trim();
+        if (!botNameEnv) {
+            logger.warn('[SettingsMenu] BOT_NAME env variable not set; cannot validate explicit mention. Proceeding without mention check.');
+        } else {
+            const pattern = new RegExp(`^\\/settings@${botNameEnv}(?:$|\\s)`, 'i');
+            const hasExplicitMention = pattern.test(msg.text.trim());
+            if (!hasExplicitMention) {
+                logger.info(`[SettingsMenu] Ignoring /settings without proper mention in group chat ${msg.chat.id}. Expected @${botNameEnv}.`);
+                return; // Ignore silently to reduce noise
+            }
+        }
+    }
+
     logger.info(`[SettingsMenu] /settings command received from Telegram User ID: ${msg.from.id}`);
     try {
         const findOrCreateResponse = await dependencies.internal.client.post('/internal/v1/data/users/find-or-create', {

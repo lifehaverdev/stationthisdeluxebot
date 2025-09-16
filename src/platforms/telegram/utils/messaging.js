@@ -84,7 +84,7 @@ async function editEscapedMessageMedia(bot, media, options) {
  * @param {string} [caption=''] - The raw, unescaped caption for the photo.
  * @returns {Promise<object>} The sent message object from the Telegram API.
  */
-async function sendPhotoWithEscapedCaption(bot, chatId, photo, options = {}, caption = '') {
+async function sendPhotoWithEscapedCaption(bot, chatId, photoBuffer, options = {}, caption = '') {
     const escapedCaption = escapeMarkdownV2(caption);
 
     const finalOptions = {
@@ -93,7 +93,7 @@ async function sendPhotoWithEscapedCaption(bot, chatId, photo, options = {}, cap
         parse_mode: 'MarkdownV2',
     };
 
-    return bot.sendPhoto(chatId, photo, finalOptions);
+    return bot.sendPhoto(chatId, photoBuffer, finalOptions);
 }
 
 /**
@@ -136,6 +136,27 @@ async function sendVideoWithEscapedCaption(bot, chatId, video, options = {}, cap
     return bot.sendVideo(chatId, video, finalOptions);
 }
 
+/**
+ * Sends a document with a caption that is automatically MarkdownV2 escaped.
+ *
+ * @param {object} bot - The node-telegram-bot-api instance.
+ * @param {number|string} chatId - The ID of the chat to send the document to.
+ * @param {Buffer} docBuffer - The document buffer.
+ * @param {string} [filename='file'] - The filename for the document.
+ * @param {object} [options={}] - Additional options for the sendDocument call.
+ * @param {string} [caption=''] - The raw, unescaped caption for the document.
+ * @returns {Promise<object>} The sent message object.
+ */
+async function sendDocumentWithEscapedCaption(bot, chatId, docBuffer, filename = 'file', options = {}, caption = '') {
+  const escapedCaption = escapeMarkdownV2(caption);
+  const sendOptions = { ...options, caption: escapedCaption, parse_mode: 'MarkdownV2', filename: filename };
+  try {
+    await bot.sendDocument(chatId, { source: docBuffer, filename }, sendOptions);
+  } catch (err) {
+    console.error('[messaging] sendDocumentWithEscapedCaption error:', err.message);
+  }
+}
+
 module.exports = {
     sendEscapedMessage,
     editEscapedMessageText,
@@ -144,4 +165,5 @@ module.exports = {
     sendPhotoWithEscapedCaption,
     sendAnimationWithEscapedCaption,
     sendVideoWithEscapedCaption,
+    sendDocumentWithEscapedCaption,
 }; 

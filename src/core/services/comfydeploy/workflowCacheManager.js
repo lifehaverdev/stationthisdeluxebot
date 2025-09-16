@@ -18,6 +18,7 @@ const {
   standardizeWorkflowName, 
   parseWorkflowStructure,
   extractNotes // geniusoverhaul: Added extractNotes
+  , parseNoteDirectives // directive parser
 } = require('./workflowUtils');
 
 // geniusoverhaul: Added ToolRegistry import and changed to .js
@@ -944,6 +945,15 @@ class WorkflowCacheManager {
     // Extract Notes
     const notes = extractNotes(workflowJson);
     toolDefinition.description = notes.join('\n') || `Runs the ${toolDefinition.displayName} workflow.`;
+
+    // Parse @bot directives for delivery hints
+    const directives = parseNoteDirectives(notes);
+    if (Object.keys(directives).length > 0) {
+      toolDefinition.deliveryHints = directives;
+      // Also expose in metadata so downstream systems that rely only on metadata get it.
+      if (!toolDefinition.metadata) toolDefinition.metadata = {};
+      toolDefinition.metadata.deliveryHints = directives;
+    }
   
     // Parse structure
     let structureInfo = null;

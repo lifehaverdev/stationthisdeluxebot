@@ -4,7 +4,8 @@ const {
     sendEscapedMessage, 
     sendPhotoWithEscapedCaption, 
     sendAnimationWithEscapedCaption, 
-    sendVideoWithEscapedCaption 
+    sendVideoWithEscapedCaption,
+    sendDocumentWithEscapedCaption
 } = require('./utils/messaging');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
@@ -71,6 +72,9 @@ class TelegramNotifier {
       // --- New Multi-Output Handling Logic ---
       const mediaToSend = [];
       let textOutputs = [];
+      const deliveryHints = generationRecord.metadata?.deliveryHints?.telegram || {};
+      const sendAsDocument = deliveryHints['send-as'] === 'document';
+      const suggestedFilename = deliveryHints.filename || 'output.png';
 
       if (generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload)) {
         for (const output of generationRecord.responsePayload) {
@@ -84,7 +88,7 @@ class TelegramNotifier {
             // Collect Images
             if (output.data.images && Array.isArray(output.data.images)) {
                 output.data.images.forEach(image => {
-                    if (image.url) mediaToSend.push({ type: 'photo', url: image.url, caption: '' });
+                    if (image.url) mediaToSend.push({ type: sendAsDocument ? 'document' : 'photo', url: image.url, caption: '', filename: suggestedFilename });
                 });
             }
 
@@ -147,6 +151,9 @@ class TelegramNotifier {
                   switch (media.type) {
                       case 'photo':
                           await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
+                          break;
+                      case 'document':
+                          await sendDocumentWithEscapedCaption(this.bot, chatId, mediaBuffer, media.filename || 'file', currentOptions, media.caption);
                           break;
                       case 'animation':
                           await sendAnimationWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);

@@ -175,12 +175,19 @@ class NotificationDispatcher {
     try {
       let messageContent;
       if (record.status === 'completed') {
-        messageContent = `Your '${record.metadata?.displayName || record.serviceName}' job (ID: ${recordId}) completed successfully!`;
-      } else { 
-        const reason = record.statusReason || 'Unknown error';
-        messageContent = `Your job for workflow '${record.serviceName}' (ID: ${recordId}) failed. Reason: ${reason}`;
+        // ✅ Success – keep it concise. No internal IDs exposed.
+        const displayName = record.metadata?.displayName || record.serviceName || 'Task';
+        messageContent = `✅ ${displayName} completed successfully!`;
+      } else {
+        // ❌ Failure – bubble up service-provided reason when present; otherwise generic.
+        const reason = record.statusReason?.trim();
+        if (reason) {
+          messageContent = `❌ ${reason}`;
+        } else {
+          messageContent = '❌ Sorry, something went wrong.';
+        }
       }
-
+      
       if (!record.metadata || !record.metadata.notificationContext) {
           throw new Error('Missing metadata.notificationContext in generationRecord.');
       }
