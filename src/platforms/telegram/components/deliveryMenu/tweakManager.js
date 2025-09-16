@@ -164,8 +164,15 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
         const originalRecord = genResponse.data;
         if (!originalRecord) throw new Error(`Original generation record ${generationId} not found.`);
 
-        const toolId = finalTweakedParams.__canonicalToolId__ || originalRecord.metadata?.toolId;
-        if (!toolId) throw new Error(`Could not resolve toolId for tweaked generation.`);
+        const displayName = finalTweakedParams.toolDisplayName || originalRecord.toolDisplayName || originalRecord.metadata?.toolDisplayName;
+        if (!displayName) throw new Error('Could not resolve toolDisplayName for tweaked generation.');
+
+        const toolDef = dependencies.toolRegistry.findByDisplayName(displayName);
+        if (!toolDef) throw new Error(`Tool definition not found for displayName: ${displayName}`);
+
+        const toolId = toolDef.toolId;
+        // refresh canonical id in session store for future actions
+        finalTweakedParams.__canonicalToolId__ = toolId;
 
         const { telegramMessageId, telegramChatId, platformContext, initiatingEventId } = originalRecord.metadata;
 
@@ -214,9 +221,7 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             metadata: newGenMetadata
         };
 
-        const tool = dependencies.toolRegistry.getToolById(toolId);
-        if (!tool) throw new Error(`Tool definition not found for toolId: ${toolId}`);
-
+        const tool = toolDef;
         let executionResponse;
         try {
             executionResponse = await internal.client.post('/internal/v1/data/execute', executionPayload);
