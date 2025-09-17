@@ -276,7 +276,7 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             for (const row of newKb) {
                 for (const btn of row) {
                     if (btn.callback_data && btn.callback_data.startsWith('tweak_gen:')) {
-                        const match = btn.text.match(/^✎(\d+)?$/);
+                        const match = btn.text.match(/^✎\s*(\d+)?/);
                         if (match) {
                             const n = parseInt(match[1]||'0',10)+1;
                             btn.text = `✎${n}`;
