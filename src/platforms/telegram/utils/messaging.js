@@ -149,7 +149,7 @@ async function sendVideoWithEscapedCaption(bot, chatId, video, options = {}, cap
  */
 async function sendDocumentWithEscapedCaption(bot, chatId, docBuffer, filename = 'file', options = {}, caption = '') {
   const escapedCaption = escapeMarkdownV2(caption);
-  const sendOptions = { ...options, caption: escapedCaption, parse_mode: 'MarkdownV2', filename: filename };
+  const sendOptions = { ...options, caption: escapedCaption, parse_mode: 'MarkdownV2' };
   try {
     await bot.sendDocument(chatId, { source: docBuffer, filename }, sendOptions);
   } catch (err) {

@@ -269,9 +269,9 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
         const { __menuChatId, __menuMsgId, __origKeyboard, __isNewMenu } = finalTweakedParams;
         if (__isNewMenu && __menuChatId && __menuMsgId) {
             try { await bot.deleteMessage(__menuChatId, __menuMsgId); } catch(e){ logger.warn('Failed to delete tweak menu:', e.message);}    
-        } else if (!__isNewMenu && __menuChatId && __menuMsgId && __origKeyboard) {
-            // increment ✎ counter
-            const newKb = JSON.parse(JSON.stringify(__origKeyboard));
+        } else if (!__isNewMenu && __menuChatId && __menuMsgId) {
+            const baseKb = __origKeyboard || message.reply_markup?.inline_keyboard || [];
+            const newKb = JSON.parse(JSON.stringify(baseKb));
             let updated=false;
             for (const row of newKb) {
                 for (const btn of row) {
