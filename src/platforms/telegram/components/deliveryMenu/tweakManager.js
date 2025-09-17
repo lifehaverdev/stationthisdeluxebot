@@ -367,8 +367,10 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
 
         if (tweakMenu && tweakMenu.reply_markup) {
             try {
-                // Store original keyboard before overwrite
-                pendingTweaks[tweakSessionKey].__origKeyboard = message.reply_markup?.inline_keyboard;
+                // Store original keyboard before overwrite if not already
+                if (!pendingTweaks[tweakSessionKey].__origKeyboard) {
+                    pendingTweaks[tweakSessionKey].__origKeyboard = message.reply_markup?.inline_keyboard;
+                }
                 await bot.editMessageReplyMarkup(tweakMenu.reply_markup, {
                     chat_id: originalUserCommandChatId,
                     message_id: originalUserCommandMessageId,
