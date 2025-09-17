@@ -104,12 +104,10 @@ module.exports = function generationOutputsApi(dependencies) {
     try {
       // Find the most recent generation for this user
       const generations = await db.generationOutputs.findGenerations(
-        { 
-          masterAccountId: new ObjectId(masterAccountId),
-          // Platform now stored at metadata.platform (not metadata.platformContext.platform)
-          ...(platform && { 'metadata.platform': platform })
+        {
+          masterAccountId: new ObjectId(masterAccountId)
         },
-        { 
+        {
           sort: { requestTimestamp: -1 },
           limit: 1
         }

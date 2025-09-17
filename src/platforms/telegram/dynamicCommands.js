@@ -260,6 +260,21 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
           });
           masterAccountId = userResponse.data.masterAccountId;
 
+          // --- Group sponsorship handling ---
+          if (msg.chat && msg.chat.id < 0) {
+            try {
+              const groupRes = await apiClient.get(`/internal/v1/data/groups/${msg.chat.id}`);
+              if (groupRes.data && groupRes.data.sponsorMasterAccountId) {
+                masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
+                logger.info(`[dynamicCommands] Using sponsor MAID ${masterAccountId} for group ${msg.chat.id}`);
+              }
+            } catch (e) {
+              if (e.response?.status !== 404) {
+                logger.warn(`[dynamicCommands] Failed to fetch group sponsor: ${e.message}`);
+              }
+            }
+          }
+
           // Step 2: Create the initiating event record
           const eventResponse = await apiClient.post('/internal/v1/data/events', {
             masterAccountId,

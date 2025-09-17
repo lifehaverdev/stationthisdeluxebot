@@ -257,40 +257,47 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             });
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Tweak complete!", show_alert: false });
         } else {
-            await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
-                chat_id: message.chat.id,
-                message_id: message.message_id,
-                reply_markup: null
-            });
+            // Build updated keyboard before editing text
+            const { __menuChatId, __menuMsgId, __origKeyboard, __isNewMenu } = finalTweakedParams;
+
+            if (!__isNewMenu && __menuChatId && __menuMsgId) {
+                const baseKb = __origKeyboard || message.reply_markup?.inline_keyboard || [];
+                const newKb = JSON.parse(JSON.stringify(baseKb));
+                let updated=false;
+                for (const row of newKb) {
+                    for (const btn of row) {
+                        if (btn.callback_data && btn.callback_data.startsWith('tweak_gen:')) {
+                            const match = btn.text.match(/^✎\s*(\d+)?/);
+                            dependencies.logger?.info(`[TweakManager] Incrementing tweak counter. Before: ${btn.text}`);
+                            const n = match ? parseInt(match[1]||'0',10)+1 : 1;
+                            btn.text = `✎${n}`;
+                            updated=true; break;
+                        }
+                    }
+                    if(updated) break;
+                }
+                await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
+                    chat_id: __menuChatId,
+                    message_id: __menuMsgId,
+                    reply_markup: { inline_keyboard: newKb }
+                });
+            } else {
+                // Separate tweak menu path
+                await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
+                    chat_id: message.chat.id,
+                    message_id: message.message_id,
+                    reply_markup: null
+                });
+            }
             await bot.answerCallbackQuery(callbackQuery.id, { text: "Applying tweaks...", show_alert: false });
+
+            // delete new tweak menu if needed
+            if (__isNewMenu && __menuChatId && __menuMsgId) {
+                try { await bot.deleteMessage(__menuChatId, __menuMsgId); } catch(e){ logger.warn('Failed to delete tweak menu:', e.message);}    
+            }
         }
 
-        // Restore or delete menu
-        const { __menuChatId, __menuMsgId, __origKeyboard, __isNewMenu } = finalTweakedParams;
-        if (__isNewMenu && __menuChatId && __menuMsgId) {
-            try { await bot.deleteMessage(__menuChatId, __menuMsgId); } catch(e){ logger.warn('Failed to delete tweak menu:', e.message);}    
-        } else if (!__isNewMenu && __menuChatId && __menuMsgId) {
-            const baseKb = __origKeyboard || message.reply_markup?.inline_keyboard || [];
-            const newKb = JSON.parse(JSON.stringify(baseKb));
-            let updated=false;
-            for (const row of newKb) {
-                for (const btn of row) {
-                    if (btn.callback_data && btn.callback_data.startsWith('tweak_gen:')) {
-                        const match = btn.text.match(/^✎\s*(\d+)?/);
-                        dependencies.logger?.info(`[TweakManager] Incrementing tweak counter. Before: ${btn.text}`);
-                        if (match) {
-                            const n = parseInt(match[1]||'0',10)+1;
-                            btn.text = `✎${n}`;
-                        } else {
-                            btn.text = '✎1';
-                        }
-                        updated=true; break;
-                    }
-                }
-                if(updated) break;
-            }
-            try { await bot.editMessageReplyMarkup({ inline_keyboard: newKb }, { chat_id: __menuChatId, message_id: __menuMsgId }); } catch(e) { logger.warn('Failed to restore delivery menu:', e.message);}        
-        }
+        // Cleanup
         delete pendingTweaks[sessionKey];
         logger.info(`[TweakManager] Cleared pendingTweaks for sessionKey: ${sessionKey}`);
 
