@@ -79,7 +79,7 @@ function toSlug(str) {
       const leg = legacyMap[lower];
       const cur = newMap[lower];
       const canonicalName = leg.lora_name;
-      const canonicalSlug = toSlug(canonicalName);
+      const canonicalSlug = canonicalName; // slug must match name exactly
 
       if (cur) {
         if (cur.name !== canonicalName || cur.slug !== canonicalSlug) {
@@ -98,7 +98,7 @@ function toSlug(str) {
       actions.renameDeathburger = {
         _id: cur._id,
         newName: 'DeathBurgerflux_000003000',
-        newSlug: 'deathburgerflux_000003000',
+        newSlug: 'DeathBurgerflux_000003000',
       };
     }
 
@@ -169,6 +169,13 @@ function toSlug(str) {
       const deleteRes = await newModelsCol.deleteMany({ _id: { $in: actions.removeIds } });
       const trainDelRes = await newTrainCol.deleteMany({ outputLoRAId: { $in: actions.removeIds } });
       console.log(`🗑️  Removed ${deleteRes.deletedCount} models and ${trainDelRes.deletedCount} related trainings.`);
+    }
+
+    // 5. Final sanity: ensure slug === name for all models
+    const mismatched = await newModelsCol.find({ $expr: { $ne: ['$slug', '$name'] } }, { projection: { _id: 1, name: 1 } }).toArray();
+    if (mismatched.length) {
+      await Promise.all(mismatched.map(doc => newModelsCol.updateOne({ _id: doc._id }, { $set: { slug: doc.name } })));
+      console.log(`🪄 Aligned slug with name for ${mismatched.length} models.`);
     }
 
     console.log('🎉 Fixes applied successfully.');

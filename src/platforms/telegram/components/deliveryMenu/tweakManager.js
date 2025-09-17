@@ -332,16 +332,8 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
         // 2. Extract necessary info
         const originalParams = generationRecord.requestPayload || {};
         const toolDisplayName = generationRecord.toolDisplayName || generationRecord.metadata?.toolDisplayName;
-        // Resolve the original Telegram message/chat IDs from multiple possible metadata locations
-        const originalUserCommandMessageId =
-            generationRecord.metadata?.telegramMessageId ??
-            generationRecord.metadata?.notificationContext?.messageId ??
-            generationRecord.metadata?.platformContext?.messageId;
-
-        const originalUserCommandChatId =
-            generationRecord.metadata?.telegramChatId ??
-            generationRecord.metadata?.notificationContext?.chatId ??
-            generationRecord.metadata?.platformContext?.chatId;
+        const originalUserCommandMessageId = message.message_id;
+        const originalUserCommandChatId = message.chat.id;
 
         if (!originalUserCommandMessageId || !originalUserCommandChatId) {
             throw new Error(`Original command context missing in metadata for ${generationId}.`);
@@ -386,7 +378,9 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
                 pendingTweaks[tweakSessionKey].__isNewMenu = false;
             } catch (err) {
                 const msg = err.response?.body?.description || err.message;
-                if (msg.includes("can't be edited")) {
+                if (msg.includes("message is not modified")) {
+                    logger.info('[TweakManager] Keyboard already up to date; nothing to change.');
+                } else if (msg.includes("can't be edited")) {
                     logger.info('[TweakManager] Message too old to edit, sending new tweak menu');
                     const sent = await bot.sendMessage(originalUserCommandChatId, '🔧 Tweak parameters', {
                         reply_markup: tweakMenu.reply_markup,
