@@ -1020,23 +1020,38 @@ class WorkflowCacheManager {
       // Simple detection logic (NEEDS ACTUAL NODE TYPES FROM YOU)
       // Order of checks can matter if a workflow could have ambiguous nodes.
       // Prioritize more specific model types first.
-      if (nodeTypes.has('FLUXCheckpointLoaderSimple') || /* other FLUX specific nodes */ 
-          Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
+      // --- Custom DisplayName / NodeType based overrides ---
+      const displayNameLower = toolDefinition.displayName?.toLowerCase() || "";
+
+      // Explicit overrides using display name keywords
+      if (displayNameLower.includes('chromake')) {
         detectedBaseModel = 'FLUX';
-      } else if (nodeTypes.has('CheckpointLoaderSimpleSDXL') || /* other SDXL specific nodes */ 
-                 nodeTypes.has('CLIPTextEncodeSDXL') || 
-                 Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
-        detectedBaseModel = 'SDXL';
-      } else if (nodeTypes.has('CheckpointLoaderSimple') && 
-                 !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
-        // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
-        // This is a weaker assumption and might need refinement based on actual checkpoint names or other cues.
-        // Special case: quick- workflows get SD1.5-XL. We are now upgrading all SD1.5 to SD1.5-XL.
-        const displayName = toolDefinition.displayName?.toLowerCase() || '';
-        if (displayName.includes('quick')) {
-          detectedBaseModel = 'SD1.5-XL';
-        } else {
-          detectedBaseModel = 'SD1.5-XL'; // Changed from 'SD1.5' to 'SD1.5-XL'
+      } else if (displayNameLower.includes('kontext')) {
+        detectedBaseModel = 'KONTEXT';
+      } else if (displayNameLower.includes('wan') || displayNameLower === 'wan') {
+        detectedBaseModel = 'WAN';
+      }
+
+      // Fallback to node-type heuristics if no explicit display-name match above.
+      if (detectedBaseModel === 'unknown') {
+        if (nodeTypes.has('FLUXCheckpointLoaderSimple') || /* other FLUX specific nodes */ 
+            Array.from(nodeTypes).some(type => type.toLowerCase().includes('flux'))) {
+          detectedBaseModel = 'FLUX';
+        } else if (nodeTypes.has('CheckpointLoaderSimpleSDXL') || /* other SDXL specific nodes */ 
+                   nodeTypes.has('CLIPTextEncodeSDXL') || 
+                   Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl'))) {
+          detectedBaseModel = 'SDXL';
+        } else if (Array.from(nodeTypes).some(type => type.toLowerCase().includes('wan'))) {
+          detectedBaseModel = 'WAN';
+        } else if (nodeTypes.has('CheckpointLoaderSimple') && 
+                   !Array.from(nodeTypes).some(type => type.toLowerCase().includes('sdxl') || type.toLowerCase().includes('flux'))) {
+          // Generic loader, and no SDXL/FLUX nodes detected, assume SD1.5 or similar.
+          const displayName = toolDefinition.displayName?.toLowerCase() || '';
+          if (displayName.includes('quick')) {
+            detectedBaseModel = 'SD1.5-XL';
+          } else {
+            detectedBaseModel = 'SD1.5-XL'; // Changed from 'SD1.5' to 'SD1.5-XL'
+          }
         }
       }
       // Add checks for SD3, BAGEL, etc. here with their specific node types
