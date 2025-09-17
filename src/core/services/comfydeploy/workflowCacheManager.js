@@ -950,9 +950,6 @@ class WorkflowCacheManager {
     const directives = parseNoteDirectives(notes);
     if (Object.keys(directives).length > 0) {
       toolDefinition.deliveryHints = directives;
-      // Also expose in metadata so downstream systems that rely only on metadata get it.
-      if (!toolDefinition.metadata) toolDefinition.metadata = {};
-      toolDefinition.metadata.deliveryHints = directives;
     }
   
     // Parse structure
@@ -1094,6 +1091,11 @@ class WorkflowCacheManager {
       supportingImageInputs: structureInfo?.supportingImageInputs || [],
       hasSupportingImages: structureInfo?.hasSupportingImages || false
     };
+
+    // Attach deliveryHints AFTER metadata object creation so it isn't overwritten
+    if (Object.keys(directives).length > 0) {
+      toolDefinition.metadata.deliveryHints = directives;
+    }
   
     // === Costing Model ===
     try {
