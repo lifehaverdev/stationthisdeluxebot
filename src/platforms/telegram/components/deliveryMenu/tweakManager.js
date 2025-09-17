@@ -185,10 +185,12 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
 
         // Build notificationContext so finished generation can reply correctly
         let notificationContext;
+        const fallbackChatId = platformContext?.chatId || telegramChatId || finalTweakedParams.__menuChatId;
+        const fallbackMsgId = platformContext?.messageId || telegramMessageId || finalTweakedParams.__menuMsgId;
         notificationContext = {
-            chatId: telegramChatId,
-            messageId: telegramMessageId,
-            replyToMessageId: telegramMessageId
+            chatId: fallbackChatId,
+            messageId: fallbackMsgId,
+            replyToMessageId: fallbackMsgId,
         };
 
         const newGenMetadata = {
