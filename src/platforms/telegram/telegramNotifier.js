@@ -75,6 +75,8 @@ class TelegramNotifier {
       const deliveryHints = generationRecord.metadata?.deliveryHints?.telegram || {};
       const sendAsDocument = deliveryHints['send-as'] === 'document';
       const suggestedFilename = deliveryHints.filename || 'output.png';
+      const isGroupChat = chatId < 0; // Telegram group/supergroup IDs are negative
+      const targetChatForDocument = (sendAsDocument && isGroupChat && notificationContext.userId) ? notificationContext.userId : chatId;
 
       if (generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload)) {
         for (const output of generationRecord.responsePayload) {
@@ -133,7 +135,17 @@ class TelegramNotifier {
               // Only attach the inline keyboard to the *last* media item to avoid clutter.
               const currentOptions = (i === mediaToSend.length - 1) ? options : { reply_to_message_id: replyToMessageId };
 
-              this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${chatId}. Attempting to fetch from URL: ${media.url}`);
+              // Override chat for document in group
+              let destChatId = chatId;
+              if (media.type === 'document') {
+                destChatId = targetChatForDocument;
+                // If sending privately, do not set reply options
+                if (destChatId !== chatId) {
+                  delete currentOptions.reply_to_message_id;
+                  delete currentOptions.reply_markup;
+                }
+              }
+              this.logger.info(`[TelegramNotifier] Sending ${media.type} to ${destChatId}. Attempting to fetch from URL: ${media.url}`);
               
               try {
                   const response = await fetch(media.url);
@@ -153,7 +165,7 @@ class TelegramNotifier {
                           await sendPhotoWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
                           break;
                       case 'document':
-                          await sendDocumentWithEscapedCaption(this.bot, chatId, mediaBuffer, media.filename || 'file', currentOptions, media.caption);
+                          await sendDocumentWithEscapedCaption(this.bot, destChatId, mediaBuffer, media.filename || 'file', currentOptions, media.caption);
                           break;
                       case 'animation':
                           await sendAnimationWithEscapedCaption(this.bot, chatId, mediaBuffer, currentOptions, media.caption);
@@ -171,6 +183,11 @@ class TelegramNotifier {
           // After all media is sent, send a separate message with all the text joined together.
           if (textOutputs.length > 0) {
               await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), { reply_to_message_id: replyToMessageId });
+          }
+
+          // If we redirected document to user's private chat, notify in group
+          if (sendAsDocument && isGroupChat && notificationContext.userId) {
+              await sendEscapedMessage(this.bot, chatId, '📄 Your file has been sent to you in a private chat.', { reply_to_message_id: replyToMessageId });
           }
 
           this.logger.info(`[TelegramNotifier] Successfully sent all media and text for COMPLETED notification to chatId: ${chatId}.`);

@@ -495,6 +495,20 @@ function initializeTelegramPlatform(dependencies, options = {}) {
     }
   });
 
+  // /groupsettings command
+  bot.onText(/^\/groupsettings(?:@\w+)?$/, async (msg) => {
+    if (msg.chat.type === 'private') return; // only for groups
+    const { showGroupSettingsMenu } = require('./components/groupMenuManager');
+    await showGroupSettingsMenu(bot, msg, dependencies);
+  });
+
+  // Callback query handler – delegate to group menu
+  bot.on('callback_query', async (query) => {
+    const { handleCallbackQuery } = require('./components/groupMenuManager');
+    const handled = await handleCallbackQuery(bot, query, dependencies);
+    if (!handled) return; // let others handle
+  });
+
   return {
     bot,
     async setupCommands() {

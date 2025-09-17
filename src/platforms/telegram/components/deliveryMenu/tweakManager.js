@@ -428,16 +428,32 @@ function registerHandlers(dispatchers, dependencies) {
     messageReplyDispatcher.register('tweak_param_edit', (bot, msg, ctx) => handleParamEditReply(bot, msg, ctx, dependencies));
 
     callbackQueryDispatcher.register('tweak_cancel:', async (bot, callbackQuery, masterAccountId, dependencies) => {
-        const { data } = callbackQuery;
+        const { data, message } = callbackQuery;
         const parts = data.split(':');
         const token = parts[1];
         const sessionKey = resolveSessionKey(token);
-        const generationId = sessionKey ? sessionKey.split('_')[0] : undefined;
+        if (!sessionKey) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Session expired.', show_alert: true });
+            return;
+        }
+        const tweaks = pendingTweaks[sessionKey];
+        if (!tweaks) {
+            await bot.answerCallbackQuery(callbackQuery.id);
+            return;
+        }
+        const { __isNewMenu, __menuChatId, __menuMsgId, __origKeyboard } = tweaks;
 
-        // Re-route to the render function to show the main menu again
-        const renderData = `tweak_gen_menu_render:${generationId}`;
-        const newCallbackQuery = { ...callbackQuery, data: renderData };
-        await handleRenderTweakMenuCallback(bot, newCallbackQuery, masterAccountId, dependencies);
+        try {
+            if (__isNewMenu && __menuChatId && __menuMsgId) {
+                await bot.deleteMessage(__menuChatId, __menuMsgId);
+            } else if (!__isNewMenu && __menuChatId && __menuMsgId && __origKeyboard) {
+                await bot.editMessageReplyMarkup({ inline_keyboard: __origKeyboard }, { chat_id: __menuChatId, message_id: __menuMsgId });
+            }
+        } catch (e) {
+            dependencies.logger?.warn('[TweakManager] tweak_cancel handling error:', e.message);
+        }
+        delete pendingTweaks[sessionKey];
+        await bot.answerCallbackQuery(callbackQuery.id);
     });
 
     logger.info('[TweakManager] All handlers registered.');

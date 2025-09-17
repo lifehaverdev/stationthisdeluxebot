@@ -148,6 +148,20 @@ module.exports = function generationExecutionApi(dependencies) {
           let finalInputs = { ...inputs };
           let loraResolutionData = {};
 
+          // --- Input Seed Shuffle ---
+          const seedKey = tool.metadata?.seedInputKey || 'input_seed';
+          if (
+            finalInputs[seedKey] === undefined ||
+            finalInputs[seedKey] === null ||
+            finalInputs[seedKey] === ''
+          ) {
+            // ComfyUI expects a 32-bit unsigned int seed
+            finalInputs[seedKey] = Math.floor(Math.random() * 0xffffffff);
+            logger.info(
+              `[Execute] Auto-assigned random ${seedKey}=${finalInputs[seedKey]} for tool '${toolId}'.`
+            );
+          }
+
           // --- LoRA Resolution ---
           const promptInputKey = tool.metadata?.telegramPromptInputKey || 'input_prompt';
           if (tool.metadata.hasLoraLoader && finalInputs[promptInputKey]) {

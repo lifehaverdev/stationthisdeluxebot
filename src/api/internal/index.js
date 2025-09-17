@@ -152,6 +152,12 @@ function initializeInternalServices(dependencies = {}) {
     logger.error('[InternalAPI] Failed to get userScopedWalletsRouter.');
   }
 
+  // Groups API Service
+  const createGroupsApi = require('./groups');
+  const groupsApiRouter = createGroupsApi(apiDependencies);
+  v1DataRouter.use('/groups', groupsApiRouter);
+  logger.info('[InternalAPI] Groups API service mounted to /v1/data/groups');
+
   // User Core API Service:
   const userCoreApiRouter = createUserCoreApi(apiDependencies);
   if (userCoreApiRouter) {

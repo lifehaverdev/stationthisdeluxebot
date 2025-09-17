@@ -40,8 +40,11 @@ class GenerationOutputsDB extends BaseDB {
 
     const dataToInsert = {
       // generationId will be handled by BaseDB as _id
-      requestTimestamp: new Date(),
       ...outputData,
+      // If caller did not provide a valid Date, set it to now
+      requestTimestamp: outputData.requestTimestamp instanceof Date && !isNaN(outputData.requestTimestamp)
+        ? outputData.requestTimestamp
+        : new Date(),
       // Ensure required fields from schema have defaults or are passed in
       status: outputData.status || 'pending', // Default initial status
       // Ensure toolDisplayName is at the root level

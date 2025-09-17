@@ -277,6 +277,24 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       if (!toolId) {
         logger.error(`[Webhook Processor] Debit skipped for generation ${generationId}: toolId is missing in metadata or record.`);
       } else {
+        const notifCtx = generationRecord.metadata?.notificationContext || {};
+        const chatId = notifCtx.chatId;
+        let spenderMasterAccountId = generationRecord.masterAccountId;
+        if (chatId && chatId < 0) {
+          try {
+            const groupRes = await internalApiClient.get(`/internal/v1/data/groups/${chatId}`);
+            const groupDoc = groupRes.data;
+            if (groupDoc && groupDoc.sponsorMasterAccountId) {
+              spenderMasterAccountId = groupDoc.sponsorMasterAccountId.toString();
+              logger.info(`[Webhook Processor] Group ${chatId} is sponsored by ${spenderMasterAccountId}. Charging sponsor.`);
+            }
+          } catch (e) {
+            if (e.response?.status !== 404) {
+              logger.warn(`[Webhook Processor] Failed to resolve sponsor for group ${chatId}: ${e.message}`);
+            }
+          }
+        }
+
         const usdPerPoint = 0.000337;
         const basePointsToSpend = Math.round(costUsd / usdPerPoint);
 
@@ -289,7 +307,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
           
           const spendPayload = { pointsToSpend: totalPointsToCharge, spendContext: { generationId: generationId.toString(), toolId } };
           logger.info(`[Webhook Processor] Attempting to spend ${totalPointsToCharge} points for generation ${generationId}, user ${generationRecord.masterAccountId}. (Base: ${basePointsToSpend}, Rewards: ${totalRewards})`);
-          await issueSpend(generationRecord.masterAccountId, spendPayload, { internalApiClient, logger });
+          await issueSpend(spenderMasterAccountId, spendPayload, { internalApiClient, logger });
           logger.info(`[Webhook Processor] Spend successful for generation ${generationId}, user ${generationRecord.masterAccountId}.`);
 
           const protocolNetPoints = basePointsToSpend;
