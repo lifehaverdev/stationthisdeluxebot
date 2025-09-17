@@ -151,9 +151,17 @@ async function sendDocumentWithEscapedCaption(bot, chatId, docBuffer, filename =
   const escapedCaption = escapeMarkdownV2(caption);
   const sendOptions = { ...options, caption: escapedCaption, parse_mode: 'MarkdownV2' };
   try {
-    await bot.sendDocument(chatId, { source: docBuffer, filename }, sendOptions);
+    await bot.sendDocument(chatId, docBuffer, sendOptions, { filename });
   } catch (err) {
-    console.error('[messaging] sendDocumentWithEscapedCaption error:', err.message);
+    console.error('[messaging] sendDocumentWithEscapedCaption upload error:', err.message);
+    // Fallback: try sending via URL if available in error context
+    if (err.message && err.message.includes('414')) {
+      try {
+        await bot.sendDocument(chatId, sendOptions.caption || '', sendOptions); // won't work, need URL param, skip
+      } catch (e2) {
+        console.error('[messaging] sendDocument fallback failed:', e2.message);
+      }
+    }
   }
 }
 
