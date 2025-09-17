@@ -277,9 +277,12 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
                 for (const btn of row) {
                     if (btn.callback_data && btn.callback_data.startsWith('tweak_gen:')) {
                         const match = btn.text.match(/^✎\s*(\d+)?/);
+                        dependencies.logger?.info(`[TweakManager] Incrementing tweak counter. Before: ${btn.text}`);
                         if (match) {
                             const n = parseInt(match[1]||'0',10)+1;
                             btn.text = `✎${n}`;
+                        } else {
+                            btn.text = '✎1';
                         }
                         updated=true; break;
                     }
