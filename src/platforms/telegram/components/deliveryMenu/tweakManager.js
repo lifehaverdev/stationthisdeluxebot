@@ -185,20 +185,11 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
 
         // Build notificationContext so finished generation can reply correctly
         let notificationContext;
-        if (finalTweakedParams.__isNewMenu) {
-            // use the tweak menu message as parent
-            notificationContext = {
-                chatId: finalTweakedParams.__menuChatId,
-                messageId: finalTweakedParams.__menuMsgId,
-                replyToMessageId: finalTweakedParams.__menuMsgId
-            };
-        } else {
-            notificationContext = {
-                chatId: telegramChatId,
-                messageId: telegramMessageId,
-                replyToMessageId: telegramMessageId
-            };
-        }
+        notificationContext = {
+            chatId: telegramChatId,
+            messageId: telegramMessageId,
+            replyToMessageId: telegramMessageId
+        };
 
         const newGenMetadata = {
             telegramMessageId, telegramChatId, platformContext,
