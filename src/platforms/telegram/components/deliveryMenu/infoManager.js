@@ -73,6 +73,7 @@ Basic Commands:
 • /help - Display this help message
 • /status - Check bot and service status
 • /ca - View contract address and trading info
+• /feedback - Provide feedback to the bot
 
 Account & Points:
 • /wallet - Connect or manage your wallet

@@ -183,6 +183,23 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             if (permittedKeys.has(k)) servicePayload[k]=v;
         }
 
+        // Build notificationContext so finished generation can reply correctly
+        let notificationContext;
+        if (finalTweakedParams.__isNewMenu) {
+            // use the tweak menu message as parent
+            notificationContext = {
+                chatId: finalTweakedParams.__menuChatId,
+                messageId: finalTweakedParams.__menuMsgId,
+                replyToMessageId: finalTweakedParams.__menuMsgId
+            };
+        } else {
+            notificationContext = {
+                chatId: telegramChatId,
+                messageId: telegramMessageId,
+                replyToMessageId: telegramMessageId
+            };
+        }
+
         const newGenMetadata = {
             telegramMessageId, telegramChatId, platformContext,
             parentGenerationId: generationId,
@@ -190,6 +207,7 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             initiatingEventId: initiatingEventId || uuidv4(),
             toolId,
             userInputPrompt: finalTweakedParams.input_prompt,
+            notificationContext,
         };
 
         // --- Refactored: Use centralized execution endpoint ---
