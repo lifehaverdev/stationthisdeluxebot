@@ -261,6 +261,7 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
             const { __menuChatId, __menuMsgId, __origKeyboard, __isNewMenu } = finalTweakedParams;
 
             if (!__isNewMenu && __menuChatId && __menuMsgId) {
+                // Prefer the cached original keyboard; fall back to current markup only if unavailable
                 const baseKb = __origKeyboard || message.reply_markup?.inline_keyboard || [];
                 const newKb = JSON.parse(JSON.stringify(baseKb));
                 let updated=false;
@@ -276,11 +277,14 @@ async function handleApplyTweaks(bot, callbackQuery, masterAccountId, dependenci
                     }
                     if(updated) break;
                 }
-                await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
-                    chat_id: __menuChatId,
-                    message_id: __menuMsgId,
-                    reply_markup: { inline_keyboard: newKb }
-                });
+                // 1️⃣ Restore the delivery keyboard
+                try {
+                    await bot.editMessageReplyMarkup({ inline_keyboard: newKb }, { chat_id: __menuChatId, message_id: __menuMsgId });
+                } catch(e) {
+                    logger.warn('[TweakManager] Failed to restore delivery keyboard:', e.message);
+                }
+
+                // No need to change the message text when editing inline; user will notice the button increment.
             } else {
                 // Separate tweak menu path
                 await bot.editMessageText("🚀 Your tweaked generation is on its way!", {
@@ -369,7 +373,8 @@ async function handleTweakGenCallback(bot, callbackQuery, masterAccountId, depen
             try {
                 // Store original keyboard before overwrite if not already
                 if (!pendingTweaks[tweakSessionKey].__origKeyboard) {
-                    pendingTweaks[tweakSessionKey].__origKeyboard = message.reply_markup?.inline_keyboard;
+                    // Deep-clone the original keyboard so later mutations to the message markup don’t affect it
+                    pendingTweaks[tweakSessionKey].__origKeyboard = message.reply_markup?.inline_keyboard ? JSON.parse(JSON.stringify(message.reply_markup.inline_keyboard)) : undefined;
                 }
                 await bot.editMessageReplyMarkup(tweakMenu.reply_markup, {
                     chat_id: originalUserCommandChatId,
