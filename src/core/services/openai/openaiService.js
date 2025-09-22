@@ -71,6 +71,59 @@ class OpenAIService {
       throw err; // Re-throw sanitized error to be handled by the caller
     }
   }
+
+  /**
+   * Generates an image using OpenAI's DALL·E model.
+   * @param {object} params - Parameters for image generation.
+   * @param {string} params.prompt - Description of the desired image.
+   * @param {string} [params.model='dall-e-3'] - The model to use.
+   * @param {string} [params.size='1024x1024'] - Image size (e.g., "1024x1024").
+   * @param {'url'|'b64_json'} [params.responseFormat='url'] - Desired response format.
+   * @returns {Promise<string>} URL or base64 string of the generated image.
+   */
+  async generateImage({
+    prompt,
+    model = 'dall-e-3',
+    size = '1024x1024',
+    responseFormat = 'url',
+    quality
+  }) {
+    if (!this.openai) {
+      this.logger.error('Cannot generate image: OpenAIService is not initialized (missing API key).');
+      throw new Error('OpenAIService is not initialized. Please set the OPENAI_API environment variable.');
+    }
+
+    if (!prompt) {
+      throw new Error('Prompt is required to generate an image.');
+    }
+
+    this.logger.info(`Requesting image generation with model ${model}...`);
+    try {
+      const response = await this.openai.images.generate({
+        model,
+        prompt,
+        n: 1,
+        size,
+        response_format: responseFormat,
+        ...(quality ? { quality } : {})
+      });
+
+      const resultObj = response.data?.[0];
+      if (resultObj) {
+        return resultObj; // { url: ..., b64_json: ... }
+      } else {
+        this.logger.warn('OpenAI image generation succeeded but result was empty.', response);
+        throw new Error('Received an empty image response from OpenAI.');
+      }
+    } catch (error) {
+      // Sanitize potential API key leakage in error messages
+      const sanitizedMessage = String(error.message).replace(/sk-[a-zA-Z0-9-]{20,}/g, 'sk-************************************');
+      this.logger.error('Error generating image via OpenAI:', sanitizedMessage);
+      const err = new Error(sanitizedMessage);
+      err.original = error;
+      throw err; // Re-throw sanitized error to be handled by the caller
+    }
+  }
 }
 
 module.exports = OpenAIService; 

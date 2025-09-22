@@ -29,6 +29,29 @@ const { ToolRegistry } = require('../../tools/ToolRegistry.js');
 let ComfyUIService; // Lazy load to potentially help with circular deps
 
 const { keccak256, toUtf8Bytes } = require('ethers'); // For deterministic toolId generation using Solidity-compatible keccak256 hash
+const GenerationOutputsDB = require('../db/generationOutputsDb');
+// Create shared instance for duration lookups
+const _genOutputsDb = new GenerationOutputsDB(console);
+const _durationCache = new Map();
+
+async function getAverageDurationMs(toolDisplayName){
+  if(!toolDisplayName) return null;
+  if(_durationCache.has(toolDisplayName)) return _durationCache.get(toolDisplayName);
+  try{
+    const pipeline=[
+      { $match:{ toolDisplayName, durationMs:{ $gt:0 } } },
+      { $group:{ _id:null, avgDuration:{ $avg:'$durationMs' } } }
+    ];
+    const res=await _genOutputsDb.aggregate(pipeline);
+    const avg=res?.[0]?.avgDuration||null;
+    _durationCache.set(toolDisplayName, avg);
+    return avg;
+  }catch(e){
+    console.warn('[WorkflowCacheManager] avg duration aggregation failed:',e.message);
+    _durationCache.set(toolDisplayName,null);
+    return null;
+  }
+}
 
 /**
  * Generate a deterministic toolId based on a display name using a Solidity-compatible keccak256 hash.

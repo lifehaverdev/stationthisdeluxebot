@@ -78,8 +78,17 @@ class TelegramNotifier {
       const isGroupChat = chatId < 0; // Telegram group/supergroup IDs are negative
       const targetChatForDocument = (sendAsDocument && isGroupChat && notificationContext.userId) ? notificationContext.userId : chatId;
 
-      if (generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload)) {
-        for (const output of generationRecord.responsePayload) {
+      let payloadArray = Array.isArray(generationRecord.responsePayload)
+          ? generationRecord.responsePayload
+          : (generationRecord.outputs && Array.isArray(generationRecord.outputs) ? generationRecord.outputs : null);
+
+      // Back-compat: direct images array on responsePayload
+      if (!payloadArray && generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload.images)) {
+          payloadArray = [ { data: { images: generationRecord.responsePayload.images } } ];
+      }
+
+      if (payloadArray) {
+        for (const output of payloadArray) {
             if (!output.data) continue;
 
             // Collect Text

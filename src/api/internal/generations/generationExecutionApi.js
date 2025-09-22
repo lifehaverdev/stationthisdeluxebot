@@ -66,8 +66,18 @@ module.exports = function generationExecutionApi(dependencies) {
             unit: tool.costingModel.fixedCost.unit
           };
         } else if (tool.costingModel.rateSource === 'static' && tool.costingModel.staticCost) {
+          let staticAmount = tool.costingModel.staticCost.amount;
+          // Special case: DALLE image tools with amount 0 – derive from costTable
+          if (staticAmount === 0 && tool.metadata?.costTable) {
+            const ci = req.body.inputs || {};
+            const m = ci.model || tool.metadata.model || 'dall-e-3';
+            const sz = ci.size || '1024x1024';
+            const q = ci.quality || 'standard';
+            const price = tool.metadata.costTable?.[m]?.[sz]?.[q];
+            if (price) staticAmount = price;
+          }
           costRateInfo = {
-            amount: tool.costingModel.staticCost.amount,
+            amount: staticAmount,
             unit: tool.costingModel.staticCost.unit
           };
         } else {
@@ -286,9 +296,111 @@ module.exports = function generationExecutionApi(dependencies) {
           const { masterAccountId } = user;
           const isSpellStep = metadata && metadata.isSpell;
           const prompt = inputs.prompt;
+          const modelInput = inputs.model || tool.inputSchema.model?.default || tool.metadata?.model || 'dall-e-3';
+          const qualityInput = inputs.quality || tool.inputSchema.quality?.default;
+          const sizeInput = inputs.size || tool.inputSchema.size?.default;
+          const responseFormat = inputs.responseFormat || 'url';
+
+          const isImageTool = tool.apiPath === '/llm/image';
+
           const instructions = inputs.instructions || tool.inputSchema.instructions?.default || 'You are a helpful assistant.';
           const temperature = typeof inputs.temperature === 'number' ? inputs.temperature : tool.inputSchema.temperature?.default || 0.7;
           const model = tool.metadata?.model || 'gpt-3.5-turbo';
+           
+          if (!prompt || typeof prompt !== 'string') {
+            return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });
+          }
+          if (isImageTool) {
+            // Directly generate image and create generation record
+            const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+            const generationParams = {
+              masterAccountId: new ObjectId(masterAccountId),
+              ...(sessionId && { sessionId: new ObjectId(sessionId) }),
+              ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
+              serviceName: tool.service,
+              toolId: tool.toolId,
+              toolDisplayName: tool.displayName || tool.name || tool.toolId,
+              requestPayload: { prompt, model: modelInput, quality: qualityInput, size: sizeInput, responseFormat },
+              status: 'processing',
+              deliveryStatus: initialDeliveryStatus,
+              notificationPlatform: user.platform || 'none',
+              pointsSpent: 0,
+              protocolNetPoints: 0,
+              costUsd: null,
+              metadata: {
+                ...tool.metadata,
+                ...metadata,
+                costRate: costRateInfo,
+                platformContext: user.platformContext
+              }
+            };
+
+            const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
+            generationRecord = createResponse;
+
+            // --- Submit asynchronous OpenAI image generation ---
+
+            (async () => {
+              try {
+                const resultObj = await openaiService.generateImage({ prompt, model: modelInput, quality: qualityInput, size: sizeInput, responseFormat });
+                const finalImage = resultObj.url ? { url: resultObj.url } : { b64_json: resultObj.b64_json };
+                await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                  status: 'completed',
+                  responsePayload: { images: [finalImage] },
+                  // Maintain legacy outputs structure for downstream consumers
+                  outputs: [ { data: { images: [finalImage] } } ],
+                  usage: resultObj.usage || null
+                });
+
+                // --- Points debit ---
+                try {
+                  const costRate = generationRecord.metadata?.costRate;
+                  const costUsd = (costRate && typeof costRate.amount === 'number') ? costRate.amount : null;
+
+                  if (costUsd != null && costUsd > 0) {
+                    const usdPerPoint = 0.000337;
+                    const pointsToSpend = Math.max(1, Math.round(costUsd / usdPerPoint));
+                    const spendPayload = { pointsToSpend, spendContext: { generationId: generationRecord._id.toString(), toolId: generationRecord.toolId } };
+                    const headers = { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB };
+                    const internalApiClient = require('../../../utils/internalApiClient');
+                    await internalApiClient.post(`/internal/v1/data/users/${generationRecord.masterAccountId}/economy/spend`, spendPayload, { headers });
+                    await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                      pointsSpent: pointsToSpend,
+                      protocolNetPoints: pointsToSpend,
+                      costUsd
+                    });
+                  }
+                } catch (spendErr) {
+                  logger.error(`[Execute] Points debit failed for OpenAI image generation ${generationRecord._id}: ${spendErr.message}`);
+                  // non-critical
+                }
+
+                // Emit generationUpdated event so NotificationDispatcher / websocket listeners are notified
+                try {
+                  const notificationEvents = require('../../../core/events/notificationEvents');
+                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+                  notificationEvents.emit('generationUpdated', updatedRecord);
+                } catch(eventErr) {
+                  logger.warn(`[Execute] Failed to emit generationUpdated for OpenAI image generation ${generationRecord._id}: ${eventErr.message}`);
+                }
+              } catch (err) {
+                logger.error(`[Execute] OpenAIService image error for tool '${toolId}' (async): ${err.message}`);
+                const cleanMsg = (err?.message || '').slice(0, 180);
+                await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                  status: 'failed',
+                  statusReason: cleanMsg || 'Generation failed',
+                  'metadata.error': {
+                    message: err.message,
+                    stack: err.stack,
+                    step: 'openai_image_generation'
+                  }
+                });
+              }
+            })();
+
+            const estSeconds = 30; // crude estimate
+            return res.status(202).json({ generationId: generationRecord._id.toString(), status: 'processing', estimatedDurationSeconds: estSeconds, message: 'Image generation started. Poll status endpoint for completion.' });
+          }
 
           if (!prompt || typeof prompt !== 'string') {
             return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });

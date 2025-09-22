@@ -386,16 +386,19 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             };
 
             // 4. Execute via central ExecutionClient (wraps internal endpoint)
-            const execResult = await apiClient.post('/internal/v1/data/execute', executionPayload);
+            const execRes = await apiClient.post('/internal/v1/data/execute', executionPayload);
+            const execResult = execRes.data || {};
 
-            if (execResult.final && execResult.outputs && execResult.outputs.response) {
+            if (execResult.status === 'completed' && execResult.outputs && execResult.outputs.response) {
               await bot.sendMessage(chatId, execResult.outputs.response, { reply_to_message_id: msg.message_id });
               await setReaction(bot, chatId, msg.message_id, '👌');
               return;
             }
 
-            // Non-immediate tools – respond with a quick acknowledgement; updates will arrive via websocket
+            // Non-immediate tools – respond with a quick acknowledgement; updates will arrive via websocket or polling
             logger.info(`[Telegram EXEC /${commandName}] Job submitted via execution service. Gen ID: ${execResult.generationId}`);
+            // No Gen ID or polling sent to user; NotificationDispatcher will deliver via delivery menu.
+
             await setReaction(bot, chatId, msg.message_id, '👌');
 
         } catch (err) {
