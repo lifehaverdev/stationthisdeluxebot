@@ -67,6 +67,12 @@ export function renderResultContent(resultContainer, output) {
         } else if (output.video || output.videoUrl || (Array.isArray(output.videos) && output.videos.length)) {
             const firstVid = Array.isArray(output.videos) ? output.videos[0] : (output.video || output.videoUrl);
             output = { type: 'video', url: (typeof firstVid === 'string' ? firstVid : firstVid.url), ...output };
+        } else if (output.data?.files) {
+            const filesArr = Array.isArray(output.data.files) ? output.data.files : Object.values(output.data.files);
+            const vidFile = filesArr.find(f => /\.mp4$|\.webm$/i.test(f.url));
+            if (vidFile) {
+                output = { type: 'video', url: vidFile.url, ...output };
+            }
         }
     }
 
