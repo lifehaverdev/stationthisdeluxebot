@@ -43,41 +43,89 @@ export function getConnections() {
 
 const CONNECTIONS_KEY = 'sandbox_connections';
 const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+// --- New: persistence helpers ---
+const SIZE_LIMIT = 100 * 1024; // 100 KB – max per output blob before truncation
+
+function sanitizeOutput(output) {
+    // Keep URLs but strip large base64 data URIs to avoid quota issues
+    if (typeof output === 'string' && output.startsWith('data:') && output.length > SIZE_LIMIT) {
+        return {
+            truncated: true,
+            mime: output.substring(5, output.indexOf(';')), // best-effort mime extraction
+            size: output.length
+        };
+    }
+    return output;
+}
+
+function downloadStateAsFile(connections, windows) {
+    try {
+        const payload = { connections, windows };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `sandbox-workspace-${Date.now()}.json`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    } catch (e) {
+        console.error('[State] Failed to download workspace JSON', e);
+    }
+}
 
 // Serialize and save state to localStorage
 export function persistState() {
     // Only store serializable data
     const serializableConnections = connections.map(({ element, ...rest }) => rest);
     const serializableWindows = activeToolWindows.map(w => {
-        if (w.isSpell) {
-            // Persist spell windows with their spell definition
-            return {
-                id: w.id,
-                isSpell: true,
-                spell: w.spell,           // full spell object (plain JSON)
-                workspaceX: w.workspaceX,
-                workspaceY: w.workspaceY,
-                output: w.output || null,
-                outputVersions: w.outputVersions || [],
-                currentVersionIndex: w.currentVersionIndex ?? -1,
-                parameterMappings: w.parameterMappings || {}
-            };
-        }
-        // Persist regular tool windows
-        return {
+        const base = {
             id: w.id,
-            displayName: w.tool?.displayName || '',
-            toolId: w.tool?.toolId || '',
             workspaceX: w.workspaceX,
             workspaceY: w.workspaceY,
-            output: w.output || null,
-            outputVersions: w.outputVersions || [],
+            output: sanitizeOutput(w.output || null),
+            outputVersions: (w.outputVersions || []).map(v => ({
+                output: sanitizeOutput(v.output),
+                params: v.params
+            })),
             currentVersionIndex: w.currentVersionIndex ?? -1,
             parameterMappings: w.parameterMappings || {}
         };
+        if (w.isSpell) {
+            return {
+                ...base,
+                isSpell: true,
+                spell: w.spell
+            };
+        }
+        return {
+            ...base,
+            displayName: w.tool?.displayName || '',
+            toolId: w.tool?.toolId || ''
+        };
     });
-    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(serializableConnections));
-    localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(serializableWindows));
+
+    try {
+        localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(serializableConnections));
+        localStorage.setItem(TOOL_WINDOWS_KEY, JSON.stringify(serializableWindows));
+        return true;
+    } catch (e) {
+        console.error('[State] Failed to persist state', e);
+        // Notify UI via toast or fallback alert
+        const message = `Failed to save workspace: ${e.message}`;
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('toast', { detail: { type: 'error', message } }));
+        } else {
+            alert(message);
+        }
+        // If quota exceeded – offer JSON download fallback
+        if (e && (e.name === 'QuotaExceededError' || e.message?.includes('quota'))) {
+            downloadStateAsFile(serializableConnections, serializableWindows);
+        }
+        return false;
+    }
 }
 
 // Load state from localStorage

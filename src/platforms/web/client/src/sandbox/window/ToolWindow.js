@@ -121,17 +121,22 @@ export default class ToolWindow extends BaseWindow {
       resultContainer.className = 'result-container';
       this.body.appendChild(resultContainer);
 
+      // 1) Button to load last output back into the UI
       const loadBtn = document.createElement('button');
-      loadBtn.className = 'execute-button';
+      loadBtn.className = 'load-output-button';
       loadBtn.textContent = this.output.type === 'image' ? 'Load Image' : (this.output.type === 'text' ? 'Load Text' : 'Load Output');
-      loadBtn.onclick = () => {
+      loadBtn.addEventListener('click', () => {
         import('../node/resultContent.js').then(m => m.renderResultContent(resultContainer, this.output));
         loadBtn.remove();
-      };
-      this.body.appendChild(loadBtn);
-    } else {
+      });
+
+      // 2) Standard execute button so users can re-run the node after reload
       const execBtn = this._createExecuteButton();
-      execBtn.textContent = 'Execute';
+
+      this.body.append(loadBtn, execBtn);
+    } else {
+      // No prior output → just show execute button like before
+      const execBtn = this._createExecuteButton();
       this.body.appendChild(execBtn);
     }
 

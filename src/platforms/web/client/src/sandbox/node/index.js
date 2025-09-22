@@ -8,6 +8,7 @@ import {
     createToolWindow,
     rerenderToolWindowById
 } from './toolWindow.js';
+import { calculateCenterPosition } from '../utils.js';
 
 // The original node.js had a DOMContentLoaded listener.
 // We'll export the functions that were called there.

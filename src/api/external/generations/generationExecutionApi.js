@@ -45,7 +45,12 @@ function createGenerationExecutionApi(dependencies) {
             }
 
             // Always use masterAccountId if present, else userId
-            const userForPayload = { ...user, masterAccountId: user.masterAccountId || user.userId };
+            // Ensure browser-originated requests are tagged with the correct platform for notifications
+            const userForPayload = {
+                ...user,
+                platform: user.platform || 'web-sandbox',
+                masterAccountId: user.masterAccountId || user.userId
+            };
             const payload = { toolId, inputs, user: userForPayload, sessionId, eventId, metadata };
 
             // Proxy to internal endpoint

@@ -38,6 +38,7 @@ export function calculateCenterPosition(toolWindows) {
     }
 
     if (toolWindows.length === 0) {
+        // No existing nodes – simply place at the current viewport centre.
         return { x: centerX, y: centerY };
     }
 

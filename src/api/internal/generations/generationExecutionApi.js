@@ -243,6 +243,8 @@ module.exports = function generationExecutionApi(dependencies) {
             toolId: tool.toolId,
             queuedAt: generationRecord.requestTimestamp,
             ...(est !== null ? { estimatedDurationSeconds: est, checkAfterMs: est * 1000 } : {}),
+            estimatedCostUsd: costUsd,
+            estimatedPoints: pointsRequired,
             message: 'Your request has been accepted and is being processed.',
           });
         }

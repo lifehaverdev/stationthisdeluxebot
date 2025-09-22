@@ -129,6 +129,17 @@ class TelegramNotifier {
         }
       }
       
+      // === Deduplicate Text Outputs to avoid repeated captions ===
+      if (textOutputs.length > 1) {
+          const seen = new Set();
+          textOutputs = textOutputs.filter(txt => {
+              const normalized = typeof txt === 'string' ? txt.trim() : txt;
+              if (seen.has(normalized)) return false;
+              seen.add(normalized);
+              return true;
+          });
+      }
+
       // If after processing there's no media but there is text, send the text.
       // If there's media, the text will be sent as a separate message after.
       if (mediaToSend.length === 0 && textOutputs.length > 0) {
