@@ -86,6 +86,11 @@ export default class ToolWindow extends BaseWindow {
       { required: [], optional: [] }
     );
 
+    // ---- enforce prompt parameter ordering ----
+    const orderPriority = k => (k === 'input_prompt' ? 0 : (k === 'input_negative_prompt' ? 1 : 2));
+    params.required.sort((a, b) => orderPriority(a[0]) - orderPriority(b[0]));
+    params.optional.sort((a, b) => orderPriority(a[0]) - orderPriority(b[0]));
+
     const requiredSection = createParameterSection(
       params.required,
       'required-params',

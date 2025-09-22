@@ -40,14 +40,19 @@ export function createInputAnchors(tool) {
     // Only create anchors for major types
     const MAJOR_TYPES = ['text', 'image', 'video', 'audio', 'sound'];
     const inputSchema = tool.inputSchema || {};
-    Object.entries(inputSchema).forEach(([paramKey, paramDef]) => {
+    // Sort params by custom priority
+    const orderPriority = key => (key === 'input_prompt' ? 0 : (key === 'input_image' ? 1 : (key === 'input_checkpoint' ? 2 : 3)));
+
+    Object.entries(inputSchema)
+        .sort((a, b) => orderPriority(a[0]) - orderPriority(b[0]))
+        .forEach(([paramKey, paramDef]) => {
         // Determine type for anchor
         let type = paramDef.type;
         // Normalize type (e.g., 'textany' -> 'text', 'numberslider' -> skip)
         if (type === 'string') type = 'text';
         if (Array.isArray(type)) type = type[0];
         if (type === 'textany') type = 'text';
-        if (type === 'numberslider' || type === 'integer' || type === 'number' || type === 'checkpoint' || type === 'seed') return; // skip granular types
+        if (type === 'numberslider' || type === 'integer' || type === 'number' || type === 'seed') return; // skip granular types
         if (!MAJOR_TYPES.includes(type)) return;
 
         const anchor = document.createElement('div');

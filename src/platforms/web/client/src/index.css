@@ -602,6 +602,10 @@ a:hover {
         0 0 30px rgba(255, 255, 255, 0.1);
 }
 
+.connection-line:hover {
+
+}
+
 /* Output tools modal animation */
 @keyframes modalFadeIn {
     from {

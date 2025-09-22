@@ -32,6 +32,12 @@ registerWebSocketHandlers();
 
 // Create a tool window
 export function createToolWindow(tool, position, id = null, output = null, parameterMappings = null) {
+    // If a DOM node with this id already exists we assume the window is already hydrated
+    if (id && document.getElementById(id)) {
+        console.warn(`[createToolWindow] Skipping duplicate hydration for ${id}`);
+        return document.getElementById(id);
+    }
+
     // New implementation delegates to class-based ToolWindow while preserving API
     console.log('[node.js] [ADAPTER] createToolWindow → ToolWindow class', tool?.toolId);
     // If we are rehydrating on refresh, grab any stored version history

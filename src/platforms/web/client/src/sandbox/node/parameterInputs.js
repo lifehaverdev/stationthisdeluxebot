@@ -5,7 +5,14 @@ export function createParameterSection(params, className, parameterMappings, too
     const section = document.createElement('div');
     section.className = className;
 
-    params.forEach(([key, param]) => {
+    // Sort by explicit order if provided
+    const sorted = [...params].sort((a, b) => {
+        const orderA = a[1] && a[1].order !== undefined ? a[1].order : Infinity;
+        const orderB = b[1] && b[1].order !== undefined ? b[1].order : Infinity;
+        return orderA - orderB;
+    });
+
+    sorted.forEach(([key, param]) => {
         const mapping = parameterMappings && parameterMappings[key];
         const input = createParameterInput(key, param, mapping, toolWindows);
         section.appendChild(input);

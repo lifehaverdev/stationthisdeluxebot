@@ -52,16 +52,13 @@ export function drawConnectionLine(fromEl, toEl, type, isPermanent = true, conne
         cursor: pointer;
     `;
     if (isPermanent && connection) {
-        // Attach click and right-click handlers for editing
+        // Click to delete connection instantly
         line.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            showConnectionEditMenu(e, connection);
-        });
-        line.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            showConnectionEditMenu(e, connection);
+            import('../connections/manager.js').then(mod => {
+                mod.removeConnection(connection.id);
+            });
         });
     }
     document.body.appendChild(line);

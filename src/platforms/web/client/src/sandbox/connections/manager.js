@@ -81,13 +81,51 @@ export function createPermanentConnection(fromWindow, toWindow, type, toAnchor =
     return connection;
 }
 
-export function removeConnection(connection) {
+export function removeConnection(connectionOrId) {
+    // Support being called with either the connection object or its id
     const connections = getConnections();
-    const index = connections.indexOf(connection);
-    if (index > -1) {
-        connections.splice(index, 1);
+
+    // Locate connection index / object
+    let idx = -1;
+    let conn = null;
+    if (typeof connectionOrId === 'string') {
+        idx = connections.findIndex(c => c.id === connectionOrId);
+        conn = idx !== -1 ? connections[idx] : null;
+    } else {
+        idx = connections.indexOf(connectionOrId);
+        conn = connectionOrId;
     }
-    if (connection.element) {
-        connection.element.remove();
+
+    if (idx === -1 || !conn) return; // Nothing to do
+
+    // 1. Remove from connections array
+    connections.splice(idx, 1);
+
+    // 2. Clean up parameterMappings on the target node
+    const toWinState = getToolWindow(conn.toWindowId);
+    if (toWinState && toWinState.parameterMappings) {
+        delete toWinState.parameterMappings[conn.toInput];
     }
+
+    // 3. Remove the visual line element if still present
+    if (conn.element && conn.element.remove) {
+        conn.element.remove();
+    }
+
+    // 4. Persist state & visually refresh
+    try { persistState(); } catch {}
+
+    rerenderToolWindowById(conn.toWindowId);
+    renderAllConnections();
+
+    // 5. Dispatch custom event so other components (e.g., parameter panel) can react
+    const ev = new CustomEvent('connectionremoved', {
+        detail: {
+            connectionId: conn.id,
+            fromWindowId: conn.fromWindowId,
+            toWindowId: conn.toWindowId,
+            paramKey: conn.toInput
+        }
+    });
+    window.dispatchEvent(ev);
 } 

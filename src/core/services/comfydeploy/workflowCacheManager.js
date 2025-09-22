@@ -1034,6 +1034,18 @@ class WorkflowCacheManager {
       this.logger.warn(`[WorkflowCacheManager] No input schema could be derived for ${toolDefinition.toolId}.`);
       toolDefinition.inputSchema = {};
     }
+
+  // ---- ensure ordering metadata ----
+  if (toolDefinition.inputSchema && typeof toolDefinition.inputSchema === 'object') {
+    let seq = 100;
+    for (const [paramKey, paramDef] of Object.entries(toolDefinition.inputSchema)) {
+      if (paramDef.order === undefined) {
+        if (paramKey === 'input_prompt') paramDef.order = 0;
+        else if (paramKey === 'input_negative_prompt') paramDef.order = 1;
+        else paramDef.order = seq++;
+      }
+    }
+  }
   
     // === Metadata and Hints ===
     let detectedBaseModel = 'unknown'; // Default

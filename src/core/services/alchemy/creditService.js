@@ -1349,6 +1349,39 @@ class CreditService {
         salt
       });
 
+      // --- PREFLIGHT STATIC CALL ---------------------------------------------------------
+      // Perform a callStatic to detect custom reverts (e.g. Vanity) before we spend gas.
+      try {
+        const foundationContract = this.ethereumService.getContract(
+          this.contractConfig.address,
+          this.contractConfig.abi,
+          false // read-only provider is fine for callStatic
+        );
+        await foundationContract.callStatic.charterFund(ownerAddress, salt);
+      } catch (staticErr) {
+        // Attempt to decode the custom error name using the contract Interface.
+        let decodedErrorName = 'UnknownError';
+        try {
+          const iface = new ethers.Interface(this.contractConfig.abi);
+          const parsed = iface.parseError(staticErr.data || staticErr.error?.data || staticErr); // ethers v6 throws .data
+          decodedErrorName = parsed?.name || decodedErrorName;
+        } catch (_) {/* fallthrough */}
+
+        this.logger.error('[CreditService] Preflight charterFund call reverted:', { decodedErrorName, message: staticErr.message });
+
+        // Map known custom errors to application-level codes.
+        if (decodedErrorName === 'Vanity') {
+          throw new Error('VANITY_PREFIX_MISMATCH');
+        }
+        if (decodedErrorName === 'UnauthorizedCallContext') {
+          throw new Error('UNAUTHORIZED_CALL');
+        }
+        // Otherwise rethrow the original error
+        throw staticErr;
+      }
+
+      // --- END PREFLIGHT -----------------------------------------------------------------
+
       // 1. Send the transaction via the operator wallet using the 'write' method
       const txResponse = await this.ethereumService.write(
         this.contractConfig.address,

@@ -67,15 +67,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize state
     initState();
 
-    // Add .sandbox-canvas wrapper if not present
+    // Locate main containers
     const sandboxContent = document.querySelector('.sandbox-content');
     const canvas = document.querySelector('.sandbox-canvas');
     if (!canvas) {
         console.error("Sandbox canvas not found!");
         return;
     }
-    // Move all tool windows and connections into canvas (if any)
-    Array.from(sandboxContent.querySelectorAll('.tool-window, .connection-line')).forEach(el => canvas.appendChild(el));
+
+    /*
+     * On a fresh page load any tool-window / connection-line markup that was
+     * persisted in localStorage will be rendered by the browser inside
+     * `.sandbox-content`. These elements will be recreated later by
+     * `createToolWindow()` and `renderAllConnections()`, so keeping the initial
+     * copies would result in duplicate, "phantom" nodes that stack underneath
+     * the interactive ones. Clear them now to guarantee a clean slate.
+     */
+    document.querySelectorAll('.tool-window, .connection-line').forEach(el => el.remove());
 
     // Zoom/pan state
     let scale = 1;

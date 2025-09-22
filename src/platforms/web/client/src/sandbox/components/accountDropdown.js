@@ -96,6 +96,7 @@ export default class AccountDropdown {
                                 </div>
                               `).join('') : '<div class="vault-list-item">No referral vaults yet.</div>'}
                             </div>
+                            <a href="#" class="action-btn" role="menuitem" data-action="setup-referral">➕ Create Referral Vault</a>
                             <div class="dropdown-item">Model: ${data.rewards.model}</div>
                             <div class="dropdown-item">Spell: ${data.rewards.spell}</div>
                         ` : ''}
@@ -128,16 +129,6 @@ export default class AccountDropdown {
             if (window.openVaultDashboardModal && vault) window.openVaultDashboardModal(vault);
           });
         });
-        // Attach referral vault setup button event
-        const setupReferralBtn = this.container.querySelector('.setup-referral-btn');
-        if (setupReferralBtn) {
-            setupReferralBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.closeDropdown();
-                if (window.openReferralVaultModal) window.openReferralVaultModal();
-                // TODO: Implement openReferralVaultModal
-            });
-        }
     }
 
     shortenWallet(addr) {
@@ -198,6 +189,20 @@ export default class AccountDropdown {
                 }
             });
         }
+        const setupReferralBtn = this.container.querySelector('[data-action="setup-referral"]');
+        if (setupReferralBtn) {
+            setupReferralBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                this.closeDropdown();
+                if (!window.openReferralVaultModal) {
+                    // If modal script not yet loaded, attempt lazy-load similar to dashboard modal pattern
+                    if (typeof this.loadReferralVaultModalScript === 'function') {
+                        await this.loadReferralVaultModalScript();
+                    }
+                }
+                if (window.openReferralVaultModal) window.openReferralVaultModal();
+            });
+        }
         // ... add other action handlers here
     }
 
@@ -220,6 +225,19 @@ export default class AccountDropdown {
             const script = document.createElement('script');
             script.id = 'vault-dashboard-modal-script';
             script.src = '/components/ReferralVaultDashboardModal/vaultDashboardModal.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.body.appendChild(script);
+        });
+    }
+
+    // Dynamically load the referral vault modal script if not bundled
+    async loadReferralVaultModalScript() {
+        if (document.getElementById('referral-vault-modal-script')) return;
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.id = 'referral-vault-modal-script';
+            script.src = '/components/ReferralVaultModal/referralVaultModal.js';
             script.onload = resolve;
             script.onerror = reject;
             document.body.appendChild(script);
