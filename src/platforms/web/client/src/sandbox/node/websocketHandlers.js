@@ -185,6 +185,18 @@ export function handleGenerationUpdate(payload) {
                 outputData = { type: 'image', url: outputs.artifactUrls[0], generationId };
             }
 
+            // --- 2c. Files array with video (.mp4, .webm) ---
+            else if (Array.isArray(outputs) && outputs[0]?.data?.files?.[0]?.url) {
+                const file = outputs[0].data.files[0];
+                if(/\.mp4$|\.webm$/i.test(file.url)){
+                    outputData = { type: 'video', url: file.url, generationId };
+                }
+            }
+            // --- 3d. Flat videoUrl field ---
+            else if (outputs.videoUrl || outputs.video) {
+                outputData = { type: 'video', url: outputs.videoUrl || outputs.video, generationId };
+            }
+
             // --- 4. Text variants ---
             else if (outputs.text) {
                 outputData = { type: 'text', text: outputs.text, generationId };
