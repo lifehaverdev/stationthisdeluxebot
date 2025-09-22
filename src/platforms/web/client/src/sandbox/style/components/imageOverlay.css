@@ -93,4 +93,10 @@
   color: #ff5c5c;
 }
 
+.result-video {
+  max-width: 100%;
+  max-height: 300px;
+  display: block;
+}
+
 /* Remove redundant, overly specific, or conflicting rules */

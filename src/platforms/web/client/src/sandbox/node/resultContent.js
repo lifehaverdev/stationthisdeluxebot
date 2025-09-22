@@ -1,4 +1,5 @@
 import { showImageOverlay } from './overlays/imageOverlay.js';
+import { showVideoOverlay } from './overlays/videoOverlay.js';
 import { getToolWindow, getConnections } from '../state.js';
 import { createToolWindow, executeNodeAndDependencies } from './toolWindow.js';
 import { createPermanentConnection } from '../connections/index.js';
@@ -63,6 +64,9 @@ export function renderResultContent(resultContainer, output) {
             output = { type: 'image', url: output.image, ...output };
         } else if (output.text || output.response) {
             output = { type: 'text', text: output.text || output.response, ...output };
+        } else if (output.video || output.videoUrl || (Array.isArray(output.videos) && output.videos.length)) {
+            const firstVid = Array.isArray(output.videos) ? output.videos[0] : (output.video || output.videoUrl);
+            output = { type: 'video', url: (typeof firstVid === 'string' ? firstVid : firstVid.url), ...output };
         }
     }
 
@@ -115,6 +119,11 @@ export function renderResultContent(resultContainer, output) {
         } else if (output.type === 'text') {
             if (Array.isArray(output.text)) return output.text;
             return [output.text];
+        } else if (output.type === 'video') {
+            if (Array.isArray(output.urls)) return output.urls;
+            if (Array.isArray(output.url)) return output.url;
+            if (Array.isArray(output.videos)) return output.videos.map(v => v.url || v);
+            return [output.url];
         }
         return [];
     })();
@@ -176,6 +185,18 @@ export function renderResultContent(resultContainer, output) {
                 }
             });
             resultContainer.appendChild(text);
+        } else if (output.type === 'video') {
+            const video = document.createElement('video');
+            video.src = value;
+            video.className = 'result-video';
+            video.controls = true;
+            video.loop = !!output.loop;
+            video.style.maxWidth = '100%';
+            video.style.maxHeight = '300px';
+            video.style.display = 'block';
+            video.style.cursor = 'pointer';
+            video.addEventListener('click', () => showVideoOverlay(value)); // Assuming showImageOverlay can handle video
+            resultContainer.appendChild(video);
         }
     };
 

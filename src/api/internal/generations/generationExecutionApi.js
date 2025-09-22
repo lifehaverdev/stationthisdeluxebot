@@ -26,6 +26,10 @@ module.exports = function generationExecutionApi(dependencies) {
   router.post('/', async (req, res) => {
     const { toolId, inputs, user, sessionId, eventId, metadata } = req.body;
     let costRateInfo = null; // Defined here to be in scope for the whole request
+    // Variables needed across validation and execution phases
+    let estimatedSeconds = 30;
+    let costUsd = 0;
+    let pointsRequired = 0;
 
     // 1. --- Basic Request Validation ---
     if (!toolId || !inputs || !user || !user.masterAccountId) {
@@ -86,8 +90,8 @@ module.exports = function generationExecutionApi(dependencies) {
         }
 
         // 3b. --- Estimate Cost in Points ---
-        let estimatedSeconds = 30; // Default estimate for variable-cost tools
-        let costUsd = 0;
+        estimatedSeconds = 30; // reset default each request
+        costUsd = 0;
         
         if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'second' || costRateInfo.unit.toLowerCase() === 'seconds')) {
           if (tool.metadata && tool.metadata.estimatedDurationSeconds) {
@@ -104,7 +108,7 @@ module.exports = function generationExecutionApi(dependencies) {
         }
         
         const USD_PER_POINT = 0.000337;
-        const pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
+        pointsRequired = Math.max(1, Math.round(costUsd / USD_PER_POINT));
 
         // 3c. --- Fetch User's Wallet and Points ---
         const userId = user.masterAccountId;
@@ -213,6 +217,9 @@ module.exports = function generationExecutionApi(dependencies) {
               costRate: costRateInfo,
               loraResolutionData,
               platformContext: user.platformContext
+              ,
+              // Ensure dispatcher can route sandbox notifications
+              ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
             }
           };
 
@@ -333,7 +340,8 @@ module.exports = function generationExecutionApi(dependencies) {
                 ...tool.metadata,
                 ...metadata,
                 costRate: costRateInfo,
-                platformContext: user.platformContext
+                platformContext: user.platformContext,
+                ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
               }
             };
 
@@ -397,6 +405,13 @@ module.exports = function generationExecutionApi(dependencies) {
                     step: 'openai_image_generation'
                   }
                 });
+                try {
+                  const notificationEvents = require('../../../core/events/notificationEvents');
+                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+                  notificationEvents.emit('generationUpdated', updatedRecord);
+                } catch(eventErr) {
+                  logger.warn(`[Execute] Failed to emit generationUpdated after error for OpenAI image generation ${generationRecord._id}: ${eventErr.message}`);
+                }
               }
             })();
 
