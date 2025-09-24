@@ -33,7 +33,7 @@ class SaltMiningService {
         beaconAddress: config.charterBeacon
     };
 
-    this.workerPath = path.resolve(__dirname, 'saltMiningWorker.js');
+    this.workerPath = path.resolve(__dirname, 'saltMiningWorkerWrapper.js');
     this.saltQueue = []; // A queue to hold pre-mined salts
     this.isMining = false;
 
@@ -81,7 +81,7 @@ class SaltMiningService {
    */
   mineNewSalt(ownerAddress) {
     return new Promise((resolve, reject) => {
-      this.logger.debug(`[SaltMiningService] Spawning new worker for owner: ${ownerAddress}`);
+      // Reduced logging for production
       const worker = new Worker(this.workerPath, {
         workerData: {
           ownerAddress: ownerAddress,
@@ -101,7 +101,7 @@ class SaltMiningService {
           this.logger.error(`[SaltMiningService] Worker for ${ownerAddress} returned an error: ${result.error}`);
           reject(new Error(result.error));
         } else {
-          this.logger.info(`[SaltMiningService] Worker for ${ownerAddress} found salt. Predicted address: ${result.predictedAddress}`);
+          this.logger.debug(`[SaltMiningService] Worker for ${ownerAddress} found salt. Predicted address: ${result.predictedAddress}`);
           resolve(result);
         }
       });
@@ -117,7 +117,7 @@ class SaltMiningService {
         // A non-zero exit code in other contexts could be an error, but 'message' and 'error' events handle outcomes.
         // This log is for diagnostics. If exit happens without a message/error, it's noteworthy.
         if (code !== 0) {
-          this.logger.warn(`[SaltMiningService] Worker for ${ownerAddress} exited unexpectedly with code ${code}.`);
+          this.logger.debug(`[SaltMiningService] Worker for ${ownerAddress} exited with code ${code}.`);
           reject(new Error(`Worker stopped with exit code ${code}`));
         }
       });

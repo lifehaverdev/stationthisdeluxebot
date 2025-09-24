@@ -8,7 +8,7 @@ const express = require('express');
 const axios = require('axios');
 const createStatusService = require('./status');
 const { createUserCoreApi, createUserEventsApi, createUserPreferencesApiRouter, createUserStatusReportApiService } = require('./users');
-const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, createUserEconomyApi } = require('./economy');
+const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, createUserEconomyApi, createRatesApiService } = require('./economy');
 const { createGenerationOutputsApiService, createGenerationExecutionApi, createGenerationOutputsApi } = require('./generations');
 // Removed deprecated Teams API and related DB service
 const { createToolDefinitionApiRouter } = require('./toolDefinitionApi');
@@ -307,6 +307,15 @@ function initializeInternalServices(dependencies = {}) {
   const llmRouter = initializeLlmApi(apiDependencies);
   v1DataRouter.use('/llm', llmRouter);
   logger.info('[InternalAPI] LLM API service mounted to /v1/data/llm');
+
+  // Economy Rates API Service
+  const ratesApiRouter = createRatesApiService(apiDependencies);
+  if (ratesApiRouter) {
+    v1DataRouter.use('/economy', ratesApiRouter);
+    logger.info('[InternalAPI] Economy Rates API service mounted to /v1/data/economy');
+  } else {
+    logger.error('[InternalAPI] Failed to create Economy Rates API router.');
+  }
 
   // User Economy API Service:
   // MOVED to userCoreApi.js - Remove this mounting

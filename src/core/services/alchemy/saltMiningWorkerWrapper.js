@@ -1,5 +1,16 @@
-const { ethers } = require('ethers');
+#!/usr/bin/env node
+/**
+ * Salt Mining Worker Wrapper
+ * 
+ * This wrapper ensures the worker runs in CommonJS mode regardless of the parent process context.
+ * It's a workaround for the ES module context issues when spawning workers.
+ */
+
+// Force CommonJS execution by using require() at the top level
 const { workerData, parentPort } = require('worker_threads');
+
+// Import the actual worker logic
+const { ethers } = require('ethers');
 const { predictDeterministicAddressERC1967BeaconProxy, encodeCharteredFundInitArgs, hasVanityPrefix } = require('./beaconProxyHelper');
 
 // Get data passed to worker

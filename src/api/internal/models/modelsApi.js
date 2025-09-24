@@ -40,6 +40,20 @@ module.exports = function createModelsApiRouter(deps = {}) {
 
       const modelsRaw = await discovery.listModels({ category, includeWorkflowEnums: false });
       let models = modelsRaw;
+
+      // --- NEW: optional civitai tag filtering -----------------------------------
+      const includeCivitai = String(req.query.includeCivitaiTags || '').toLowerCase() === 'true';
+      if (!includeCivitai) {
+        models = models.map(m=>{
+          if(!Array.isArray(m.tags)) return m;
+          const clean = m.tags.filter(t=>{
+            if(typeof t === 'string') return true;
+            return (t.source||'').toLowerCase() !== 'civitai';
+          });
+          return { ...m, tags: clean };
+        });
+      }
+
       if (category) {
         const cat = category.toLowerCase();
         const pathMap = {
@@ -51,7 +65,7 @@ module.exports = function createModelsApiRouter(deps = {}) {
           clipseg: 'clipseg/'
         };
         if (pathMap[cat]) {
-          models = modelsRaw.filter(m => {
+          models = models.filter(m => {
             const p = (m.path || m.save_path || '').toString().toLowerCase();
             return p.includes(pathMap[cat]) && /\.safetensors$/i.test(p);
           });

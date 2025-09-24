@@ -3,4 +3,5 @@ module.exports = {
   createTransactionsApiService: require('./transactionsApi'),
   createPointsApi: require('./pointsApi'),
   createCreditLedgerApi: require('./creditLedgerApi'),
+  createRatesApiService: require('./ratesApi'),
 };

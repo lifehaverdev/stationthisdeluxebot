@@ -360,13 +360,20 @@ router.get('/list', async (req, res) => {
       userFavoriteIdsSet = new Set(favIds);
     }
 
-    const loras = lorasFromDb.map(lora => ({
+    const loras = lorasFromDb.map(lora => {
+      const includeCivitai = String(req.query.includeCivitaiTags||'').toLowerCase()==='true';
+      const cleanTags = (lora.tags||[]).filter(t=>{
+        if(includeCivitai) return true;
+        if(typeof t==='string') return true;
+        return (t.source||'').toLowerCase()!=='civitai';
+      });
+      return ({
       _id: lora._id.toString(),
       slug: lora.slug,
       name: lora.name, 
       triggerWords: lora.triggerWords || [],
       checkpoint: lora.checkpoint,
-      tags: lora.tags || [],
+      tags: cleanTags,
       createdAt: lora.createdAt,
       previewImageUrl: (lora.previewImages && lora.previewImages.length > 0) ? lora.previewImages[0] : null,
       ownedBy: lora.ownedBy ? lora.ownedBy.toString() : null, // Seller's ID
@@ -374,7 +381,7 @@ router.get('/list', async (req, res) => {
       isPurchased: userFavoriteIdsSet.has(lora._id.toString()),
       /* Note: other fields like defaultWeight, cognates, full tags, isFavorite 
          are omitted for list view brevity but available in detail view. */
-    }));
+    }); });
 
     const totalPages = Math.ceil(totalLoras / limit);
 
@@ -1067,7 +1074,14 @@ router.get('/store/list', async (req, res) => {
         permissions.forEach(p => purchasedLoraIdsSet.add(p.loraId.toString()));
     }
 
-    const loras = lorasFromDb.map(lora => ({
+    const loras = lorasFromDb.map(lora => {
+      const includeCivitai = String(req.query.includeCivitaiTags||'').toLowerCase()==='true';
+      const cleanTags = (lora.tags||[]).filter(t=>{
+        if(includeCivitai) return true;
+        if(typeof t==='string') return true;
+        return (t.source||'').toLowerCase()!=='civitai';
+      });
+      return ({
       _id: lora._id.toString(),
       slug: lora.slug,
       name: lora.name, 
@@ -1084,7 +1098,7 @@ router.get('/store/list', async (req, res) => {
       isPurchased: purchasedLoraIdsSet.has(lora._id.toString()), // Flag if current user owns it
       // defaultWeight is not typically needed for list view
       // isFavorite is not directly relevant to store listing context unless we add store-specific favorites
-    }));
+    }); });
 
     const totalPages = Math.ceil(totalLoras / limit);
 

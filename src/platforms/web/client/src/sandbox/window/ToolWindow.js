@@ -5,8 +5,8 @@
 // after validating parity.
 
 import BaseWindow from './BaseWindow.js';
-import { getToolWindows, addToolWindow, persistState, pushHistory } from '../state.js';
-import { executeNodeAndDependencies } from '../node/toolWindow.js';
+import { getToolWindows, addToolWindow, persistState, pushHistory, getWindowCost } from '../state.js';
+import { executeNodeAndDependencies, getLatestExchangeRates } from '../node/toolWindow.js';
 import { generateWindowId } from '../utils.js';
 import { createParameterSection } from '../node/parameterInputs.js';
 import { createAnchorPoint, createInputAnchors } from '../node/anchors.js';
@@ -62,6 +62,130 @@ export default class ToolWindow extends BaseWindow {
 
     // Advanced drag (workspace-aware) — reuse old function
     setupDragging(this, this.header);
+
+    // Initialize cost tracking
+    this.initializeCostTracking();
+  }
+
+  initializeCostTracking() {
+    // Load existing cost data
+    this.updateCostDisplay();
+
+    // Make cost display clickable for denomination switching
+    const costDisplay = this.el.querySelector('.window-cost-display');
+    if (costDisplay) {
+      costDisplay.addEventListener('click', () => {
+        this.cycleDenomination();
+      });
+    }
+
+    // Listen for cost updates
+    window.addEventListener('costUpdate', (event) => {
+      if (event.detail.windowId === this.id) {
+        this.updateCostDisplay();
+      }
+    });
+
+    // Listen for denomination changes
+    window.addEventListener('denominationChange', (event) => {
+      this.updateCostDisplay(event.detail.denomination);
+    });
+
+    // Listen for cost resets
+    window.addEventListener('costReset', (event) => {
+      if (event.detail.windowId === this.id) {
+        this.updateCostDisplay();
+      }
+    });
+  }
+
+  cycleDenomination() {
+    const denominations = ['POINTS', 'MS2', 'USD', 'CULT'];
+    const currentDenomination = localStorage.getItem('costDenom') || 'POINTS';
+    const currentIndex = denominations.indexOf(currentDenomination);
+    const nextIndex = (currentIndex + 1) % denominations.length;
+    
+    const newDenomination = denominations[nextIndex];
+    localStorage.setItem('costDenom', newDenomination);
+    
+    // Update this window's display
+    this.updateCostDisplay(newDenomination);
+    
+    // Dispatch global denomination change event
+    window.dispatchEvent(new CustomEvent('denominationChange', {
+      detail: { denomination: newDenomination }
+    }));
+  }
+
+  updateCostDisplay(denomination = null) {
+    // Import getWindowCost from state.js (already imported at top of file)
+    
+    // Get current denomination from localStorage or use provided one
+    const currentDenomination = denomination || localStorage.getItem('costDenom') || 'POINTS';
+    
+    const costData = getWindowCost(this.id);
+    if (!costData) return;
+
+    const costElement = this.el.querySelector('.window-cost-display .cost-amount');
+    if (!costElement) return;
+
+    const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
+    const rates = getLatestExchangeRates() ?? { 
+      POINTS_per_USD: 1 / USD_TO_POINTS_CONVERSION_RATE,
+      MS2_per_USD: NaN,
+      CULT_per_USD: NaN
+    };
+    
+    // Convert total cost to current denomination
+    let amount = 0;
+    switch (currentDenomination) {
+      case 'USD':
+        amount = costData.totalCost.usd || 0;
+        break;
+      case 'POINTS':
+        amount = (costData.totalCost.usd || 0) * rates.POINTS_per_USD;
+        break;
+      case 'MS2':
+        amount = rates && !isNaN(rates.MS2_per_USD) ? (costData.totalCost.usd || 0) * rates.MS2_per_USD : 0;
+        break;
+      case 'CULT':
+        amount = rates && !isNaN(rates.CULT_per_USD) ? (costData.totalCost.usd || 0) * rates.CULT_per_USD : 0;
+        break;
+    }
+
+    // Format the amount
+    let formattedAmount = '0';
+    if (amount > 0) {
+      switch (currentDenomination) {
+        case 'USD':
+          formattedAmount = `$${amount.toFixed(2)}`;
+          break;
+        case 'POINTS':
+          formattedAmount = `${Math.round(amount)} POINTS`;
+          break;
+        case 'MS2':
+          formattedAmount = `${amount.toFixed(2)} MS2`;
+          break;
+        case 'CULT':
+          formattedAmount = `${Math.round(amount)} CULT`;
+          break;
+      }
+    }
+
+    costElement.textContent = formattedAmount;
+
+    // Add tooltip with all denominations
+    const tooltip = [
+      `USD: $${(costData.totalCost.usd || 0).toFixed(2)}`,
+      `POINTS: ${Math.round((costData.totalCost.usd || 0) * rates.POINTS_per_USD)}`,
+      `MS2: ${rates && !isNaN(rates.MS2_per_USD) ? ((costData.totalCost.usd || 0) * rates.MS2_per_USD).toFixed(2) : 'N/A'}`,
+      `CULT: ${rates && !isNaN(rates.CULT_per_USD) ? Math.round((costData.totalCost.usd || 0) * rates.CULT_per_USD) : 'N/A'}`
+    ].join(' | ');
+
+    const costDisplay = this.el.querySelector('.window-cost-display');
+    if (costDisplay) {
+      costDisplay.title = tooltip;
+    }
   }
   serialize() {
     return {

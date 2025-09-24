@@ -57,10 +57,25 @@ export default class BaseWindow {
     const titleText = this.icon ? `${this.icon} ${this.title}` : this.title;
     const titleEl = el('div', { innerText: titleText, style: { fontWeight: 'bold' } });
 
+    // Cost display element
+    const costEl = el('div', { 
+      className: 'window-cost-display',
+      innerHTML: '<span class="cost-icon">💲</span><span class="cost-amount">0 POINTS</span>',
+      style: {
+        fontSize: '11px',
+        color: '#888',
+        marginLeft: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        cursor: 'pointer'
+      }
+    });
+
     const closeBtn = el('button', { innerText: '×', className: 'close-button' });
     closeBtn.addEventListener('click', () => this.destroy());
 
-    header.append(titleEl, closeBtn);
+    header.append(titleEl, costEl, closeBtn);
     this.el.prepend(header);
 
     enableDrag(this.el, header);

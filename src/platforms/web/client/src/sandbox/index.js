@@ -35,6 +35,7 @@ import CookMenuModal from './components/CookMenuModal.js';
 import './components/ReauthModal.js';
 import { saveWorkspace, loadWorkspace } from './workspaces.js';
 import initWorkspaceTabs from './components/WorkspaceTabs.js';
+import { initCostHUD } from './components/costHud.js';
 
 // Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
 (function interceptUnauthorized() {
@@ -345,6 +346,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize tools
     await initializeTools();
     renderSidebarTools();
+
+    // Initialize cost HUD
+    initCostHUD();
 
     // Restore tool and spell windows from state (localStorage)
     getToolWindows().forEach(win => {
@@ -737,7 +741,7 @@ function initClickHandlers() {
             return;
         }
 
-        const isNodeOrUI = e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle, .create-submenu');
+        const isNodeOrUI = e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle, .create-submenu, .cost-hud');
         // If the click is on a node, the node's own handler will manage selection.
         // If it's on other UI, do nothing.
         // If it's on the background, clear selection.
@@ -748,7 +752,7 @@ function initClickHandlers() {
         }
 
         // Prevent modal from opening when interacting with sidebar, tool windows, or other modals.
-        if (e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle')) {
+        if (e.target.closest('.tool-window, .action-modal, #sidebar, #sidebar-toggle, .cost-hud')) {
             return;
         }
         

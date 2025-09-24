@@ -1357,7 +1357,16 @@ class CreditService {
           this.contractConfig.abi,
           false // read-only provider is fine for callStatic
         );
-        await foundationContract.callStatic.charterFund(ownerAddress, salt);
+
+        // 1. Verify on-chain predicted address matches our local prediction
+        const onChainPredicted = await foundationContract.computeCharterAddress.staticCall(ownerAddress, salt);
+        if (onChainPredicted.toLowerCase() !== predictedAddress.toLowerCase()) {
+          this.logger.error('[CreditService] computeCharterAddress mismatch', { onChainPredicted, predictedAddress });
+          throw new Error('PREDICTION_MISMATCH');
+        }
+
+        // 2. Run charterFund as a static call to catch custom reverts (Vanity, etc.)
+        await foundationContract.charterFund.staticCall(ownerAddress, salt);
       } catch (staticErr) {
         // Attempt to decode the custom error name using the contract Interface.
         let decodedErrorName = 'UnknownError';

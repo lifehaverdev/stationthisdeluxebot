@@ -37,6 +37,10 @@ export default class ModsMenuModal {
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
+    // For import overlay tracking
+    this.importDialog = null;
+    // Cache expanded tag state per-session (localStorage key: mods_show_tags)
+    this._expandedTagModels = null;
   }
 
   setState(newState) {
@@ -148,6 +152,35 @@ export default class ModsMenuModal {
     return model._id || model.path || model.name || model.save_path || model.sha || JSON.stringify(model);
   }
 
+  /* ---------------------------------- TAG HELPERS ---------------------------------- */
+  /**
+   * Returns true if the given model is accessible to the current viewer (public OR owned private).
+   */
+  isModelAccessible(model){
+    const uid = (window.currentUserId||'').toLowerCase();
+    const raw=(model.path||model.save_path||'').toLowerCase();
+    if(!raw) return true; // assume accessible if no path info
+    const norm=raw.replace(/\\/g,'/');
+    if(!norm.includes('checkpoints/users/')) return true; // public model
+    if(!uid) return false; // viewer not logged in – not owner
+    return !norm.includes(`checkpoints/users/${uid}/`); // accessible only if path contains their uid
+  }
+
+  /** Lazily read & parse expanded-tag state from localStorage */
+  getExpandedTagSet(){
+    if(this._expandedTagModels) return this._expandedTagModels;
+    try{
+      const raw=localStorage.getItem('mods_show_tags');
+      const arr= raw? JSON.parse(raw):[];
+      this._expandedTagModels=new Set(arr);
+    }catch{ this._expandedTagModels=new Set(); }
+    return this._expandedTagModels;
+  }
+  /** Persist current expanded-tag set to localStorage */
+  persistExpandedTagSet(){
+    try{ localStorage.setItem('mods_show_tags', JSON.stringify([...this.getExpandedTagSet()])); }catch{}
+  }
+
   async fetchModels(category, subCategory = null) {
     this.setState({ loading: true, error: null, models: [] });
     try {
@@ -182,8 +215,9 @@ export default class ModsMenuModal {
   }
 
   applyTagFilter(models, selected) {
-    if (!selected || !selected.length) return models;
-    return models.filter(m => {
+    const accessible=models.filter(m=>this.isModelAccessible(m));
+    if (!selected || !selected.length) return accessible;
+    return accessible.filter(m => {
       if (!m.tags || !m.tags.length) return false;
       const tags = m.tags.map(t => (typeof t === 'string' ? t : t.tag).toLowerCase());
       return selected.every(tag => tags.includes(tag));
@@ -192,13 +226,13 @@ export default class ModsMenuModal {
 
   computeExtraTags(models, selected) {
     const tagSet = new Set();
-    models.forEach(m => {
+    models.filter(m=>this.isModelAccessible(m)).forEach(m => {
       (m.tags || []).forEach(t => {
         const val = (typeof t === 'string' ? t : t.tag).toLowerCase();
         if (!selected.includes(val)) tagSet.add(val);
       });
     });
-    return Array.from(tagSet).sort();
+    return Array.from(tagSet).sort().slice(0,15); // cap to 15 as per acceptance criteria
   }
 
   show() {
@@ -269,11 +303,24 @@ export default class ModsMenuModal {
           const showImport = ['lora','checkpoint'].includes(currentCategory);
           const importButton = showImport ? '<button class="import-btn">＋ Import</button>' : '';
           const uid = window.currentUserId || null;
-          const isPrivate = (m)=>{
-            const raw=(m.path||m.save_path||'').toLowerCase(); if(!raw) return false; const normalized=raw.replace(/\\/g,'/'); const inPriv=normalized.includes('checkpoints/users/'); if(!inPriv) return false; if(!uid) return true; return normalized.includes(`checkpoints/users/${uid.toLowerCase()}/`); };
+          const isPrivate = (m)=>{ const raw=(m.path||m.save_path||'').toLowerCase(); if(!raw) return false; const normalized=raw.replace(/\\/g,'/'); const inPriv=normalized.includes('checkpoints/users/'); if(!inPriv) return false; if(!uid) return true; return !normalized.includes(`checkpoints/users/${uid.toLowerCase()}/`); };
           const visibleModels = models.filter(m=>{ const p=(m.path||m.save_path||'').toLowerCase(); if(!p.includes('checkpoints/users/')) return true; if(!uid) return true; return p.includes(`checkpoints/users/${uid.toLowerCase()}/`); });
           const sortModels=[...visibleModels].sort((a,b)=>{ const privA=isPrivate(a); const privB=isPrivate(b); if(privA!==privB) return privA?-1:1; const idA=this.getModelIdentifier(a); const idB=this.getModelIdentifier(b); const favA=favoriteIds.has(idA); const favB=favoriteIds.has(idB); if(favA===favB) return 0; return favA?-1:1; });
-          listHtml='<ul class="mods-list">'+sortModels.map((m,idx)=>{ const id=this.getModelIdentifier(m); const isFav=favoriteIds.has(id); const heart=isFav?'❤️':'♡'; const displayPath=m.path||m.name||m.save_path||'unknown'; const display=displayPath.split('/').pop(); const size=m.size?`${(m.size/(1024**2)).toFixed(1)} MB`:''; const priv=isPrivate(m); const lockSpan=priv?'<span class="priv-icon">🔒</span>':''; return `<li class="mods-item${priv?' private':''}" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> ${lockSpan} <button class="fav-btn" data-idx="${idx}">${heart}</button></li>`; }).join('')+'</ul>';
+          listHtml='<ul class="mods-list">'+sortModels.map((m,idx)=>{
+            const id=this.getModelIdentifier(m);
+            const isFav=favoriteIds.has(id);
+            const heart=isFav?'❤️':'♡';
+            const displayPath=m.path||m.name||m.save_path||'unknown';
+            const display=displayPath.split('/').pop();
+            const size=m.size?`${(m.size/(1024**2)).toFixed(1)} MB`:'';
+            const priv=isPrivate(m);
+            const lockSpan=priv?'<span class="priv-icon">🔒</span>':'';
+            const tagsArr=(m.tags||[]).map(t=>typeof t==='string'?t:t.tag);
+            const expanded=this.getExpandedTagSet().has(id);
+            const visibleTags=expanded?tagsArr:tagsArr.slice(0,5);
+            const tagsHtml=visibleTags.map(t=>`<span class="tag">${t}</span>`).join(' ');
+            const toggleBtn=tagsArr.length>5?`<button class="tag-toggle" data-id="${id}" data-idx="${idx}">${expanded?'Hide tags':'… Show tags'}</button>`:'';
+            return `<li class="mods-item${priv?' private':''}" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> ${lockSpan} <button class="fav-btn" data-idx="${idx}">${heart}</button><div class="mods-tags">${tagsHtml} ${toggleBtn}</div></li>`; }).join('')+'</ul>';
           const extraBar = extraTags.length ? `<div class="extra-tag-bar">`+extraTags.map(t=>`<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('')+`</div>`:'';
           listHtml = header + importButton + extraBar + listHtml;
         }
@@ -383,6 +430,16 @@ export default class ModsMenuModal {
           this.setState({ selectedTags: newSelected, models: filtered, extraTags: remaining });
         };
       });
+      // Tag toggle click
+      this.modalElement.querySelectorAll('.tag-toggle').forEach(btn=>{
+        btn.onclick=()=>{
+          const id=btn.getAttribute('data-id');
+          const set=this.getExpandedTagSet();
+          if(set.has(id)) set.delete(id); else set.add(id);
+          this.persistExpandedTagSet();
+          this.render();
+        };
+      });
     }
 
     // Tab button events
@@ -425,6 +482,12 @@ export default class ModsMenuModal {
     this.modalElement.querySelectorAll('.train-item').forEach((li,idx)=>{
       li.onclick=()=>{ const tr=this.state.trainings[idx]; this.openTrainingForm(tr); };
     });
+
+    // Import button
+    const impBtn = this.modalElement.querySelector('.import-btn');
+    if (impBtn) {
+      impBtn.onclick = () => this.openImportDialog(currentCategory);
+    }
   }
 
   attachCloseEvents() {
@@ -478,5 +541,100 @@ export default class ModsMenuModal {
       this.fetchDatasets();
       this.fetchTrainings();
     }catch(err){ this.setState({formError:'Save failed',submitting:false}); }
+  }
+
+  /**
+   * Opens a small overlay that lets the user enter a remote URL to import a model.
+   * @param {string} category – currently selected model category (checkpoint | lora)
+   */
+  openImportDialog(category) {
+    if (this.importDialog) return; // already open
+
+    const overlay = document.createElement('div');
+    overlay.className = 'import-overlay';
+    overlay.innerHTML = `
+      <div class="import-dialog">
+        <h3>Import ${category}</h3>
+        <label>Remote URL:<br><input type="text" class="import-url-input" placeholder="https://example.com/model" autofocus /></label>
+        <div class="error-message" style="display:none"></div>
+        <div class="btn-row">
+          <button class="confirm-import-btn">Import</button>
+          <button class="cancel-import-btn">Cancel</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    this.importDialog = overlay;
+
+    const inputEl = overlay.querySelector('.import-url-input');
+    const confirmBtn = overlay.querySelector('.confirm-import-btn');
+    const cancelBtn = overlay.querySelector('.cancel-import-btn');
+    const errEl = overlay.querySelector('.error-message');
+
+    const cleanup = () => {
+      if (!this.importDialog) return;
+      document.removeEventListener('keydown', escHandler);
+      document.body.removeChild(this.importDialog);
+      this.importDialog = null;
+    };
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape') cleanup();
+    };
+    document.addEventListener('keydown', escHandler);
+
+    cancelBtn.onclick = cleanup;
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(); };
+
+    const doImport = async () => {
+      const url = inputEl.value.trim();
+      if (!url) {
+        errEl.textContent = 'Please enter a URL.';
+        errEl.style.display = 'block';
+        return;
+      }
+      confirmBtn.disabled = true;
+      errEl.style.display = 'none';
+      try {
+        const csrfRes = await fetch('/api/v1/csrf-token');
+        const { csrfToken } = await csrfRes.json();
+
+        const res = await fetch('/api/v1/models/import', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': csrfToken,
+          },
+          body: JSON.stringify({ url, category }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Import failed');
+        }
+
+        cleanup();
+
+        // Refresh models list
+        if (category === 'lora' && this.state.currentLoraCategory) {
+          this.fetchModels('lora', this.state.currentLoraCategory);
+        } else {
+          this.fetchModels(category);
+        }
+      } catch (err) {
+        errEl.textContent = err.message || 'Import failed.';
+        errEl.style.display = 'block';
+        confirmBtn.disabled = false;
+      }
+    };
+
+    confirmBtn.onclick = doImport;
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doImport();
+      }
+    });
   }
 } 

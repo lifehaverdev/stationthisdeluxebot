@@ -12,7 +12,9 @@ import {
     toggleNodeSelection,
     selectNode,
     clearSelection,
-    getSelectedNodeIds
+    getSelectedNodeIds,
+    getWindowCost,
+    addWindowCost
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
@@ -26,6 +28,26 @@ import { bindPromptFieldOverlays } from './overlays/textOverlay.js';
 import { websocketClient } from '/js/websocketClient.js';
 import executionClient from '../executionClient.js';
 import ToolWindow from '../window/ToolWindow.js';
+
+// Helper to retrieve the freshest available exchange rates
+function getLatestExchangeRates() {
+    // Prefer in-memory rates from CostHUD
+    if (typeof window !== 'undefined') {
+        if (window.costHUD && window.costHUD.exchangeRates) {
+            return window.costHUD.exchangeRates;
+        }
+        try {
+            const cachedStr = localStorage.getItem('exchangeRatesCache');
+            if (cachedStr) {
+                const cached = JSON.parse(cachedStr);
+                if (cached && cached.timestamp && (Date.now() - cached.timestamp) < 60 * 60 * 1000) {
+                    return cached.rates;
+                }
+            }
+        } catch (_) { /* ignore */ }
+    }
+    return null;
+}
 
 // Call once to register the handlers
 registerWebSocketHandlers();
@@ -52,6 +74,11 @@ export function createToolWindow(tool, position, id = null, output = null, param
         currentVersionIndex: existingWin?.currentVersionIndex || null,
     });
     win.mount();
+    // Initialize cost chip with latest rates & denomination
+    if (typeof window !== 'undefined' && typeof window.updateWindowCostDisplay === 'function') {
+        const denom = (window.costHUD && window.costHUD.currentDenomination) || 'POINTS';
+        window.updateWindowCostDisplay(win.id, denom, getLatestExchangeRates());
+    }
     return win.el;
 }
 
@@ -308,6 +335,20 @@ function createWindowHeader(title) {
     titleElement.textContent = title;
     titleElement.style.fontWeight = 'bold';
 
+    // --- Cost Display ---
+    const costElement = document.createElement('div');
+    costElement.className = 'window-cost-display';
+    costElement.innerHTML = '<span class="cost-icon">💲</span><span class="cost-amount">0 POINTS</span>';
+    costElement.style.cssText = `
+        font-size: 11px;
+        color: #888;
+        margin-left: 8px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+    `;
+
     // --- Fullscreen Toggle Button ---
     const expandBtn = document.createElement('button');
     expandBtn.textContent = '⤢'; // Unicode diagonal arrow (expand)
@@ -436,9 +477,84 @@ function createWindowHeader(title) {
         closeWindow();
     });
 
-    // Replace header append order to include expandBtn
-    header.append(titleElement, expandBtn, closeBtn);
+    // Replace header append order to include expandBtn and cost display
+    header.append(titleElement, costElement, expandBtn, closeBtn);
     return header;
+}
+
+/**
+ * Update cost display for a window
+ * @param {string} windowId - Window ID
+ * @param {string} denomination - Current denomination (POINTS, MS2, USD, CULT)
+ * @param {Object} exchangeRates - Exchange rates for conversion
+ */
+function updateWindowCostDisplay(windowId, denomination = 'POINTS', exchangeRates = null) {
+    costDebug('updateWindowCostDisplay called', { windowId, denomination, hasRates: !!exchangeRates });
+    const windowEl = document.getElementById(windowId);
+    if (!windowEl) { costDebug('Window element not found for', windowId); return; }
+
+    const costElement = windowEl.querySelector('.window-cost-display .cost-amount');
+    if (!costElement) return;
+
+    const costData = getWindowCost(windowId);
+    if (!costData) { costDebug('No cost data for', windowId); return; }
+
+    // Real exchange rates if not provided (matching backend services)
+    const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
+    // Unified rate resolution
+    const rates = exchangeRates ?? getLatestExchangeRates();
+    costDebug('Rates resolved', rates);
+    
+    // Convert total cost to current denomination
+    let amount = 0;
+    let formattedAmount = 'N/A';
+
+    const usdBase = costData.totalCost.usd || 0;
+
+    switch (denomination) {
+        case 'USD':
+            amount = usdBase;
+            formattedAmount = `$${amount.toFixed(2)}`;
+            break;
+        case 'POINTS': {
+            const pointsPerUsd = rates && rates.POINTS_per_USD ? rates.POINTS_per_USD : 1 / USD_TO_POINTS_CONVERSION_RATE;
+            amount = usdBase * pointsPerUsd;
+            formattedAmount = amount > 0 ? `${Math.round(amount)} POINTS` : '0';
+            break; }
+        case 'MS2':
+            if (rates && typeof rates.MS2_per_USD === 'number') {
+                amount = usdBase * rates.MS2_per_USD;
+                formattedAmount = amount > 0 ? `${amount.toFixed(2)} MS2` : '0';
+            }
+            break;
+        case 'CULT':
+            if (rates && typeof rates.CULT_per_USD === 'number') {
+                amount = usdBase * rates.CULT_per_USD;
+                formattedAmount = amount > 0 ? `${Math.round(amount)} CULT` : '0';
+            }
+            break;
+    }
+    costDebug('Computed amount', { denomination, amount, formattedAmount });
+
+    costElement.textContent = formattedAmount;
+
+    // Build tooltip, using 'N/A' for missing rates
+    const pointsPerUsd = rates && rates.POINTS_per_USD ? rates.POINTS_per_USD : (1 / 0.000337);
+    const ms2Str = rates && typeof rates.MS2_per_USD === 'number' ? ((usdBase * rates.MS2_per_USD).toFixed(2)) : 'N/A';
+    const cultStr = rates && typeof rates.CULT_per_USD === 'number' ? Math.round(usdBase * rates.CULT_per_USD) : 'N/A';
+
+    const tooltip = [
+        `USD: $${usdBase.toFixed(2)}`,
+        `POINTS: ${Math.round(usdBase * pointsPerUsd)}`,
+        `MS2: ${ms2Str}`,
+        `CULT: ${cultStr}`
+    ].join(' | ');
+    
+    const costDisplay = windowEl.querySelector('.window-cost-display');
+    if (costDisplay) {
+        costDisplay.title = tooltip;
+    }
+    costDebug('Tooltip set', tooltip);
 }
 
 function createShowMoreButton(optionalSection) {
@@ -630,8 +746,44 @@ function randomizeSeedInMappings(mappings) {
 // Make globally accessible for other modules that may be loaded after this script
 if (typeof window !== 'undefined') {
     window.randomizeSeedInMappings = randomizeSeedInMappings;
+    window.updateWindowCostDisplay = updateWindowCostDisplay;
+
+    // Listen for denomination changes and exchange rate updates to refresh all window cost chips
+    const refreshAllCosts = (rates = null, denom = null) => {
+        const resolvedRates = rates ?? getLatestExchangeRates();
+        costDebug('Refreshing all cost chips', { rates: resolvedRates, denom });
+        const windows = getToolWindows();
+        windows.forEach(win => {
+            updateWindowCostDisplay(
+                win.id,
+                denom || (window.costHUD && window.costHUD.currentDenomination) || 'POINTS',
+                resolvedRates
+            );
+        });
+    };
+    window.addEventListener('denominationChange', (e) => {
+        const denom = e.detail && e.detail.denomination;
+        refreshAllCosts(null, denom);
+    });
+    window.addEventListener('exchangeRatesUpdated', (e) => {
+        const rates = e.detail && e.detail.rates;
+        refreshAllCosts(rates, null);
+    });
+    // Refresh chip when its cost data changes
+    window.addEventListener('costUpdate', (e) => {
+        const { windowId } = e.detail || {};
+        if (!windowId) return;
+        costDebug('costUpdate event received', e.detail);
+        updateWindowCostDisplay(windowId, (window.costHUD && window.costHUD.currentDenomination) || 'POINTS', getLatestExchangeRates());
+    });
+}
+// -------------------------------------------------------------------------
+
+// --- Debug Logger ---------------------------------------------------------
+function costDebug(...args) {
+    console.debug('[CostDebug]', ...args);
 }
 // -------------------------------------------------------------------------
 
 // Export helpers for use in other modules
-export { executeNodeAndDependencies }; 
+export { executeNodeAndDependencies, updateWindowCostDisplay, getLatestExchangeRates }; 

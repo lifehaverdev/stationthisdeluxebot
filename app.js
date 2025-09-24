@@ -267,7 +267,8 @@ async function startApp() {
     // Mount the external API router
     if (services.external && services.external.router && platforms.web && platforms.web.app) {
       platforms.web.app.use('/api/v1', services.external.router);
-      logger.info('External API router mounted at /api/v1');
+      platforms.web.app.use('/api/external', services.external.router); // legacy path compatibility
+      logger.info('External API router mounted at /api/v1 and /api/external');
     } else {
       logger.warn('External API router or web app instance not available for mounting. External API will not be accessible.');
     }

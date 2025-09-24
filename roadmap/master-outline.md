@@ -241,5 +241,20 @@ Secure, private file uploads & CDN delivery via Cloudflare R2.
 |--------|--------|------------|
 | Web Onboarding Redesign | In Progress | onboarding-experience/adr/ADR-2025-08-26-onboarding-redesign.md |
 
+---
+
+### Cost Tracking & Multi-Currency Display (Epic)
+| Module | Status | Source Docs |
+|--------|--------|------------|
+| Backend Foundation | In Progress | cost-tracking/outline.md |
+| State Management | In Progress | cost-tracking/outline.md |
+| Workspace HUD | In Progress | cost-tracking/outline.md |
+| Window Cost Display | In Progress | cost-tracking/outline.md |
+| Landing Page Integration | In Progress | cost-tracking/outline.md |
+| Multi-Currency UI | In Progress | cost-tracking/outline.md |
+| Testing & Documentation | In Progress | cost-tracking/outline.md |
+
+---
+
 | dataset-training | Dataset & Training Suite | 🟡 In Progress | M1 due 2025-09-08 |
 

@@ -14,7 +14,7 @@ const { createAuthApi } = require('./auth');
 const { createUserApi } = require('./users');
 const createModelsApiRouter = require('./models');
 const { authenticateUser, authenticateUserOrApiKey } = require('../../platforms/web/middleware/auth');
-const { createPointsApi } = require('./economy');
+const { createPointsApi, createRatesApi } = require('./economy');
 const createSpellsApi = require('./spells');
 const createCookApiRouter = require('./cookApi');
 const createWorkspacesApiRouter = require('./workspacesApi');
@@ -349,6 +349,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Points API router mounted at /points. (JWT or API key protected)');
   } else {
     logger.warn('External Points API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Rates API router (Public - no authentication required)
+  const ratesRouter = createRatesApi({ internalApiClient, priceFeedService: dependencies.priceFeedService, logger });
+  if (ratesRouter) {
+    externalApiRouter.use('/economy', ratesRouter);
+    logger.info('External Rates API router mounted at /economy. (Public access)');
+  } else {
+    logger.warn('External Rates API router not mounted due to missing dependencies.');
   }
 
   // Mount Datasets API (auth required)

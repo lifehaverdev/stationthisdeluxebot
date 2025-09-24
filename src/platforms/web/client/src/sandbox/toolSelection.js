@@ -11,6 +11,35 @@ const CREATION_TYPE_TO_CATEGORY = {
     'movie': 'text-to-video'
 };
 
+// Default cost estimates for different tool types (in POINTS)
+const DEFAULT_COST_ESTIMATES = {
+    'text-to-image': '~50 POINTS',
+    'image-to-image': '~30 POINTS',
+    'text-to-audio': '~20 POINTS',
+    'text-to-text': '~5 POINTS',
+    'text-to-video': '~100 POINTS',
+    'image-to-video': '~80 POINTS',
+    'audio-to-audio': '~15 POINTS',
+    'video-to-video': '~60 POINTS',
+    'uncategorized': '~25 POINTS'
+};
+
+/**
+ * Get cost estimate for a tool
+ * @param {Object} tool - Tool definition
+ * @returns {string} Cost estimate string
+ */
+function getToolCostEstimate(tool) {
+    // Check if tool has cost metadata
+    if (tool.metadata?.costEstimate) {
+        return tool.metadata.costEstimate;
+    }
+    
+    // Use category-based default
+    const category = tool.category || 'uncategorized';
+    return DEFAULT_COST_ESTIMATES[category] || DEFAULT_COST_ESTIMATES['uncategorized'];
+}
+
 export function renderSidebarTools() {
     const toolsContainer = document.querySelector('.tools-container');
     const tools = getAvailableTools();
@@ -74,8 +103,30 @@ export function renderSidebarTools() {
             description.style.color = 'rgba(255, 255, 255, 0.6)';
             description.style.lineHeight = '1.4';
 
+            // Cost estimate badge
+            const costBadge = document.createElement('div');
+            costBadge.className = 'tool-cost-badge';
+            costBadge.style.cssText = `
+                position: absolute;
+                bottom: 4px;
+                right: 4px;
+                background: rgba(0, 255, 0, 0.2);
+                border: 1px solid rgba(0, 255, 0, 0.4);
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 10px;
+                color: #00ff00;
+                font-family: monospace;
+            `;
+            
+            // Get cost estimate from tool metadata or calculate default
+            const costEstimate = getToolCostEstimate(tool);
+            costBadge.textContent = costEstimate;
+
+            toolButton.style.position = 'relative';
             toolButton.appendChild(name);
             toolButton.appendChild(description);
+            toolButton.appendChild(costBadge);
 
             toolButton.addEventListener('mouseenter', () => {
                 toolButton.style.background = 'rgba(255, 255, 255, 0.1)';

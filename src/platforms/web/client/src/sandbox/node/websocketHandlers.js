@@ -1,11 +1,93 @@
 import { websocketClient } from '/js/websocketClient.js';
-import { setToolWindowOutput } from '../state.js';
+import { setToolWindowOutput, addWindowCost } from '../state.js';
 import { renderResultContent } from './resultContent.js';
 
 // A map to associate generation IDs with their corresponding tool window elements
 export const generationIdToWindowMap = {};
 // Map castId (unique per spell run) to window to improve lookup reliability
 export const castIdToWindowMap = {};
+
+// GPU cost rates (USD per second) - should match backend
+const GPU_COST_PER_SECOND = {
+    'T4': 0.00018,
+    'L4': 0.00032,
+    'A10G': 0.000337,
+    'L40S': 0.000596,
+    'A100': 0.00114,
+    'A100-80GB': 0.001708,
+    'H100': 0.002338,
+    'H200': 0.001891,
+    'B200': 0.002604,
+    'CPU': 0.000042
+};
+
+// Fallback exchange rates (used only if CostHUD rates are unavailable)
+const USD_TO_POINTS_CONVERSION_RATE = 0.000337; // 1 USD = 0.000337 points (1 point = ~$2,967 USD)
+const FALLBACK_RATES = {
+    POINTS_per_USD: 1 / USD_TO_POINTS_CONVERSION_RATE, // ~2,967 points per USD
+    MS2_per_USD: 2,
+    CULT_per_USD: 50
+};
+
+/**
+ * Get current exchange rates from CostHUD or fallback to defaults
+ * @returns {Object} Exchange rates object
+ */
+function getCurrentExchangeRates() {
+    // Try to get rates from CostHUD first (real-time rates)
+    if (typeof window !== 'undefined' && window.costHUD && window.costHUD.exchangeRates) {
+        console.log('[Cost] Using real-time exchange rates from CostHUD:', window.costHUD.exchangeRates);
+        return window.costHUD.exchangeRates;
+    }
+    
+    // Fallback to hardcoded rates if CostHUD not available
+    console.warn('[Cost] CostHUD rates not available, using fallback rates');
+    return FALLBACK_RATES;
+}
+
+/**
+ * Calculate and track cost for a completed execution
+ * @param {HTMLElement} toolWindowEl - Tool window element
+ * @param {Object} payload - WebSocket payload with execution details
+ */
+function calculateAndTrackCost(toolWindowEl, payload) {
+    const { durationMs, gpuType, costUsd } = payload;
+    const windowId = toolWindowEl.id;
+    
+    if (!windowId) return;
+
+    let usdCost = 0;
+    
+    // Use provided cost from server (this is the accurate cost from the database)
+    if (costUsd !== undefined && costUsd !== null) {
+        usdCost = costUsd;
+        console.log(`[Cost] Using server-provided cost: $${usdCost} for ${windowId}`);
+    } else if (durationMs && gpuType) {
+        // Fallback: calculate from duration and GPU type (for legacy compatibility)
+        const gpuCostPerSecond = GPU_COST_PER_SECOND[gpuType] || GPU_COST_PER_SECOND['CPU'];
+        usdCost = gpuCostPerSecond * (durationMs / 1000);
+        console.log(`[Cost] Calculated cost from duration/GPU: $${usdCost} for ${windowId}`);
+    } else {
+        console.warn('[Cost] Missing cost data for execution', { durationMs, gpuType, costUsd });
+        return;
+    }
+
+    // Get current exchange rates (real-time from CostHUD or fallback)
+    const exchangeRates = getCurrentExchangeRates();
+    
+    // Convert to all currencies using current exchange rates
+    const costData = {
+        usd: usdCost,
+        points: usdCost * exchangeRates.POINTS_per_USD,
+        ms2: usdCost * exchangeRates.MS2_per_USD,
+        cult: usdCost * exchangeRates.CULT_per_USD
+    };
+
+    // Add cost to window
+    addWindowCost(windowId, costData);
+    
+    console.log(`[Cost] Tracked cost for ${windowId}:`, costData);
+}
 // --- NEW: Generation Completion Manager ---
 const generationCompletionManager = {
     promises: new Map(),
@@ -150,6 +232,9 @@ export function handleGenerationUpdate(payload) {
         resultContainer.style.display = 'block';
 
         if (status === 'completed' || status === 'success') {
+            // Cost tracking is handled on the client side via WebSocket events
+            // The server just needs to include cost data in the payload
+
             let outputData;
 
             // --- 1. Spell multi-step payload ---
@@ -210,6 +295,10 @@ export function handleGenerationUpdate(payload) {
             }
             
             setToolWindowOutput(toolWindowEl.id, outputData);
+            
+            // Calculate and track cost on client side
+            calculateAndTrackCost(toolWindowEl, payload);
+            
             // mark step done
             let li=toolWindowEl.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`);
             if(!li){ li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId)); }
