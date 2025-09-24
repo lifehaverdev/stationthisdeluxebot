@@ -14,11 +14,18 @@ module.exports = function createModelsApiRouter(deps = {}) {
 
   const router = express.Router();
 
+  // Helper to merge userId into params when available
+  const withUserId = (req)=>{
+    const params={...req.query};
+    if(!params.userId && req.user?.userId) params.userId = req.user.userId;
+    return params;
+  };
+
   // GET /models => fetch from internal API
   router.get('/', async (req, res) => {
     try {
       const response = await internalApiClient.get('/internal/v1/data/models', {
-        params: req.query,
+        params: withUserId(req),
       });
       res.json(response.data);
     } catch (err) {
@@ -46,7 +53,7 @@ module.exports = function createModelsApiRouter(deps = {}) {
   router.get('/lora', async (req, res) => {
     try {
       const response = await internalApiClient.get('/internal/v1/data/loras/list', {
-        params: req.query,
+        params: withUserId(req),
       });
       res.json(response.data);
     } catch (err) {

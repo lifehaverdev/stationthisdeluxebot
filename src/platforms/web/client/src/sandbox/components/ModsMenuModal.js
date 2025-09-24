@@ -161,9 +161,10 @@ export default class ModsMenuModal {
     const raw=(model.path||model.save_path||'').toLowerCase();
     if(!raw) return true; // assume accessible if no path info
     const norm=raw.replace(/\\/g,'/');
-    if(!norm.includes('checkpoints/users/')) return true; // public model
+    const privRoot = norm.includes('checkpoints/users/') || norm.includes('loras/users/');
+    if(!privRoot) return true; // public model
     if(!uid) return false; // viewer not logged in – not owner
-    return !norm.includes(`checkpoints/users/${uid}/`); // accessible only if path contains their uid
+    return norm.includes(`/users/${uid}/`);
   }
 
   /** Lazily read & parse expanded-tag state from localStorage */
@@ -186,8 +187,9 @@ export default class ModsMenuModal {
     try {
       const limitParam = 'limit=100';
       let url;
-      if (category === 'lora' && subCategory) {
-        url = `/api/v1/models/lora?category=${encodeURIComponent(subCategory)}&${limitParam}`;
+      if (category === 'lora') {
+        const catParam = subCategory ? `category=${encodeURIComponent(subCategory)}&` : '';
+        url = `/api/v1/models/lora?${catParam}${limitParam}`;
       } else if (category) {
         url = `/api/v1/models?category=${encodeURIComponent(category)}&${limitParam}`;
       } else {
@@ -303,17 +305,37 @@ export default class ModsMenuModal {
           const showImport = ['lora','checkpoint'].includes(currentCategory);
           const importButton = showImport ? '<button class="import-btn">＋ Import</button>' : '';
           const uid = window.currentUserId || null;
-          const isPrivate = (m)=>{ const raw=(m.path||m.save_path||'').toLowerCase(); if(!raw) return false; const normalized=raw.replace(/\\/g,'/'); const inPriv=normalized.includes('checkpoints/users/'); if(!inPriv) return false; if(!uid) return true; return !normalized.includes(`checkpoints/users/${uid.toLowerCase()}/`); };
-          const visibleModels = models.filter(m=>{ const p=(m.path||m.save_path||'').toLowerCase(); if(!p.includes('checkpoints/users/')) return true; if(!uid) return true; return p.includes(`checkpoints/users/${uid.toLowerCase()}/`); });
-          const sortModels=[...visibleModels].sort((a,b)=>{ const privA=isPrivate(a); const privB=isPrivate(b); if(privA!==privB) return privA?-1:1; const idA=this.getModelIdentifier(a); const idB=this.getModelIdentifier(b); const favA=favoriteIds.has(idA); const favB=favoriteIds.has(idB); if(favA===favB) return 0; return favA?-1:1; });
-          listHtml='<ul class="mods-list">'+sortModels.map((m,idx)=>{
+          const isPrivate=(m)=>{
+            const p=(m.path||m.save_path||'').toLowerCase();
+            return p.includes('/users/');
+          };
+          const ownedPrivate=(m)=> uid && isPrivate(m) && (p=>(p.includes(`/users/${uid}/`)))( (m.path||m.save_path||'').toLowerCase());
+          const weight=(m)=>{
+            if(ownedPrivate(m)) return -3;
+            const id=this.getModelIdentifier(m);
+            if(favoriteIds.has(id)) return -2;
+            return 0;
+          };
+          const visibleModels = models.filter(m=> this.isModelAccessible(m));
+          const sortModels=[...visibleModels].sort((a,b)=>{
+            const wA=weight(a), wB=weight(b);
+            if(wA!==wB) return wA-wB;
+            // fallback alphabetical
+            const nameA=(a.name||a.slug||'').toLowerCase();
+            const nameB=(b.name||b.slug||'').toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          const extraBar = extraTags.length ? `<div class="extra-tag-bar">`+extraTags.map(t=>`<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('')+`</div>`:'';
+          // store for click handling
+          this._displayModels = sortModels;
+          listHtml = header + importButton + extraBar + '<ul class="mods-list">' + sortModels.map((m,idx)=>{
             const id=this.getModelIdentifier(m);
             const isFav=favoriteIds.has(id);
             const heart=isFav?'❤️':'♡';
             const displayPath=m.path||m.name||m.save_path||'unknown';
             const display=displayPath.split('/').pop();
             const size=m.size?`${(m.size/(1024**2)).toFixed(1)} MB`:'';
-            const priv=isPrivate(m);
+            const priv=!this.isModelAccessible(m);
             const lockSpan=priv?'<span class="priv-icon">🔒</span>':'';
             const tagsArr=(m.tags||[]).map(t=>typeof t==='string'?t:t.tag);
             const expanded=this.getExpandedTagSet().has(id);
@@ -321,8 +343,6 @@ export default class ModsMenuModal {
             const tagsHtml=visibleTags.map(t=>`<span class="tag">${t}</span>`).join(' ');
             const toggleBtn=tagsArr.length>5?`<button class="tag-toggle" data-id="${id}" data-idx="${idx}">${expanded?'Hide tags':'… Show tags'}</button>`:'';
             return `<li class="mods-item${priv?' private':''}" data-idx="${idx}"><span class="mods-title">${display}</span> <span class="mods-size">${size}</span> ${lockSpan} <button class="fav-btn" data-idx="${idx}">${heart}</button><div class="mods-tags">${tagsHtml} ${toggleBtn}</div></li>`; }).join('')+'</ul>';
-          const extraBar = extraTags.length ? `<div class="extra-tag-bar">`+extraTags.map(t=>`<button class="extra-tag-btn" data-tag="${t}">${t}</button>`).join('')+`</div>`:'';
-          listHtml = header + importButton + extraBar + listHtml;
         }
       }
       browseContent = `
@@ -445,7 +465,8 @@ export default class ModsMenuModal {
         li.onclick = (e) => {
           if (e.target.closest('.fav-btn,.tag-toggle')) return; // ignore clicks on heart or tag toggle
           const idx = parseInt(li.getAttribute('data-idx'), 10);
-          const model = this.state.models[idx];
+          const list = this._displayModels || this.state.models;
+          const model = list[idx];
           if (model) this.openModelDetail(model);
         };
       });
@@ -655,7 +676,8 @@ export default class ModsMenuModal {
   openModelDetail(model) {
     if (this.detailOverlayEl) return; // already open
     this.state.detailModel = model; // keep reference for other helpers
-    const imgs = (model.previewImages && model.previewImages.length) ? model.previewImages : (model.images||[]);
+    let imgs = (model.previewImages && model.previewImages.length) ? model.previewImages.slice() : ((model.images&&model.images.length)?model.images.slice():[]);
+    if (!imgs.length && model.previewImageUrl) imgs=[model.previewImageUrl];
     let currentIdx = 0;
 
     const overlay = document.createElement('div');
@@ -673,7 +695,9 @@ export default class ModsMenuModal {
           <div class="detail-meta"></div>
         </div>
         <div class="detail-footer">
-          <button class="add-btn">Add to Workspace</button>
+          <div class="rating-stars" aria-label="Rate model">
+            ${[1,2,3].map(n=>`<span class="star" data-val="${n}">☆</span>`).join('')}
+          </div>
           <button class="fav-toggle-btn">${this.state.favoriteIds.has(this.getModelIdentifier(model)) ? '❤️ Unfavourite' : '♡ Favourite'}</button>
           <button class="copy-trigger-btn">Copy Trigger Words</button>
         </div>
@@ -745,8 +769,21 @@ export default class ModsMenuModal {
     });
     overlay.querySelector('.img-nav.prev')?.addEventListener('click', ()=>{ currentIdx=(currentIdx-1+imgs.length)%imgs.length; updateImage(); });
     overlay.querySelector('.img-nav.next')?.addEventListener('click', ()=>{ currentIdx=(currentIdx+1)%imgs.length; updateImage(); });
+    // Click main image to advance
+    overlay.querySelector('.carousel-img').addEventListener('click', ()=>{ if(imgs.length>1){ currentIdx=(currentIdx+1)%imgs.length; updateImage(); } });
 
-    overlay.querySelector('.add-btn').onclick = ()=>{ this.onSelect(model); close(); };
+    // Rating stars click
+    overlay.querySelectorAll('.rating-stars .star').forEach(star=>{
+      star.onclick = async ()=>{
+        const val=parseInt(star.getAttribute('data-val'),10);
+        renderStars(val);
+        await this.rateModel(model,val);
+      };
+    });
+    const renderStars=(n)=>{
+      overlay.querySelectorAll('.rating-stars .star').forEach(st=>{ const v=parseInt(st.getAttribute('data-val'),10); st.textContent=v<=n?'★':'☆'; });
+    };
+
     overlay.querySelector('.fav-toggle-btn').onclick = ()=>{ this.toggleFavorite(model, this.state.currentCategory||'checkpoint'); overlay.querySelector('.fav-toggle-btn').textContent = this.state.favoriteIds.has(this.getModelIdentifier(model))? '♡ Favourite':'❤️ Unfavourite'; };
     overlay.querySelector('.copy-trigger-btn').onclick = ()=>{
       if (model.triggerWords && model.triggerWords.length) navigator.clipboard.writeText(model.triggerWords.join(' '));
@@ -758,6 +795,51 @@ export default class ModsMenuModal {
       else if(e.key==='ArrowLeft' && imgs.length>1){ currentIdx=(currentIdx-1+imgs.length)%imgs.length; updateImage(); }
     };
     document.addEventListener('keydown', this._detailKeyHandler);
+
+    // -------- after render: if no images loaded, fetch detail --------
+    if (!imgs.length) {
+      this.fetchModelDetail(model).then(detail=>{
+        if(!detail) return;
+        const newImgs=(detail.previewImages&&detail.previewImages.length)?detail.previewImages:[];
+        if(newImgs.length){
+          imgs.push(...newImgs);
+          // rebuild thumb strip
+          const strip=overlay.querySelector('.thumb-strip');
+          strip.innerHTML=newImgs.map((u,i)=>`<img src="${u}" data-idx="${i}" class="thumb${i===0?' active':''}" loading="lazy" />`).join('');
+          strip.querySelectorAll('.thumb').forEach(thumb=>{ thumb.onclick=()=>{ currentIdx=parseInt(thumb.getAttribute('data-idx'),10); updateImage(); }; });
+          overlay.querySelector('.carousel-img').src=newImgs[0];
+          overlay.querySelector('.img-nav.prev').style.display=newImgs.length>1?'':'none';
+          overlay.querySelector('.img-nav.next').style.display=newImgs.length>1?'':'none';
+        }
+      });
+    }
+  }
+
+  /** Fetch full model detail to obtain preview images */
+  async fetchModelDetail(model){
+    try{
+      const id=this.getModelIdentifier(model);
+      const category=this.state.currentCategory||'checkpoint';
+      const pathCat=category==='lora'?'lora':'checkpoint';
+      const url=`/api/v1/models/${pathCat}/${encodeURIComponent(id)}?userId=${window.currentUserId||''}`;
+      const res= await fetch(url,{credentials:'include'});
+      if(!res.ok) return null;
+      const data= await res.json();
+      return data.lora||data.model||data;
+    }catch(err){ console.warn('[ModsMenuModal] fetchModelDetail error', err); return null; }
+  }
+
+  /** Rate a model 1-3 stars via API */
+  async rateModel(model, stars){
+    try{
+      const id = this.getModelIdentifier(model);
+      const category = this.state.currentCategory||'checkpoint';
+      const pathCat = category==='lora'?'lora':'checkpoint';
+      const url = `/api/v1/models/${pathCat}/${encodeURIComponent(id)}/rate`;
+      const csrfRes = await fetch('/api/v1/csrf-token');
+      const { csrfToken } = await csrfRes.json();
+      await fetch(url,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify({stars})});
+    }catch(err){ console.warn('[ModsMenuModal] rateModel error', err); }
   }
 
   /** Close the model detail overlay */

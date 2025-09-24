@@ -157,6 +157,10 @@
 .meta-label { color:#aaa; margin-right:4px; }
 .badge { background:#444; padding:2px 6px; border-radius:4px; margin-right:4px; }
 
+.rating-stars { margin-right:auto; font-size:22px; cursor:pointer; }
+.rating-stars .star { margin-right:4px; color:#f5d742; }
+.rating-stars .star:hover { transform:scale(1.2); }
+
 .detail-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
 .detail-footer button { background:#4a90e2; border:none; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
 .detail-footer .fav-toggle-btn { background:#555; }

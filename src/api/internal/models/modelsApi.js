@@ -54,6 +54,22 @@ module.exports = function createModelsApiRouter(deps = {}) {
         });
       }
 
+      // ----- VISIBILITY FILTER: private checkpoints -----
+      const viewerId = (req.query.userId || (req.user && req.user.userId) || '').toString().toLowerCase();
+      if (viewerId) {
+        models = models.filter(m => {
+          const p = (m.path || m.save_path || '').toString().toLowerCase();
+          if (!p.includes('checkpoints/users/')) return true; // public
+          return p.includes(`checkpoints/users/${viewerId}/`); // only own privates
+        });
+      } else {
+        // No viewer id – strip private checkpoints entirely
+        models = models.filter(m => {
+          const p = (m.path || m.save_path || '').toString().toLowerCase();
+          return !p.includes('checkpoints/users/');
+        });
+      }
+
       if (category) {
         const cat = category.toLowerCase();
         const pathMap = {
@@ -67,7 +83,8 @@ module.exports = function createModelsApiRouter(deps = {}) {
         if (pathMap[cat]) {
           models = models.filter(m => {
             const p = (m.path || m.save_path || '').toString().toLowerCase();
-            return p.includes(pathMap[cat]) && /\.safetensors$/i.test(p);
+            if(!p.includes(pathMap[cat])) return false;
+            return /\.(safetensors|ckpt)$/i.test(p);
           });
           // dedupe
           const seen = new Set();
