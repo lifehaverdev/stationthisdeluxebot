@@ -18,6 +18,7 @@ const dbService = require('./db');
 const { initializeAPI } = require('../../api');
 const loraResolutionService = require('./loraResolutionService');
 const internalApiClient = require('../../utils/internalApiClient'); // Import the singleton client
+const { longRunningApiClient } = require('../../utils/internalApiClient'); // Import the long-running client
 
 // Import new StorageService
 const StorageService = require('./storageService');
@@ -270,6 +271,7 @@ async function initializeServices(options = {}) {
       internal: apiServices.internal, // This contains router, status
       external: apiServices.external, // This contains the external router
       internalApiClient, // <-- expose the singleton client at top-level
+      longRunningApiClient, // <-- expose the long-running client for salt mining
       userSettingsService, // Added userSettingsService
       spellsService, // Added spellsService
       workflowExecutionService, // Added workflowExecutionService

@@ -257,7 +257,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 runId: run_id,
                 status: updatePayload.status,
                 outputs: updatePayload.responsePayload,
-                costUsd: updatePayload.costUsd,
+                costUsd: _convertCostUsdForWebSocket(updatePayload.costUsd),
                 finalEventTimestamp: finalEventTimestamp,
                 toolId: generationRecord.toolId || generationRecord.metadata?.toolId || null,
                 spellId: generationRecord.metadata?.spell?._id || generationRecord.metadata?.spellId || null,
@@ -637,6 +637,46 @@ async function issueSpend(masterAccountId, payload, { internalApiClient, logger 
     spendError.statusCode = errorStatus;
     throw spendError;
   }
+}
+
+/**
+ * Convert costUsd from various formats to a number for WebSocket consumption
+ * @param {any} costUsd - Cost value from database (Decimal128, number, string, or null)
+ * @returns {number|null} - Converted number or null
+ */
+function _convertCostUsdForWebSocket(costUsd) {
+  if (costUsd === null || costUsd === undefined) {
+    return null;
+  }
+
+  // Handle Decimal128 objects
+  if (costUsd && typeof costUsd === 'object' && costUsd.toString) {
+    try {
+      return parseFloat(costUsd.toString());
+    } catch (e) {
+      console.warn('[Webhook Processor] Failed to convert Decimal128 costUsd:', e.message);
+      return null;
+    }
+  }
+
+  // Handle MongoDB $numberDecimal format
+  if (costUsd && typeof costUsd === 'object' && costUsd.$numberDecimal) {
+    try {
+      return parseFloat(costUsd.$numberDecimal);
+    } catch (e) {
+      console.warn('[Webhook Processor] Failed to convert $numberDecimal costUsd:', e.message);
+      return null;
+    }
+  }
+
+  // Handle string or number
+  if (typeof costUsd === 'string' || typeof costUsd === 'number') {
+    const num = parseFloat(costUsd);
+    return isNaN(num) ? null : num;
+  }
+
+  console.warn('[Webhook Processor] Unknown costUsd format:', typeof costUsd, costUsd);
+  return null;
 }
 
 module.exports = {

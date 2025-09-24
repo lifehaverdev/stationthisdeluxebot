@@ -14,6 +14,16 @@ const internalApiClient = axios.create({
   }
 });
 
+// Create a separate client for long-running operations like salt mining
+const longRunningApiClient = axios.create({
+  baseURL: process.env.INTERNAL_API_BASE_URL || 'http://localhost:4000',
+  timeout: 120000, // 2 minute timeout for salt mining operations
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_GENERAL || process.env.INTERNAL_API_KEY_TELEGRAM 
+  }
+});
+
 // Optional: Add interceptors for logging or centralized error handling
 internalApiClient.interceptors.request.use(request => {
   logger.debug('Starting Internal API Request:', { method: request.method.toUpperCase(), url: request.url, data: request.data });
@@ -32,6 +42,26 @@ internalApiClient.interceptors.response.use(response => {
     responseData: error.response ? error.response.data : null
   });
   // It's important to re-throw the error so the calling function knows it failed
+  return Promise.reject(error);
+});
+
+// Add the same interceptors to the long-running client
+longRunningApiClient.interceptors.request.use(request => {
+  logger.debug('Starting Long-Running Internal API Request:', { method: request.method.toUpperCase(), url: request.url, data: request.data });
+  return request;
+});
+
+longRunningApiClient.interceptors.response.use(response => {
+  logger.debug('Long-Running Internal API Response Status:', { status: response.status, data: response.data });
+  return response;
+}, error => {
+  logger.error('[LongRunningApiClient] API Call Error:', { 
+    message: error.message,
+    status: error.response ? error.response.status : null,
+    method: error.config ? error.config.method.toUpperCase() : null,
+    url: error.config ? error.config.url : null,
+    responseData: error.response ? error.response.data : null
+  });
   return Promise.reject(error);
 });
 
@@ -58,4 +88,5 @@ internalApiClient.rateGeneration = async function(generationId, ratingType, mast
   }
 };
 
-module.exports = internalApiClient; 
+module.exports = internalApiClient;
+module.exports.longRunningApiClient = longRunningApiClient; 

@@ -39,25 +39,35 @@ function computeProxyAddress(salt) {
 // Mine for a salt that generates an address with the target prefix
 async function mineSalt() {
     let attempts = 0;
-    const maxAttempts = 1000000; // A reasonable limit to prevent infinite loops
+    const maxAttempts = 10000000; // Increased for better coverage
     const batchSize = 10000; // Larger batches for better performance
     let batchAttempts = 0;
+    
+    // Use a more efficient approach: start with a base salt and increment
+    // This ensures we don't repeat the same salts across different attempts
+    const baseSalt = ethers.randomBytes(32);
+    const baseSaltBigInt = BigInt('0x' + ethers.hexlify(baseSalt).slice(2));
+    
+    // Add some randomness based on worker data to ensure different workers start from different points
+    const workerOffset = BigInt('0x' + ownerAddress.slice(2, 10)) * BigInt(1000000);
+    let currentSaltBigInt = baseSaltBigInt + workerOffset;
 
     while (attempts < maxAttempts) {
-        // Generate a random 32-byte salt
-        const salt = ethers.randomBytes(32);
-        const saltHex = ethers.hexlify(salt);
+        // Generate salt by incrementing from base + offset
+        const salt = ethers.hexlify(ethers.toBeHex(currentSaltBigInt, 32));
+        currentSaltBigInt++;
 
         // Compute the address that would be created (local prediction)
-        const predictedAddress = computeProxyAddress(saltHex);
+        const predictedAddress = computeProxyAddress(salt);
 
         // Quick vanity check first (cheap)
         if (!hasVanityPrefix(predictedAddress)) {
             attempts++; 
             batchAttempts++;
             
-            // Minimal progress logging for production
+            // Progress logging for production
             if (batchAttempts >= batchSize) {
+                console.log(`[SaltMiningWorker] Processed ${attempts} attempts, current salt: ${salt.slice(0, 10)}...`);
                 batchAttempts = 0;
             }
             continue;
@@ -67,21 +77,23 @@ async function mineSalt() {
         if (foundation && provider) {
             try {
                 // Double-check prediction matches on-chain calculation
-                const onChainPredicted = await foundation.computeCharterAddress.staticCall(ownerAddress, saltHex);
+                const onChainPredicted = await foundation.computeCharterAddress.staticCall(ownerAddress, salt);
                 if (onChainPredicted.toLowerCase() !== predictedAddress.toLowerCase()) {
                     attempts++; continue; // mismatch, keep mining
                 }
                 
                 // Ensure deployment would succeed (including Foundation.Vanity error and any other guards)
-                await foundation.charterFund.staticCall(ownerAddress, saltHex);
-                return { salt: saltHex, predictedAddress };
+                await foundation.charterFund.staticCall(ownerAddress, salt);
+                console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts: ${salt}`);
+                return { salt: salt, predictedAddress };
             } catch (e) {
                 // If RPC fails, fallback to local check only
-                return { salt: saltHex, predictedAddress };
+                return { salt: salt, predictedAddress };
             }
         } else {
             // No provider available, use local prediction only
-            return { salt: saltHex, predictedAddress };
+            console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts (local-only): ${salt}`);
+            return { salt: salt, predictedAddress };
         }
 
         attempts++;

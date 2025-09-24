@@ -7,7 +7,7 @@ const logger = createLogger('ReferralVaultApi');
 const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function createReferralVaultApi(dependencies) {
-  const { internalApiClient, priceFeedService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
+  const { internalApiClient, longRunningApiClient, priceFeedService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
 
   // Multichain service resolver
   const getChainServices = (cid = '1') => ({
@@ -82,7 +82,8 @@ function createReferralVaultApi(dependencies) {
     
     try {
         // This internal endpoint will orchestrate the creation.
-        const response = await internalApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
+        // Use long-running client for salt mining operations which can take time
+        const response = await longRunningApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
             masterAccountId: userId,
             vaultName: name
         });

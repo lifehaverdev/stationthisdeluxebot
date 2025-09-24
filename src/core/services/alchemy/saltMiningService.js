@@ -4,7 +4,7 @@ const path = require('path');
 
 // Cache for pre-mined salts
 const SALT_CACHE_SIZE = 10;
-const MINING_TIMEOUT_MS = 30000; // 30 seconds
+const MINING_TIMEOUT_MS = 120000; // 2 minutes - increased for systematic mining
 
 /**
  * @class SaltMiningService

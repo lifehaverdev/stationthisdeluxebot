@@ -24,6 +24,46 @@ class WebSandboxNotifier {
   }
 
   /**
+   * Convert costUsd from various formats to a number for frontend consumption
+   * @param {any} costUsd - Cost value from database (Decimal128, number, string, or null)
+   * @returns {number|null} - Converted number or null
+   */
+  _convertCostUsd(costUsd) {
+    if (costUsd === null || costUsd === undefined) {
+      return null;
+    }
+
+    // Handle Decimal128 objects
+    if (costUsd && typeof costUsd === 'object' && costUsd.toString) {
+      try {
+        return parseFloat(costUsd.toString());
+      } catch (e) {
+        this.logger.warn('[WebSandboxNotifier] Failed to convert Decimal128 costUsd:', e.message);
+        return null;
+      }
+    }
+
+    // Handle MongoDB $numberDecimal format
+    if (costUsd && typeof costUsd === 'object' && costUsd.$numberDecimal) {
+      try {
+        return parseFloat(costUsd.$numberDecimal);
+      } catch (e) {
+        this.logger.warn('[WebSandboxNotifier] Failed to convert $numberDecimal costUsd:', e.message);
+        return null;
+      }
+    }
+
+    // Handle string or number
+    if (typeof costUsd === 'string' || typeof costUsd === 'number') {
+      const num = parseFloat(costUsd);
+      return isNaN(num) ? null : num;
+    }
+
+    this.logger.warn('[WebSandboxNotifier] Unknown costUsd format:', typeof costUsd, costUsd);
+    return null;
+  }
+
+  /**
    * Dispatch a notification to all active web-sandbox connections for the user.
    * The payload structure mirrors the messages produced by webhookProcessor so
    * that the existing front-end handlers (generationProgress / generationUpdate)
@@ -51,7 +91,7 @@ class WebSandboxNotifier {
         spellId: generationRecord.spellId || generationRecord.metadata?.spellId || generationRecord.metadata?.spell?._id || null,
         castId: generationRecord.castId || generationRecord.metadata?.castId || null,
         cookId: generationRecord.cookId || generationRecord.metadata?.cookId || null,
-        costUsd: generationRecord.costUsd ?? null,
+        costUsd: this._convertCostUsd(generationRecord.costUsd),
         finalEventTimestamp: generationRecord.responseTimestamp || new Date().toISOString(),
       };
 
