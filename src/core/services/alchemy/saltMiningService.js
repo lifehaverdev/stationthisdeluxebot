@@ -33,7 +33,7 @@ class SaltMiningService {
         beaconAddress: config.charterBeacon
     };
 
-    this.workerPath = path.resolve(__dirname, 'saltMiningWorkerWrapper.js');
+    this.workerPath = path.resolve(__dirname, 'saltMiningWorker.cjs');
     this.saltQueue = []; // A queue to hold pre-mined salts
     this.isMining = false;
 
