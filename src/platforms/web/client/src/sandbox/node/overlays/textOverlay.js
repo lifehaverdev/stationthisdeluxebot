@@ -67,7 +67,7 @@ function hideTextOverlay() {
     }
 }
 
-import { debugLog } from '../config/debugConfig.js';
+import { debugLog } from '../../config/debugConfig.js';
 
 export function bindPromptFieldOverlays() {
     debugLog('TEXT_OVERLAY', '[textOverlay.js] bindPromptFieldOverlays called');

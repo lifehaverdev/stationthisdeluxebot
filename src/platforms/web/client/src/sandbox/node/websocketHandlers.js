@@ -115,7 +115,7 @@ export { generationCompletionManager };
  * Handles real-time progress updates from the WebSocket.
  * @param {object} payload - The progress payload from the server.
  */
-import { debugLog } from './config/debugConfig.js';
+import { debugLog } from '../config/debugConfig.js';
 
 function handleGenerationProgress(payload) {
     debugLog('WEBSOCKET_PROGRESS', '[Sandbox] Generation progress received:', payload);

@@ -18,7 +18,7 @@ import {
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
-import { debugLog } from './config/debugConfig.js';
+import { debugLog } from '../config/debugConfig.js';
 import { generationIdToWindowMap, registerWebSocketHandlers, generationCompletionManager } from './websocketHandlers.js';
 import { renderResultContent } from './resultContent.js';
 import { createParameterSection, showError } from './parameterInputs.js';

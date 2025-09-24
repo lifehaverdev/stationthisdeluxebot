@@ -31,7 +31,7 @@ export function injectImageOverlay() {
     });
 }
 
-import { debugLog } from '../config/debugConfig.js';
+import { debugLog } from '../../config/debugConfig.js';
 
 export function showImageOverlay(url) {
     debugLog('IMAGE_OVERLAY_SHOW', '[DEBUG] showImageOverlay called with url:', url);
