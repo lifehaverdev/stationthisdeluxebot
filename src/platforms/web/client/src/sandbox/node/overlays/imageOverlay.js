@@ -31,8 +31,10 @@ export function injectImageOverlay() {
     });
 }
 
+import { debugLog } from '../config/debugConfig.js';
+
 export function showImageOverlay(url) {
-    console.log('[DEBUG] showImageOverlay called with url:', url);
+    debugLog('IMAGE_OVERLAY_SHOW', '[DEBUG] showImageOverlay called with url:', url);
     const overlay = document.getElementById('image-overlay');
     if (!overlay) {
         injectImageOverlay();
@@ -52,20 +54,20 @@ export function showImageOverlay(url) {
         const overlayContent = overlay.querySelector('.image-overlay-content');
         const imgContainer = overlay.querySelector('.image-overlay-img-container');
         const overlayParent = overlay.parentElement;
-        console.log('[DEBUG] overlay parent (.sandbox-main) size:', overlayParent.offsetWidth, overlayParent.offsetHeight);
-        console.log('[DEBUG] overlay size:', overlay.offsetWidth, overlay.offsetHeight);
-        console.log('[DEBUG] overlay-content size:', overlayContent.offsetWidth, overlayContent.offsetHeight);
-        console.log('[DEBUG] img-container size:', imgContainer.offsetWidth, imgContainer.offsetHeight);
-        console.log('[DEBUG] img size:', img.offsetWidth, img.offsetHeight);
-        console.log('[DEBUG] window size:', window.innerWidth, window.innerHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] overlay parent (.sandbox-main) size:', overlayParent.offsetWidth, overlayParent.offsetHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] overlay size:', overlay.offsetWidth, overlay.offsetHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] overlay-content size:', overlayContent.offsetWidth, overlayContent.offsetHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] img-container size:', imgContainer.offsetWidth, imgContainer.offsetHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] img size:', img.offsetWidth, img.offsetHeight);
+        debugLog('IMAGE_OVERLAY_SIZES', '[DEBUG] window size:', window.innerWidth, window.innerHeight);
     };
-    console.log('[DEBUG] overlay.style.display set to flex, overlay:', overlay, 'img:', img);
+    debugLog('IMAGE_OVERLAY_SHOW', '[DEBUG] overlay.style.display set to flex, overlay:', overlay, 'img:', img);
 }
 
 window.showImageOverlay = showImageOverlay;
 
 export function hideImageOverlay() {
-    console.log('[DEBUG] hideImageOverlay called');
+    debugLog('IMAGE_OVERLAY_HIDE', '[DEBUG] hideImageOverlay called');
     const overlay = document.getElementById('image-overlay');
     if (!overlay) return;
     overlay.style.display = 'none';

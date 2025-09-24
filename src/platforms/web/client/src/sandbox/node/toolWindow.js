@@ -18,6 +18,7 @@ import {
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
+import { debugLog } from './config/debugConfig.js';
 import { generationIdToWindowMap, registerWebSocketHandlers, generationCompletionManager } from './websocketHandlers.js';
 import { renderResultContent } from './resultContent.js';
 import { createParameterSection, showError } from './parameterInputs.js';
@@ -61,7 +62,7 @@ export function createToolWindow(tool, position, id = null, output = null, param
     }
 
     // New implementation delegates to class-based ToolWindow while preserving API
-    console.log('[node.js] [ADAPTER] createToolWindow → ToolWindow class', tool?.toolId);
+    debugLog('TOOL_WINDOW_ADAPTER', '[node.js] [ADAPTER] createToolWindow → ToolWindow class', tool?.toolId);
     // If we are rehydrating on refresh, grab any stored version history
     const existingWin = getToolWindow(id);
     const win = new ToolWindow({
@@ -199,7 +200,7 @@ async function executeSingleNode(toolWindowEl) {
         // For now, we'll simulate it. This is a simplification.
         
         // --- Paste Original Execution Logic Here ---
-        console.log('[node.js] Execute button clicked for tool:', tool && tool.toolId);
+        debugLog('TOOL_EXECUTION', '[node.js] Execute button clicked for tool:', tool && tool.toolId);
         const win = getToolWindow(windowId);
         const allToolWindows = getToolWindows();
         const parameterMappings = win.parameterMappings || {};
@@ -277,7 +278,7 @@ async function executeSingleNode(toolWindowEl) {
         
         try {
             const execResult = await executionClient.execute(payload);
-            console.log('[DEBUG] Normalised execution result:', JSON.stringify(execResult, null, 2));
+            debugLog('EXECUTION_RESULT', '[DEBUG] Normalised execution result:', JSON.stringify(execResult, null, 2));
 
             showError(toolWindowEl, '');
 

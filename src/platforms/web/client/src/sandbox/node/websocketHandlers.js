@@ -36,12 +36,12 @@ const FALLBACK_RATES = {
 function getCurrentExchangeRates() {
     // Try to get rates from CostHUD first (real-time rates)
     if (typeof window !== 'undefined' && window.costHUD && window.costHUD.exchangeRates) {
-        console.log('[Cost] Using real-time exchange rates from CostHUD:', window.costHUD.exchangeRates);
+        debugLog('COST_EXCHANGE_RATES', '[Cost] Using real-time exchange rates from CostHUD:', window.costHUD.exchangeRates);
         return window.costHUD.exchangeRates;
     }
     
     // Fallback to hardcoded rates if CostHUD not available
-    console.warn('[Cost] CostHUD rates not available, using fallback rates');
+    debugLog('COST_TRACKING', '[Cost] CostHUD rates not available, using fallback rates');
     return FALLBACK_RATES;
 }
 
@@ -61,14 +61,14 @@ function calculateAndTrackCost(toolWindowEl, payload) {
     // Use provided cost from server (this is the accurate cost from the database)
     if (costUsd !== undefined && costUsd !== null) {
         usdCost = costUsd;
-        console.log(`[Cost] Using server-provided cost: $${usdCost} for ${windowId}`);
+        debugLog('COST_TRACKING', `[Cost] Using server-provided cost: $${usdCost} for ${windowId}`);
     } else if (durationMs && gpuType) {
         // Fallback: calculate from duration and GPU type (for legacy compatibility)
         const gpuCostPerSecond = GPU_COST_PER_SECOND[gpuType] || GPU_COST_PER_SECOND['CPU'];
         usdCost = gpuCostPerSecond * (durationMs / 1000);
-        console.log(`[Cost] Calculated cost from duration/GPU: $${usdCost} for ${windowId}`);
+        debugLog('COST_TRACKING', `[Cost] Calculated cost from duration/GPU: $${usdCost} for ${windowId}`);
     } else {
-        console.warn('[Cost] Missing cost data for execution', { durationMs, gpuType, costUsd });
+        debugLog('COST_TRACKING', '[Cost] Missing cost data for execution', { durationMs, gpuType, costUsd });
         return;
     }
 
@@ -86,7 +86,7 @@ function calculateAndTrackCost(toolWindowEl, payload) {
     // Add cost to window
     addWindowCost(windowId, costData);
     
-    console.log(`[Cost] Tracked cost for ${windowId}:`, costData);
+    debugLog('COST_TRACKING', `[Cost] Tracked cost for ${windowId}:`, costData);
 }
 // --- NEW: Generation Completion Manager ---
 const generationCompletionManager = {
@@ -115,9 +115,11 @@ export { generationCompletionManager };
  * Handles real-time progress updates from the WebSocket.
  * @param {object} payload - The progress payload from the server.
  */
+import { debugLog } from './config/debugConfig.js';
+
 function handleGenerationProgress(payload) {
-    console.log('[Sandbox] Generation progress received:', payload);
-    console.log('[DEBUG progress] map keys', Object.keys(castIdToWindowMap));
+    debugLog('WEBSOCKET_PROGRESS', '[Sandbox] Generation progress received:', payload);
+    debugLog('WEBSOCKET_DEBUG_PROGRESS', '[DEBUG progress] map keys', Object.keys(castIdToWindowMap));
     const { generationId, progress, status, liveStatus, toolId, spellId, castId = null, cookId = null } = payload;
 
     // Ignore cook-driven tool runs (cookId present but no castId) – they belong to backend only
@@ -204,7 +206,7 @@ export function handleGenerationUpdate(payload) {
     }
 
     // Debug
-    console.log('[WS] generationUpdate received', { generationId, toolId });
+    debugLog('WEBSOCKET_UPDATE', '[WS] generationUpdate received', { generationId, toolId });
 
     if (toolWindowEl) {
         // also add to window for debugging
@@ -314,7 +316,7 @@ export function handleGenerationUpdate(payload) {
                 const done=toolWindowEl.querySelectorAll('.spell-step-status li.done').length;
                 bar.value=Math.round((done/total)*100);
             }
-            console.log('[WS] Rendering output', outputData);
+            debugLog('WEBSOCKET_RENDER', '[WS] Rendering output', outputData);
             renderResultContent(resultContainer, outputData);
             
         } else {

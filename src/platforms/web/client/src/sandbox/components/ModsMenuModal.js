@@ -440,6 +440,15 @@ export default class ModsMenuModal {
           this.render();
         };
       });
+      // ---------------- Row click opens detail overlay ----------------
+      this.modalElement.querySelectorAll('.mods-item').forEach(li => {
+        li.onclick = (e) => {
+          if (e.target.closest('.fav-btn,.tag-toggle')) return; // ignore clicks on heart or tag toggle
+          const idx = parseInt(li.getAttribute('data-idx'), 10);
+          const model = this.state.models[idx];
+          if (model) this.openModelDetail(model);
+        };
+      });
     }
 
     // Tab button events
@@ -636,5 +645,127 @@ export default class ModsMenuModal {
         doImport();
       }
     });
+  }
+
+  /* ====================== MODEL DETAIL OVERLAY ====================== */
+  /**
+   * Opens a rich detail view overlay for the given model.
+   * @param {Object} model
+   */
+  openModelDetail(model) {
+    if (this.detailOverlayEl) return; // already open
+    this.state.detailModel = model; // keep reference for other helpers
+    const imgs = (model.previewImages && model.previewImages.length) ? model.previewImages : (model.images||[]);
+    let currentIdx = 0;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'model-detail-overlay';
+    overlay.innerHTML = `
+      <div class="model-detail-container" role="dialog" aria-modal="true">
+        <div class="detail-header"><h3>${model.name || model.title || 'Model'}</h3><button class="detail-close-btn" aria-label="Close">×</button></div>
+        <div class="detail-body">
+          <div class="carousel">
+            <button class="img-nav prev" ${imgs.length>1?'':'style="display:none"'}>‹</button>
+            <img class="carousel-img" src="${imgs[0]||'/assets/placeholder.png'}" loading="lazy" />
+            <button class="img-nav next" ${imgs.length>1?'':'style="display:none"'}>›</button>
+            <div class="thumb-strip">${imgs.map((u,i)=>`<img src="${u}" data-idx="${i}" class="thumb${i===0?' active':''}" loading="lazy" />`).join('')}</div>
+          </div>
+          <div class="detail-meta"></div>
+        </div>
+        <div class="detail-footer">
+          <button class="add-btn">Add to Workspace</button>
+          <button class="fav-toggle-btn">${this.state.favoriteIds.has(this.getModelIdentifier(model)) ? '❤️ Unfavourite' : '♡ Favourite'}</button>
+          <button class="copy-trigger-btn">Copy Trigger Words</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    this.detailOverlayEl = overlay;
+
+    // Populate meta fields
+    const metaEl = overlay.querySelector('.detail-meta');
+    const addField = (label,val) => {
+      if (val==null || val==='') return;
+      metaEl.insertAdjacentHTML('beforeend', `<div class="meta-field"><span class="meta-label">${label}:</span> <span class="meta-val">${val}</span></div>`);
+    };
+    addField('Checkpoint', model.checkpoint);
+    addField('Type', model.modelType || model.style);
+    addField('Strength', model.strength);
+    addField('Version', model.version);
+    if (model.defaultWeight!=null) {
+      const w = Number(model.defaultWeight).toFixed(2);
+      metaEl.insertAdjacentHTML('beforeend', `<div class="meta-field"><span class="meta-label">Default Weight:</span> <input type="range" min="0" max="2" step="0.05" value="${w}" disabled /></div>`);
+    }
+
+    if (model.triggerWords && model.triggerWords.length) {
+      const words=model.triggerWords.map(t=>`<code class="badge">${t}</code>`).join(' ');
+      addField('Trigger Words', words);
+    }
+
+    // Tags (respect privacy)
+    if (this.isModelAccessible(model) && model.tags && model.tags.length) {
+      const tags=model.tags.map(t=>typeof t==='string'?t:t.tag).map(t=>`<span class="badge">${t}</span>`).join(' ');
+      addField('Tags', tags);
+    }
+
+    // Description
+    if (model.description) addField('Description', model.description.replace(/\n/g,'<br>'));
+
+    // Imported from
+    if (model.importedFrom && model.importedFrom.source && this.isModelAccessible(model)) {
+      const src = model.importedFrom.source;
+      const link = `<a href="${src}" target="_blank" rel="noopener">${src}</a>`;
+      addField('Imported From', link);
+    }
+
+    // Dates & usage
+    const toDate=(d)=>{
+      if(!d) return '';
+      if (typeof d === 'string') return new Date(d).toLocaleString();
+      if (d.$date) return new Date(d.$date).toLocaleString();
+      return new Date(d).toLocaleString();
+    };
+    addField('Created', toDate(model.createdAt || model.created || model.created_at));
+    addField('Updated', toDate(model.updatedAt || model.updated || model.updated_at));
+    if (model.usageCount!=null) addField('Usage', model.usageCount);
+
+    // -------- event bindings --------
+    const close = () => this.closeModelDetail();
+    overlay.querySelector('.detail-close-btn').onclick = close;
+    overlay.onclick = (e)=>{ if(e.target===overlay) close(); };
+
+    const updateImage = ()=>{
+      const imgEl = overlay.querySelector('.carousel-img');
+      imgEl.src = imgs[currentIdx];
+      overlay.querySelectorAll('.thumb').forEach(t=>t.classList.remove('active'));
+      const activeThumb = overlay.querySelector(`.thumb[data-idx="${currentIdx}"]`);
+      if(activeThumb) activeThumb.classList.add('active');
+    };
+    overlay.querySelectorAll('.thumb').forEach(thumb=>{
+      thumb.onclick = ()=>{ currentIdx=parseInt(thumb.getAttribute('data-idx'),10); updateImage(); };
+    });
+    overlay.querySelector('.img-nav.prev')?.addEventListener('click', ()=>{ currentIdx=(currentIdx-1+imgs.length)%imgs.length; updateImage(); });
+    overlay.querySelector('.img-nav.next')?.addEventListener('click', ()=>{ currentIdx=(currentIdx+1)%imgs.length; updateImage(); });
+
+    overlay.querySelector('.add-btn').onclick = ()=>{ this.onSelect(model); close(); };
+    overlay.querySelector('.fav-toggle-btn').onclick = ()=>{ this.toggleFavorite(model, this.state.currentCategory||'checkpoint'); overlay.querySelector('.fav-toggle-btn').textContent = this.state.favoriteIds.has(this.getModelIdentifier(model))? '♡ Favourite':'❤️ Unfavourite'; };
+    overlay.querySelector('.copy-trigger-btn').onclick = ()=>{
+      if (model.triggerWords && model.triggerWords.length) navigator.clipboard.writeText(model.triggerWords.join(' '));
+    };
+
+    this._detailKeyHandler = (e)=>{
+      if(e.key==='Escape') close();
+      else if(e.key==='ArrowRight' && imgs.length>1){ currentIdx=(currentIdx+1)%imgs.length; updateImage(); }
+      else if(e.key==='ArrowLeft' && imgs.length>1){ currentIdx=(currentIdx-1+imgs.length)%imgs.length; updateImage(); }
+    };
+    document.addEventListener('keydown', this._detailKeyHandler);
+  }
+
+  /** Close the model detail overlay */
+  closeModelDetail(){
+    if(!this.detailOverlayEl) return;
+    document.removeEventListener('keydown', this._detailKeyHandler);
+    document.body.removeChild(this.detailOverlayEl);
+    this.detailOverlayEl=null;
+    this.state.detailModel=null;
   }
 } 

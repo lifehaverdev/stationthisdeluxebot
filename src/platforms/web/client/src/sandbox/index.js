@@ -63,6 +63,10 @@ document.addEventListener('keyup', (e) => {
     if (e.code === 'Space') spacebarIsDown = false;
 });
 
+import { debugLog, isDebugEnabled, DEBUG_FLAGS } from './config/debugConfig.js';
+import './utils/debugToggle.js'; // Initialize debug toggle utility
+import './test/debugTest.js'; // Initialize debug test utility
+
 // Initialize sandbox functionality
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize state
@@ -475,7 +479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Function to update FAB visibility
     function updateFAB() {
         const sel = getSelectedNodeIds();
-        console.log('[updateFAB] selection size:', sel.size, 'ids:', Array.from(sel));
+        debugLog('UPDATE_FAB', '[updateFAB] selection size:', sel.size, 'ids:', Array.from(sel));
         mintSpellFAB.update(sel.size);
     }
 
@@ -734,7 +738,7 @@ document.body.appendChild(actionModal);
 function initClickHandlers() {
     // Handle click interactions
     document.addEventListener('click', (e) => {
-        console.log('[CLICK HANDLER]', e.target, getSelectedNodeIds().size);
+        debugLog('CLICK_HANDLER', '[CLICK HANDLER]', e.target, getSelectedNodeIds().size);
         if (justLassoed) {
             e.preventDefault();
             e.stopImmediatePropagation();

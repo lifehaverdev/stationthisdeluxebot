@@ -116,4 +116,53 @@
 
 .import-dialog .cancel-import-btn { background: #555; }
 .import-dialog .cancel-import-btn:hover { background: #666; }
-.import-dialog .confirm-import-btn:hover { background: #5aa1f2; } 
+.import-dialog .confirm-import-btn:hover { background: #5aa1f2; }
+
+/* ---------------- Model Detail Overlay ---------------- */
+.model-detail-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.75);
+    display: flex; justify-content: center; align-items: center;
+    z-index: 2100;
+    overflow-y: auto;
+}
+
+.model-detail-container {
+    background: #1a1a1a; color:#f0f0f0;
+    width: 95%; max-width: 720px;
+    border-radius: 12px; padding: 20px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    border:1px solid #333;
+}
+
+.detail-header { display:flex; justify-content: space-between; align-items:center; margin-bottom:12px; }
+.detail-header h3 { margin:0; font-size:20px; }
+.detail-close-btn { background:none; border:none; color:#888; font-size:24px; cursor:pointer; }
+.detail-close-btn:hover { color:#fff; }
+
+.detail-body { display:flex; gap:20px; flex-wrap:wrap; }
+.carousel { position:relative; flex:1 1 300px; max-width:320px; }
+.carousel-img { width:100%; border-radius:8px; border:1px solid #444; }
+.img-nav { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:24px; width:32px; height:48px; cursor:pointer; }
+.img-nav.prev { left:-16px; }
+.img-nav.next { right:-16px; }
+.thumb-strip { display:flex; gap:6px; margin-top:8px; overflow-x:auto; }
+.thumb { width:48px; height:48px; object-fit:cover; border:2px solid transparent; border-radius:4px; cursor:pointer; }
+.thumb.active { border-color:#4a90e2; }
+
+.detail-meta { flex:1 1 280px; font-size:14px; }
+.meta-field { margin-bottom:8px; }
+.meta-label { color:#aaa; margin-right:4px; }
+.badge { background:#444; padding:2px 6px; border-radius:4px; margin-right:4px; }
+
+.detail-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+.detail-footer button { background:#4a90e2; border:none; color:#fff; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
+.detail-footer .fav-toggle-btn { background:#555; }
+.detail-footer .fav-toggle-btn:hover { background:#666; }
+
+@media(max-width:480px){
+  .detail-body{ flex-direction:column; }
+  .carousel{ margin:0 auto; }
+} 

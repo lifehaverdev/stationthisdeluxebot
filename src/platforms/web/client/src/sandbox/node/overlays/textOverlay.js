@@ -67,8 +67,10 @@ function hideTextOverlay() {
     }
 }
 
+import { debugLog } from '../config/debugConfig.js';
+
 export function bindPromptFieldOverlays() {
-    console.log('[textOverlay.js] bindPromptFieldOverlays called');
+    debugLog('TEXT_OVERLAY', '[textOverlay.js] bindPromptFieldOverlays called');
     // Bind to any parameter whose name suggests longer text – prompt, text, instructions
     const containers = document.querySelectorAll('div.parameter-input');
     containers.forEach(container => {
@@ -78,7 +80,7 @@ export function bindPromptFieldOverlays() {
         const field = container.querySelector('input[type="text"]');
         if (!field || field._overlayBound) return;
 
-        console.log('[textOverlay.js] Binding overlay to field:', field);
+        debugLog('TEXT_OVERLAY', '[textOverlay.js] Binding overlay to field:', field);
         field._overlayBound = true;
         field.addEventListener('focus', function(e) {
             e.preventDefault();

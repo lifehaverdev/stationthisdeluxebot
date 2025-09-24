@@ -265,8 +265,18 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             try {
               const groupRes = await apiClient.get(`/internal/v1/data/groups/${msg.chat.id}`);
               if (groupRes.data && groupRes.data.sponsorMasterAccountId) {
-                masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
-                logger.info(`[dynamicCommands] Using sponsor MAID ${masterAccountId} for group ${msg.chat.id}`);
+                // Check admin status
+                let isAdmin = false;
+                try {
+                  const admins = await bot.getChatAdministrators(msg.chat.id);
+                  isAdmin = admins.some(a => a.user.id === msg.from.id);
+                } catch (adminErr) {
+                  logger.warn(`[dynamicCommands] Could not fetch admin list for ${msg.chat.id}: ${adminErr.message}`);
+                }
+                if (isAdmin) {
+                  masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
+                  logger.info(`[dynamicCommands] Admin ${msg.from.id} using sponsor MAID ${masterAccountId} for group ${msg.chat.id}`);
+                }
               }
             } catch (e) {
               if (e.response?.status !== 404) {
