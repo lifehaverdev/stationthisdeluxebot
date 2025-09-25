@@ -67,8 +67,16 @@ class SaltMiningService {
         this.logger.info(`[SaltMiningService] Successfully mined salt on attempt #${attempt} for owner ${ownerAddress}.`);
         return result;
       } catch (error) {
+        // Check if this is a prediction logic mismatch - if so, fail immediately
+        if (error.message.includes('PREDICTION_LOGIC_MISMATCH')) {
+          this.logger.error(`[SaltMiningService] CRITICAL: Prediction logic mismatch detected. Salt mining cannot continue.`);
+          this.logger.error(`[SaltMiningService] This indicates a fundamental issue with our local prediction logic.`);
+          this.logger.error(`[SaltMiningService] Aborting salt mining to prevent invalid results.`);
+          throw new Error(`PREDICTION_LOGIC_MISMATCH: ${error.message}`);
+        }
+        
         this.logger.error(`[SaltMiningService] Mining attempt #${attempt} for ${ownerAddress} failed: ${error.message}. Retrying...`);
-        // The loop will continue, automatically retrying.
+        // The loop will continue, automatically retrying for other types of errors.
       }
     }
   }

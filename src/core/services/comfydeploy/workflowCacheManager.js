@@ -1141,10 +1141,30 @@ class WorkflowCacheManager {
       supportingImageInputs: structureInfo?.supportingImageInputs || [],
       hasSupportingImages: structureInfo?.hasSupportingImages || false
     };
-
-    // Attach deliveryHints AFTER metadata object creation so it isn't overwritten
-    if (Object.keys(directives).length > 0) {
-      toolDefinition.metadata.deliveryHints = directives;
+    // --- Historical averages enrichment ---
+    try {
+      const pipeline = [
+        { $match: { toolDisplayName: toolDefinition.displayName, durationMs: { $gt: 0 }, costUsd: { $gt: 0 } } },
+        { $group: { _id: null, avgDuration: { $avg: '$durationMs' }, avgCost: { $avg: '$costUsd' } } }
+      ];
+      const resArr = await _genOutputsDb.aggregate(pipeline);
+      if (resArr && resArr[0]) {
+        const { avgDuration, avgCost } = resArr[0];
+        if (avgDuration && avgCost) {
+          toolDefinition.metadata.avgHistoricalDurationMs = avgDuration;
+          const sec = avgDuration / 1000;
+          if (sec > 0) {
+            const rateUsd = avgCost / sec;
+            toolDefinition.costingModel = {
+              rate: parseFloat(rateUsd.toFixed(6)),
+              unit: 'second', // USD per second
+              rateSource: 'historical'
+            };
+          }
+        }
+      }
+    } catch (histErr) {
+      this.logger.warn(`[WorkflowCacheManager] Hist enrichment error for ${toolDefinition.toolId}: ${histErr.message}`);
     }
   
     // === Costing Model ===

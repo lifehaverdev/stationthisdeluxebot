@@ -273,6 +273,18 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
                 } catch (adminErr) {
                   logger.warn(`[dynamicCommands] Could not fetch admin list for ${msg.chat.id}: ${adminErr.message}`);
                 }
+
+                // Fallback: if group marks all members as admins
+                if (!isAdmin) {
+                  try {
+                    const chatInfo = await bot.getChat(msg.chat.id);
+                    if (chatInfo && chatInfo.all_members_are_administrators) {
+                      isAdmin = true;
+                    }
+                  } catch (chatErr) {
+                    logger.warn(`[dynamicCommands] Could not fetch chat info for ${msg.chat.id}: ${chatErr.message}`);
+                  }
+                }
                 if (isAdmin) {
                   masterAccountId = groupRes.data.sponsorMasterAccountId.toString();
                   logger.info(`[dynamicCommands] Admin ${msg.from.id} using sponsor MAID ${masterAccountId} for group ${msg.chat.id}`);

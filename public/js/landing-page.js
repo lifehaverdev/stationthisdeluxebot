@@ -262,7 +262,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let tiles = Array.from(featuresContainer.querySelectorAll('.feature-tile'));
     tiles = tiles.filter(tile => {
       const title = tile.querySelector('h4')?.textContent || '';
-      if (title.includes('Static Image')) return false;
       if (/_COOK|_API/i.test(title)) return false;
       return true;
     });
@@ -294,6 +293,107 @@ document.addEventListener('DOMContentLoaded', () => {
     // Kick off after slight delay to ensure layout ready
     setTimeout(() => requestAnimationFrame(autoScroll), 300);
   }
+
+  /* ============================================================
+     Cost Badges for “Available Tools” tiles
+     ============================================================ */
+
+  /** Convert USD amount to Station points (1 pt = $0.000337). */
+  function usdToPoints(usd) {
+    const USD_PER_POINT = 0.000337;
+    return Math.round(usd / USD_PER_POINT);
+  }
+
+  /** Best-effort numeric coercion handling Mongo decimal objects. */
+  function toNumber(val) {
+    if (val == null) return null;
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') return parseFloat(val);
+    if (typeof val === 'object' && '$numberDecimal' in val) return parseFloat(val.$numberDecimal);
+    return Number(val) || null;
+  }
+
+  /** Derive human-readable cost badge text for a tool definition. */
+  function getToolCostEstimate(tool) {
+    // 1. Explicit metadata wins
+    if (tool?.metadata?.costEstimate) return tool.metadata.costEstimate;
+
+    const toPts = (usd) => `~${usdToPoints(usd)} POINTS`;
+
+    // 2. Historical average (rate USD/sec * avgDurationMs)
+    const rateSec = toNumber(tool?.costingModel?.rate);
+    const avgMs = toNumber(tool?.metadata?.avgHistoricalDurationMs);
+    if (rateSec && tool?.costingModel?.unit === 'second' && avgMs) {
+      const costUsd = rateSec * (avgMs / 1000);
+      if (!isNaN(costUsd) && costUsd >= 0) return toPts(costUsd);
+    }
+
+    // 3. Static cost per request
+    if (tool?.costingModel?.rateSource === 'static' && tool.costingModel.staticCost) {
+      const { amount, unit } = tool.costingModel.staticCost;
+      if (unit === 'request' && typeof amount === 'number') return toPts(amount);
+    }
+
+    // 4. Unknown
+    return '???';
+  }
+
+  /** Fetch registry once and decorate tiles. */
+  (async () => {
+    try {
+      const res = await fetch('/api/v1/tools/registry');
+      const payload = await res.json();
+      const toolsArr = Array.isArray(payload) ? payload : (payload?.tools || []);
+      const toolMap = new Map(toolsArr.map(t => [t.displayName, t]));
+
+      const tiles = document.querySelectorAll('#features-container .feature-tile');
+      tiles.forEach(tile => {
+        const titleEl = tile.querySelector('h4');
+        if (!titleEl) return;
+        const name = titleEl.textContent.trim();
+        const tool = toolMap.get(name);
+        if (tool && tool.metadata?.hideFromLanding) {
+          tile.remove();
+          return;
+        }
+
+        // Prevent duplicate badge
+        if (tile.querySelector('.cost-badge')) return;
+
+        const badge = document.createElement('div');
+        badge.className = 'cost-badge';
+        badge.style.cssText = `
+          position: absolute;
+          bottom: 6px;
+          right: 6px;
+          font-size: 10px;
+          font-family: monospace;
+          padding: 2px 6px;
+          border: 1px solid;
+          border-radius: 4px;
+          pointer-events: none;
+        `;
+
+        const text = tool ? getToolCostEstimate(tool) : '???';
+        badge.textContent = text;
+
+        if (text === '???') {
+          badge.style.background = 'rgba(128,128,128,0.15)';
+          badge.style.borderColor = 'rgba(128,128,128,0.4)';
+          badge.style.color = '#888';
+        } else {
+          badge.style.background = 'rgba(0,255,0,0.15)';
+          badge.style.borderColor = 'rgba(0,255,0,0.4)';
+          badge.style.color = '#0f0';
+        }
+
+        tile.style.position = 'relative';
+        tile.appendChild(badge);
+      });
+    } catch (err) {
+      console.error('Failed to load tool registry for cost badges', err);
+    }
+  })();
 
   /* ---------------- Reviews auto-scroll ---------------- */
   const reviewsContainer = document.getElementById('reviews-container');

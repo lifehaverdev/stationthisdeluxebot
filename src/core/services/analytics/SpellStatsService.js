@@ -57,8 +57,8 @@ class SpellStatsService {
         const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
         const avgCostPts = avgCostUsd / USD_TO_POINTS_CONVERSION_RATE;
 
-        this.cache.set(toolId, { avgRuntimeMs, avgCostPts, updatedAt: Date.now() });
-        return { avgRuntimeMs, avgCostPts };
+        this.cache.set(toolId, { avgRuntimeMs, avgCostUsd, avgCostPts, updatedAt: Date.now() });
+        return { avgRuntimeMs, avgCostUsd, avgCostPts };
     }
 
     /**
@@ -71,8 +71,29 @@ class SpellStatsService {
         const promises = tools.map(async (tool) => {
             try {
                 const stats = await this.getAvgStats(tool.toolId);
+
+                // Attach raw stats (may be useful elsewhere)
                 tool.avgRuntimeMs = stats.avgRuntimeMs;
                 tool.avgCostPts   = stats.avgCostPts;
+
+                // ---------------- Costing Model & Metadata -----------------
+                // Ensure metadata exists
+                tool.metadata = tool.metadata || {};
+
+                // Historical average duration (ms)
+                tool.metadata.avgHistoricalDurationMs = stats.avgRuntimeMs;
+
+                // Historical rate (USD / second)
+                if (stats.avgRuntimeMs > 0 && stats.avgCostUsd > 0) {
+                    const sec = stats.avgRuntimeMs / 1000;
+                    const rateSec = stats.avgCostUsd / sec;
+                    tool.costingModel = {
+                        ...(tool.costingModel || {}),
+                        rate: parseFloat(rateSec.toFixed(6)),
+                        unit: 'second',
+                        rateSource: 'historical'
+                    };
+                }
             } catch (err) {
                 this.logger.warn(`[SpellStatsService] Failed to compute stats for ${tool.toolId}: ${err.message}`);
             }

@@ -87,7 +87,46 @@ async function flashRegistry() {
     const toolRegistry = services.toolRegistry; // Get the instance from initialized services
 
     console.log('Fetching all tools from ToolRegistry...');
-    const tools = toolRegistry.getAllTools();
+    let tools = toolRegistry.getAllTools();
+
+    // --- Enrich tools with historical average cost/duration ---
+    const generationOutputsDb = services.db?.data?.generationOutputs;
+    if (generationOutputsDb) {
+      console.log('Enriching tools with historical cost averages...');
+      const enrichedTools = [];
+      for (const tool of tools) {
+        if (tool.costingModel && tool.costingModel.rateSource !== 'static') {
+          try {
+            const pipeline = [
+              { $match: { toolDisplayName: tool.displayName, durationMs: { $gt: 0 }, costUsd: { $gt: 0 } } },
+              { $group: { _id: null, avgDuration: { $avg: '$durationMs' }, avgCost: { $avg: '$costUsd' } } }
+            ];
+            const resultArr = await generationOutputsDb.aggregate(pipeline);
+            if (resultArr && resultArr[0]) {
+              const { avgDuration, avgCost } = resultArr[0];
+              if (avgDuration && avgCost) {
+                const sec = avgDuration / 1000;
+                const rate = sec > 0 ? avgCost / sec : null;
+                if (rate) {
+                  tool.costingModel.rate = parseFloat(rate.toFixed(6));
+                  tool.costingModel.unit = 'second';
+                  tool.costingModel.rateSource = 'historical';
+                  tool.metadata = tool.metadata || {}; // Ensure metadata exists
+                  tool.metadata.avgHistoricalCost = avgCost;
+                  tool.metadata.avgHistoricalDurationMs = avgDuration;
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to enrich cost for tool ${tool.toolId}:`, err.message);
+          }
+        }
+        enrichedTools.push(tool);
+      }
+      tools = enrichedTools;
+    } else {
+      console.warn('generationOutputsDb not available; skipping historical cost enrichment.');
+    }
 
     if (tools.length === 0) {
       console.warn('Warning: ToolRegistry is empty. The output file will be an empty array. Ensure services initialized correctly and workflows were found.');

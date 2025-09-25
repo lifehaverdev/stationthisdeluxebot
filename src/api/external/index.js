@@ -36,6 +36,15 @@ function initializeExternalApi(dependencies) {
   // Prefer the top-level canonical property
   const internalApiClient = dependencies.internalApiClient || dependencies.internal.client;
   const logger = createLogger('ExternalAPI');
+  
+  // Debug logging for dependencies
+  console.log('[ExternalAPI] Dependencies check:', {
+    internalApiClient: !!internalApiClient,
+    longRunningApiClient: !!dependencies.longRunningApiClient,
+    priceFeedService: !!dependencies.priceFeedService,
+    saltMiningService: !!dependencies.saltMiningService
+  });
+  
   const externalApiRouter = express.Router();
   // Maintain backward compatibility for modules that still expect dependencies.internal.client
   dependencies.internal = dependencies.internal || {};
@@ -149,7 +158,12 @@ function initializeExternalApi(dependencies) {
   }
 
   // Mount the Referral Vault API router (Protected by JWT or API key)
-  const referralVaultApi = createReferralVaultApi(dependencies);
+  // Ensure longRunningApiClient is available for salt mining operations
+  const referralVaultDependencies = {
+    ...dependencies,
+    longRunningApiClient: dependencies.longRunningApiClient
+  };
+  const referralVaultApi = createReferralVaultApi(referralVaultDependencies);
   if (referralVaultApi) {
     externalApiRouter.use('/referral-vault', authenticateUserOrApiKey, referralVaultApi);
     logger.info('External Referral Vault API router mounted at /referral-vault. (JWT or API key protected)');

@@ -28,12 +28,22 @@ function createToolsApiRouter(dependencies) {
       const response = await internalApiClient.get('/internal/v1/data/tools');
       const allTools = response.data;
 
-      // For the public endpoint, return simplified tool info
+      // Include cost-related fields so the web sandbox can show point estimates.
       const simplifiedTools = allTools.map(tool => ({
         displayName: tool.displayName,
         description: tool.description?.split('\n')[0] || `A tool for ${tool.displayName}.`,
         commandName: tool.commandName,
-        toolId: tool.toolId
+        toolId: tool.toolId,
+
+        // Pass through cost information needed by the client. Keep the original
+        // structure so calculations like getToolCostEstimate() continue to work.
+        costingModel: tool.costingModel || null,
+        metadata: {
+          ...tool.metadata,
+          // Explicitly include the historical duration if present to avoid
+          // accidental omission when other metadata properties are stripped.
+          avgHistoricalDurationMs: tool.metadata?.avgHistoricalDurationMs ?? null
+        }
       }));
 
       res.status(200).json(simplifiedTools);

@@ -39,26 +39,49 @@ function computeProxyAddress(salt) {
 // Mine for a salt that generates an address with the target prefix
 async function mineSalt() {
     let attempts = 0;
-    const maxAttempts = 10000000; // Increased for better coverage
+    const maxAttempts = 1000000; // Reasonable limit to prevent infinite loops
     const batchSize = 10000; // Larger batches for better performance
     let batchAttempts = 0;
-    
-    // Use a more efficient approach: start with a base salt and increment
-    // This ensures we don't repeat the same salts across different attempts
-    const baseSalt = ethers.randomBytes(32);
-    const baseSaltBigInt = BigInt('0x' + ethers.hexlify(baseSalt).slice(2));
-    
-    // Add some randomness based on worker data to ensure different workers start from different points
-    const workerOffset = BigInt('0x' + ownerAddress.slice(2, 10)) * BigInt(1000000);
-    let currentSaltBigInt = baseSaltBigInt + workerOffset;
+    let localMiningMode = false;
+
+    // First, verify our local prediction logic matches on-chain calculation
+    if (foundation && provider) {
+        try {
+            console.log('[SaltMiningWorker] Verifying local prediction logic matches on-chain...');
+            const testSalt = ethers.randomBytes(32);
+            const testSaltHex = ethers.hexlify(testSalt);
+            const localPrediction = computeProxyAddress(testSaltHex);
+            const onChainPrediction = await foundation.computeCharterAddress.staticCall(ownerAddress, testSaltHex);
+            
+            if (localPrediction.toLowerCase() === onChainPrediction.toLowerCase()) {
+                console.log('[SaltMiningWorker] ✅ Local prediction matches on-chain calculation. Switching to local-only mining for speed.');
+                localMiningMode = true;
+            } else {
+                console.log('[SaltMiningWorker] ❌ CRITICAL: Local prediction mismatch detected!');
+                console.log(`[SaltMiningWorker] Local: ${localPrediction}`);
+                console.log(`[SaltMiningWorker] On-chain: ${onChainPrediction}`);
+                console.log('[SaltMiningWorker] This indicates a fundamental issue with our prediction logic.');
+                console.log('[SaltMiningWorker] Aborting salt mining to prevent invalid results.');
+                throw new Error('PREDICTION_LOGIC_MISMATCH: Local prediction does not match on-chain calculation. Check beaconProxyHelper.js implementation.');
+            }
+        } catch (e) {
+            if (e.message.includes('PREDICTION_LOGIC_MISMATCH')) {
+                throw e; // Re-throw our custom error
+            }
+            console.log('[SaltMiningWorker] ⚠️ Could not verify prediction logic. Will verify each salt with RPC calls.');
+        }
+    } else {
+        console.log('[SaltMiningWorker] No RPC provider available. Using local-only mining.');
+        localMiningMode = true;
+    }
 
     while (attempts < maxAttempts) {
-        // Generate salt by incrementing from base + offset
-        const salt = ethers.hexlify(ethers.toBeHex(currentSaltBigInt, 32));
-        currentSaltBigInt++;
+        // Generate a random 32-byte salt (same strategy as test worker)
+        const salt = ethers.randomBytes(32);
+        const saltHex = ethers.hexlify(salt);
 
         // Compute the address that would be created (local prediction)
-        const predictedAddress = computeProxyAddress(salt);
+        const predictedAddress = computeProxyAddress(saltHex);
 
         // Quick vanity check first (cheap)
         if (!hasVanityPrefix(predictedAddress)) {
@@ -67,33 +90,32 @@ async function mineSalt() {
             
             // Progress logging for production
             if (batchAttempts >= batchSize) {
-                console.log(`[SaltMiningWorker] Processed ${attempts} attempts, current salt: ${salt.slice(0, 10)}...`);
+                console.log(`[SaltMiningWorker] Processed ${attempts} attempts, current salt: ${saltHex.slice(0, 10)}...`);
                 batchAttempts = 0;
             }
             continue;
         }
 
-        // Found a potential salt with vanity prefix - verify with on-chain call
-        if (foundation && provider) {
+        // Found a potential salt with vanity prefix
+        if (localMiningMode) {
+            // Local-only mode: trust our prediction logic
+            console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts (local-only): ${saltHex}`);
+            return { salt: saltHex, predictedAddress };
+        } else {
+            // RPC verification mode: verify with on-chain call
             try {
-                // Double-check prediction matches on-chain calculation
-                const onChainPredicted = await foundation.computeCharterAddress.staticCall(ownerAddress, salt);
+                const onChainPredicted = await foundation.computeCharterAddress.staticCall(ownerAddress, saltHex);
                 if (onChainPredicted.toLowerCase() !== predictedAddress.toLowerCase()) {
                     attempts++; continue; // mismatch, keep mining
                 }
                 
-                // Ensure deployment would succeed (including Foundation.Vanity error and any other guards)
-                await foundation.charterFund.staticCall(ownerAddress, salt);
-                console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts: ${salt}`);
-                return { salt: salt, predictedAddress };
+                console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts (RPC-verified): ${saltHex}`);
+                return { salt: saltHex, predictedAddress };
             } catch (e) {
                 // If RPC fails, fallback to local check only
-                return { salt: salt, predictedAddress };
+                console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts (RPC-fallback): ${saltHex}`);
+                return { salt: saltHex, predictedAddress };
             }
-        } else {
-            // No provider available, use local prediction only
-            console.log(`[SaltMiningWorker] SUCCESS! Found salt after ${attempts} attempts (local-only): ${salt}`);
-            return { salt: salt, predictedAddress };
         }
 
         attempts++;

@@ -150,7 +150,8 @@ class ToolRegistry {
           if (!input.name) errors.push({ toolId, message: `Input field '${key}' is missing a name property.` });
           if (input.name !== key) errors.push({ toolId, message: `Input field key '${key}' does not match its name property '${input.name}'.` });
           if (!input.type) errors.push({ toolId, message: `Input field '${input.name}' is missing a type property.` });
-          const allowedTypes = ['string', 'number', 'image', 'video', 'audio', 'file', 'boolean'];
+          // Expanded allowed types to accommodate enum-like placeholders and Comfy-specific types
+          const allowedTypes = ['string', 'number', 'image', 'video', 'audio', 'file', 'boolean', 'enum', 'integer', 'text', 'textany', 'seed', 'checkpoint', 'numberslider', 'numbersliderint'];
           if (input.type && !allowedTypes.includes(input.type)) {
             errors.push({ toolId, message: `Input field '${input.name}' has an invalid type '${input.type}'. Allowed types: ${allowedTypes.join(', ')}` });
           }
@@ -160,19 +161,28 @@ class ToolRegistry {
         }
       }
       if (tool.costingModel) {
-        if (typeof tool.costingModel.rate !== 'number') {
-          errors.push({ toolId, message: 'CostingModel rate must be a number.' });
-        }
-        const allowedUnits = ['second', 'token', 'request'];
-        if (!allowedUnits.includes(tool.costingModel.unit)) {
-          errors.push({ toolId, message: `CostingModel unit '${tool.costingModel.unit}' is invalid. Allowed units: ${allowedUnits.join(', ')}` });
-        }
-        const allowedRateSources = ['static', 'machine', 'api'];
+        const allowedRateSources = ['static', 'machine', 'api', 'historical'];
         if (!allowedRateSources.includes(tool.costingModel.rateSource)) {
           errors.push({ toolId, message: `CostingModel rateSource '${tool.costingModel.rateSource}' is invalid. Allowed sources: ${allowedRateSources.join(', ')}` });
         }
+
+        // For non-static rateSources, require numeric rate and valid unit
+        if (tool.costingModel.rateSource !== 'static') {
+          if (typeof tool.costingModel.rate !== 'number') {
+            errors.push({ toolId, message: 'CostingModel rate must be a number.' });
+          }
+          const allowedUnits = ['second', 'token', 'request'];
+          if (!allowedUnits.includes(tool.costingModel.unit)) {
+            errors.push({ toolId, message: `CostingModel unit '${tool.costingModel.unit}' is invalid. Allowed units: ${allowedUnits.join(', ')}` });
+          }
+        } else {
+          // static pricing path – ensure staticCost object exists
+          if (!tool.costingModel.staticCost || typeof tool.costingModel.staticCost !== 'object') {
+            errors.push({ toolId, message: 'CostingModel with rateSource "static" must include staticCost object.' });
+          }
+        }
       }
-      if (tool.category && !['text-to-image', 'img2img', 'upscale', 'inpaint', 'video', 'interrogate', 'text-to-text'].includes(tool.category)) {
+      if (tool.category && !['text-to-image', 'img2img', 'image-to-image', 'upscale', 'inpaint', 'video', 'interrogate', 'text-to-text'].includes(tool.category)) {
           errors.push({ toolId, message: `Invalid category: ${tool.category}` });
       }
       if (tool.visibility && !['public', 'internal', 'hidden'].includes(tool.visibility)) {

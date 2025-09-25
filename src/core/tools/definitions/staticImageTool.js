@@ -17,9 +17,11 @@ const staticImageTool = {
     }
   },
   costingModel: {
-    rate: 0,
-    unit: 'call',
-    rateSource: 'static'
+    rateSource: 'static',
+    staticCost: {
+      amount: 0,
+      unit: 'request'
+    }
   },
   deliveryMode: 'immediate',
   webhookStrategy: {
@@ -29,7 +31,7 @@ const staticImageTool = {
     resultPath: ['imageUrl']
   },
   platformHints: {
-    primaryInput: null,
+    primaryInput: 'image',
     supportsFileCaption: false,
     supportsReplyWithCommand: false
   },
@@ -39,6 +41,7 @@ const staticImageTool = {
   metadata: {
     provider: 'Local',
     model: 'static-image'
+    , hideFromLanding: true
   }
 };
 

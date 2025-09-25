@@ -66,6 +66,7 @@ const stringPrimitiveTool = {
   metadata: {
     provider: 'Local',
     model: 'string-primitive'
+    , hideFromLanding: true
   }
 };
 

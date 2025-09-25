@@ -9,6 +9,15 @@ const NATIVE_ETH_ADDRESS = '0x0000000000000000000000000000000000000000';
 function createReferralVaultApi(dependencies) {
   const { internalApiClient, longRunningApiClient, priceFeedService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth } = dependencies;
 
+  // Debug logging for dependencies
+  console.log('[ReferralVaultApi] Dependencies check:', {
+    internalApiClient: !!internalApiClient,
+    longRunningApiClient: !!longRunningApiClient,
+    priceFeedService: !!priceFeedService,
+    creditServices: Object.keys(creditServices),
+    ethereumServices: Object.keys(ethereumServices)
+  });
+
   // Multichain service resolver
   const getChainServices = (cid = '1') => ({
     creditService: creditServices[cid] || legacyCredit,
@@ -81,6 +90,14 @@ function createReferralVaultApi(dependencies) {
     }
     
     try {
+        // Check if longRunningApiClient is available
+        if (!longRunningApiClient) {
+            logger.error('[ReferralVaultApi] longRunningApiClient is not available in dependencies');
+            return res.status(500).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Salt mining service is not available.' } });
+        }
+
+        logger.info(`[ReferralVaultApi] Creating vault "${name}" for user ${userId} using long-running client`);
+        
         // This internal endpoint will orchestrate the creation.
         // Use long-running client for salt mining operations which can take time
         const response = await longRunningApiClient.post(`/internal/v1/data/actions/create-referral-vault`, {
@@ -88,6 +105,7 @@ function createReferralVaultApi(dependencies) {
             vaultName: name
         });
         
+        logger.info(`[ReferralVaultApi] Successfully created vault "${name}" for user ${userId}`);
         // The internal endpoint will return the new vault details upon success.
         res.status(201).json(response.data);
 
@@ -97,7 +115,9 @@ function createReferralVaultApi(dependencies) {
             status: error.response?.status,
             method: error.config?.method,
             url: error.config?.url,
-            responseData: error.response?.data
+            responseData: error.response?.data,
+            errorMessage: error.message,
+            errorCode: error.code
         });
 
         const errPayload = error.response?.data || { error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create referral vault.' } };

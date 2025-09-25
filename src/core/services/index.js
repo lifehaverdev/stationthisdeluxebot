@@ -219,6 +219,7 @@ async function initializeServices(options = {}) {
       comfyUIService: comfyUIService,
       loraResolutionService: loraResolutionService,
       internalApiClient, // pass canonical client to API layer
+      longRunningApiClient, // pass long-running client for salt mining
       userSettingsService, // Pass the service to the API layer
       walletLinkingService,
       storageService, // Pass the storage service to the API layer

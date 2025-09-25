@@ -11,33 +11,68 @@ const CREATION_TYPE_TO_CATEGORY = {
     'movie': 'text-to-video'
 };
 
-// Default cost estimates for different tool types (in POINTS)
-const DEFAULT_COST_ESTIMATES = {
-    'text-to-image': '~50 POINTS',
-    'image-to-image': '~30 POINTS',
-    'text-to-audio': '~20 POINTS',
-    'text-to-text': '~5 POINTS',
-    'text-to-video': '~100 POINTS',
-    'image-to-video': '~80 POINTS',
-    'audio-to-audio': '~15 POINTS',
-    'video-to-video': '~60 POINTS',
-    'uncategorized': '~25 POINTS'
-};
+/**
+ * Convert USD cost to points.
+ * Station economy: 1 point = $0.000337 (matches GPU baseline).
+ * @param {number} usd
+ * @returns {number}
+ */
+function usdToPoints(usd) {
+    const USD_PER_POINT = 0.000337;
+    return Math.round(usd / USD_PER_POINT);
+}
+
+function toNumber(val) {
+    if (val == null) return null;
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') return parseFloat(val);
+    if (typeof val === 'object' && '$numberDecimal' in val) return parseFloat(val.$numberDecimal);
+    return Number(val) || null;
+}
 
 /**
- * Get cost estimate for a tool
- * @param {Object} tool - Tool definition
- * @returns {string} Cost estimate string
+ * Generate cost estimate badge text.
+ * @param {Object} tool
+ * @returns {string}
  */
 function getToolCostEstimate(tool) {
-    // Check if tool has cost metadata
+    const debug = true; //window?.sandbox?.debugCosting;
+    const logDbg = (...args) => { if (debug) console.debug('[CostEst]', ...args); };
+
+    // Prefer explicit metadata value
     if (tool.metadata?.costEstimate) {
+        logDbg(tool.displayName, 'using explicit metadata.costEstimate', tool.metadata.costEstimate);
         return tool.metadata.costEstimate;
     }
-    
-    // Use category-based default
-    const category = tool.category || 'uncategorized';
-    return DEFAULT_COST_ESTIMATES[category] || DEFAULT_COST_ESTIMATES['uncategorized'];
+
+    // Helper to safely convert and log numerical results
+    const toPts = (usd) => {
+        const pts = usdToPoints(usd);
+        logDbg(tool.displayName, 'computed pts', pts, 'from usd', usd);
+        return `~${pts} POINTS`;
+    };
+
+    // Historical/machine rate in USD per second with avg duration
+    const rateSec = toNumber(tool.costingModel?.rate);
+    const avgMs = toNumber(tool.metadata?.avgHistoricalDurationMs);
+    if (rateSec && tool.costingModel?.unit === 'second' && avgMs) {
+        const seconds = avgMs / 1000;
+        const costUsd = rateSec * seconds;
+        logDbg(tool.displayName, 'historical cost calc', { rate: tool.costingModel.rate, seconds, costUsd });
+        if (!isNaN(costUsd) && costUsd > 0) return toPts(costUsd);
+    }
+
+    // Static cost per request
+    if (tool.costingModel?.rateSource === 'static' && tool.costingModel.staticCost) {
+        const { amount, unit } = tool.costingModel.staticCost;
+        if (unit === 'request' && typeof amount === 'number') {
+            logDbg(tool.displayName, 'static cost', amount);
+            return toPts(amount);
+        }
+    }
+
+    logDbg(tool.displayName, 'no cost info, returning ???');
+    return '???';
 }
 
 export function renderSidebarTools() {
