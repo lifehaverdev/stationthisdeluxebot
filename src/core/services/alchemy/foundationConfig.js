@@ -13,7 +13,7 @@ const FOUNDATION_ADDRESSES = {
 // Keyed by chainId (string).
 const CHARTER_BEACON_ADDRESSES = {
   // Mainnet
-  '1': '0x1Ac0541b8d35661dC2C2d0271e24de0301daE7Ad', 
+  '1': '0xeEd94eD20B79ED938518c6eEa4129cB1E8b8665C', 
   '11155111': '0x7C8C7D05EE257D334F90bc47EED83e5eF3e46587.',
   // Add other networks when deployed
 };

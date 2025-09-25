@@ -15,7 +15,7 @@ async function main() {
     }
 
     const foundationAddress = process.env.FOUNDATION_ADDRESS;
-    const beaconAddress = process.env.CHARTER_BEACON_ADDRESS;
+    const beaconAddress = '0xeEd94eD20B79ED938518c6eEa4129cB1E8b8665C'; // Use correct beacon address
     const rpcUrl = process.env.ETHEREUM_RPC_URL || process.env.ALCHEMY_RPC_URL;
 
     if (!foundationAddress || !beaconAddress || !rpcUrl) {
