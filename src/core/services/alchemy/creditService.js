@@ -1342,11 +1342,16 @@ class CreditService {
     const { masterAccountId, ownerAddress, vaultName, salt, predictedAddress } = details;
 
     try {
+      // DEBUG: Log the actual signer address being used
+      const signerAddress = this.ethereumService.getSigner().address;
+      this.logger.info('[CreditService] DEBUG: EthereumService signer address:', signerAddress);
+      
       this.logger.info('[CreditService] Sending transaction to ethereumService.write with params:', {
         contractAddress: this.contractConfig.address,
         functionName: 'charterFund',
         ownerAddress,
-        salt
+        salt,
+        signerAddress // Add signer address to the log
       });
 
       // --- PREFLIGHT STATIC CALL ---------------------------------------------------------

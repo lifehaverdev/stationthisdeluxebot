@@ -125,25 +125,19 @@ module.exports = function pointsApi(dependencies) {
                 fundingRate = (mode === 'donate') ? getDonationFundingRate(assetAddress) : getFundingRate(assetAddress);
                 let decimals = getDecimals(assetAddress);
                 
-                // Special handling for MS2 token which has 9 decimals
+                // Special handling for MS2 token which has 6 decimals
                 const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
                 if (isMS2) {
-                    decimals = 9; // Override decimals for MS2
+                    decimals = 6; // Override decimals for MS2
                 }
 
                 let humanReadable;
                 let adjustedAmount;
-                // For MS2, amount is already in the token's decimals (9)
-                if (isMS2) {
-                    humanReadable = ethers.formatUnits(amount, 9);
-                    assetAmount = parseFloat(humanReadable);
-                    adjustedAmount = amount;
-                } else {
-                    // For other tokens, convert from 18 decimals
-                    humanReadable = ethers.formatUnits(amount, 18);
-                    adjustedAmount = ethers.parseUnits(humanReadable, decimals);
-                    assetAmount = parseFloat(ethers.formatUnits(adjustedAmount, decimals));
-                }
+                // All amounts from frontend are in 18 decimals (Ethereum standard)
+                // Convert to human readable first, then to token's actual decimals
+                humanReadable = ethers.formatUnits(amount, 18);
+                adjustedAmount = ethers.parseUnits(humanReadable, decimals);
+                assetAmount = parseFloat(ethers.formatUnits(adjustedAmount, decimals));
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 
@@ -385,15 +379,15 @@ module.exports = function pointsApi(dependencies) {
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
                     const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
 
-                    // Special handling for MS2 token which has 9 decimals
+                    // Special handling for MS2 token which has 6 decimals
                     const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
                     if (isMS2) {
-                        decimals = 9; // Override decimals for MS2
+                        decimals = 6; // Override decimals for MS2
                     }
 
-                    // Convert amount to human readable first
+                    // Convert amount to human readable first (frontend sends in 18 decimals)
                     const humanReadable = ethers.formatUnits(amount, 18);
-                    // Then convert to token's decimals
+                    // Then convert to token's actual decimals
                     const adjustedAmount = ethers.parseUnits(humanReadable, decimals).toString();
 
                     logger.info(`[pointsApi] /purchase ERC20 token details:`, {

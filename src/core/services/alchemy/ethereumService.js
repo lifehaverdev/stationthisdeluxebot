@@ -36,6 +36,8 @@ class EthereumService {
     this.interfaceCache = new Map(); // For caching ethers.Interface objects
 
     this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
+    this.logger.info(`[EthereumService] DEBUG: Private key loaded from ETHEREUM_SIGNER_PRIVATE_KEY: ${privateKey ? 'YES' : 'NO'}`);
+    this.logger.info(`[EthereumService] DEBUG: Signer address: ${this.signer.address}`);
   }
 
   /**
@@ -112,10 +114,12 @@ class EthereumService {
    */
   async write(contractAddress, abi, functionName, ...args) {
     this.logger.info(`[EthereumService] Sending write transaction: ${functionName} on ${contractAddress}`);
+    this.logger.info(`[EthereumService] DEBUG: Transaction will be signed by: ${this.signer.address}`);
     try {
       const contract = this.getContract(contractAddress, abi, true);
       const txResponse = await contract[functionName](...args);
       this.logger.info(`[EthereumService] Transaction sent with hash: ${txResponse.hash}.`);
+      this.logger.info(`[EthereumService] DEBUG: Transaction from address: ${txResponse.from}`);
       return txResponse;
     } catch (error) {
       this.logger.error(`[EthereumService] Error sending transaction '${functionName}':`, error);

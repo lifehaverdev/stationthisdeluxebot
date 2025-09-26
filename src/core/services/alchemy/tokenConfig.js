@@ -29,7 +29,7 @@ const TOKEN_CONFIG = {
       symbol: 'CULT', decimals: 18, fundingRate: 0.93, donationFundingRate: 0.95, iconUrl: '/images/sandbox/components/cult.png',
     },
     '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820': { // MS2
-      symbol: 'MS2', decimals: 9, fundingRate: 0.93, donationFundingRate: 0.95, iconUrl: '/images/sandbox/components/ms2.png',
+      symbol: 'MS2', decimals: 6, fundingRate: 0.93, donationFundingRate: 0.95, iconUrl: '/images/sandbox/components/ms2.png',
     },
     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { // WETH
       symbol: 'WETH', decimals: 18, fundingRate: 0.85, donationFundingRate: 0.9, iconUrl: '/images/sandbox/components/weth.png',

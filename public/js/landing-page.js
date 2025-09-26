@@ -298,6 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
      Cost Badges for “Available Tools” tiles
      ============================================================ */
 
+  let toolMap = null; // populated after registry fetch
+
   /** Convert USD amount to Station points (1 pt = $0.000337). */
   function usdToPoints(usd) {
     const USD_PER_POINT = 0.000337;
@@ -338,58 +340,71 @@ document.addEventListener('DOMContentLoaded', () => {
     return '???';
   }
 
-  /** Fetch registry once and decorate tiles. */
+  /** Decorate any tiles that lack a cost badge; also remove hidden tools. */
+  function buildCostBadges() {
+    if (!toolMap) return; // registry not loaded yet
+    const tiles = document.querySelectorAll('#features-container .feature-tile');
+    tiles.forEach(tile => {
+      const titleEl = tile.querySelector('h4');
+      if (!titleEl) return;
+      const name = titleEl.textContent.trim();
+      const tool = toolMap.get(name);
+
+      if (tool && tool.metadata?.hideFromLanding) {
+        tile.remove();
+        return;
+      }
+
+      if (tile.querySelector('.cost-badge')) return; // already decorated
+
+      const badge = document.createElement('div');
+      badge.className = 'cost-badge';
+      badge.style.cssText = `
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        font-size: 10px;
+        font-family: monospace;
+        padding: 2px 6px;
+        border: 1px solid;
+        border-radius: 4px;
+        pointer-events: none;
+      `;
+
+      const text = tool ? getToolCostEstimate(tool) : '???';
+      badge.textContent = text;
+
+      if (text === '???') {
+        badge.style.background = 'rgba(128,128,128,0.15)';
+        badge.style.borderColor = 'rgba(128,128,128,0.4)';
+        badge.style.color = '#888';
+      } else {
+        badge.style.background = 'rgba(0,255,0,0.15)';
+        badge.style.borderColor = 'rgba(0,255,0,0.4)';
+        badge.style.color = '#0f0';
+      }
+
+      tile.style.position = 'relative';
+      tile.appendChild(badge);
+    });
+  }
+
+  /** Fetch registry and set up observers to ensure all current & future tiles are decorated. */
   (async () => {
     try {
       const res = await fetch('/api/v1/tools/registry');
       const payload = await res.json();
       const toolsArr = Array.isArray(payload) ? payload : (payload?.tools || []);
-      const toolMap = new Map(toolsArr.map(t => [t.displayName, t]));
+      toolMap = new Map(toolsArr.map(t => [t.displayName, t]));
 
-      const tiles = document.querySelectorAll('#features-container .feature-tile');
-      tiles.forEach(tile => {
-        const titleEl = tile.querySelector('h4');
-        if (!titleEl) return;
-        const name = titleEl.textContent.trim();
-        const tool = toolMap.get(name);
-        if (tool && tool.metadata?.hideFromLanding) {
-          tile.remove();
-          return;
-        }
+      buildCostBadges(); // initial pass
 
-        // Prevent duplicate badge
-        if (tile.querySelector('.cost-badge')) return;
-
-        const badge = document.createElement('div');
-        badge.className = 'cost-badge';
-        badge.style.cssText = `
-          position: absolute;
-          bottom: 6px;
-          right: 6px;
-          font-size: 10px;
-          font-family: monospace;
-          padding: 2px 6px;
-          border: 1px solid;
-          border-radius: 4px;
-          pointer-events: none;
-        `;
-
-        const text = tool ? getToolCostEstimate(tool) : '???';
-        badge.textContent = text;
-
-        if (text === '???') {
-          badge.style.background = 'rgba(128,128,128,0.15)';
-          badge.style.borderColor = 'rgba(128,128,128,0.4)';
-          badge.style.color = '#888';
-        } else {
-          badge.style.background = 'rgba(0,255,0,0.15)';
-          badge.style.borderColor = 'rgba(0,255,0,0.4)';
-          badge.style.color = '#0f0';
-        }
-
-        tile.style.position = 'relative';
-        tile.appendChild(badge);
-      });
+      // Observe for late-arriving tiles
+      const featuresContainerEl = document.getElementById('features-container');
+      if (featuresContainerEl) {
+        const observer = new MutationObserver(buildCostBadges);
+        observer.observe(featuresContainerEl, { childList: true });
+      }
     } catch (err) {
       console.error('Failed to load tool registry for cost badges', err);
     }
