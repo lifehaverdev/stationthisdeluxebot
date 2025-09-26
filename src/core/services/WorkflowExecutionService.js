@@ -366,6 +366,7 @@ class WorkflowExecutionService {
                 initiatingEventId: completedGeneration.initiatingEventId,
                 serviceName: 'comfyui',
                 toolId: `spell-${spell.slug || (spell._id && spell._id.toString())}`,
+                toolDisplayName: spell.name || `Spell ${spell.slug || (spell._id && spell._id.toString())}`,
                 spellId: (spell._id && spell._id.toString()) || null,
                 castId: completedGeneration.metadata.castId || null,
                 requestPayload: originalContext.parameterOverrides,

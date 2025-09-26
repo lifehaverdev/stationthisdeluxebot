@@ -136,7 +136,7 @@ class CommandDispatcher {
 
     async handle(bot, message, dependencies) {
         for (const [regex, handler] of this.handlers.entries()) {
-            const match = message.text.match(regex);
+            const match = (message.text || message.caption || '').match(regex);
             if (match) {
                 // Pass the bot, message, and the stored dependencies to the handler.
                 await handler(bot, message, dependencies, match);

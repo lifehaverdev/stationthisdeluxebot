@@ -52,6 +52,10 @@ function createTelegramBot(dependencies, token, options = {}) {
     ...options
   });
 
+  // Track bot startup time to filter old messages
+  const botStartupTime = Date.now();
+  const MESSAGE_AGE_LIMIT_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
+
   // --- Initialize Dispatchers ---
   const callbackQueryDispatcher = new CallbackQueryDispatcher(logger);
   const messageReplyDispatcher = new MessageReplyDispatcher(logger);
@@ -125,6 +129,15 @@ function createTelegramBot(dependencies, token, options = {}) {
     try {
       if (!message.caption) return;
 
+      // Filter out old messages (older than 2 minutes from bot startup)
+      const messageTime = message.date * 1000; // Convert Telegram timestamp to milliseconds
+      const messageAge = Date.now() - messageTime;
+      
+      if (messageAge > MESSAGE_AGE_LIMIT_MS) {
+        logger.debug(`[Bot] Ignoring old photo message (age: ${Math.round(messageAge / 1000)}s, limit: ${MESSAGE_AGE_LIMIT_MS / 1000}s)`);
+        return;
+      }
+
       const fullDependencies = { ...dependencies, replyContextManager };
 
       // CLEAN KEYBOARD FOR PHOTOS
@@ -161,6 +174,15 @@ function createTelegramBot(dependencies, token, options = {}) {
   bot.on('message', async (message) => {
     try {
       if (!message.text) return;
+
+      // Filter out old messages (older than 2 minutes from bot startup)
+      const messageTime = message.date * 1000; // Convert Telegram timestamp to milliseconds
+      const messageAge = Date.now() - messageTime;
+      
+      if (messageAge > MESSAGE_AGE_LIMIT_MS) {
+        logger.debug(`[Bot] Ignoring old message (age: ${Math.round(messageAge / 1000)}s, limit: ${MESSAGE_AGE_LIMIT_MS / 1000}s)`);
+        return;
+      }
 
       const fullDependencies = { ...dependencies, replyContextManager };
 
