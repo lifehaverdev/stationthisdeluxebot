@@ -59,9 +59,14 @@ module.exports = function generationExecutionApi(dependencies) {
         }
         
         if (tool.costingModel.rateSource === 'machine') {
-          costRateInfo = await comfyUIService.getCostRateForDeployment(tool.metadata.deploymentId);
-          if (!costRateInfo) {
-            logger.error(`[Execute] Could not retrieve dynamic machine cost for tool '${toolId}'.`);
+          // Use the tool's costing model directly instead of looking up deployment
+          if (tool.costingModel.rate && tool.costingModel.unit) {
+            costRateInfo = {
+              amount: tool.costingModel.rate,
+              unit: tool.costingModel.unit
+            };
+          } else {
+            logger.error(`[Execute] Tool '${toolId}' has machine costing but missing rate or unit.`);
             return res.status(500).json({ error: { code: 'COSTING_UNAVAILABLE', message: 'Could not determine execution cost.' } });
           }
         } else if (tool.costingModel.rateSource === 'fixed') {

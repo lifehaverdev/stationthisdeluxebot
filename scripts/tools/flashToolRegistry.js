@@ -89,10 +89,10 @@ async function flashRegistry() {
     console.log('Fetching all tools from ToolRegistry...');
     let tools = toolRegistry.getAllTools();
 
-    // --- Enrich tools with historical average cost/duration ---
+    // --- Enrich tools with historical average cost/duration (metadata only) ---
     const generationOutputsDb = services.db?.data?.generationOutputs;
     if (generationOutputsDb) {
-      console.log('Enriching tools with historical cost averages...');
+      console.log('Enriching tools with historical cost averages (metadata only)...');
       const enrichedTools = [];
       for (const tool of tools) {
         if (tool.costingModel && tool.costingModel.rateSource !== 'static') {
@@ -108,12 +108,11 @@ async function flashRegistry() {
                 const sec = avgDuration / 1000;
                 const rate = sec > 0 ? avgCost / sec : null;
                 if (rate) {
-                  tool.costingModel.rate = parseFloat(rate.toFixed(6));
-                  tool.costingModel.unit = 'second';
-                  tool.costingModel.rateSource = 'historical';
+                  // Only set historical data in metadata, don't overwrite costing model
                   tool.metadata = tool.metadata || {}; // Ensure metadata exists
                   tool.metadata.avgHistoricalCost = avgCost;
                   tool.metadata.avgHistoricalDurationMs = avgDuration;
+                  tool.metadata.avgHistoricalRate = parseFloat(rate.toFixed(6));
                 }
               }
             }
