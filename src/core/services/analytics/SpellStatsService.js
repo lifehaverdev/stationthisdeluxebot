@@ -83,16 +83,12 @@ class SpellStatsService {
                 // Historical average duration (ms)
                 tool.metadata.avgHistoricalDurationMs = stats.avgRuntimeMs;
 
-                // Historical rate (USD / second)
+                // Historical rate (USD / second) - ONLY for metadata, NOT for costing model
                 if (stats.avgRuntimeMs > 0 && stats.avgCostUsd > 0) {
                     const sec = stats.avgRuntimeMs / 1000;
                     const rateSec = stats.avgCostUsd / sec;
-                    tool.costingModel = {
-                        ...(tool.costingModel || {}),
-                        rate: parseFloat(rateSec.toFixed(6)),
-                        unit: 'second',
-                        rateSource: 'historical'
-                    };
+                    // Only set historical cost in metadata, don't overwrite costing model
+                    tool.metadata.avgHistoricalRate = parseFloat(rateSec.toFixed(6));
                 }
             } catch (err) {
                 this.logger.warn(`[SpellStatsService] Failed to compute stats for ${tool.toolId}: ${err.message}`);
