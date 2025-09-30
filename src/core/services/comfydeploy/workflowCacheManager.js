@@ -1152,15 +1152,7 @@ class WorkflowCacheManager {
         const { avgDuration, avgCost } = resArr[0];
         if (avgDuration && avgCost) {
           toolDefinition.metadata.avgHistoricalDurationMs = avgDuration;
-          const sec = avgDuration / 1000;
-          if (sec > 0) {
-            const rateUsd = avgCost / sec;
-            toolDefinition.costingModel = {
-              rate: parseFloat(rateUsd.toFixed(6)),
-              unit: 'second', // USD per second
-              rateSource: 'historical'
-            };
-          }
+          toolDefinition.metadata.avgHistoricalCost = avgCost; // Only set metadata, NOT costing model
         }
       }
     } catch (histErr) {

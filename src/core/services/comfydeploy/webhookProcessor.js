@@ -146,10 +146,18 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 logger.warn(`[Webhook Processor] Cost calculation skipped for spell step ${generationId}: costRate.unit is '${costRate.unit}', expected 'second'.`);
               }
             } else if (status === 'success') {
-              logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing or invalid jobStartDetails, startTime, or costRate. 
-                           jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
-                           costRate: ${JSON.stringify(costRate)}, 
-                           finalEventTimestamp: ${finalEventTimestamp}`);
+              if (!costRate || !costRate.amount) {
+                logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing costRate information. 
+                             This may be because the tool doesn't have costing configured. 
+                             jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
+                             costRate: ${JSON.stringify(costRate)}, 
+                             finalEventTimestamp: ${finalEventTimestamp}`);
+              } else {
+                logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing or invalid jobStartDetails or startTime. 
+                             jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
+                             costRate: ${JSON.stringify(costRate)}, 
+                             finalEventTimestamp: ${finalEventTimestamp}`);
+              }
             } else {
               logger.info(`[Webhook Processor] Spell step ${generationId} ended with status ${status}. Cost calculation skipped.`);
             }
