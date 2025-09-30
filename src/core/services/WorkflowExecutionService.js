@@ -360,6 +360,20 @@ class WorkflowExecutionService {
                 }
             }
 
+            // ---- Aggregate cost/points across all step generations ----
+            let totalCostUsd = 0;
+            let totalPointsSpent = 0;
+            try {
+                if (stepGenerationIds && stepGenerationIds.length > 0) {
+                    const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?ids=${stepGenerationIds.join(',')}`);
+                    const stepGens = genRes.data.generations || [];
+                    totalCostUsd = stepGens.reduce((sum, g) => sum + (typeof g.costUsd === 'number' ? g.costUsd : 0), 0);
+                    totalPointsSpent = stepGens.reduce((sum, g) => sum + (g.pointsSpent || 0), 0);
+                }
+            } catch (err) {
+                this.logger.warn('[WorkflowExecution] Failed to aggregate cost for final spell generation:', err.message);
+            }
+
             // Create a *new* final generation record that the dispatcher will handle normally.
             const finalGenerationParams = {
                 masterAccountId: originalContext.masterAccountId,
@@ -375,6 +389,10 @@ class WorkflowExecutionService {
                 deliveryStatus: 'pending', // So the dispatcher picks it up
                 notificationPlatform: originalContext.platform,
                 deliveryStrategy: 'cook_piece',
+                // Aggregated cost fields
+                costUsd: Number(totalCostUsd) || 0,
+                pointsSpent: Number(totalPointsSpent) || 0,
+                protocolNetPoints: Number(totalPointsSpent) || 0,
                 metadata: {
                     isSpell: true,
                     spellName: spell.name,
