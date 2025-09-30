@@ -230,7 +230,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
           generationRecord = createResponse;
-          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
+          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}' with costRate: ${JSON.stringify(costRateInfo)}.`);
 
           // --- Submit to ComfyUI Service ---
           const runId = await comfyUIService.submitRequest({

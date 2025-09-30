@@ -116,6 +116,16 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         generationRecord = response.data.generations[0];
         generationId = generationRecord._id;
 
+        // Extract costRate from metadata before spell step check
+        if (generationRecord.metadata) {
+            costRate = generationRecord.metadata.costRate;
+            telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
+            logger.info(`[Webhook Processor] Extracted costRate from metadata: ${JSON.stringify(costRate)}`);
+        } else {
+            logger.error(`[Webhook Processor] Generation record for run_id ${run_id} is missing metadata.`);
+            return { success: false, statusCode: 500, error: "Generation record metadata missing." };
+        }
+
         // --- SPELL STEP CHECK ---
         // If this is an intermediate step in a spell, we calculate cost but don't debit the user.
         // The user is charged upfront for the entire spell, but we still need cost data for display.
@@ -199,14 +209,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
             }
         }
         // --- END SPELL STEP CHECK ---
-
-        if (generationRecord.metadata) {
-            costRate = generationRecord.metadata.costRate;
-            telegramChatId = generationRecord.metadata.telegramChatId; // Extracted for completeness of record info
-        } else {
-            logger.error(`[Webhook Processor] Generation record for run_id ${run_id} is missing metadata.`);
-            return { success: false, statusCode: 500, error: "Generation record metadata missing." };
-        }
 
         // Basic check for generationId; costRate and telegramChatId might be optional depending on job type or if notification is disabled
         if (!generationId) {
