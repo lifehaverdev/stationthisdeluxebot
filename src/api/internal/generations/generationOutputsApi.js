@@ -133,7 +133,7 @@ module.exports = function generationOutputsApi(dependencies) {
     logger.info('[generationOutputsApi] POST / - Received request', { body: req.body });
 
     // Validate required fields from ADR-003
-    const { masterAccountId, initiatingEventId, serviceName, toolId, spellId, castId, cookId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
+    const { masterAccountId, initiatingEventId, serviceName, toolId, toolDisplayName, spellId, castId, cookId, requestPayload, responsePayload, metadata, requestTimestamp, notificationPlatform, deliveryStatus, deliveryStrategy, status } = req.body;
     const requiredFields = { masterAccountId, initiatingEventId, serviceName, requestPayload, notificationPlatform, deliveryStatus };
     for (const field in requiredFields) {
       if (requiredFields[field] === undefined || requiredFields[field] === null) { // Check for undefined or null
@@ -179,6 +179,7 @@ module.exports = function generationOutputsApi(dependencies) {
         initiatingEventId: new ObjectId(initiatingEventId),
         serviceName: serviceName.trim(),
         ...(toolId && { toolId }),
+        ...(toolDisplayName && { toolDisplayName }),
         ...(spellId && { spellId }),
         ...(castId && { castId }),
         ...(cookId && { cookId }),

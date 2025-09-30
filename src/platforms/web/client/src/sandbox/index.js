@@ -203,6 +203,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Touch pinch/pan
+    // Note: Mobile zoom sensitivity is reduced via damping factor in touchmove handler
     let lastTouchDist = null, lastTouchCenter = null;
     sandboxContent.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
@@ -242,8 +243,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
                 y: (e.touches[0].clientY + e.touches[1].clientY) / 2
             };
-            // Pinch zoom
-            setScale(scale * (newDist / lastTouchDist), newCenter.x, newCenter.y);
+            
+            // Reduced sensitivity for mobile pinch zoom
+            // Apply a damping factor to make zoom less sensitive
+            const zoomSensitivity = 0.3; // Lower = less sensitive (0.1-0.5 range)
+            const distanceRatio = newDist / lastTouchDist;
+            const dampedRatio = 1 + (distanceRatio - 1) * zoomSensitivity;
+            
+            // Pinch zoom with reduced sensitivity
+            setScale(scale * dampedRatio, newCenter.x, newCenter.y);
             // Pan
             pan.x += newCenter.x - lastTouchCenter.x;
             pan.y += newCenter.y - lastTouchCenter.y;

@@ -1360,7 +1360,7 @@ class CreditService {
         const foundationContract = this.ethereumService.getContract(
           this.contractConfig.address,
           this.contractConfig.abi,
-          false // read-only provider is fine for callStatic
+          true // Use signer for static call to simulate marshal authorization
         );
 
         // 1. Verify on-chain predicted address matches our local prediction
