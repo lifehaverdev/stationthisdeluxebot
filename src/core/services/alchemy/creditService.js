@@ -2,6 +2,7 @@ const { ethers, formatEther, formatUnits, keccak256, toUtf8Bytes } = require('et
 const CreditLedgerDB = require('../db/alchemy/creditLedgerDb');
 const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
+const tokenDecimalService = require('../tokenDecimalService');
 const WalletLinkingRequestDB = require('../db/walletLinkingRequestDb');
 const WalletLinkingService = require('../walletLinkingService');
 const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('./tokenConfig');
@@ -74,6 +75,7 @@ class CreditService {
    */
   constructor(services, config, logger) {
     this.logger = logger || console;
+    tokenDecimalService.setLogger(this.logger);
 
     const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService, webSocketService } = services;
     if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService || !webSocketService) {
@@ -377,15 +379,8 @@ class CreditService {
     const priceInUsd = await this.priceFeedService.getPriceInUsd(token);
     const fundingRate = getDonationFundingRate(token);
     
-    // Handle MS2 token with 6 decimals vs ETH with 18 decimals
-    let grossDepositUsd;
-    if (token.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase()) {
-      // MS2 has 6 decimals
-      grossDepositUsd = parseFloat(formatUnits(amount, 6)) * priceInUsd;
-    } else {
-      // ETH and other tokens use 18 decimals
-      grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
-    }
+    // Use centralized decimal service for consistent token handling
+    const grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
     
     this.logger.info(`[CreditService] Donation processing for token ${token}:`, {
       amount: amount.toString(),
@@ -654,7 +649,7 @@ class CreditService {
             }
             return;
         }
-        this.logger.info(`[CreditService] Contract reports a total unconfirmed balance of ${formatEther(amount)} ETH for this group.`);
+        this.logger.info(`[CreditService] Contract reports a total unconfirmed balance of ${tokenDecimalService.formatTokenAmount(amount, token)} ${tokenDecimalService.getTokenMetadata(token).symbol} for this group.`);
 
         // 1. DYNAMIC FUNDING RATE
         this.logger.info(`[CreditService] Step 1: Applying dynamic funding rate for token ${token}...`);
@@ -667,7 +662,7 @@ class CreditService {
         }
         const priceInUsd = riskAssessment.price;
         const fundingRate = getFundingRate(token);
-        const grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+        const grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
         const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
         this.logger.info(`[CreditService] Original Value: $${grossDepositUsd.toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
 
@@ -760,7 +755,7 @@ class CreditService {
             this._sendDepositNotification(masterAccountId, 'failed', { reason: reason.failure_reason, originalTxHashes });
             return;
         }
-        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(formatEther(escrowAmountForContract)).toFixed(6)} ETH, Total Fee: ${parseFloat(formatEther(gasFeeInWei)).toFixed(6)} ETH`);
+        this.logger.info(`[CreditService] Step 4: Sending on-chain confirmation for user ${user}. Total Net Escrow: ${parseFloat(tokenDecimalService.formatTokenAmount(escrowAmountForContract, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}, Total Fee: ${parseFloat(tokenDecimalService.formatTokenAmount(gasFeeInWei, token)).toFixed(6)} ${tokenDecimalService.getTokenMetadata(token).symbol}`);
         const txResponse = await this.ethereumService.write(this.contractConfig.address, this.contractConfig.abi, 'commit', fundAddress, user, token, escrowAmountForContract, gasFeeInWei, '0x');
         this.logger.info(`[CreditService] Transaction sent. On-chain hash: ${txResponse.hash}. Waiting for confirmation...`);
 
@@ -778,7 +773,7 @@ class CreditService {
 
         // 5. OFF-CHAIN CREDIT APPLICATION (for the net value of the entire group)
         const actualGasCostEth = confirmationReceipt.gasUsed * (confirmationReceipt.gasPrice || confirmationReceipt.effectiveGasPrice);
-        const actualGasCostUsd = parseFloat(formatEther(actualGasCostEth)) * priceInUsd;
+        const actualGasCostUsd = parseFloat(tokenDecimalService.formatTokenAmount(actualGasCostEth, token)) * priceInUsd;
         // All calculations are now based on the funding-rate-adjusted value
         const netAdjustedDepositUsd = adjustedGrossDepositUsd - actualGasCostUsd;
         if (netAdjustedDepositUsd < 0) {
@@ -1139,7 +1134,7 @@ class CreditService {
             '0x'
         );
 
-        const withdrawalValueUsd = parseFloat(formatEther(BigInt(collateralAmountWei))) * riskAssessment.price;
+        const withdrawalValueUsd = tokenDecimalService.calculateUsdValue(BigInt(collateralAmountWei), '0x0000000000000000000000000000000000000000', riskAssessment.price);
         if (estimatedGasCostUsd >= withdrawalValueUsd) {
             await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'REJECTED_UNPROFITABLE', {
                 failure_reason: `Gas cost (${estimatedGasCostUsd} USD) exceeds withdrawal value (${withdrawalValueUsd} USD)`
@@ -1159,7 +1154,7 @@ class CreditService {
         }
 
         // 3. Execute withdrawal
-        this.logger.info(`[CreditService] Executing withdrawal for ${userAddress}. Amount: ${formatEther(withdrawalAmount)} ETH, Fee: ${formatEther(feeInWei)} ETH`);
+        this.logger.info(`[CreditService] Executing withdrawal for ${userAddress}. Amount: ${tokenDecimalService.formatTokenAmount(withdrawalAmount, '0x0000000000000000000000000000000000000000')} ETH, Fee: ${tokenDecimalService.formatTokenAmount(feeInWei, '0x0000000000000000000000000000000000000000')} ETH`);
         const txResponse = await this.ethereumService.write(
             this.contractConfig.address,
             this.contractConfig.abi,
@@ -1311,7 +1306,7 @@ class CreditService {
           const gasEstimate = await this.ethereumService.getProvider().estimateGas(tx);
           const gasPrice = (await this.ethereumService.getProvider().getFeeData()).gasPrice;
           const ethPriceUsd = await this.priceFeedService.getPriceInUsd(assetAddress);
-          const estimatedCostUsd = parseFloat(formatEther(gasEstimate * gasPrice)) * ethPriceUsd;
+          const estimatedCostUsd = tokenDecimalService.calculateUsdValue(gasEstimate * gasPrice, '0x0000000000000000000000000000000000000000', ethPriceUsd);
           return estimatedCostUsd;
         } else {
           // ERC20: estimate deposit(assetAddress, amount)

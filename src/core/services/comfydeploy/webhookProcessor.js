@@ -117,21 +117,71 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         generationId = generationRecord._id;
 
         // --- SPELL STEP CHECK ---
-        // If this is an intermediate step in a spell, we just update the record and let the dispatcher handle it.
-        // We do NOT calculate cost or debit the user at this stage.
+        // If this is an intermediate step in a spell, we calculate cost but don't debit the user.
+        // The user is charged upfront for the entire spell, but we still need cost data for display.
         if (generationRecord.metadata?.isSpell && generationRecord.deliveryStrategy === 'spell_step') {
-            logger.info(`[Webhook Processor] Detected spell step for generation ${generationId}. Bypassing cost/debit logic.`);
+            logger.info(`[Webhook Processor] Detected spell step for generation ${generationId}. Calculating cost but bypassing debit logic.`);
+            
+            // Calculate cost for display purposes (same logic as regular tools)
+            let costUsd = null;
+            let runDurationSeconds = 0;
+
+            if (jobStartDetails && jobStartDetails.startTime && 
+                costRate && typeof costRate.amount === 'number' && typeof costRate.unit === 'string' && 
+                status === 'success') {
+              
+              const startTime = new Date(jobStartDetails.startTime);
+              const endTime = new Date(finalEventTimestamp);
+              runDurationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
+              
+              if (runDurationSeconds < 0) {
+                logger.warn(`[Webhook Processor] Calculated negative run duration (${runDurationSeconds}s) for spell step ${generationId}. Clamping to 0. Start: ${jobStartDetails.startTime}, End: ${finalEventTimestamp}`);
+                runDurationSeconds = 0;
+              } 
+
+              if (costRate.unit.toLowerCase() === 'second' || costRate.unit.toLowerCase() === 'seconds') {
+                costUsd = runDurationSeconds * costRate.amount;
+                logger.info(`[Webhook Processor] Calculated costUsd for spell step: ${costUsd} for generation ${generationId} (Duration: ${runDurationSeconds.toFixed(2)}s, Rate: ${costRate.amount}/${costRate.unit})`);
+              } else {
+                logger.warn(`[Webhook Processor] Cost calculation skipped for spell step ${generationId}: costRate.unit is '${costRate.unit}', expected 'second'.`);
+              }
+            } else if (status === 'success') {
+              logger.warn(`[Webhook Processor] Could not calculate cost for successful spell step ${generationId}: Missing or invalid jobStartDetails, startTime, or costRate. 
+                           jobStartDetails: ${JSON.stringify(jobStartDetails)}, 
+                           costRate: ${JSON.stringify(costRate)}, 
+                           finalEventTimestamp: ${finalEventTimestamp}`);
+            } else {
+              logger.info(`[Webhook Processor] Spell step ${generationId} ended with status ${status}. Cost calculation skipped.`);
+            }
+            
             const spellStepUpdatePayload = {
                 status: status === 'success' ? 'completed' : 'failed',
                 statusReason: status === 'failed' ? (payload.error_details || payload.error || 'Unknown error from ComfyDeploy') : null,
                 responseTimestamp: finalEventTimestamp,
                 responsePayload: status === 'success' ? (outputs || null) : (payload.error_details || payload.error || null),
+                // Include cost data for display purposes
+                ...(costUsd !== null && { costUsd: costUsd }),
+                ...(runDurationSeconds > 0 && { durationMs: Math.round(runDurationSeconds * 1000) })
             };
             
             try {
                 const putRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
                 await internalApiClient.put(`/internal/v1/data/generations/${generationId}`, spellStepUpdatePayload, putRequestOptions);
-                logger.info(`[Webhook Processor] Successfully updated spell step generation record ${generationId}.`);
+                logger.info(`[Webhook Processor] Successfully updated spell step generation record ${generationId} with cost data.`);
+                
+                // Fetch the full, updated record to dispatch it
+                try {
+                    const getRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+                    const updatedRecordResponse = await internalApiClient.get(`/internal/v1/data/generations/${generationId}`, getRequestOptions);
+                    
+                    if (updatedRecordResponse.data) {
+                        logger.info(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId} with costUsd: ${updatedRecordResponse.data.costUsd}`);
+                        notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
+                    }
+                } catch (getError) {
+                    logger.error(`[Webhook Processor] Failed to fetch updated generation record ${generationId} for event dispatch after update. Error: ${getError.message}`);
+                }
+                
                 return { success: true, statusCode: 200, data: { message: "Spell step processed successfully." } };
             } catch (err) {
                 logger.error(`[Webhook Processor] Error updating spell step generation record ${generationId}:`, err.message, err.stack);
@@ -225,20 +275,6 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
 
       // The generationOutputsApi now handles emitting the event on status change.
       // We no longer need to emit from here, preventing duplicate notifications.
-      /*
-      // Fetch the full, updated record to dispatch it
-      try {
-        const getRequestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        const updatedRecordResponse = await internalApiClient.get(`/internal/v1/data/generations/${generationId}`, getRequestOptions);
-        
-        if (updatedRecordResponse.data) {
-            logger.info(`[Webhook Processor] Emitting 'generationUpdated' for generationId: ${generationId}`);
-            notificationEvents.emit('generationUpdated', updatedRecordResponse.data);
-        }
-      } catch (getError) {
-        logger.error(`[Webhook Processor] Failed to fetch updated generation record ${generationId} for event dispatch after update. Error: ${getError.message}`);
-      }
-      */
 
     } catch (err) {
        logger.error(`[Webhook Processor] Error updating generation record ${generationId} for run_id ${run_id}:`, err.message, err.stack);

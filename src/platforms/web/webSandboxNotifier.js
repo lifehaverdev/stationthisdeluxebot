@@ -96,6 +96,7 @@ class WebSandboxNotifier {
       };
 
       this.logger.info('[WebSandboxNotifier] DEBUG payload', JSON.stringify(payload));
+      this.logger.info(`[WebSandboxNotifier] Cost data - original: ${generationRecord.costUsd}, converted: ${payload.costUsd}`);
 
       const sent = this.websocketService.sendToUser(masterAccountId, {
         type: 'generationUpdate',

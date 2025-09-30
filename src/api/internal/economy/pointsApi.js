@@ -4,6 +4,7 @@ const { ethers } = require('ethers');
 const foundationAbi = require('../../../core/contracts/abis/foundation.json');
 const { contracts } = require('../../../core/contracts');
 const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
+const tokenDecimalService = require('../../../core/services/tokenDecimalService');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -123,27 +124,16 @@ module.exports = function pointsApi(dependencies) {
 
             if (type === 'token') {
                 fundingRate = (mode === 'donate') ? getDonationFundingRate(assetAddress) : getFundingRate(assetAddress);
-                let decimals = getDecimals(assetAddress);
-                
-                // Special handling for MS2 token which has 6 decimals
-                const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
-                if (isMS2) {
-                    decimals = 6; // Override decimals for MS2
-                }
-
-                let humanReadable;
-                let adjustedAmount;
-                // Frontend sends amounts already in the token's native decimals
-                // Convert to human readable using the token's actual decimals
-                humanReadable = ethers.formatUnits(amount, decimals);
-                adjustedAmount = amount; // Already in correct format
+                // Use centralized decimal service for consistent token handling
+                const decimals = tokenDecimalService.getTokenDecimals(assetAddress);
+                const humanReadable = tokenDecimalService.formatTokenAmount(amount, assetAddress);
+                const adjustedAmount = amount; // Already in correct format
                 assetAmount = parseFloat(humanReadable);
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 
                 logger.info(`[pointsApi:/quote] Amount conversion:`, {
                     token: assetAddress,
-                    isMS2,
                     decimals,
                     originalAmount: amount,
                     humanReadable,
@@ -367,19 +357,13 @@ module.exports = function pointsApi(dependencies) {
                     const tokenContract = ethereumService.getContract(assetAddress, ['function allowance(address, address) view returns (uint256)', 'function approve(address, uint256) returns (bool)']);
                     const allowance = await tokenContract.allowance(userWalletAddress, toAddress);
 
-                    // Special handling for MS2 token which has 6 decimals
-                    const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
-                    if (isMS2) {
-                        decimals = 6; // Override decimals for MS2
-                    }
-
-                    // Frontend sends amounts already in the token's native decimals
-                    const humanReadable = ethers.formatUnits(amount, decimals);
+                    // Use centralized decimal service for consistent token handling
+                    const decimals = tokenDecimalService.getTokenDecimals(assetAddress);
+                    const humanReadable = tokenDecimalService.formatTokenAmount(amount, assetAddress);
                     const adjustedAmount = amount; // Already in correct format
 
                     logger.info(`[pointsApi] /purchase ERC20 token details:`, {
                         token: assetAddress,
-                        isMS2,
                         decimals,
                         originalAmount: amount,
                         humanReadable,
@@ -510,16 +494,10 @@ module.exports = function pointsApi(dependencies) {
                     );
                     assetSymbol = tokenConfig ? tokenConfig[1].symbol : undefined;
                 }
-                // Format amount
+                // Format amount using centralized decimal service
                 let assetAmount = amount;
                 if (amount && assetAddress && assetSymbol) {
-                    const tokenConfig = Object.entries(TOKEN_CONFIG).find(
-                        ([address]) => address.toLowerCase() === assetAddress.toLowerCase()
-                    );
-                    if (tokenConfig) {
-                        const decimals = tokenConfig[1].decimals;
-                        assetAmount = (BigInt(amount) / BigInt(10 ** decimals)).toString();
-                    }
+                    assetAmount = tokenDecimalService.formatTokenAmount(amount, assetAddress);
                 }
                 res.json({
                     status,
