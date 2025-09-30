@@ -93,7 +93,12 @@ async function sendPhotoWithEscapedCaption(bot, chatId, photoBuffer, options = {
         parse_mode: 'MarkdownV2',
     };
 
-    return bot.sendPhoto(chatId, photoBuffer, finalOptions);
+    try {
+        return await bot.sendPhoto(chatId, photoBuffer, finalOptions);
+    } catch (error) {
+        console.error('[messaging] sendPhotoWithEscapedCaption error:', error.message);
+        throw error;
+    }
 }
 
 /**
@@ -113,7 +118,12 @@ async function sendAnimationWithEscapedCaption(bot, chatId, animation, options =
         caption: escapedCaption,
         parse_mode: 'MarkdownV2',
     };
-    return bot.sendAnimation(chatId, animation, finalOptions);
+    try {
+        return await bot.sendAnimation(chatId, animation, finalOptions);
+    } catch (error) {
+        console.error('[messaging] sendAnimationWithEscapedCaption error:', error.message);
+        throw error;
+    }
 }
 
 /**
@@ -133,7 +143,12 @@ async function sendVideoWithEscapedCaption(bot, chatId, video, options = {}, cap
         caption: escapedCaption,
         parse_mode: 'MarkdownV2',
     };
-    return bot.sendVideo(chatId, video, finalOptions);
+    try {
+        return await bot.sendVideo(chatId, video, finalOptions);
+    } catch (error) {
+        console.error('[messaging] sendVideoWithEscapedCaption error:', error.message);
+        throw error;
+    }
 }
 
 /**

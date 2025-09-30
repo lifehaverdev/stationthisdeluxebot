@@ -430,7 +430,7 @@ function initializeInternalServices(dependencies = {}) {
   v1DataRouter.use('/generations', generationOutputsApi);
 
   // Mount points routes
-  v1DataRouter.use('/points', pointsApi);
+  v1DataRouter.use('/points', pointsApi(apiDependencies));
 
   // Mount generation execution routes
   v1DataRouter.use('/execute', generationExecutionApi(apiDependencies));

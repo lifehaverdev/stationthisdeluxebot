@@ -216,23 +216,11 @@ module.exports = function pointsApi(dependencies) {
             // Only deduct gas after funding rate
             userReceivesUsd = netAfterFundingRate - estimatedGasUsd;
 
-            // Special handling for MS2 token - we want it regardless of USD value
-            const isMS2 = assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase();
-            if (isMS2) {
-                // For MS2, credit points based on token amount directly
-                // 1 MS2 = 1000 points (adjust this ratio as needed)
-                pointsCredited = Math.floor(assetAmount * 1000);
-                logger.info(`[pointsApi:/quote] MS2 points calculation:`, {
-                    assetAmount,
-                    pointsCredited
-                });
+            // Calculate points based on USD value for all tokens
+            if (typeof USD_TO_POINTS_CONVERSION_RATE === 'number' && USD_TO_POINTS_CONVERSION_RATE > 0 && typeof userReceivesUsd === 'number' && userReceivesUsd > 0) {
+                pointsCredited = Math.max(0, Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE));
             } else {
-                // Normal USD-based point calculation for other tokens
-                if (typeof USD_TO_POINTS_CONVERSION_RATE === 'number' && USD_TO_POINTS_CONVERSION_RATE > 0 && typeof userReceivesUsd === 'number' && userReceivesUsd > 0) {
-                    pointsCredited = Math.max(0, Math.floor(userReceivesUsd / USD_TO_POINTS_CONVERSION_RATE));
-                } else {
-                    pointsCredited = 0;
-                }
+                pointsCredited = 0;
             }
 
             // Log all intermediate values
@@ -582,6 +570,37 @@ module.exports = function pointsApi(dependencies) {
             });
         } catch (error) {
             logger.error('[pointsApi] /tx-status error:', error);
+            next(error);
+        }
+    });
+
+    /**
+     * @route GET /internal/v1/points/charter/:code
+     * @description Get referral vault information by charter code
+     * @access Internal
+     */
+    router.get('/charter/:code', async (req, res, next) => {
+        try {
+            const { code } = req.params;
+            logger.info(`[pointsApi] /charter/${code} called`);
+            
+            if (!code) {
+                return res.status(400).json({ message: 'Charter code is required.' });
+            }
+
+            const vault = await creditLedgerDb.findReferralVaultByName(code);
+            if (!vault) {
+                return res.status(404).json({ message: 'Charter not found.' });
+            }
+
+            res.json({
+                code,
+                address: vault.vault_address,
+                vaultName: vault.vaultName,
+                masterAccountId: vault.master_account_id
+            });
+        } catch (error) {
+            logger.error('[pointsApi] /charter error:', error);
             next(error);
         }
     });

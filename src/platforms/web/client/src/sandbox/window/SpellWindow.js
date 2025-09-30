@@ -24,6 +24,9 @@ export default class SpellWindow extends ToolWindow {
     // Initialize cost tracking properties
     this.totalCost = totalCost || { usd: 0, points: 0, ms2: 0, cult: 0 };
     this.costVersions = costVersions || [];
+    
+    // Initialize cost tracking display (inherited from ToolWindow)
+    this.initializeCostTracking();
 
     // Lazy-load full metadata if exposedInputs missing (e.g., restored from slim snapshot)
     if (!this.spell.exposedInputs) {
@@ -132,17 +135,41 @@ export default class SpellWindow extends ToolWindow {
 
     this.body.append(requiredSection, showMoreBtn, optionalSection, inputAnchors);
 
+    // Output rendering (like ToolWindow)
+    if (this.output) {
+      const resultContainer = document.createElement('div');
+      resultContainer.className = 'result-container';
+      this.body.appendChild(resultContainer);
+
+      // 1) Button to load last output back into the UI
+      const loadBtn = document.createElement('button');
+      loadBtn.className = 'load-output-button';
+      loadBtn.textContent = this.output.type === 'image' ? 'Load Image' : (this.output.type === 'text' ? 'Load Text' : 'Load Output');
+      loadBtn.addEventListener('click', () => {
+        import('../node/resultContent.js').then(m => m.renderResultContent(resultContainer, this.output));
+        loadBtn.remove();
+      });
+
+      // 2) Standard execute button so users can re-run the spell after reload
+      const execBtn = document.createElement('button');
+      execBtn.textContent = 'Cast Spell';
+      execBtn.className = 'execute-button';
+      execBtn.addEventListener('click', () => executeSpell(this.id));
+
+      this.body.append(loadBtn, execBtn);
+    } else {
+      // No prior output → just show execute button like before
+      const execBtn = document.createElement('button');
+      execBtn.textContent = 'Cast Spell';
+      execBtn.className = 'execute-button';
+      execBtn.addEventListener('click', () => executeSpell(this.id));
+      this.body.appendChild(execBtn);
+    }
+
     const verSel = createVersionSelector(this);
     this.versionSelector = verSel;
     this.el.versionSelector = verSel;
     this.header.insertBefore(verSel, this.header.lastChild);
-
-    // Execute Spell button
-    const execBtn = document.createElement('button');
-    execBtn.textContent = 'Cast Spell';
-    execBtn.className = 'execute-button';
-    execBtn.addEventListener('click', () => executeSpell(this.id));
-    this.body.appendChild(execBtn);
 
     import('../node/overlays/textOverlay.js').then(m=>m.bindPromptFieldOverlays()).catch(()=>{});
   }
