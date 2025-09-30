@@ -8,11 +8,13 @@
 Video generation completes successfully and logs show "Successfully sent all media and text for COMPLETED notification" but videos never appear in Telegram chat.
 
 ## Root Cause Analysis
-The issue was in `src/platforms/telegram/utils/messaging.js` in the `sendVideoWithEscapedCaption` function:
+The issue was actually in `src/platforms/telegram/telegramNotifier.js` in the video detection logic:
 
-1. **Missing `await`**: The function was calling `bot.sendVideo()` without `await`, so it wasn't waiting for the API response
-2. **No error handling**: If the Telegram API call failed, the error was silently ignored
-3. **No return value**: The function wasn't returning the result of the API call
+1. **Missing video detection**: The code was only checking `file.format && file.format.startsWith('video/')` but the video files from ComfyUI don't have a `format` field
+2. **Incomplete fallback logic**: The code wasn't checking for video file extensions or the `subfolder` field
+3. **Silent failure**: Videos weren't being added to `mediaToSend` array, so they were never sent
+
+**Secondary issue**: The `sendVideoWithEscapedCaption` function also had missing `await` and error handling.
 
 ## Evidence
 From logs:
@@ -24,19 +26,37 @@ From logs:
 The system successfully fetched the video but the actual Telegram API call was failing silently.
 
 ## Fix Applied
-Updated `src/platforms/telegram/utils/messaging.js`:
+Updated `src/platforms/telegram/telegramNotifier.js`:
 
-1. **Added proper error handling** to all media sending functions:
-   - `sendVideoWithEscapedCaption`
-   - `sendPhotoWithEscapedCaption` 
-   - `sendAnimationWithEscapedCaption`
+1. **Fixed video detection logic** to handle ComfyUI file format:
+   - Added check for `file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)`
+   - Added check for `file.subfolder === 'video'`
+   - Kept original `file.format` check for other sources
 
-2. **Added `await`** to ensure the API call completes before continuing
+2. **Added debug logging** to track file processing and media collection
 
-3. **Added error logging** to capture and propagate Telegram API errors
+3. **Updated `src/platforms/telegram/utils/messaging.js`**:
+   - Added proper error handling to all media sending functions
+   - Added `await` to ensure API calls complete
+   - Added error logging to capture Telegram API errors
 
 ## Code Changes
 ```javascript
+// Before - video detection
+if (file.format && file.format.startsWith('video/')) {
+    mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+}
+
+// After - video detection with multiple fallbacks
+if (file.format && file.format.startsWith('video/')) {
+    mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+} else if (file.filename && file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
+    mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+} else if (file.subfolder === 'video') {
+    mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+}
+
+// Also fixed messaging.js
 // Before
 return bot.sendVideo(chatId, video, finalOptions);
 

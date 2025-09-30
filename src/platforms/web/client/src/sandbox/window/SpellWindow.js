@@ -25,8 +25,7 @@ export default class SpellWindow extends ToolWindow {
     this.totalCost = totalCost || { usd: 0, points: 0, ms2: 0, cult: 0 };
     this.costVersions = costVersions || [];
     
-    // Initialize cost tracking display (inherited from ToolWindow)
-    this.initializeCostTracking();
+    // Note: Cost tracking initialization moved to after window registration
 
     // Lazy-load full metadata if exposedInputs missing (e.g., restored from slim snapshot)
     if (!this.spell.exposedInputs) {
@@ -59,9 +58,13 @@ export default class SpellWindow extends ToolWindow {
         if (existing) {
           Object.assign(existing, { ...this.serialize(), element: this.el });
           mod.persistState();
+          // Initialize cost tracking display after window is registered
+          this.initializeCostTracking();
         } else {
           // Register in global state via BaseWindow helper
           this._registerWindow(!id);
+          // Initialize cost tracking display after window is registered
+          this.initializeCostTracking();
         }
 
         // Re-render body now that model is in place

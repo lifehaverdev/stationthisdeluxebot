@@ -108,7 +108,16 @@ class TelegramNotifier {
                 for (const file of output.data.files) {
                     if (!file.url) continue;
 
+                    this.logger.info(`[TelegramNotifier] Processing file: ${JSON.stringify(file)}`);
+
                     if (file.format && file.format.startsWith('video/')) {
+                        this.logger.info(`[TelegramNotifier] Detected video by format: ${file.format}`);
+                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+                    } else if (file.filename && file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
+                        this.logger.info(`[TelegramNotifier] Detected video by filename: ${file.filename}`);
+                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
+                    } else if (file.subfolder === 'video') {
+                        this.logger.info(`[TelegramNotifier] Detected video by subfolder: ${file.subfolder}`);
                         mediaToSend.push({ type: 'video', url: file.url, caption: '' });
                     } else if (file.filename && (file.filename.endsWith('.txt') || file.format === 'text/plain')) {
                         try {
@@ -149,6 +158,8 @@ class TelegramNotifier {
       }
 
       // Send all collected media items.
+      this.logger.info(`[TelegramNotifier] Collected ${mediaToSend.length} media items to send: ${JSON.stringify(mediaToSend.map(m => ({ type: m.type, url: m.url })))}`);
+      
       try {
           for (let i = 0; i < mediaToSend.length; i++) {
               const media = mediaToSend[i];
