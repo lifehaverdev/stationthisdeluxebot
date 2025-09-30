@@ -133,11 +133,11 @@ module.exports = function pointsApi(dependencies) {
 
                 let humanReadable;
                 let adjustedAmount;
-                // All amounts from frontend are in 18 decimals (Ethereum standard)
-                // Convert to human readable first, then to token's actual decimals
-                humanReadable = ethers.formatUnits(amount, 18);
-                adjustedAmount = ethers.parseUnits(humanReadable, decimals);
-                assetAmount = parseFloat(ethers.formatUnits(adjustedAmount, decimals));
+                // Frontend sends amounts already in the token's native decimals
+                // Convert to human readable using the token's actual decimals
+                humanReadable = ethers.formatUnits(amount, decimals);
+                adjustedAmount = amount; // Already in correct format
+                assetAmount = parseFloat(humanReadable);
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 
@@ -385,10 +385,9 @@ module.exports = function pointsApi(dependencies) {
                         decimals = 6; // Override decimals for MS2
                     }
 
-                    // Convert amount to human readable first (frontend sends in 18 decimals)
-                    const humanReadable = ethers.formatUnits(amount, 18);
-                    // Then convert to token's actual decimals
-                    const adjustedAmount = ethers.parseUnits(humanReadable, decimals).toString();
+                    // Frontend sends amounts already in the token's native decimals
+                    const humanReadable = ethers.formatUnits(amount, decimals);
+                    const adjustedAmount = amount; // Already in correct format
 
                     logger.info(`[pointsApi] /purchase ERC20 token details:`, {
                         token: assetAddress,

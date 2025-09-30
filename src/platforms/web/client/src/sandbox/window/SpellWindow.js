@@ -10,7 +10,7 @@ import { getToolWindows } from '../state.js';
 import createVersionSelector from './versionSelector.js';
 
 export default class SpellWindow extends ToolWindow {
-  constructor({ spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null }) {
+  constructor({ spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null, totalCost = null, costVersions = null }) {
     const spellSlug = spell.slug || spell._id;
     const initMappings = parameterMappings ? JSON.parse(JSON.stringify(parameterMappings)) : {};
     super({ tool: { displayName: spell.name, toolId: `spell-${spellSlug}` }, position, id, output, parameterMappings: initMappings, outputVersions, currentVersionIndex }, { register: false });
@@ -20,6 +20,10 @@ export default class SpellWindow extends ToolWindow {
 
     this.isSpell = true;
     this.spell = spell;
+    
+    // Initialize cost tracking properties
+    this.totalCost = totalCost || { usd: 0, points: 0, ms2: 0, cult: 0 };
+    this.costVersions = costVersions || [];
 
     // Lazy-load full metadata if exposedInputs missing (e.g., restored from slim snapshot)
     if (!this.spell.exposedInputs) {
@@ -79,6 +83,8 @@ export default class SpellWindow extends ToolWindow {
       outputVersions: this.outputVersions,
       currentVersionIndex: this.currentVersionIndex,
       parameterMappings: this.parameterMappings,
+      totalCost: this.totalCost,
+      costVersions: this.costVersions,
       isSpell: true,
     };
   }
@@ -143,7 +149,7 @@ export default class SpellWindow extends ToolWindow {
 }
 
 // Helper for older callers
-export function createSpellWindow(spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null) {
+export function createSpellWindow(spell, position, id = null, output = null, parameterMappings = null, outputVersions = null, currentVersionIndex = null, totalCost = null, costVersions = null) {
   // Check if a window for this spell already exists to avoid duplicates
   const spellId=spell._id||spell.slug||'';
   const existing=document.querySelector(`.spell-window[data-spell-id="${spellId}"]`);
@@ -151,7 +157,7 @@ export function createSpellWindow(spell, position, id = null, output = null, par
      existing.remove();
   }
 
-  const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex });
+  const win = new SpellWindow({ spell, position, id, output, parameterMappings, outputVersions, currentVersionIndex, totalCost, costVersions });
   win.mount();
   return win.el;
 }

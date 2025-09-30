@@ -372,7 +372,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 win.output,
                 win.parameterMappings,
                 win.outputVersions,
-                win.currentVersionIndex
+                win.currentVersionIndex,
+                win.totalCost,
+                win.costVersions
             );
             return;
         }
@@ -465,7 +467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Re-create tool and spell windows from state
         getToolWindows().forEach(win => {
             if (win.isSpell && win.spell) {
-                createSpellWindow(win.spell, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+                createSpellWindow(win.spell, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output, win.parameterMappings, win.outputVersions, win.currentVersionIndex, win.totalCost, win.costVersions);
                 return;
             }
             if (win.tool) {
@@ -518,7 +520,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     win.output,
                     win.parameterMappings,
                     win.outputVersions,
-                    win.currentVersionIndex
+                    win.currentVersionIndex,
+                    win.totalCost,
+                    win.costVersions
                 );
                 return;
             }

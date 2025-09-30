@@ -218,6 +218,18 @@ class CreditLedgerDB extends BaseDB {
   }
 
   /**
+   * Finds a referral vault by its deployment transaction hash.
+   * @param {string} txHash - The deployment transaction hash
+   * @returns {Promise<Object|null>} The vault document or null if not found
+   */
+  async findReferralVaultByTxHash(txHash) {
+    return this.findOne({
+      deployment_tx_hash: txHash,
+      type: 'REFERRAL_VAULT'
+    });
+  }
+
+  /**
    * Retrieves aggregated deposit statistics for a given vault, grouped by token.
    * @param {string} vaultAddress - The address of the referral vault.
    * @returns {Promise<Array<{tokenAddress: string, totalDeposits: string, totalAdjustedGrossUsd: number}>>}
@@ -272,6 +284,25 @@ class CreditLedgerDB extends BaseDB {
           total_referral_rewards_wei: rewardsWei
         },
         $set: { updatedAt: new Date() }
+      }
+    );
+  }
+
+  /**
+   * Updates the status of a referral vault.
+   * @param {string|ObjectId} vaultId - The ID of the vault to update
+   * @param {string} status - The new status (e.g., 'ACTIVE', 'ADDRESS_MISMATCH', 'ERROR')
+   * @returns {Promise<Object>} The result of the update operation
+   */
+  async updateReferralVaultStatus(vaultId, status) {
+    const id = typeof vaultId === 'string' && ObjectId.isValid(vaultId) ? new ObjectId(vaultId) : vaultId;
+    return this.updateOne(
+      { _id: id, type: 'REFERRAL_VAULT' },
+      {
+        $set: {
+          status: status,
+          updatedAt: new Date()
+        }
       }
     );
   }
