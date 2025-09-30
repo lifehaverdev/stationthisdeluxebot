@@ -87,6 +87,7 @@ function calculateAndTrackCost(toolWindowEl, payload) {
     addWindowCost(windowId, costData);
     
     debugLog('COST_TRACKING', `[Cost] Tracked cost for ${windowId}:`, costData);
+    console.log(`[WebSocket] Cost tracked for ${windowId}:`, costData);
 }
 // --- NEW: Generation Completion Manager ---
 const generationCompletionManager = {
@@ -301,14 +302,42 @@ export function handleGenerationUpdate(payload) {
             // Calculate and track cost on client side
             calculateAndTrackCost(toolWindowEl, payload);
             
-            // mark step done
+            // mark step done and update step cost
             let li=toolWindowEl.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`);
             if(!li){ li=[...stepList(toolWindowEl)].find(li=>li.textContent.includes(toolId)); }
             if(!li){
                 // Fallback: mark first pending step as done
                 li=[...stepList(toolWindowEl)].find(li=>li.classList.contains('pending'));
             }
-            if(li) li.className='done';
+            if(li) {
+                li.className='done';
+                
+                // Update step cost display
+                const costSpan = li.querySelector('.step-cost');
+                if (costSpan) {
+                    const { durationMs, gpuType, costUsd } = payload;
+                    let usdCost = 0;
+                    
+                    // Use provided cost from server (same logic as calculateAndTrackCost)
+                    if (costUsd !== undefined && costUsd !== null) {
+                        usdCost = costUsd;
+                    } else if (durationMs && gpuType) {
+                        const gpuCostPerSecond = GPU_COST_PER_SECOND[gpuType] || GPU_COST_PER_SECOND['CPU'];
+                        usdCost = gpuCostPerSecond * (durationMs / 1000);
+                    }
+                    
+                    if (usdCost > 0) {
+                        // Convert to points for display
+                        const exchangeRates = getCurrentExchangeRates();
+                        const points = Math.round(usdCost * exchangeRates.POINTS_per_USD);
+                        costSpan.textContent = ` - ${points} POINTS`;
+                        costSpan.style.color = '#4CAF50'; // Green for completed
+                    } else {
+                        costSpan.textContent = ' - Free';
+                        costSpan.style.color = '#4CAF50';
+                    }
+                }
+            }
             // NEW: update spell progress bar after marking step done
             const bar=toolWindowEl.querySelector('.spell-progress-bar');
             if(bar){
@@ -380,7 +409,17 @@ function handleToolResponse({ toolId, output, requestId }){
     if(!win) return;
 
     const li=win.querySelector(`.spell-step-status li[data-tool-id="${toolId}"]`) || [...stepList(win)].find(li=>li.textContent.includes(toolId));
-    if(li) li.className='done';
+    if(li) {
+        li.className='done';
+        
+        // Update step cost display for immediate response
+        const costSpan = li.querySelector('.step-cost');
+        if (costSpan) {
+            // For immediate responses, we don't have cost data, so show as completed
+            costSpan.textContent = ' - Completed';
+            costSpan.style.color = '#4CAF50';
+        }
+    }
 
     // progress bar update
     const bar=win.querySelector('.spell-progress-bar');

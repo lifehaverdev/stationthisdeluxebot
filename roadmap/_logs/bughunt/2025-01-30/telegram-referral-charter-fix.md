@@ -53,3 +53,29 @@ at pointsApi (/usr/src/app/src/api/internal/economy/pointsApi.js:29:31)
 
 ## Status
 ✅ **FIXED** - Both issues resolved in single bulk edit
+
+---
+
+## Additional Fix: MS2 Token Decimal Handling
+
+**Problem**: MS2 donations were crediting 0 points due to incorrect decimal handling in webhook processing.
+
+**Root Cause**: `_processDonationEvent()` was using `formatEther()` (18 decimals) for MS2 tokens which have 6 decimals, causing massive under-calculation of USD value.
+
+**Fix Applied**:
+```javascript
+// Handle MS2 token with 6 decimals vs ETH with 18 decimals
+let grossDepositUsd;
+if (token.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase()) {
+  // MS2 has 6 decimals
+  grossDepositUsd = parseFloat(formatUnits(amount, 6)) * priceInUsd;
+} else {
+  // ETH and other tokens use 18 decimals
+  grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+}
+```
+
+**Files Modified**:
+- `src/core/services/alchemy/creditService.js` (lines 376-399)
+
+**Status**: ✅ **FIXED** - MS2 donations now credit correct points

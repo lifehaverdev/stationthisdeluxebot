@@ -60,11 +60,23 @@ export default class SpellWindow extends ToolWindow {
           mod.persistState();
           // Initialize cost tracking display after window is registered
           this.initializeCostTracking();
+          
+          // Debug: Log cost tracking initialization
+          console.log(`[SpellWindow] Cost tracking initialized for ${this.id}`, {
+            totalCost: this.totalCost,
+            costVersions: this.costVersions
+          });
         } else {
           // Register in global state via BaseWindow helper
           this._registerWindow(!id);
           // Initialize cost tracking display after window is registered
           this.initializeCostTracking();
+          
+          // Debug: Log cost tracking initialization
+          console.log(`[SpellWindow] Cost tracking initialized for ${this.id}`, {
+            totalCost: this.totalCost,
+            costVersions: this.costVersions
+          });
         }
 
         // Re-render body now that model is in place

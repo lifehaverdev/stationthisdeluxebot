@@ -124,7 +124,12 @@ export default class ToolWindow extends BaseWindow {
     const currentDenomination = denomination || localStorage.getItem('costDenom') || 'POINTS';
     
     const costData = getWindowCost(this.id);
-    if (!costData) return;
+    if (!costData) {
+      console.log(`[ToolWindow] No cost data found for ${this.id}`);
+      return;
+    }
+    
+    console.log(`[ToolWindow] Updating cost display for ${this.id}:`, costData);
 
     const costElement = this.el.querySelector('.window-cost-display .cost-amount');
     if (!costElement) return;

@@ -99,4 +99,49 @@
 
 .spell-param-input {
     max-width: 180px;
+}
+
+/* Step cost display styling */
+.spell-step-status li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin: 2px 0;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.spell-step-status li.pending {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color-muted);
+}
+
+.spell-step-status li.done {
+    background: rgba(76, 175, 80, 0.1);
+    color: var(--text-color);
+}
+
+.step-content {
+    flex: 1;
+}
+
+.step-cost {
+    font-size: 0.85em;
+    font-weight: 500;
+    margin-left: 8px;
+    opacity: 0.8;
+}
+
+.step-cost.calculating {
+    color: #888;
+    font-style: italic;
+}
+
+.step-cost.completed {
+    color: #4CAF50;
+}
+
+.step-cost.free {
+    color: #4CAF50;
 } 

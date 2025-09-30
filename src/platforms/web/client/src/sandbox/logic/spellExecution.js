@@ -84,7 +84,20 @@ export async function executeSpell(windowId) {
         const li = document.createElement('li');
         li.dataset.stepId = step.id || idx;
         li.dataset.toolId = step.toolIdentifier || step.toolId;
-        li.textContent = `${idx + 1}. ${step.displayName || step.toolIdentifier || 'step'}`;
+        
+        // Create step content with cost display
+        const stepContent = document.createElement('span');
+        stepContent.className = 'step-content';
+        stepContent.textContent = `${idx + 1}. ${step.displayName || step.toolIdentifier || 'step'}`;
+        
+        const costSpan = document.createElement('span');
+        costSpan.className = 'step-cost';
+        costSpan.textContent = ' - Calculating...';
+        costSpan.style.color = '#888';
+        costSpan.style.fontSize = '0.9em';
+        
+        li.appendChild(stepContent);
+        li.appendChild(costSpan);
         li.className = 'pending';
         stepList.appendChild(li);
       });

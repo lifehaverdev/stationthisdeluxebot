@@ -1,4 +1,4 @@
-const { ethers, formatEther, keccak256, toUtf8Bytes } = require('ethers');
+const { ethers, formatEther, formatUnits, keccak256, toUtf8Bytes } = require('ethers');
 const CreditLedgerDB = require('../db/alchemy/creditLedgerDb');
 const SystemStateDB = require('../db/alchemy/systemStateDb');
 const { getCustodyKey, splitCustodyAmount } = require('./contractUtils');
@@ -376,7 +376,24 @@ class CreditService {
     // Price & funding rate
     const priceInUsd = await this.priceFeedService.getPriceInUsd(token);
     const fundingRate = getDonationFundingRate(token);
-    const grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+    
+    // Handle MS2 token with 6 decimals vs ETH with 18 decimals
+    let grossDepositUsd;
+    if (token.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase()) {
+      // MS2 has 6 decimals
+      grossDepositUsd = parseFloat(formatUnits(amount, 6)) * priceInUsd;
+    } else {
+      // ETH and other tokens use 18 decimals
+      grossDepositUsd = parseFloat(formatEther(amount)) * priceInUsd;
+    }
+    
+    this.logger.info(`[CreditService] Donation processing for token ${token}:`, {
+      amount: amount.toString(),
+      priceInUsd,
+      grossDepositUsd,
+      fundingRate
+    });
+    
     const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
     const userCreditedUsd = adjustedGrossDepositUsd;
     const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);
