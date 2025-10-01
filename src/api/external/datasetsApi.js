@@ -96,6 +96,25 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // PUT /:id (update dataset)
+  router.put('/:id', async (req, res) => {
+    const { id } = req.params;
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.put(`/internal/v1/data/datasets/${encodeURIComponent(id)}`, payload);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('update dataset proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   return router;
 }
 
