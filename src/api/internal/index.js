@@ -89,6 +89,7 @@ function initializeInternalServices(dependencies = {}) {
       userSettingsService: dependencies.userSettingsService, // Pass through the service
       comfyUIService: dependencies.comfyUIService, // Pass through the comfyUi service
       openaiService: dependencies.openai, // Pass through the openai service
+      huggingfaceService: dependencies.huggingface, // Pass through the huggingface service
       loraResolutionService: dependencies.loraResolutionService, // Pass through the loraResolutionService
       // Pass internalApiClient if UserSettingsService in userPreferencesApi needs it explicitly
       // internalApiClient: apiClient, (defined later in this function)
@@ -96,6 +97,7 @@ function initializeInternalServices(dependencies = {}) {
       stringService: dependencies.stringService,
       spellsService: dependencies.spellsService, // Inject spellsService so spellsApi can cast spells
       workflowExecutionService: dependencies.workflowExecutionService,
+      webSocketService: dependencies.webSocketService, // Pass through the webSocket service
       // --- Inject required backend services for pointsApi ---
       priceFeedService: dependencies.priceFeedService,
       creditService: dependencies.creditService,

@@ -20,14 +20,14 @@ function createStorageApi(services) {
   // This endpoint is internal-only and expects the calling service
   // to provide all necessary data, including the userId.
   router.post('/upload-url', requireInternal, async (req, res) => {
-    const { fileName, contentType, userId } = req.body;
+    const { fileName, contentType, userId, bucketName } = req.body;
 
     if (!fileName || !contentType || !userId) {
       return res.status(400).json({ error: 'fileName, contentType, and userId are required.' });
     }
 
     try {
-      const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, fileName, contentType);
+      const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, fileName, contentType, bucketName);
       res.json({ signedUrl, permanentUrl });
     } catch (error) {
       logger.error(`Failed to generate upload URL for user ${userId}:`, error);

@@ -1196,7 +1196,11 @@ export default class ModsMenuModal {
           'Content-Type': 'application/json',
           'X-CSRF-Token': token
         },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type })
+        body: JSON.stringify({ 
+          fileName: file.name, 
+          contentType: file.type,
+          bucketName: 'datasets' // Use datasets bucket for dataset images
+        })
       });
       
       if (!res.ok) throw new Error('Failed to get signed URL');
@@ -1758,6 +1762,10 @@ export default class ModsMenuModal {
       // Add masterAccountId to payload for dataset operations
       if (formMode.includes('dataset')) {
         payload.masterAccountId = masterAccountId;
+        // Include images in the payload for new dataset creation
+        if (formMode === 'new-dataset' && this.state.formValues.images && this.state.formValues.images.length > 0) {
+          payload.images = this.state.formValues.images;
+        }
       }
 
       const csrfRes = await fetch('/api/v1/csrf-token');

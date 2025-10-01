@@ -10,9 +10,10 @@ class SpellsService {
      * Finds and executes a spell.
      * @param {string} slug - The spell's slug.
      * @param {Object} context - Execution context { masterAccountId, parameterOverrides, ... }
+     * @param {Object} castsDb - Optional casts database for creating cast records
      * @returns {Promise<any>} The final result of the spell execution.
      */
-    async castSpell(slug, context) {
+    async castSpell(slug, context, castsDb = null) {
         this.logger.info(`[SpellsService] Attempting to cast spell with slug: "${slug}" for MAID ${context.masterAccountId}`);
 
         // 1. Find the spell
@@ -61,9 +62,25 @@ class SpellsService {
             throw new Error('You do not have permission to cast this spell.');
         }
 
+        // 2.5. Create cast record if not already provided
+        let castId = context.castId;
+        if (!castId && castsDb) {
+            try {
+                const newCast = await castsDb.createCast({ 
+                    spellId: spell._id.toString(), // Use spell._id instead of slug
+                    initiatorAccountId: context.masterAccountId 
+                });
+                castId = newCast._id.toString();
+                context.castId = castId;
+                this.logger.info(`[SpellsService] Created cast record ${castId} for spell ${spell._id}.`);
+            } catch (e) {
+                this.logger.warn(`[SpellsService] Cast creation failed for spell ${spell._id}:`, e.message);
+            }
+        }
+
         // 3. Execute the spell via WorkflowExecutionService
         // NOTE: WorkflowExecutionService now uses the centralized execution endpoint for all tool executions.
-        this.logger.info(`[SpellsService] Permissions check passed. Handing off to WorkflowExecutionService for spell "${spell.name}".`);
+        this.logger.info(`[SpellsService] Permissions check passed. Handing off to WorkflowExecutionService for spell "${spell.name}". CastId: ${castId || 'none'}`);
         const result = await this.workflowExecutionService.execute(spell, context);
         
         // 4. Increment usage count (fire and forget)

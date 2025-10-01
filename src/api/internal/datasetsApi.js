@@ -65,9 +65,9 @@ function createDatasetsApi(dependencies) {
 
   // POST /internal/v1/data/datasets - Create a new dataset
   router.post('/', async (req, res, next) => {
-    const { masterAccountId, name, description, tags, visibility = 'private' } = req.body;
+    const { masterAccountId, name, description, tags, visibility = 'private', images = [] } = req.body;
     
-    logger.info(`[DatasetsAPI] POST / - Creating new dataset "${name}" for MAID ${masterAccountId}`);
+    logger.info(`[DatasetsAPI] POST / - Creating new dataset "${name}" for MAID ${masterAccountId} with ${images.length} images`);
     
     if (!masterAccountId || !name) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId and name are required' } });
@@ -79,7 +79,8 @@ function createDatasetsApi(dependencies) {
         description: description || '',
         ownerAccountId: new ObjectId(masterAccountId),
         tags: tags || [],
-        visibility
+        visibility,
+        images: images || []
       };
       
       const dataset = await datasetDb.createDataset(datasetData);

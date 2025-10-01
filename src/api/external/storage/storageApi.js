@@ -36,7 +36,7 @@ function createPublicStorageApi(services) {
 
   // New preferred route for presigned uploads (alias for upload-url)
   router.post('/uploads/sign', async (req, res) => {
-    const { fileName, contentType } = req.body;
+    const { fileName, contentType, bucketName } = req.body;
     if (!fileName || !contentType) {
       return res.status(400).json({ error: 'fileName and contentType are required.' });
     }
@@ -45,6 +45,7 @@ function createPublicStorageApi(services) {
         fileName,
         contentType,
         userId: 'web-upload-user',
+        bucketName: bucketName || process.env.R2_DATASETS_BUCKET || process.env.R2_BUCKET_NAME
       });
       res.json(response.data);
     } catch (error) {

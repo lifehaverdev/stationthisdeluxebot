@@ -66,14 +66,8 @@ module.exports = function spellsApi(dependencies) {
     }
 
     try {
-      let castId=context.castId;
-      if(!castId && castsDb){
-        try{ const newCast= await castsDb.createCast({ spellId: slug, initiatorAccountId: context.masterAccountId }); castId=newCast._id.toString(); }
-        catch(e){ logger.warn('cast creation failed',e.message); }
-      }
-      if(castId){ context.castId = castId; }
-
-      const result = await spellsService.castSpell(slug, context);
+      // Cast creation moved to after spell lookup in spellsService.castSpell
+      const result = await spellsService.castSpell(slug, context, castsDb);
 
       // Ensure the client receives the newly-created castId immediately so it can
       // subscribe to progress updates without polling additional endpoints.

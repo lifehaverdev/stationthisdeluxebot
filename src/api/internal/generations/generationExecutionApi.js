@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 
 // This function initializes the routes for the centralized Generation Execution API
 module.exports = function generationExecutionApi(dependencies) {
-  const { logger, db, toolRegistry, comfyUIService, openaiService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer } = dependencies;
+  const { logger, db, toolRegistry, comfyUIService, openaiService, huggingfaceService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer } = dependencies;
   const router = express.Router();
 
   // Check for essential dependencies
@@ -105,7 +105,7 @@ module.exports = function generationExecutionApi(dependencies) {
             estimatedSeconds = tool.metadata.minDurationSeconds;
           }
           costUsd = estimatedSeconds * costRateInfo.amount;
-        } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed' || costRateInfo.unit.toLowerCase() === 'token')) { // Added token for static
+        } else if (costRateInfo.unit && (costRateInfo.unit.toLowerCase() === 'run' || costRateInfo.unit.toLowerCase() === 'fixed' || costRateInfo.unit.toLowerCase() === 'token' || costRateInfo.unit.toLowerCase() === 'request')) {
           costUsd = costRateInfo.amount;
         } else {
           logger.error(`[Execute] Could not determine cost for tool '${toolId}' with unhandled unit type:`, costRateInfo.unit);
@@ -650,6 +650,114 @@ module.exports = function generationExecutionApi(dependencies) {
             response: resultStr,
             castId: metadata.castId || null,
             message: 'String operation completed successfully.'
+          });
+        }
+        case 'huggingface': {
+          const { masterAccountId } = user;
+          const imageUrl = inputs.imageUrl;
+          
+          if (!imageUrl || typeof imageUrl !== 'string') {
+            return res.status(400).json({ 
+              error: { code: 'INVALID_INPUT', message: 'Missing or invalid imageUrl for JoyTag.' } 
+            });
+          }
+
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+          const generationParams = {
+            masterAccountId: new ObjectId(masterAccountId),
+            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
+            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
+            serviceName: tool.service,
+            toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
+            requestPayload: { imageUrl },
+            status: 'processing',
+            deliveryStatus: initialDeliveryStatus,
+            notificationPlatform: user.platform || 'none',
+            pointsSpent: 0,
+            protocolNetPoints: 0,
+            costUsd: null,
+            metadata: {
+              ...tool.metadata,
+              ...metadata,
+              costRate: costRateInfo,
+              platformContext: user.platformContext,
+              ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
+            }
+          };
+
+          const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
+          generationRecord = createResponse;
+
+          // --- Submit asynchronous HuggingFace interrogation ---
+          (async () => {
+            try {
+              const description = await huggingfaceService.interrogateImage({ imageUrl });
+              
+              await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                status: 'completed',
+                responsePayload: { description },
+                outputs: [ { data: { text: [description] } } ]
+              });
+
+              // --- Points debit (follow OpenAI pattern) ---
+              try {
+                const costRate = generationRecord.metadata?.costRate;
+                const costUsd = (costRate && typeof costRate.amount === 'number') ? costRate.amount : null;
+
+                if (costUsd != null && costUsd > 0) {
+                  const usdPerPoint = 0.000337;
+                  const pointsToSpend = Math.max(1, Math.round(costUsd / usdPerPoint));
+                  const spendPayload = { pointsToSpend, spendContext: { generationId: generationRecord._id.toString(), toolId: generationRecord.toolId } };
+                  const headers = { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB };
+                  const internalApiClient = require('../../../utils/internalApiClient');
+                  await internalApiClient.post(`/internal/v1/data/users/${generationRecord.masterAccountId}/economy/spend`, spendPayload, { headers });
+                  await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                    pointsSpent: pointsToSpend,
+                    protocolNetPoints: pointsToSpend,
+                    costUsd
+                  });
+                }
+              } catch (spendErr) {
+                logger.error(`[Execute] Points debit failed for JoyTag interrogation ${generationRecord._id}: ${spendErr.message}`);
+              }
+
+              // Emit generationUpdated event
+              try {
+                const notificationEvents = require('../../../core/events/notificationEvents');
+                const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+                notificationEvents.emit('generationUpdated', updatedRecord);
+              } catch(eventErr) {
+                logger.warn(`[Execute] Failed to emit generationUpdated for JoyTag ${generationRecord._id}: ${eventErr.message}`);
+              }
+            } catch (err) {
+              logger.error(`[Execute] HuggingFace interrogation error for tool '${toolId}' (async): ${err.message}`);
+              const cleanMsg = (err?.message || '').slice(0, 180);
+              await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+                status: 'failed',
+                statusReason: cleanMsg || 'Interrogation failed',
+                'metadata.error': {
+                  message: err.message,
+                  stack: err.stack,
+                  step: 'huggingface_interrogation'
+                }
+              });
+              try {
+                const notificationEvents = require('../../../core/events/notificationEvents');
+                const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+                notificationEvents.emit('generationUpdated', updatedRecord);
+              } catch(eventErr) {
+                logger.warn(`[Execute] Failed to emit generationUpdated after error for JoyTag ${generationRecord._id}: ${eventErr.message}`);
+              }
+            }
+          })();
+
+          const estSeconds = 15; // Interrogation is typically faster than generation
+          return res.status(202).json({ 
+            generationId: generationRecord._id.toString(), 
+            status: 'processing', 
+            estimatedDurationSeconds: estSeconds, 
+            message: 'Image interrogation started. Poll status endpoint for completion.' 
           });
         }
         default:

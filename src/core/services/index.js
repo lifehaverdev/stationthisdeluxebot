@@ -7,6 +7,7 @@
 const { ToolRegistry } = require('../tools/ToolRegistry.js');
 const { getUserSettingsService } = require('./userSettingsService');
 const OpenAIService = require('./openai/openaiService');
+const HuggingFaceService = require('./huggingface/huggingfaceService');
 
 const ComfyUIService = require('./comfydeploy/comfyui');
 const PointsService = require('./points');
@@ -71,6 +72,7 @@ async function initializeServices(options = {}) {
     // Instantiate the unified ModelDiscoveryService (used by menus, quoting, etc.)
     const modelDiscoveryService = new ModelDiscoveryService({ comfyService: comfyUIService });
     const openAIService = new OpenAIService({ logger });
+    const huggingfaceService = new HuggingFaceService({ logger });
     const storageService = new StorageService(logger); // Initialize StorageService
     const stringService = new StringService({ logger });
     
@@ -217,6 +219,7 @@ async function initializeServices(options = {}) {
       db: initializedDbServices,
       toolRegistry,
       openai: openAIService,
+      huggingface: huggingfaceService,
       comfyUIService: comfyUIService,
       loraResolutionService: loraResolutionService,
       internalApiClient, // pass canonical client to API layer
@@ -269,6 +272,7 @@ async function initializeServices(options = {}) {
       comfyUI: comfyUIService,
       workflows: workflowsService,
       openai: openAIService,
+      huggingface: huggingfaceService,
       db: initializedDbServices, // Return the INSTANTIATED services
       internal: apiServices.internal, // This contains router, status
       external: apiServices.external, // This contains the external router
@@ -326,6 +330,7 @@ module.exports = {
   MediaService,
   SpellsService,
   OpenAIService,
+  HuggingFaceService,
   WorkflowExecutionService,
   initializeServices,
   ToolRegistry, // geniusoverhaul: Export ToolRegistry for access if needed elsewhere
