@@ -14,7 +14,8 @@ import {
     clearSelection,
     getSelectedNodeIds,
     getWindowCost,
-    addWindowCost
+    addWindowCost,
+    trackPendingGeneration
 } from '../state.js';
 import { generateWindowId } from '../utils.js';
 import { renderAllConnections } from '../connections/index.js';
@@ -285,6 +286,13 @@ async function executeSingleNode(toolWindowEl) {
             if (execResult.generationId && !execResult.final) {
                 // Long-running job – wait for websocket updates
                 generationIdToWindowMap[execResult.generationId] = toolWindowEl;
+                
+                // Track pending generation for persistence
+                trackPendingGeneration(execResult.generationId, toolWindowEl.id, {
+                    toolId: tool.toolId,
+                    status: execResult.status || 'pending'
+                });
+                
                 progressIndicator.textContent = `Status: ${execResult.status}`;
                 await generationCompletionManager.createCompletionPromise(execResult.generationId);
             } else {

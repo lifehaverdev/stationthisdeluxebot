@@ -13,7 +13,8 @@ import {
     lasso,
     selectNode,
     clearSelection,
-    getSelectedNodeIds
+    getSelectedNodeIds,
+    checkPendingGenerations
 } from './state.js';
 import { initializeTools, uploadFile } from './io.js';
 import { createToolWindow, createSpellWindow } from './node/index.js';
@@ -71,6 +72,9 @@ import './test/debugTest.js'; // Initialize debug test utility
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize state
     initState();
+
+    // Check for pending generations that may have completed while away
+    await checkPendingGenerations();
 
     // Locate main containers
     const sandboxContent = document.querySelector('.sandbox-content');

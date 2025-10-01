@@ -38,6 +38,7 @@ const SpellStatsService = require('./analytics/SpellStatsService');
 const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
 const { initializeCookServices } = require('./cook');
 const StringService = require('./stringService');
+const { initializeTrainingServices } = require('./training');
 
 /**
  * Initialize all core services
@@ -299,8 +300,19 @@ async function initializeServices(options = {}) {
     // Initialize Cook projection services
     await initializeCookServices(logger);
 
+    // Initialize Training services
+    const trainingServices = await initializeTrainingServices({
+      logger,
+      db: initializedDbServices,
+      storageService: storageService,
+      pointsService: pointsService
+    });
+
     // Return instantiated services
-    return returnedServices;
+    return {
+      ...returnedServices,
+      training: trainingServices
+    };
   } catch (error) {
     logger.error('Failed to initialize services:', error);
     throw error;
@@ -328,4 +340,5 @@ module.exports = {
   SaltMiningService,
   ModelDiscoveryService,
   StringService,  // Export StringService
+  initializeTrainingServices, // Export training services
 }; 

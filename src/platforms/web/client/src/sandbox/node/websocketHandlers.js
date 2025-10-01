@@ -1,5 +1,5 @@
 import { websocketClient } from '/js/websocketClient.js';
-import { setToolWindowOutput, addWindowCost } from '../state.js';
+import { setToolWindowOutput, addWindowCost, trackPendingGeneration, untrackPendingGeneration, updatePendingGeneration } from '../state.js';
 import { renderResultContent } from './resultContent.js';
 
 // A map to associate generation IDs with their corresponding tool window elements
@@ -174,6 +174,18 @@ function handleGenerationProgress(payload) {
         if (castId) {
             toolWindow.dataset.castId = castId;
             castIdToWindowMap[castId] = toolWindow;
+        }
+
+        // Track pending generation for persistence
+        if (generationId && toolWindow.id) {
+            trackPendingGeneration(generationId, toolWindow.id, {
+                castId,
+                toolId,
+                spellId,
+                cookId,
+                status: status || 'pending',
+                lastProgress: progress || 0
+            });
         }
     }
 }
@@ -355,6 +367,11 @@ export function handleGenerationUpdate(payload) {
         // --- NEW: Resolve the completion promise ---
         generationCompletionManager.resolveCompletionPromise(generationId, { status, outputs });
         // ------------------------------------------
+
+        // Untrack completed generation from pending tracking
+        if (generationId) {
+            untrackPendingGeneration(generationId);
+        }
 
         // For plain tool nodes we can remove the mapping now.  For spells we keep it
         // so subsequent step updates (new generationIds) can still fall back to the

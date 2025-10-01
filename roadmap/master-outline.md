@@ -64,7 +64,7 @@ User-facing system for stacking Low Rank Adaptation (LoRA) models to customize o
 
 ### LoraTrainingSystem
 ##### Status
-Planned
+In Progress
 #### Description
 Pipeline that accepts ~20 user images, trains a new LoRA model, and registers it in the ComfyUI service.
 

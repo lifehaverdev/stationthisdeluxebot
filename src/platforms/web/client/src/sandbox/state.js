@@ -50,6 +50,7 @@ export function getConnections() {
 
 const CONNECTIONS_KEY = 'sandbox_connections';
 const TOOL_WINDOWS_KEY = 'sandbox_tool_windows';
+const PENDING_GENERATIONS_KEY = 'sandbox_pending_generations';
 // --- New: persistence helpers ---
 const SIZE_LIMIT = 100 * 1024; // 100 KB – max per output blob before truncation
 
@@ -80,6 +81,95 @@ function downloadStateAsFile(connections, windows) {
         document.body.removeChild(a);
     } catch (e) {
         console.error('[State] Failed to download workspace JSON', e);
+    }
+}
+
+// --- Pending Generation Tracking ---
+
+/**
+ * Track a pending generation for persistence across page reloads
+ * @param {string} generationId - The generation ID from the backend
+ * @param {string} windowId - The tool window ID
+ * @param {Object} metadata - Additional metadata (castId, toolId, spellId, etc.)
+ */
+export function trackPendingGeneration(generationId, windowId, metadata = {}) {
+    const pendingGenerations = getPendingGenerations();
+    pendingGenerations[generationId] = {
+        windowId,
+        castId: metadata.castId || null,
+        toolId: metadata.toolId || null,
+        spellId: metadata.spellId || null,
+        cookId: metadata.cookId || null,
+        status: metadata.status || 'pending',
+        requestTimestamp: metadata.requestTimestamp || new Date().toISOString(),
+        lastProgress: metadata.lastProgress || 0
+    };
+    persistPendingGenerations(pendingGenerations);
+    stateDebug('[PendingGen] Tracked generation:', generationId, 'for window:', windowId);
+}
+
+/**
+ * Remove a generation from pending tracking (when completed or failed)
+ * @param {string} generationId - The generation ID to remove
+ */
+export function untrackPendingGeneration(generationId) {
+    const pendingGenerations = getPendingGenerations();
+    if (pendingGenerations[generationId]) {
+        delete pendingGenerations[generationId];
+        persistPendingGenerations(pendingGenerations);
+        stateDebug('[PendingGen] Untracked generation:', generationId);
+    }
+}
+
+/**
+ * Update pending generation status/progress
+ * @param {string} generationId - The generation ID
+ * @param {Object} updates - Status updates (status, lastProgress, etc.)
+ */
+export function updatePendingGeneration(generationId, updates) {
+    const pendingGenerations = getPendingGenerations();
+    if (pendingGenerations[generationId]) {
+        Object.assign(pendingGenerations[generationId], updates);
+        persistPendingGenerations(pendingGenerations);
+        stateDebug('[PendingGen] Updated generation:', generationId, updates);
+    }
+}
+
+/**
+ * Get all pending generations
+ * @returns {Object} Map of generationId -> generation data
+ */
+export function getPendingGenerations() {
+    try {
+        const raw = localStorage.getItem(PENDING_GENERATIONS_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+        console.error('[PendingGen] Failed to load pending generations:', e);
+        return {};
+    }
+}
+
+/**
+ * Persist pending generations to localStorage
+ * @param {Object} pendingGenerations - The pending generations object
+ */
+function persistPendingGenerations(pendingGenerations) {
+    try {
+        localStorage.setItem(PENDING_GENERATIONS_KEY, JSON.stringify(pendingGenerations));
+    } catch (e) {
+        console.error('[PendingGen] Failed to persist pending generations:', e);
+    }
+}
+
+/**
+ * Clear all pending generations (useful for cleanup)
+ */
+export function clearPendingGenerations() {
+    try {
+        localStorage.removeItem(PENDING_GENERATIONS_KEY);
+        stateDebug('[PendingGen] Cleared all pending generations');
+    } catch (e) {
+        console.error('[PendingGen] Failed to clear pending generations:', e);
     }
 }
 
@@ -725,12 +815,121 @@ export function resetAllCosts() {
     }
 }
 
+// --- Generation Recovery System ---
+
+/**
+ * Check for completed pending generations and update windows
+ * This is called on page load to recover from websocket disconnections
+ */
+export async function checkPendingGenerations() {
+    const pendingGenerations = getPendingGenerations();
+    const generationIds = Object.keys(pendingGenerations);
+    
+    if (generationIds.length === 0) {
+        stateDebug('[PendingGen] No pending generations to check');
+        return;
+    }
+    
+    stateDebug('[PendingGen] Checking', generationIds.length, 'pending generations');
+    
+    try {
+        // Fetch generation statuses from the API
+        const response = await fetch('/api/v1/generations/status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+            },
+            body: JSON.stringify({ generationIds })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        const completedGenerations = data.generations || [];
+        
+        // Process each completed generation
+        for (const generation of completedGenerations) {
+            const generationId = generation._id || generation.id;
+            const pendingData = pendingGenerations[generationId];
+            
+            if (!pendingData) continue;
+            
+            stateDebug('[PendingGen] Found completed generation:', generationId, 'status:', generation.status);
+            
+            // Find the corresponding window
+            const window = getToolWindow(pendingData.windowId);
+            if (!window) {
+                stateDebug('[PendingGen] Window not found for generation:', generationId, 'windowId:', pendingData.windowId);
+                untrackPendingGeneration(generationId);
+                continue;
+            }
+            
+            // Update window with completed output
+            if (generation.status === 'completed' || generation.status === 'success') {
+                const outputData = {
+                    type: 'recovered',
+                    generationId: generationId,
+                    ...generation.responsePayload
+                };
+                
+                setToolWindowOutput(pendingData.windowId, outputData);
+                
+                // Update cost if available
+                if (generation.costUsd) {
+                    addWindowCost(pendingData.windowId, {
+                        usd: generation.costUsd,
+                        points: 0, // Will be calculated by cost system
+                        ms2: 0,
+                        cult: 0
+                    });
+                }
+                
+                stateDebug('[PendingGen] Updated window with completed generation:', pendingData.windowId);
+            } else if (generation.status === 'failed') {
+                // Handle failed generation
+                const errorData = {
+                    type: 'error',
+                    generationId: generationId,
+                    error: generation.errorDetails || 'Generation failed',
+                    status: 'failed'
+                };
+                
+                setToolWindowOutput(pendingData.windowId, errorData);
+                stateDebug('[PendingGen] Updated window with failed generation:', pendingData.windowId);
+            }
+            
+            // Remove from pending tracking
+            untrackPendingGeneration(generationId);
+        }
+        
+        // Clean up any generations that are no longer pending (older than 1 hour)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        for (const [generationId, pendingData] of Object.entries(pendingGenerations)) {
+            const requestTime = new Date(pendingData.requestTimestamp);
+            if (requestTime < oneHourAgo) {
+                stateDebug('[PendingGen] Cleaning up old pending generation:', generationId);
+                untrackPendingGeneration(generationId);
+            }
+        }
+        
+    } catch (error) {
+        console.error('[PendingGen] Failed to check pending generations:', error);
+        // Don't clear pending generations on error - they might still be valid
+    }
+}
+
 // Expose for debugging in browser console
 if (typeof window !== 'undefined') {
     window.getToolWindows = getToolWindows;
     window.activeToolWindows = activeToolWindows;
     window.getTotalWorkspaceCost = getTotalWorkspaceCost;
     window.resetAllCosts = resetAllCosts;
+    window.getPendingGenerations = getPendingGenerations;
+    window.checkPendingGenerations = checkPendingGenerations;
+    window.clearPendingGenerations = clearPendingGenerations;
 } 
 
 const sandboxState = {

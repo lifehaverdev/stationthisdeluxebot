@@ -173,6 +173,48 @@ function createGenerationsApi(dependencies) {
         }
     });
 
+    // Status check endpoint for pending generations
+    router.post('/status', async (req, res) => {
+        const { generationIds } = req.body;
+        const { user } = req; // Injected by apiKeyAuth middleware
+
+        // Input validation
+        if (!generationIds || !Array.isArray(generationIds) || generationIds.length === 0) {
+            return res.status(400).json({ 
+                error: { code: 'BAD_REQUEST', message: 'Missing or invalid `generationIds` array.' } 
+            });
+        }
+
+        // Validate generation IDs format
+        const invalidIds = generationIds.filter(id => typeof id !== 'string' || id.length === 0);
+        if (invalidIds.length > 0) {
+            return res.status(400).json({ 
+                error: { code: 'BAD_REQUEST', message: 'Invalid generation ID format.', details: { invalidIds } } 
+            });
+        }
+
+        try {
+            // Query internal API for generation statuses
+            const response = await internalClient.get('/internal/v1/data/generations', {
+                params: {
+                    _id: { $in: generationIds },
+                    masterAccountId: user.masterAccountId
+                }
+            });
+
+            const generations = response.data?.generations || response.data || [];
+            
+            logger.info(`[GenerationsApi] Status check: Found ${generations.length} generations for ${generationIds.length} requested IDs`);
+            
+            res.status(200).json({ generations });
+        } catch (error) {
+            logger.error(`[GenerationsApi] Status check failed: ${error.message}`, error);
+            res.status(500).json({
+                error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to check generation statuses.' }
+            });
+        }
+    });
+
     return router;
 }
 

@@ -1,4 +1,4 @@
-import { getToolWindow, pushHistory, removeToolWindow, getAvailableTools, persistState, setToolWindowOutput } from '../state.js';
+import { getToolWindow, pushHistory, removeToolWindow, getAvailableTools, persistState, setToolWindowOutput, trackPendingGeneration } from '../state.js';
 import { renderResultContent } from '../node/resultContent.js';
 import { showError } from '../node/parameterInputs.js';
 import { renderAllConnections } from '../connections/index.js';
@@ -133,6 +133,15 @@ export async function executeSpell(windowId) {
     const isFinalStatus = ['completed', 'success', 'failed'].includes(result.status);
     if (result.generationId && !isFinalStatus) {
       generationIdToWindowMap[result.generationId] = spellWindowEl;
+      
+      // Track pending generation for persistence
+      trackPendingGeneration(result.generationId, spellWindowEl.id, {
+        castId: result.castId,
+        toolId: result.toolId,
+        spellId: result.spellId,
+        status: result.status || 'pending'
+      });
+      
       progressIndicator.textContent = `Status: ${result.status}`;
       progBar.value = 50;
       generationCompletionManager.createCompletionPromise(result.generationId).then(() => {

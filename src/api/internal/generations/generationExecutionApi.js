@@ -544,30 +544,110 @@ module.exports = function generationExecutionApi(dependencies) {
             return res.status(500).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'String service unavailable.' } });
           }
 
-          try {
-            const resultStr = stringService.execute(inputs);
-            const payload = {
-              generationId: 'string-primitive-' + Date.now(),
-              status: 'completed',
-              service: 'string',
-              toolId: tool.toolId,
-              outputs: { text: resultStr },
-              message: 'String operation completed.'
-            };
-
-            // Send via websocket if available
-            if (websocketServer && user && user.masterAccountId) {
-              websocketServer.sendToUser(String(user.masterAccountId), {
-                type: 'generationUpdate',
-                payload
-              });
+          const { masterAccountId } = user;
+          const isSpellStep = metadata && metadata.isSpell;
+          
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+          const generationParams = {
+            masterAccountId: new ObjectId(masterAccountId),
+            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
+            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
+            serviceName: tool.service,
+            toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
+            ...(metadata.castId && { castId: metadata.castId }),
+            ...(metadata.cookId && { cookId: metadata.cookId }),
+            requestPayload: inputs,
+            status: 'processing',
+            deliveryStatus: initialDeliveryStatus,
+            ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
+            notificationPlatform: user.platform || 'none',
+            pointsSpent: 0,
+            protocolNetPoints: 0,
+            costUsd: 0,
+            metadata: {
+              ...tool.metadata,
+              ...metadata,
+              costRate: costRateInfo,
+              platformContext: user.platformContext
             }
+          };
 
-            return res.status(200).json(payload);
+          const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
+          generationRecord = createResponse;
+          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
+
+          let resultStr;
+          try {
+            resultStr = stringService.execute(inputs);
           } catch (err) {
-            logger.error('[Execute] Error executing StringService:', err);
-            return res.status(500).json({ error: { code: 'EXECUTION_FAILED', message: 'String operation failed.' } });
+            logger.error(`[Execute] StringService error for tool '${toolId}': ${err.message}`);
+            await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
+              status: 'failed',
+              'metadata.error': {
+                message: err.message,
+                stack: err.stack,
+                step: 'string_execution'
+              }
+            });
+            return res.status(500).json({ error: { code: 'STRING_ERROR', message: err.message } });
           }
+
+          // Persist final tool output where the spell engine expects it
+          const updatePayload = {
+            status: 'completed',
+            responsePayload: { result: resultStr },
+            'metadata.response': resultStr
+          };
+
+          await db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
+
+          // --- Emit notification event for spell continuation if applicable ---
+          if (isSpellStep) {
+            try {
+              const notificationEvents = require('../../../core/events/notificationEvents');
+              const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
+              notificationEvents.emit('generationUpdated', { ...updatedRecord, deliveryStrategy: 'spell_step' });
+            } catch (emitErr) {
+              logger.error(`[Execute] Failed to emit generationUpdated event for spell step generation ${generationRecord._id}: ${emitErr.message}`);
+            }
+          }
+
+          if (websocketServer) {
+            logger.info(`[Execute] Sending final WebSocket update for String generation ${generationRecord._id}.`);
+            websocketServer.sendToUser(generationRecord.masterAccountId.toString(), {
+              type: 'generationUpdate',
+              payload: {
+                generationId: generationRecord._id.toString(),
+                status: 'completed',
+                outputs: { text: resultStr },
+                service: tool.service,
+                toolId: tool.toolId,
+                castId: metadata.castId || null,
+              }
+            });
+          }
+
+          // If this was submitted by Cook orchestrator, schedule next immediately
+          try {
+            const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
+            if (isCook) {
+              const { CookOrchestratorService } = require('../../../core/services/cook');
+              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: generationRecord._id.toString() });
+              await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
+            }
+          } catch (e) {
+            logger.warn(`[Execute] Cook scheduleNext (string) error: ${e.message}`);
+          }
+
+          return res.status(200).json({
+            generationId: generationRecord._id.toString(),
+            status: 'completed',
+            service: tool.service,
+            toolId: tool.toolId,
+            response: resultStr,
+            message: 'String operation completed successfully.'
+          });
         }
         default:
           logger.error(`[Execute] Unrecognized service '${service}' for tool '${toolId}'.`);
