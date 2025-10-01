@@ -365,10 +365,17 @@ class WorkflowExecutionService {
             let totalPointsSpent = 0;
             try {
                 if (stepGenerationIds && stepGenerationIds.length > 0) {
-                    const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?ids=${stepGenerationIds.join(',')}`);
+                    const queryString = stepGenerationIds.map(id => `_id_in=${id}`).join('&');
+                    const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
                     const stepGens = genRes.data.generations || [];
-                    totalCostUsd = stepGens.reduce((sum, g) => sum + (typeof g.costUsd === 'number' ? g.costUsd : 0), 0);
-                    totalPointsSpent = stepGens.reduce((sum, g) => sum + (g.pointsSpent || 0), 0);
+                    totalCostUsd = stepGens.reduce((sum, g) => {
+                        const val = g.costUsd !== undefined && g.costUsd !== null ? Number(g.costUsd) : 0;
+                        return sum + (isNaN(val) ? 0 : val);
+                    }, 0);
+                    totalPointsSpent = stepGens.reduce((sum, g) => {
+                        const val = g.pointsSpent !== undefined && g.pointsSpent !== null ? Number(g.pointsSpent) : 0;
+                        return sum + (isNaN(val) ? 0 : val);
+                    }, 0);
                 }
             } catch (err) {
                 this.logger.warn('[WorkflowExecution] Failed to aggregate cost for final spell generation:', err.message);
