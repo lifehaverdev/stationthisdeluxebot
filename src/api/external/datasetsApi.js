@@ -28,6 +28,22 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // GET /owner/:ownerId (list datasets for specified owner)
+  router.get('/owner/:ownerId', async (req, res) => {
+    const { ownerId } = req.params;
+    if (!ownerId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'ownerId param required' } });
+    }
+    try {
+      const { data } = await client.get(`/internal/v1/data/datasets/owner/${encodeURIComponent(ownerId)}`);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('list datasets by owner proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // GET /:id (fetch dataset by id)
   router.get('/:id', async (req, res) => {
     try {

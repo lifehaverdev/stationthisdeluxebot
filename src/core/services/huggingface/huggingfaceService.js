@@ -53,7 +53,7 @@ class HuggingFaceService {
       // Generic quota error
       if (error.message.includes('exceeded your GPU quota') || error.message.includes('quota') || error.message.includes('rate limit')) {
         this.logger.error(`HuggingFace quota/rate limit error: ${error.message}`);
-        throw new Error('⏳ JoyCaption daily quota exhausted. Please try again tomorrow.');
+        throw new Error('⏳ JoyCaption daily quota exhausted. Please try again tomorrow. You can still use the free UI directly at https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha');
       }
 
       this.logger.error(`Image interrogation failed: ${error.message}`);

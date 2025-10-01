@@ -4,7 +4,7 @@ const joycaptionTool = {
   displayName: 'JoyCaption',
   commandName: '/joycaption',
   apiPath: '/huggingface/interrogate',
-  description: 'Interrogate images to generate detailed text descriptions using AI vision models.',
+  description: 'Interrogate images to generate detailed text descriptions using AI vision models (powered by HuggingFace Joy Caption – https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha).',
   inputSchema: {
     imageUrl: {
       name: 'imageUrl',
