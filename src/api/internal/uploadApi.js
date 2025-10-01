@@ -34,7 +34,8 @@ function createUploadApi(dependencies) {
       }
 
       // Generate signed URL for datasets bucket
-      const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, fileName, contentType);
+      const datasetsBucket = process.env.R2_DATASETS_BUCKET || process.env.R2_BUCKET_NAME;
+      const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, fileName, contentType, datasetsBucket);
       
       logger.info(`[UploadAPI] Generated signed URL for image: ${fileName}`);
 
@@ -77,8 +78,9 @@ function createUploadApi(dependencies) {
       }
 
       // Generate signed URLs for all files
+      const datasetsBucket = process.env.R2_DATASETS_BUCKET || process.env.R2_BUCKET_NAME;
       const uploadPromises = files.map(async (file) => {
-        const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, file.fileName, file.contentType);
+        const { signedUrl, permanentUrl } = await storageService.generateSignedUploadUrl(userId, file.fileName, file.contentType, datasetsBucket);
         return {
           fileName: file.fileName,
           contentType: file.contentType,

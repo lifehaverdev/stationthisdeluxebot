@@ -30,17 +30,19 @@ class StorageService {
    * @param {string} userId - The ID of the user uploading the file.
    * @param {string} fileName - The original name of the file.
    * @param {string} contentType - The MIME type of the file.
+   * @param {string} bucketName - Optional bucket name override (defaults to R2_BUCKET_NAME)
    * @returns {Promise<{signedUrl: string, permanentUrl: string}>}
    */
-  async generateSignedUploadUrl(userId, fileName, contentType) {
+  async generateSignedUploadUrl(userId, fileName, contentType, bucketName = null) {
     if (!this.s3Client) {
       throw new Error('StorageService is not configured.');
     }
 
+    const bucket = bucketName || process.env.R2_BUCKET_NAME;
     const key = `${userId}/${uuidv4()}-${fileName}`;
     try {
       const cmd = new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
+        Bucket: bucket,
         Key: key,
         ContentType: contentType,
       });
@@ -63,18 +65,20 @@ class StorageService {
    * @param {ReadableStream} stream - The file stream to upload.
    * @param {string} key - The object key (path) in the bucket.
    * @param {string} contentType - The MIME type of the file.
+   * @param {string} bucketName - Optional bucket name override (defaults to R2_BUCKET_NAME)
    * @returns {Promise<{permanentUrl: string}>}
    */
-  async uploadFromStream(stream, key, contentType) {
+  async uploadFromStream(stream, key, contentType, bucketName = null) {
     if (!this.s3Client) {
       throw new Error('StorageService is not configured.');
     }
 
+    const bucket = bucketName || process.env.R2_BUCKET_NAME;
     try {
       const upload = new Upload({
         client: this.s3Client,
         params: {
-          Bucket: process.env.R2_BUCKET_NAME,
+          Bucket: bucket,
           Key: key,
           Body: stream,
           ContentType: contentType,

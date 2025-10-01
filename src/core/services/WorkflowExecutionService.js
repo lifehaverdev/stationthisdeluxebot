@@ -215,6 +215,8 @@ class WorkflowExecutionService {
             // Send generalized tool-response via WebSocket
             try {
                 const websocketService = require('./websocket/server');
+                // Extract castId from metadata or execution response
+                const castId = originalContext.castId || executionResponse.data.castId || null;
                 websocketService.sendToUser(
                     originalContext.masterAccountId,
                     {
@@ -223,7 +225,7 @@ class WorkflowExecutionService {
                             toolId: tool.toolId,
                             output: executionResponse.data.response,
                             requestId: originalContext.requestId || null,
-                            castId: originalContext.castId || null
+                            castId: castId
                         }
                     }
                 );

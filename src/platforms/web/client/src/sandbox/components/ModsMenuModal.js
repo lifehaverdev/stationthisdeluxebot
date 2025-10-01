@@ -1695,6 +1695,21 @@ export default class ModsMenuModal {
     return errors;
   }
 
+  // Utility to fetch and cache the current user's masterAccountId
+  async getCurrentMasterAccountId() {
+    if (this._cachedMasterAccountId) return this._cachedMasterAccountId;
+    try {
+      const res = await fetch('/api/v1/user/dashboard', { credentials: 'include' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const masterAccountId = data.masterAccountId || null;
+      if (masterAccountId) this._cachedMasterAccountId = masterAccountId;
+      return masterAccountId;
+    } catch {
+      return null;
+    }
+  }
+
   async submitForm(){
     const { formMode, formValues } = this.state;
     this.setState({submitting:true,formError:null});
@@ -1726,6 +1741,18 @@ export default class ModsMenuModal {
       else if(formMode==='new-training') url='/api/v1/trainings';
       else if(formMode==='edit-training'){ url=`/api/v1/trainings/${encodeURIComponent(formValues._id)}`; method='PUT'; }
 
+      // Get masterAccountId for dataset operations
+      const masterAccountId = await this.getCurrentMasterAccountId();
+      if (!masterAccountId) {
+        this.setState({ formError: 'You must be logged in to save datasets', submitting: false });
+        return;
+      }
+
+      // Add masterAccountId to payload for dataset operations
+      if (formMode.includes('dataset')) {
+        payload.masterAccountId = masterAccountId;
+      }
+
       const csrfRes = await fetch('/api/v1/csrf-token');
       const { csrfToken } = await csrfRes.json();
 
@@ -1736,7 +1763,7 @@ export default class ModsMenuModal {
       if(formMode==='edit-dataset' && this.state.newImageUrls.length){
         await fetch(`/api/v1/datasets/${encodeURIComponent(formValues._id)}/images`,{
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
-          body:JSON.stringify({imageUrls:this.state.newImageUrls})
+          body:JSON.stringify({imageUrls:this.state.newImageUrls, masterAccountId})
         });
       }
 

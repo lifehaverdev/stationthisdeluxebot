@@ -535,6 +535,7 @@ module.exports = function generationExecutionApi(dependencies) {
             service: tool.service,
             toolId: tool.toolId,
             response: responseContent,
+            castId: metadata.castId || null,
             message: 'Your ChatGPT request was completed successfully.'
           });
         }
@@ -646,6 +647,7 @@ module.exports = function generationExecutionApi(dependencies) {
             service: tool.service,
             toolId: tool.toolId,
             response: resultStr,
+            castId: metadata.castId || null,
             message: 'String operation completed successfully.'
           });
         }
