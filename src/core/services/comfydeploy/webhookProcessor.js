@@ -127,6 +127,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
         }
 
         // --- SPELL STEP CHECK ---
+        // NOTE: Previously we bypassed debit for spell steps. This vestigial logic has been removed so that spell steps are now billed like regular tool runs.
         // If this is an intermediate step in a spell, we calculate cost but don't debit the user.
         // The user is charged upfront for the entire spell, but we still need cost data for display.
         if (generationRecord.metadata?.isSpell && generationRecord.deliveryStrategy === 'spell_step') {
@@ -200,13 +201,12 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                     logger.error(`[Webhook Processor] Failed to fetch updated generation record ${generationId} for event dispatch after update. Error: ${getError.message}`);
                 }
                 
-                return { success: true, statusCode: 200, data: { message: "Spell step processed successfully." } };
+                // >>>>> REMOVED EARLY RETURN: let main debit logic execute as for regular tools
             } catch (err) {
                 logger.error(`[Webhook Processor] Error updating spell step generation record ${generationId}:`, err.message, err.stack);
-                const errStatus = err.response ? err.response.status : 500;
-                const errMessage = err.response && err.response.data && err.response.data.message ? err.response.data.message : "Failed to update spell step record.";
-                return { success: false, statusCode: errStatus, error: errMessage };
+                // continue but log
             }
+            // (costUsd set, but allow flow to continue to debit logic)
         }
         // --- END SPELL STEP CHECK ---
 

@@ -367,7 +367,19 @@ class WorkflowExecutionService {
                 if (stepGenerationIds && stepGenerationIds.length > 0) {
                     const queryString = stepGenerationIds.map(id => `_id_in=${id}`).join('&');
                     const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
-                    const stepGens = genRes.data.generations || [];
+                    let stepGens = genRes.data.generations || [];
+                    if (stepGens.length === 0) {
+                        // Possibly ObjectId mismatch; fetch each individually
+                        stepGens = [];
+                        for (const gid of stepGenerationIds) {
+                            try {
+                                const one = await this.internalApiClient.get(`/internal/v1/data/generations/${gid}`);
+                                if (one.data) stepGens.push(one.data);
+                            } catch (e) {
+                                this.logger.warn(`[WorkflowExecution] Failed to fetch generation ${gid} individually for cost aggregation: ${e.message}`);
+                            }
+                        }
+                    }
                     totalCostUsd = stepGens.reduce((sum, g) => {
                         const val = g.costUsd !== undefined && g.costUsd !== null ? Number(g.costUsd) : 0;
                         return sum + (isNaN(val) ? 0 : val);
