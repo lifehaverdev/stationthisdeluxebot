@@ -4,7 +4,7 @@
  * Database operations for the training system using existing database services
  */
 
-const { ObjectId } = require('../../db/BaseDB');
+const { ObjectId } = require('../db/BaseDB');
 
 class MongoService {
   constructor({ logger, db }) {

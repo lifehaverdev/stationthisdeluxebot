@@ -24,6 +24,7 @@ const csrfExcluded = [
   '/api/v1/webhook/alchemy',
   '/api/v1/webhook/comfydeploy',
   '/api/v1/points/supported-assets',
+  '/api/v1/upload/', // Upload API endpoints for training datasets
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)

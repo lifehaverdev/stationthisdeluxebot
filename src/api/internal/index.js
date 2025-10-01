@@ -29,7 +29,11 @@ const generationExecutionApi = createGenerationExecutionApi; // from aggregator
 const pointsApi = require('./economy/pointsApi');
 const generationOutputsApi = createGenerationOutputsApi;
 const { createSystemApi, createActionsApi } = require('./system');
-const createDatasetsApi = require('./datasetsApi'); // NEW
+const createDatasetsApi = require('./datasetsApi');
+const createCostCalculationApi = require('./costCalculationApi');
+const createAnalyticsApi = require('./analyticsApi');
+const createMarketplaceApi = require('./marketplaceApi');
+const createUploadApi = require('./uploadApi');
 // Placeholder imports for new API service modules
 // const createUserSessionsApiService = require('./userSessionsApiService');
 
@@ -459,6 +463,42 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] Datasets API service mounted to /v1/data/datasets');
   } else {
     logger.error('[InternalAPI] Failed to create Datasets API router.');
+  }
+
+  // Cost Calculation API Service:
+  const costCalculationApi = createCostCalculationApi(apiDependencies);
+  if (costCalculationApi) {
+    v1DataRouter.use('/cost', costCalculationApi);
+    logger.info('[InternalAPI] Cost Calculation API service mounted to /v1/data/cost');
+  } else {
+    logger.error('[InternalAPI] Failed to create Cost Calculation API router.');
+  }
+
+  // Analytics API Service:
+  const analyticsApi = createAnalyticsApi(apiDependencies);
+  if (analyticsApi) {
+    v1DataRouter.use('/analytics', analyticsApi);
+    logger.info('[InternalAPI] Analytics API service mounted to /v1/data/analytics');
+  } else {
+    logger.error('[InternalAPI] Failed to create Analytics API router.');
+  }
+
+  // Marketplace API Service:
+  const marketplaceApi = createMarketplaceApi(apiDependencies);
+  if (marketplaceApi) {
+    v1DataRouter.use('/marketplace', marketplaceApi);
+    logger.info('[InternalAPI] Marketplace API service mounted to /v1/data/marketplace');
+  } else {
+    logger.error('[InternalAPI] Failed to create Marketplace API router.');
+  }
+
+  // Upload API Service:
+  const uploadApi = createUploadApi(apiDependencies);
+  if (uploadApi) {
+    v1DataRouter.use('/upload', uploadApi);
+    logger.info('[InternalAPI] Upload API service mounted to /v1/data/upload');
+  } else {
+    logger.error('[InternalAPI] Failed to create Upload API router.');
   }
 
   // --- Global Error Handling ---

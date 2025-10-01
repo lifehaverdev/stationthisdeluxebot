@@ -8,6 +8,7 @@ const { createToolsApiRouter } = require('./toolsApi');
 const { createWalletConnectionApiRouter } = require('./wallets');
 const { createGenerationsApi, createGenerationExecutionApi } = require('./generations');
 const { createPublicStorageApi } = require('./storage');
+const { createPublicUploadApi } = require('./upload/uploadApi');
 const { createStatusApi, createAdminApi, createWebhookApi } = require('./system');
 const { createReferralVaultApi } = require('./referralVaultApi');
 const { createAuthApi } = require('./auth');
@@ -281,6 +282,15 @@ function initializeExternalApi(dependencies) {
     logger.info('External Public Storage API router mounted at /storage. (Public)');
   } else {
     logger.warn('External Public Storage API router not mounted due to missing dependencies.');
+  }
+
+  // Mount the Public Upload API router (Publicly Accessible)
+  const uploadRouter = createPublicUploadApi(dependencies);
+  if (uploadRouter) {
+    externalApiRouter.use('/upload', uploadRouter);
+    logger.info('External Public Upload API router mounted at /upload. (Public)');
+  } else {
+    logger.warn('External Public Upload API router not mounted due to missing dependencies.');
   }
 
   // Mount the Webhook API router (Publicly Accessible but with internal validation)
