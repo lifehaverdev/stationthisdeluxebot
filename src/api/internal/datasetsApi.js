@@ -8,6 +8,13 @@ function createDatasetsApi(dependencies) {
   const { logger, db } = dependencies;
   const router = express.Router();
 
+  // Get the dataset service
+  const datasetDb = db.dataset;
+  if (!datasetDb) {
+    logger.error('[DatasetsAPI] DatasetDB service not available');
+    return router;
+  }
+
   // GET /internal/v1/data/datasets/owner/:masterAccountId - List datasets by owner
   router.get('/owner/:masterAccountId', async (req, res, next) => {
     const { masterAccountId } = req.params;
@@ -30,13 +37,13 @@ function createDatasetsApi(dependencies) {
         query.visibility = filter;
       }
       
-      const datasets = await db.data.datasets.find(query)
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit))
-        .sort({ updatedAt: -1 })
-        .toArray();
+      const datasets = await datasetDb.findMany(query, {
+        skip: (page - 1) * limit,
+        limit: parseInt(limit),
+        sort: { updatedAt: -1 }
+      });
       
-      const total = await db.data.datasets.countDocuments(query);
+      const total = await datasetDb.count(query);
       
       res.json({
         success: true,
@@ -72,17 +79,14 @@ function createDatasetsApi(dependencies) {
         description: description || '',
         ownerAccountId: new ObjectId(masterAccountId),
         tags: tags || [],
-        visibility,
-        images: [],
-        captionSets: [],
-        usageCount: 0,
-        status: 'draft',
-        createdAt: new Date(),
-        updatedAt: new Date()
+        visibility
       };
       
-      const result = await db.data.datasets.insertOne(datasetData);
-      const dataset = { _id: result.insertedId, ...datasetData };
+      const dataset = await datasetDb.createDataset(datasetData);
+      
+      if (!dataset) {
+        throw new Error('Failed to create dataset');
+      }
       
       res.status(201).json({ success: true, data: dataset });
     } catch (error) {
@@ -98,7 +102,7 @@ function createDatasetsApi(dependencies) {
     logger.info(`[DatasetsAPI] GET /${datasetId} - Fetching dataset by ID`);
     
     try {
-      const dataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!dataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -127,7 +131,7 @@ function createDatasetsApi(dependencies) {
     
     try {
       // Check if dataset exists and user owns it
-      const existingDataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const existingDataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!existingDataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -136,7 +140,7 @@ function createDatasetsApi(dependencies) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only update your own datasets' } });
       }
       
-      const result = await db.data.datasets.updateOne(
+      const result = await datasetDb.updateOne(
         { _id: new ObjectId(datasetId) },
         { $set: { ...updateData, updatedAt: new Date() } }
       );
@@ -165,7 +169,7 @@ function createDatasetsApi(dependencies) {
     
     try {
       // Check if dataset exists and user owns it
-      const existingDataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const existingDataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!existingDataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -174,7 +178,7 @@ function createDatasetsApi(dependencies) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only delete your own datasets' } });
       }
       
-      const result = await db.data.datasets.deleteOne({ _id: new ObjectId(datasetId) });
+      const result = await datasetDb.deleteOne({ _id: new ObjectId(datasetId) });
       
       if (result.deletedCount === 0) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
@@ -204,7 +208,7 @@ function createDatasetsApi(dependencies) {
     
     try {
       // Check if dataset exists and user owns it
-      const existingDataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const existingDataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!existingDataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -213,15 +217,9 @@ function createDatasetsApi(dependencies) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only modify your own datasets' } });
       }
       
-      const result = await db.data.datasets.updateOne(
-        { _id: new ObjectId(datasetId) },
-        { 
-          $push: { images: { $each: imageUrls } },
-          $set: { updatedAt: new Date() }
-        }
-      );
+      const result = await datasetDb.addImages(datasetId, imageUrls);
       
-      if (result.matchedCount === 0) {
+      if (!result) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
       
@@ -249,7 +247,7 @@ function createDatasetsApi(dependencies) {
     
     try {
       // Check if dataset exists and user owns it
-      const existingDataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const existingDataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!existingDataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -272,15 +270,9 @@ function createDatasetsApi(dependencies) {
         return res.status(400).json({ error: { code: 'INVALID_URLS', message: 'No valid image URLs provided' } });
       }
       
-      const result = await db.data.datasets.updateOne(
-        { _id: new ObjectId(datasetId) },
-        { 
-          $push: { images: { $each: validUrls } },
-          $set: { updatedAt: new Date() }
-        }
-      );
+      const result = await datasetDb.addImages(datasetId, validUrls);
       
-      if (result.matchedCount === 0) {
+      if (!result) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
       
@@ -310,7 +302,7 @@ function createDatasetsApi(dependencies) {
     
     try {
       // Check if dataset exists and user owns it
-      const dataset = await db.data.datasets.findOne({ _id: new ObjectId(datasetId) });
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
       if (!dataset) {
         return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
       }
@@ -328,20 +320,12 @@ function createDatasetsApi(dependencies) {
       
       // Add caption set to dataset
       const captionSet = {
-        _id: new ObjectId(),
         method,
         captions,
-        createdBy: dataset.ownerAccountId,
-        createdAt: new Date()
+        createdBy: dataset.ownerAccountId
       };
       
-      await db.data.datasets.updateOne(
-        { _id: new ObjectId(datasetId) },
-        { 
-          $push: { captionSets: captionSet },
-          $set: { updatedAt: new Date() }
-        }
-      );
+      await datasetDb.addCaptionSet(datasetId, captionSet);
       
       res.json({ success: true, data: { captionSet, generatedCount: captions.length } });
     } catch (error) {
@@ -365,7 +349,7 @@ function createDatasetsApi(dependencies) {
     }
     
     try {
-      const result = await db.data.datasets.deleteMany({
+      const result = await datasetDb.deleteMany({
         _id: { $in: ids.map(id => new ObjectId(id)) },
         ownerAccountId: new ObjectId(masterAccountId)
       });

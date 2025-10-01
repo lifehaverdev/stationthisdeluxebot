@@ -547,6 +547,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const { masterAccountId } = user;
           const isSpellStep = metadata && metadata.isSpell;
+          logger.info(`[Execute] String service - metadata.castId: ${metadata?.castId}, full metadata:`, JSON.stringify(metadata));
           
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
           const generationParams = {

@@ -217,6 +217,7 @@ class WorkflowExecutionService {
                 const websocketService = require('./websocket/server');
                 // Extract castId from metadata or execution response
                 const castId = originalContext.castId || executionResponse.data.castId || null;
+                this.logger.info(`[WorkflowExecution] WebSocket tool-response - originalContext.castId: ${originalContext.castId}, executionResponse.data.castId: ${executionResponse.data.castId}, final castId: ${castId}`);
                 websocketService.sendToUser(
                     originalContext.masterAccountId,
                     {
