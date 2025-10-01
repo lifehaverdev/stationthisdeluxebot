@@ -167,10 +167,17 @@ export default class ModsMenuModal {
 
   async fetchDatasets() { // NEW helper
     try {
-      const res = await fetch('/api/v1/datasets', { credentials: 'include' });
+      const masterAccountId = await this.getCurrentMasterAccountId();
+      if (!masterAccountId) {
+        console.warn('[ModsMenuModal] No masterAccountId available for fetching datasets');
+        this.setState({ datasets: [] });
+        return;
+      }
+      
+      const res = await fetch(`/api/v1/datasets/owner/${masterAccountId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      this.setState({ datasets: data.datasets || [] });
+      this.setState({ datasets: data.data?.datasets || [] });
     } catch(err){ console.warn('[ModsMenuModal] fetchDatasets error', err); }
   }
 

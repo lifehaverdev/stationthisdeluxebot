@@ -48,7 +48,7 @@ function createDatasetsApiRouter(deps = {}) {
     }
     const ownerId = user.masterAccountId || user.userId;
     try {
-      const payload = { ...req.body, ownerAccountId: ownerId };
+      const payload = { ...req.body, masterAccountId: ownerId };
       const { data } = await client.post('/internal/v1/data/datasets', payload);
       res.status(201).json(data);
     } catch (err) {
@@ -66,7 +66,12 @@ function createDatasetsApiRouter(deps = {}) {
       return res.status(400).json({ error: 'imageUrls array required' });
     }
     try {
-      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/images`, { imageUrls });
+      const user = req.user;
+      const ownerId = user?.masterAccountId || user?.userId;
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/images`, { 
+        imageUrls, 
+        masterAccountId: ownerId 
+      });
       res.json(data);
     } catch (err) {
       const status = err.response?.status || 500;

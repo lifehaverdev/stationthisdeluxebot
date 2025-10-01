@@ -217,7 +217,27 @@ class WorkflowExecutionService {
                 const websocketService = require('./websocket/server');
                 // Extract castId from metadata or execution response
                 const castId = originalContext.castId || executionResponse.data.castId || null;
+                const spellId = (typeof spell.toObject === 'function' ? spell.toObject() : spell)?._id;
                 this.logger.info(`[WorkflowExecution] WebSocket tool-response - originalContext.castId: ${originalContext.castId}, executionResponse.data.castId: ${executionResponse.data.castId}, final castId: ${castId}`);
+                
+                // Send progress indicator message first so frontend can locate the window
+                websocketService.sendToUser(
+                    originalContext.masterAccountId,
+                    {
+                        type: 'generationProgress',
+                        payload: {
+                            generationId: executionResponse.data.generationId || 'immediate-' + Date.now(),
+                            status: 'running',
+                            progress: 0.5,
+                            liveStatus: 'processing',
+                            toolId: tool.toolId,
+                            spellId: spellId,
+                            castId: castId
+                        }
+                    }
+                );
+                
+                // Then send the actual response
                 websocketService.sendToUser(
                     originalContext.masterAccountId,
                     {
