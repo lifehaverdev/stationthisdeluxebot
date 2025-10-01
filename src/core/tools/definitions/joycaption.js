@@ -1,8 +1,8 @@
-const joytagTool = {
-  toolId: 'joytag',
+const joycaptionTool = {
+  toolId: 'joycaption',
   service: 'huggingface',
-  displayName: 'JoyTag',
-  commandName: '/joytag',
+  displayName: 'JoyCaption',
+  commandName: '/joycaption',
   apiPath: '/huggingface/interrogate',
   description: 'Interrogate images to generate detailed text descriptions using AI vision models.',
   inputSchema: {
@@ -23,7 +23,7 @@ const joytagTool = {
   costingModel: {
     rateSource: 'static',
     staticCost: {
-      amount: 0.0337, // 100 points (rate-limited free API)
+      amount: 0.0019, // 100 points ~ $0.0337 before, now ~0.0019 USD per request
       unit: 'request'
     }
   },
@@ -48,5 +48,4 @@ const joytagTool = {
   }
 };
 
-module.exports = joytagTool;
-
+module.exports = joycaptionTool;

@@ -9,6 +9,8 @@ class HuggingFaceService {
   constructor(options = {}) {
     this.logger = options.logger || console;
     this.baseUrl = 'https://fancyfeast-joy-caption-pre-alpha.hf.space';
+    // Optional HuggingFace personal-access token for higher rate limits
+    this.token = process.env.HF_TOKEN || null;
     this.logger.info('HuggingFaceService initialized successfully.');
   }
 
@@ -51,7 +53,7 @@ class HuggingFaceService {
       // Generic quota error
       if (error.message.includes('exceeded your GPU quota') || error.message.includes('quota') || error.message.includes('rate limit')) {
         this.logger.error(`HuggingFace quota/rate limit error: ${error.message}`);
-        throw new Error('⏳ HuggingFace API quota exceeded. Please try again in 15 minutes.');
+        throw new Error('⏳ JoyCaption daily quota exhausted. Please try again tomorrow.');
       }
 
       this.logger.error(`Image interrogation failed: ${error.message}`);
@@ -67,9 +69,12 @@ class HuggingFaceService {
     this.logger.info('Requesting event ID from HuggingFace...');
     
     try {
+      const postHeaders = { 'Content-Type': 'application/json' };
+      if (this.token) postHeaders['Authorization'] = `Bearer ${this.token}`;
+
       const response = await fetch(`${this.baseUrl}/call/stream_chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: postHeaders,
         body: JSON.stringify({
           data: [{ path: imageUrl }]
         })
@@ -117,8 +122,11 @@ class HuggingFaceService {
     const streamUrl = `${this.baseUrl}/call/stream_chat/${eventId}`;
 
     try {
+      const getHeaders = this.token ? { Authorization: `Bearer ${this.token}` } : undefined;
+
       const response = await fetch(streamUrl, { 
         method: 'GET',
+        headers: getHeaders,
         signal: AbortSignal.timeout(60000) // 60 second timeout
       });
 
@@ -209,8 +217,8 @@ class HuggingFaceService {
       if (isErrorEvent) {
         if (!errorMessage) {
           // No error details provided - this is the quota limit case
-          this.logger.error('[HuggingFace] Error event with no details - likely quota/rate limit');
-          errorMessage = 'Rate limit or quota exceeded (no details provided by API)';
+          this.logger.error('[HuggingFace] Error event with no details - likely daily quota exhausted');
+          errorMessage = 'Daily quota exhausted. Please try again tomorrow.';
         }
         throw new Error(errorMessage);
       }
