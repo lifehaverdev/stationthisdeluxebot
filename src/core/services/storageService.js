@@ -39,6 +39,11 @@ class StorageService {
     }
 
     const bucket = bucketName || process.env.R2_BUCKET_NAME;
+    // Determine appropriate public base URL for the bucket
+    const publicBaseUrl =
+      bucket === (process.env.R2_DATASETS_BUCKET || '')
+        ? (process.env.R2_DATASETS_PUBLIC_URL || process.env.R2_PUBLIC_URL)
+        : process.env.R2_PUBLIC_URL;
     const key = `${userId}/${uuidv4()}-${fileName}`;
     try {
       const cmd = new PutObjectCommand({
@@ -52,7 +57,7 @@ class StorageService {
       // Log signed headers for debugging
       const dbgObj=new URL(signedUrl);
       this.logger.debug('[StorageService] X-Amz-SignedHeaders:', dbgObj.searchParams.get('X-Amz-SignedHeaders'));
-      const permanentUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+      const permanentUrl = `${publicBaseUrl}/${key}`;
       return { signedUrl, permanentUrl };
     } catch (error) {
       this.logger.error('Failed to generate signed URL:', error);
