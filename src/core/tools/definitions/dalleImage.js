@@ -59,7 +59,7 @@ const dalleImageTool = {
       unit: 'run'
     }
   },
-  deliveryMode: 'immediate',
+  deliveryMode: 'async',
   webhookStrategy: {
     expectedStatusField: 'status',
     successValue: 'completed',
@@ -77,6 +77,7 @@ const dalleImageTool = {
   metadata: {
     provider: 'OpenAI',
     model: 'dall-e-3',
+    defaultAdapterParams: { action: 'image' },
     // Detailed cost table based on OpenAI pricing docs (USD)
     costTable: {
       'gpt-image-1': {

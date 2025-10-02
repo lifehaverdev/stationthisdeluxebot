@@ -31,6 +31,21 @@ class AdapterRegistry {
    * @returns {import('./types').ToolAdapter | undefined}
    */
   get(service) {
+    if (!this.adapters.has(service)) {
+      // Attempt lazy load for common adapters
+      const mapping = {
+        openai: './openai/openAIAdapter',
+        huggingface: './huggingface/huggingFaceAdapter'
+      };
+      const rel = mapping[service];
+      if (rel) {
+        try {
+          require(rel);
+        } catch (e) {
+          // ignore load failure
+        }
+      }
+    }
     return this.adapters.get(service);
   }
 

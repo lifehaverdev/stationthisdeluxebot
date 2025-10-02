@@ -4,6 +4,7 @@ const notificationEvents = require('../../events/notificationEvents');
 const { createLogger } = require('../../../utils/logger');
 const internalApiClient = require('../../../utils/internalApiClient');
 const { CookOrchestratorService } = require('../cook');
+const adapterRegistry = require('../adapterRegistry');
 
 // Temporary in-memory cache for live progress (can be managed within this module)
 const activeJobProgress = new Map();
@@ -36,6 +37,43 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
   logger.info({payload}, '~~⚡~~ [Webhook Processor] Processing Body:');
 
   const { run_id, status, progress, live_status, outputs, event_type } = payload;
+
+  // --- Generic adapter-based webhook handling (new architecture) ---
+  try {
+    // Attempt to resolve generation record to identify serviceName
+    const requestOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+    const genRes = await internalApiClient.get(`/internal/v1/data/generations?metadata.run_id=${run_id}`, requestOptions);
+    if (genRes?.data?.generations?.length > 0) {
+      const generation = genRes.data.generations[0];
+      const adapter = adapterRegistry.get(generation.serviceName);
+      if (adapter && typeof adapter.parseWebhook === 'function') {
+        const result = adapter.parseWebhook(payload);
+
+        // Normalize result.status possible string
+        const updatePayload = {
+          status: result.status,
+          responsePayload: result.data,
+          outputs: result.data ? [{ data: result.data }] : undefined,
+          costUsd: result.costUsd || null,
+        };
+        await internalApiClient.put(`/internal/v1/data/generations/${generation._id}`, updatePayload, requestOptions);
+
+        // Fire generationUpdated event
+        try {
+          const notificationEvents = require('../../events/notificationEvents');
+          const updatedRecordRes = await internalApiClient.get(`/internal/v1/data/generations/${generation._id}`, requestOptions);
+          notificationEvents.emit('generationUpdated', updatedRecordRes.data);
+        } catch (e) {
+          logger.warn(`[WebhookProcessor] Failed to emit generationUpdated for ${generation._id}: ${e.message}`);
+        }
+
+        return { success: true, statusCode: 200, data: { message: 'Processed via adapter' } };
+      }
+    }
+  } catch (adapterErr) {
+    logger.error('[WebhookProcessor] Adapter parseWebhook flow error:', adapterErr);
+    // fall through to legacy logic
+  }
 
   if (!run_id || !status || !event_type) {
     logger.warn('[Webhook Processor] Invalid webhook payload: Missing run_id, status, or event_type.', payload);

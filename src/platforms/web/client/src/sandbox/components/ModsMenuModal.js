@@ -10,8 +10,8 @@ export default class ModsMenuModal {
   constructor(options = {}) {
     this.onSelect = options.onSelect || (() => {}); // callback when user picks a model
     this.state = {
-      rootTab: 'browse', // NEW: 'browse' | 'train'
-      view: 'intro', // 'intro' | 'loraRoot' | 'category' | 'trainDash'
+      rootTab: 'browse', // NEW: 'browse' | 'train' | 'captions'
+      view: 'intro', // 'intro' | 'loraRoot' | 'category' | 'trainDash' | 'captionDash'
       categories: ['checkpoint', 'lora', 'upscale', 'embedding', 'vae', 'controlnet', 'clipseg'],
       loraCategories: [],
       counts: {},
@@ -35,8 +35,14 @@ export default class ModsMenuModal {
       submitting:false,
       uploading:false,
       newImageUrls:[],
+      originalFormValues:null, // <--- store pristine copy for diffing
       estimatedCost: 0,
       costBreakdown: {},
+      // Caption management
+      selectedDatasetId: null,
+      captionSets: [],
+      loadingCaptions: false,
+      captionError: null,
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -47,6 +53,26 @@ export default class ModsMenuModal {
     // WebSocket integration
     this.ws = window.websocketClient;
     this.setupWebSocketListeners();
+
+    // Listen for uploads from UploadWindow so we can attach to dataset being edited
+    this._uploadListener = async (e) => {
+      const url = e.detail?.url;
+      if (!url) return;
+      // Only apply if modal is currently open in dataset edit/new mode
+      if (!this.modalOverlayEl) return;
+      const mode = this.state.formMode;
+      if (mode === 'new-dataset' || mode === 'edit-dataset') {
+        if (!this.state.newImageUrls.includes(url)) {
+          // immutably update state
+          this.setState({ newImageUrls: [...this.state.newImageUrls, url] });
+        }
+        // If editing an existing dataset, immediately persist to backend
+        if (mode === 'edit-dataset' && this.state.formValues?._id) {
+          // Defer backend persistence until user clicks Save. Images will be sent in submitForm().
+        }
+      }
+    };
+    window.addEventListener('uploadCompleted', this._uploadListener);
   }
 
   setState(newState) {
@@ -65,6 +91,22 @@ export default class ModsMenuModal {
       
       this.ws.on('trainingError', (data) => {
         this.showTrainingError(data.trainingId, data.error);
+      });
+
+      // Caption generation progress updates
+      this.ws.on('captionProgress', (data) => {
+        const { captionSetId, progress, status, datasetId } = data;
+        if (datasetId !== this.state.selectedDatasetId) return;
+        const idx = this.state.captionSets.findIndex(c => c._id === captionSetId);
+        if (idx !== -1) {
+          const cs = this.state.captionSets[idx];
+          cs.progress = progress;
+          cs.status = status;
+          if (status === 'COMPLETED' || status === 'FAILED') {
+            cs.completedAt = new Date();
+          }
+          this.render();
+        }
       });
     }
   }
@@ -288,6 +330,8 @@ export default class ModsMenuModal {
     this.modalElement = document.createElement('div');
     this.modalElement.className = 'mods-modal-overlay';
     this.modalElement._modsModalInstance = this; // Store instance reference
+    // NEW: expose for upload listener
+    this.modalOverlayEl = this.modalElement;
     document.body.appendChild(this.modalElement);
     this.render();
     this.attachCloseEvents();
@@ -483,21 +527,6 @@ export default class ModsMenuModal {
                       <button type="button" class="remove-image" data-url="${url}">×</button>
                     </div>
                   `).join('')}
-                </div>
-              </div>
-
-              <div class="form-section">
-                <h3>Captions</h3>
-                <div class="caption-options">
-                  <label><input type="checkbox" name="autoGenerateCaptions" ${formValues.autoGenerateCaptions?'checked':''} /> Auto-generate captions using AI</label>
-                  <label><input type="checkbox" name="manualCaptions" ${formValues.manualCaptions?'checked':''} /> I'll add captions manually</label>
-                </div>
-                <div class="caption-method" id="caption-method" style="display:none;">
-                  <select name="captionMethod">
-                    <option value="blip">BLIP (Recommended)</option>
-                    <option value="clip">CLIP</option>
-                    <option value="sd-captioner">SD Captioner</option>
-                  </select>
                 </div>
               </div>
 
@@ -746,6 +775,24 @@ export default class ModsMenuModal {
             ${dsList}
           </div>
           <div class="train-section">
+            <div class="train-section-header"><h3>Captions</h3><button class="add-caption-btn" ${!this.state.selectedDatasetId?'disabled':''}>＋</button></div>
+            ${this.state.loadingCaptions?
+              '<div class="loading-spinner">Loading…</div>':
+              this.state.captionError?`<div class="error-message">${this.state.captionError}</div>`:
+              (!this.state.selectedDatasetId?'<div class="empty-message">Select a dataset above to view caption sets.</div>':
+                (this.state.captionSets.length? `<div class="captions-grid">${this.state.captionSets.map(cs=>`
+                  <div class="caption-card" data-id="${cs._id}">
+                    <div class="caption-header"><h4>${cs.method}</h4><span class="caption-count">${cs.captions?.length||0} captions</span></div>
+                    <div class="caption-meta"><span>${new Date(cs.createdAt||cs.created||Date.now()).toLocaleString()}</span>${cs.isDefault?'<span class="badge">Default</span>':''}</div>
+                    <div class="caption-actions">
+                      <button class="btn-secondary view-caption" data-id="${cs._id}">View</button>
+                      <button class="btn-primary download-caption" data-id="${cs._id}">Download</button>
+                      <button class="btn-danger delete-caption" data-id="${cs._id}">Delete</button>
+                      ${cs.isDefault?'':'<button class="btn-primary set-default" data-id="'+cs._id+'">Set Default</button>'}
+                    </div>
+                  </div>`).join('')}</div>`:'<div class="empty-message">No caption sets found.</div>'))}
+          </div>
+          <div class="train-section">
             <div class="train-section-header"><h3>Trainings</h3><button class="add-training-btn">＋</button></div>
             ${trList}
           </div>`;
@@ -826,7 +873,8 @@ export default class ModsMenuModal {
       btn.onclick = ()=>{
         const tab = btn.getAttribute('data-tab');
         if(tab!==this.state.rootTab){
-          this.setState({ rootTab: tab, view: tab==='browse'? 'intro':'trainDash' });
+          const newView = tab==='train' ? 'trainDash' : 'intro';
+          this.setState({ rootTab: tab, view: newView });
           if(tab==='train') { this.fetchDatasets(); this.fetchTrainings(); }
         }
       };
@@ -999,6 +1047,16 @@ export default class ModsMenuModal {
       if(checkbox) {
         checkbox.onchange = () => this.updateBatchActions();
       }
+
+      // Click anywhere on card to select dataset and load captions
+      card.addEventListener('click',(e)=>{
+        if(e.target.closest('.dataset-actions, input.dataset-select')) return;
+        const id=card.getAttribute('data-id');
+        if(id!==this.state.selectedDatasetId){
+          this.setState({selectedDatasetId:id, captionSets:[]});
+          this.fetchCaptionSets(id);
+        }
+      });
     });
 
     // Click row to edit
@@ -1063,11 +1121,11 @@ export default class ModsMenuModal {
     document.addEventListener('keydown', this.handleKeyDown);
   }
 
-  resetForm(){ this.setState({formMode:null,formValues:{},formError:null,submitting:false}); }
+  resetForm(){ this.setState({formMode:null,formValues:{},originalFormValues:null,formError:null,submitting:false,newImageUrls:[]}); }
 
   openDatasetForm(ds=null){
-    if(ds){ this.setState({formMode:'edit-dataset',formValues:{...ds}}); }
-    else { this.setState({formMode:'new-dataset',formValues:{name:'',description:''}});} }
+    if(ds){ this.setState({formMode:'edit-dataset',formValues:{...ds},originalFormValues:JSON.parse(JSON.stringify(ds))}); }
+    else { this.setState({formMode:'new-dataset',formValues:{name:'',description:'',images:[]},originalFormValues:null});} }
 
   openTrainingForm(tr=null){
     if(tr){ this.setState({formMode:'edit-training',formValues:{...tr}}); }
@@ -1174,7 +1232,8 @@ export default class ModsMenuModal {
           ...this.state.formValues,
           images: [...currentImages, ...uploadedUrls]
         },
-        uploading: false
+        uploading: false,
+        newImageUrls: [...this.state.newImageUrls, ...uploadedUrls]
       });
       
       this.render(); // Re-render to show new images
@@ -1771,8 +1830,16 @@ export default class ModsMenuModal {
       const csrfRes = await fetch('/api/v1/csrf-token');
       const { csrfToken } = await csrfRes.json();
 
-      const res= await fetch(url,{method,credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify(payload)});
-      if(!res.ok) throw new Error(`save-failed-${res.status}`);
+      // If we're only adding images, we skip the PUT – images will be handled via separate POST below
+      let hasUpdateFields = Object.keys(payload).some(k => k !== 'masterAccountId');
+      if(formMode==='edit-dataset' && this.state.newImageUrls.length && !hasUpdateFields) {
+        hasUpdateFields = false;
+      }
+      let res = { ok: true };
+      if(method==='PUT' && hasUpdateFields){
+        res = await fetch(url,{method,credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify(payload)});
+        if(!res.ok) throw new Error(`save-failed-${res.status}`);
+      }
 
       // If dataset edit and we have new images, send them
       if(formMode==='edit-dataset' && this.state.newImageUrls.length){
@@ -2064,6 +2131,64 @@ export default class ModsMenuModal {
     document.body.removeChild(this.detailOverlayEl);
     this.detailOverlayEl=null;
     this.state.detailModel=null;
+  }
+
+  // Inside close/reset cleanup ensure listener removed
+  close(){
+    // ... existing close logic ...
+    window.removeEventListener('uploadCompleted', this._uploadListener);
+  }
+
+  /* ----------------- CAPTION HELPERS ----------------- */
+  async fetchCaptionSets(datasetId){
+    if(!datasetId) return;
+    this.setState({loadingCaptions:true,captionError:null,captionSets:[]});
+    try{
+      const res= await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions`,{credentials:'include'});
+      if(!res.ok) throw new Error('Failed');
+      const data= await res.json();
+      this.setState({captionSets:data.captionSets||[],loadingCaptions:false});
+    }catch(err){
+      console.warn('[ModsMenuModal] fetchCaptionSets error',err);
+      this.setState({loadingCaptions:false,captionError:'Could not load caption sets.'});
+    }
+  }
+
+  async generateCaptionSet(initialDatasetId){
+    const overlay=document.createElement('div');
+    overlay.className='import-overlay';
+
+    const dsOptions=this.state.datasets.map(d=>`<option value="${d._id}" ${d._id===initialDatasetId?'selected':''}>${d.name}</option>`).join('');
+
+    overlay.innerHTML=`<div class="import-dialog"><h3>Generate Captions</h3>
+      <label>Dataset:<br><select class="cap-dataset">${dsOptions}</select></label><br>
+      <label>Method:<br><select class="cap-method"><option value="style-caption">Style + Subject</option><option value="subject-caption">Subject Only</option></select></label><br>
+      <label>Trigger Words (optional):<br><input type="text" class="cap-triggers" placeholder="comma,separated" /></label>
+      <div class="error-message" style="display:none"></div>
+      <div class="btn-row"><button class="confirm-generate-btn">Generate</button><button class="cancel-generate-btn">Cancel</button></div>
+    </div>`;
+    document.body.appendChild(overlay);
+
+    const errEl=overlay.querySelector('.error-message');
+    const cleanup=()=>{document.body.removeChild(overlay);};
+    overlay.querySelector('.cancel-generate-btn').onclick=cleanup;
+    overlay.onclick=(e)=>{if(e.target===overlay) cleanup();};
+    overlay.querySelector('.confirm-generate-btn').onclick=async ()=>{
+      const method=overlay.querySelector('.cap-method').value;
+      const triggers=overlay.querySelector('.cap-triggers').value.trim();
+      overlay.querySelector('.confirm-generate-btn').disabled=true;
+      try{
+        const dsId=overlay.querySelector('.cap-dataset').value;
+        const csrfRes=await fetch('/api/v1/csrf-token');
+        const {csrfToken}=await csrfRes.json();
+        const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/captions/generate`,{
+          method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
+          body:JSON.stringify({method,triggerWords:triggers})});
+        if(!res.ok) throw new Error('Generate failed');
+        cleanup();
+        this.fetchCaptionSets(dsId);
+      }catch(err){errEl.textContent=err.message||'Generate failed';errEl.style.display='block';overlay.querySelector('.confirm-generate-btn').disabled=false;}
+    };
   }
 }
 

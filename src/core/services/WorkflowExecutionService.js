@@ -55,6 +55,37 @@ class WorkflowExecutionService {
 
         this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
 
+        // --- Adapter-based execution (replaces HTTP Generation API) ---
+        const adapterRegistry = require('./adapterRegistry');
+        const adapter = adapterRegistry.get(tool.service);
+        if (adapter) {
+            try {
+                let runInfo;
+                if (tool.deliveryMode === 'immediate' && typeof adapter.execute === 'function') {
+                    const result = await adapter.execute(pipelineContext);
+                    // Short-circuit: treat as completed generation with synthetic record
+                    const syntheticGen = {
+                        _id: `step-${step.stepId}-${Date.now()}`,
+                        metadata: { castId: originalContext.castId },
+                        responsePayload: result.data,
+                        status: result.status === 'succeeded' ? 'completed' : 'failed',
+                        toolId: tool.toolId,
+                        serviceName: tool.service,
+                    };
+                    await this._handleStepCompletion(spell, stepIndex, pipelineContext, originalContext, syntheticGen);
+                    return;
+                } else if (typeof adapter.startJob === 'function') {
+                    runInfo = await adapter.startJob(pipelineContext);
+                    // Rely on webhook events to continue spell execution
+                    this.logger.info(`[WorkflowExecution] Started async job via adapter for step ${step.stepId}. RunId: ${runInfo.runId}`);
+                    return;
+                }
+            } catch (adaptErr) {
+                this.logger.error(`[WorkflowExecution] Adapter execution error for step ${step.stepId}:`, adaptErr);
+                throw adaptErr;
+            }
+        }
+
         // --- NEW: resolve parameterMappings (preferred over parameterOverrides) ---
         const resolvedParamInputs = {};
         if (step.parameterMappings) {

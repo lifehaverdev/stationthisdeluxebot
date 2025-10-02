@@ -36,6 +36,14 @@ class OpenAIService {
     temperature = 0.7,
     model = 'gpt-3.5-turbo'
   }) {
+    // --- Normalise inputs ---
+    if (Array.isArray(prompt)) {
+      prompt = prompt.join('\n');
+    }
+    if (Array.isArray(instructions)) {
+      instructions = instructions.join('\n');
+    }
+
     if (!this.openai) {
       this.logger.error('Cannot execute chat completion: OpenAIService is not initialized (missing API key).');
       throw new Error('OpenAIService is not initialized. Please set the OPENAI_API environment variable.');

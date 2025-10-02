@@ -41,7 +41,7 @@ class FLUXRecipe {
   }
 
   getEstimatedTime() {
-    return 60; // 60 minutes for FLUX
+    return 240; // 60 minutes for FLUX
   }
 
   getMinImages() {
@@ -84,18 +84,19 @@ RUN apt-get update && apt-get install -y \\
 WORKDIR /workspace
 
 # Install Python dependencies for FLUX
-RUN pip3 install --no-cache-dir \\
-    torch==2.0.1+cu118 \\
-    torchvision==0.15.2+cu118 \\
+RUN pip3 install --no-cache-dir \
+    pyyaml \
+    torch==2.0.1+cu118 \
+    torchvision==0.15.2+cu118 \
     --index-url https://download.pytorch.org/whl/cu118
 
-RUN pip3 install --no-cache-dir \\
-    diffusers==0.21.4 \\
-    transformers==4.33.2 \\
-    accelerate==0.21.0 \\
-    xformers==0.0.21 \\
-    safetensors==0.3.3 \\
-    pillow==10.0.0 \\
+RUN pip3 install --no-cache-dir \
+    diffusers==0.21.4 \
+    transformers==4.33.2 \
+    accelerate==0.21.0 \
+    xformers==0.0.21 \
+    safetensors==0.3.3 \
+    pillow==10.0.0 \
     numpy==1.24.3
 
 # Clone FLUX training repository
@@ -105,8 +106,49 @@ WORKDIR /workspace/flux-training
 # Install FLUX dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Create training script
-COPY train_flux.py /workspace/train_flux.py
+# Write lightweight launcher script that converts job.json -> ai-toolkit YAML and kicks off training
+RUN cat << 'PY' > /workspace/train_flux.py
+import os, json, uuid, subprocess, sys
+try:
+    import yaml  # pyyaml
+except ImportError:
+    sys.stderr.write("pyyaml missing\n"); sys.exit(1)
+
+job_json = os.environ.get('JOB_JSON', '/workspace/job.json')
+if not os.path.isfile(job_json):
+    sys.stderr.write(f"Job config not found: {job_json}\n"); sys.exit(1)
+
+with open(job_json) as f:
+    cfg = json.load(f)
+
+yaml_cfg = {
+    'model': {'name_or_path': 'black-forest-labs/FLUX.1-dev'},
+    'datasets': {'folder_path': cfg['datasetPath']},
+    'train': {
+        'steps': cfg.get('steps', 2000),
+        'batch_size': cfg.get('batchSize', 1),
+        'lr': cfg.get('learningRate', 2e-4)
+    },
+    'network': {
+        'type': 'lora',
+        'rank': cfg.get('loraRank', 32),
+        'alpha': cfg.get('loraAlpha', 64),
+        'dropout': cfg.get('loraDropout', 0.1)
+    },
+    'sample': {'guidance_scale': 1, 'sample_steps': 4},
+    'output': {'output_path': cfg.get('outputPath', '/workspace/output')}
+}
+
+yaml_path = f"/workspace/config_{uuid.uuid4().hex}.yml"
+import yaml as _yaml
+with open(yaml_path, 'w') as yf:
+    _yaml.safe_dump(yaml_cfg, yf)
+
+cmd = ['python', '/workspace/flux-training/run.py', yaml_path]
+print('Running:', ' '.join(cmd), flush=True)
+subprocess.check_call(cmd)
+PY
+
 RUN chmod +x /workspace/train_flux.py
 
 # Set entrypoint

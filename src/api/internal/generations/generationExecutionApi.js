@@ -161,6 +161,207 @@ module.exports = function generationExecutionApi(dependencies) {
       const service = tool.service;
       logger.info(`[Execute] Routing tool '${toolId}' to service: '${service}'`);
 
+      /* ---------------------------------------------------------------
+       * 🌟 Adapter-based execution path (new architecture)            
+       * -------------------------------------------------------------
+       * 1. We ask the central AdapterRegistry if a ToolAdapter exists
+       *    for the requested service (e.g. 'openai', 'huggingface').
+       * 2. If an adapter is present AND the tool declares deliveryMode
+       *    'immediate', we delegate execution to adapter.execute() and
+       *    bypass the legacy switch–case block entirely.
+       * 3. For now we leave the old switch in place for async tools or
+       *    services that we haven’t migrated yet; they will fall back.
+       * 4. The adapter returns a standardized ToolResult object which
+       *    we wrap into the minimal response shape expected by clients
+       *    that call this endpoint directly (mainly the front-end).
+       *
+       * NOTE: Full generation record creation & credit-debit logic is
+       * still handled in the legacy branches. Those will be migrated in
+       * the next refactor wave when we support startJob / parseWebhook.
+       * ------------------------------------------------------------- */
+      const adapterRegistry = require('../../../core/services/adapterRegistry');
+      const adapter = adapterRegistry.get(service);
+      if (adapter && typeof adapter.execute === 'function' && (tool.deliveryMode === 'immediate' || !tool.deliveryMode)) {
+        try {
+          const execInputs = {
+             ...(tool.metadata?.defaultAdapterParams || {}),
+             ...inputs
+          };
+          const toolResult = await adapter.execute(execInputs);
+          // --- Persist generation record (immediate completion) ---
+          const { masterAccountId } = user;
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+
+          // Wrap tool output into array-of-outputs structure expected by delivery pipeline
+          let normalizedData = toolResult.data;
+          if (toolResult.type === 'text' && toolResult.data) {
+            if (typeof toolResult.data.text === 'string') {
+              normalizedData = { text: [toolResult.data.text] };
+            } else if (typeof toolResult.data.description === 'string') {
+              normalizedData = { text: [toolResult.data.description] };
+            }
+          }
+          const outputEntry = { type: toolResult.type, data: normalizedData };
+
+          const generationParams = {
+            masterAccountId: new ObjectId(masterAccountId),
+            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
+            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
+            serviceName: tool.service,
+            toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
+            requestPayload: inputs,
+            responsePayload: [outputEntry],
+            status: 'completed',
+            deliveryStatus: initialDeliveryStatus,
+            notificationPlatform: user.platform || 'none',
+            pointsSpent: pointsRequired,
+            protocolNetPoints: 0,
+            costUsd: toolResult.costUsd || costUsd,
+            metadata: {
+              ...tool.metadata,
+              ...metadata,
+              costRate: costRateInfo,
+              platformContext: user.platformContext
+            }
+          };
+
+          const newGeneration = await db.generationOutputs.createGenerationOutput(generationParams);
+
+          // Emit event so notifier can deliver
+          try {
+            const notificationEvents = require('../../../core/events/notificationEvents');
+            notificationEvents.emit('generationUpdated', newGeneration);
+          } catch (emitErr) {
+            logger.warn(`[Execute] Failed to emit generationUpdated for immediate generation ${newGeneration._id}: ${emitErr.message}`);
+          }
+
+          // Optional websocket push for web clients
+          if (websocketServer) {
+            websocketServer.sendToUser(String(masterAccountId), {
+              type: 'generationUpdate',
+              payload: { generationId: newGeneration._id.toString(), status: 'completed', ...toolResult.data, service: tool.service, toolId: tool.toolId }
+            });
+          }
+
+          // Build response for caller (keep legacy fields)
+          const basePayload = {
+            generationId: newGeneration._id.toString(),
+            status: 'completed',
+            final: true,
+            outputs: outputEntry,
+            toolId: tool.toolId,
+            service,
+            costUsd: toolResult.costUsd || 0
+          };
+
+          if (toolResult.type === 'text' && toolResult.data?.text) {
+            basePayload.response = toolResult.data.text;
+          }
+
+          return res.status(200).json(basePayload);
+        } catch (execErr) {
+          logger.error(`[Adapter Execute] Error executing tool via adapter for service ${service}:`, execErr);
+          return res.status(500).json({ error: { code: 'ADAPTER_EXECUTION_FAILED', message: execErr.message } });
+        }
+      }
+
+      /* ---------------------------------------------------------------
+       * 🌟 Adapter-based ASYNC path (startJob)                         
+       * ------------------------------------------------------------- */
+      if (adapter && typeof adapter.startJob === 'function') {
+        try {
+          const jobInputs = {
+             ...(tool.metadata?.defaultAdapterParams || {}),
+             ...inputs
+          };
+          const { runId, meta } = await adapter.startJob(jobInputs);
+
+          const { masterAccountId } = user;
+          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+
+          const generationParams = {
+            masterAccountId: new ObjectId(masterAccountId),
+            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
+            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
+            serviceName: tool.service,
+            toolId: tool.toolId,
+            toolDisplayName: tool.displayName || tool.name || tool.toolId,
+            requestPayload: inputs,
+            status: 'processing',
+            deliveryStatus: initialDeliveryStatus,
+            notificationPlatform: user.platform || 'none',
+            pointsSpent: 0,
+            protocolNetPoints: 0,
+            costUsd: null,
+            metadata: {
+              ...tool.metadata,
+              ...metadata,
+              costRate: costRateInfo,
+              platformContext: user.platformContext,
+              ...(meta ? { adapterMeta: meta } : {}),
+              runId,
+              ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox', windowId: metadata?.windowId || null } } : {})
+            }
+          };
+
+          const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
+          generationRecord = createResponse;
+
+          // --- kick off background poller ---
+          (async () => {
+            try {
+              let attempts = 0;
+              const maxAttempts = 60; // 5 min at 5s interval
+              while (attempts < maxAttempts) {
+                await new Promise(r => setTimeout(r, 5000));
+                const pollRes = await adapter.pollJob(runId);
+                if (pollRes.status === 'succeeded' || pollRes.status === 'failed' || pollRes.status === 'completed') {
+                  const finalStatus = (pollRes.status === 'failed') ? 'failed' : 'completed';
+                  let finalData = pollRes.data;
+                  if (pollRes.type === 'text' && finalData) {
+                    if (typeof finalData.text === 'string') {
+                      finalData = { text: [finalData.text] };
+                    } else if (typeof finalData.description === 'string') {
+                      finalData = { text: [finalData.description] };
+                    }
+                  }
+                  const updatePayload = {
+                    status: finalStatus,
+                    responsePayload: [ { type: pollRes.type, data: finalData } ],
+                    costUsd: pollRes.costUsd || null
+                  };
+                  await db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
+                  const notificationEvents = require('../../../core/events/notificationEvents');
+                  const updated = await db.generationOutputs.findGenerationById(generationRecord._id);
+                  notificationEvents.emit('generationUpdated', updated);
+                  break;
+                }
+                attempts++;
+              }
+            } catch (bgErr) {
+              logger.error(`[Execute] Background poller error for runId ${runId}: ${bgErr.message}`);
+            }
+          })();
+
+          // respond 202
+          return res.status(202).json({
+            generationId: generationRecord._id.toString(),
+            status: 'processing',
+            service: tool.service,
+            runId,
+            toolId: tool.toolId,
+            queuedAt: generationRecord.requestTimestamp,
+            message: 'Your request has been accepted and is being processed.'
+          });
+        } catch (startErr) {
+          logger.error(`[Adapter startJob] Error starting job for service ${service}:`, startErr);
+          return res.status(500).json({ error: { code: 'ADAPTER_START_JOB_FAILED', message: startErr.message } });
+        }
+      }
+
+      // --- Legacy switch/case continues below (to be removed next) ---
+
       switch (service) {
         case 'comfyui': {
           const { masterAccountId } = user;
@@ -306,239 +507,7 @@ module.exports = function generationExecutionApi(dependencies) {
 
           return res.status(200).json(staticPayload);
         }
-        case 'openai': {
-          const { masterAccountId } = user;
-          const isSpellStep = metadata && metadata.isSpell;
-          const prompt = inputs.prompt;
-          const modelInput = inputs.model || tool.inputSchema.model?.default || tool.metadata?.model || 'dall-e-3';
-          const qualityInput = inputs.quality || tool.inputSchema.quality?.default;
-          const sizeInput = inputs.size || tool.inputSchema.size?.default;
-          const responseFormat = inputs.responseFormat || 'url';
-
-          const isImageTool = tool.apiPath === '/llm/image';
-
-          const instructions = inputs.instructions || tool.inputSchema.instructions?.default || 'You are a helpful assistant.';
-          const temperature = typeof inputs.temperature === 'number' ? inputs.temperature : tool.inputSchema.temperature?.default || 0.7;
-          const model = tool.metadata?.model || 'gpt-3.5-turbo';
-           
-          if (!prompt || typeof prompt !== 'string') {
-            return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });
-          }
-          if (isImageTool) {
-            // Directly generate image and create generation record
-            const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
-            const generationParams = {
-              masterAccountId: new ObjectId(masterAccountId),
-              ...(sessionId && { sessionId: new ObjectId(sessionId) }),
-              ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
-              serviceName: tool.service,
-              toolId: tool.toolId,
-              toolDisplayName: tool.displayName || tool.name || tool.toolId,
-              requestPayload: { prompt, model: modelInput, quality: qualityInput, size: sizeInput, responseFormat },
-              status: 'processing',
-              deliveryStatus: initialDeliveryStatus,
-              notificationPlatform: user.platform || 'none',
-              pointsSpent: 0,
-              protocolNetPoints: 0,
-              costUsd: null,
-              metadata: {
-                ...tool.metadata,
-                ...metadata,
-                costRate: costRateInfo,
-                platformContext: user.platformContext,
-                ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
-              }
-            };
-
-            const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
-            generationRecord = createResponse;
-
-            // --- Submit asynchronous OpenAI image generation ---
-
-            (async () => {
-              try {
-                const resultObj = await openaiService.generateImage({ prompt, model: modelInput, quality: qualityInput, size: sizeInput, responseFormat });
-                const finalImage = resultObj.url ? { url: resultObj.url } : { b64_json: resultObj.b64_json };
-                await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                  status: 'completed',
-                  responsePayload: { images: [finalImage] },
-                  // Maintain legacy outputs structure for downstream consumers
-                  outputs: [ { data: { images: [finalImage] } } ],
-                  usage: resultObj.usage || null
-                });
-
-                // --- Points debit ---
-                try {
-                  const costRate = generationRecord.metadata?.costRate;
-                  const costUsd = (costRate && typeof costRate.amount === 'number') ? costRate.amount : null;
-
-                  if (costUsd != null && costUsd > 0) {
-                    const usdPerPoint = 0.000337;
-                    const pointsToSpend = Math.max(1, Math.round(costUsd / usdPerPoint));
-                    const spendPayload = { pointsToSpend, spendContext: { generationId: generationRecord._id.toString(), toolId: generationRecord.toolId } };
-                    const headers = { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB };
-                    const internalApiClient = require('../../../utils/internalApiClient');
-                    await internalApiClient.post(`/internal/v1/data/users/${generationRecord.masterAccountId}/economy/spend`, spendPayload, { headers });
-                    await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                      pointsSpent: pointsToSpend,
-                      protocolNetPoints: pointsToSpend,
-                      costUsd
-                    });
-                  }
-                } catch (spendErr) {
-                  logger.error(`[Execute] Points debit failed for OpenAI image generation ${generationRecord._id}: ${spendErr.message}`);
-                  // non-critical
-                }
-
-                // Emit generationUpdated event so NotificationDispatcher / websocket listeners are notified
-                try {
-                  const notificationEvents = require('../../../core/events/notificationEvents');
-                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
-                  notificationEvents.emit('generationUpdated', updatedRecord);
-                } catch(eventErr) {
-                  logger.warn(`[Execute] Failed to emit generationUpdated for OpenAI image generation ${generationRecord._id}: ${eventErr.message}`);
-                }
-              } catch (err) {
-                logger.error(`[Execute] OpenAIService image error for tool '${toolId}' (async): ${err.message}`);
-                const cleanMsg = (err?.message || '').slice(0, 180);
-                await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                  status: 'failed',
-                  statusReason: cleanMsg || 'Generation failed',
-                  'metadata.error': {
-                    message: err.message,
-                    stack: err.stack,
-                    step: 'openai_image_generation'
-                  }
-                });
-                try {
-                  const notificationEvents = require('../../../core/events/notificationEvents');
-                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
-                  notificationEvents.emit('generationUpdated', updatedRecord);
-                } catch(eventErr) {
-                  logger.warn(`[Execute] Failed to emit generationUpdated after error for OpenAI image generation ${generationRecord._id}: ${eventErr.message}`);
-                }
-              }
-            })();
-
-            const estSeconds = 30; // crude estimate
-            return res.status(202).json({ generationId: generationRecord._id.toString(), status: 'processing', estimatedDurationSeconds: estSeconds, message: 'Image generation started. Poll status endpoint for completion.' });
-          }
-
-          if (!prompt || typeof prompt !== 'string') {
-            return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing or invalid prompt for ChatGPT.' } });
-          }
-
-          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
-          const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
-            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
-            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
-            serviceName: tool.service,
-            toolId: tool.toolId,
-            toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            ...(metadata.castId && { castId: metadata.castId }),
-            ...(metadata.cookId && { cookId: metadata.cookId }),
-            requestPayload: { prompt, instructions, temperature, model },
-            status: 'processing',
-            deliveryStatus: initialDeliveryStatus,
-            ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
-            notificationPlatform: user.platform || 'none',
-            pointsSpent: 0,
-            protocolNetPoints: 0,
-            costUsd: null,
-            metadata: {
-              ...tool.metadata,
-              ...metadata,
-              costRate: costRateInfo,
-              platformContext: user.platformContext
-            }
-          };
-
-          const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
-          generationRecord = createResponse;
-          logger.info(`[Execute] Created generation record ${generationRecord._id} for tool '${toolId}'.`);
-
-          let responseContent;
-          try {
-            responseContent = await openaiService.executeChatCompletion({
-              prompt,
-              instructions,
-              temperature,
-              model
-            });
-          } catch (err) {
-            logger.error(`[Execute] OpenAIService error for tool '${toolId}': ${err.message}`);
-            await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-              status: 'failed',
-              'metadata.error': {
-                message: err.message,
-                stack: err.stack,
-                step: 'openai_execution'
-              }
-            });
-            return res.status(500).json({ error: { code: 'OPENAI_ERROR', message: err.message } });
-          }
-
-          // Persist final tool output where the spell engine expects it.
-          // responsePayload is required so WorkflowExecutionService can pick it up for the next step.
-          const updatePayload = {
-            status: 'completed',
-            responsePayload: { result: responseContent },
-            // Keep legacy field for any consumers still reading metadata.response
-            'metadata.response': responseContent
-          };
-
-          // Apply update
-          await db.generationOutputs.updateGenerationOutput(generationRecord._id, updatePayload);
-
-          // --- Emit notification event for spell continuation if applicable ---
-          if (isSpellStep) {
-              try {
-                  const notificationEvents = require('../../../core/events/notificationEvents');
-                  const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
-                  notificationEvents.emit('generationUpdated', { ...updatedRecord, deliveryStrategy: 'spell_step' });
-              } catch (emitErr) {
-                  logger.error(`[Execute] Failed to emit generationUpdated event for spell step generation ${generationRecord._id}: ${emitErr.message}`);
-              }
-          }
-
-          if (websocketServer) {
-            logger.info(`[Execute] Sending final WebSocket update for OpenAI generation ${generationRecord._id}.`);
-            websocketServer.sendToUser(generationRecord.masterAccountId.toString(), {
-              type: 'generationUpdate',
-              payload: {
-                generationId: generationRecord._id.toString(),
-                status: 'completed',
-                outputs: { response: responseContent }, 
-                service: tool.service,
-                toolId: tool.toolId,
-                castId: metadata.castId || null,
-              }
-            });
-          }
-
-          // If this was submitted by Cook orchestrator, schedule next immediately
-          try {
-            const isCook = metadata && metadata.source === 'cook' && metadata.collectionId && metadata.jobId;
-            if (isCook) {
-              const { CookOrchestratorService } = require('../../../core/services/cook');
-              await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId: metadata.collectionId, userId: String(user.masterAccountId), jobId: metadata.jobId, generationId: generationRecord._id.toString() });
-              await CookOrchestratorService.scheduleNext({ collectionId: metadata.collectionId, userId: String(user.masterAccountId), finishedJobId: metadata.jobId, success: true });
-            }
-          } catch (e) {
-            logger.warn(`[Execute] Cook scheduleNext (openai) error: ${e.message}`);
-          }
-
-          return res.status(200).json({
-            generationId: generationRecord._id.toString(),
-            status: 'completed',
-            service: tool.service,
-            toolId: tool.toolId,
-            response: responseContent,
-            castId: metadata.castId || null,
-            message: 'Your ChatGPT request was completed successfully.'
-          });
-        }
+        // openai and huggingface now handled via adapters; legacy paths removed.
         case 'string': {
           if (!stringService) {
             logger.error('[Execute] StringService is not available.');
@@ -652,119 +621,10 @@ module.exports = function generationExecutionApi(dependencies) {
             message: 'String operation completed successfully.'
           });
         }
-        case 'huggingface': {
-          const { masterAccountId } = user;
-          const imageUrl = inputs.imageUrl;
-          
-          if (!imageUrl || typeof imageUrl !== 'string') {
-            return res.status(400).json({ 
-              error: { code: 'INVALID_INPUT', message: 'Missing or invalid imageUrl for JoyTag.' } 
-            });
-          }
-
-          const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
-          const generationParams = {
-            masterAccountId: new ObjectId(masterAccountId),
-            ...(sessionId && { sessionId: new ObjectId(sessionId) }),
-            ...(eventId && { initiatingEventId: new ObjectId(eventId) }),
-            serviceName: tool.service,
-            toolId: tool.toolId,
-            toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            requestPayload: { imageUrl },
-            status: 'processing',
-            deliveryStatus: initialDeliveryStatus,
-            notificationPlatform: user.platform || 'none',
-            pointsSpent: 0,
-            protocolNetPoints: 0,
-            costUsd: null,
-            metadata: {
-              ...tool.metadata,
-              ...metadata,
-              costRate: costRateInfo,
-              platformContext: user.platformContext,
-              ...(user.platform === 'web-sandbox' ? { notificationContext: { platform: 'web-sandbox' } } : {})
-            }
-          };
-
-          const createResponse = await db.generationOutputs.createGenerationOutput(generationParams);
-          generationRecord = createResponse;
-
-          // --- Submit asynchronous HuggingFace interrogation ---
-          (async () => {
-            try {
-              const description = await huggingfaceService.interrogateImage({ imageUrl });
-              
-              await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                status: 'completed',
-                responsePayload: { description },
-                outputs: [ { data: { text: [description] } } ]
-              });
-
-              // --- Points debit (follow OpenAI pattern) ---
-              try {
-                const costRate = generationRecord.metadata?.costRate;
-                const costUsd = (costRate && typeof costRate.amount === 'number') ? costRate.amount : null;
-
-                if (costUsd != null && costUsd > 0) {
-                  const usdPerPoint = 0.000337;
-                  const pointsToSpend = Math.max(1, Math.round(costUsd / usdPerPoint));
-                  const spendPayload = { pointsToSpend, spendContext: { generationId: generationRecord._id.toString(), toolId: generationRecord.toolId } };
-                  const headers = { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB };
-                  const internalApiClient = require('../../../utils/internalApiClient');
-                  await internalApiClient.post(`/internal/v1/data/users/${generationRecord.masterAccountId}/economy/spend`, spendPayload, { headers });
-                  await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                    pointsSpent: pointsToSpend,
-                    protocolNetPoints: pointsToSpend,
-                    costUsd
-                  });
-                }
-              } catch (spendErr) {
-                logger.error(`[Execute] Points debit failed for JoyTag interrogation ${generationRecord._id}: ${spendErr.message}`);
-              }
-
-              // Emit generationUpdated event
-              try {
-                const notificationEvents = require('../../../core/events/notificationEvents');
-                const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
-                notificationEvents.emit('generationUpdated', updatedRecord);
-              } catch(eventErr) {
-                logger.warn(`[Execute] Failed to emit generationUpdated for JoyTag ${generationRecord._id}: ${eventErr.message}`);
-              }
-            } catch (err) {
-              logger.error(`[Execute] HuggingFace interrogation error for tool '${toolId}' (async): ${err.message}`);
-              const cleanMsg = (err?.message || '').slice(0, 180);
-              await db.generationOutputs.updateGenerationOutput(generationRecord._id, {
-                status: 'failed',
-                statusReason: cleanMsg || 'Interrogation failed',
-                'metadata.error': {
-                  message: err.message,
-                  stack: err.stack,
-                  step: 'huggingface_interrogation'
-                }
-              });
-              try {
-                const notificationEvents = require('../../../core/events/notificationEvents');
-                const updatedRecord = await db.generationOutputs.findGenerationById(generationRecord._id);
-                notificationEvents.emit('generationUpdated', updatedRecord);
-              } catch(eventErr) {
-                logger.warn(`[Execute] Failed to emit generationUpdated after error for JoyTag ${generationRecord._id}: ${eventErr.message}`);
-              }
-            }
-          })();
-
-          const estSeconds = 15; // Interrogation is typically faster than generation
-          return res.status(202).json({ 
-            generationId: generationRecord._id.toString(), 
-            status: 'processing', 
-            estimatedDurationSeconds: estSeconds, 
-            message: 'Image interrogation started. Poll status endpoint for completion.' 
-          });
+        default: {
+          logger.error(`[Execute] Unrecognized or un-migrated service '${service}' for tool '${toolId}'.`);
+          return res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: `Service '${service}' not supported.` } });
         }
-        default:
-          logger.error(`[Execute] Unrecognized service '${service}' for tool '${toolId}'.`);
-          return res.status(501).json({
-            error: { code: 'NOT_IMPLEMENTED', message: `Execution for service type '${service}' is not supported.` }
-          });
       }
 
     } catch (error) {

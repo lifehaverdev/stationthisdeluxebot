@@ -129,6 +129,10 @@ function createDatasetsApi(dependencies) {
     if (!masterAccountId) {
       return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
     }
+
+    if (!updateData || Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'No fields provided to update' } });
+    }
     
     try {
       // Check if dataset exists and user owns it

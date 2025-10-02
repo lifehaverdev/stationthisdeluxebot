@@ -411,8 +411,8 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
             const execRes = await apiClient.post('/internal/v1/data/execute', executionPayload);
             const execResult = execRes.data || {};
 
-            if (execResult.status === 'completed' && execResult.outputs && execResult.outputs.response) {
-              await bot.sendMessage(chatId, execResult.outputs.response, { reply_to_message_id: msg.message_id });
+            if (execResult.status === 'completed' && execResult.generationId) {
+              // Delivery will arrive via notifier; just react OK.
               await setReaction(bot, chatId, msg.message_id, '👌');
               return;
             }

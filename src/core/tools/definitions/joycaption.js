@@ -27,7 +27,7 @@ const joycaptionTool = {
       unit: 'request'
     }
   },
-  deliveryMode: 'immediate',
+  deliveryMode: 'async',
   webhookStrategy: {
     expectedStatusField: 'status',
     successValue: 'completed',
@@ -39,12 +39,14 @@ const joycaptionTool = {
     supportsFileCaption: false,
     supportsReplyWithCommand: false
   },
-  category: 'interrogate',
+  category: 'image-to-text',
   visibility: 'public',
   humanDefaults: {},
   metadata: {
     provider: 'HuggingFace',
-    model: 'joy-caption-pre-alpha'
+    model: 'joy-caption-pre-alpha',
+    outputType: 'image-to-text',
+    inputType: 'image'
   }
 };
 

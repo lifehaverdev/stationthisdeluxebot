@@ -62,8 +62,9 @@ export function renderResultContent(resultContainer, output) {
             output = { type: 'image', url: output.imageUrl, ...output };
         } else if (output.image) {
             output = { type: 'image', url: output.image, ...output };
-        } else if (output.text || output.response) {
-            output = { type: 'text', text: output.text || output.response, ...output };
+        } else if (output.text || output.response || (output.data && (output.data.text || output.data.response))) {
+            const txt = output.text || output.response || output.data?.text || output.data?.response;
+            output = { type: 'text', text: txt, ...output };
         } else if (output.video || output.videoUrl || (Array.isArray(output.videos) && output.videos.length)) {
             const firstVid = Array.isArray(output.videos) ? output.videos[0] : (output.video || output.videoUrl);
             output = { type: 'video', url: (typeof firstVid === 'string' ? firstVid : firstVid.url), ...output };
@@ -124,6 +125,8 @@ export function renderResultContent(resultContainer, output) {
             return [output.url];
         } else if (output.type === 'text') {
             if (Array.isArray(output.text)) return output.text;
+            if (Array.isArray(output.data?.text)) return output.data.text;
+            if (output.data?.text !== undefined) return [output.data.text];
             return [output.text];
         } else if (output.type === 'video') {
             if (Array.isArray(output.urls)) return output.urls;

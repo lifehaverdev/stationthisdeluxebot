@@ -2,16 +2,28 @@
 
 /**
  * Training Worker
- * 
+ *
  * Master entry point script that runs continuously and polls for training jobs.
  * This is the main orchestrator that coordinates the entire training pipeline.
+ *
+ * NOTE: This file is executed in an ES-module context (Node ≥20 with "type":"module").
+ * We therefore create our own `require` using `createRequire` so that the *rest* of the
+ * file can keep using CommonJS style `require()` calls without a full rewrite.
  */
 
-const path = require('path');
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const { initializeServices } = require('../../src/core/services');
 const { initializeTrainingServices } = require('../../src/core/services/training');
 
-// Add the src directory to the module path
+// Add the src directory to the module search paths so deep imports using absolute
+// paths (e.g. "require('models/foo')") still resolve as expected.
 require('module').globalPaths.push(path.join(__dirname, '../../src'));
 
 class TrainingWorker {
@@ -157,26 +169,33 @@ class TrainingWorker {
   }
 }
 
-// Main execution
+// ---------------------------------------------------------------------------
+// Main routine – starts the worker in long-running mode
+// ---------------------------------------------------------------------------
+
 async function main() {
   const worker = new TrainingWorker();
-  
   try {
     await worker.start();
-    
-    // Log status every 30 seconds
+
+    // Periodically log status so we know it's alive.
     setInterval(() => {
       worker.logStatus();
-    }, 30000);
-    
-  } catch (error) {
-    console.error('Failed to start Training Worker:', error);
+    }, 30_000);
+  } catch (err) {
+    console.error('Failed to start Training Worker:', err);
     process.exit(1);
   }
 }
 
-// Handle command line arguments
-if (require.main === module) {
+// ---------------------------------------------------------------------------
+// CLI entrypoint detection
+// ---------------------------------------------------------------------------
+// In an ES-module there is no `require.main`. We replicate the common-JS check
+// by comparing the currently executed script path with `process.argv[1]`.
+const isMain = process.argv[1] === __filename;
+
+if (isMain) {
   const args = process.argv.slice(2);
   
   if (args.includes('--help') || args.includes('-h')) {
@@ -226,4 +245,5 @@ Examples:
   });
 }
 
-module.exports = TrainingWorker;
+// Named export so other ESM modules can import it.
+export { TrainingWorker };

@@ -11,9 +11,9 @@ class MongoService {
     this.logger = logger;
     this.db = db;
     
-    // Initialize database collections
-    this.trainingDb = db.data.trainingJobs;
-    this.datasetDb = db.data.datasets;
+    // Initialize database collections (ensure keys match initializeDbServices)
+    this.trainingDb = db.data.loraTrainings;
+    this.datasetDb = db.data.dataset;
     this.loraModelDb = db.data.loraModels;
   }
 
