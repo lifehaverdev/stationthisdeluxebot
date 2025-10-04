@@ -28,7 +28,38 @@ function createLogger(module) {
     winston.format.errors({ stack: true }),
     winston.format.splat(),
     winston.format.printf((info) => {
-      const { level, message, module, timestamp, stack } = info;
+      const { level, message, module, timestamp, stack, httpStatus, alwaysLogFull } = info;
+
+      // Detect status code from various possible locations
+      let detectedStatus = httpStatus ?? info.statusCode ?? (info.res && info.res.statusCode);
+
+      // Check within splat metadata (common pattern logger.info(msg, { req, res }))
+      if (detectedStatus === undefined) {
+        const splatMeta = info[Symbol.for('splat')];
+        if (Array.isArray(splatMeta)) {
+          for (const item of splatMeta) {
+            if (item && typeof item === 'object' && item.res && typeof item.res.statusCode === 'number') {
+              detectedStatus = item.res.statusCode;
+              if (!info.req && item.req) info.req = item.req;
+              break;
+            }
+          }
+        }
+      }
+
+      // Abbreviate common successful HTTP 200 responses unless explicitly overridden
+      if (detectedStatus === 200 && !alwaysLogFull) {
+        // Try to include minimal contextual information if available
+        const method = info.method || (info.req && info.req.method) || '';
+        const url = info.url || (info.req && info.req.url) || '';
+        return `${timestamp} [${level.toUpperCase()}] [${module}]: HTTP 200 ${method} ${url}`.trim();
+      }
+
+      // Fallback: if message already contains status 200 pattern (e.g., "GET /foo - 200")
+      if (!alwaysLogFull && typeof message === 'string' && /\s-\s200$/.test(message)) {
+        return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
+      }
+
       let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
 
       const splat = info[Symbol.for('splat')];

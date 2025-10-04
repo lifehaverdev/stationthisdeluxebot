@@ -129,7 +129,7 @@ module.exports = function spellsApi(dependencies) {
   // GET /spells - Get public spells or spells owned by a user
   router.get('/', async (req, res) => {
     try {
-      const { ownedBy } = req.query;
+      const { ownedBy, tag } = req.query;
       let spells;
 
       // Add logging for incoming query
@@ -140,14 +140,20 @@ module.exports = function spellsApi(dependencies) {
             logger.warn(`[spellsApi] Invalid ownedBy ID format: ${ownedBy}`);
             return res.status(400).json({ error: 'Invalid ownedBy ID format.' });
         }
-        spells = await spellsDb.findSpellsByOwner(ownedBy);
+        // If a tag filter is provided, include it in the query
+        if (tag) {
+          spells = await spellsDb.findMany({ ownedBy: new ObjectId(ownedBy), tags: tag });
+        } else {
+          spells = await spellsDb.findSpellsByOwner(ownedBy);
+        }
         logger.info(`[spellsApi] findSpellsByOwner(${ownedBy}) returned ${spells.length} spells.`);
         if (spells.length > 0) {
           logger.info(`[spellsApi] Sample spell:`, JSON.stringify(spells[0], null, 2));
         }
       } else {
-        // TODO: Add pagination, filtering, sorting from query params
-        spells = await spellsDb.findPublicSpells();
+        // TODO: Add pagination, additional filtering, sorting from query params
+        const filter = tag ? { tags: tag } : {};
+        spells = await spellsDb.findPublicSpells(filter);
         logger.info(`[spellsApi] findPublicSpells() returned ${spells.length} spells.`);
       }
       
@@ -195,7 +201,7 @@ module.exports = function spellsApi(dependencies) {
   router.post('/', async (req, res) => {
     // NOTE: We need the user's masterAccountId. This should come from a middleware.
     // For now, we'll expect it in the request body.
-    const { name, description, creatorId, steps, connections, exposedInputs } = req.body;
+    const { name, description, creatorId, steps, connections, exposedInputs, tags } = req.body;
 
     if (!name || !creatorId) {
       return res.status(400).json({ error: 'Spell name and creatorId are required.' });
@@ -210,6 +216,7 @@ module.exports = function spellsApi(dependencies) {
         connections: Array.isArray(connections) ? connections : [], // Persist the sub-graph connections
         exposedInputs: Array.isArray(exposedInputs) ? exposedInputs : [],
         visibility: 'private', // All new spells start as private
+        tags: Array.isArray(tags) ? tags : [],
       };
       const newSpell = await spellsDb.createSpell(spellData);
       if (newSpell) {

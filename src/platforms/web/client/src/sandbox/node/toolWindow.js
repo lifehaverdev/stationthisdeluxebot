@@ -309,6 +309,8 @@ async function executeSingleNode(toolWindowEl) {
                         outputData = { type: 'text', text: execResult.outputs.response, generationId: execResult.generationId };
                     } else if (execResult.outputs?.text) {
                         outputData = { type: 'text', text: execResult.outputs.text, generationId: execResult.generationId };
+                    } else if (execResult.outputs?.description) {
+                        outputData = { type: 'text', text: execResult.outputs.description, generationId: execResult.generationId };
                     } else {
                         outputData = { type: 'unknown', generationId: execResult.generationId, ...execResult.outputs };
                     }

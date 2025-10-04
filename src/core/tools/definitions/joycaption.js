@@ -45,7 +45,8 @@ const joycaptionTool = {
   metadata: {
     provider: 'HuggingFace',
     model: 'joy-caption-pre-alpha',
-    outputType: 'image-to-text',
+    // This tool produces plain text descriptions, so mark as text for UI anchor compatibility
+    outputType: 'text',
     inputType: 'image'
   }
 };

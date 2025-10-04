@@ -10,8 +10,8 @@ export default class ModsMenuModal {
   constructor(options = {}) {
     this.onSelect = options.onSelect || (() => {}); // callback when user picks a model
     this.state = {
-      rootTab: 'browse', // NEW: 'browse' | 'train' | 'captions'
-      view: 'intro', // 'intro' | 'loraRoot' | 'category' | 'trainDash' | 'captionDash'
+      rootTab: 'browse', // Root tabs: 'browse' | 'train'  (captions lives inside Train tab per ADR-2025-10-03)
+      view: 'intro', // Views: 'intro' | 'loraRoot' | 'category' | 'trainDash'
       categories: ['checkpoint', 'lora', 'upscale', 'embedding', 'vae', 'controlnet', 'clipseg'],
       loraCategories: [],
       counts: {},
@@ -43,6 +43,7 @@ export default class ModsMenuModal {
       captionSets: [],
       loadingCaptions: false,
       captionError: null,
+      captionerSpells: [],
     };
     this.modalElement = null;
     this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -62,17 +63,34 @@ export default class ModsMenuModal {
       if (!this.modalOverlayEl) return;
       const mode = this.state.formMode;
       if (mode === 'new-dataset' || mode === 'edit-dataset') {
-        if (!this.state.newImageUrls.includes(url)) {
-          // immutably update state
-          this.setState({ newImageUrls: [...this.state.newImageUrls, url] });
+        const alreadyAdded = this.state.newImageUrls.includes(url);
+        const currentImages = this.state.formValues.images || [];
+
+        const updatedState = {};
+
+        // Track newly uploaded URLs so we can POST them later (edit-dataset) or include in create payload (new-dataset)
+        if (!alreadyAdded) {
+          updatedState.newImageUrls = [...this.state.newImageUrls, url];
         }
-        // If editing an existing dataset, immediately persist to backend
-        if (mode === 'edit-dataset' && this.state.formValues?._id) {
-          // Defer backend persistence until user clicks Save. Images will be sent in submitForm().
+
+        // Keep formValues.images in sync so UI previews & validation work
+        if (!currentImages.includes(url)) {
+          updatedState.formValues = {
+            ...this.state.formValues,
+            images: [...currentImages, url],
+          };
         }
+
+        if (Object.keys(updatedState).length) {
+          this.setState(updatedState);
+        }
+        // For edit-dataset we still defer backend persistence until submitForm()
       }
     };
     window.addEventListener('uploadCompleted', this._uploadListener);
+
+    // Pre-fetch captioner spells list (tagged [captioner])
+    this.fetchCaptionerSpells();
   }
 
   setState(newState) {
@@ -97,15 +115,20 @@ export default class ModsMenuModal {
       this.ws.on('captionProgress', (data) => {
         const { captionSetId, progress, status, datasetId } = data;
         if (datasetId !== this.state.selectedDatasetId) return;
-        const idx = this.state.captionSets.findIndex(c => c._id === captionSetId);
-        if (idx !== -1) {
-          const cs = this.state.captionSets[idx];
-          cs.progress = progress;
-          cs.status = status;
-          if (status === 'COMPLETED' || status === 'FAILED') {
-            cs.completedAt = new Date();
+        if(captionSetId){
+          const idx = this.state.captionSets.findIndex(c => c._id === captionSetId);
+          if (idx !== -1) {
+            const cs = this.state.captionSets[idx];
+            if(progress!=null) cs.progress = progress;
+            if(status) cs.status = status;
+            if (status === 'COMPLETED' || status === 'FAILED') {
+              cs.completedAt = new Date();
+            }
+            this.render();
           }
-          this.render();
+        } else {
+          // No captionSetId – refresh whole list to get latest data
+          this.fetchCaptionSets(datasetId);
         }
       });
     }
@@ -889,7 +912,17 @@ export default class ModsMenuModal {
     if(addTrBtn){
       addTrBtn.onclick = ()=> this.openTrainingForm();
     }
-
+    // Add Caption button
+    const addCapBtn = this.modalElement.querySelector('.add-caption-btn');
+    if(addCapBtn){
+      addCapBtn.onclick = () => {
+        if(!this.state.selectedDatasetId){
+          alert('Select a dataset first.');
+          return;
+        }
+        this.generateCaptionSet(this.state.selectedDatasetId);
+      };
+    }
     // Form input bindings
     const formEl=this.modalElement.querySelector('.train-form');
     if(formEl){
@@ -1053,7 +1086,11 @@ export default class ModsMenuModal {
         if(e.target.closest('.dataset-actions, input.dataset-select')) return;
         const id=card.getAttribute('data-id');
         if(id!==this.state.selectedDatasetId){
-          this.setState({selectedDatasetId:id, captionSets:[]});
+          this.setState({selectedDatasetId:id, captionSets:[]},()=>{
+            // Enable caption button
+            const btn=this.modalElement.querySelector('.add-caption-btn');
+            if(btn) btn.removeAttribute('disabled');
+          });
           this.fetchCaptionSets(id);
         }
       });
@@ -1794,6 +1831,15 @@ export default class ModsMenuModal {
       return;
     }
     
+    // Extra guard: dataset must contain at least one caption set
+    if(formMode==='new-training' || formMode==='edit-training'){
+      const hasCaptions = await this.hasAnyCaptionSets(formValues.datasetId);
+      if(!hasCaptions){
+        this.setState({ formError: 'Selected dataset has no caption sets. Please generate captions before training.', submitting:false });
+        return;
+      }
+    }
+    
     // Calculate and confirm cost for training
     if (formMode === 'new-training' || formMode === 'edit-training') {
       const cost = await this.calculateTrainingCost(formValues);
@@ -1830,15 +1876,35 @@ export default class ModsMenuModal {
       const csrfRes = await fetch('/api/v1/csrf-token');
       const { csrfToken } = await csrfRes.json();
 
-      // If we're only adding images, we skip the PUT – images will be handled via separate POST below
-      let hasUpdateFields = Object.keys(payload).some(k => k !== 'masterAccountId');
-      if(formMode==='edit-dataset' && this.state.newImageUrls.length && !hasUpdateFields) {
-        hasUpdateFields = false;
-      }
+      // For edit-dataset, compute precise changes to avoid empty update payloads
       let res = { ok: true };
-      if(method==='PUT' && hasUpdateFields){
-        res = await fetch(url,{method,credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},body:JSON.stringify(payload)});
-        if(!res.ok) throw new Error(`save-failed-${res.status}`);
+      if(formMode==='edit-dataset') {
+        const diff = {};
+        const orig = this.state.originalFormValues || {};
+        for (const [key, val] of Object.entries(formValues)) {
+          if (key === 'images') continue; // images handled separately
+          if (key === '_id') continue;
+          if (JSON.stringify(val) !== JSON.stringify(orig[key])) diff[key] = val;
+        }
+        // Only send PUT if at least one field changed
+        if (Object.keys(diff).length) {
+          res = await fetch(url, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(diff),
+          });
+          if (!res.ok) throw new Error(`save-failed-${res.status}`);
+        }
+      } else if (method === 'POST' || (method === 'PUT' && formMode !== 'edit-dataset')) {
+        // new-dataset, new-training, edit-training
+        res = await fetch(url, {
+          method,
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`save-failed-${res.status}`);
       }
 
       // If dataset edit and we have new images, send them
@@ -2159,10 +2225,11 @@ export default class ModsMenuModal {
     overlay.className='import-overlay';
 
     const dsOptions=this.state.datasets.map(d=>`<option value="${d._id}" ${d._id===initialDatasetId?'selected':''}>${d.name}</option>`).join('');
-
+    if(!this.state.captionerSpells.length){ await this.fetchCaptionerSpells(); }
+    const spellOpts=(this.state.captionerSpells.length?this.state.captionerSpells:[{slug:'',name:'(no captioner spells found)'}]).map(s=>`<option value="${s.slug||s.spellId}">${s.name||s.displayName}</option>`).join('');
     overlay.innerHTML=`<div class="import-dialog"><h3>Generate Captions</h3>
       <label>Dataset:<br><select class="cap-dataset">${dsOptions}</select></label><br>
-      <label>Method:<br><select class="cap-method"><option value="style-caption">Style + Subject</option><option value="subject-caption">Subject Only</option></select></label><br>
+      <label>Captioner Spell:<br><select class="cap-method">${spellOpts}</select></label><br>
       <label>Trigger Words (optional):<br><input type="text" class="cap-triggers" placeholder="comma,separated" /></label>
       <div class="error-message" style="display:none"></div>
       <div class="btn-row"><button class="confirm-generate-btn">Generate</button><button class="cancel-generate-btn">Cancel</button></div>
@@ -2174,21 +2241,58 @@ export default class ModsMenuModal {
     overlay.querySelector('.cancel-generate-btn').onclick=cleanup;
     overlay.onclick=(e)=>{if(e.target===overlay) cleanup();};
     overlay.querySelector('.confirm-generate-btn').onclick=async ()=>{
-      const method=overlay.querySelector('.cap-method').value;
+      const spellSlug=overlay.querySelector('.cap-method').value;
       const triggers=overlay.querySelector('.cap-triggers').value.trim();
       overlay.querySelector('.confirm-generate-btn').disabled=true;
       try{
         const dsId=overlay.querySelector('.cap-dataset').value;
         const csrfRes=await fetch('/api/v1/csrf-token');
         const {csrfToken}=await csrfRes.json();
-        const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/captions/generate`,{
+        const masterAccountId = await this.getCurrentMasterAccountId();
+        const res=await fetch(`/api/v1/datasets/${encodeURIComponent(dsId)}/caption-via-spell`,{
           method:'POST',credentials:'include',headers:{'Content-Type':'application/json','x-csrf-token':csrfToken},
-          body:JSON.stringify({method,triggerWords:triggers})});
+          body:JSON.stringify({spellSlug,triggerWords:triggers,masterAccountId})});
         if(!res.ok) throw new Error('Generate failed');
         cleanup();
         this.fetchCaptionSets(dsId);
       }catch(err){errEl.textContent=err.message||'Generate failed';errEl.style.display='block';overlay.querySelector('.confirm-generate-btn').disabled=false;}
     };
+  }
+
+  /**
+   * Quick utility to verify that a dataset has at least one caption set.
+   * Called synchronously during training form submission to prevent training on uncaptained datasets.
+   * @returns {Promise<boolean>}
+   */
+  async hasAnyCaptionSets(datasetId){
+    if(!datasetId) return false;
+    try{
+      // lightweight – ask for only first item
+      const res = await fetch(`/api/v1/datasets/${encodeURIComponent(datasetId)}/captions?limit=1`, { credentials:'include' });
+      if(!res.ok) return false;
+      const data = await res.json();
+      return (data.captionSets||[]).length>0;
+    }catch{ return false; }
+  }
+
+  /** Fetch spells tagged as captioner for dropdown */
+  async fetchCaptionerSpells() {
+    try {
+      const url = `/api/v1/spells/marketplace?tag=captioner&_=${Date.now()}`;
+      const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+      if (res.status === 304) {
+        // keep existing list
+        if (!this.state.captionerSpells.length) this.setState({ captionerSpells: [] });
+        return;
+      }
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      const raw = await res.json();
+      const list = Array.isArray(raw) ? raw : (raw.spells || raw.data || []);
+      this.setState({ captionerSpells: Array.isArray(list) ? list : [] });
+    } catch (err) {
+      console.warn('[ModsMenuModal] fetchCaptionerSpells error', err);
+      this.setState({ captionerSpells: [] });
+    }
   }
 }
 

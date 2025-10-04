@@ -14,11 +14,15 @@ function createSpellsApi(dependencies) {
     // --- PUBLIC: Marketplace/Discovery Endpoint ---
     router.get('/marketplace', async (req, res) => {
         try {
-            const response = await internalApiClient.get('/internal/v1/data/spells/public');
-            let publicSpells = response.data;
-            publicSpells = publicSpells.map(spell => ({
+            const { tag } = req.query;
+            const url = tag ? `/internal/v1/data/spells/public?tag=${encodeURIComponent(tag)}` : '/internal/v1/data/spells/public';
+            const response = await internalApiClient.get(url);
+            const raw = response.data;
+            const list = Array.isArray(raw) ? raw : (raw.spells || raw.data || []);
+            const publicSpells = list.map(spell => ({
                 spellId: spell.spellId,
-                name: spell.name,
+                slug: spell.slug || spell.spellId || spell._id,
+                name: spell.name || spell.displayName,
                 description: spell.description,
                 uses: spell.uses || 0,
                 author: spell.author || null,

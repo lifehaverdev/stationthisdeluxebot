@@ -5,7 +5,7 @@ const express = require('express');
 const { ObjectId } = require('../../core/services/db/BaseDB');
 
 function createDatasetsApi(dependencies) {
-  const { logger, db } = dependencies;
+  const { logger, db, spellsService } = dependencies;
   const router = express.Router();
 
   // Get the dataset service
@@ -291,6 +291,128 @@ function createDatasetsApi(dependencies) {
     } catch (error) {
       logger.error('Failed to upload and add images to dataset:', error);
       res.status(500).json({ error: { code: 'UPLOAD_IMAGES_ERROR', message: 'Failed to upload and add images' } });
+    }
+  });
+
+  // POST /internal/v1/data/datasets/:datasetId/caption-via-spell - Generate captions via arbitrary spell
+  router.post('/:datasetId/caption-via-spell', async (req, res) => {
+    const { datasetId } = req.params;
+    const { spellSlug, masterAccountId, parameterOverrides = {} } = req.body;
+
+    logger.info(`[DatasetsAPI] POST /${datasetId}/caption-via-spell - spell=${spellSlug}`);
+
+    if (!spellSlug) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'spellSlug is required' } });
+    }
+    if (!masterAccountId) {
+      return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'masterAccountId is required' } });
+    }
+
+    try {
+      // Check dataset ownership & assets
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      if (dataset.ownerAccountId.toString() !== masterAccountId) {
+        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'You can only caption your own datasets' } });
+      }
+      if (!dataset.images || dataset.images.length === 0) {
+        return res.status(400).json({ error: { code: 'NO_IMAGES', message: 'Dataset contains no images' } });
+      }
+
+      // Ensure spellsService exists
+      if (!spellsService) {
+        logger.error('[DatasetsAPI] spellsService not available – cannot cast spell');
+        return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Spell service unavailable' } });
+      }
+
+      const castsDb = db.casts;
+
+      const { sha256Hex } = require('../../core/utils/hash');
+      const imagesHash = sha256Hex(JSON.stringify(dataset.images));
+
+      // Initialize castMap with nulls; will be filled asynchronously
+      const castMap = Array(dataset.images.length).fill(null);
+
+      const intervalMs = Number(process.env.CAPTION_CAST_INTERVAL_MS || '30000');
+
+      const scheduleCast = (idx) => {
+        const imageUrl = dataset.images[idx];
+        setTimeout(async () => {
+          // Use 'web-sandbox' so NotificationDispatcher emits WebSocket updates
+          const context = {
+            masterAccountId,
+            platform: 'web-sandbox',
+            parameterOverrides: { ...parameterOverrides, imageUrl },
+          };
+          try {
+            const result = await spellsService.castSpell(spellSlug, context, castsDb);
+            const castId = result?.castId || context.castId || null;
+            castMap[idx] = castId;
+            // Persist individual castId back to captionTask.castMap[idx]
+            await datasetDb.updateOne(
+              { _id: new ObjectId(datasetId) },
+              { $set: { [`captionTask.castMap.${idx}`]: castId } }
+            );
+          } catch (castErr) {
+            logger.error(`[DatasetsAPI] Failed casting spell for image ${idx}:`, castErr.message);
+          }
+        }, idx * intervalMs); // stagger by env-config interval
+      };
+
+      dataset.images.forEach((_, idx) => scheduleCast(idx));
+
+      // Emit initial websocket event for progress 0
+      try {
+        const websocketService = require('../../core/services/websocket/server');
+        websocketService.sendToUser(masterAccountId, {
+          type: 'captionProgress',
+          payload: {
+            datasetId,
+            status: 'started',
+            castMap,
+            imagesHash,
+          },
+        });
+      } catch (wsErr) {
+        logger.warn('[DatasetsAPI] Failed to emit websocket start event:', wsErr.message);
+      }
+
+      // Store captionTask in dataset document for progress tracking
+      const captionTask = {
+        spellSlug,
+        masterAccountId,
+        status: 'running',
+        startedAt: new Date(),
+        imagesHash,
+        castMap,
+        captions: Array(dataset.images.length).fill(null)
+      };
+
+      await datasetDb.updateOne({ _id: new ObjectId(datasetId) }, { $set: { captionTask } });
+
+      res.status(202).json({ success: true, data: { datasetId, castMap, message: 'Caption generation started' } });
+    } catch (error) {
+      logger.error('Caption-via-spell error:', error);
+      res.status(500).json({ error: { code: 'CAPTION_SPELL_ERROR', message: 'Failed to start caption generation via spell' } });
+    }
+  });
+
+  // GET /internal/v1/data/datasets/:datasetId/captions – list caption sets for dataset
+  router.get('/:datasetId/captions', async (req, res) => {
+    const { datasetId } = req.params;
+    try {
+      const dataset = await datasetDb.findOne({ _id: new ObjectId(datasetId) }, {
+        projection: { captionSets: 1 },
+      });
+      if (!dataset) {
+        return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Dataset not found' } });
+      }
+      res.json({ success: true, data: dataset.captionSets || [] });
+    } catch (err) {
+      logger.error('[DatasetsAPI] Failed fetching caption sets:', err);
+      res.status(500).json({ error: { code: 'FETCH_ERROR', message: 'Could not fetch caption sets' } });
     }
   });
 

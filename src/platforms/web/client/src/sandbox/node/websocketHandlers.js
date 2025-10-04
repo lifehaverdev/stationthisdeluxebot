@@ -306,6 +306,14 @@ export function handleGenerationUpdate(payload) {
                 const t = outputs[0].data.text;
                 outputData = { type: 'text', text: Array.isArray(t) ? t : [t], generationId };
             }
+            else if (Array.isArray(outputs) && typeof outputs[0] === 'string') {
+                outputData = { type: 'text', text: outputs, generationId };
+            } else if (typeof outputs === 'string') {
+                outputData = { type: 'text', text: outputs, generationId };
+            }
+            else if (outputs.description) {
+                outputData = { type: 'text', text: outputs.description, generationId };
+            }
 
             // --- 5. Fallback ---
             else {

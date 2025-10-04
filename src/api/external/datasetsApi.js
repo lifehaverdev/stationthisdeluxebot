@@ -115,6 +115,38 @@ function createDatasetsApiRouter(deps = {}) {
     }
   });
 
+  // POST /:id/caption-via-spell – generate captions via selected spell
+  router.post('/:id/caption-via-spell', async (req, res) => {
+    const { id } = req.params;
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Auth required' } });
+    }
+    const ownerId = user.masterAccountId || user.userId;
+    try {
+      const payload = { ...req.body, masterAccountId: ownerId };
+      const { data } = await client.post(`/internal/v1/data/datasets/${encodeURIComponent(id)}/caption-via-spell`, payload);
+      res.status(202).json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('caption via spell proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  // GET /:id/captions – list caption sets
+  router.get('/:id/captions', async (req, res) => {
+    const { id } = req.params;
+    try {
+      const { data } = await client.get(`/internal/v1/data/datasets/${encodeURIComponent(id)}/captions`);
+      res.json(data);
+    } catch (err) {
+      const status = err.response?.status || 500;
+      logger.error('get captions proxy error', err.response?.data || err.message);
+      res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   return router;
 }
 

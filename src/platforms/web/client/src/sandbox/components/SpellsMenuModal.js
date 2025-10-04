@@ -275,6 +275,29 @@ export default class SpellsMenuModal {
                 this.setState({ view: 'main', newSpellName: '', newSpellDescription: '', error: null, newSpellExposedInputs: {} });
                 this.fetchUserSpells();
             };
+            // --- step reordering events ---
+            const items = this.modalElement.querySelectorAll('.spell-step-item');
+            items.forEach(item => {
+                const idx = parseInt(item.dataset.index, 10);
+                // drag & drop
+                item.ondragstart = e => {
+                    e.dataTransfer.setData('text/plain', idx);
+                };
+                item.ondragover = e => {
+                    e.preventDefault();
+                };
+                item.ondrop = e => {
+                    e.preventDefault();
+                    const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                    const toIdx = parseInt(item.dataset.index, 10);
+                    this.reorderSpellSteps(fromIdx, toIdx);
+                };
+                // arrow buttons
+                const upBtn = item.querySelector('.move-up');
+                const downBtn = item.querySelector('.move-down');
+                if (upBtn) upBtn.onclick = (e) => { e.stopPropagation(); this.reorderSpellSteps(idx, idx - 1); };
+                if (downBtn) downBtn.onclick = (e) => { e.stopPropagation(); this.reorderSpellSteps(idx, idx + 1); };
+            });
         }
         // Spell detail actions
         if (this.state.view === 'spellDetail' && this.state.selectedSpell) {
@@ -381,9 +404,14 @@ export default class SpellsMenuModal {
         if (nodesWithTools.length > 0) {
             stepsHtml = `
                 <div class="spell-steps-preview">
-                    <h4>Steps in this Spell:</h4>
-                    <ul>
-                        ${nodesWithTools.map(node => `<li>${node.tool.displayName}</li>`).join('')}
+                    <h4>Reorder Steps (drag ↕ or use ↑↓):</h4>
+                    <ul class="spell-steps-list">
+                        ${nodesWithTools.map((node, idx) => `
+                            <li class="spell-step-item" data-index="${idx}" draggable="true">
+                                <span class="drag-handle">↕</span> <span class="step-label">${idx + 1}. ${node.tool.displayName}</span>
+                                <button class="move-up" title="Move Up">↑</button>
+                                <button class="move-down" title="Move Down">↓</button>
+                            </li>`).join('')}
                     </ul>
                 </div>
             `;
@@ -612,5 +640,20 @@ export default class SpellsMenuModal {
         } catch (err) {
             this.setState({ error: err.message, loading: false });
         }
+    }
+
+    /**
+     * Reorder spell steps in the subgraph.nodes array and rerender.
+     * @param {number} fromIdx - original index
+     * @param {number} toIdx   - new index
+     */
+    reorderSpellSteps(fromIdx, toIdx) {
+        const nodes = [...(this.state.subgraph?.nodes || [])];
+        if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= nodes.length || toIdx >= nodes.length) return;
+        const [moved] = nodes.splice(fromIdx, 1);
+        nodes.splice(toIdx, 0, moved);
+        // update state & rerender
+        const newSubgraph = { ...this.state.subgraph, nodes };
+        this.setState({ subgraph: newSubgraph });
     }
 } 
