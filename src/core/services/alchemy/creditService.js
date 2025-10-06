@@ -651,8 +651,34 @@ class CreditService {
         }
         this.logger.info(`[CreditService] Contract reports a total unconfirmed balance of ${tokenDecimalService.formatTokenAmount(amount, token)} ${tokenDecimalService.getTokenMetadata(token).symbol} for this group.`);
 
-        // 1. DYNAMIC FUNDING RATE
-        this.logger.info(`[CreditService] Step 1: Applying dynamic funding rate for token ${token}...`);
+        // 1. USER ACCOUNT VERIFICATION / CREATION (moved earlier so masterAccountId is always available)
+        this.logger.info(`[CreditService] Step 1: Ensuring user account exists for depositor ${user}...`);
+        try {
+            const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${user}`);
+            masterAccountId = response.data.masterAccountId;
+            this.logger.info(`[CreditService] User found. MasterAccountId: ${masterAccountId}`);
+        } catch (lookupErr) {
+            if (lookupErr.response && lookupErr.response.status === 404) {
+                // Attempt autocreation
+                this.logger.warn(`[CreditService] No user account found for ${user}. Attempting auto-create via find-or-create-by-wallet...`);
+                try {
+                    const createResp = await this.internalApiClient.post(`/internal/v1/auth/find-or-create-by-wallet`, { address: user });
+                    masterAccountId = createResp.data.masterAccountId;
+                    this.logger.info(`[CreditService] Auto-created new user. MasterAccountId: ${masterAccountId}`);
+                } catch (createErr) {
+                    this.logger.error(`[CreditService] Failed to auto-create user for wallet ${user}.`, createErr);
+                    for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', { failure_reason: 'Failed to auto-create user.', error_details: createErr.message });
+                    return;
+                }
+            } else {
+                this.logger.error(`[CreditService] Error looking up user for group.`, lookupErr);
+                for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', { failure_reason: 'Failed to lookup user due to an internal API error.', error_details: lookupErr.message });
+                return;
+            }
+        }
+
+        // 2. DYNAMIC FUNDING RATE
+        this.logger.info(`[CreditService] Step 2: Applying dynamic funding rate for token ${token}...`);
         // Move riskAssessment and priceInUsd assignment up
         const riskAssessment = await this.tokenRiskEngine.assessCollateral(token, amount);
         if (!riskAssessment.isSafe) {
@@ -665,26 +691,6 @@ class CreditService {
         const grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
         const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
         this.logger.info(`[CreditService] Original Value: $${grossDepositUsd.toFixed(2)}, Rate: ${fundingRate}, Adjusted Value: $${adjustedGrossDepositUsd.toFixed(2)}.`);
-
-        // 2. USER ACCOUNT VERIFICATION
-        this.logger.info(`[CreditService] Step 2: Verifying user account for depositor ${user}...`);
-        let masterAccountId;
-        try {
-            const response = await this.internalApiClient.get(`/internal/v1/data/wallets/lookup?address=${user}`);
-            masterAccountId = response.data.masterAccountId;
-            this.logger.info(`[CreditService] User found. MasterAccountId: ${masterAccountId}`);
-        } catch (error) {
-            if (error.response && error.response.status === 404) {
-                this.logger.warn(`[CreditService] No user account found for address ${user}. Rejecting deposit group.`);
-                for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'REJECTED_UNKNOWN_USER', { failure_reason: 'No corresponding user account found.' });
-                // Cannot notify user as we don't know their masterAccountId
-            } else {
-                this.logger.error(`[CreditService] Error looking up user for group.`, error);
-                for (const deposit of deposits) await this.creditLedgerDb.updateLedgerStatus(deposit.deposit_tx_hash, 'ERROR', { failure_reason: 'Failed to lookup user due to an internal API error.', error_details: error.message });
-                // Cannot notify user if lookup fails
-            }
-            return;
-        }
 
         // 3. COLLATERAL & PROFITABILITY CHECKS (on the total aggregated amount)
         this.logger.info(`[CreditService] Step 3: Assessing collateral and profitability for the total amount...`);
