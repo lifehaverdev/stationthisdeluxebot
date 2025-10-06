@@ -94,26 +94,38 @@ class PriceFeedService {
    * @private
    */
   async _getMS2Price() {
-    try {
-      const response = await fetch(
-        'https://api.coingecko.com/api/v3/simple/price?ids=station-this&vs_currencies=usd'
-      );
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    const MAX_ATTEMPTS = 3;
+    const RETRY_DELAY_MS = 20_000; // 20 seconds
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(
+          'https://api.coingecko.com/api/v3/simple/price?ids=station-this&vs_currencies=usd'
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const json = await response.json();
+        const price = json['station-this']?.usd;
+
+        if (!price) {
+          throw new Error('Could not parse MS2 price from CoinGecko response.');
+        }
+
+        return parseFloat(price);
+      } catch (error) {
+        this.logger.error(`[PriceFeedService] Attempt ${attempt} to fetch MS2 price failed:`, error?.message || error);
+        if (attempt < MAX_ATTEMPTS) {
+          this.logger.info(`[PriceFeedService] Retrying MS2 price fetch in ${RETRY_DELAY_MS / 1000}s (${MAX_ATTEMPTS - attempt} retries left)…`);
+          await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
+          continue;
+        }
+        // Exhausted retries
+        this.logger.error('[PriceFeedService] All retry attempts to fetch MS2 price failed. Returning 0.');
+        return 0;
       }
-      
-      const json = await response.json();
-      const price = json['station-this']?.usd;
-      
-      if (!price) {
-        throw new Error('Could not parse MS2 price from CoinGecko response.');
-      }
-      
-      return parseFloat(price);
-    } catch (error) {
-      this.logger.error('[PriceFeedService] Failed to fetch MS2 price from CoinGecko:', error);
-      return 0;
     }
   }
 

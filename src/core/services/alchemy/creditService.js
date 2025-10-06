@@ -377,18 +377,46 @@ class CreditService {
 
     // Price & funding rate
     const priceInUsd = await this.priceFeedService.getPriceInUsd(token);
+    if (priceInUsd === 0) {
+      // Abort processing – price feed unavailable
+      this.logger.error(`[CreditService] Price feed unavailable for token ${token}. Marking donation tx ${transactionHash} as ERROR.`);
+
+      const failureEntry = {
+        deposit_tx_hash: transactionHash,
+        deposit_log_index: logIndex,
+        deposit_block_number: blockNumber,
+        vault_account: this.contractConfig.address,
+        depositor_address: user,
+        master_account_id: masterAccountId,
+        token_address: token,
+        deposit_amount_wei: amount.toString(),
+        deposit_type: 'TOKEN_DONATION',
+        status: 'ERROR',
+        failure_reason: 'Price feed unavailable',
+        funding_rate_applied: getDonationFundingRate(token),
+        gross_deposit_usd: 0,
+        adjusted_gross_deposit_usd: 0,
+        user_credited_usd: 0,
+        points_credited: 0,
+        points_remaining: 0,
+      };
+      await this.creditLedgerDb.createLedgerEntry(failureEntry);
+      this._sendDepositNotification(masterAccountId, 'error', failureEntry);
+      return;
+    }
+
     const fundingRate = getDonationFundingRate(token);
-    
+
     // Use centralized decimal service for consistent token handling
     const grossDepositUsd = tokenDecimalService.calculateUsdValue(amount, token, priceInUsd);
-    
+
     this.logger.info(`[CreditService] Donation processing for token ${token}:`, {
       amount: amount.toString(),
       priceInUsd,
       grossDepositUsd,
       fundingRate
     });
-    
+
     const adjustedGrossDepositUsd = grossDepositUsd * fundingRate;
     const userCreditedUsd = adjustedGrossDepositUsd;
     const pointsCredited = Math.floor(userCreditedUsd / USD_TO_POINTS_CONVERSION_RATE);

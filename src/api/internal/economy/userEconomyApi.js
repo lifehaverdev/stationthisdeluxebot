@@ -379,7 +379,38 @@ module.exports = function initializeUserEconomyApi(dependencies) {
       // 2. Check if the user has enough total points across all deposits
       const totalPointsRemaining = activeDeposits.reduce((sum, deposit) => sum + (deposit.points_remaining || 0), 0);
       if (totalPointsRemaining < pointsToSpend) {
-        return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: `User has insufficient points. Required: ${pointsToSpend}, Available: ${totalPointsRemaining}.`, requestId } });
+        // Attempt to supplement with wallet-based deposits if available
+        let supplementalDeposits = [];
+        let walletToCheck = walletAddress;
+        if (!walletToCheck) {
+          // Resolve wallet from userCore if not provided
+          const userCore = await db.userCore.findUserCoreById(masterAccountId);
+          if (userCore && Array.isArray(userCore.wallets) && userCore.wallets.length > 0) {
+            const primary = userCore.wallets.find(w => w.isPrimary) || userCore.wallets[0];
+            walletToCheck = primary && primary.address;
+          }
+        }
+        if (walletToCheck) {
+          logger.info(`[userEconomyApi] /spend: Attempting supplemental wallet-based deposits for address ${walletToCheck}`);
+          supplementalDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(walletToCheck);
+        }
+
+        if (supplementalDeposits.length > 0) {
+          // Merge while avoiding duplicates (in case some deposits already counted)
+          const existingIds = new Set(activeDeposits.map(d => d._id.toString()));
+          for (const dep of supplementalDeposits) {
+            if (!existingIds.has(dep._id.toString())) {
+              activeDeposits.push(dep);
+            }
+          }
+          spendTarget = spendTarget === 'masterAccountId' ? 'combined' : spendTarget;
+        }
+      }
+
+      // Re-evaluate after potential supplementation
+      const combinedPointsRemaining = activeDeposits.reduce((sum, deposit) => sum + (deposit.points_remaining || 0), 0);
+      if (combinedPointsRemaining < pointsToSpend) {
+        return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: `User has insufficient points. Required: ${pointsToSpend}, Available: ${combinedPointsRemaining}.`, requestId } });
       }
 
       // 3. Iterate through sorted deposits and deduct points

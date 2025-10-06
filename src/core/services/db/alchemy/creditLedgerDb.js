@@ -308,16 +308,22 @@ class CreditLedgerDB extends BaseDB {
   }
 
   /**
-   * Finds all active, confirmed deposit entries for a user that can be spent from.
-   * The deposits are sorted by their funding rate in ascending order, so that
-   * lower-quality assets are spent first.
-   * @param {ObjectId} masterAccountId - The user's master account ID.
-   * @returns {Promise<Array<Object>>} A sorted list of credit ledger entries.
+   * Finds all active, confirmed deposits for a user that can be spent from.
+   * Accepts either an ObjectId or a string. Some historical ledger entries were
+   * stored with the master_account_id as a string which caused spend look-ups
+   * to fail and return INS UFFICIENT_FUNDS even when the user had balance.
+   * This method now matches on BOTH representations so we remain backward
+   * compatible while we migrate existing data.
+   *
+   * @param {ObjectId|string} masterAccountId – The user’s master account id
+   * @returns {Promise<Array<Object>>}
    */
   async findActiveDepositsForUser(masterAccountId) {
+    const idStr = typeof masterAccountId === 'string' ? masterAccountId : masterAccountId.toString();
+
     return this.findMany(
       {
-        master_account_id: masterAccountId,
+        master_account_id: { $in: [masterAccountId, idStr] },
         status: 'CONFIRMED',
         points_remaining: { $gt: 0 },
       },
