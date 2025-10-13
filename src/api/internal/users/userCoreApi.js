@@ -46,7 +46,15 @@ function createUserCoreApiService(dependencies) {
   // POST /users/find-or-create
   router.post('/find-or-create', async (req, res) => {
     const requestId = uuidv4(); // For error reporting
-    logger.info(`[userCoreApi] POST /find-or-create called with body: ${JSON.stringify(req.body)}, requestId: ${requestId}`);
+    let bodyStr;
+    try {
+      bodyStr = JSON.stringify(req.body);
+    } catch (_) {
+      // Fallback to util.inspect on circular / BigInt issues
+      const util = require('util');
+      bodyStr = util.inspect(req.body, { depth: 2, breakLength: 100 });
+    }
+    logger.info(`[userCoreApi] POST /find-or-create called with body: ${bodyStr}, requestId: ${requestId}`);
     
     const { platform, platformId, platformContext } = req.body;
 

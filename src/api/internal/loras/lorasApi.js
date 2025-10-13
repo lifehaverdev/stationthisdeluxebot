@@ -148,6 +148,20 @@ router.post('/import', async (req, res) => {
 
         logger.info(`[LorasApi] Successfully imported LoRA '${newLora.name}' (ID: ${newLora._id}) for user ${userId}`);
 
+        // --- NEW: Automatically grant private access to the importing user ---
+        try {
+            await loRAPermissionsDb.grantAccess({
+              loraId: newLora._id,
+              userId: userId,
+              licenseType: 'owner_grant',
+              priceCents: 0,
+              grantedBy: userId,
+            });
+            logger.info(`[LorasApi] Granted private access for LoRA ${newLora._id} to user ${userId}`);
+        } catch (permErr) {
+            logger.error(`[LorasApi] Failed to grant private access for LoRA ${newLora._id}: ${permErr.message}`);
+        }
+
         // --- NEW: Send admin notification ---
         sendAdminLoraApprovalRequest(newLora).catch(err => {
             logger.error(`[LorasApi] Failed to send admin notification for new LoRA ${newLora._id}: ${err.message}`);
@@ -155,7 +169,7 @@ router.post('/import', async (req, res) => {
         // --- END NEW ---
 
         res.status(200).json({ 
-            message: `✅ Successfully requested import for LoRA: *${newLora.name}*.\n\nIt is now pending admin review. You will be notified upon approval.`,
+            message: `✅ Successfully imported LoRA: *${newLora.name}* and granted you private access.\n\nIt is pending admin review for public listing, but you can start using it immediately!`,
             lora: newLora 
         });
 
