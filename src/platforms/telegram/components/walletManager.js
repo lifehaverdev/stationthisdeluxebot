@@ -84,10 +84,10 @@ async function initiateMagicLink(bot, chatId, replyToMessageId, deps = {}, maste
     const { magicAmountWei, tokenAddress, expiresAt } = resp.data;
     const requestId = resp.data.requestId || '';
     const magicAmount = ethers.formatEther(magicAmountWei);
-    // Default to Sepolia (11155111) for now; later we may infer user-chosen chain
+    // Default to Ethereum Mainnet (1); adjust if multi-chain selection is added
     let depositToAddress;
     try {
-      depositToAddress = getFoundationAddress('11155111');
+      depositToAddress = getFoundationAddress('1');
     } catch (_) {
       depositToAddress = 'N/A';
     }
@@ -163,7 +163,14 @@ function createCallbackHandler(dependencies) {
           `Primary: ${esc(w.isPrimary ? 'yes' : 'no')}`,
           `Verified: ${esc(w.verified ? 'yes' : 'no')}`
         ].join('\n');
-        await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '← Back', callback_data: 'wallet:back' }]] } });
+
+        // Build dynamic buttons: back plus maybe set primary
+        const buttons = [[{ text: '← Back', callback_data: 'wallet:back' }]];
+        if (!w.isPrimary) {
+          buttons[0].unshift({ text: 'Make Primary', callback_data: `wallet:makeprimary:${w.address}` });
+        }
+
+        await bot.editMessageText(text, { chat_id: chatId, message_id: messageId, parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: buttons } });
       } catch (err) {
         await bot.answerCallbackQuery(query.id, { text: 'Failed to fetch wallet', show_alert: true });
       }
@@ -172,6 +179,18 @@ function createCallbackHandler(dependencies) {
     if (action === 'back') {
       await bot.answerCallbackQuery(query.id);
       await displayWalletMenu(bot, chatId, masterAccountId, { apiClient, logger, edit: true, messageId });
+    }
+
+    if (action === 'makeprimary') {
+      await bot.answerCallbackQuery(query.id, { text: 'Updating...', show_alert: false });
+      try {
+        await apiClient.put(`/internal/v1/data/users/${masterAccountId}/wallets/${param}`, { isPrimary: true });
+        await displayWalletMenu(bot, chatId, masterAccountId, { apiClient, logger, edit: true, messageId });
+      } catch (err) {
+        const msg = err.response?.data?.error?.message || 'Failed to set primary';
+        await bot.answerCallbackQuery(query.id, { text: msg, show_alert: true });
+      }
+      return;
     }
   };
 }

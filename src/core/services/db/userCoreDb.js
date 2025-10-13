@@ -245,17 +245,33 @@ class UserCoreDB extends BaseDB {
         throw new Error('Wallet address already exists');
     }
 
-    // 3. Prepare the wallet object (store the normalised address)
+    // 3. Determine if this wallet should be primary (first wallet or no existing primary)
+    let makePrimary = false;
+    try {
+        const currentUser = await this.findUserCoreById(masterAccountId);
+        if (!currentUser || !currentUser.wallets || currentUser.wallets.length === 0) {
+            // No wallets yet – make this one primary
+            makePrimary = true;
+        } else {
+            // Check if none of the existing wallets are marked primary (legacy data)
+            const hasPrimary = currentUser.wallets.some(w => w.isPrimary === true);
+            if (!hasPrimary) makePrimary = true;
+        }
+    } catch (err) {
+        // Non-fatal – default to non-primary, but log for visibility
+        this.logger.warn('[UserCoreDB] addWallet – failed to determine existing wallets for primary logic:', err.message);
+    }
+
+    // 4. Prepare the wallet object (store the normalised address)
     const newWallet = {
         addedAt: new Date(),
         verified: false,
-        isPrimary: false,
+        isPrimary: makePrimary,
         ...walletData,
         address: normalisedAddress, // ensure stored lower-case
     };
-
     try {
-        // 4. Use $addToSet to avoid duplicates within the SAME document
+        // 5. Use $addToSet to avoid duplicates within the SAME document
         return await this.updateUserCore(masterAccountId, { $addToSet: { wallets: newWallet } });
     } catch (error) {
         // 5. Handle race-condition duplicate key error from unique index
