@@ -19,6 +19,12 @@ export function onAdminStatusChange(fn) {
   listeners.push(fn);
 }
 
+export async function signMessage(message) {
+  const provider = new window.ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+  return signer.signMessage(message);
+}
+
 export function setupWalletGate() {
   const panel = document.getElementById('wallet-connection-panel');
   if (!panel) return;

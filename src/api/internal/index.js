@@ -503,6 +503,17 @@ function initializeInternalServices(dependencies = {}) {
     logger.error('[InternalAPI] Failed to create Upload API router.');
   }
 
+  // Admin Vault API
+  const createAdminVaultApi = require('./adminVaultApi');
+  const adminVaultRouter = createAdminVaultApi({
+    ...apiDependencies,
+    ethereumService: apiDependencies.ethereumService,
+    creditLedgerDb: apiDependencies.db?.creditLedgerDb,
+    vaultBalanceService: require('../../core/services/vaultBalanceService')
+  });
+  v1DataRouter.use('/admin', adminVaultRouter);
+  logger.info('[InternalAPI] Admin Vault API mounted to /v1/data/admin');
+
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path
   mainInternalRouter.use((req, res, next) => {

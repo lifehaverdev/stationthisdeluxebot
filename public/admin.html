@@ -1,25 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
-        header { background-color: #333; color: #fff; padding: 1rem; text-align: center; }
-        #wallet-connection-panel { margin: 2rem auto 1rem auto; max-width: 400px; text-align: center; }
-        .admin-content-placeholder { margin: 3rem auto; text-align: center; color: #888; font-size: 1.2rem; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Admin Vault Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <header>
-        <h1>StationThis Deluxe Bot - Admin Dashboard</h1>
-    </header>
-    <div id="wallet-connection-panel"></div>
-    <div class="admin-content-placeholder">
-        Admin features will appear here after wallet verification.
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
-    <script type="module" src="/js/admin-dashboard.js"></script>
+  <h1>Admin Vault Dashboard</h1>
+  <div id="wallet-connection-panel"></div>
+  <div id="dashboard" style="display:none;">
+    <div id="status-msg"></div>
+    <table id="balances-table" border="1" cellpadding="6" cellspacing="0">
+      <thead>
+        <tr><th>Vault</th><th>Token</th><th>Balance</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.min.js"></script>
+  <script type="module" src="/js/wallet-gate.js"></script>
+  <script type="module" src="/js/admin-vault-dashboard.js"></script>
 </body>
 </html> 
