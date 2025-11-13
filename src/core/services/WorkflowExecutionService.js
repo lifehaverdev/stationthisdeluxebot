@@ -1,4 +1,23 @@
-// Note: Utility functions are now used by extracted services, not directly here
+/**
+ * WorkflowExecutionService - Thin facade for workflow execution
+ * 
+ * This service orchestrates spell execution by delegating to specialized services:
+ * - SpellExecutor: Spell-level orchestration
+ * - StepExecutor: Step execution using Execution Strategy pattern
+ * - StepContinuator: Step continuation and output processing
+ * 
+ * Architecture:
+ * - Management: CastManager, GenerationRecordManager, CostAggregator
+ * - Execution: SpellExecutor, StepExecutor, ParameterResolver, Execution Strategies
+ * - Continuation: StepContinuator, OutputProcessor, PipelineContextBuilder
+ * - Adapters: AdapterCoordinator, AsyncJobPoller
+ * - Notifications: WorkflowNotifier
+ * 
+ * Public API (maintained for backward compatibility):
+ * - execute(spell, context): Start spell execution
+ * - continueExecution(completedGeneration): Continue after step completion
+ */
+
 const CastManager = require('./workflow/management/CastManager');
 const GenerationRecordManager = require('./workflow/management/GenerationRecordManager');
 const CostAggregator = require('./workflow/management/CostAggregator');
@@ -13,9 +32,10 @@ class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
         this.logger = logger;
         this.toolRegistry = toolRegistry;
-        this.comfyuiService = comfyUIService;
         this.internalApiClient = internalApiClient;
-        this.db = db; // Contains generationOutputs
+        // Note: comfyUIService, db are kept for backward compatibility but may not be used
+        this.comfyuiService = comfyUIService;
+        this.db = db;
         this.workflowsService = workflowsService;
         
         // Initialize management services
@@ -76,18 +96,6 @@ class WorkflowExecutionService {
     }
 
     /**
-     * Executes a single step of a spell, creating a generation record that will be
-     * picked up by the NotificationDispatcher.
-     * @private
-     * NOTE: This method is kept for backward compatibility with continueExecution.
-     * It delegates to StepExecutor which uses Execution Strategy pattern.
-     */
-    async _executeStep(spell, stepIndex, pipelineContext, originalContext) {
-        // Delegate to StepExecutor - uses Execution Strategy pattern (no conditionals!)
-        await this.stepExecutor.executeStep(spell, stepIndex, pipelineContext, originalContext);
-    }
-
-    /**
      * Called by the NotificationDispatcher when a spell step is complete.
      * It processes the output and triggers the next step or finalizes the spell.
      * @param {object} completedGeneration - The completed generation record for the step.
@@ -95,55 +103,6 @@ class WorkflowExecutionService {
     async continueExecution(completedGeneration) {
         // Delegate to StepContinuator - handles all continuation logic
         await this.stepContinuator.continue(completedGeneration);
-    }
-
-    async executeGpt(tool, originalContext, mergedInputs, dependencies) {
-        const { logger } = dependencies;
-        const { masterAccountId, platform, notification } = originalContext;
-
-        try {
-             // --- User Handling ---
-            
-
-            // --- Event Logging ---
-            const eventPayload = {
-                masterAccountId: masterAccountId,
-                eventType: 'gpt_execution_triggered',
-                sourcePlatform: platform,
-                eventData: {
-                    toolId: tool.toolId
-                }
-            };
-            const eventResponse = await this.internalApiClient.post('/internal/v1/data/events', eventPayload);
-            const eventId = eventResponse.data._id;
-            
-            // --- OpenAI API Call ---
-            const gptResponse = await axios.post(tool.apiPath, {
-                // ... existing code ...
-            });
-
-            const finalGenerationParams = {
-                masterAccountId: masterAccountId,
-                initiatingEventId: eventId,
-                serviceName: 'openai',
-                toolId: tool.toolId,
-                requestPayload: mergedInputs,
-                responsePayload: { result: gptResponse.data.result },
-                metadata: {
-                    notificationContext: notification,
-                },
-                status: 'completed',
-                deliveryStatus: 'pending',
-                notificationPlatform: notification.platform,
-            };
-
-            await this.internalApiClient.post('/internal/v1/data/generations', finalGenerationParams);
-
-            return { success: true };
-
-        } catch (error) {
-            // ... existing code ...
-        }
     }
 }
 
