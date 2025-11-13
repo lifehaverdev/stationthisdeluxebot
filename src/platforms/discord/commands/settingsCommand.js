@@ -238,13 +238,13 @@ function createSettingsCommandHandler(dependencies) {
             content: 'Sorry, an error occurred while managing your settings.',
             embeds: [],
             components: []
-          });
-        } else {
+        });
+      } else {
           // Use flags instead of deprecated ephemeral
           await actualInteraction.reply({
-            content: 'Sorry, an error occurred while managing your settings.',
+          content: 'Sorry, an error occurred while managing your settings.',
             flags: 64 // Ephemeral flag
-          });
+        });
         }
       } catch (replyError) {
         logger.error('[Settings Command] Failed to send error response:', replyError);

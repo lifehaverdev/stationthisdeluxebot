@@ -207,7 +207,12 @@ class CommandDispatcher {
    * @returns {Promise<boolean>} True if handled, false otherwise
    */
   async handle(client, interaction, dependencies) {
-    const { commandName } = interaction;
+    const commandName = interaction.commandName || interaction.command?.name;
+    if (!commandName) {
+      this.logger.warn(`[CommandDispatcher] Interaction missing commandName`);
+      return false;
+    }
+    
     const handler = this.handlers.get(commandName);
     
     if (!handler) {
@@ -215,6 +220,7 @@ class CommandDispatcher {
       return false;
     }
 
+    this.logger.info(`[CommandDispatcher] Executing handler for command: ${commandName}`);
     await handler(client, interaction, dependencies);
     return true;
   }

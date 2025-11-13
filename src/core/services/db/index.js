@@ -18,6 +18,7 @@ const SpellsDB = require('./spellsDb'); // Import SpellsDB
 const SpellPermissionsDB = require('./spellPermissionsDb'); // Import SpellPermissionsDB
 const CookCollectionsDB = require('./cookCollectionsDb');
 const WalletLinkingRequestDB = require('./walletLinkingRequestDb'); // Import WalletLinkingRequestDB
+const PlatformLinkRequestsDB = require('./platformLinkRequestsDb'); // Import PlatformLinkRequestsDB
 const CastsDB = require('./castsDb');
 const CooksDB = require('./cooksDb');
 const WorkspacesDB = require('./workspacesDb');
@@ -63,6 +64,7 @@ function initializeDbServices(logger) {
     spellPermissions: SpellPermissionsDB ? new SpellPermissionsDB(logger) : null, // ADDED: Instantiate SpellPermissionsDB
     cookCollections: CookCollectionsDB ? new CookCollectionsDB(logger) : null,
     walletLinkingRequests: WalletLinkingRequestDB ? new WalletLinkingRequestDB(logger) : null,
+    platformLinkRequests: PlatformLinkRequestsDB ? new PlatformLinkRequestsDB(logger) : null,
     casts: CastsDB ? new CastsDB(logger) : null,
     cooks: CooksDB ? new CooksDB(logger) : null,
     workspaces: WorkspacesDB ? new WorkspacesDB(logger) : null,
