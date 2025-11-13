@@ -119,6 +119,12 @@ class NotificationDispatcher {
     const recordId = record._id;
     this.logger.info(`[NotificationDispatcher] Handling completed spell step for generationId: ${recordId}`);
 
+    // CRITICAL: Idempotency check - skip if already processed
+    if (record.deliveryStatus === 'sent' || record.deliveryStatus === 'failed' || record.deliveryStatus === 'processing') {
+      this.logger.info(`[NotificationDispatcher] Skipping already processed spell step for GenID ${recordId} (deliveryStatus: ${record.deliveryStatus})`);
+      return;
+    }
+
     // Defensive check for required metadata to prevent crashes on malformed records
     if (!record.metadata || !record.metadata.spell || typeof record.metadata.stepIndex === 'undefined') {
       this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: record is missing required spell metadata.`);
@@ -134,11 +140,46 @@ class NotificationDispatcher {
         this.logger.error(`[NotificationDispatcher] Cannot process spell step for GenID ${recordId}: workflowExecutionService is not available.`);
         return;
     }
+    
+    // CRITICAL: Atomically check and set deliveryStatus to 'processing' to prevent race conditions
+    // Fetch current record first to check status, then update only if still 'pending'
+    const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
+    try {
+      // Fetch current record to check its deliveryStatus
+      const currentRecord = await this.internalApiClient.get(`/internal/v1/data/generations/${recordId}`, updateOptions);
+      const currentStatus = currentRecord.data?.deliveryStatus;
+      
+      // If already processing or sent, skip (another handler is processing this)
+      if (currentStatus === 'processing' || currentStatus === 'sent' || currentStatus === 'failed') {
+        this.logger.info(`[NotificationDispatcher] Skipping generation ${recordId} - already ${currentStatus}`);
+        return;
+      }
+      
+      // Only update if status is 'pending' (or null/undefined)
+      if (currentStatus !== 'pending' && currentStatus !== null && currentStatus !== undefined) {
+        this.logger.warn(`[NotificationDispatcher] Unexpected deliveryStatus '${currentStatus}' for generation ${recordId}, skipping`);
+        return;
+      }
+      
+      // Now set to 'processing' to claim this record
+      await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
+        deliveryStatus: 'processing', // Mark as processing to prevent duplicate execution
+      }, updateOptions);
+    } catch (markErr) {
+      this.logger.error(`[NotificationDispatcher] Failed to atomically mark generation ${recordId} as processing:`, markErr.message);
+      // If the GET fails, the record might not exist - skip processing
+      if (markErr.response?.status === 404) {
+        this.logger.warn(`[NotificationDispatcher] Generation ${recordId} not found, skipping`);
+        return;
+      }
+      // For other errors, skip to avoid duplicate processing
+      return;
+    }
+    
     try {
         await this.workflowExecutionService.continueExecution(record);
         
         // Mark this step's generation record as complete so it isn't picked up again.
-        const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
         await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
           deliveryStatus: 'sent', // spell step handled by engine
           deliveryTimestamp: new Date(),
@@ -147,12 +188,31 @@ class NotificationDispatcher {
         this.logger.info(`[NotificationDispatcher] Successfully processed spell step for GenID ${recordId}.`);
     } catch (error) {
         this.logger.error(`[NotificationDispatcher] Error processing spell step for GenID ${recordId}:`, error.message, error.stack);
-        // Optionally, update the record to reflect the failure
+        
+        // Update the record to reflect the failure
         const updateOptions = { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } };
-        await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
-          deliveryStatus: 'failed',
-          deliveryError: `Spell continuation failed: ${error.message}`
-        }, updateOptions);
+        try {
+          await this.internalApiClient.put(`/internal/v1/data/generations/${recordId}`, {
+            deliveryStatus: 'failed',
+            deliveryError: `Spell continuation failed: ${error.message}`
+          }, updateOptions);
+        } catch (updateErr) {
+          this.logger.error(`[NotificationDispatcher] Failed to update generation ${recordId} deliveryStatus:`, updateErr.message);
+        }
+        
+        // Update cast status to failed if we have castId
+        if (record.metadata?.castId) {
+          try {
+            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${record.metadata.castId}`, {
+              status: 'failed',
+              failureReason: `Spell continuation failed: ${error.message}`,
+              failedAt: new Date()
+            }, updateOptions);
+            this.logger.info(`[NotificationDispatcher] Updated cast ${record.metadata.castId} status to 'failed' due to continuation error`);
+          } catch (castUpdateErr) {
+            this.logger.error(`[NotificationDispatcher] Failed to update cast ${record.metadata.castId} status to failed:`, castUpdateErr.message);
+          }
+        }
     }
   }
 

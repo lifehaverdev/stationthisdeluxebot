@@ -28,35 +28,78 @@ function createSettingsCommandHandler(dependencies) {
   
   /**
    * Handle the settings command
-   * @param {Object} interaction - Discord interaction
-   * @param {string} [setting] - Optional setting name to update
-   * @param {string} [value] - Optional value to set
+   * @param {Object} interaction - Discord interaction (or client, interaction, dependencies from dispatcher)
+   * @param {string|Object} [settingOrClient] - Optional setting name OR client (if called from dispatcher)
+   * @param {string|Object} [valueOrInteraction] - Optional value OR interaction (if called from dispatcher)
+   * @param {Object} [dependencies] - Optional dependencies (if called from dispatcher)
    * @returns {Promise<void>}
    */
-  return async function handleSettingsCommand(interaction, setting, value) {
-    const userId = interaction.user.id;
+  return async function handleSettingsCommand(...args) {
+    // Handle both signatures:
+    // 1. From dispatcher: (client, interaction, dependencies)
+    // 2. From legacy: (interaction)
+    // 3. From button handlers: (interaction)
+    
+    let actualInteraction;
+    let setting = null;
+    let value = null;
+    
+    // Determine which signature was used
+    if (args.length >= 2 && args[1] && typeof args[1] === 'object' && 'user' in args[1] && 'deferReply' in args[1]) {
+      // Called from dispatcher: (client, interaction, dependencies)
+      actualInteraction = args[1];
+    } else if (args[0] && typeof args[0] === 'object' && 'user' in args[0] && 'deferReply' in args[0]) {
+      // Called directly: (interaction) or (interaction, setting, value)
+      actualInteraction = args[0];
+      setting = args[1];
+      value = args[2];
+    } else {
+      logger.error('[Settings Command] Invalid arguments received:', args);
+      throw new Error('Invalid arguments to settings command');
+    }
+    
+    // Validate interaction
+    if (!actualInteraction || typeof actualInteraction.deferReply !== 'function') {
+      logger.error('[Settings Command] Invalid interaction object received');
+      throw new Error('Invalid interaction object');
+    }
+    
+    const userId = actualInteraction.user.id;
+    
+    // Extract setting/value from interaction options if it's a slash command
+    if (actualInteraction.isChatInputCommand && actualInteraction.isChatInputCommand()) {
+      setting = actualInteraction.options?.getString('setting') || setting;
+      value = actualInteraction.options?.getString('value') || value;
+    }
     
     try {
+      // CRITICAL: Always defer reply IMMEDIATELY (within 3 seconds) for Discord
+      // This is REQUIRED - failing to respond within 3 seconds can trigger Discord security measures
+      if (!actualInteraction.deferred && !actualInteraction.replied) {
+        await actualInteraction.deferReply();
+        logger.info('[Settings Command] Interaction deferred immediately');
+      }
+      
+      // Create workflow instance with services
+      const settingsWorkflow = settings({ session: sessionService, points: pointsService, logger });
+      
       // If both setting and value are provided, update that specific setting
       if (setting && value) {
-        await interaction.deferReply();
-        
         // Call the updateSetting workflow
-        const result = await settings.updateSetting(
-          { session: sessionService, points: pointsService, logger },
+        const result = await settingsWorkflow.updateSetting(
           userId,
           setting,
           value
         );
         
         if (!result.success) {
-          await interaction.editReply({
+          await actualInteraction.editReply({
             content: `Error updating setting: ${result.error}`
           });
           return;
         }
         
-        await interaction.editReply({
+        await actualInteraction.editReply({
           content: `Updated ${setting} to ${value}.`
         });
         return;
@@ -64,24 +107,19 @@ function createSettingsCommandHandler(dependencies) {
       
       // If just the setting is provided but no value, show instructions
       if (setting && !value) {
-        await interaction.reply({
-          content: `Please provide a value for ${setting}. Example: /settings ${setting} <value>`,
-          ephemeral: true
+        await actualInteraction.editReply({
+          content: `Please provide a value for ${setting}. Example: /settings ${setting} <value>`
         });
         return;
       }
       
       // If no arguments, show current settings
-      await interaction.deferReply();
       
       // Get all settings
-      const settingsResult = await settings.getAllSettings(
-        { session: sessionService, points: pointsService, logger },
-        userId
-      );
+      const settingsResult = settingsWorkflow.getAllSettings(userId);
       
       if (!settingsResult.success) {
-        await interaction.editReply({
+        await actualInteraction.editReply({
           content: `Error retrieving settings: ${settingsResult.error}`
         });
         return;
@@ -186,23 +224,30 @@ function createSettingsCommandHandler(dependencies) {
             ])
         );
       
-      await interaction.editReply({
+      await actualInteraction.editReply({
         embeds: [embed],
         components: [sizeRow, stepsRow, optionsRow, checkpointRow]
       });
       
     } catch (error) {
-      logger.error('Error in settings command:', error);
+      logger.error('[Settings Command] Error:', error);
       
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({
-          content: 'Sorry, an error occurred while managing your settings.'
-        });
-      } else {
-        await interaction.reply({
-          content: 'Sorry, an error occurred while managing your settings.',
-          ephemeral: true
-        });
+      try {
+        if (actualInteraction.deferred || actualInteraction.replied) {
+          await actualInteraction.editReply({
+            content: 'Sorry, an error occurred while managing your settings.',
+            embeds: [],
+            components: []
+          });
+        } else {
+          // Use flags instead of deprecated ephemeral
+          await actualInteraction.reply({
+            content: 'Sorry, an error occurred while managing your settings.',
+            flags: 64 // Ephemeral flag
+          });
+        }
+      } catch (replyError) {
+        logger.error('[Settings Command] Failed to send error response:', replyError);
       }
     }
   };

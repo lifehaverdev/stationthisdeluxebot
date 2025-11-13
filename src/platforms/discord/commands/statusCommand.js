@@ -21,25 +21,41 @@ function createStatusCommandHandler(dependencies) {
   
   /**
    * Handle the status command
+   * @param {Object} client - Discord client instance
    * @param {Object} interaction - Discord interaction
+   * @param {Object} dependencies - Dependencies object
    * @returns {Promise<void>}
    */
-  return async function handleStatusCommand(interaction) {
+  return async function handleStatusCommand(client, interaction, dependencies) {
     try {
       logger.info('Status command received, preparing response...');
       
+      // Validate interaction object
+      if (!interaction || typeof interaction.deferReply !== 'function') {
+        logger.error('[Status Command] Invalid interaction object received');
+        throw new Error('Invalid interaction object');
+      }
+      
+      // Get services from dependencies (fallback to constructor dependencies for backward compatibility)
+      const internalServices = dependencies?.internal || services?.internal;
+      
       // Debug log to verify internal services
       logger.info('DEBUG: Status command - Internal services:',
-        services ? 'services exist' : 'services missing',
-        services?.internal ? 'internal exists' : 'internal missing',
-        services?.internal?.status ? 'status service exists' : 'status service missing');
+        internalServices ? 'services exist' : 'services missing',
+        internalServices?.status ? 'status service exists' : 'status service missing');
       
-      // Acknowledge the interaction immediately
-      await interaction.deferReply();
-      logger.info('Interaction deferred for status command');
+      // Acknowledge the interaction immediately (Discord requires response within 3 seconds)
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply();
+        logger.info('Interaction deferred for status command');
+      }
       
       // Get status information from internal API
-      const statusInfo = services.internal.status.getStatus();
+      if (!internalServices?.status) {
+        throw new Error('Status service not available');
+      }
+      
+      const statusInfo = internalServices.status.getStatus();
       
       logger.info(`Preparing status embed with uptime: ${statusInfo.uptime.formatted}`);
       
@@ -63,13 +79,21 @@ function createStatusCommandHandler(dependencies) {
       logger.error('Error in status command:', error);
       
       // Handle errors gracefully
-      if (interaction.deferred) {
-        await interaction.editReply('Sorry, an error occurred while fetching application status.');
-      } else {
-        await interaction.reply({ 
-          content: 'Sorry, an error occurred while fetching application status.',
-          ephemeral: true 
-        });
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({ 
+            content: 'Sorry, an error occurred while fetching application status.',
+            embeds: []
+          });
+        } else {
+          // Use flags instead of deprecated ephemeral option
+          await interaction.reply({ 
+            content: 'Sorry, an error occurred while fetching application status.',
+            flags: 64 // MessageFlags.Ephemeral
+          });
+        }
+      } catch (replyError) {
+        logger.error('Failed to send error response:', replyError);
       }
     }
   };

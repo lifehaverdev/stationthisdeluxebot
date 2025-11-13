@@ -21,6 +21,8 @@ function initializeDiscordPlatform(services, options = {}) {
     workflowsService,
     mediaService,
     internal, // Internal API services
+    toolRegistry, // Tool registry for dynamic commands and settings
+    commandRegistry, // Command registry for dynamic commands
     logger = console
   } = services;
   
@@ -39,6 +41,8 @@ function initializeDiscordPlatform(services, options = {}) {
       workflowsService,
       mediaService,
       internal, // Pass internal API services
+      toolRegistry, // Pass tool registry
+      commandRegistry, // Pass command registry
       logger
     },
     token,

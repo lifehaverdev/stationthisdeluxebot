@@ -43,32 +43,40 @@ class WebSocketService {
 
     this.wss.on('connection', async (ws, req, user) => {
       const { userId } = user; // userId is the masterAccountId
-      if (!this.connections.has(userId)) {
-        this.connections.set(userId, new Set());
+      // Normalize userId to string for consistent storage/lookup
+      const userIdStr = String(userId);
+      logger.info(`[WebSocketService] DEBUG connection - userId from JWT: "${userId}" (type: ${typeof userId}), normalized: "${userIdStr}"`);
+      if (!this.connections.has(userIdStr)) {
+        this.connections.set(userIdStr, new Set());
+        logger.info(`[WebSocketService] DEBUG connection - Created new Set for user ${userIdStr}`);
       }
-      const userConnections = this.connections.get(userId);
+      const userConnections = this.connections.get(userIdStr);
       userConnections.add(ws);
-      logger.info(`[WebSocketService] Connection established for user ${userId}. Total: ${userConnections.size}`);
+      logger.info(`[WebSocketService] Connection established for user ${userIdStr}. Total connections for this user: ${userConnections.size}, Total users: ${this.connections.size}`);
 
       // Check if this is an admin connection
-      const isAdmin = await this._checkAdminStatus(userId, req);
+      const isAdmin = await this._checkAdminStatus(userIdStr, req);
       if (isAdmin) {
         this.adminConnections.add(ws);
-        logger.info(`[WebSocketService] Admin connection registered for user ${userId}`);
+        logger.info(`[WebSocketService] Admin connection registered for user ${userIdStr}`);
       }
 
       ws.on('close', () => {
         userConnections.delete(ws);
         this.adminConnections.delete(ws);
-        logger.info(`[WebSocketService] Connection closed for user ${userId}. Remaining: ${userConnections.size}`);
+        logger.info(`[WebSocketService] Connection closed for user ${userIdStr}. Remaining: ${userConnections.size}`);
         if (userConnections.size === 0) {
-          this.connections.delete(userId);
-          logger.info(`[WebSocketService] All connections for user ${userId} removed.`);
+          this.connections.delete(userIdStr);
+          logger.info(`[WebSocketService] All connections for user ${userIdStr} removed. Total users remaining: ${this.connections.size}`);
         }
+      });
+      
+      ws.on('error', (error) => {
+        logger.error(`[WebSocketService] WebSocket error for user ${userIdStr}:`, error);
       });
 
       ws.on('message', (message) => {
-        logger.info(`[WebSocketService] Received message from ${userId}: ${message}`);
+        logger.info(`[WebSocketService] Received message from ${userIdStr}: ${message}`);
       });
 
       ws.send(JSON.stringify({ type: 'connection_ack', message: 'WebSocket connection established.' }));
@@ -82,19 +90,32 @@ class WebSocketService {
       logger.error('[WebSocketService] Cannot send: WebSocket server not initialized.');
       return false;
     }
-    const userConnections = this.connections.get(String(userId));
+    const userIdStr = String(userId);
+    // Debug: Log all connection keys to help diagnose lookup issues
+    const allKeys = Array.from(this.connections.keys());
+    logger.info(`[WebSocketService] DEBUG sendToUser - Looking up userId: "${userIdStr}" (type: ${typeof userIdStr})`);
+    logger.info(`[WebSocketService] DEBUG sendToUser - All connection keys: [${allKeys.map(k => `"${k}"`).join(', ')}]`);
+    logger.info(`[WebSocketService] DEBUG sendToUser - Total users with connections: ${this.connections.size}`);
+    
+    const userConnections = this.connections.get(userIdStr);
     if (userConnections && userConnections.size > 0) {
       logger.info('[WebSocketService] DEBUG sendToUser payload', data);
-      logger.info(`[WebSocketService] Sending data to user ${userId}. Connections: ${userConnections.size}`);
+      logger.info(`[WebSocketService] Sending data to user ${userIdStr}. Connections: ${userConnections.size}`);
       const message = JSON.stringify(data);
+      let sentCount = 0;
       userConnections.forEach(connection => {
         if (connection.readyState === WebSocket.OPEN) {
           connection.send(message);
+          sentCount++;
+        } else {
+          logger.warn(`[WebSocketService] Connection not OPEN (state: ${connection.readyState})`);
         }
       });
-      return true;
+      logger.info(`[WebSocketService] Sent message to ${sentCount} of ${userConnections.size} connections`);
+      return sentCount > 0;
     } else {
-      logger.warn(`[WebSocketService] No active connections for user ${userId}.`);
+      logger.warn(`[WebSocketService] No active connections for user ${userIdStr}.`);
+      logger.warn(`[WebSocketService] DEBUG - Connection map has ${this.connections.size} users, keys: [${allKeys.join(', ')}]`);
       return false;
     }
   }

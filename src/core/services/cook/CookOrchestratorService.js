@@ -18,16 +18,29 @@ async function submitPiece({ spellId, submission }) {
 
     // Ensure we have a castId so downstream websocket packets can be routed.
     let castId;
-    try {
-      const res = await internalApiClient.post(
-        '/internal/v1/data/spells/casts',
-        { spellId, initiatorAccountId: user.masterAccountId || user.userId || user.id },
-        { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } }
-      );
-      castId = res.data?._id?.toString() || res.data?.id;
-    } catch (err) {
-      // Fallback to random id if casts service unavailable – still unique for routing
-      castId = require('crypto').randomBytes(12).toString('hex');
+    let retries = 3;
+    while (retries > 0 && !castId) {
+      try {
+        const res = await internalApiClient.post(
+          '/internal/v1/data/spells/casts',
+          { spellId, initiatorAccountId: user.masterAccountId || user.userId || user.id },
+          { headers: { 'X-Internal-Client-Key': process.env.INTERNAL_API_KEY_WEB } }
+        );
+        castId = res.data?._id?.toString() || res.data?.id;
+        if (castId) break; // Success
+      } catch (err) {
+        retries--;
+        if (retries === 0) {
+          // CRITICAL: Fail fast instead of using invalid fallback
+          throw new Error(`Failed to create cast record after 3 retries: ${err.message}`);
+        }
+        // Wait before retry with exponential backoff
+        await new Promise(r => setTimeout(r, 1000 * (4 - retries)));
+      }
+    }
+    
+    if (!castId) {
+      throw new Error('Failed to create cast record: No castId returned after retries');
     }
 
     const cleanMeta = { ...metadata };

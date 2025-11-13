@@ -37,6 +37,7 @@ import './components/ReauthModal.js';
 import { saveWorkspace, loadWorkspace } from './workspaces.js';
 import initWorkspaceTabs from './components/WorkspaceTabs.js';
 import { initCostHUD } from './components/costHud.js';
+import { websocketClient } from '/js/websocketClient.js';
 
 // Intercept fetch to detect 401 / unauthorized responses and prompt re-auth without page reload
 (function interceptUnauthorized() {
@@ -72,6 +73,31 @@ import './test/debugTest.js'; // Initialize debug test utility
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize state
     initState();
+
+    // Ensure WebSocket connection is established for real-time updates
+    // Note: Handlers are registered in toolWindow.js via registerWebSocketHandlers()
+    try {
+        if (websocketClient && typeof websocketClient.connect === 'function') {
+            websocketClient.connect();
+            console.log('[Sandbox] WebSocket connection initiated');
+            
+            // Log connection status
+            websocketClient.on('open', () => {
+                console.log('[Sandbox] WebSocket connection opened successfully');
+            });
+            websocketClient.on('close', () => {
+                console.warn('[Sandbox] WebSocket connection closed');
+            });
+            websocketClient.on('error', (error) => {
+                console.error('[Sandbox] WebSocket error:', error);
+            });
+        } else {
+            console.warn('[Sandbox] websocketClient not available or missing connect method');
+        }
+    } catch (error) {
+        console.error('[Sandbox] Failed to initiate WebSocket connection:', error);
+        // Continue execution - checkPendingGenerations() will handle recovery
+    }
 
     // Check for pending generations that may have completed while away
     await checkPendingGenerations();

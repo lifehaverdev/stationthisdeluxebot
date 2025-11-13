@@ -98,23 +98,66 @@ module.exports = function spellsApi(dependencies) {
     }catch(e){ logger.error('create cast err',e); res.status(500).json({ error:'internal' }); }
   });
 
+  // GET /spells/casts/:castId – get cast by ID
+  router.get('/casts/:castId', async (req, res) => {
+    if (!castsDb) return res.status(503).json({ error: 'service-unavailable' });
+    
+    const castId = req.params.castId;
+    if (!ObjectId.isValid(castId)) {
+      logger.warn(`[spellsApi] Invalid castId format: ${castId}`);
+      return res.status(400).json({ error: 'Invalid castId format. Must be a valid ObjectId.' });
+    }
+    
+    try {
+      // BaseDB.findOne expects a query object
+      const cast = await castsDb.findOne({ _id: new ObjectId(castId) });
+      if (!cast) {
+        return res.status(404).json({ error: 'Cast not found' });
+      }
+      res.json(cast);
+    } catch (e) {
+      logger.error('[spellsApi] GET /casts/:castId error:', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   // PUT /spells/casts/:castId – update cast progress / status
   router.put('/casts/:castId', async (req,res)=>{
     if(!castsDb) return res.status(503).json({ error:'service-unavailable' });
-    const castId=req.params.castId;
-    const { generationId, status, costDeltaUsd } = req.body||{};
-    const update = { $set: { updatedAt: new Date() } };
-    if (generationId) {
-        update.$push = { ...(update.$push||{}), stepGenerationIds: generationId };
-        // Optionally increment generatedCount if field exists
-        update.$inc = { ...(update.$inc||{}), generatedCount: 1 };
+    
+    const castId = req.params.castId;
+    // Validate castId format (consistent with other endpoints)
+    if (!ObjectId.isValid(castId)) {
+      logger.warn(`[spellsApi] Invalid castId format: ${castId}`);
+      return res.status(400).json({ error: 'Invalid castId format. Must be a valid ObjectId.' });
     }
+    
+    const { generationId, status, costDeltaUsd } = req.body||{};
+    
+    // Validate generationId format if provided (consistent with castsDb.addGeneration pattern)
+    if (generationId && !ObjectId.isValid(generationId)) {
+      logger.warn(`[spellsApi] Invalid generationId format: ${generationId}`);
+      return res.status(400).json({ error: 'Invalid generationId format. Must be a valid ObjectId.' });
+    }
+    
+    const update = { $set: { updatedAt: new Date() } };
+    
+    if (generationId) {
+        // Convert to ObjectId (consistent with castsDb.addGeneration method)
+        // Use $addToSet instead of $push to prevent duplicate generation IDs
+        // This prevents race conditions where continueExecution is called multiple times
+        update.$addToSet = { ...(update.$addToSet||{}), stepGenerationIds: new ObjectId(generationId) };
+        // Note: $inc generatedCount is removed since $addToSet doesn't guarantee increment
+        // The count can be derived from stepGenerationIds.length if needed
+    }
+    
     if (typeof costDeltaUsd !== 'undefined') {
         const numericCost = typeof costDeltaUsd === 'string' ? parseFloat(costDeltaUsd) : costDeltaUsd;
         if (!isNaN(numericCost) && numericCost !== 0) {
             update.$inc = { ...(update.$inc||{}), costUsd: numericCost };
         }
     }
+    
     if (status) {
         update.$set.status = status;
         if (status === 'completed') {
@@ -122,8 +165,15 @@ module.exports = function spellsApi(dependencies) {
         }
     }
 
-    try{ await castsDb.updateOne({ _id:castId }, update); res.json({ ok:true }); }
-    catch(e){ logger.error('cast update err',e); res.status(500).json({ error:'internal' }); }
+    try { 
+      // Convert castId to ObjectId (consistent with castsDb.addGeneration and other DB methods)
+      await castsDb.updateOne({ _id: new ObjectId(castId) }, update); 
+      res.json({ ok:true }); 
+    }
+    catch(e){ 
+      logger.error('[spellsApi] Cast update error:', e); 
+      res.status(500).json({ error:'internal' }); 
+    }
   });
 
   // GET /spells - Get public spells or spells owned by a user

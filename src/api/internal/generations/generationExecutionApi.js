@@ -203,6 +203,9 @@ module.exports = function generationExecutionApi(dependencies) {
           }
           const outputEntry = { type: toolResult.type, data: normalizedData };
 
+          // CRITICAL: Check if this is a spell step - if so, set deliveryStrategy
+          const isSpellStep = metadata && metadata.isSpell;
+          
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
@@ -214,6 +217,7 @@ module.exports = function generationExecutionApi(dependencies) {
             responsePayload: [outputEntry],
             status: 'completed',
             deliveryStatus: initialDeliveryStatus,
+            ...(isSpellStep && { deliveryStrategy: 'spell_step' }), // CRITICAL: Mark spell steps for NotificationDispatcher routing
             notificationPlatform: user.platform || 'none',
             pointsSpent: pointsRequired,
             protocolNetPoints: 0,
@@ -228,10 +232,18 @@ module.exports = function generationExecutionApi(dependencies) {
 
           const newGeneration = await db.generationOutputs.createGenerationOutput(generationParams);
 
-          // Emit event so notifier can deliver
+          // CRITICAL: For spell steps, ensure deliveryStrategy is set on the emitted record
+          // This ensures NotificationDispatcher routes to spell continuation
+          const recordToEmit = {
+            ...newGeneration,
+            ...(isSpellStep && { deliveryStrategy: 'spell_step' })
+          };
+
+          // Emit event so notifier can deliver (or continue spell execution)
           try {
             const notificationEvents = require('../../../core/events/notificationEvents');
-            notificationEvents.emit('generationUpdated', newGeneration);
+            notificationEvents.emit('generationUpdated', recordToEmit);
+            logger.info(`[Execute] Emitted generationUpdated for immediate ${isSpellStep ? 'spell step' : 'generation'} ${newGeneration._id}`);
           } catch (emitErr) {
             logger.warn(`[Execute] Failed to emit generationUpdated for immediate generation ${newGeneration._id}: ${emitErr.message}`);
           }
