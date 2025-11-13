@@ -85,6 +85,10 @@ function createTelegramBot(dependencies, token, options = {}) {
     adminManager.registerHandlers(dispatcherInstances, allDependencies);
     dashboardMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     walletManager.registerHandlers(dispatcherInstances, allDependencies);
+    
+    // Register platform linking handlers
+    const linkManager = require('./components/linkManager');
+    linkManager.registerHandlers(dispatcherInstances, allDependencies);
     buyPointsManager.registerHandlers(dispatcherInstances, allDependencies);
 
     // Register delivery menu managers

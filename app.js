@@ -159,38 +159,50 @@ async function startApp() {
     });
     logger.info('Platform adapters initialized');
 
+    // --- Build Platform Notifiers Map (needed for both NotificationDispatcher and Internal API) ---
+    const platformNotifiersMap = {};
+
+    // --- Telegram Notifier ---
+    if (platforms.telegram && platforms.telegram.bot) {
+      try {
+        logger.info('[App] Initializing TelegramNotifier...');
+        const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
+        platformNotifiersMap.telegram = telegramNotifierInstance;
+      } catch (telegramErr) {
+        logger.error('[App] Failed to initialize TelegramNotifier:', telegramErr.message);
+      }
+    } else {
+      logger.info('[App] Telegram platform not available. TelegramNotifier not registered.');
+    }
+
+    // --- Web Sandbox Notifier ---
+    try {
+      if (websocketServer) {
+        const webSandboxNotifierInstance = new WebSandboxNotifier(websocketServer, services.logger);
+        platformNotifiersMap['web-sandbox'] = webSandboxNotifierInstance;
+        logger.info('[App] WebSandboxNotifier initialized and registered.');
+      } else {
+        logger.warn('[App] WebSocketService not available. WebSandboxNotifier will not be registered.');
+      }
+    } catch (webNotifierErr) {
+      logger.error('[App] Failed to initialize WebSandboxNotifier:', webNotifierErr.message);
+    }
+
+    // Add platform notifiers to services dependencies for Internal API
+    services.platformNotifiers = platformNotifiersMap;
+    dependencies.platformNotifiers = platformNotifiersMap;
+    
+    // Update internal API dependencies with platform notifiers
+    if (services.internal && typeof services.internal.updateDependencies === 'function') {
+      services.internal.updateDependencies({ platformNotifiers: platformNotifiersMap });
+      logger.info('[App] Updated internal API dependencies with platform notifiers.');
+    } else {
+      logger.warn('[App] Internal API updateDependencies method not available. Notifications may not work.');
+    }
+
     // --- Initialize and Start Notification Dispatcher ---
     if (services.internal?.client && services.logger) {
       try {
-        // Build platform notifiers map dynamically
-        const platformNotifiersMap = {};
-
-        // --- Telegram Notifier ---
-        if (platforms.telegram && platforms.telegram.bot) {
-          try {
-            logger.info('[App] Initializing TelegramNotifier...');
-            const telegramNotifierInstance = new TelegramNotifier(platforms.telegram.bot, services.logger);
-            platformNotifiersMap.telegram = telegramNotifierInstance;
-          } catch (telegramErr) {
-            logger.error('[App] Failed to initialize TelegramNotifier:', telegramErr.message);
-          }
-        } else {
-          logger.info('[App] Telegram platform not available. TelegramNotifier not registered.');
-        }
-
-        // --- Web Sandbox Notifier ---
-        try {
-          if (websocketServer) {
-            const webSandboxNotifierInstance = new WebSandboxNotifier(websocketServer, services.logger);
-            platformNotifiersMap['web-sandbox'] = webSandboxNotifierInstance;
-            logger.info('[App] WebSandboxNotifier initialized and registered.');
-          } else {
-            logger.warn('[App] WebSocketService not available. WebSandboxNotifier will not be registered.');
-          }
-        } catch (webNotifierErr) {
-          logger.error('[App] Failed to initialize WebSandboxNotifier:', webNotifierErr.message);
-        }
-
         logger.info('[App] Initializing NotificationDispatcher...');
         const notificationDispatcher = new NotificationDispatcher(
           {

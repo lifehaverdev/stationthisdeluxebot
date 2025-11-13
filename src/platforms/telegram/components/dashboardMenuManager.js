@@ -39,9 +39,17 @@ async function handleDashboardCallback(bot, callbackQuery, masterAccountId, depe
 
     logger.info(`[DashboardMenu] handleDashboardCallback received: ${data} from MAID: ${masterAccountId}`);
 
-    if (action !== 'dash') return;
+    if (action !== 'dash') {
+        return;
+    }
 
     const subAction = params[0];
+    
+    // Handle link platform sub-menu actions
+    if (subAction === 'link' && params.length > 1) {
+        await handleLinkPlatformCallback(bot, callbackQuery, masterAccountId, dependencies);
+        return;
+    }
 
     switch (subAction) {
         case 'main':
@@ -79,6 +87,15 @@ async function handleDashboardCallback(bot, callbackQuery, masterAccountId, depe
             await bot.answerCallbackQuery(callbackQuery.id);
             const buyPointsManager = require('./buyPointsManager');
             await buyPointsManager.startFlow(bot, callbackQuery.message.chat.id, masterAccountId, dependencies);
+            break;
+        case 'link':
+            await bot.answerCallbackQuery(callbackQuery.id);
+            if (params.length > 1) {
+                // Handle sub-actions like dash:link:new, dash:link:requests, etc.
+                await handleLinkPlatformCallback(bot, callbackQuery, masterAccountId, dependencies);
+            } else {
+                await displayLinkPlatformMenu(bot, callbackQuery.message.chat.id, masterAccountId, dependencies);
+            }
             break;
         case 'help':
             // Placeholder for help menu
@@ -199,9 +216,17 @@ async function displayMainMenu(bot, messageOrQuery, masterAccountId, dependencie
         const actionLabel = walletAddr ? 'Buy Points' : 'Connect';
         const actionCallback = walletAddr ? 'dash:buy' : 'dash:connect';
 
+        // Show linked platforms if any
+        const platformIdentities = user.platformIdentities || {};
+        const linkedPlatforms = Object.keys(platformIdentities);
+        const platformInfo = linkedPlatforms.length > 0 
+            ? ` (${linkedPlatforms.length} linked)` 
+            : '';
+
         const keyboard = [
             [{ text: actionLabel, callback_data: actionCallback }, { text: 'History', callback_data: 'dash:history' }],
             [{ text: 'Referral', callback_data: 'dash:referral' }, { text: 'Settings', callback_data: 'dash:settings' }],
+            [{ text: `🔗 Link Platform${platformInfo}`, callback_data: 'dash:link' }],
             [{ text: 'ℹ', callback_data: 'dash:help' }, { text: 'Ⓧ', callback_data: 'dash:close' }]
         ];
         
@@ -532,6 +557,225 @@ function calculateTimeframe(timeUnit, offset) {
         startDate.setDate(endDate.getDate() - unitDays);
     }
     return { startDate, endDate };
+}
+
+/**
+ * Displays the platform linking menu.
+ * @param {Object} bot - The Telegram bot instance.
+ * @param {number} chatId - The chat ID.
+ * @param {string} masterAccountId - The user's master account ID.
+ * @param {Object} dependencies - Shared dependencies.
+ */
+async function displayLinkPlatformMenu(bot, chatId, masterAccountId, dependencies) {
+    const { logger, internal } = dependencies;
+    const esc = escapeMarkdownV2;
+
+    try {
+        // Fetch user data and link requests
+        const [userRes, linkRequestsRes] = await Promise.all([
+            internal.client.get(`/internal/v1/data/users/${masterAccountId}`),
+            internal.client.get(`/internal/v1/data/users/${masterAccountId}/link-requests?status=pending`)
+        ]);
+
+        const user = userRes.data;
+        const linkRequests = linkRequestsRes.data;
+
+        const platformIdentities = user.platformIdentities || {};
+        const linkedPlatforms = Object.keys(platformIdentities);
+        const pendingSent = linkRequests.sent || [];
+        const pendingReceived = linkRequests.received || [];
+
+        // Build message
+        let text = `*🔗 Platform Linking*\n\n`;
+        
+        if (linkedPlatforms.length > 0) {
+            text += `*Linked Platforms:*\n`;
+            linkedPlatforms.forEach(platform => {
+                const platformId = platformIdentities[platform];
+                const displayId = platformId.length > 20 ? platformId.substring(0, 20) + '...' : platformId;
+                text += `• ${esc(platform)}: \`${esc(displayId)}\`\n`;
+            });
+            text += `\n`;
+        } else {
+            text += `No platforms linked yet\\.\n\n`;
+        }
+
+        if (pendingSent.length > 0 || pendingReceived.length > 0) {
+            text += `*Pending Requests:*\n`;
+            if (pendingSent.length > 0) {
+                text += `Sent: ${esc(String(pendingSent.length))}\n`;
+            }
+            if (pendingReceived.length > 0) {
+                text += `Received: ${esc(String(pendingReceived.length))}\n`;
+            }
+            text += `\n`;
+        }
+
+        text += `Link your account to other platforms by providing a wallet address\\.`;
+
+        // Build keyboard
+        const keyboard = [
+            [{ text: '🔗 Link New Platform', callback_data: 'dash:link:new' }]
+        ];
+
+        if (pendingReceived.length > 0) {
+            keyboard.push([{ text: `📬 View Requests (${pendingReceived.length})`, callback_data: 'dash:link:requests' }]);
+        }
+
+        if (linkedPlatforms.length > 0) {
+            keyboard.push([{ text: '📋 View Linked Platforms', callback_data: 'dash:link:view' }]);
+        }
+
+        keyboard.push([{ text: '← Back', callback_data: 'dash:main' }]);
+
+        await bot.sendMessage(chatId, text, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+
+    } catch (error) {
+        logger.error(`[DashboardMenu] Error displaying link platform menu:`, error);
+        await bot.sendMessage(chatId, '❌ Error loading platform linking menu. Please try again.');
+    }
+}
+
+/**
+ * Handles link platform sub-actions.
+ * @param {Object} bot - The Telegram bot instance.
+ * @param {Object} callbackQuery - The callback query object.
+ * @param {string} masterAccountId - The user's master account ID.
+ * @param {Object} dependencies - Shared dependencies.
+ */
+async function handleLinkPlatformCallback(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger } = dependencies;
+    const data = callbackQuery.data;
+    const [, , subAction] = data.split(':');
+
+    switch (subAction) {
+        case 'new':
+            // Prompt for wallet address
+            await bot.answerCallbackQuery(callbackQuery.id);
+            const linkManager = require('./linkManager');
+            await bot.sendMessage(
+                callbackQuery.message.chat.id,
+                `*Link New Platform*\n\n` +
+                `Please provide a wallet address to link to:\n` +
+                `\`/link <walletAddress>\`\n\n` +
+                `Example: \`/link 0x1234567890abcdef1234567890abcdef12345678\``,
+                {
+                    parse_mode: 'MarkdownV2',
+                    reply_to_message_id: callbackQuery.message.message_id
+                }
+            );
+            break;
+        case 'requests':
+            await displayPendingRequests(bot, callbackQuery, masterAccountId, dependencies);
+            break;
+        case 'view':
+            await displayLinkedPlatforms(bot, callbackQuery, masterAccountId, dependencies);
+            break;
+        default:
+            logger.warn(`[DashboardMenu] Unknown link sub-action: ${subAction}`);
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'Unknown action.' });
+    }
+}
+
+/**
+ * Displays pending link requests.
+ */
+async function displayPendingRequests(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal } = dependencies;
+    const esc = escapeMarkdownV2;
+
+    try {
+        const linkRequestsRes = await internal.client.get(
+            `/internal/v1/data/users/${masterAccountId}/link-requests?status=pending`
+        );
+        const linkRequests = linkRequestsRes.data;
+        const received = linkRequests.received || [];
+
+        if (received.length === 0) {
+            await bot.answerCallbackQuery(callbackQuery.id, { text: 'No pending requests.', show_alert: true });
+            return;
+        }
+
+        // Show first request (can be enhanced to show all)
+        const request = received[0];
+        const expiresDate = new Date(request.expiresAt);
+        const expiresHuman = expiresDate.toLocaleString();
+
+        const text = `*📬 Link Request*\n\n` +
+            `${esc(request.requestingPlatform)} user wants to link accounts\\.\n` +
+            `Wallet: \`${esc(request.targetWalletAddress.substring(0, 10) + '...')}\`\n` +
+            `Expires: ${esc(expiresHuman)}\n\n` +
+            `This will merge accounts and share balance/history\\.`;
+
+        const keyboard = [
+            [
+                { text: '✅ Approve', callback_data: `link:approve:${request.requestId}` },
+                { text: '❌ Reject', callback_data: `link:reject:${request.requestId}` }
+            ],
+            [
+                { text: '🚨 Report Suspicious', callback_data: `link:report:${request.requestId}` }
+            ],
+            [{ text: '← Back', callback_data: 'dash:link' }]
+        ];
+
+        await bot.editMessageText(text, {
+            chat_id: callbackQuery.message.chat.id,
+            message_id: callbackQuery.message.message_id,
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+        await bot.answerCallbackQuery(callbackQuery.id);
+
+    } catch (error) {
+        logger.error(`[DashboardMenu] Error displaying pending requests:`, error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error loading requests.', show_alert: true });
+    }
+}
+
+/**
+ * Displays linked platforms.
+ */
+async function displayLinkedPlatforms(bot, callbackQuery, masterAccountId, dependencies) {
+    const { logger, internal } = dependencies;
+    const esc = escapeMarkdownV2;
+
+    try {
+        const userRes = await internal.client.get(`/internal/v1/data/users/${masterAccountId}`);
+        const user = userRes.data;
+        const platformIdentities = user.platformIdentities || {};
+        const linkedPlatforms = Object.keys(platformIdentities);
+
+        let text = `*📋 Linked Platforms*\n\n`;
+
+        if (linkedPlatforms.length === 0) {
+            text += `No platforms linked\\.`;
+        } else {
+            linkedPlatforms.forEach(platform => {
+                const platformId = platformIdentities[platform];
+                const displayId = platformId.length > 30 ? platformId.substring(0, 30) + '...' : platformId;
+                text += `• *${esc(platform)}*: \`${esc(displayId)}\`\n`;
+            });
+        }
+
+        const keyboard = [
+            [{ text: '← Back', callback_data: 'dash:link' }]
+        ];
+
+        await bot.editMessageText(text, {
+            chat_id: callbackQuery.message.chat.id,
+            message_id: callbackQuery.message.message_id,
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+        await bot.answerCallbackQuery(callbackQuery.id);
+
+    } catch (error) {
+        logger.error(`[DashboardMenu] Error displaying linked platforms:`, error);
+        await bot.answerCallbackQuery(callbackQuery.id, { text: 'Error loading platforms.', show_alert: true });
+    }
 }
 
 /**

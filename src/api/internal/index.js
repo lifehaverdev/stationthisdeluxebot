@@ -107,6 +107,8 @@ function initializeInternalServices(dependencies = {}) {
       ethereumServices: dependencies.ethereumService, // keyed map for multichain support
       nftPriceService: dependencies.nftPriceService,
       saltMiningService: dependencies.saltMiningService,
+      // Platform notifiers for cross-platform notifications
+      platformNotifiers: dependencies.platformNotifiers || {},
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies
@@ -552,7 +554,13 @@ function initializeInternalServices(dependencies = {}) {
   return {
     status: statusService, 
     router: mainInternalRouter,
-    client: internalApiClient
+    client: internalApiClient,
+    // Expose apiDependencies so it can be updated after platform initialization
+    updateDependencies: (newDeps) => {
+      Object.assign(apiDependencies, newDeps);
+      logger.info('[InternalAPI] Updated API dependencies with platform notifiers.');
+    },
+    getDependencies: () => apiDependencies
   };
 }
 

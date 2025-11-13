@@ -23,11 +23,15 @@ const createSettingsCommandHandler = require('./commands/settingsCommand');
 const createCollectionsCommandHandler = require('./commands/collectionsCommand');
 const createTrainModelCommandHandler = require('./commands/trainModelCommand');
 const createStatusCommandHandler = require('./commands/statusCommand');
+const createAccountCommandHandler = require('./commands/accountCommand');
 
 // --- Component Managers ---
 const settingsMenuManager = require('./components/settingsMenuManager');
-// const modsMenuManager = require('./components/modsMenuManager');
-// const walletManager = require('./components/walletManager');
+const walletManager = require('./components/walletManager');
+const accountMenuManager = require('./components/accountMenuManager');
+const linkManager = require('./components/linkManager');
+const modsMenuManager = require('./components/modsMenuManager');
+const toolsMenuManager = require('./components/toolsMenuManager');
 // ... etc
 
 /**
@@ -82,8 +86,11 @@ function createDiscordBot(dependencies, token, options = {}) {
 
     // Register component managers
     settingsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
-    // modsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
-    // walletManager.registerHandlers(dispatcherInstances, allDependencies);
+    walletManager.registerHandlers(dispatcherInstances, allDependencies);
+    accountMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    linkManager.registerHandlers(dispatcherInstances, allDependencies);
+    modsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
+    toolsMenuManager.registerHandlers(dispatcherInstances, allDependencies);
     // ... etc
 
     // Register legacy command handlers with dispatcher for now
@@ -96,6 +103,17 @@ function createDiscordBot(dependencies, token, options = {}) {
       logger
     });
     commandDispatcher.register('status', handleStatusCommand);
+    logger.info('[Discord Bot] Registered status command handler');
+
+    const handleAccountCommand = createAccountCommandHandler({
+      logger,
+      internalApiClient: dependencies.internalApiClient || dependencies.internal?.client,
+      internal: dependencies.internal
+    });
+    commandDispatcher.register('account', handleAccountCommand);
+    logger.info('[Discord Bot] Registered account command handler');
+    
+    // Link command is registered via linkManager.registerHandlers above
 
     logger.info('[Discord Bot] All feature handlers registered with dispatchers.');
   }
@@ -258,6 +276,30 @@ function createDiscordBot(dependencies, token, options = {}) {
     {
       name: 'status',
       description: 'Display bot status and runtime information'
+    },
+    {
+      name: 'account',
+      description: 'View and manage your account'
+    },
+    {
+      name: 'link',
+      description: 'Link your account to other platforms',
+      options: [
+        {
+          name: 'wallet',
+          description: 'Wallet address to link to',
+          type: 3, // STRING type
+          required: false
+        }
+      ]
+    },
+    {
+      name: 'mods',
+      description: 'Browse and manage Mods (LoRAs)'
+    },
+    {
+      name: 'tools',
+      description: 'Browse available tools'
     }
   ];
   
@@ -283,11 +325,20 @@ function createDiscordBot(dependencies, token, options = {}) {
       
       logger.info('Successfully registered application commands');
       
-      // Force sync client.commands with registered commands
-      // This ensures our internal collection matches what we registered
+      // Log registered commands for debugging
+      logger.info(`Registered commands: ${commands.map(c => c.name).join(', ')}`);
+      
+      // Note: The warning below is for legacy command handlers only
+      // Commands registered via CommandDispatcher are handled separately
       commands.forEach(cmd => {
         if (!client.commands.has(cmd.name)) {
-          logger.warn(`Command ${cmd.name} is registered with Discord but missing a handler!`);
+          // Only warn if it's not handled by dispatcher
+          const isHandledByDispatcher = ['status', 'account', 'link', 'settings'].includes(cmd.name);
+          if (!isHandledByDispatcher) {
+            logger.warn(`Command ${cmd.name} is registered with Discord but missing a legacy handler!`);
+          } else {
+            logger.info(`Command ${cmd.name} is handled by CommandDispatcher`);
+          }
         }
       });
       
@@ -297,15 +348,15 @@ function createDiscordBot(dependencies, token, options = {}) {
   });
   
   // --- Interaction Event Handlers ---
-
+  
   // Handle slash commands
   client.on('interactionCreate', async (interaction) => {
     try {
       if (!interaction.isChatInputCommand()) return;
-      
-      const { commandName } = interaction;
+    
+    const { commandName } = interaction;
       logger.info(`[Discord Bot] Received command: ${commandName}`);
-      
+    
       // Try dispatcher first
       const handled = await commandDispatcher.handle(client, interaction, { ...dependencies, replyContextManager });
       
@@ -315,9 +366,9 @@ function createDiscordBot(dependencies, token, options = {}) {
       }
       
       // Fallback to legacy command handlers
-      const command = client.commands.get(commandName);
-      
-      if (!command) {
+    const command = client.commands.get(commandName);
+    
+    if (!command) {
         logger.warn(`[Discord Bot] No handler found for command: ${commandName}`);
         // Try dynamic command dispatcher
         const dynamicHandled = await dynamicCommandDispatcher.handle(client, interaction, { ...dependencies, replyContextManager });
@@ -326,19 +377,19 @@ function createDiscordBot(dependencies, token, options = {}) {
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({ content: 'Command not found.', flags: 64 }); // Ephemeral flag
         }
-        return;
-      }
-      
-      try {
-        await command(interaction);
+      return;
+    }
+    
+    try {
+      await command(interaction);
         logger.info(`[Discord Bot] Command ${commandName} executed successfully`);
-      } catch (error) {
+    } catch (error) {
         logger.error(`[Discord Bot] Error executing command ${commandName}:`, error);
-        
-        const errorMessage = 'An error occurred while executing this command.';
-        if (interaction.replied || interaction.deferred) {
+      
+      const errorMessage = 'An error occurred while executing this command.';
+      if (interaction.replied || interaction.deferred) {
           await interaction.followUp({ content: errorMessage, flags: 64 }); // Ephemeral flag
-        } else {
+      } else {
           await interaction.reply({ content: errorMessage, flags: 64 }); // Ephemeral flag
         }
       }
@@ -357,8 +408,8 @@ function createDiscordBot(dependencies, token, options = {}) {
   // Handle button interactions
   client.on('interactionCreate', async (interaction) => {
     try {
-      if (!interaction.isButton()) return;
-      
+    if (!interaction.isButton()) return;
+    
       logger.info(`[Discord Bot] Received button interaction: ${interaction.customId}`);
       
       // Defer update immediately (Discord requires response within 3 seconds)
@@ -373,7 +424,7 @@ function createDiscordBot(dependencies, token, options = {}) {
       }
       
       // Legacy button handling (temporary, for backward compatibility)
-      const customId = interaction.customId;
+    const customId = interaction.customId;
       if (customId.startsWith('settings:')) {
         const parts = customId.split(':');
         const settingType = parts[1];
@@ -429,10 +480,10 @@ function createDiscordBot(dependencies, token, options = {}) {
   // Handle select menu interactions
   client.on('interactionCreate', async (interaction) => {
     try {
-      if (!interaction.isStringSelectMenu()) return;
-      
+    if (!interaction.isStringSelectMenu()) return;
+    
       logger.info(`[Discord Bot] Received select menu interaction: ${interaction.customId}`);
-      
+    
       // Defer update immediately (Discord requires response within 3 seconds)
       await interaction.deferUpdate();
       
@@ -459,10 +510,10 @@ function createDiscordBot(dependencies, token, options = {}) {
           });
           
           const updateResult = settingsWorkflow.updateSetting(
-            interaction.user.id,
-            settingType,
-            settingValue
-          );
+          interaction.user.id,
+          settingType,
+          settingValue
+        );
         
         if (updateResult.success) {
           await handleSettingsCommand(interaction);
@@ -484,7 +535,7 @@ function createDiscordBot(dependencies, token, options = {}) {
       }
     }
   });
-  
+
   // Handle message events (for reply context, dynamic commands, etc.)
   client.on('messageCreate', async (message) => {
     try {
@@ -532,7 +583,7 @@ function createDiscordBot(dependencies, token, options = {}) {
       }
     }
   });
-
+  
   // Log errors
   client.on('error', (error) => {
     logger.error('[Discord Bot] Client error:', error);

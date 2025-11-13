@@ -46,8 +46,8 @@ function createStatusCommandHandler(dependencies) {
       
       // Acknowledge the interaction immediately (Discord requires response within 3 seconds)
       if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply();
-        logger.info('Interaction deferred for status command');
+      await interaction.deferReply();
+      logger.info('Interaction deferred for status command');
       }
       
       // Get status information from internal API
@@ -85,12 +85,12 @@ function createStatusCommandHandler(dependencies) {
             content: 'Sorry, an error occurred while fetching application status.',
             embeds: []
           });
-        } else {
+      } else {
           // Use flags instead of deprecated ephemeral option
-          await interaction.reply({ 
-            content: 'Sorry, an error occurred while fetching application status.',
+        await interaction.reply({ 
+          content: 'Sorry, an error occurred while fetching application status.',
             flags: 64 // MessageFlags.Ephemeral
-          });
+        });
         }
       } catch (replyError) {
         logger.error('Failed to send error response:', replyError);

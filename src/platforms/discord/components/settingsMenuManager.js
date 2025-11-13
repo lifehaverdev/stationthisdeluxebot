@@ -858,6 +858,12 @@ async function settingsButtonHandler(client, interaction, masterAccountId, depen
                 return;
             }
             
+            // Detect DM context for logging
+            const isDM = channel.type === 1; // DM channel type
+            if (isDM) {
+                logger.info(`[SettingsMenu] Sending edit prompt in DM context for MAID ${masterAccountId}`);
+            }
+            
             // Send new message asking for value
             const sentMessage = await channel.send({
                 embeds: menu.embeds,
@@ -947,14 +953,33 @@ async function handleSettingsReply(client, message, context, dependencies) {
     const { logger } = dependencies;
     const { toolIdentifier, paramKey, masterAccountId } = context;
     const newValue = message.content.trim();
+    const isDM = message.channel.type === 1; // DM channel type
 
-    logger.info(`[SettingsMenu] Received reply for param edit. MAID: ${masterAccountId}, Tool: ${toolIdentifier}, Param: ${paramKey}, NewValue: '${newValue}'`);
+    logger.info(`[SettingsMenu] Received reply for param edit. MAID: ${masterAccountId}, Tool: ${toolIdentifier}, Param: ${paramKey}, NewValue: '${newValue}', IsDM: ${isDM}`);
 
     try {
         const result = await handleParameterValueReply(masterAccountId, toolIdentifier, paramKey, newValue, dependencies);
         
         if (result.success) {
-            await message.reply(`✅ Setting updated successfully for ${toolIdentifier}!`);
+            // Try to reply, but handle DM failures gracefully
+            try {
+                await message.reply(`✅ Setting updated successfully for ${toolIdentifier}!`);
+            } catch (replyError) {
+                // If DM reply fails (e.g., user has DM restrictions), try sending in channel
+                if (isDM) {
+                    logger.warn(`[SettingsMenu] DM reply failed, trying channel send:`, replyError.message);
+                    try {
+                        await message.channel.send(`✅ Setting updated successfully for ${toolIdentifier}!`);
+                    } catch (channelError) {
+                        logger.error(`[SettingsMenu] Both DM and channel send failed:`, channelError);
+                        // Last resort: log and continue
+                    }
+                } else {
+                    // In a server channel, this shouldn't fail, but log if it does
+                    logger.error(`[SettingsMenu] Failed to reply in channel:`, replyError);
+                    throw replyError; // Re-throw for channel contexts
+                }
+            }
 
             // Update the original menu message if it exists
             if (message.reference && message.reference.messageId) {
@@ -967,14 +992,42 @@ async function handleSettingsReply(client, message, context, dependencies) {
                     });
                 } catch (editError) {
                     logger.warn(`[SettingsMenu] Could not update original menu message:`, editError);
+                    // Don't fail the whole operation if we can't update the menu
                 }
             }
         } else {
-            await message.reply(`⚠️ ${result.error}`);
+            // Try to reply with error, handle DM failures
+            try {
+                await message.reply(`⚠️ ${result.error}`);
+            } catch (replyError) {
+                if (isDM) {
+                    logger.warn(`[SettingsMenu] DM error reply failed, trying channel send:`, replyError.message);
+                    try {
+                        await message.channel.send(`⚠️ ${result.error}`);
+                    } catch (channelError) {
+                        logger.error(`[SettingsMenu] Both DM and channel error send failed:`, channelError);
+                    }
+                } else {
+                    logger.error(`[SettingsMenu] Failed to send error reply in channel:`, replyError);
+                }
+            }
         }
     } catch (error) {
         logger.error(`[SettingsMenu] Error in handleSettingsReply for MAID ${masterAccountId}:`, error);
-        await message.reply('Sorry, there was a critical error trying to save that setting.');
+        try {
+            await message.reply('Sorry, there was a critical error trying to save that setting.');
+        } catch (replyError) {
+            if (isDM) {
+                logger.warn(`[SettingsMenu] DM critical error reply failed:`, replyError.message);
+                try {
+                    await message.channel.send('Sorry, there was a critical error trying to save that setting.');
+                } catch (channelError) {
+                    logger.error(`[SettingsMenu] Critical: Both DM and channel send failed:`, channelError);
+                }
+            } else {
+                logger.error(`[SettingsMenu] Critical: Failed to send error message:`, replyError);
+            }
+        }
     }
 }
 
