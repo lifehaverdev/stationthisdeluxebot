@@ -5,6 +5,9 @@ const CostAggregator = require('./workflow/management/CostAggregator');
 const StepExecutor = require('./workflow/execution/StepExecutor');
 const SpellExecutor = require('./workflow/execution/SpellExecutor');
 const StepContinuator = require('./workflow/continuation/StepContinuator');
+const AsyncJobPoller = require('./workflow/adapters/AsyncJobPoller');
+const AdapterCoordinator = require('./workflow/adapters/AdapterCoordinator');
+const WorkflowNotifier = require('./workflow/notifications/WorkflowNotifier');
 
 class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
@@ -20,15 +23,30 @@ class WorkflowExecutionService {
         this.generationRecordManager = new GenerationRecordManager({ logger, internalApiClient });
         this.costAggregator = new CostAggregator({ logger, internalApiClient });
         
-        // Initialize execution services
+        // Initialize adapter and notification services
         const adapterRegistry = require('./adapterRegistry');
+        this.asyncJobPoller = new AsyncJobPoller({ 
+            logger, 
+            generationRecordManager: this.generationRecordManager 
+        });
+        this.adapterCoordinator = new AdapterCoordinator({
+            logger,
+            adapterRegistry,
+            generationRecordManager: this.generationRecordManager,
+            asyncJobPoller: this.asyncJobPoller
+        });
+        this.workflowNotifier = new WorkflowNotifier({ logger });
+        
+        // Initialize execution services
         this.stepExecutor = new StepExecutor({
             logger,
             toolRegistry,
             workflowsService,
             internalApiClient,
             adapterRegistry,
-            generationRecordManager: this.generationRecordManager
+            generationRecordManager: this.generationRecordManager,
+            adapterCoordinator: this.adapterCoordinator,
+            workflowNotifier: this.workflowNotifier
         });
         this.spellExecutor = new SpellExecutor({
             logger,

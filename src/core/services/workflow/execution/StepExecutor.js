@@ -10,7 +10,7 @@ const ParameterResolver = require('./ParameterResolver');
 const StrategyFactory = require('./strategies/StrategyFactory');
 
 class StepExecutor {
-    constructor({ logger, toolRegistry, workflowsService, internalApiClient, adapterRegistry, generationRecordManager }) {
+    constructor({ logger, toolRegistry, workflowsService, internalApiClient, adapterRegistry, generationRecordManager, adapterCoordinator, workflowNotifier }) {
         this.logger = logger;
         this.toolRegistry = toolRegistry;
         this.workflowsService = workflowsService;
@@ -20,7 +20,14 @@ class StepExecutor {
         
         // Initialize sub-services
         this.parameterResolver = new ParameterResolver({ logger });
-        this.strategyFactory = new StrategyFactory({ logger, adapterRegistry });
+        this.adapterCoordinator = adapterCoordinator;
+        this.workflowNotifier = workflowNotifier;
+        this.strategyFactory = new StrategyFactory({ 
+            logger, 
+            adapterRegistry,
+            adapterCoordinator,
+            workflowNotifier
+        });
     }
 
     /**
@@ -91,6 +98,7 @@ class StepExecutor {
             adapter: this.adapterRegistry.get(tool.service),
             internalApiClient: this.internalApiClient,
             generationRecordManager: this.generationRecordManager,
+            workflowNotifier: this.workflowNotifier,
             eventId: eventId
         };
 

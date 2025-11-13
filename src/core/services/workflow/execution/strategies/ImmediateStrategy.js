@@ -7,8 +7,9 @@
 const ExecutionStrategy = require('./ExecutionStrategy');
 
 class ImmediateStrategy extends ExecutionStrategy {
-    constructor({ logger }) {
+    constructor({ logger, workflowNotifier }) {
         super({ type: 'immediate', logger });
+        this.workflowNotifier = workflowNotifier;
     }
 
     /**
@@ -105,44 +106,18 @@ class ImmediateStrategy extends ExecutionStrategy {
             // Don't throw - centralized endpoint already emitted event, continuation should still work
         }
 
-        // Send WebSocket notifications
-        try {
-            const websocketService = require('../../websocket/server');
-            const castId = originalContext.castId || null;
-            const spellId = executionContext.spell._id;
-
-            // Send progress indicator
-            websocketService.sendToUser(
-                originalContext.masterAccountId,
-                {
-                    type: 'generationProgress',
-                    payload: {
-                        generationId: executionResponse.generationId,
-                        status: 'running',
-                        progress: 0.5,
-                        liveStatus: 'processing',
-                        toolId: tool.toolId,
-                        spellId: spellId,
-                        castId: castId
-                    }
-                }
-            );
-
-            // Send tool response
-            websocketService.sendToUser(
-                originalContext.masterAccountId,
-                {
-                    type: 'tool-response',
-                    payload: {
-                        toolId: tool.toolId,
-                        output: executionResponse.response,
-                        requestId: originalContext.requestId || null,
-                        castId: castId
-                    }
-                }
-            );
-        } catch (err) {
-            this.logger.error(`[ImmediateStrategy] Failed to send tool-response via WebSocket: ${err.message}`);
+        // Send WebSocket notifications via WorkflowNotifier
+        if (this.workflowNotifier) {
+            try {
+                await this.workflowNotifier.notifyStepCompletion(
+                    executionContext,
+                    executionResponse.generationId,
+                    tool,
+                    executionResponse.response
+                );
+            } catch (err) {
+                this.logger.error(`[ImmediateStrategy] Failed to send notifications: ${err.message}`);
+            }
         }
 
         // NOTE: Centralized execution endpoint already emits generationUpdated event with deliveryStrategy='spell_step'
