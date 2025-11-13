@@ -3,6 +3,9 @@ const axios = require('axios');
 const { retryWithBackoff } = require('./workflow/utils/RetryHandler');
 const { createEvent } = require('./workflow/utils/EventManager');
 const { validateStepIndex, validateStep, validateTool, validateRequiredInputs, validateGenerationMetadata } = require('./workflow/utils/ValidationUtils');
+const CastManager = require('./workflow/management/CastManager');
+const GenerationRecordManager = require('./workflow/management/GenerationRecordManager');
+const CostAggregator = require('./workflow/management/CostAggregator');
 
 class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
@@ -12,6 +15,11 @@ class WorkflowExecutionService {
         this.internalApiClient = internalApiClient;
         this.db = db; // Contains generationOutputs
         this.workflowsService = workflowsService;
+        
+        // Initialize management services
+        this.castManager = new CastManager({ logger, internalApiClient });
+        this.generationRecordManager = new GenerationRecordManager({ logger, internalApiClient });
+        this.costAggregator = new CostAggregator({ logger, internalApiClient });
     }
 
     /**
@@ -108,8 +116,7 @@ class WorkflowExecutionService {
                         }
                     };
                     
-                    const genResponse = await this.internalApiClient.post('/internal/v1/data/generations', generationParams);
-                    const generationId = genResponse.data._id;
+                    const { generationId } = await this.generationRecordManager.createGenerationRecord(generationParams);
                     this.logger.info(`[WorkflowExecution] Created generation record ${generationId} for async adapter job`);
                     
                     // Now start the async job
@@ -118,7 +125,7 @@ class WorkflowExecutionService {
                     // Update generation record with runId so webhook processor can find it
                     // NOTE: Webhook processor queries by metadata.run_id (snake_case), so use that format
                     try {
-                        await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
+                        await this.generationRecordManager.updateGenerationRecord(generationId, {
                             'metadata.run_id': runInfo.runId  // Use snake_case to match webhook processor query
                         });
                         this.logger.info(`[WorkflowExecution] Updated generation ${generationId} with run_id ${runInfo.runId}`);
@@ -157,13 +164,12 @@ class WorkflowExecutionService {
                                         ...(pollRes.costUsd && { costUsd: pollRes.costUsd })
                                     };
                                     
-                                    await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, updatePayload);
+                                    await this.generationRecordManager.updateGenerationRecord(generationId, updatePayload);
                                     this.logger.info(`[WorkflowExecution] Updated generation ${generationId} with final status: ${finalStatus}`);
                                     
                                     // Fetch updated record and emit event to trigger spell continuation
                                     const notificationEvents = require('../events/notificationEvents');
-                                    const updatedGenResponse = await this.internalApiClient.get(`/internal/v1/data/generations/${generationId}`);
-                                    const updatedRecord = updatedGenResponse.data;
+                                    const updatedRecord = await this.generationRecordManager.getGenerationRecord(generationId);
                                     
                                     if (updatedRecord) {
                                         // Ensure deliveryStrategy is set for NotificationDispatcher routing
@@ -184,7 +190,7 @@ class WorkflowExecutionService {
                             if (attempts >= maxAttempts) {
                                 this.logger.error(`[WorkflowExecution] Adapter job ${runInfo.runId} did not complete within ${maxAttempts * 5} seconds`);
                                 // Update generation record to failed status
-                                await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
+                                await this.generationRecordManager.updateGenerationRecord(generationId, {
                                     status: 'failed',
                                     deliveryError: 'Job did not complete within timeout period'
                                 });
@@ -193,7 +199,7 @@ class WorkflowExecutionService {
                             this.logger.error(`[WorkflowExecution] Background poller error for adapter job ${runInfo.runId}:`, pollErr.message);
                             // Update generation record to failed status
                             try {
-                                await this.internalApiClient.put(`/internal/v1/data/generations/${generationId}`, {
+                                await this.generationRecordManager.updateGenerationRecord(generationId, {
                                     status: 'failed',
                                     deliveryError: `Polling error: ${pollErr.message}`
                                 });
@@ -353,10 +359,10 @@ class WorkflowExecutionService {
             // --- CRITICAL: Update generation record with responsePayload ---
             // Note: deliveryStrategy is already set by centralized execution endpoint
             try {
-                    await this.internalApiClient.put(`/internal/v1/data/generations/${executionResponse.data.generationId}`, {
+                await this.generationRecordManager.updateGenerationRecord(executionResponse.data.generationId, {
                     responsePayload: { result: executionResponse.data.response },
                     status: 'completed' // Ensure status is set
-                    });
+                });
                 this.logger.info(`[WorkflowExecution] Updated generation ${executionResponse.data.generationId} with responsePayload`);
             } catch(err){
                 this.logger.error('[WorkflowExecution] Failed to update generation with immediate response:', err.message);
@@ -437,22 +443,11 @@ class WorkflowExecutionService {
             // Update cast status to failed
             if (completedGeneration.metadata?.castId) {
                 const castId = completedGeneration.metadata.castId;
-                try {
-                    const failureReason = completedGeneration.metadata?.error?.message || 
-                                        completedGeneration.metadata?.errorDetails?.message ||
-                                        completedGeneration.deliveryError ||
-                                        'Step execution failed';
-                    
-                    await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                        status: 'failed',
-                        failureReason: failureReason,
-                        failedAt: new Date(),
-                    });
-                    this.logger.info(`[WorkflowExecution] Updated cast ${castId} status to 'failed'`);
-                } catch (err) {
-                    this.logger.error(`[WorkflowExecution] Failed to update cast ${castId} status to failed:`, err.message);
-                    // Don't throw - we've already logged the error, continue with cleanup
-                }
+                const failureReason = completedGeneration.metadata?.error?.message || 
+                                    completedGeneration.metadata?.errorDetails?.message ||
+                                    completedGeneration.deliveryError ||
+                                    'Step execution failed';
+                await this.castManager.updateCastStatusToFailed(castId, failureReason);
             }
             
             // Don't continue to next step
@@ -465,77 +460,31 @@ class WorkflowExecutionService {
         // This must happen BEFORE updating the cast to avoid race conditions
         const { castId } = completedGeneration.metadata;
         if (castId) {
-            try {
-                const castResponse = await this.internalApiClient.get(`/internal/v1/data/spells/casts/${castId}`);
-                const cast = castResponse.data;
-                if (cast && cast.stepGenerationIds && Array.isArray(cast.stepGenerationIds)) {
-                    const generationIdStr = completedGeneration._id.toString();
-                    // Check if this generation ID is already in the cast's stepGenerationIds
-                    const alreadyProcessed = cast.stepGenerationIds.some(id => 
-                        (typeof id === 'string' ? id : id.toString()) === generationIdStr
-                    );
-                    if (alreadyProcessed) {
-                        this.logger.warn(`[WorkflowExecution] Step ${stepIndex + 1} of spell "${spell.name}" has already been processed (generation ${generationIdStr} already in cast). Skipping duplicate execution.`);
-                        return; // Already processed, skip
-                    }
-                    
-                    // CRITICAL: Also check if the NEXT step has already been executed
-                    // This prevents duplicate execution when continueExecution is called multiple times
-                    // After step N (index N) completes, we should have N+1 generations
-                    // If we already have N+2 generations, step N+1 was already executed
-                    const nextStepIndex = stepIndex + 1;
-                    const currentGenerationCount = cast.stepGenerationIds.length;
-                    const expectedCount = stepIndex + 1; // After step N, we should have N+1 generations
-                    if (currentGenerationCount >= expectedCount + 1) {
-                        // We already have a generation for the next step, skip execution
-                        this.logger.warn(`[WorkflowExecution] Step ${nextStepIndex + 1} of spell "${spell.name}" appears to have already been executed (cast has ${currentGenerationCount} generations, expected ${expectedCount}). Skipping duplicate execution.`);
-                        return; // Already executed, skip
-                    }
-                }
-            } catch (castErr) {
-                this.logger.warn(`[WorkflowExecution] Failed to check cast ${castId} for duplicate processing:`, castErr.message);
-                // Continue with execution - better to execute twice than not at all
+            const { alreadyProcessed, nextStepAlreadyExecuted } = await this.castManager.checkForDuplicateGeneration(
+                castId,
+                completedGeneration._id.toString(),
+                stepIndex
+            );
+            
+            if (alreadyProcessed) {
+                this.logger.warn(`[WorkflowExecution] Step ${stepIndex + 1} of spell "${spell.name}" has already been processed (generation ${completedGeneration._id} already in cast). Skipping duplicate execution.`);
+                return; // Already processed, skip
+            }
+            
+            if (nextStepAlreadyExecuted) {
+                const nextStepIndex = stepIndex + 1;
+                this.logger.warn(`[WorkflowExecution] Step ${nextStepIndex + 1} of spell "${spell.name}" appears to have already been executed. Skipping duplicate execution.`);
+                return; // Already executed, skip
             }
         }
         
         // --- Update parent cast document with newly completed step generation ---
         if (castId) {
-            try {
-                const costDelta = typeof completedGeneration.costUsd === 'number' ? completedGeneration.costUsd : 0;
-                await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                    generationId: completedGeneration._id.toString(),
-                    costDeltaUsd: costDelta,
-                });
-                this.logger.info(`[WorkflowExecution] Updated cast ${castId} with generation ${completedGeneration._id} (costUsd=${costDelta}).`);
-            } catch (err) {
-                this.logger.error(`[WorkflowExecution] Failed to update cast ${castId}:`, err.message);
-                // Add retry logic for transient failures
-                try {
-                    await retryWithBackoff(
-                        async () => {
-                            const costDelta = typeof completedGeneration.costUsd === 'number' ? completedGeneration.costUsd : 0;
-                            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                                generationId: completedGeneration._id.toString(),
-                                costDeltaUsd: costDelta,
-                            });
-                        },
-                        {
-                            maxAttempts: 3,
-                            baseDelay: 1000,
-                            onRetry: (error, attempt, delay) => {
-                                this.logger.debug(`[WorkflowExecution] Retrying cast update (attempt ${attempt}/${3}) after ${delay}ms`);
-                            },
-                            onFailure: (error, attempts) => {
-                                this.logger.error(`[WorkflowExecution] Failed to update cast ${castId} after ${attempts} retries:`, error.message);
-                                // Consider: emit metric or alert for manual reconciliation
-                            }
-                        }
-                    );
-                    this.logger.info(`[WorkflowExecution] Successfully updated cast ${castId} after retry`);
-                } catch (retryErr) {
-                    // All retries exhausted, error already logged by onFailure callback
-                }
-            }
+            await this.castManager.updateCastWithGeneration(
+                castId,
+                completedGeneration._id.toString(),
+                completedGeneration.costUsd
+            );
         }
 
         // Accumulate step generation IDs with validation
@@ -630,16 +579,10 @@ class WorkflowExecutionService {
             // CRITICAL: Check if cast is already completed to prevent duplicate finalization
             // castId is already defined above
             if (castId) {
-                try {
-                    const castResponse = await this.internalApiClient.get(`/internal/v1/data/spells/casts/${castId}`);
-                    const cast = castResponse.data;
-                    if (cast && cast.status === 'completed') {
-                        this.logger.warn(`[WorkflowExecution] Cast ${castId} is already completed. Skipping duplicate finalization.`);
-                        return; // Already finalized, skip
-                    }
-                } catch (castErr) {
-                    this.logger.warn(`[WorkflowExecution] Failed to check cast ${castId} status before finalization:`, castErr.message);
-                    // Continue with finalization - better to finalize twice than not at all
+                const isCompleted = await this.castManager.checkCastStatus(castId);
+                if (isCompleted) {
+                    this.logger.warn(`[WorkflowExecution] Cast ${castId} is already completed. Skipping duplicate finalization.`);
+                    return; // Already finalized, skip
                 }
             }
             
@@ -647,73 +590,11 @@ class WorkflowExecutionService {
             
             // Final update to the cast document
             if (castId) {
-                try {
-                    await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                        status: 'completed',
-                        costDeltaUsd: '0' // Final cost is already summed up from steps
-                    });
-                    this.logger.info(`[WorkflowExecution] Finalized cast ${castId} with status 'completed'`);
-                } catch (err) {
-                    this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId}:`, err.message);
-                    // Add retry logic for final cast update
-                    try {
-                        await retryWithBackoff(
-                            async () => {
-                                await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                                    status: 'completed',
-                                    costDeltaUsd: '0'
-                                });
-                            },
-                            {
-                                maxAttempts: 3,
-                                baseDelay: 1000,
-                                onRetry: (error, attempt, delay) => {
-                                    this.logger.debug(`[WorkflowExecution] Retrying cast finalization (attempt ${attempt}/${3}) after ${delay}ms`);
-                                },
-                                onFailure: (error, attempts) => {
-                                    this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId} after ${attempts} retries:`, error.message);
-                                }
-                            }
-                        );
-                        this.logger.info(`[WorkflowExecution] Successfully finalized cast ${castId} after retry`);
-                    } catch (retryErr) {
-                        // All retries exhausted, error already logged by onFailure callback
-                    }
-                }
+                await this.castManager.finalizeCast(castId);
             }
 
             // ---- Aggregate cost/points across all step generations ----
-            let totalCostUsd = 0;
-            let totalPointsSpent = 0;
-            try {
-                if (stepGenerationIds && stepGenerationIds.length > 0) {
-                    const queryString = stepGenerationIds.map(id => `_id_in=${id}`).join('&');
-                    const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
-                    let stepGens = genRes.data.generations || [];
-                    if (stepGens.length === 0) {
-                        // Possibly ObjectId mismatch; fetch each individually
-                        stepGens = [];
-                        for (const gid of stepGenerationIds) {
-                            try {
-                                const one = await this.internalApiClient.get(`/internal/v1/data/generations/${gid}`);
-                                if (one.data) stepGens.push(one.data);
-                            } catch (e) {
-                                this.logger.warn(`[WorkflowExecution] Failed to fetch generation ${gid} individually for cost aggregation: ${e.message}`);
-                            }
-                        }
-                    }
-                    totalCostUsd = stepGens.reduce((sum, g) => {
-                        const val = g.costUsd !== undefined && g.costUsd !== null ? Number(g.costUsd) : 0;
-                        return sum + (isNaN(val) ? 0 : val);
-                    }, 0);
-                    totalPointsSpent = stepGens.reduce((sum, g) => {
-                        const val = g.pointsSpent !== undefined && g.pointsSpent !== null ? Number(g.pointsSpent) : 0;
-                        return sum + (isNaN(val) ? 0 : val);
-                    }, 0);
-                }
-            } catch (err) {
-                this.logger.warn('[WorkflowExecution] Failed to aggregate cost for final spell generation:', err.message);
-            }
+            const { totalCostUsd, totalPointsSpent } = await this.costAggregator.aggregateCosts(stepGenerationIds);
 
             // Create a *new* final generation record that the dispatcher will handle normally.
             const finalGenerationParams = {
@@ -752,7 +633,7 @@ class WorkflowExecutionService {
                     ...(originalContext.pieceIndex!==undefined ? { pieceIndex: originalContext.pieceIndex } : {})
                 }
             };
-            await this.internalApiClient.post('/internal/v1/data/generations', finalGenerationParams);
+            await this.generationRecordManager.createGenerationRecord(finalGenerationParams);
             this.logger.info(`[WorkflowExecution] Final notification record for spell "${spell.name}" created.`);
         }
     }
