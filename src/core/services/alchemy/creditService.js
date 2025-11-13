@@ -6,6 +6,7 @@ const tokenDecimalService = require('../tokenDecimalService');
 const WalletLinkingRequestDB = require('../db/walletLinkingRequestDb');
 const WalletLinkingService = require('../walletLinkingService');
 const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE } = require('./tokenConfig');
+const { MILADY_STATION_NFT_ADDRESS, ADMIN_TOKEN_ID } = require('./foundationConfig');
 // const NoemaUserCoreDB = require('../db/noemaUserCoreDb'); // To be implemented
 // const NoemaUserEconomyDB = require('../db/noemaUserEconomyDb'); // To be implemented
 
@@ -77,7 +78,7 @@ class CreditService {
     this.logger = logger || console;
     tokenDecimalService.setLogger(this.logger);
 
-    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService, webSocketService } = services;
+    const { ethereumService, creditLedgerDb, systemStateDb, priceFeedService, tokenRiskEngine, internalApiClient, userCoreDb, walletLinkingRequestDb, walletLinkingService, saltMiningService, webSocketService, adminActivityService } = services;
     if (!ethereumService || !creditLedgerDb || !systemStateDb || !priceFeedService || !tokenRiskEngine || !internalApiClient || !userCoreDb || !walletLinkingRequestDb || !walletLinkingService || !saltMiningService || !webSocketService) {
       throw new Error('CreditService: Missing one or more required services.');
     }
@@ -92,6 +93,7 @@ class CreditService {
     this.walletLinkingService = walletLinkingService;
     this.saltMiningService = saltMiningService;
     this.webSocketService = webSocketService;
+    this.adminActivityService = adminActivityService; // Optional: for admin activity monitoring
     
     const { foundationAddress, foundationAbi } = config;
     if (!foundationAddress || !foundationAbi) {
@@ -895,6 +897,20 @@ class CreditService {
         this._sendDepositNotification(masterAccountId, 'confirmed', { ...finalStatus, originalTxHashes });
         // --- END WEBSOCKET NOTIFICATION ---
 
+        // --- ADMIN ACTIVITY NOTIFICATION ---
+        if (this.adminActivityService) {
+            this.adminActivityService.emitDeposit({
+                masterAccountId,
+                depositorAddress: user,
+                tokenAddress: token,
+                amount: amount.toString(),
+                points: points_credited,
+                txHash: confirmationTxHash,
+                chainId: '1'
+            });
+        }
+        // --- END ADMIN ACTIVITY NOTIFICATION ---
+
     } catch (error) {
       const errorMessage = error.message || 'An unknown error occurred';
       this.logger.error(`[CreditService] Unhandled error during confirmation for group (User: ${user}, Token: ${token}).`, error);
@@ -1110,6 +1126,19 @@ class CreditService {
 
             processedCount++;
             
+            // --- ADMIN ACTIVITY NOTIFICATION ---
+            if (this.adminActivityService) {
+                this.adminActivityService.emitWithdrawalRequest({
+                    masterAccountId,
+                    depositorAddress: userAddress,
+                    tokenAddress: tokenAddress,
+                    amount: collateralAmount.toString(),
+                    txHash: transactionHash,
+                    chainId: '1'
+                });
+            }
+            // --- END ADMIN ACTIVITY NOTIFICATION ---
+            
             // Trigger processing immediately
             await this.processWithdrawalRequest(transactionHash);
 
@@ -1146,6 +1175,64 @@ class CreditService {
     try {
         const { user_address: userAddress, token_address: tokenAddress, vault_account: fundAddress, collateral_amount_wei: collateralAmountWei } = request;
 
+        // Check if this is an admin withdrawal
+        const isAdmin = await this.isAdminAddress(userAddress);
+        
+        if (isAdmin) {
+            // Admin withdrawal: execute allocate + remit via multicall
+            this.logger.info(`[CreditService] Processing admin withdrawal for ${userAddress}`);
+            
+            const amount = BigInt(collateralAmountWei);
+            const metadata = ethers.toUtf8Bytes('ADMIN_WITHDRAWAL');
+            
+            // Prepare multicall data: [allocate, remit]
+            const { Interface } = require('ethers');
+            const iface = new Interface(this.contractConfig.abi);
+            const allocateData = iface.encodeFunctionData('allocate', [userAddress, tokenAddress, amount]);
+            const remitData = iface.encodeFunctionData('remit', [userAddress, tokenAddress, amount, 0, metadata]);
+            
+            // Execute multicall
+            const txResponse = await this.ethereumService.write(
+                this.contractConfig.address,
+                this.contractConfig.abi,
+                'multicall',
+                [[allocateData, remitData]]
+            );
+            
+            const receipt = await this.ethereumService.waitForConfirmation(txResponse);
+            if (!receipt || !receipt.hash) {
+                throw new Error('Failed to get valid receipt for admin withdrawal transaction');
+            }
+            
+            // Update request status
+            await this.creditLedgerDb.updateWithdrawalRequestStatus(requestTxHash, 'COMPLETED', {
+                withdrawal_tx_hash: receipt.hash,
+                withdrawal_amount_wei: amount.toString(),
+                fee_wei: '0',
+                withdrawal_value_usd: 0, // Admin withdrawals don't need USD value tracking
+                gas_cost_usd: 0,
+                is_admin_withdrawal: true
+            });
+            
+            this.logger.info(`[CreditService] Successfully processed admin withdrawal request ${requestTxHash}`);
+            
+            // --- ADMIN ACTIVITY NOTIFICATION ---
+            if (this.adminActivityService) {
+                this.adminActivityService.emitWithdrawalProcessed({
+                    masterAccountId: request.master_account_id,
+                    depositorAddress: userAddress,
+                    tokenAddress: tokenAddress,
+                    amount: amount.toString(),
+                    txHash: receipt.hash,
+                    chainId: '1'
+                });
+            }
+            // --- END ADMIN ACTIVITY NOTIFICATION ---
+            
+            return;
+        }
+
+        // Regular user withdrawal: continue existing flow
         // 1. Get current token price for fee calculation
         const riskAssessment = await this.tokenRiskEngine.assessCollateral(tokenAddress, BigInt(collateralAmountWei));
         if (!riskAssessment.isSafe) {
@@ -1215,6 +1302,19 @@ class CreditService {
         });
 
         this.logger.info(`[CreditService] Successfully processed withdrawal request ${requestTxHash}`);
+
+        // --- ADMIN ACTIVITY NOTIFICATION ---
+        if (this.adminActivityService) {
+            this.adminActivityService.emitWithdrawalProcessed({
+                masterAccountId: request.master_account_id,
+                depositorAddress: userAddress,
+                tokenAddress: tokenAddress,
+                amount: withdrawalAmount.toString(),
+                txHash: receipt.hash,
+                chainId: '1'
+            });
+        }
+        // --- END ADMIN ACTIVITY NOTIFICATION ---
 
     } catch (error) {
         this.logger.error(`[CreditService] Error processing withdrawal request:`, error);
@@ -1635,6 +1735,55 @@ class CreditService {
         });
     } catch (err) {
         this.logger.error('[CreditService] routeReferralOrCreatorShare failed:', err);
+    }
+  }
+
+  /**
+   * Gets the protocolEscrow balance for a specific token in the Foundation contract.
+   * ProtocolEscrow is the escrow component of the custody balance at key (foundationAddress, tokenAddress).
+   * @param {string} tokenAddress - The token contract address ('0x0000...' for ETH).
+   * @returns {Promise<{userOwned: BigInt, escrow: BigInt}>} The custody balance components.
+   */
+  async getProtocolEscrowBalance(tokenAddress) {
+    try {
+      // ProtocolEscrow is stored at custody key (foundationAddress, tokenAddress)
+      const custodyKey = getCustodyKey(this.contractConfig.address, tokenAddress);
+      const packedAmount = await this.ethereumService.read(
+        this.contractConfig.address,
+        this.contractConfig.abi,
+        'custody',
+        custodyKey
+      );
+      const { userOwned, escrow } = splitCustodyAmount(packedAmount);
+      // The escrow component is the protocolEscrow balance
+      return { userOwned, escrow, protocolEscrow: escrow };
+    } catch (error) {
+      this.logger.error(`[CreditService] Error getting protocolEscrow balance for token ${tokenAddress}:`, error);
+      // Return zero balance on error
+      return { userOwned: 0n, escrow: 0n, protocolEscrow: 0n };
+    }
+  }
+
+  /**
+   * Checks if an address is the admin (owner of miladystation NFT #598).
+   * @param {string} address - The address to check.
+   * @returns {Promise<boolean>} True if the address owns the admin NFT.
+   */
+  async isAdminAddress(address) {
+    try {
+      const ERC721A_ABI = [
+        'function ownerOf(uint256 tokenId) view returns (address)'
+      ];
+      const owner = await this.ethereumService.read(
+        MILADY_STATION_NFT_ADDRESS,
+        ERC721A_ABI,
+        'ownerOf',
+        ADMIN_TOKEN_ID
+      );
+      return owner.toLowerCase() === address.toLowerCase();
+    } catch (error) {
+      this.logger.error(`[CreditService] Error checking admin status for ${address}:`, error);
+      return false;
     }
   }
 }

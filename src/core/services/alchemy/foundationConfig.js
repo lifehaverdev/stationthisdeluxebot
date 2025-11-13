@@ -18,6 +18,10 @@ const CHARTER_BEACON_ADDRESSES = {
   // Add other networks when deployed
 };
 
+// Milady Station NFT contract address (same across chains)
+const MILADY_STATION_NFT_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0';
+const ADMIN_TOKEN_ID = 598;
+
 // Human-readable chain names mapped by chainId
 const CHAIN_NAMES = {
   '1': 'Ethereum Mainnet',
@@ -88,4 +92,6 @@ module.exports = {
   RPC_ENV_VARS,
   getRpcEnvVar,
   getRpcUrl,
+  MILADY_STATION_NFT_ADDRESS,
+  ADMIN_TOKEN_ID,
 };

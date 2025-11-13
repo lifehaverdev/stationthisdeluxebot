@@ -1,6 +1,6 @@
 import { ethers } from 'https://cdn.jsdelivr.net/npm/ethers@6.10.0/+esm';
 
-const MILADY_STATION_ADDRESS = '0xYourMiladyStationAddressHere'; // <-- Set actual address
+const MILADY_STATION_ADDRESS = '0xB24BaB1732D34cAD0A7C7035C3539aEC553bF3a0'; // Milady Station NFT contract
 const ERC721A_ABI = [
   'function ownerOf(uint256 tokenId) view returns (address)',
   'function tokenURI(uint256 tokenId) view returns (string)'
@@ -17,12 +17,6 @@ function emitStatusChange() {
 
 export function onAdminStatusChange(fn) {
   listeners.push(fn);
-}
-
-export async function signMessage(message) {
-  const provider = new window.ethers.BrowserProvider(window.ethereum);
-  const signer = await provider.getSigner();
-  return signer.signMessage(message);
 }
 
 export function setupWalletGate() {
@@ -86,4 +80,4 @@ export function setupWalletGate() {
   };
 }
 
-export { adminVerified }; 
+export { adminVerified, currentAccount }; 

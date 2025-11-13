@@ -295,6 +295,11 @@ async function startApp() {
         // Initialize the WebSocket service by attaching it to the running HTTP server
         logger.info('Initializing WebSocket service...');
         websocketServer.initialize(httpServer);
+        // Set ethereumServices for admin verification
+        if (services.ethereumService) {
+          websocketServer.setEthereumServices(services.ethereumService);
+          logger.info('WebSocket service ethereumServices configured for admin verification.');
+        }
         logger.info('WebSocket service initialized.');
         
         // --- Credit Service Startup ---

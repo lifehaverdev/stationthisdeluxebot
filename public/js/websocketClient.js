@@ -83,8 +83,8 @@ function sendMessage(message) {
   }
 }
 
-// Automatically connect when the service is loaded
-connect();
+// Don't auto-connect - let the admin dashboard connect after verification
+// connect();
 
 export const websocketClient = {
   connect,

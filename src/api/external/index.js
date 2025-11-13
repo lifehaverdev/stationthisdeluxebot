@@ -11,6 +11,7 @@ const { createPublicStorageApi } = require('./storage');
 const { createPublicUploadApi } = require('./upload/uploadApi');
 const { createStatusApi, createAdminApi, createWebhookApi } = require('./system');
 const { createReferralVaultApi } = require('./referralVaultApi');
+const { createAdminApi: createAdminVaultApi } = require('./admin/adminApi');
 const { createAuthApi } = require('./auth');
 const { createUserApi } = require('./users');
 const createModelsApiRouter = require('./models');
@@ -305,7 +306,19 @@ function initializeExternalApi(dependencies) {
     logger.warn('External Webhook API router not mounted due to missing dependencies.');
   }
 
+  // Mount the Admin Vault API router (Protected by NFT ownership verification)
+  // Routes: /api/v1/admin/vaults/vault-balances, /api/v1/admin/vaults/withdrawal-requests
+  // Using /admin/vaults path to avoid conflicts with /admin/stats/* routes
+  const adminVaultRouter = createAdminVaultApi(dependencies);
+  if (adminVaultRouter) {
+    externalApiRouter.use('/admin/vaults', adminVaultRouter);
+    logger.info('External Admin Vault API router mounted at /admin/vaults. (NFT protected)');
+  } else {
+    logger.warn('External Admin Vault API router not mounted due to missing dependencies.');
+  }
+
   // Mount the Admin API router (Protected by API Key)
+  // Routes: /api/v1/admin/stats/*
   const adminRouter = createAdminApi(dependencies);
   if (adminRouter) {
     externalApiRouter.use('/admin', apiKeyAuth, adminRouter);

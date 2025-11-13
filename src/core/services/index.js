@@ -107,6 +107,19 @@ async function initializeServices(options = {}) {
     let saltMiningService;
     let walletLinkingService = new WalletLinkingService({ logger, db: initializedDbServices.data });
 
+    // Initialize AdminActivityService for real-time monitoring (before on-chain services so it's in scope)
+    let adminActivityService = null;
+    try {
+      const AdminActivityService = require('./adminActivityService');
+      adminActivityService = new AdminActivityService({
+        webSocketService: webSocketService,
+        logger
+      });
+      logger.info('[initializeServices] AdminActivityService initialized.');
+    } catch (err) {
+      logger.error('[initializeServices] Failed to initialize AdminActivityService:', err);
+    }
+
     try {
       logger.info('Initializing on-chain services (Ethereum, Credit)...');
       
@@ -165,6 +178,7 @@ async function initializeServices(options = {}) {
             walletLinkingService,
             webSocketService,
             saltMiningService,
+            adminActivityService, // Add admin activity service for real-time monitoring
           };
           creditServices[chainId] = new CreditService(creditDeps, creditServiceConfig, logger);
         } catch (err) {
@@ -237,7 +251,8 @@ async function initializeServices(options = {}) {
       workflowExecutionService,
       webSocketService, // Add the service here
       modelDiscoveryService, // Add the service here
-      stringService // Add the service here
+      stringService, // Add the service here
+      adminActivityService // Add admin activity service
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -296,7 +311,8 @@ async function initializeServices(options = {}) {
       loraResolutionService,
       webSocketService, // Add the service here
       spellStatsService, // expose SpellStatsService
-      stringService // expose StringService
+      stringService, // expose StringService
+      adminActivityService // expose AdminActivityService
     };
 
     // DIAGNOSTIC LOGGING REMOVED

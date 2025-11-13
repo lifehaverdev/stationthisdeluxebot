@@ -98,6 +98,7 @@ function initializeInternalServices(dependencies = {}) {
       spellsService: dependencies.spellsService, // Inject spellsService so spellsApi can cast spells
       workflowExecutionService: dependencies.workflowExecutionService,
       webSocketService: dependencies.webSocketService, // Pass through the webSocket service
+      adminActivityService: dependencies.adminActivityService, // Pass through the admin activity service
       // --- Inject required backend services for pointsApi ---
       priceFeedService: dependencies.priceFeedService,
       creditService: dependencies.creditService,
@@ -198,6 +199,20 @@ function initializeInternalServices(dependencies = {}) {
     logger.info('[InternalAPI] Transactions API service mounted to /v1/data/transactions');
   } else {
     logger.error('[InternalAPI] Failed to create Transactions API router.');
+  }
+
+  // Costs API Service:
+  try {
+    const { createCostsApi } = require('./costs/costsApi');
+    const costsApiRouter = createCostsApi(apiDependencies, logger);
+    if (costsApiRouter) {
+      v1DataRouter.use('/costs', costsApiRouter);
+      logger.info('[InternalAPI] Costs API service mounted to /v1/data/costs');
+    } else {
+      logger.error('[InternalAPI] Failed to create Costs API router.');
+    }
+  } catch (err) {
+    logger.error('[InternalAPI] Error initializing or mounting Costs API:', err);
   }
 
   // Generation Outputs API Service:
@@ -502,17 +517,6 @@ function initializeInternalServices(dependencies = {}) {
   } else {
     logger.error('[InternalAPI] Failed to create Upload API router.');
   }
-
-  // Admin Vault API
-  const createAdminVaultApi = require('./adminVaultApi');
-  const adminVaultRouter = createAdminVaultApi({
-    ...apiDependencies,
-    ethereumService: apiDependencies.ethereumService,
-    creditLedgerDb: apiDependencies.db?.creditLedgerDb,
-    vaultBalanceService: require('../../core/services/vaultBalanceService')
-  });
-  v1DataRouter.use('/admin', adminVaultRouter);
-  logger.info('[InternalAPI] Admin Vault API mounted to /v1/data/admin');
 
   // --- Global Error Handling ---
   // Catch-all for 404 Not Found on the internal API path

@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 
 // This function initializes the routes for the centralized Generation Execution API
 module.exports = function generationExecutionApi(dependencies) {
-  const { logger, db, toolRegistry, comfyUIService, openaiService, huggingfaceService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer } = dependencies;
+  const { logger, db, toolRegistry, comfyUIService, openaiService, huggingfaceService, internalApiClient, loraResolutionService, stringService, webSocketService: websocketServer, adminActivityService } = dependencies;
   const router = express.Router();
 
   // Check for essential dependencies
@@ -243,6 +243,20 @@ module.exports = function generationExecutionApi(dependencies) {
               payload: { generationId: newGeneration._id.toString(), status: 'completed', ...toolResult.data, service: tool.service, toolId: tool.toolId }
             });
           }
+
+          // --- ADMIN ACTIVITY NOTIFICATION ---
+          if (adminActivityService) {
+            adminActivityService.emitPointSpend({
+              masterAccountId,
+              points: pointsRequired,
+              serviceName: tool.service,
+              toolId: tool.toolId,
+              toolDisplayName: tool.displayName || tool.name || tool.toolId,
+              generationId: newGeneration._id,
+              costUsd: costUsd
+            });
+          }
+          // --- END ADMIN ACTIVITY NOTIFICATION ---
 
           // Build response for caller (keep legacy fields)
           const basePayload = {
