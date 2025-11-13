@@ -1,5 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
+const { retryWithBackoff } = require('./workflow/utils/RetryHandler');
+const { createEvent } = require('./workflow/utils/EventManager');
+const { validateStepIndex, validateStep, validateTool, validateRequiredInputs, validateGenerationMetadata } = require('./workflow/utils/ValidationUtils');
 
 class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
@@ -40,18 +43,10 @@ class WorkflowExecutionService {
      */
     async _executeStep(spell, stepIndex, pipelineContext, originalContext) {
         // Validate stepIndex bounds
-        if (stepIndex < 0 || stepIndex >= spell.steps.length) {
-            throw new Error(`Invalid stepIndex ${stepIndex} for spell "${spell.name}" with ${spell.steps.length} steps`);
-        }
+        validateStepIndex(stepIndex, spell.steps.length, spell.name);
         
         const step = spell.steps[stepIndex];
-        if (!step) {
-            throw new Error(`Step at index ${stepIndex} is undefined in spell "${spell.name}"`);
-        }
-        
-        if (!step.toolIdentifier) {
-            throw new Error(`Step ${step.stepId || stepIndex} in spell "${spell.name}" is missing toolIdentifier`);
-        }
+        validateStep(step, stepIndex, spell.name);
         
         // Validate tool exists before proceeding
         let tool = this.toolRegistry.findByDisplayName(step.toolIdentifier);
@@ -59,9 +54,7 @@ class WorkflowExecutionService {
             // Fallback: attempt lookup by toolId
             tool = this.toolRegistry.getToolById(step.toolIdentifier);
         }
-        if (!tool) {
-            throw new Error(`Tool with name or ID '${step.toolIdentifier}' not found in registry for step ${step.stepId || stepIndex} of spell "${spell.name}".`);
-        }
+        validateTool(tool, step.toolIdentifier, step.stepId, stepIndex, spell.name);
 
         this.logger.info(`[WorkflowExecution] Found tool for step ${step.stepId}: "${tool.displayName}". Inspecting tool object...`);
         this.logger.info(`[WorkflowExecution] Tool metadata: ${JSON.stringify(tool.metadata)}`);
@@ -71,14 +64,12 @@ class WorkflowExecutionService {
 
         // --- CRITICAL: Create event FIRST (required for initiatingEventId in generation records) ---
         // This must happen before any generation record creation, including async adapter paths
-        const eventPayload = {
-            masterAccountId: originalContext.masterAccountId,
-            eventType: 'spell_step_triggered',
-            sourcePlatform: originalContext.platform,
-            eventData: { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId }
-        };
-        const eventResponse = await this.internalApiClient.post('/internal/v1/data/events', eventPayload);
-        const eventId = eventResponse.data._id;
+        const { eventId } = await createEvent(
+            'spell_step_triggered',
+            originalContext,
+            { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId },
+            this.internalApiClient
+        );
         this.logger.info(`[WorkflowExecution] Created event ${eventId} for spell step ${stepIndex + 1}`);
 
         // --- Adapter-based execution (replaces HTTP Generation API) ---
@@ -271,22 +262,10 @@ class WorkflowExecutionService {
         }
 
         // ---- Runtime validation of required inputs ----
-        if (tool && tool.inputSchema) {
-            const missing = Object.entries(tool.inputSchema)
-                .filter(([key, def]) => {
-                    const required = def.required !== false; // default to required
-                    if (!required) return false;
-                    const val = stepInput[key];
-                    if (val === undefined || val === null) return true;
-                    if (typeof val === 'string' && val.trim() === '') return true;
-                    return false;
-                })
-                .map(([key]) => key);
-
-            if (missing.length) {
-                this.logger.warn(`[WorkflowExecution] Missing required inputs for tool '${tool.displayName}' (step ${step.stepId} of spell '${spell.name}'): ${missing.join(', ')}`);
-                // TODO: emit metric 'spell_missing_input' with tags { toolId, spellId }
-            }
+        const missing = validateRequiredInputs(tool, stepInput);
+        if (missing.length) {
+            this.logger.warn(`[WorkflowExecution] Missing required inputs for tool '${tool.displayName}' (step ${step.stepId} of spell '${spell.name}'): ${missing.join(', ')}`);
+            // TODO: emit metric 'spell_missing_input' with tags { toolId, spellId }
         }
 
         // Still support nodeOutput objects inside legacy parameterOverrides
@@ -442,32 +421,14 @@ class WorkflowExecutionService {
      */
     async continueExecution(completedGeneration) {
         // --- CRITICAL: Validate required metadata ---
-        if (!completedGeneration.metadata) {
-            this.logger.error('[WorkflowExecution] continueExecution called with generation missing metadata');
-            throw new Error('Generation record missing metadata');
+        try {
+            validateGenerationMetadata(completedGeneration);
+        } catch (error) {
+            this.logger.error(`[WorkflowExecution] continueExecution validation error: ${error.message}`);
+            throw error;
         }
         
         const { spell, stepIndex, pipelineContext, originalContext } = completedGeneration.metadata;
-        
-        if (!spell) {
-            this.logger.error('[WorkflowExecution] continueExecution called with generation missing spell in metadata');
-            throw new Error('Generation metadata missing spell definition');
-        }
-        
-        if (typeof stepIndex !== 'number' || stepIndex < 0) {
-            this.logger.error(`[WorkflowExecution] continueExecution called with invalid stepIndex: ${stepIndex}`);
-            throw new Error(`Generation metadata missing or invalid stepIndex: ${stepIndex}`);
-        }
-        
-        if (!pipelineContext || typeof pipelineContext !== 'object') {
-            this.logger.error('[WorkflowExecution] continueExecution called with generation missing pipelineContext');
-            throw new Error('Generation metadata missing pipelineContext');
-        }
-        
-        if (!originalContext || typeof originalContext !== 'object') {
-            this.logger.error('[WorkflowExecution] continueExecution called with generation missing originalContext');
-            throw new Error('Generation metadata missing originalContext');
-        }
         
         // --- CRITICAL: Check if generation failed ---
         if (completedGeneration.status === 'failed') {
@@ -549,26 +510,30 @@ class WorkflowExecutionService {
             } catch (err) {
                 this.logger.error(`[WorkflowExecution] Failed to update cast ${castId}:`, err.message);
                 // Add retry logic for transient failures
-                let retries = 3;
-                let lastError = err;
-                while (retries > 0) {
-                    try {
-                        await new Promise(r => setTimeout(r, 1000 * (4 - retries))); // Exponential backoff
-                        const costDelta = typeof completedGeneration.costUsd === 'number' ? completedGeneration.costUsd : 0;
-                        await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                            generationId: completedGeneration._id.toString(),
-                            costDeltaUsd: costDelta,
-                        });
-                        this.logger.info(`[WorkflowExecution] Successfully updated cast ${castId} after retry`);
-                        break; // Success
-                    } catch (retryErr) {
-                        lastError = retryErr;
-                        retries--;
-                        if (retries === 0) {
-                            this.logger.error(`[WorkflowExecution] Failed to update cast ${castId} after 3 retries:`, lastError.message);
-                            // Consider: emit metric or alert for manual reconciliation
+                try {
+                    await retryWithBackoff(
+                        async () => {
+                            const costDelta = typeof completedGeneration.costUsd === 'number' ? completedGeneration.costUsd : 0;
+                            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+                                generationId: completedGeneration._id.toString(),
+                                costDeltaUsd: costDelta,
+                            });
+                        },
+                        {
+                            maxAttempts: 3,
+                            baseDelay: 1000,
+                            onRetry: (error, attempt, delay) => {
+                                this.logger.debug(`[WorkflowExecution] Retrying cast update (attempt ${attempt}/${3}) after ${delay}ms`);
+                            },
+                            onFailure: (error, attempts) => {
+                                this.logger.error(`[WorkflowExecution] Failed to update cast ${castId} after ${attempts} retries:`, error.message);
+                                // Consider: emit metric or alert for manual reconciliation
+                            }
                         }
-                    }
+                    );
+                    this.logger.info(`[WorkflowExecution] Successfully updated cast ${castId} after retry`);
+                } catch (retryErr) {
+                    // All retries exhausted, error already logged by onFailure callback
                 }
             }
         }
@@ -691,24 +656,28 @@ class WorkflowExecutionService {
                 } catch (err) {
                     this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId}:`, err.message);
                     // Add retry logic for final cast update
-                    let retries = 3;
-                    let lastError = err;
-                    while (retries > 0) {
-                        try {
-                            await new Promise(r => setTimeout(r, 1000 * (4 - retries))); // Exponential backoff
-                            await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
-                                status: 'completed',
-                                costDeltaUsd: '0'
-                            });
-                            this.logger.info(`[WorkflowExecution] Successfully finalized cast ${castId} after retry`);
-                            break; // Success
-                        } catch (retryErr) {
-                            lastError = retryErr;
-                            retries--;
-                            if (retries === 0) {
-                                this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId} after 3 retries:`, lastError.message);
+                    try {
+                        await retryWithBackoff(
+                            async () => {
+                                await this.internalApiClient.put(`/internal/v1/data/spells/casts/${castId}`, {
+                                    status: 'completed',
+                                    costDeltaUsd: '0'
+                                });
+                            },
+                            {
+                                maxAttempts: 3,
+                                baseDelay: 1000,
+                                onRetry: (error, attempt, delay) => {
+                                    this.logger.debug(`[WorkflowExecution] Retrying cast finalization (attempt ${attempt}/${3}) after ${delay}ms`);
+                                },
+                                onFailure: (error, attempts) => {
+                                    this.logger.error(`[WorkflowExecution] Failed to finalize cast ${castId} after ${attempts} retries:`, error.message);
+                                }
                             }
-                        }
+                        );
+                        this.logger.info(`[WorkflowExecution] Successfully finalized cast ${castId} after retry`);
+                    } catch (retryErr) {
+                        // All retries exhausted, error already logged by onFailure callback
                     }
                 }
             }
