@@ -6,6 +6,8 @@ const { validateStepIndex, validateStep, validateTool, validateRequiredInputs, v
 const CastManager = require('./workflow/management/CastManager');
 const GenerationRecordManager = require('./workflow/management/GenerationRecordManager');
 const CostAggregator = require('./workflow/management/CostAggregator');
+const StepExecutor = require('./workflow/execution/StepExecutor');
+const SpellExecutor = require('./workflow/execution/SpellExecutor');
 
 class WorkflowExecutionService {
     constructor({ logger, toolRegistry, comfyUIService, internalApiClient, db, workflowsService }) {
@@ -20,6 +22,21 @@ class WorkflowExecutionService {
         this.castManager = new CastManager({ logger, internalApiClient });
         this.generationRecordManager = new GenerationRecordManager({ logger, internalApiClient });
         this.costAggregator = new CostAggregator({ logger, internalApiClient });
+        
+        // Initialize execution services
+        const adapterRegistry = require('./adapterRegistry');
+        this.stepExecutor = new StepExecutor({
+            logger,
+            toolRegistry,
+            workflowsService,
+            internalApiClient,
+            adapterRegistry,
+            generationRecordManager: this.generationRecordManager
+        });
+        this.spellExecutor = new SpellExecutor({
+            logger,
+            stepExecutor: this.stepExecutor
+        });
     }
 
     /**
@@ -30,394 +47,20 @@ class WorkflowExecutionService {
      * @param {object} context - The initial execution context from the /cast command.
      */
     async execute(spell, context) {
-        this.logger.info(`[WorkflowExecution] Starting execution for spell: "${spell.name}" (ID: ${spell._id})`);
-        
-        // Normalize the 'prompt' parameter to 'input_prompt' for consistency.
-        if (context.parameterOverrides && context.parameterOverrides.prompt && !context.parameterOverrides.input_prompt) {
-            this.logger.info('[WorkflowExecution] Adding alias "input_prompt" for provided "prompt" input.');
-            context.parameterOverrides.input_prompt = context.parameterOverrides.prompt;
-            // Keep original 'prompt' key so tools that expect it still work.
-        }
-
-        // The initial pipeline context starts with the global parameters from the /cast command.
-        const initialPipelineContext = { ...context.parameterOverrides };
-        await this._executeStep(spell, 0, initialPipelineContext, context);
+        // Delegate to SpellExecutor
+        await this.spellExecutor.execute(spell, context);
     }
 
     /**
      * Executes a single step of a spell, creating a generation record that will be
      * picked up by the NotificationDispatcher.
      * @private
+     * NOTE: This method is kept for backward compatibility with continueExecution.
+     * It delegates to StepExecutor which uses Execution Strategy pattern.
      */
     async _executeStep(spell, stepIndex, pipelineContext, originalContext) {
-        // Validate stepIndex bounds
-        validateStepIndex(stepIndex, spell.steps.length, spell.name);
-        
-        const step = spell.steps[stepIndex];
-        validateStep(step, stepIndex, spell.name);
-        
-        // Validate tool exists before proceeding
-        let tool = this.toolRegistry.findByDisplayName(step.toolIdentifier);
-        if (!tool) {
-            // Fallback: attempt lookup by toolId
-            tool = this.toolRegistry.getToolById(step.toolIdentifier);
-        }
-        validateTool(tool, step.toolIdentifier, step.stepId, stepIndex, spell.name);
-
-        this.logger.info(`[WorkflowExecution] Found tool for step ${step.stepId}: "${tool.displayName}". Inspecting tool object...`);
-        this.logger.info(`[WorkflowExecution] Tool metadata: ${JSON.stringify(tool.metadata)}`);
-        this.logger.info(`[WorkflowExecution] Tool service: ${tool.service}`);
-
-        this.logger.info(`[WorkflowExecution] Executing Step ${stepIndex + 1}/${spell.steps.length}: ${tool.displayName}`);
-
-        // --- CRITICAL: Create event FIRST (required for initiatingEventId in generation records) ---
-        // This must happen before any generation record creation, including async adapter paths
-        const { eventId } = await createEvent(
-            'spell_step_triggered',
-            originalContext,
-            { spellId: spell._id, stepId: step.stepId, toolId: tool.toolId },
-            this.internalApiClient
-        );
-        this.logger.info(`[WorkflowExecution] Created event ${eventId} for spell step ${stepIndex + 1}`);
-
-        // --- Adapter-based execution (replaces HTTP Generation API) ---
-        const adapterRegistry = require('./adapterRegistry');
-        const adapter = adapterRegistry.get(tool.service);
-        if (adapter) {
-            try {
-                // CRITICAL: For immediate tools, skip adapter path entirely - let centralized execution endpoint handle it
-                // This ensures immediate tools (like ChatGPT) use execute() via the centralized endpoint, not startJob()
-                if (tool.deliveryMode === 'immediate') {
-                    this.logger.info(`[WorkflowExecution] Tool ${tool.toolId} is immediate - skipping adapter path, using centralized execution endpoint`);
-                    // Fall through to centralized execution endpoint below
-                } else if (typeof adapter.startJob === 'function') {
-                    // CRITICAL: Create generation record FIRST with spell metadata before starting async job
-                    // Webhook processor needs this record to continue spell execution
-                    const { ObjectId } = require('mongodb');
-                    const generationParams = {
-                        masterAccountId: new ObjectId(originalContext.masterAccountId),
-                        initiatingEventId: new ObjectId(eventId), // CRITICAL: Required field - use event created above
-                        serviceName: tool.service,
-                        toolId: tool.toolId,
-                        toolDisplayName: tool.displayName || tool.name || tool.toolId,
-                        requestPayload: pipelineContext,
-                        status: 'processing',
-                        deliveryStatus: 'pending',
-                        deliveryStrategy: 'spell_step',
-                        notificationPlatform: originalContext.platform || 'none',
-                        metadata: {
-                            isSpell: true,
-                            castId: originalContext.castId || null,
-                            spell: typeof spell.toObject === 'function' ? spell.toObject() : spell,
-                            stepIndex,
-                            pipelineContext,
-                            originalContext,
-                            run_id: null, // Will be set after startJob (use snake_case to match webhook processor)
-                        }
-                    };
-                    
-                    const { generationId } = await this.generationRecordManager.createGenerationRecord(generationParams);
-                    this.logger.info(`[WorkflowExecution] Created generation record ${generationId} for async adapter job`);
-                    
-                    // Now start the async job
-                    const runInfo = await adapter.startJob(pipelineContext);
-                    
-                    // Update generation record with runId so webhook processor can find it
-                    // NOTE: Webhook processor queries by metadata.run_id (snake_case), so use that format
-                    try {
-                        await this.generationRecordManager.updateGenerationRecord(generationId, {
-                            'metadata.run_id': runInfo.runId  // Use snake_case to match webhook processor query
-                        });
-                        this.logger.info(`[WorkflowExecution] Updated generation ${generationId} with run_id ${runInfo.runId}`);
-                    } catch (updateErr) {
-                        this.logger.error(`[WorkflowExecution] Failed to update generation ${generationId} with run_id:`, updateErr.message);
-                        // Don't throw - webhook processor can still find by run_id in metadata
-                    }
-                    
-                    // --- CRITICAL: Start background poller for async adapter jobs ---
-                    // This ensures the generation record is updated and spell execution continues when job completes
-                    (async () => {
-                        try {
-                            let attempts = 0;
-                            const maxAttempts = 60; // 5 min at 5s interval (same as generationExecutionApi)
-                            while (attempts < maxAttempts) {
-                                await new Promise(r => setTimeout(r, 5000));
-                                const pollRes = await adapter.pollJob(runInfo.runId);
-                                
-                                if (pollRes.status === 'succeeded' || pollRes.status === 'failed' || pollRes.status === 'completed') {
-                                    const finalStatus = (pollRes.status === 'failed') ? 'failed' : 'completed';
-                                    let finalData = pollRes.data;
-                                    
-                                    // Normalize text data format
-                                    if (pollRes.type === 'text' && finalData) {
-                                        if (typeof finalData.text === 'string') {
-                                            finalData = { text: [finalData.text] };
-                                        } else if (typeof finalData.description === 'string') {
-                                            finalData = { text: [finalData.description] };
-                                        }
-                                    }
-                                    
-                                    // Update generation record with final result
-                                    const updatePayload = {
-                                        status: finalStatus,
-                                        responsePayload: [{ type: pollRes.type, data: finalData }],
-                                        ...(pollRes.costUsd && { costUsd: pollRes.costUsd })
-                                    };
-                                    
-                                    await this.generationRecordManager.updateGenerationRecord(generationId, updatePayload);
-                                    this.logger.info(`[WorkflowExecution] Updated generation ${generationId} with final status: ${finalStatus}`);
-                                    
-                                    // Fetch updated record and emit event to trigger spell continuation
-                                    const notificationEvents = require('../events/notificationEvents');
-                                    const updatedRecord = await this.generationRecordManager.getGenerationRecord(generationId);
-                                    
-                                    if (updatedRecord) {
-                                        // Ensure deliveryStrategy is set for NotificationDispatcher routing
-                                        const recordToEmit = {
-                                            ...updatedRecord,
-                                            deliveryStrategy: 'spell_step'
-                                        };
-                                        notificationEvents.emit('generationUpdated', recordToEmit);
-                                        this.logger.info(`[WorkflowExecution] Emitted generationUpdated for completed adapter job ${generationId}`);
-                                    }
-                                    
-                                    break; // Job completed, exit polling loop
-                                }
-                                
-                                attempts++;
-                            }
-                            
-                            if (attempts >= maxAttempts) {
-                                this.logger.error(`[WorkflowExecution] Adapter job ${runInfo.runId} did not complete within ${maxAttempts * 5} seconds`);
-                                // Update generation record to failed status
-                                await this.generationRecordManager.updateGenerationRecord(generationId, {
-                                    status: 'failed',
-                                    deliveryError: 'Job did not complete within timeout period'
-                                });
-                            }
-                        } catch (pollErr) {
-                            this.logger.error(`[WorkflowExecution] Background poller error for adapter job ${runInfo.runId}:`, pollErr.message);
-                            // Update generation record to failed status
-                            try {
-                                await this.generationRecordManager.updateGenerationRecord(generationId, {
-                                    status: 'failed',
-                                    deliveryError: `Polling error: ${pollErr.message}`
-                                });
-                            } catch (updateErr) {
-                                this.logger.error(`[WorkflowExecution] Failed to update generation ${generationId} status after polling error:`, updateErr.message);
-                            }
-                        }
-                    })();
-                    
-                    this.logger.info(`[WorkflowExecution] Started async job via adapter for step ${step.stepId}. GenID: ${generationId}, RunId: ${runInfo.runId}`);
-                    return;
-                }
-            } catch (adaptErr) {
-                this.logger.error(`[WorkflowExecution] Adapter execution error for step ${step.stepId}:`, adaptErr);
-                throw adaptErr;
-            }
-        }
-
-        // --- NEW: resolve parameterMappings (preferred over parameterOverrides) ---
-        const resolvedParamInputs = {};
-        if (step.parameterMappings) {
-            Object.entries(step.parameterMappings).forEach(([paramKey, mapping]) => {
-                if (!mapping || typeof mapping !== 'object') return;
-                switch (mapping.type) {
-                    case 'static': {
-                        const v = mapping.value;
-                        const isEmptyString = typeof v === 'string' && v.trim() === '';
-                        if (v !== undefined && v !== null && !isEmptyString) {
-                            resolvedParamInputs[paramKey] = v;
-                        }
-                        break;
-                    }
-                    case 'nodeOutput': {
-                        const val =
-                            pipelineContext[mapping.outputKey] ||
-                            pipelineContext[`${mapping.nodeId}_${mapping.outputKey}`] ||
-                            pipelineContext[mapping.paramKey];
-                        if (val !== undefined) resolvedParamInputs[paramKey] = val;
-                        break;
-                    }
-                    default:
-                        // Unsupported mapping type – ignore silently for now
-                        break;
-                }
-            });
-        }
-
-        // Merge with precedence:
-        // 1) existing context from previous steps / user inputs
-        // 2) resolved mappings for this step (explicit wiring)
-        // 3) legacy parameterOverrides (highest priority)
-        let stepInput = { ...pipelineContext, ...resolvedParamInputs, ...step.parameterOverrides };
-
-        // ---- Schema-based pruning ----
-        if (tool && tool.inputSchema && Object.keys(tool.inputSchema).length > 0) {
-            const allowed = new Set(Object.keys(tool.inputSchema));
-            const pruned = {};
-            Object.entries(stepInput).forEach(([k, v]) => {
-                if (allowed.has(k)) pruned[k] = v;
-            });
-            const removed = Object.keys(stepInput).filter(k => !allowed.has(k));
-            if (removed.length) {
-                this.logger.debug(`[WorkflowExecution] Pruned unmapped inputs for ${tool.displayName}: ${removed.join(', ')}`);
-            }
-            stepInput = pruned;
-        }
-
-        // ---- Runtime validation of required inputs ----
-        const missing = validateRequiredInputs(tool, stepInput);
-        if (missing.length) {
-            this.logger.warn(`[WorkflowExecution] Missing required inputs for tool '${tool.displayName}' (step ${step.stepId} of spell '${spell.name}'): ${missing.join(', ')}`);
-            // TODO: emit metric 'spell_missing_input' with tags { toolId, spellId }
-        }
-
-        // Still support nodeOutput objects inside legacy parameterOverrides
-        Object.entries(step.parameterOverrides || {}).forEach(([key, val]) => {
-            if (val && val.type === 'nodeOutput') {
-                const mappedVal =
-                    pipelineContext[val.outputKey] ||
-                    pipelineContext[val.paramKey] ||
-                    pipelineContext[`${val.nodeId}_${val.outputKey}`];
-                if (mappedVal !== undefined) {
-                    stepInput[key] = mappedVal;
-                }
-            }
-        });
-
-        // Prepare tool run payload (may include LoRA resolution, etc.)
-        const { inputs: finalInputs, loraResolutionData } = await this.workflowsService.prepareToolRunPayload(
-            tool.toolId,
-            stepInput,
-            originalContext.masterAccountId,
-            { internal: { client: this.internalApiClient } }
-        );
-
-        // Event already created above (before adapter check) - reuse eventId
-
-        // --- Refactored: Use centralized execution endpoint ---
-        const executionPayload = {
-            toolId: tool.toolId,
-            inputs: finalInputs,
-            user: {
-                masterAccountId: originalContext.masterAccountId,
-                platform: originalContext.platform,
-                platformId: originalContext.platformId,
-                platformContext: originalContext.platformContext || {},
-            },
-            eventId: eventId,
-            metadata: {
-                isSpell: true,
-                castId: originalContext.castId || null,
-                spell: typeof spell.toObject === 'function' ? spell.toObject() : spell,
-                stepIndex,
-                pipelineContext,
-                originalContext,
-                loraResolutionData,
-                notificationContext: {
-                    type: 'spell_step_completion',
-                    spellId: spell._id,
-                    stepIndex,
-                },
-                // --- Cook integration ---
-                ...(originalContext.collectionId ? { collectionId: originalContext.collectionId } : {}),
-                ...(originalContext.cookId ? { cookId: originalContext.cookId } : {}),
-                ...(originalContext.jobId ? { jobId: originalContext.jobId } : {}),
-                ...(originalContext.pieceIndex!==undefined ? { pieceIndex: originalContext.pieceIndex } : {}),
-            },
-        };
-
-        let executionResponse;
-        try {
-            executionResponse = await this.internalApiClient.post('/internal/v1/data/execute', executionPayload);
-            this.logger.info(`[WorkflowExecution] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
-        } catch (err) {
-            // For immediate tools, timeout errors are acceptable - the generation continues in background
-            // and event-driven continuation will handle completion. Don't fail the spell on timeout.
-            if (tool.deliveryMode === 'immediate' && (err.message?.includes('timeout') || err.message?.includes('exceeded'))) {
-                this.logger.warn(`[WorkflowExecution] Timeout submitting step ${stepIndex + 1} to execution endpoint (immediate tool). Generation continues in background, event-driven continuation will handle completion. Error: ${err.message}`);
-                // Return early - don't throw. The centralized endpoint will emit generationUpdated event when it completes.
-                return;
-            }
-            this.logger.error(`[WorkflowExecution] Error submitting step ${stepIndex + 1} to execution endpoint: ${err.message}`);
-            throw err;
-        }
-
-        // Handle immediate delivery tools (e.g., LLMs)
-        // CRITICAL: For spell steps, we MUST continue execution even for immediate tools
-        if (tool.deliveryMode === 'immediate' && executionResponse.data && executionResponse.data.response) {
-            this.logger.info(`[WorkflowExecution] Immediate tool response for step ${stepIndex + 1}: ${JSON.stringify(executionResponse.data.response).substring(0,200)}...`);
-
-            // Validate generationId exists (required for spell continuation)
-            if (!executionResponse.data.generationId) {
-                this.logger.error('[WorkflowExecution] Immediate tool returned no generationId, cannot continue spell');
-                throw new Error('Immediate tool execution did not return generationId');
-            }
-
-            // --- CRITICAL: Update generation record with responsePayload ---
-            // Note: deliveryStrategy is already set by centralized execution endpoint
-            try {
-                await this.generationRecordManager.updateGenerationRecord(executionResponse.data.generationId, {
-                    responsePayload: { result: executionResponse.data.response },
-                    status: 'completed' // Ensure status is set
-                });
-                this.logger.info(`[WorkflowExecution] Updated generation ${executionResponse.data.generationId} with responsePayload`);
-            } catch(err){
-                this.logger.error('[WorkflowExecution] Failed to update generation with immediate response:', err.message);
-                // Don't throw - centralized endpoint already emitted event, continuation should still work
-            }
-
-            // Send generalized tool-response via WebSocket
-            try {
-                const websocketService = require('./websocket/server');
-                // Extract castId from metadata or execution response
-                const castId = originalContext.castId || executionResponse.data.castId || null;
-                const spellId = (typeof spell.toObject === 'function' ? spell.toObject() : spell)?._id;
-                this.logger.info(`[WorkflowExecution] WebSocket tool-response - originalContext.castId: ${originalContext.castId}, executionResponse.data.castId: ${executionResponse.data.castId}, final castId: ${castId}`);
-                
-                // Send progress indicator message first so frontend can locate the window
-                websocketService.sendToUser(
-                    originalContext.masterAccountId,
-                    {
-                        type: 'generationProgress',
-                        payload: {
-                            generationId: executionResponse.data.generationId,
-                            status: 'running',
-                            progress: 0.5,
-                            liveStatus: 'processing',
-                            toolId: tool.toolId,
-                            spellId: spellId,
-                            castId: castId
-                        }
-                    }
-                );
-                
-                // Then send the actual response
-                websocketService.sendToUser(
-                    originalContext.masterAccountId,
-                    {
-                        type: 'tool-response',
-                        payload: {
-                            toolId: tool.toolId,
-                            output: executionResponse.data.response,
-                            requestId: originalContext.requestId || null,
-                            castId: castId
-                        }
-                    }
-                );
-            } catch (err) {
-                this.logger.error(`[WorkflowExecution] Failed to send tool-response via WebSocket: ${err.message}`);
-            }
-
-            // NOTE: Centralized execution endpoint already emits generationUpdated event with deliveryStrategy='spell_step'
-            // NotificationDispatcher will handle spell continuation automatically
-            // No need to emit again or call continueExecution directly - that would cause duplicate execution
-            
-            return executionResponse.data.response;
-        }
-        // For webhook tools, the NotificationDispatcher will handle the rest.
+        // Delegate to StepExecutor - uses Execution Strategy pattern (no conditionals!)
+        await this.stepExecutor.executeStep(spell, stepIndex, pipelineContext, originalContext);
     }
 
     /**
@@ -443,10 +86,10 @@ class WorkflowExecutionService {
             // Update cast status to failed
             if (completedGeneration.metadata?.castId) {
                 const castId = completedGeneration.metadata.castId;
-                const failureReason = completedGeneration.metadata?.error?.message || 
-                                    completedGeneration.metadata?.errorDetails?.message ||
-                                    completedGeneration.deliveryError ||
-                                    'Step execution failed';
+                    const failureReason = completedGeneration.metadata?.error?.message || 
+                                        completedGeneration.metadata?.errorDetails?.message ||
+                                        completedGeneration.deliveryError ||
+                                        'Step execution failed';
                 await this.castManager.updateCastStatusToFailed(castId, failureReason);
             }
             
@@ -466,15 +109,15 @@ class WorkflowExecutionService {
                 stepIndex
             );
             
-            if (alreadyProcessed) {
+                    if (alreadyProcessed) {
                 this.logger.warn(`[WorkflowExecution] Step ${stepIndex + 1} of spell "${spell.name}" has already been processed (generation ${completedGeneration._id} already in cast). Skipping duplicate execution.`);
-                return; // Already processed, skip
-            }
-            
+                        return; // Already processed, skip
+                    }
+                    
             if (nextStepAlreadyExecuted) {
-                const nextStepIndex = stepIndex + 1;
+                    const nextStepIndex = stepIndex + 1;
                 this.logger.warn(`[WorkflowExecution] Step ${nextStepIndex + 1} of spell "${spell.name}" appears to have already been executed. Skipping duplicate execution.`);
-                return; // Already executed, skip
+                        return; // Already executed, skip
             }
         }
         
@@ -581,8 +224,8 @@ class WorkflowExecutionService {
             if (castId) {
                 const isCompleted = await this.castManager.checkCastStatus(castId);
                 if (isCompleted) {
-                    this.logger.warn(`[WorkflowExecution] Cast ${castId} is already completed. Skipping duplicate finalization.`);
-                    return; // Already finalized, skip
+                        this.logger.warn(`[WorkflowExecution] Cast ${castId} is already completed. Skipping duplicate finalization.`);
+                        return; // Already finalized, skip
                 }
             }
             

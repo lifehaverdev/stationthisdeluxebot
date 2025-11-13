@@ -1,0 +1,181 @@
+/**
+ * ImmediateStrategy - Execution strategy for immediate tools (ChatGPT, String Primitive)
+ * 
+ * Handles tools that return results immediately via the centralized execution endpoint.
+ */
+
+const ExecutionStrategy = require('./ExecutionStrategy');
+
+class ImmediateStrategy extends ExecutionStrategy {
+    constructor({ logger }) {
+        super({ type: 'immediate', logger });
+    }
+
+    /**
+     * Executes immediate tool via centralized execution endpoint
+     */
+    async execute(inputs, executionContext, dependencies) {
+        const { tool, spell, stepIndex, originalContext, loraResolutionData } = executionContext;
+        const { internalApiClient, eventId } = dependencies;
+
+        this.logger.info(`[ImmediateStrategy] Executing immediate tool ${tool.toolId}`);
+
+        const executionPayload = {
+            toolId: tool.toolId,
+            inputs,
+            user: {
+                masterAccountId: originalContext.masterAccountId,
+                platform: originalContext.platform,
+                platformId: originalContext.platformId,
+                platformContext: originalContext.platformContext || {},
+            },
+            eventId: eventId,
+            metadata: {
+                isSpell: true,
+                castId: originalContext.castId || null,
+                spell: typeof spell.toObject === 'function' ? spell.toObject() : spell,
+                stepIndex,
+                pipelineContext: executionContext.pipelineContext,
+                originalContext,
+                loraResolutionData,
+                notificationContext: {
+                    type: 'spell_step_completion',
+                    spellId: spell._id,
+                    stepIndex,
+                },
+                // Cook integration
+                ...(originalContext.collectionId ? { collectionId: originalContext.collectionId } : {}),
+                ...(originalContext.cookId ? { cookId: originalContext.cookId } : {}),
+                ...(originalContext.jobId ? { jobId: originalContext.jobId } : {}),
+                ...(originalContext.pieceIndex !== undefined ? { pieceIndex: originalContext.pieceIndex } : {}),
+            },
+        };
+
+        try {
+            const executionResponse = await internalApiClient.post('/internal/v1/data/execute', executionPayload);
+            this.logger.info(`[ImmediateStrategy] Step ${stepIndex + 1} submitted via centralized execution endpoint. GenID: ${executionResponse.data.generationId}, RunID: ${executionResponse.data.runId}`);
+
+            return {
+                generationId: executionResponse.data.generationId,
+                response: executionResponse.data.response,
+                status: executionResponse.data.response ? 'completed' : 'processing',
+                runId: executionResponse.data.runId
+            };
+        } catch (err) {
+            // For immediate tools, timeout errors are acceptable - generation continues in background
+            if (err.message?.includes('timeout') || err.message?.includes('exceeded')) {
+                this.logger.warn(`[ImmediateStrategy] Timeout submitting step ${stepIndex + 1} to execution endpoint. Generation continues in background, event-driven continuation will handle completion. Error: ${err.message}`);
+                return {
+                    status: 'processing',
+                    timeoutHandled: true
+                };
+            }
+            throw err;
+        }
+    }
+
+    /**
+     * Handles immediate tool response
+     */
+    async handleResponse(executionResponse, executionContext, dependencies) {
+        const { tool, stepIndex, originalContext } = executionContext;
+        const { generationRecordManager, internalApiClient } = dependencies;
+
+        if (!executionResponse.response) {
+            return; // No response to handle
+        }
+
+        this.logger.info(`[ImmediateStrategy] Handling immediate tool response for step ${stepIndex + 1}`);
+
+        // Validate generationId exists (required for spell continuation)
+        if (!executionResponse.generationId) {
+            this.logger.error('[ImmediateStrategy] Immediate tool returned no generationId, cannot continue spell');
+            throw new Error('Immediate tool execution did not return generationId');
+        }
+
+        // Update generation record with responsePayload
+        try {
+            await generationRecordManager.updateGenerationRecord(executionResponse.generationId, {
+                responsePayload: { result: executionResponse.response },
+                status: 'completed'
+            });
+            this.logger.info(`[ImmediateStrategy] Updated generation ${executionResponse.generationId} with responsePayload`);
+        } catch (err) {
+            this.logger.error('[ImmediateStrategy] Failed to update generation with immediate response:', err.message);
+            // Don't throw - centralized endpoint already emitted event, continuation should still work
+        }
+
+        // Send WebSocket notifications
+        try {
+            const websocketService = require('../../websocket/server');
+            const castId = originalContext.castId || null;
+            const spellId = executionContext.spell._id;
+
+            // Send progress indicator
+            websocketService.sendToUser(
+                originalContext.masterAccountId,
+                {
+                    type: 'generationProgress',
+                    payload: {
+                        generationId: executionResponse.generationId,
+                        status: 'running',
+                        progress: 0.5,
+                        liveStatus: 'processing',
+                        toolId: tool.toolId,
+                        spellId: spellId,
+                        castId: castId
+                    }
+                }
+            );
+
+            // Send tool response
+            websocketService.sendToUser(
+                originalContext.masterAccountId,
+                {
+                    type: 'tool-response',
+                    payload: {
+                        toolId: tool.toolId,
+                        output: executionResponse.response,
+                        requestId: originalContext.requestId || null,
+                        castId: castId
+                    }
+                }
+            );
+        } catch (err) {
+            this.logger.error(`[ImmediateStrategy] Failed to send tool-response via WebSocket: ${err.message}`);
+        }
+
+        // NOTE: Centralized execution endpoint already emits generationUpdated event with deliveryStrategy='spell_step'
+        // NotificationDispatcher will handle spell continuation automatically
+        return executionResponse.response;
+    }
+
+    /**
+     * Normalizes immediate tool output
+     */
+    normalizeOutput(rawOutput) {
+        // ChatGPT returns text directly
+        if (typeof rawOutput === 'string') {
+            return { text: [rawOutput] };
+        }
+        if (rawOutput?.result) {
+            return { text: [rawOutput.result] };
+        }
+        return rawOutput;
+    }
+
+    /**
+     * Handles errors for immediate tools
+     */
+    async handleError(error, executionContext, dependencies) {
+        // For immediate tools, timeout errors are acceptable
+        if (error.message?.includes('timeout') || error.message?.includes('exceeded')) {
+            // Generation continues in background, event-driven continuation handles it
+            return { handled: true, shouldRetry: false };
+        }
+        return { handled: false, shouldRetry: true };
+    }
+}
+
+module.exports = ImmediateStrategy;
+

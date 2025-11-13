@@ -23,15 +23,21 @@ src/core/services/workflow/
 ├── WorkflowExecutionService.js          # Main facade (~100 lines)
 ├── execution/
 │   ├── SpellExecutor.js                 # (~150 lines)
-│   ├── StepExecutor.js                  # (~200 lines)
-│   └── ParameterResolver.js             # (~100 lines)
+│   ├── StepExecutor.js                  # (~150 lines) ⭐ Much smaller - no conditionals!
+│   ├── ParameterResolver.js             # (~100 lines)
+│   └── strategies/                       # ⭐ NEW - Execution strategies
+│       ├── ExecutionStrategy.js        # Base interface (~50 lines)
+│       ├── ImmediateStrategy.js        # (~120 lines)
+│       ├── AsyncAdapterStrategy.js     # (~150 lines)
+│       ├── WebhookStrategy.js          # (~100 lines)
+│       └── StrategyFactory.js          # (~80 lines)
 ├── continuation/
 │   ├── StepContinuator.js               # (~150 lines)
-│   ├── OutputProcessor.js                # (~120 lines)
-│   └── PipelineContextBuilder.js         # (~80 lines)
+│   ├── OutputProcessor.js               # (~120 lines)
+│   └── PipelineContextBuilder.js        # (~80 lines)
 ├── management/
 │   ├── CastManager.js                   # (~150 lines)
-│   ├── GenerationRecordManager.js        # (~120 lines)
+│   ├── GenerationRecordManager.js       # (~120 lines)
 │   └── CostAggregator.js                # (~80 lines)
 ├── adapters/
 │   ├── AdapterCoordinator.js            # (~150 lines)
@@ -43,6 +49,8 @@ src/core/services/workflow/
     ├── RetryHandler.js                  # (~80 lines)
     └── ValidationUtils.js               # (~60 lines)
 ```
+
+**Key Improvement**: Execution strategies move service-specific logic out of `StepExecutor`, making it much cleaner and eliminating the messy conditionals.
 
 ## Setup Instructions
 
@@ -56,6 +64,7 @@ Read and understand:
 - `docs/WORKFLOW_EXECUTION_SERVICE_REFACTOR_IMPACT_ANALYSIS.md`
 - `docs/WORKFLOW_EXECUTION_SERVICE_REFACTOR_DEPENDENCY_GRAPH.md`
 - `docs/WORKFLOW_EXECUTION_SERVICE_REFACTOR_SUMMARY.md`
+- `docs/TOOL_EXECUTION_STRATEGY_ENRICHMENT.md` ⭐ **CRITICAL** - Explains how to move service-specific logic to tool definitions
 
 ### 3. Review Current Implementation
 - Read `src/core/services/WorkflowExecutionService.js` thoroughly
@@ -143,7 +152,7 @@ Read and understand:
 
 ### Phase 3: Extract Execution Services (MEDIUM RISK)
 
-**Goal**: Extract spell and step execution logic.
+**Goal**: Extract spell and step execution logic. **CRITICAL**: Implement Execution Strategy pattern to eliminate service-specific conditionals.
 
 **Tasks**:
 1. Create `src/core/services/workflow/execution/` directory
@@ -152,29 +161,58 @@ Read and understand:
    - Methods: `resolveMappings()`, `pruneInputs()`, `validateRequiredInputs()`
    - Uses: `ValidationUtils`
    - Pure functions where possible
-3. Create `StepExecutor.js`:
+3. **Create Execution Strategy System** (NEW - See `docs/TOOL_EXECUTION_STRATEGY_ENRICHMENT.md`):
+   - Create `execution/strategies/` subdirectory
+   - Create `ExecutionStrategy.js` - Base interface/class defining strategy contract
+   - Create `ImmediateStrategy.js` - For immediate tools (ChatGPT, String Primitive)
+     - Handles immediate execution via centralized endpoint
+     - Handles WebSocket notifications
+     - Handles timeout errors gracefully
+   - Create `AsyncAdapterStrategy.js` - For async adapter tools (HuggingFace)
+     - Creates generation record first
+     - Starts async job via adapter
+     - Sets up polling mechanism
+     - Normalizes output format
+   - Create `WebhookStrategy.js` - For webhook tools (ComfyUI)
+     - Creates generation record with run_id
+     - Starts job via adapter
+     - Relies on webhook for completion
+   - Create `StrategyFactory.js` - Creates default strategies for tools without explicit strategies
+     - `createDefaultStrategy(tool)` - Analyzes tool properties and creates appropriate strategy
+     - Falls back to ImmediateStrategy or AsyncAdapterStrategy based on `deliveryMode` and adapter capabilities
+4. Create `StepExecutor.js`:
    - Extract individual step execution logic
    - Method: `executeStep(spell, stepIndex, pipelineContext, originalContext, dependencies)`
-   - Dependencies: `{ logger, toolRegistry, workflowsService, internalApiClient, adapterRegistry, ... }`
-   - Uses: `ParameterResolver`, `AdapterCoordinator`, `GenerationRecordManager`, `EventManager`
-4. Create `SpellExecutor.js`:
+   - **CRITICAL**: Use Execution Strategy pattern - NO service-specific conditionals
+   - Flow: `tool.executionStrategy || strategyFactory.createDefaultStrategy(tool)` → `strategy.execute()`
+   - Dependencies: `{ logger, toolRegistry, workflowsService, internalApiClient, adapterRegistry, strategyFactory, ... }`
+   - Uses: `ParameterResolver`, `StrategyFactory`, `GenerationRecordManager`, `EventManager`
+   - **Remove all**: `if (tool.deliveryMode === 'immediate')`, `if (typeof adapter.startJob === 'function')`, etc.
+5. Create `SpellExecutor.js`:
    - Extract spell-level execution orchestration
    - Method: `execute(spell, context, dependencies)`
    - Uses: `StepExecutor`, `ParameterResolver`
    - Handles context normalization
-5. Update `WorkflowExecutionService.js` to use new executors
-6. Run comprehensive tests (all tool types, adapters)
+6. Update `WorkflowExecutionService.js` to use new executors
+7. Run comprehensive tests (all tool types, adapters)
 
 **Success Criteria**:
 - ✅ All existing tests pass
 - ✅ All tool types execute correctly
 - ✅ Adapter integration works
 - ✅ Parameter resolution works correctly
+- ✅ **Execution Strategy pattern implemented** - StepExecutor has NO service-specific conditionals
+- ✅ **Code is cleaner** - Single execution path: `strategy.execute()`
 
 **Files to Create**:
 - `src/core/services/workflow/execution/ParameterResolver.js`
 - `src/core/services/workflow/execution/StepExecutor.js`
 - `src/core/services/workflow/execution/SpellExecutor.js`
+- `src/core/services/workflow/execution/strategies/ExecutionStrategy.js` (base interface)
+- `src/core/services/workflow/execution/strategies/ImmediateStrategy.js`
+- `src/core/services/workflow/execution/strategies/AsyncAdapterStrategy.js`
+- `src/core/services/workflow/execution/strategies/WebhookStrategy.js`
+- `src/core/services/workflow/execution/strategies/StrategyFactory.js`
 
 **Files to Modify**:
 - `src/core/services/WorkflowExecutionService.js`
