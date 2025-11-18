@@ -129,7 +129,27 @@ async function initializeServices(options = {}) {
       
       // --- MULTICHAIN INITIALISATION ---
       const { RPC_ENV_VARS, getRpcUrl, getFoundationAddress, getCharterBeaconAddress } = require('./alchemy/foundationConfig');
-      const targetChains = Object.keys(contracts.foundation.addresses).filter(cid => contracts.foundation.addresses[cid]);
+      // Get unique chainIds - normalize 'mainnet' -> '1', etc. to avoid duplicates
+      const CHAIN_NAME_TO_ID = {
+        'mainnet': '1',
+        'ethereum': '1',
+        'sepolia': '11155111',
+        'arbitrum': '42161',
+        'base': '8453',
+      };
+      const normalizeChainId = (cid) => CHAIN_NAME_TO_ID[String(cid).toLowerCase()] || String(cid);
+      const chainIdSet = new Set();
+      const targetChains = Object.keys(contracts.foundation.addresses)
+        .filter(cid => contracts.foundation.addresses[cid])
+        .map(cid => {
+          const normalized = normalizeChainId(cid);
+          if (!chainIdSet.has(normalized)) {
+            chainIdSet.add(normalized);
+            return normalized;
+          }
+          return null;
+        })
+        .filter(cid => cid !== null);
 
       priceFeedService = new PriceFeedService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, logger);
       nftPriceService = new NftPriceService({ alchemyApiKey: process.env.ALCHEMY_SECRET }, { priceFeedService }, logger);

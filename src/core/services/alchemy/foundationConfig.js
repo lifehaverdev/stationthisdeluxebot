@@ -45,18 +45,31 @@ const RPC_ENV_VARS = {
   '8453': 'BASE_RPC_URL',
 };
 
+// Map human-readable chain names to chainIds
+const CHAIN_NAME_TO_ID = {
+  'mainnet': '1',
+  'ethereum': '1',
+  'sepolia': '11155111',
+  'arbitrum': '42161',
+  'base': '8453',
+};
+
 function getRpcEnvVar(chainId) {
-  return RPC_ENV_VARS[String(chainId)] || null;
+  // Normalize chainId: handle both numeric strings and human-readable names
+  const normalizedChainId = CHAIN_NAME_TO_ID[String(chainId).toLowerCase()] || String(chainId);
+  return RPC_ENV_VARS[normalizedChainId] || null;
 }
 
 function getRpcUrl(chainId) {
-  const envVar = getRpcEnvVar(chainId);
+  // Normalize chainId: handle both numeric strings and human-readable names
+  const normalizedChainId = CHAIN_NAME_TO_ID[String(chainId).toLowerCase()] || String(chainId);
+  const envVar = getRpcEnvVar(normalizedChainId);
   if (!envVar) {
-    throw new Error(`No RPC ENV var configured for chainId=${chainId}`);
+    throw new Error(`No RPC ENV var configured for chainId=${chainId} (normalized: ${normalizedChainId})`);
   }
   const url = process.env[envVar];
   if (!url) {
-    throw new Error(`Environment variable ${envVar} is not set for chainId=${chainId}`);
+    throw new Error(`Environment variable ${envVar} is not set for chainId=${chainId} (normalized: ${normalizedChainId})`);
   }
   return url;
 }

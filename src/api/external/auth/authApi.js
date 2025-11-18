@@ -199,16 +199,147 @@ function createAuthApi(dependencies) {
         
         const { nonce } = storedNonceData;
 
+        // INSPECT SIGNATURE: Try to decode and understand what's in there
+        logger.info(`[AuthApi] Inspecting signature: length=${signatureHex.length} chars (${signatureHex.length / 2} bytes)`);
+        
+        // Try to decode as ABI-encoded data
+        let decodedSignature = null;
+        let extractedStandardSig = null;
+        
+        try {
+            // Check if it looks like ABI-encoded data (starts with function selector or offset)
+            const firstBytes = signature.substring(0, 10); // First 4 bytes (8 hex chars) + 0x
+            
+            // Try to decode as ABI-encoded bytes
+            // ABI encoding: offset (32 bytes) + length (32 bytes) + data
+            if (signatureHex.length > 64) {
+                // Try to extract bytes from ABI-encoded format
+                // Format: 0x + offset (64 chars) + length (64 chars) + data
+                const offsetHex = signatureHex.substring(0, 64);
+                const offset = parseInt(offsetHex, 16);
+                
+                if (offset === 32 || offset === 64) { // Common ABI offset values
+                    const lengthHex = signatureHex.substring(64, 128);
+                    const length = parseInt(lengthHex, 16);
+                    
+                    if (length > 0 && length < 10000) { // Reasonable length
+                        const dataStart = offset * 2; // offset in hex chars
+                        const dataEnd = dataStart + (length * 2);
+                        if (dataEnd <= signatureHex.length) {
+                            extractedStandardSig = '0x' + signatureHex.substring(dataStart, dataEnd);
+                            logger.info(`[AuthApi] Extracted potential signature from ABI encoding: length=${extractedStandardSig.length - 2} chars`);
+                        }
+                    }
+                }
+            }
+            
+            // Also try to find a 65-byte (130 hex char) signature somewhere in the data
+            // Look for patterns that might be a signature
+            for (let i = 0; i <= signatureHex.length - 130; i += 2) {
+                const candidate = '0x' + signatureHex.substring(i, i + 130);
+                try {
+                    // Quick check: signatures usually have specific patterns
+                    // v value (last byte) should be 27, 28, or 0-1 (for EIP-2098 compact)
+                    const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
+                    if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
+                        // Try to verify it
+                        try {
+                            const recovered = ethers.verifyMessage(nonce, candidate);
+                            if (recovered.toLowerCase() === lowerCaseAddress) {
+                                logger.info(`[AuthApi] Found valid signature embedded at offset ${i}!`);
+                                extractedStandardSig = candidate;
+                                break;
+                            }
+                        } catch (e) {
+                            // Not a valid signature, continue searching
+                        }
+                    }
+                } catch (e) {
+                    // Continue searching
+                }
+            }
+        } catch (error) {
+            logger.warn(`[AuthApi] Error inspecting signature:`, error.message);
+        }
+        
+        // If we found a standard signature, use it and skip to standard verification!
+        if (extractedStandardSig && extractedStandardSig.length === 132) { // 0x + 130 chars
+            logger.info(`[AuthApi] Using extracted standard signature, proceeding with standard verification`);
+            try {
+                const recoveredAddress = ethers.verifyMessage(nonce, extractedStandardSig);
+                if (recoveredAddress.toLowerCase() === lowerCaseAddress) {
+                    logger.info(`[AuthApi] Extracted signature verified successfully!`);
+                    nonceStore.delete(lowerCaseAddress);
+                    
+                    // Defer user creation/lookup to the internal API
+                    const response = await internalApiClient.post('/internal/v1/data/auth/find-or-create-by-wallet', {
+                         address: lowerCaseAddress,
+                         referralCode 
+                    });
+                    const { user } = response.data;
+
+                    const jwtSecret = process.env.JWT_SECRET;
+                    if (!jwtSecret) {
+                      logger.error('JWT_SECRET is not defined in environment variables.');
+                      return res.status(500).json({ error: { code: 'CONFIG_ERROR', message: 'Server configuration error.' } });
+                    }
+                    
+                    const token = jwt.sign(
+                        { userId: user._id, address: lowerCaseAddress },
+                        jwtSecret,
+                        { expiresIn: '1h' }
+                    );
+
+                    res.cookie('jwt', token, {
+                      httpOnly: true,
+                      secure: process.env.NODE_ENV === 'production',
+                      sameSite: 'lax',
+                      maxAge: 60 * 60 * 1000 // 1 hour
+                    });
+                    return res.status(200).json({ success: true, message: 'Login successful' });
+                } else {
+                    logger.warn(`[AuthApi] Extracted signature did not match address`);
+                }
+            } catch (error) {
+                logger.warn(`[AuthApi] Extracted signature verification failed:`, error.message);
+                // Continue with normal flow
+            }
+        }
+
         // Check if this is a smart contract wallet FIRST, before validating signature length
         // This allows us to handle smart wallets that return non-standard signature formats
-        const ethereumService = getEthereumService();
+        let ethereumService = getEthereumService();
+        
+        // Fallback: Create a provider if ethereumService isn't available
+        let fallbackProvider = null;
+        if (!ethereumService || !ethereumService.provider) {
+            try {
+                // Try to create a provider from environment variables
+                // Use ETHEREUM_RPC_URL (mainnet) - same as foundationConfig expects
+                const rpcUrl = process.env.ETHEREUM_RPC_URL || 
+                              process.env.ETHEREUM_MAINNET_RPC_URL || 
+                              (process.env.ALCHEMY_SECRET ? `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_SECRET}` : null) ||
+                              'https://eth.llamarpc.com'; // Public fallback
+                
+                if (rpcUrl) {
+                    fallbackProvider = new ethers.JsonRpcProvider(rpcUrl);
+                    logger.info(`[AuthApi] Created fallback provider for signature verification using ${rpcUrl.substring(0, 30)}...`);
+                } else {
+                    logger.warn(`[AuthApi] No RPC URL available for fallback provider`);
+                }
+            } catch (error) {
+                logger.warn(`[AuthApi] Could not create fallback provider:`, error.message);
+            }
+        }
+        
+        const provider = (ethereumService && ethereumService.provider) ? ethereumService.provider : fallbackProvider;
         let isSmartWallet = false;
         const expectedEOALength = 130; // 65 bytes * 2 hex chars per byte
         const signatureIsLong = signatureHex.length > expectedEOALength;
         
-        if (ethereumService && ethereumService.provider) {
+        if (provider) {
             try {
-                isSmartWallet = await isContract(ethereumService.provider, lowerCaseAddress);
+                isSmartWallet = await isContract(provider, lowerCaseAddress);
                 logger.info(`[AuthApi] Address ${lowerCaseAddress} is ${isSmartWallet ? 'a smart contract wallet' : 'an EOA'}, signature length: ${signatureHex.length}`);
             } catch (error) {
                 logger.warn(`[AuthApi] Could not check if address is contract:`, error.message);
@@ -219,14 +350,14 @@ function createAuthApi(dependencies) {
                 }
             }
         } else {
-            logger.warn(`[AuthApi] EthereumService not available`);
-            // If ethereumService is not available but signature is very long, we can't verify
+            logger.warn(`[AuthApi] No provider available (ethereumService or fallback)`);
+            // If no provider is available but signature is very long, we can't verify
             if (signatureIsLong) {
-                logger.error(`[AuthApi] EthereumService not available, but signature length (${signatureHex.length}) suggests smart wallet. Cannot verify without provider.`);
+                logger.error(`[AuthApi] No provider available, but signature length (${signatureHex.length}) suggests smart wallet. Cannot verify without provider.`);
                 return res.status(503).json({ 
                     error: { 
                         code: 'SERVICE_UNAVAILABLE', 
-                        message: 'Smart wallet verification requires blockchain access. Please try again later.' 
+                        message: 'Smart wallet verification requires blockchain access. Please ensure RPC configuration is set up.' 
                     } 
                 });
             }
@@ -238,15 +369,15 @@ function createAuthApi(dependencies) {
         // This handles cases where contract detection might fail or wallet uses non-standard format
         if (isSmartWallet || signatureIsLong) {
             // Smart contract wallet or unusual signature length - use EIP-1271 verification
-            if (!ethereumService || !ethereumService.provider) {
-                logger.error(`[AuthApi] Cannot verify smart wallet signature: ethereumService not available`, {
+            if (!provider) {
+                logger.error(`[AuthApi] Cannot verify smart wallet signature: no provider available`, {
                     address: lowerCaseAddress,
                     signatureLength: signatureHex.length
                 });
                 return res.status(503).json({ 
                     error: { 
                         code: 'SERVICE_UNAVAILABLE', 
-                        message: 'Smart wallet verification requires blockchain access. Please try again later.' 
+                        message: 'Smart wallet verification requires blockchain access. Please ensure RPC configuration is set up.' 
                     } 
                 });
             }
@@ -265,7 +396,7 @@ function createAuthApi(dependencies) {
                 // Smart wallets may return signatures in different formats
                 // Accept any hex string as the signature format varies by wallet implementation
                 isValid = await verifyEIP1271Signature(
-                    ethereumService.provider,
+                    provider,
                     lowerCaseAddress,
                     messageHash,
                     signature
