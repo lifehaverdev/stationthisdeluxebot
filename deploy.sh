@@ -56,6 +56,12 @@ fi
 # Remove any stopped old container so its name is free
 docker rm "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1 || true
 
+echo "🧹 Pre-build cleanup: Freeing disk space..."
+# Clean up old build cache (keep last 24h for faster builds)
+docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+# Remove unused images older than 24h
+docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+
 echo "🔨 Building new Docker image using cache from previous build..."
 # Tag the current image as cache-source (if it exists) so BuildKit can use it
 if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
@@ -131,8 +137,13 @@ if is_container_running "${NEW_CONTAINER}"; then
   docker rmi "${OLD_IMAGE_NAME}" >> "${LOG_FILE}" 2>&1 || true
   docker tag "${IMAGE_NAME}" "${OLD_IMAGE_NAME}" >> "${LOG_FILE}" 2>&1
 
-  echo "🧹 Pruning dangling images to free space (keeping last build for cache)..."
+  echo "🧹 Cleaning up Docker resources to free space..."
+  # Prune dangling images
   docker image prune -f >> "${LOG_FILE}" 2>&1
+  # Prune build cache (keep only last 24h to allow some caching)
+  docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1
+  # Prune unused images (keep only the ones we're using)
+  docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 
   echo "✨ Deployment completed successfully!"
   echo "📝 Tailing logs from the new container (first 400 seconds):"
