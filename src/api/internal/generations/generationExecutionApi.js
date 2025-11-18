@@ -185,7 +185,9 @@ module.exports = function generationExecutionApi(dependencies) {
         try {
           const execInputs = {
              ...(tool.metadata?.defaultAdapterParams || {}),
-             ...inputs
+             ...inputs,
+             // Pass costTable for DALL-E tools so adapter can calculate actual cost
+             ...(tool.metadata?.costTable && { costTable: tool.metadata.costTable })
           };
           const toolResult = await adapter.execute(execInputs);
           // --- Persist generation record (immediate completion) ---
@@ -221,7 +223,8 @@ module.exports = function generationExecutionApi(dependencies) {
             notificationPlatform: user.platform || 'none',
             pointsSpent: pointsRequired,
             protocolNetPoints: 0,
-            costUsd: toolResult.costUsd || costUsd,
+            // Use adapter's calculated cost if available, otherwise fall back to pre-calculated estimate
+            costUsd: (toolResult.costUsd !== undefined && toolResult.costUsd !== null) ? toolResult.costUsd : costUsd,
             metadata: {
               ...tool.metadata,
               ...metadata,
@@ -299,7 +302,9 @@ module.exports = function generationExecutionApi(dependencies) {
         try {
           const jobInputs = {
              ...(tool.metadata?.defaultAdapterParams || {}),
-             ...inputs
+             ...inputs,
+             // Pass costTable for DALL-E tools so adapter can calculate actual cost
+             ...(tool.metadata?.costTable && { costTable: tool.metadata.costTable })
           };
           const { runId, meta } = await adapter.startJob(jobInputs);
 
@@ -576,7 +581,18 @@ module.exports = function generationExecutionApi(dependencies) {
 
           let resultStr;
           try {
+            // Log inputs for debugging
+            logger.info(`[Execute] StringService inputs: ${JSON.stringify({ 
+              operation: inputs.operation, 
+              stringA_length: inputs.stringA ? String(inputs.stringA).length : 0,
+              stringA_preview: inputs.stringA ? String(inputs.stringA).substring(0, 100) : null,
+              stringB: inputs.stringB,
+              searchValue: inputs.searchValue,
+              searchValue_type: typeof inputs.searchValue,
+              searchValue_length: inputs.searchValue ? String(inputs.searchValue).length : 0
+            })}`);
             resultStr = stringService.execute(inputs);
+            logger.info(`[Execute] StringService result length: ${resultStr ? String(resultStr).length : 0}`);
           } catch (err) {
             logger.error(`[Execute] StringService error for tool '${toolId}': ${err.message}`);
             await db.generationOutputs.updateGenerationOutput(generationRecord._id, {

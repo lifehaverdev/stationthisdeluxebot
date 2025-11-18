@@ -10,7 +10,12 @@ export default class SpellsMenuModal {
             error: null,
             spells: [],
             marketplaceSpells: [],
+            marketplaceSearchQuery: '',
+            marketplaceSelectedTag: null,
+            marketplaceTags: [],
             selectedSpell: null,
+            isEditingSpell: false, // Track if spell is in edit mode
+            currentUserId: null, // Cache current user ID for ownership checks
             // For create form
             newSpellName: '',
             newSpellDescription: '',
@@ -44,13 +49,29 @@ export default class SpellsMenuModal {
     async handleSaveSpell() {
         const { selectedSpell, spells } = this.state;
         if (!selectedSpell) return;
+        
+        // Validate spell name
+        const newName = (selectedSpell.name || '').trim();
+        if (!newName) {
+            this.setState({ error: 'Spell name is required.' });
+            return;
+        }
+        
         // Uniqueness check (case-insensitive, exclude current spell)
-        const newName = (selectedSpell.name || '').trim().toLowerCase();
-        const isDuplicate = spells.some(s => s._id !== selectedSpell._id && (s.name || '').trim().toLowerCase() === newName);
+        const newNameLower = newName.toLowerCase();
+        const isDuplicate = spells.some(s => s._id !== selectedSpell._id && (s.name || '').trim().toLowerCase() === newNameLower);
         if (isDuplicate) {
             this.setState({ error: 'You already have a spell with this name. Please choose a different name.' });
             return;
         }
+        
+        // Check ownership before saving
+        const canEdit = await this.isSpellOwner(selectedSpell);
+        if (!canEdit) {
+            this.setState({ error: 'You do not have permission to edit this spell.' });
+            return;
+        }
+        
         this.setState({ loading: true, error: null });
         try {
             // Get CSRF token
@@ -69,12 +90,45 @@ export default class SpellsMenuModal {
                     isPublic: !!selectedSpell.isPublic,
                 })
             });
-            if (!res.ok) throw new Error('Failed to save spell');
-            // After saving, return to main view and re-fetch spells
-            this.setState({ loading: false, view: 'main', selectedSpell: null });
-            this.fetchUserSpells();
+            
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.message || 'Failed to save spell');
+            }
+            
+            // After saving, exit edit mode and refresh
+            const updatedSpell = await res.json();
+            this.setState({ 
+                loading: false, 
+                isEditingSpell: false,
+                selectedSpell: updatedSpell,
+                error: null
+            });
+            
+            // Refresh spell list
+            await this.fetchUserSpells();
+            
+            // Re-render to show updated spell in display mode
+            this.render();
+            
+            // Show success message
+            setTimeout(() => {
+                const content = this.modalElement.querySelector('.spells-modal-content');
+                if (content) {
+                    const successMsg = document.createElement('div');
+                    successMsg.className = 'success-message';
+                    successMsg.textContent = 'Spell saved successfully!';
+                    const detailView = content.querySelector('.spell-detail-view');
+                    if (detailView) {
+                        detailView.insertBefore(successMsg, detailView.firstChild);
+                        setTimeout(() => successMsg.remove(), 3000);
+                    }
+                }
+            }, 100);
         } catch (err) {
-            this.setState({ error: 'Failed to save spell.', loading: false });
+            this.setState({ error: err.message || 'Failed to save spell.', loading: false });
+            // Re-render to show error message
+            this.render();
         }
     }
 
@@ -116,11 +170,32 @@ export default class SpellsMenuModal {
             if (!res.ok) return null;
             const data = await res.json();
             const masterAccountId = data.masterAccountId || null;
-            if (masterAccountId) this._cachedMasterAccountId = masterAccountId;
+            if (masterAccountId) {
+                this._cachedMasterAccountId = masterAccountId;
+                this.state.currentUserId = masterAccountId;
+            }
             return masterAccountId;
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Check if the current user owns the spell (is creator or owner)
+     * @param {Object} spell - The spell object
+     * @returns {Promise<boolean>} - True if user owns the spell
+     */
+    async isSpellOwner(spell) {
+        if (!spell) return false;
+        const currentUserId = await this.getCurrentMasterAccountId();
+        if (!currentUserId) return false;
+        
+        // Check if user is creator or owner
+        const creatorId = spell.creatorId?.toString() || spell.creatorId;
+        const ownedBy = spell.ownedBy?.toString() || spell.ownedBy;
+        const userIdStr = currentUserId.toString();
+        
+        return creatorId === userIdStr || ownedBy === userIdStr;
     }
 
     show() {
@@ -168,13 +243,31 @@ export default class SpellsMenuModal {
         }
     }
 
-    async fetchMarketplaceSpells() {
+    async fetchMarketplaceSpells(tag = null, searchQuery = null) {
         this.setState({ loading: true, error: null });
         try {
-            const res = await fetch('/api/v1/spells/marketplace');
+            const params = new URLSearchParams();
+            if (tag) params.append('tag', tag);
+            if (searchQuery) params.append('search', searchQuery);
+            
+            const url = `/api/v1/spells/marketplace${params.toString() ? '?' + params.toString() : ''}`;
+            const res = await fetch(url);
             if (!res.ok) throw new Error('Failed to fetch marketplace spells');
             const marketplaceSpells = await res.json();
-            this.setState({ marketplaceSpells, loading: false });
+            
+            // Extract unique tags from spells for filter UI
+            const allTags = new Set();
+            marketplaceSpells.forEach(spell => {
+                if (spell.tags && Array.isArray(spell.tags)) {
+                    spell.tags.forEach(t => allTags.add(t));
+                }
+            });
+            
+            this.setState({ 
+                marketplaceSpells, 
+                marketplaceTags: Array.from(allTags).sort(),
+                loading: false 
+            });
         } catch (err) {
             this.setState({ error: 'Failed to fetch marketplace spells.', loading: false });
         }
@@ -250,6 +343,11 @@ export default class SpellsMenuModal {
             if (nameInput) {
                 nameInput.oninput = (e) => {
                     this.state.newSpellName = e.target.value;
+                    // Real-time validation: enable/disable submit button
+                    const submitBtn = this.modalElement.querySelector('.submit-create-spell-btn');
+                    if (submitBtn) {
+                        submitBtn.disabled = !e.target.value.trim();
+                    }
                 };
             }
             if (descInput) {
@@ -266,6 +364,8 @@ export default class SpellsMenuModal {
                 checkbox.onchange = (e) => {
                     const inputId = e.target.dataset.inputId;
                     this.state.newSpellExposedInputs[inputId] = e.target.checked;
+                    // Re-render to update visual feedback (exposed count, highlighted items)
+                    this.render();
                 };
             });
             const submitBtn = this.modalElement.querySelector('.submit-create-spell-btn');
@@ -277,63 +377,212 @@ export default class SpellsMenuModal {
             };
             // --- step reordering events ---
             const items = this.modalElement.querySelectorAll('.spell-step-item');
-            items.forEach(item => {
-                const idx = parseInt(item.dataset.index, 10);
-                // drag & drop
+            const stepsList = this.modalElement.querySelector('#spell-steps-list');
+            let draggedElement = null;
+            let draggedIndex = null;
+            
+            items.forEach((item, idx) => {
+                // Drag start
                 item.ondragstart = e => {
-                    e.dataTransfer.setData('text/plain', idx);
+                    draggedElement = item;
+                    draggedIndex = parseInt(item.dataset.index, 10);
+                    item.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', draggedIndex.toString());
+                    // Set drag image
+                    e.dataTransfer.setDragImage(item, 0, 0);
                 };
+                
+                // Drag end
+                item.ondragend = e => {
+                    item.classList.remove('dragging');
+                    // Remove all drop indicators
+                    items.forEach(i => i.classList.remove('drag-over', 'drag-over-above', 'drag-over-below'));
+                    draggedElement = null;
+                    draggedIndex = null;
+                };
+                
+                // Drag over - show drop indicator
                 item.ondragover = e => {
                     e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    
+                    if (!draggedElement || draggedElement === item) return;
+                    
+                    // Remove indicators from all items
+                    items.forEach(i => i.classList.remove('drag-over', 'drag-over-above', 'drag-over-below'));
+                    
+                    const rect = item.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    
+                    if (mouseY < midpoint) {
+                        item.classList.add('drag-over-above');
+                    } else {
+                        item.classList.add('drag-over-below');
+                    }
                 };
+                
+                // Drag leave - remove indicator
+                item.ondragleave = e => {
+                    // Only remove if we're actually leaving the item (not just moving to a child)
+                    if (!item.contains(e.relatedTarget)) {
+                        item.classList.remove('drag-over', 'drag-over-above', 'drag-over-below');
+                    }
+                };
+                
+                // Drop
                 item.ondrop = e => {
                     e.preventDefault();
-                    const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
+                    e.stopPropagation();
+                    
+                    if (!draggedElement || draggedElement === item) return;
+                    
+                    const fromIdx = draggedIndex;
                     const toIdx = parseInt(item.dataset.index, 10);
-                    this.reorderSpellSteps(fromIdx, toIdx);
+                    
+                    // Determine final position based on drop position
+                    const rect = item.getBoundingClientRect();
+                    const midpoint = rect.top + rect.height / 2;
+                    const mouseY = e.clientY;
+                    const finalToIdx = mouseY < midpoint ? toIdx : toIdx + 1;
+                    
+                    this.reorderSpellSteps(fromIdx, finalToIdx);
+                    
+                    // Clean up
+                    items.forEach(i => i.classList.remove('drag-over', 'drag-over-above', 'drag-over-below'));
                 };
-                // arrow buttons
+                
+                // Arrow buttons
                 const upBtn = item.querySelector('.move-up');
                 const downBtn = item.querySelector('.move-down');
-                if (upBtn) upBtn.onclick = (e) => { e.stopPropagation(); this.reorderSpellSteps(idx, idx - 1); };
-                if (downBtn) downBtn.onclick = (e) => { e.stopPropagation(); this.reorderSpellSteps(idx, idx + 1); };
+                if (upBtn) {
+                    upBtn.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        const currentIdx = parseInt(item.dataset.index, 10);
+                        if (currentIdx > 0) {
+                            this.reorderSpellSteps(currentIdx, currentIdx - 1);
+                        }
+                    };
+                }
+                if (downBtn) {
+                    downBtn.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        const currentIdx = parseInt(item.dataset.index, 10);
+                        if (currentIdx < items.length - 1) {
+                            this.reorderSpellSteps(currentIdx, currentIdx + 1);
+                        }
+                    };
+                }
             });
         }
-        // Spell detail actions
+        // Spell detail actions - handle async rendering
         if (this.state.view === 'spellDetail' && this.state.selectedSpell) {
-            const nameInput = this.modalElement.querySelector('.spell-detail-name');
-            const descInput = this.modalElement.querySelector('.spell-detail-desc');
-            const publicChk = this.modalElement.querySelector('.spell-detail-public');
-            if (nameInput) {
-                nameInput.oninput = (e) => {
-                    this.state.selectedSpell.name = e.target.value;
+            // Render spell detail view asynchronously (needs ownership check)
+            this.renderSpellDetailView().then(html => {
+                const content = this.modalElement.querySelector('.spells-modal-content');
+                if (content) {
+                    const loadingEl = content.querySelector('.spell-detail-view-loading');
+                    if (loadingEl) {
+                        loadingEl.outerHTML = html;
+                    } else {
+                        // If already rendered, update it
+                        const detailView = content.querySelector('.spell-detail-view');
+                        if (detailView) {
+                            detailView.outerHTML = html;
+                        }
+                    }
+                    // Re-attach event handlers after rendering
+                    this.attachSpellDetailHandlers();
+                }
+            }).catch(err => {
+                console.error('[SpellsMenuModal] Error rendering spell detail:', err);
+                const content = this.modalElement.querySelector('.spells-modal-content');
+                if (content) {
+                    const loadingEl = content.querySelector('.spell-detail-view-loading');
+                    if (loadingEl) {
+                        loadingEl.outerHTML = '<div class="error-message">Failed to load spell details.</div>';
+                    }
+                }
+            });
+        }
+        // Marketplace spell click handlers
+        if (this.state.view === 'marketplace') {
+            // Search and filter handlers
+            const searchInput = this.modalElement.querySelector('.marketplace-search-input');
+            const searchBtn = this.modalElement.querySelector('.marketplace-search-btn');
+            const tagBtns = this.modalElement.querySelectorAll('.tag-filter-btn');
+            
+            if (searchInput) {
+                searchInput.onkeypress = (e) => {
+                    if (e.key === 'Enter') {
+                        const query = searchInput.value.trim();
+                        this.setState({ marketplaceSearchQuery: query });
+                        this.fetchMarketplaceSpells(this.state.marketplaceSelectedTag, query);
+                    }
                 };
             }
-            if (descInput) {
-                descInput.oninput = (e) => {
-                    this.state.selectedSpell.description = e.target.value;
+            
+            if (searchBtn) {
+                searchBtn.onclick = () => {
+                    const query = searchInput ? searchInput.value.trim() : '';
+                    this.setState({ marketplaceSearchQuery: query });
+                    this.fetchMarketplaceSpells(this.state.marketplaceSelectedTag, query);
                 };
             }
-            if (publicChk) {
-                publicChk.onchange = (e)=>{ this.state.selectedSpell.isPublic = e.target.checked; };
+            
+            tagBtns.forEach(btn => {
+                btn.onclick = () => {
+                    const tag = btn.dataset.tag || null;
+                    this.setState({ marketplaceSelectedTag: tag });
+                    this.fetchMarketplaceSpells(tag, this.state.marketplaceSearchQuery);
+                };
+            });
+            
+            // Spell item click handlers
+            const spellItems = this.modalElement.querySelectorAll('.marketplace-spell-item');
+            spellItems.forEach((item, idx) => {
+                const viewBtn = item.querySelector('.view-spell-btn');
+                if (viewBtn) {
+                    viewBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        const spell = this.state.marketplaceSpells[idx];
+                        this.setState({ view: 'marketDetail', selectedSpell: spell });
+                    };
+                }
+                // Also allow clicking the item itself
+                item.addEventListener('click', (e) => {
+                    if (e.target.closest('.view-spell-btn')) return;
+                    const spell = this.state.marketplaceSpells[idx];
+                    this.setState({ view: 'marketDetail', selectedSpell: spell });
+                });
+            });
+        }
+        // Marketplace detail view actions
+        if (this.state.view === 'marketDetail' && this.state.selectedSpell) {
+            const castBtn = this.modalElement.querySelector('.cast-spell-btn');
+            const addToCanvasBtn = this.modalElement.querySelector('.add-to-canvas-btn');
+            const backBtn = this.modalElement.querySelector('.back-to-marketplace-btn');
+            
+            if (castBtn) {
+                castBtn.onclick = () => {
+                    const spell = this.state.selectedSpell;
+                    const slug = spell.slug || spell.spellId || spell._id;
+                    this.handleCastMarketplaceSpell(slug);
+                };
             }
-            const saveBtn = this.modalElement.querySelector('.save-spell-btn');
-            const deleteBtn = this.modalElement.querySelector('.delete-spell-btn');
-            const backBtn = this.modalElement.querySelector('.back-spell-btn');
-            const copyBtn = this.modalElement.querySelector('.copy-link-btn');
-            if (saveBtn) saveBtn.onclick = () => this.handleSaveSpell();
-            if (deleteBtn) deleteBtn.onclick = () => this.handleDeleteSpell();
-            if (backBtn) backBtn.onclick = () => {
-                this.setState({ view: 'main', selectedSpell: null });
-                this.fetchUserSpells();
-            };
-            if(copyBtn){
-                copyBtn.onclick = ()=>{
-                    const urlInput = this.modalElement.querySelector('.public-link input');
-                    urlInput.select();
-                    document.execCommand('copy');
-                    copyBtn.textContent='Copied!';
-                    setTimeout(()=>copyBtn.textContent='Copy',1500);
+            
+            if (addToCanvasBtn) {
+                addToCanvasBtn.onclick = () => {
+                    const spell = this.state.selectedSpell;
+                    this.handleAddSpellToCanvas(spell);
+                };
+            }
+            
+            if (backBtn) {
+                backBtn.onclick = () => {
+                    this.setState({ view: 'marketplace', selectedSpell: null });
+                    this.fetchMarketplaceSpells();
                 };
             }
         }
@@ -366,14 +615,49 @@ export default class SpellsMenuModal {
         } else if (view === 'create') {
             html += this.renderCreateView();
         } else if (view === 'spellDetail' && selectedSpell) {
-            html += this.renderSpellDetailView();
+            // renderSpellDetailView is async, so we need to handle it differently
+            // For now, render a placeholder and update it after async check
+            html += '<div class="spell-detail-view-loading">Loading spell details...</div>';
+        } else if (view === 'marketDetail' && selectedSpell) {
+            html += this.renderMarketplaceSpellDetailView();
         } else if (view === 'marketplace') {
+            // Search and filter UI
+            html += `
+                <div class="marketplace-controls">
+                    <div class="search-box">
+                        <input type="text" 
+                               class="marketplace-search-input" 
+                               placeholder="Search spells..." 
+                               value="${this.state.marketplaceSearchQuery || ''}" />
+                        <button class="marketplace-search-btn">Search</button>
+                    </div>
+                    ${this.state.marketplaceTags.length > 0 ? `
+                        <div class="tag-filters">
+                            <button class="tag-filter-btn ${!this.state.marketplaceSelectedTag ? 'active' : ''}" 
+                                    data-tag="">All</button>
+                            ${this.state.marketplaceTags.map(tag => `
+                                <button class="tag-filter-btn ${this.state.marketplaceSelectedTag === tag ? 'active' : ''}" 
+                                        data-tag="${tag}">${tag}</button>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
             if (!marketplaceSpells || marketplaceSpells.length === 0) {
                 html += '<div class="empty-message">No public spells found.</div>';
             } else {
                 html += '<ul class="spells-list">';
                 for (const spell of marketplaceSpells) {
-                    html += `<li class="spell-item">${spell.name} <span class="spell-desc">${spell.description || ''}</span> <span class="spell-uses">${spell.uses} uses</span></li>`;
+                    const slug = spell.slug || spell.spellId || spell._id;
+                    html += `<li class="spell-item marketplace-spell-item" data-spell-slug="${slug}">
+                        <div class="spell-info">
+                            <span class="spell-name">🪄 ${spell.name}</span>
+                            <span class="spell-desc">${spell.description || ''}</span>
+                            <span class="spell-uses">${spell.uses || 0} uses</span>
+                        </div>
+                        <button class="view-spell-btn" data-spell-slug="${slug}">View</button>
+                    </li>`;
                 }
                 html += '</ul>';
             }
@@ -404,22 +688,32 @@ export default class SpellsMenuModal {
         if (nodesWithTools.length > 0) {
             stepsHtml = `
                 <div class="spell-steps-preview">
-                    <h4>Reorder Steps (drag ↕ or use ↑↓):</h4>
-                    <ul class="spell-steps-list">
+                    <div class="steps-header">
+                        <h4>Step Execution Order</h4>
+                        <p class="steps-help-text">Reorder the steps to control the execution sequence. Steps will execute from top to bottom.</p>
+                    </div>
+                    <ul class="spell-steps-list" id="spell-steps-list">
                         ${nodesWithTools.map((node, idx) => `
                             <li class="spell-step-item" data-index="${idx}" draggable="true">
-                                <span class="drag-handle">↕</span> <span class="step-label">${idx + 1}. ${node.tool.displayName}</span>
-                                <button class="move-up" title="Move Up">↑</button>
-                                <button class="move-down" title="Move Down">↓</button>
+                                <div class="step-number">${idx + 1}</div>
+                                <div class="step-content-wrapper">
+                                    <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                                    <span class="step-label">${node.tool.displayName}</span>
+                                </div>
+                                <div class="step-actions">
+                                    <button class="move-up" title="Move Up" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                                    <button class="move-down" title="Move Down" ${idx === nodesWithTools.length - 1 ? 'disabled' : ''}>↓</button>
+                                </div>
                             </li>`).join('')}
                     </ul>
+                    ${nodesWithTools.length > 1 ? '<p class="steps-note">💡 Tip: Drag steps or use ↑↓ buttons to reorder. The order determines execution sequence.</p>' : ''}
                 </div>
             `;
         } else {
             return `<div class="create-spell-view"><h2>Mint New Spell</h2><div class="error-message">Could not find the definitions for any of the selected tools.</div></div>`;
         }
 
-        let potentialInputsHtml = '';
+        let potentialInputs = [];
         if (nodesWithTools.length > 0) {
             const connectedInputs = new Set();
             if (subgraph.connections) {
@@ -428,7 +722,6 @@ export default class SpellsMenuModal {
                 });
             }
 
-            const potentialInputs = [];
             for (const node of nodesWithTools) {
                 if (node.tool.inputSchema) {
                     for (const paramKey in node.tool.inputSchema) {
@@ -445,82 +738,290 @@ export default class SpellsMenuModal {
                     }
                 }
             }
-
-            if (potentialInputs.length > 0) {
-                const inputsList = potentialInputs.map(input => `
-                    <li class="spell-input-item">
-                        <label>
-                            <input type="checkbox" class="spell-input-checkbox" data-input-id="${input.uniqueId}" ${newSpellExposedInputs[input.uniqueId] ? 'checked' : ''}>
-                            <span class="spell-input-nodename">${input.nodeDisplayName}:</span>
-                            <span class="spell-input-paramname">${input.paramDisplayName}</span>
-                        </label>
-                    </li>
-                `).join('');
-
-                potentialInputsHtml = `
-                    <div class="spell-inputs-selection">
-                        <h4>Expose Spell Inputs</h4>
-                        <p>Select which parameters will be available as inputs when using this spell.</p>
-                        <ul>
-                            ${inputsList}
-                        </ul>
-                    </div>
-                `;
-            }
         }
+
+        // Count exposed inputs for better UI feedback
+        const exposedCount = Object.values(newSpellExposedInputs).filter(Boolean).length;
+        const exposedCountText = exposedCount > 0 ? ` (${exposedCount} selected)` : '';
 
         return `
             <div class="create-spell-view">
                 <h2>Mint New Spell</h2>
                 ${error ? `<div class="error-message">${error}</div>` : ''}
-                <div class="form-group">
-                    <label for="spell-name">Spell Name</label>
-                    <input type="text" id="spell-name" class="create-spell-name" placeholder="e.g., Psychedelic Portrait" value="${newSpellName}">
+                
+                <div class="spell-form-section">
+                    <h3>Basic Information</h3>
+                    <div class="form-group">
+                        <label for="spell-name">Spell Name <span class="required">*</span></label>
+                        <input type="text" id="spell-name" class="create-spell-name" placeholder="e.g., Psychedelic Portrait" value="${newSpellName}" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="spell-desc">Description</label>
+                        <textarea id="spell-desc" class="create-spell-desc" placeholder="A short description of what this spell does.">${newSpellDescription}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" class="create-spell-public" ${newSpellIsPublic ? 'checked' : ''}/> Make spell public / shareable</label>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="spell-desc">Description</label>
-                    <textarea id="spell-desc" class="create-spell-desc" placeholder="A short description of what this spell does.">${newSpellDescription}</textarea>
-                </div>
-                <div class="form-group">
-                    <label><input type="checkbox" class="create-spell-public" ${newSpellIsPublic ? 'checked' : ''}/> Make spell public / shareable</label>
-                </div>
+
                 ${stepsHtml}
-                ${potentialInputsHtml}
+
+                ${potentialInputs.length > 0 ? `
+                    <div class="spell-inputs-selection">
+                        <h4>Expose Spell Inputs${exposedCountText}</h4>
+                        <p class="input-help-text">Select which parameters will be available as inputs when using this spell. Exposed inputs will be left open for users to provide their own values.</p>
+                        <ul class="spell-inputs-list">
+                            ${potentialInputs.map(input => `
+                                <li class="spell-input-item ${newSpellExposedInputs[input.uniqueId] ? 'exposed' : ''}">
+                                    <label>
+                                        <input type="checkbox" class="spell-input-checkbox" data-input-id="${input.uniqueId}" ${newSpellExposedInputs[input.uniqueId] ? 'checked' : ''}>
+                                        <span class="spell-input-nodename">${input.nodeDisplayName}:</span>
+                                        <span class="spell-input-paramname">${input.paramDisplayName}</span>
+                                    </label>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+
                 <div class="form-actions">
                     <button class="cancel-create-spell-btn">Cancel</button>
-                    <button class="submit-create-spell-btn">Save Spell</button>
+                    <button class="submit-create-spell-btn" ${!newSpellName.trim() ? 'disabled' : ''}>Save Spell</button>
                 </div>
             </div>
         `;
     }
 
-    renderSpellDetailView() {
-        const { selectedSpell } = this.state;
+    async renderSpellDetailView() {
+        const { selectedSpell, isEditingSpell, error } = this.state;
+        if (!selectedSpell) return '<div class="error-message">Spell not found.</div>';
+        
+        // Check if user owns the spell
+        const canEdit = await this.isSpellOwner(selectedSpell);
+        const isEditable = isEditingSpell && canEdit;
+        
         let stepsHtml = '';
-        if (selectedSpell && selectedSpell.steps) {
+        if (selectedSpell.steps) {
             stepsHtml = `
                 <div class="spell-detail-steps">
-                    <strong>Steps:</strong>
-                    <ul>
-                        ${selectedSpell.steps.map(step => `<li>${step.toolIdentifier}</li>`).join('')}
+                    <h4>Steps (${selectedSpell.steps.length})</h4>
+                    <ul class="spell-steps-list">
+                        ${selectedSpell.steps.map((step, idx) => `
+                            <li class="spell-step-display-item">
+                                <span class="step-number-small">${idx + 1}</span>
+                                <span class="step-name">${step.displayName || step.toolIdentifier || 'Unknown'}</span>
+                            </li>
+                        `).join('')}
                     </ul>
                 </div>
             `;
         }
+        
+        const nameValue = (selectedSpell.name || '').replace(/"/g, '&quot;');
+        const descValue = (selectedSpell.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
         return `
             <div class="spell-detail-view">
-                <label>Name:<br><input type="text" class="spell-detail-name" value="${selectedSpell.name || ''}" /></label><br>
-                <label>Description:<br><textarea class="spell-detail-desc">${selectedSpell.description || ''}</textarea></label><br>
-                <label><input type="checkbox" class="spell-detail-public" ${selectedSpell.isPublic ? 'checked' : ''}/> Public / shareable</label><br>
-                ${selectedSpell.isPublic && (selectedSpell.publicSlug || selectedSpell.slug) ? `<div class="public-link"><input type="text" readonly value="${window.location.origin}/spells/${selectedSpell.publicSlug || selectedSpell.slug}" /> <button class="copy-link-btn">Copy</button></div>` : ''}
+                ${error ? `<div class="error-message">${error}</div>` : ''}
+                <div class="spell-detail-header">
+                    <h2>${selectedSpell.name || 'Untitled Spell'}</h2>
+                    ${canEdit && !isEditingSpell ? `<button class="edit-spell-btn" title="Edit spell">✏️ Edit</button>` : ''}
+                </div>
+                
+                ${isEditingSpell ? `
+                    <div class="spell-edit-form">
+                        <div class="form-group">
+                            <label for="spell-edit-name">Spell Name <span class="required">*</span></label>
+                            <input type="text" id="spell-edit-name" class="spell-detail-name" value="${nameValue}" ${isEditable ? '' : 'readonly'} />
+                        </div>
+                        <div class="form-group">
+                            <label for="spell-edit-desc">Description</label>
+                            <textarea id="spell-edit-desc" class="spell-detail-desc" ${isEditable ? '' : 'readonly'}>${descValue}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" class="spell-detail-public" ${selectedSpell.isPublic ? 'checked' : ''} ${isEditable ? '' : 'disabled'} />
+                                Make spell public / shareable
+                            </label>
+                        </div>
+                    </div>
+                ` : `
+                    <div class="spell-detail-display">
+                        <div class="spell-detail-field">
+                            <label>Name</label>
+                            <div class="spell-detail-value">${selectedSpell.name || 'Untitled Spell'}</div>
+                        </div>
+                        <div class="spell-detail-field">
+                            <label>Description</label>
+                            <div class="spell-detail-value">${selectedSpell.description || 'No description'}</div>
+                        </div>
+                        <div class="spell-detail-field">
+                            <label>Visibility</label>
+                            <div class="spell-detail-value">${selectedSpell.isPublic ? 'Public' : 'Private'}</div>
+                        </div>
+                    </div>
+                `}
+                
+                ${selectedSpell.isPublic && (selectedSpell.publicSlug || selectedSpell.slug) ? `
+                    <div class="public-link">
+                        <label>Public Link</label>
+                        <div class="public-link-wrapper">
+                            <input type="text" readonly value="${window.location.origin}/spells/${selectedSpell.publicSlug || selectedSpell.slug}" />
+                            <button class="copy-link-btn">Copy</button>
+                        </div>
+                    </div>
+                ` : ''}
+                
                 ${stepsHtml}
+                
                 <div class="spell-detail-actions">
-                    <button class="save-spell-btn">Save</button>
-                    <button class="delete-spell-btn">Delete</button>
+                    ${isEditingSpell ? `
+                        <button class="save-spell-btn">Save Changes</button>
+                        <button class="cancel-edit-spell-btn">Cancel</button>
+                    ` : `
+                        ${canEdit ? `<button class="delete-spell-btn">Delete</button>` : ''}
+                    `}
                     <button class="back-spell-btn">Back</button>
                 </div>
             </div>
         `;
+    }
+
+    renderMarketplaceSpellDetailView() {
+        const { selectedSpell } = this.state;
+        if (!selectedSpell) return '<div class="error-message">Spell not found.</div>';
+        
+        const slug = selectedSpell.slug || selectedSpell.spellId || selectedSpell._id;
+        
+        let stepsHtml = '';
+        if (selectedSpell.steps && selectedSpell.steps.length > 0) {
+            stepsHtml = `
+                <div class="spell-detail-steps">
+                    <strong>Steps:</strong>
+                    <ul>
+                        ${selectedSpell.steps.map(step => `<li>${step.toolIdentifier || step.toolId || 'Unknown tool'}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        const tagsHtml = selectedSpell.tags && selectedSpell.tags.length > 0 
+            ? `<div class="spell-tags">Tags: ${selectedSpell.tags.map(tag => `<span class="tag">${tag}</span>`).join(' ')}</div>`
+            : '';
+        
+        return `
+            <div class="spell-detail-view marketplace-spell-detail">
+                <h2>${selectedSpell.name}</h2>
+                <p class="spell-description">${selectedSpell.description || 'No description available.'}</p>
+                <div class="spell-meta">
+                    <span class="spell-uses">${selectedSpell.uses || 0} uses</span>
+                    ${tagsHtml}
+                </div>
+                ${stepsHtml}
+                <div class="spell-detail-actions">
+                    <button class="cast-spell-btn" data-spell-slug="${slug}">Cast Spell</button>
+                    <button class="add-to-canvas-btn" data-spell-slug="${slug}">Add to Canvas</button>
+                    <button class="back-to-marketplace-btn">Back to Marketplace</button>
+                </div>
+            </div>
+        `;
+    }
+
+    attachSpellDetailHandlers() {
+        const { selectedSpell, isEditingSpell } = this.state;
+        if (!selectedSpell) return;
+        
+        const nameInput = this.modalElement.querySelector('.spell-detail-name');
+        const descInput = this.modalElement.querySelector('.spell-detail-desc');
+        const publicChk = this.modalElement.querySelector('.spell-detail-public');
+        
+        if (nameInput && isEditingSpell) {
+            nameInput.oninput = (e) => {
+                this.state.selectedSpell.name = e.target.value;
+            };
+        }
+        if (descInput && isEditingSpell) {
+            descInput.oninput = (e) => {
+                this.state.selectedSpell.description = e.target.value;
+            };
+        }
+        if (publicChk && isEditingSpell) {
+            publicChk.onchange = (e) => {
+                this.state.selectedSpell.isPublic = e.target.checked;
+            };
+        }
+        
+        const editBtn = this.modalElement.querySelector('.edit-spell-btn');
+        const saveBtn = this.modalElement.querySelector('.save-spell-btn');
+        const cancelBtn = this.modalElement.querySelector('.cancel-edit-spell-btn');
+        const deleteBtn = this.modalElement.querySelector('.delete-spell-btn');
+        const backBtn = this.modalElement.querySelector('.back-spell-btn');
+        const copyBtn = this.modalElement.querySelector('.copy-link-btn');
+        
+        if (editBtn) {
+            editBtn.onclick = () => {
+                this.setState({ isEditingSpell: true });
+                // Re-render to show edit form
+                this.render();
+            };
+        }
+        if (saveBtn) {
+            saveBtn.onclick = () => this.handleSaveSpell();
+        }
+        if (cancelBtn) {
+            cancelBtn.onclick = () => {
+                // Reload spell data to discard changes
+                const spellId = selectedSpell._id || selectedSpell.slug;
+                this.fetchSpellById(spellId).then(spell => {
+                    if (spell) {
+                        this.setState({ selectedSpell: spell, isEditingSpell: false });
+                        // Re-render to show display view
+                        this.render();
+                    } else {
+                        this.setState({ isEditingSpell: false });
+                        this.render();
+                    }
+                });
+            };
+        }
+        if (deleteBtn) {
+            deleteBtn.onclick = () => this.handleDeleteSpell();
+        }
+        if (backBtn) {
+            backBtn.onclick = () => {
+                this.setState({ view: 'main', selectedSpell: null, isEditingSpell: false });
+                this.fetchUserSpells();
+            };
+        }
+        if (copyBtn) {
+            copyBtn.onclick = () => {
+                const urlInput = this.modalElement.querySelector('.public-link input');
+                if (urlInput) {
+                    urlInput.select();
+                    document.execCommand('copy');
+                    copyBtn.textContent = 'Copied!';
+                    setTimeout(() => copyBtn.textContent = 'Copy', 1500);
+                }
+            };
+        }
+    }
+
+    async fetchSpellById(spellId) {
+        try {
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            const res = await fetch(`/api/v1/spells/${spellId}`, {
+                headers: { 'x-csrf-token': csrfToken },
+                credentials: 'include'
+            });
+            if (res.ok) {
+                return await res.json();
+            }
+            return null;
+        } catch (err) {
+            console.error('[SpellsMenuModal] Error fetching spell:', err);
+            return null;
+        }
     }
 
     attachEvents() {
@@ -583,6 +1084,63 @@ export default class SpellsMenuModal {
         this.hide();
     }
 
+    async handleCastMarketplaceSpell(slug) {
+        if (!slug) return;
+        
+        this.setState({ loading: true, error: null });
+        
+        try {
+            const csrfRes = await fetch('/api/v1/csrf-token');
+            const { csrfToken } = await csrfRes.json();
+            
+            const res = await fetch('/api/v1/spells/cast', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrfToken
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    slug,
+                    context: {
+                        parameterOverrides: {},
+                        platform: 'web-sandbox'
+                    }
+                })
+            });
+            
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error?.message || 'Failed to cast spell');
+            }
+            
+            const result = await res.json();
+            
+            // Close modal and show success message
+            this.hide();
+            alert(`Spell "${slug}" cast successfully!`);
+            
+        } catch (err) {
+            this.setState({ error: err.message || 'Failed to cast spell.', loading: false });
+        }
+    }
+
+    /**
+     * Creates a new spell from the selected nodes.
+     * 
+     * CRITICAL FIX: Exposed inputs are filtered out from parameterMappings before saving.
+     * This ensures that exposed inputs don't have static values "baked in" to the spell definition.
+     * When a spell is loaded, exposed inputs will be empty/default, allowing users to provide
+     * their own values when using the spell.
+     * 
+     * Flow:
+     * 1. User marks parameters as "exposed inputs" via checkboxes
+     * 2. Exposed inputs are extracted into the exposedInputs array
+     * 3. Before saving, we filter out exposed inputs from each step's parameterMappings
+     * 4. This ensures exposed inputs have no static values in the saved spell
+     * 5. When spell is loaded, SpellWindow creates empty mappings for exposed inputs (see SpellWindow.js)
+     * 6. Users can then provide values for exposed inputs when casting the spell
+     */
     async handleCreateSpell() {
         const { newSpellName, newSpellDescription, spells, subgraph, newSpellExposedInputs } = this.state;
 
@@ -600,6 +1158,7 @@ export default class SpellsMenuModal {
 
         this.setState({ loading: true, error: null });
 
+        // Extract exposed inputs from checkbox state
         const exposedInputs = Object.entries(newSpellExposedInputs)
             .filter(([, isExposed]) => isExposed)
             .map(([inputId]) => {
@@ -611,11 +1170,43 @@ export default class SpellsMenuModal {
             const csrfRes = await fetch('/api/v1/csrf-token');
             const { csrfToken } = await csrfRes.json();
 
+            // Create a Set for quick lookup of exposed inputs
+            const exposedInputsSet = new Set();
+            exposedInputs.forEach(input => {
+                exposedInputsSet.add(`${input.nodeId}__${input.paramKey}`);
+            });
+
+            // CRITICAL: Filter out exposed inputs from parameterMappings before saving
+            // Exposed inputs should NOT have static values saved - they should be user-provided when using the spell
+            // This prevents "baking in" static values that should be left open for user input
+            // 
+            // NOTE: subgraph.nodes is already in the correct order (may have been reordered via reorderSpellSteps)
+            // The order of nodes in this array determines the execution order of steps in the spell
+            const steps = subgraph ? subgraph.nodes.map(n => {
+                const stepMappings = { ...n.parameterMappings };
+                
+                // Remove any parameters that are marked as exposed inputs
+                // This ensures exposed inputs don't have static values "baked in"
+                Object.keys(stepMappings).forEach(paramKey => {
+                    const exposedKey = `${n.id}__${paramKey}`;
+                    if (exposedInputsSet.has(exposedKey)) {
+                        delete stepMappings[paramKey];
+                    }
+                });
+                
+                return {
+                    id: n.id,
+                    toolIdentifier: n.toolId,
+                    displayName: n.displayName,
+                    parameterMappings: stepMappings
+                };
+            }) : [];
+
             const payload = {
                 name: newSpellName,
                 description: newSpellDescription,
                 isPublic: !!this.state.newSpellIsPublic,
-                steps: subgraph ? subgraph.nodes.map(n => ({ id: n.id, toolIdentifier: n.toolId, displayName: n.displayName, parameterMappings: n.parameterMappings })) : [],
+                steps: steps,
                 connections: subgraph ? subgraph.connections : [],
                 exposedInputs: exposedInputs,
             };
@@ -644,16 +1235,32 @@ export default class SpellsMenuModal {
 
     /**
      * Reorder spell steps in the subgraph.nodes array and rerender.
+     * This ensures the execution order matches the user's desired sequence.
      * @param {number} fromIdx - original index
-     * @param {number} toIdx   - new index
+     * @param {number} toIdx   - new index (can be equal to length for moving to end)
      */
     reorderSpellSteps(fromIdx, toIdx) {
         const nodes = [...(this.state.subgraph?.nodes || [])];
-        if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= nodes.length || toIdx >= nodes.length) return;
+        if (fromIdx === toIdx || fromIdx < 0 || fromIdx >= nodes.length) return;
+        
+        // Clamp toIdx to valid range (0 to length)
+        const maxIdx = nodes.length;
+        const clampedToIdx = Math.min(Math.max(0, toIdx), maxIdx);
+        
+        // Remove the item from its current position
         const [moved] = nodes.splice(fromIdx, 1);
-        nodes.splice(toIdx, 0, moved);
-        // update state & rerender
+        
+        // Calculate the correct insertion index
+        // If moving down (fromIdx < clampedToIdx), we need to account for the removed item
+        const insertIdx = fromIdx < clampedToIdx ? clampedToIdx - 1 : clampedToIdx;
+        
+        // Insert at the calculated position
+        nodes.splice(insertIdx, 0, moved);
+        
+        // Update state & rerender - this will update the displayed order
         const newSubgraph = { ...this.state.subgraph, nodes };
         this.setState({ subgraph: newSubgraph });
+        
+        console.log(`[SpellsMenuModal] Reordered step ${fromIdx + 1} to position ${insertIdx + 1}`);
     }
 } 

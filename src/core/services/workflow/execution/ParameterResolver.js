@@ -5,6 +5,7 @@
  */
 
 const { validateRequiredInputs } = require('../utils/ValidationUtils');
+const InputParameterNormalizer = require('../utils/InputParameterNormalizer');
 
 class ParameterResolver {
     constructor({ logger }) {
@@ -37,11 +38,16 @@ class ParameterResolver {
                     break;
                 }
                 case 'nodeOutput': {
+                    // CRITICAL: Check namespaced key FIRST to prevent getting wrong step's output
+                    // Order matters: nodeId_key should take precedence over just key
                     const val =
-                        pipelineContext[mapping.outputKey] ||
                         pipelineContext[`${mapping.nodeId}_${mapping.outputKey}`] ||
+                        pipelineContext[mapping.outputKey] ||
                         pipelineContext[mapping.paramKey];
-                    if (val !== undefined) resolvedParamInputs[paramKey] = val;
+                    if (val !== undefined) {
+                        resolvedParamInputs[paramKey] = val;
+                        this.logger.debug(`[ParameterResolver] Resolved nodeOutput "${mapping.nodeId}.${mapping.outputKey}" → "${paramKey}"`);
+                    }
                     break;
                 }
                 default:
@@ -124,6 +130,10 @@ class ParameterResolver {
         //    - resolved mappings for this step (explicit wiring)
         //    - legacy parameterOverrides (highest priority)
         let stepInput = { ...pipelineContext, ...resolvedParamInputs, ...step.parameterOverrides };
+
+        // 2.5. Normalize parameter names to match tool schema
+        // This handles variations like input_image → imageUrl, input_prompt → prompt, etc.
+        stepInput = InputParameterNormalizer.normalize(stepInput, tool, { logger: this.logger });
 
         // 3. Prune based on tool schema
         stepInput = this.pruneInputs(stepInput, tool);

@@ -1,5 +1,7 @@
 // src/platforms/web/webSandboxNotifier.js
 
+const ResponsePayloadNormalizer = require('../../core/services/notifications/ResponsePayloadNormalizer');
+
 /**
  * WebSandboxNotifier
  * ------------------
@@ -33,23 +35,42 @@ class WebSandboxNotifier {
       return null;
     }
 
-    // Handle Decimal128 objects
-    if (costUsd && typeof costUsd === 'object' && costUsd.toString) {
-      try {
-        return parseFloat(costUsd.toString());
-      } catch (e) {
-        this.logger.warn('[WebSandboxNotifier] Failed to convert Decimal128 costUsd:', e.message);
-        return null;
+    // Handle Decimal128 objects (MongoDB BSON type)
+    if (costUsd && typeof costUsd === 'object') {
+      // Check for Decimal128 BSON type first
+      if (costUsd._bsontype === 'Decimal128' && costUsd.toString) {
+        try {
+          return parseFloat(costUsd.toString());
+        } catch (e) {
+          this.logger.warn('[WebSandboxNotifier] Failed to convert Decimal128 costUsd:', e.message);
+          return null;
+        }
       }
-    }
-
-    // Handle MongoDB $numberDecimal format
-    if (costUsd && typeof costUsd === 'object' && costUsd.$numberDecimal) {
-      try {
-        return parseFloat(costUsd.$numberDecimal);
-      } catch (e) {
-        this.logger.warn('[WebSandboxNotifier] Failed to convert $numberDecimal costUsd:', e.message);
-        return null;
+      
+      // Handle MongoDB $numberDecimal format
+      if (costUsd.$numberDecimal) {
+        try {
+          return parseFloat(costUsd.$numberDecimal);
+        } catch (e) {
+          this.logger.warn('[WebSandboxNotifier] Failed to convert $numberDecimal costUsd:', e.message);
+          return null;
+        }
+      }
+      
+      // Try toString() as fallback for other object types
+      if (costUsd.toString && typeof costUsd.toString === 'function') {
+        try {
+          const str = costUsd.toString();
+          // Only parse if it's not the default [object Object] string
+          if (str !== '[object Object]') {
+            const num = parseFloat(str);
+            if (!isNaN(num)) {
+              return num;
+            }
+          }
+        } catch (e) {
+          // Fall through to warning
+        }
       }
     }
 
@@ -81,12 +102,21 @@ class WebSandboxNotifier {
         return;
       }
 
+      // Normalize responsePayload to ensure consistent format
+      const normalizedPayload = ResponsePayloadNormalizer.normalize(
+        generationRecord.responsePayload,
+        { logger: this.logger }
+      );
+      
+      // Convert to web-friendly format (maintains backward compatibility with frontend)
+      const webOutputs = ResponsePayloadNormalizer.toWebFormat(normalizedPayload);
+
       // Build the payload expected by the client-side sandbox handlers
       const payload = {
         generationId: (generationRecord._id || generationRecord.id)?.toString(),
         runId: generationRecord.metadata?.run_id || null,
         status: generationRecord.status,
-        outputs: generationRecord.responsePayload,
+        outputs: webOutputs,
         toolId: generationRecord.toolId,
         spellId: generationRecord.spellId || generationRecord.metadata?.spellId || generationRecord.metadata?.spell?._id || null,
         castId: generationRecord.castId || generationRecord.metadata?.castId || null,

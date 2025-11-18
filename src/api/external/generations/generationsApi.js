@@ -1,5 +1,6 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
+const { validateWebhookUrl } = require('../../../utils/webhookUtils');
 
 function createGenerationsApi(dependencies) {
     const { internalApiClient, toolRegistry, comfyUI, userSettingsService, loraResolutionService, logger } = dependencies;
@@ -32,6 +33,22 @@ function createGenerationsApi(dependencies) {
             return res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'The `await` delivery mode is not yet implemented.' } });
         }
 
+        // Validate webhook URL if webhook mode is requested
+        if (delivery.mode === 'webhook') {
+            if (!delivery.url || typeof delivery.url !== 'string') {
+                return res.status(400).json({ 
+                    error: { code: 'BAD_REQUEST', message: 'When using webhook delivery mode, `delivery.url` is required.' } 
+                });
+            }
+
+            const validation = validateWebhookUrl(delivery.url, process.env.NODE_ENV !== 'production');
+            if (!validation.valid) {
+                return res.status(400).json({ 
+                    error: { code: 'BAD_REQUEST', message: `Invalid webhook URL: ${validation.error}` } 
+                });
+            }
+        }
+
         let generationRecord;
         try {
             // 3. Create initiating event record (sessions deprecated)
@@ -43,6 +60,21 @@ function createGenerationsApi(dependencies) {
             });
             const initiatingEventId = eventResponse.data._id;
 
+            // Build metadata with webhook URL if webhook mode
+            const metadata = {
+                ...tool.metadata,
+                displayName: tool.displayName,
+                toolId: tool.toolId,
+            };
+
+            // Add webhook URL and secret to metadata if webhook mode
+            if (delivery.mode === 'webhook') {
+                metadata.webhookUrl = delivery.url;
+                if (delivery.secret && typeof delivery.secret === 'string') {
+                    metadata.webhookSecret = delivery.secret;
+                }
+            }
+
             const generationRecordResponse = await internalClient.post('/internal/v1/data/generations', {
                 masterAccountId: user.masterAccountId,
                 initiatingEventId,
@@ -53,11 +85,7 @@ function createGenerationsApi(dependencies) {
                 delivery: delivery.mode === 'webhook' ? delivery : { mode: 'poll' },
                 notificationPlatform: delivery.mode === 'webhook' ? 'webhook' : 'none',
                 requestTimestamp: new Date().toISOString(),
-                metadata: {
-                    ...tool.metadata,
-                    displayName: tool.displayName,
-                    toolId: tool.toolId,
-                }
+                metadata: metadata
             });
             generationRecord = generationRecordResponse.data;
         } catch (err) {

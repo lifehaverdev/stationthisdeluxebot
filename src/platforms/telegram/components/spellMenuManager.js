@@ -1,4 +1,5 @@
 const { sendEscapedMessage, editEscapedMessageText } = require('../utils/messaging');
+const { setReaction, getTelegramFileUrl } = require('../utils/telegramUtils');
 
 /**
  * Handles the initial /spell command.
@@ -765,14 +766,23 @@ function registerHandlers(dispatcherInstances, dependencies) {
     messageReplyDispatcher.register('spell_param_value', stepParameterValueHandler);
 
     // Register a handler for the /cast command
-    commandDispatcher.register(/^\/cast(?:@\w+)?(?:\s+(.*))?$/i, async (bot, msg, dependencies, match) => {
-        const { logger, internal, spellsService } = dependencies;
-        const chatId = msg.chat.id;
-        const username = msg.from.username || msg.from.first_name;
-        let spellSlug = null;
-        let paramOverrides = {};
-        // Parse slug and parameter overrides from the command
-        if (match && match[1]) {
+    logger.info('[SpellMenuManager] Registering /cast command handler');
+    try {
+        commandDispatcher.register(/^\/cast(?:@\w+)?(?:\s+(.*))?$/i, async (bot, msg, dependencies, match) => {
+            const { logger, internal, spellsService } = dependencies;
+            logger.info(`[SpellMenu] /cast command received from ${msg.from.username || msg.from.first_name} (ID: ${msg.from.id}), text: "${msg.text}"`);
+            const chatId = msg.chat.id;
+            const username = msg.from.username || msg.from.first_name;
+            
+            // Set initial reaction (like dynamicCommands)
+            await setReaction(bot, chatId, msg.message_id, '🤔').catch(reactError => 
+                logger.warn(`[SpellMenu] /cast: Failed to set initial reaction: ${reactError.message}`)
+            );
+            
+            let spellSlug = null;
+            let paramOverrides = {};
+            // Parse slug and parameter overrides from the command
+            if (match && match[1]) {
             const commandBody = match[1].trim();
             const firstSpaceIndex = commandBody.indexOf(' ');
 
@@ -837,41 +847,84 @@ function registerHandlers(dispatcherInstances, dependencies) {
                     paramOverrides = parsedParams;
                 }
             }
-        }
-        if (!spellSlug) {
-            await bot.sendMessage(chatId, "Usage: /cast <spell_slug> [param1=val1 param2=val2 ...]", { reply_to_message_id: msg.message_id });
-            return;
-        }
-        try {
-            // Resolve masterAccountId
-            const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
-                platform: 'telegram',
-                platformId: msg.from.id.toString(),
-                platformContext: { firstName: msg.from.first_name, username: msg.from.username }
-            });
-            const masterAccountId = findOrCreateResponse.data.masterAccountId;
-            if (!masterAccountId) {
-                logger.error(`[SpellMenu] /cast: Could not resolve masterAccountId for user ${msg.from.id}.`);
-                await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
+            }
+            if (!spellSlug) {
+                await bot.sendMessage(chatId, "Usage: /cast <spell_slug> [param1=val1 param2=val2 ...]", { reply_to_message_id: msg.message_id });
+                await setReaction(bot, chatId, msg.message_id, '😨');
                 return;
             }
-            // Call SpellsService to cast the spell
-            const result = await spellsService.castSpell(spellSlug, {
-                masterAccountId,
-                parameterOverrides: paramOverrides,
-                platform: 'telegram',
-                telegramContext: { chatId, messageId: msg.message_id, userId: msg.from.id }
-            });
-            // TODO: Improve result display (show output, images, etc.)
-            await bot.sendMessage(chatId, `✅ Spell '${spellSlug}' cast successfully!`, { reply_to_message_id: msg.message_id });
-        } catch (error) {
-            logger.error(`[SpellMenu] /cast error for slug '${spellSlug}': ${error.stack || error}`);
-            const errorMessage = error.message.includes('starting with') 
-                ? error.message 
-                : `❌ Failed to cast spell '${spellSlug}': ${error.message || error}`;
-            await sendEscapedMessage(bot, chatId, errorMessage, { reply_to_message_id: msg.message_id });
-        }
-    });
+            try {
+                // Verify dependencies are available
+                if (!spellsService) {
+                    logger.error('[SpellMenu] /cast: spellsService is not available in dependencies');
+                    await bot.sendMessage(chatId, "Spell service is not available. Please contact support.", { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '😨');
+                    return;
+                }
+                if (!internal || !internal.client) {
+                    logger.error('[SpellMenu] /cast: internal.client is not available in dependencies');
+                    await bot.sendMessage(chatId, "Internal API client is not available. Please contact support.", { reply_to_message_id: msg.message_id });
+                    await setReaction(bot, chatId, msg.message_id, '😨');
+                    return;
+                }
+                
+                logger.info(`[SpellMenu] /cast: Resolving masterAccountId for user ${msg.from.id}`);
+                // Resolve masterAccountId
+                const findOrCreateResponse = await internal.client.post('/internal/v1/data/users/find-or-create', {
+                    platform: 'telegram',
+                    platformId: msg.from.id.toString(),
+                    platformContext: { firstName: msg.from.first_name, username: msg.from.username }
+                });
+                const masterAccountId = findOrCreateResponse.data.masterAccountId;
+                if (!masterAccountId) {
+                    logger.error(`[SpellMenu] /cast: Could not resolve masterAccountId for user ${msg.from.id}.`);
+                    await bot.sendMessage(chatId, "I couldn't identify your account. Please try again or contact support.", { reply_to_message_id: msg.message_id });
+                    return;
+                }
+                logger.info(`[SpellMenu] /cast: Resolved masterAccountId ${masterAccountId}, casting spell "${spellSlug}"`);
+                
+                // Extract image from reply-to-message if present (similar to dynamicCommands)
+                if (msg.reply_to_message) {
+                    const repliedImageUrl = await getTelegramFileUrl(bot, msg);
+                    if (repliedImageUrl) {
+                        // Use input_image as the default key (normalization will map it to the tool's expected key)
+                        paramOverrides.input_image = repliedImageUrl;
+                        logger.info(`[SpellMenu] /cast: Extracted image from replied message: ${repliedImageUrl}`);
+                    }
+                }
+                
+                // Call SpellsService to cast the spell
+                // Note: castSpell() starts execution and returns immediately (fire-and-forget)
+                // The spell will execute asynchronously and results will be delivered via Telegram notifications
+                try {
+                    const result = await spellsService.castSpell(spellSlug, {
+                        masterAccountId,
+                        parameterOverrides: paramOverrides,
+                        platform: 'telegram',
+                        telegramContext: { chatId, messageId: msg.message_id, userId: msg.from.id }
+                    });
+                    
+                    logger.info(`[SpellMenu] /cast: Spell "${spellSlug}" execution started successfully`);
+                    
+                    // Set success reaction (like dynamicCommands) - execution happens asynchronously
+                    await setReaction(bot, chatId, msg.message_id, '👌');
+                } catch (castError) {
+                    logger.error(`[SpellMenu] /cast: Error casting spell "${spellSlug}": ${castError.stack || castError}`);
+                    throw castError; // Re-throw to be caught by outer catch
+                }
+            } catch (error) {
+                logger.error(`[SpellMenu] /cast error for slug '${spellSlug || 'unknown'}': ${error.stack || error}`);
+                const errorMessage = error.message.includes('starting with') 
+                    ? error.message 
+                    : `❌ Failed to cast spell '${spellSlug || 'unknown'}': ${error.message || error}`;
+                await sendEscapedMessage(bot, chatId, errorMessage, { reply_to_message_id: msg.message_id });
+                await setReaction(bot, chatId, msg.message_id, '😨');
+            }
+        });
+        logger.info('[SpellMenuManager] /cast command handler registered successfully');
+    } catch (registrationError) {
+        logger.error(`[SpellMenuManager] Failed to register /cast command: ${registrationError.stack || registrationError}`);
+    }
 
     logger.info('[SpellMenuManager] All handlers registered.');
 }

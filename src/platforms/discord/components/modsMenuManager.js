@@ -169,7 +169,10 @@ async function handleModsButtonInteraction(client, interaction, masterAccountId,
     }
     
     try {
-        await interaction.deferUpdate();
+        // Check if interaction is already deferred (bot.js defers it)
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate();
+        }
         
         const [action, subAction, ...params] = interaction.customId.split(':');
         
@@ -293,30 +296,21 @@ async function buildModsByFilterScreen(masterAccountId, filterType, currentCheck
         .setTitle(title);
     
     try {
-        // Build API query params
+        // Build API query params - match Telegram's implementation
         const params = {
-            masterAccountId,
+            filterType: filterType,
+            checkpoint: currentCheckpoint,
             page: currentPage,
-            limit: 25 // Discord select menu limit
+            limit: 25, // Discord select menu limit
+            userId: masterAccountId
         };
         
-        if (filterType === 'popular') {
-            params.sortBy = 'popularity';
-        } else if (filterType === 'recent') {
-            params.sortBy = 'recent';
-        } else if (filterType === 'favorites') {
-            params.favorites = true;
-        } else if (filterType.startsWith('type_')) {
-            params.type = filterType.replace('type_', '');
-        }
+        logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/list with params: filterType=${filterType}&checkpoint=${currentCheckpoint}&page=${currentPage}&limit=25&userId=${masterAccountId}`);
         
-        if (currentCheckpoint !== 'All') {
-            params.checkpoint = currentCheckpoint;
-        }
-        
-        const response = await apiClient.get('/internal/v1/data/loras', { params });
-        const loras = response.data?.loras || response.data || [];
-        const totalPages = response.data?.totalPages || 1;
+        const response = await apiClient.get('/internal/v1/data/loras/list', { params });
+        const responseData = response.data;
+        const loras = responseData?.loras || [];
+        const totalPages = responseData?.pagination?.totalPages || 1;
         
         if (loras.length === 0) {
             embed.setDescription('No Mods found in this category.');
@@ -331,14 +325,20 @@ async function buildModsByFilterScreen(masterAccountId, filterType, currentCheck
             loras.forEach((lora, index) => {
                 const label = lora.name || `Mod ${index + 1}`;
                 const value = `${lora._id || lora.id}:${getFilterShortcode(filterType)}:${currentCheckpoint}:${currentPage}`;
-                const description = lora.description ? 
-                    (lora.description.length > 100 ? lora.description.substring(0, 97) + '...' : lora.description) : 
-                    '';
-                selectMenu.addOptions({
+                
+                // Build option object - only include description if it exists and is not empty
+                const option = {
                     label: label.length > 100 ? label.substring(0, 97) + '...' : label,
-                    value: value.length > 100 ? value.substring(0, 100) : value,
-                    description: description.substring(0, 100)
-                });
+                    value: value.length > 100 ? value.substring(0, 100) : value
+                };
+                
+                // Only add description if it exists and is not empty (Discord.js validation requirement)
+                if (lora.description && lora.description.trim().length > 0) {
+                    const description = lora.description.length > 100 ? lora.description.substring(0, 97) + '...' : lora.description;
+                    option.description = description;
+                }
+                
+                selectMenu.addOptions(option);
             });
             
             const components = [
@@ -427,7 +427,10 @@ async function handleModsSelectMenuInteraction(client, interaction, masterAccoun
     }
     
     try {
-        await interaction.deferUpdate();
+        // Check if interaction is already deferred (bot.js defers it)
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate();
+        }
         
         const [action, subAction, filterShortcode, checkpoint, pageStr] = interaction.customId.split(':');
         const selectedValue = interaction.values[0];
@@ -468,8 +471,9 @@ async function buildModDetailScreen(masterAccountId, loraIdentifier, backFilterT
         .setTitle('🎭 Mod Details');
     
     try {
+        logger.info(`[ModsMenuManager] Calling /internal/v1/data/loras/${loraIdentifier}?userId=${masterAccountId}`);
         const response = await apiClient.get(`/internal/v1/data/loras/${loraIdentifier}`, {
-            params: { masterAccountId }
+            params: { userId: masterAccountId }
         });
         const lora = response.data?.lora || response.data;
         
@@ -477,8 +481,13 @@ async function buildModDetailScreen(masterAccountId, loraIdentifier, backFilterT
             embed.setDescription('❌ Mod not found.');
         } else {
             embed.setTitle(`🎭 ${lora.name || 'Unknown Mod'}`);
+            
+            // Description (strip HTML if needed, limit to 4096 chars for embed)
             if (lora.description) {
-                embed.setDescription(lora.description.substring(0, 4096));
+                // Simple HTML stripping for Discord (basic tags)
+                let cleanedDesc = lora.description.replace(/<[^>]*>/g, '');
+                cleanedDesc = cleanedDesc.substring(0, 4096);
+                embed.setDescription(cleanedDesc);
             }
             
             // Add fields
@@ -489,19 +498,64 @@ async function buildModDetailScreen(masterAccountId, loraIdentifier, backFilterT
             if (lora.type) {
                 fields.push({ name: 'Type', value: lora.type, inline: true });
             }
-            if (lora.rating) {
-                fields.push({ name: '⭐ Rating', value: lora.rating.toFixed(1), inline: true });
+            
+            // Trigger words
+            if (lora.triggerWords && lora.triggerWords.length > 0) {
+                let triggers = lora.triggerWords.join(', ');
+                if (triggers.length > 1024) triggers = triggers.substring(0, 1021) + '...';
+                fields.push({ name: '🎯 Triggers', value: triggers, inline: false });
             }
+            
+            // Cognates (shortcuts)
+            if (lora.cognates && lora.cognates.length > 0) {
+                const cognateWords = lora.cognates.map(c => c.word).join(', ');
+                const shortcuts = cognateWords.length > 1024 ? cognateWords.substring(0, 1021) + '...' : cognateWords;
+                fields.push({ name: '⚡ Shortcuts', value: shortcuts, inline: false });
+            }
+            
+            // Tags
+            if (lora.tags && lora.tags.length > 0) {
+                const tags = lora.tags.slice(0, 10).map(t => t.tag || t).join(', ');
+                const tagsText = tags.length > 1024 ? tags.substring(0, 1021) + '...' : tags;
+                fields.push({ name: '🏷️ Tags', value: tagsText, inline: false });
+            }
+            
+            // Default weight
+            if (lora.defaultWeight !== undefined && lora.defaultWeight !== null) {
+                fields.push({ name: '⚖️ Default Weight', value: String(lora.defaultWeight), inline: true });
+            }
+            
+            // Handle rating - can be a number or an object with avg property
+            if (lora.rating) {
+                let ratingValue;
+                if (typeof lora.rating === 'number') {
+                    ratingValue = lora.rating.toFixed(1);
+                } else if (lora.rating.avg !== undefined) {
+                    ratingValue = Number(lora.rating.avg).toFixed(1);
+                } else {
+                    ratingValue = 'N/A';
+                }
+                fields.push({ name: '⭐ Rating', value: ratingValue, inline: true });
+            }
+            
             if (fields.length > 0) {
                 embed.addFields(fields);
             }
             
-            // Add image if available
-            if (lora.imageUrl || lora.thumbnailUrl) {
-                embed.setImage(lora.imageUrl || lora.thumbnailUrl);
+            // Add preview image if available (prefer previewImages over imageUrl/thumbnailUrl)
+            let imageUrl = null;
+            if (lora.previewImages && lora.previewImages.length > 0) {
+                const firstImage = lora.previewImages[0];
+                if (typeof firstImage === 'string' && (firstImage.startsWith('http://') || firstImage.startsWith('https://'))) {
+                    imageUrl = firstImage;
+                }
             }
-            
-            embed.setFooter({ text: `ID: ${lora._id || lora.id}` });
+            if (!imageUrl && (lora.imageUrl || lora.thumbnailUrl)) {
+                imageUrl = lora.imageUrl || lora.thumbnailUrl;
+            }
+            if (imageUrl) {
+                embed.setImage(imageUrl);
+            }
         }
         
         // Build buttons

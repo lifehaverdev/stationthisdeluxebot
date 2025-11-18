@@ -25,6 +25,7 @@ const csrfExcluded = [
   '/api/v1/webhook/comfydeploy',
   '/api/v1/points/supported-assets',
   '/api/v1/upload/', // Upload API endpoints for training datasets
+  '/api/v1/payments/', // Public payment endpoints for spell execution
 ];
 
 // Helper: robust path matching (ignores query params, matches prefix)

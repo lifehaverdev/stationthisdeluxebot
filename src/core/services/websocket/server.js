@@ -199,18 +199,29 @@ class WebSocketService {
         return null;
       }
       const cookies = cookie.parse(req.headers.cookie);
-      const token = cookies.jwt;
+      
+      // Check for regular JWT token first
+      let token = cookies.jwt;
+      
+      // Fallback to guest token if regular JWT not found
       if (!token) {
-        logger.warn('[WebSocketService] Auth failed: No JWT in cookie.');
+        token = cookies.guestToken;
+      }
+      
+      if (!token) {
+        logger.warn('[WebSocketService] Auth failed: No JWT or guestToken in cookie.');
         return null;
       }
+      
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       // Assuming decoded token has userId which is the masterAccountId
       if (!decoded.userId) {
         logger.warn('[WebSocketService] Auth failed: JWT does not contain userId.');
         return null;
       }
-      logger.info(`[WebSocketService] User authenticated via WebSocket: ${decoded.userId}`);
+      
+      const authType = decoded.isGuest ? 'guest' : 'user';
+      logger.info(`[WebSocketService] ${authType} authenticated via WebSocket: ${decoded.userId}`);
       return decoded;
     } catch (err) {
       logger.error(`[WebSocketService] Authentication error: ${err.message}`);

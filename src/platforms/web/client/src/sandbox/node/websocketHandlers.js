@@ -302,12 +302,15 @@ export function handleGenerationUpdate(payload) {
                 outputData = { type: 'text', text: outputs.text, generationId };
             } else if (outputs.response) {
                 outputData = { type: 'text', text: outputs.response, generationId };
+            } else if (outputs.result) {
+                // Handle { result: "text" } format (should be normalized by backend, but fallback for safety)
+                outputData = { type: 'text', text: outputs.result, generationId };
             } else if (Array.isArray(outputs) && outputs[0]?.data?.text) {
                 const t = outputs[0].data.text;
-                outputData = { type: 'text', text: Array.isArray(t) ? t : [t], generationId };
+                outputData = { type: 'text', text: Array.isArray(t) ? t.join('\n\n') : t, generationId };
             }
             else if (Array.isArray(outputs) && typeof outputs[0] === 'string') {
-                outputData = { type: 'text', text: outputs, generationId };
+                outputData = { type: 'text', text: outputs.join('\n\n'), generationId };
             } else if (typeof outputs === 'string') {
                 outputData = { type: 'text', text: outputs, generationId };
             }

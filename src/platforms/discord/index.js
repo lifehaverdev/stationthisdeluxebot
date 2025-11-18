@@ -6,6 +6,7 @@
  */
 
 const createDiscordBot = require('./bot');
+const { CommandRegistry } = require('./dynamicCommands');
 
 /**
  * Initialize the Discord platform
@@ -15,16 +16,26 @@ const createDiscordBot = require('./bot');
  */
 function initializeDiscordPlatform(services, options = {}) {
   const {
-    comfyuiService,
+    comfyUI, // Services object uses comfyUI (not comfyuiService)
+    comfyuiService, // Also check for comfyuiService (backward compatibility)
     pointsService,
-    sessionService,
-    workflowsService,
+    session, // Services object uses session (not sessionService)
+    sessionService, // Also check for sessionService (backward compatibility)
+    userSettingsService, // This is what dynamicCommands.js actually needs
+    workflows, // Services object uses workflows (not workflowsService)
+    workflowsService, // Also check for workflowsService (backward compatibility)
     mediaService,
+    openaiService, // For dynamic commands
+    loraResolutionService, // For dynamic commands
     internal, // Internal API services
     toolRegistry, // Tool registry for dynamic commands and settings
-    commandRegistry, // Command registry for dynamic commands
+    // commandRegistry removed - we create our own platform-specific instance
     logger = console
   } = services;
+  
+  // Create a platform-specific CommandRegistry for Discord
+  // This prevents conflicts with Telegram's command registry
+  const discordCommandRegistry = new CommandRegistry(logger);
   
   const token = process.env.DISCORD_TOKEN || options.token;
   
@@ -33,16 +44,20 @@ function initializeDiscordPlatform(services, options = {}) {
   }
   
   // Initialize the bot with all required services
+  // Use the actual service names from the services object
   const bot = createDiscordBot(
     {
-      comfyuiService,
+      comfyuiService: comfyuiService || comfyUI, // Use comfyuiService if available, fallback to comfyUI
       pointsService,
-      sessionService,
-      workflowsService,
+      sessionService: sessionService || session, // Use sessionService if available, fallback to session
+      userSettingsService: userSettingsService || sessionService || session, // For dynamic commands
+      workflowsService: workflowsService || workflows, // Use workflowsService if available, fallback to workflows
       mediaService,
+      openaiService, // Pass for dynamic commands
+      loraResolutionService, // Pass for dynamic commands
       internal, // Pass internal API services
       toolRegistry, // Pass tool registry
-      commandRegistry, // Pass command registry
+      commandRegistry: discordCommandRegistry, // Pass platform-specific command registry
       logger
     },
     token,
@@ -51,6 +66,8 @@ function initializeDiscordPlatform(services, options = {}) {
   
   logger.info('Discord platform initialized');
   
+  // Return bot object with client for notifier registration
+  // bot is already an object with { client, bot } from createDiscordBot
   return bot;
 }
 

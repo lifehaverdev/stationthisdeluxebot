@@ -40,6 +40,10 @@ const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
 const { initializeCookServices } = require('./cook');
 const StringService = require('./stringService');
 const { initializeTrainingServices } = require('./training');
+// --- Guest Account Services ---
+const GuestAccountService = require('./guestAccountService');
+const GuestAuthService = require('./guestAuthService');
+const SpellPaymentService = require('./spellPaymentService');
 
 /**
  * Initialize all core services
@@ -179,6 +183,7 @@ async function initializeServices(options = {}) {
             webSocketService,
             saltMiningService,
             adminActivityService, // Add admin activity service for real-time monitoring
+            spellPaymentService: null, // Will be injected after SpellPaymentService is created
           };
           creditServices[chainId] = new CreditService(creditDeps, creditServiceConfig, logger);
         } catch (err) {
@@ -217,8 +222,56 @@ async function initializeServices(options = {}) {
       db: initializedDbServices.data,
       workflowExecutionService,
       spellPermissionsDb: initializedDbServices.data.spellPermissions,
+      creditService: creditServices && creditServices['1'] ? creditServices['1'] : null, // Mainnet credit service for upfront payments
     });
     logger.info('SpellsService initialized (pre-API).');
+
+    // Initialize Guest Account Services
+    const guestAccountService = new GuestAccountService({
+      logger,
+      internalApiClient,
+      userCoreDb: initializedDbServices.data.userCore
+    });
+    logger.info('GuestAccountService initialized.');
+
+    const guestAuthService = new GuestAuthService({
+      logger,
+      userCoreDb: initializedDbServices.data.userCore
+    });
+    logger.info('GuestAuthService initialized.');
+
+    // Initialize SpellPaymentService (uses mainnet credit service)
+    // Note: This must be after creditServices are initialized
+    let spellPaymentService = null;
+    if (creditServices && creditServices['1'] && guestAccountService && guestAuthService) {
+      try {
+        // Import getFoundationAddress here since it's scoped to the try block above
+        const { getFoundationAddress } = require('./alchemy/foundationConfig');
+        spellPaymentService = new SpellPaymentService({
+          logger,
+          ethereumService: ethereumServices['1'],
+          creditService: creditServices['1'],
+          guestAccountService,
+          guestAuthService,
+          foundationConfig: {
+            address: getFoundationAddress('1'),
+            abi: contracts.foundation.abi
+          }
+        });
+        logger.info('SpellPaymentService initialized.');
+        
+        // Inject SpellPaymentService back into CreditService (mainnet only)
+        // This allows CreditService to track spell payments when processing deposits
+        if (creditServices['1']) {
+          creditServices['1'].spellPaymentService = spellPaymentService;
+          logger.info('SpellPaymentService injected into mainnet CreditService.');
+        }
+      } catch (error) {
+        logger.error('Failed to initialize SpellPaymentService:', error);
+      }
+    } else {
+      logger.warn('SpellPaymentService not initialized: missing dependencies (creditServices, guestAccountService, or guestAuthService)');
+    }
 
     // After database services initialized and toolRegistry loaded, enrich tools with stats
     const spellStatsService = new SpellStatsService({ generationOutputsDb: initializedDbServices.data.generationOutputs, logger });
@@ -252,7 +305,10 @@ async function initializeServices(options = {}) {
       webSocketService, // Add the service here
       modelDiscoveryService, // Add the service here
       stringService, // Add the service here
-      adminActivityService // Add admin activity service
+      adminActivityService, // Add admin activity service
+      guestAccountService, // Add guest account service
+      guestAuthService, // Add guest auth service
+      spellPaymentService // Add spell payment service
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.
@@ -312,7 +368,10 @@ async function initializeServices(options = {}) {
       webSocketService, // Add the service here
       spellStatsService, // expose SpellStatsService
       stringService, // expose StringService
-      adminActivityService // expose AdminActivityService
+      adminActivityService, // expose AdminActivityService
+      guestAccountService, // expose GuestAccountService
+      guestAuthService, // expose GuestAuthService
+      spellPaymentService // expose SpellPaymentService
     };
 
     // DIAGNOSTIC LOGGING REMOVED
@@ -347,6 +406,8 @@ module.exports = {
   SpellsService,
   OpenAIService,
   HuggingFaceService,
+  GuestAccountService,
+  GuestAuthService,
   WorkflowExecutionService,
   initializeServices,
   ToolRegistry, // geniusoverhaul: Export ToolRegistry for access if needed elsewhere

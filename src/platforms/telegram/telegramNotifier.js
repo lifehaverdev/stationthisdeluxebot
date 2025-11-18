@@ -7,6 +7,7 @@ const {
     sendVideoWithEscapedCaption,
     sendDocumentWithEscapedCaption
 } = require('./utils/messaging');
+const ResponsePayloadNormalizer = require('../../core/services/notifications/ResponsePayloadNormalizer');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // Placeholder for actual Telegram message sending utilities
@@ -69,71 +70,68 @@ class TelegramNotifier {
         ]
       };
 
-      // --- New Multi-Output Handling Logic ---
+      // --- Multi-Output Handling Logic (using centralized normalizer) ---
       const mediaToSend = [];
-      let textOutputs = [];
       const deliveryHints = generationRecord.metadata?.deliveryHints?.telegram || {};
       const sendAsDocument = deliveryHints['send-as'] === 'document';
       const suggestedFilename = deliveryHints.filename || 'output.png';
       const isGroupChat = chatId < 0; // Telegram group/supergroup IDs are negative
       const targetChatForDocument = (sendAsDocument && isGroupChat && notificationContext.userId) ? notificationContext.userId : chatId;
 
-      let payloadArray = Array.isArray(generationRecord.responsePayload)
-          ? generationRecord.responsePayload
-          : (generationRecord.outputs && Array.isArray(generationRecord.outputs) ? generationRecord.outputs : null);
+      // Normalize responsePayload using centralized normalizer
+      const normalizedPayload = ResponsePayloadNormalizer.normalize(
+        generationRecord.responsePayload,
+        { logger: this.logger }
+      );
 
-      // Back-compat: direct images array on responsePayload
-      if (!payloadArray && generationRecord.responsePayload && Array.isArray(generationRecord.responsePayload.images)) {
-          payloadArray = [ { data: { images: generationRecord.responsePayload.images } } ];
-      }
+      // Extract text and media from normalized payload
+      const textOutputs = ResponsePayloadNormalizer.extractText(normalizedPayload);
+      const extractedMedia = ResponsePayloadNormalizer.extractMedia(normalizedPayload);
 
-      if (payloadArray) {
-        for (const output of payloadArray) {
-            if (!output.data) continue;
-
-            // Collect Text
-            if (output.data.text && Array.isArray(output.data.text)) {
-                textOutputs.push(...output.data.text);
-            }
-
-            // Collect Images
-            if (output.data.images && Array.isArray(output.data.images)) {
-                output.data.images.forEach(image => {
-                    if (image.url) mediaToSend.push({ type: sendAsDocument ? 'document' : 'photo', url: image.url, caption: '', filename: suggestedFilename });
+      // Process media and apply Telegram-specific formatting
+      for (const media of extractedMedia) {
+        if (media.type === 'photo') {
+          mediaToSend.push({ 
+            type: sendAsDocument ? 'document' : 'photo', 
+            url: media.url, 
+            caption: '', 
+            filename: suggestedFilename 
                 });
-            }
-
-            // Collect Videos/Animations from 'files'
-            if (output.data.files && Array.isArray(output.data.files)) {
-                for (const file of output.data.files) {
-                    if (!file.url) continue;
-
-                    this.logger.info(`[TelegramNotifier] Processing file: ${JSON.stringify(file)}`);
-
-                    if (file.format && file.format.startsWith('video/')) {
-                        this.logger.info(`[TelegramNotifier] Detected video by format: ${file.format}`);
-                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
-                    } else if (file.filename && file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
-                        this.logger.info(`[TelegramNotifier] Detected video by filename: ${file.filename}`);
-                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
-                    } else if (file.subfolder === 'video') {
-                        this.logger.info(`[TelegramNotifier] Detected video by subfolder: ${file.subfolder}`);
-                        mediaToSend.push({ type: 'video', url: file.url, caption: '' });
-                    } else if (file.filename && (file.filename.endsWith('.txt') || file.format === 'text/plain')) {
+        } else if (media.type === 'video') {
+          mediaToSend.push({ 
+            type: 'video', 
+            url: media.url, 
+            caption: '' 
+          });
+        } else if (media.type === 'animation') {
+          mediaToSend.push({ 
+            type: 'animation', 
+            url: media.url, 
+            caption: '' 
+          });
+        } else {
+          // Handle text files (fetch content)
+          if (media.filename && (media.filename.endsWith('.txt') || media.format === 'text/plain')) {
                         try {
-                            this.logger.info(`[TelegramNotifier] Fetching text content from ${file.url}`);
-                            const response = await fetch(file.url);
+              this.logger.info(`[TelegramNotifier] Fetching text content from ${media.url}`);
+              const response = await fetch(media.url);
                             if (response.ok) {
                                 const textContent = await response.text();
                                 textOutputs.push(textContent);
                             } else {
-                                this.logger.warn(`[TelegramNotifier] Failed to fetch text from ${file.url}, status: ${response.status}`);
+                this.logger.warn(`[TelegramNotifier] Failed to fetch text from ${media.url}, status: ${response.status}`);
                             }
                         } catch (e) {
-                            this.logger.error(`[TelegramNotifier] Error fetching text content from ${file.url}: ${e.message}`);
+              this.logger.error(`[TelegramNotifier] Error fetching text content from ${media.url}: ${e.message}`);
                         }
-                    }
-                }
+          } else {
+            // Other file types as document
+            mediaToSend.push({ 
+              type: 'document', 
+              url: media.url, 
+              caption: '', 
+              filename: media.filename || suggestedFilename 
+            });
             }
         }
       }
@@ -148,6 +146,9 @@ class TelegramNotifier {
               return true;
           });
       }
+
+      // Log what we found for debugging
+      this.logger.info(`[TelegramNotifier] Processed responsePayload: found ${textOutputs.length} text outputs, ${mediaToSend.length} media items`);
 
       // If after processing there's no media but there is text, send the text.
       // If there's media, the text will be sent as a separate message after.
@@ -212,8 +213,10 @@ class TelegramNotifier {
               }
           }
           // After all media is sent, send a separate message with all the text joined together.
+          let textSent = false;
           if (textOutputs.length > 0) {
               await sendEscapedMessage(this.bot, chatId, textOutputs.join('\\n\\n'), { reply_to_message_id: replyToMessageId });
+              textSent = true;
           }
 
           // If we redirected document to user's private chat, notify in group
@@ -221,7 +224,16 @@ class TelegramNotifier {
               await sendEscapedMessage(this.bot, chatId, '📄 Your file has been sent to you in a private chat.', { reply_to_message_id: replyToMessageId });
           }
 
-          this.logger.info(`[TelegramNotifier] Successfully sent all media and text for COMPLETED notification to chatId: ${chatId}.`);
+          // Only log success if something was actually sent
+          const mediaSent = mediaToSend.length > 0;
+          if (mediaSent || textSent) {
+              this.logger.info(`[TelegramNotifier] Successfully sent all media and text for COMPLETED notification to chatId: ${chatId}.`);
+          } else {
+              this.logger.warn(`[TelegramNotifier] No content to send for COMPLETED notification to chatId: ${chatId}. responsePayload: ${JSON.stringify(generationRecord.responsePayload)}`);
+              // Fallback: send the generic messageContent if nothing else was sent
+              await sendEscapedMessage(this.bot, chatId, messageContent, options);
+              this.logger.info(`[TelegramNotifier] Sent fallback messageContent to chatId: ${chatId}.`);
+          }
 
       } catch (error) {
         this.logger.error(`[TelegramNotifier] Failed to send COMPLETED notification to chatId: ${chatId}. Error: ${error.message}`, error.stack);

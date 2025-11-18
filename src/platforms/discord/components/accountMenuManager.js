@@ -180,12 +180,9 @@ async function handleAccountMenuInteraction(client, interaction, masterAccountId
         break;
 
       case 'buy':
-        // Redirect to buy points (if exists)
-        await interaction.editReply({
-          content: '💰 Buy Points feature coming soon!',
-          embeds: [],
-          components: []
-        });
+        // Start buy points flow
+        const buyPointsManager = require('./buyPointsManager');
+        await buyPointsManager.startFlow(interaction, masterAccountId, dependencies);
         break;
 
       case 'history':

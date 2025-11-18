@@ -25,7 +25,9 @@ class CostAggregator {
 
         try {
             // Fetch all generation records
-            const queryString = generationIds.map(id => `_id_in=${id}`).join('&');
+            // Use comma-separated format for _id_in to ensure all IDs are included
+            // Express may not handle multiple query params with same name as array
+            const queryString = `_id_in=${generationIds.join(',')}`;
             const genRes = await this.internalApiClient.get(`/internal/v1/data/generations?${queryString}`);
             let stepGens = genRes.data.generations || [];
             
@@ -44,7 +46,38 @@ class CostAggregator {
 
             // Aggregate costs
             totalCostUsd = stepGens.reduce((sum, g) => {
-                const val = g.costUsd !== undefined && g.costUsd !== null ? Number(g.costUsd) : 0;
+                if (g.costUsd === undefined || g.costUsd === null) {
+                    return sum;
+                }
+                
+                // Handle Decimal128 objects (MongoDB BSON type)
+                let val = 0;
+                if (typeof g.costUsd === 'object') {
+                    // Check for Decimal128 BSON type
+                    if (g.costUsd._bsontype === 'Decimal128' && g.costUsd.toString) {
+                        try {
+                            val = parseFloat(g.costUsd.toString());
+                        } catch (e) {
+                            this.logger.warn(`[CostAggregator] Failed to convert Decimal128 costUsd for generation ${g._id}:`, e.message);
+                            val = 0;
+                        }
+                    } else if (g.costUsd.$numberDecimal) {
+                        // Handle MongoDB $numberDecimal format
+                        try {
+                            val = parseFloat(g.costUsd.$numberDecimal);
+                        } catch (e) {
+                            this.logger.warn(`[CostAggregator] Failed to convert $numberDecimal costUsd for generation ${g._id}:`, e.message);
+                            val = 0;
+                        }
+                    } else {
+                        // Try Number() as fallback
+                        val = Number(g.costUsd);
+                    }
+                } else {
+                    // Handle string or number
+                    val = parseFloat(g.costUsd);
+                }
+                
                 return sum + (isNaN(val) ? 0 : val);
             }, 0);
 

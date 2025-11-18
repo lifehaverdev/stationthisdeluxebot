@@ -24,7 +24,25 @@ module.exports = function spellsApi(dependencies) {
   // -------------------------------------------------------------
   router.get('/public', async (req, res) => {
     try {
-      const spells = await spellsDb.findPublicSpells();
+      const { tag, search } = req.query;
+      const filter = {};
+      
+      // Add tag filter if provided
+      if (tag) {
+        filter.tags = tag;
+      }
+      
+      // Add search filter if provided (searches name and description)
+      if (search) {
+        filter.$or = [
+          { name: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } }
+        ];
+      }
+      
+      // findPublicSpells will merge this filter with its baseFilter using $and
+      // MongoDB will automatically AND all top-level conditions
+      const spells = await spellsDb.findPublicSpells(filter);
       return res.status(200).json({ spells });
     } catch (err) {
       logger.error('[spellsApi] GET /public list error', err);

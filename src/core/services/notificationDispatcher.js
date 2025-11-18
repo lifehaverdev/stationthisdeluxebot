@@ -58,6 +58,9 @@ class NotificationDispatcher {
 
     if (record.deliveryStrategy === 'spell_step') {
       await this._handleSpellStep(record);
+    } else if (record.deliveryStrategy === 'spell_final') {
+      // Final spell completion - send notification but don't continue execution
+      await this._dispatchNotification({ ...record, _id: recordId });
     } else {
       // The record passed in should already be complete
       await this._dispatchNotification({ ...record, _id: recordId });

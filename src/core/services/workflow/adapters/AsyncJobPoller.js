@@ -37,12 +37,16 @@ class AsyncJobPoller {
      * @private
      */
     _pollInBackground(generationId, runId, adapter, maxAttempts, pollInterval, normalizeOutput) {
+        this.logger.info(`[AsyncJobPoller] Starting background polling for generation ${generationId}, runId ${runId}`);
         (async () => {
             try {
                 let attempts = 0;
                 while (attempts < maxAttempts) {
                     await new Promise(r => setTimeout(r, pollInterval));
+                    attempts++;
+                    this.logger.debug(`[AsyncJobPoller] Polling attempt ${attempts}/${maxAttempts} for runId ${runId}`);
                     const pollRes = await adapter.pollJob(runId);
+                    this.logger.debug(`[AsyncJobPoller] Poll result for runId ${runId}: status=${pollRes?.status}`);
 
                     if (pollRes.status === 'succeeded' || pollRes.status === 'failed' || pollRes.status === 'completed') {
                         const finalStatus = (pollRes.status === 'failed') ? 'failed' : 'completed';
@@ -62,19 +66,8 @@ class AsyncJobPoller {
 
                         await this.generationRecordManager.updateGenerationRecord(generationId, updatePayload);
                         this.logger.info(`[AsyncJobPoller] Updated generation ${generationId} with final status: ${finalStatus}`);
-
-                        // Fetch updated record and emit event to trigger spell continuation
-                        const notificationEvents = require('../../../events/notificationEvents');
-                        const updatedRecord = await this.generationRecordManager.getGenerationRecord(generationId);
-
-                        if (updatedRecord) {
-                            const recordToEmit = {
-                                ...updatedRecord,
-                                deliveryStrategy: 'spell_step'
-                            };
-                            notificationEvents.emit('generationUpdated', recordToEmit);
-                            this.logger.info(`[AsyncJobPoller] Emitted generationUpdated for completed adapter job ${generationId}`);
-                        }
+                        // NOTE: We don't emit generationUpdated here because the API endpoint (generationOutputsApi.js)
+                        // already emits it when the record is updated. Emitting here would cause duplicate handling.
 
                         break; // Job completed, exit polling loop
                     }

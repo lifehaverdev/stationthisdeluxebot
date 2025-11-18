@@ -49,7 +49,14 @@ module.exports = function generationOutputsApi(dependencies) {
 
         if (key.endsWith('_in')) {
           const field = key.slice(0, -3);
-          filter[field] = { $in: Array.isArray(value) ? value : [value] };
+          // Handle both array format and comma-separated string format
+          let values = Array.isArray(value) ? value : (typeof value === 'string' && value.includes(',') ? value.split(',').map(v => v.trim()) : [value]);
+          // Convert _id values to ObjectIds for MongoDB queries
+          if (field === '_id') {
+            filter[field] = { $in: values.map(v => ObjectId.isValid(v) ? new ObjectId(v) : v) };
+          } else {
+            filter[field] = { $in: values };
+          }
         } else if (key.endsWith('_ne')) {
           const field = key.slice(0, -3);
           filter[field] = { $ne: value };
@@ -305,7 +312,15 @@ module.exports = function generationOutputsApi(dependencies) {
 
       if (isNotificationReady && statusJustBecameTerminal) {
         logger.info(`[generationOutputsApi] PUT /${generationId}: Generation has become terminal and is ready for delivery, emitting event.`);
-        notificationEvents.emit('generationUpdated', updatedGeneration);
+        
+        // Determine delivery strategy based on metadata
+        // If this is a spell step, set deliveryStrategy to 'spell_step' so NotificationDispatcher handles it correctly
+        const isSpellStep = updatedGeneration.metadata?.isSpell || updatedGeneration.metadata?.spell;
+        const recordToEmit = isSpellStep 
+          ? { ...updatedGeneration, deliveryStrategy: 'spell_step' }
+          : updatedGeneration;
+        
+        notificationEvents.emit('generationUpdated', recordToEmit);
       } else if (isNotificationReady) {
         logger.debug(`[generationOutputsApi] PUT /${generationId}: Generation is ready for delivery, but status did not just become terminal in this update. Suppressing redundant event.`);
       }

@@ -17,7 +17,7 @@ class AdapterCoordinator {
     /**
      * Executes a tool using its adapter
      * @param {Object} tool - Tool definition
-     * @param {Object} inputs - Tool inputs
+     * @param {Object} inputs - Tool inputs (resolved finalInputs from StepExecutor)
      * @param {Object} executionContext - Execution context
      * @param {Object} dependencies - Dependencies (eventId, etc.)
      * @returns {Promise<Object>} - Execution result with { generationId, runId, status }
@@ -35,7 +35,7 @@ class AdapterCoordinator {
             throw new Error(`Adapter for ${tool.service} does not support startJob()`);
         }
 
-        this.logger.info(`[AdapterCoordinator] Executing tool ${tool.toolId} via adapter`);
+        this.logger.info(`[AdapterCoordinator] Executing tool ${tool.toolId} via adapter with inputs: ${JSON.stringify(Object.keys(inputs || {}))}`);
 
         // Create generation record FIRST
         const generationParams = {
@@ -44,7 +44,7 @@ class AdapterCoordinator {
             serviceName: tool.service,
             toolId: tool.toolId,
             toolDisplayName: tool.displayName || tool.name || tool.toolId,
-            requestPayload: pipelineContext,
+            requestPayload: inputs, // Use resolved inputs, not empty pipelineContext
             status: 'processing',
             deliveryStatus: 'pending',
             deliveryStrategy: 'spell_step',
@@ -63,8 +63,18 @@ class AdapterCoordinator {
         const { generationId } = await this.generationRecordManager.createGenerationRecord(generationParams);
         this.logger.info(`[AdapterCoordinator] Created generation record ${generationId} for adapter job`);
 
-        // Start async job
-        const runInfo = await adapter.startJob(pipelineContext);
+        // Merge defaultAdapterParams and costTable from tool metadata before calling startJob
+        const jobInputs = {
+            ...(tool.metadata?.defaultAdapterParams || {}),
+            ...inputs,
+            // Pass costTable for DALL-E tools so adapter can calculate actual cost
+            ...(tool.metadata?.costTable && { costTable: tool.metadata.costTable })
+        };
+
+        // Start async job with merged inputs
+        this.logger.info(`[AdapterCoordinator] Calling adapter.startJob() with inputs: ${JSON.stringify(jobInputs)}`);
+        const runInfo = await adapter.startJob(jobInputs);
+        this.logger.info(`[AdapterCoordinator] adapter.startJob() returned runId: ${runInfo?.runId}`);
 
         // Update generation record with runId
         try {
@@ -94,28 +104,41 @@ class AdapterCoordinator {
      * @returns {Promise<Object>} - Execution result
      */
     async createAsyncJob(tool, inputs, executionContext, dependencies, normalizeOutput) {
-        const result = await this.executeWithAdapter(tool, inputs, executionContext, dependencies);
+        this.logger.info(`[AdapterCoordinator] createAsyncJob called for tool ${tool.toolId}`);
+        try {
+            const result = await this.executeWithAdapter(tool, inputs, executionContext, dependencies);
+            this.logger.info(`[AdapterCoordinator] executeWithAdapter completed. GenID: ${result.generationId}, RunId: ${result.runId}`);
 
-        // Start polling for async adapter jobs
-        await this.asyncJobPoller.startPolling(
-            result.generationId,
-            result.runId,
-            this.adapterRegistry.get(tool.service),
-            {
-                maxAttempts: 60,
-                pollInterval: 5000,
-                normalizeOutput: normalizeOutput
+            const adapter = this.adapterRegistry.get(tool.service);
+            if (!adapter) {
+                throw new Error(`Adapter not found for service ${tool.service}`);
             }
-        );
 
-        this.logger.info(`[AdapterCoordinator] Started async job via adapter. GenID: ${result.generationId}, RunId: ${result.runId}`);
+            // Start polling for async adapter jobs
+            this.logger.info(`[AdapterCoordinator] Starting polling for generation ${result.generationId}, runId ${result.runId}`);
+            await this.asyncJobPoller.startPolling(
+                result.generationId,
+                result.runId,
+                adapter,
+                {
+                    maxAttempts: 60,
+                    pollInterval: 5000,
+                    normalizeOutput: normalizeOutput
+                }
+            );
 
-        return {
-            generationId: result.generationId,
-            runId: result.runId,
-            status: 'processing',
-            pollingRequired: true
-        };
+            this.logger.info(`[AdapterCoordinator] Started async job via adapter. GenID: ${result.generationId}, RunId: ${result.runId}`);
+
+            return {
+                generationId: result.generationId,
+                runId: result.runId,
+                status: 'processing',
+                pollingRequired: true
+            };
+        } catch (error) {
+            this.logger.error(`[AdapterCoordinator] Error in createAsyncJob for tool ${tool.toolId}: ${error.stack || error}`);
+            throw error;
+        }
     }
 
     /**

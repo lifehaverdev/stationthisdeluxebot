@@ -6,14 +6,14 @@
  */
 
 const createTelegramBot = require('./bot');
-const { setupDynamicCommands } = require('./dynamicCommands');
+const { setupDynamicCommands, CommandRegistry } = require('./dynamicCommands');
 const WorkflowCacheManager = require('../../core/services/comfydeploy/workflowCacheManager');
 
 // Feature toggles for Telegram commands/menus. Toggle to true to disable a feature.
 const DISABLED_FEATURES = {
   train: true,   // Disables the /train command & training menu
   cook: true,    // Disables the /cook dynamic command
-  spells: true,  // Disables the /spells menu
+  spells: false, // Disables the /spells menu (set to false to enable spells and /cast command)
   again: false   // Controls the /again command
 };
 
@@ -33,8 +33,16 @@ function initializeTelegramPlatform(dependencies, options = {}) {
     throw new Error('Telegram bot token is required. Set TELEGRAM_TOKEN environment variable.');
   }
   
+  // Create a platform-specific CommandRegistry for Telegram
+  // This prevents conflicts with Discord's command registry
+  const telegramCommandRegistry = new CommandRegistry(logger);
+  
   // Initialize the bot with the canonical dependencies object
-  const bot = createTelegramBot({ ...dependencies, disabledFeatures: DISABLED_FEATURES }, token, { polling: true, ...options });
+  const bot = createTelegramBot({ 
+    ...dependencies, 
+    commandRegistry: telegramCommandRegistry, // Use platform-specific registry
+    disabledFeatures: DISABLED_FEATURES 
+  }, token, { polling: true, ...options });
   
   // Register feedback command
   const { setReaction } = require('./utils/telegramUtils');
@@ -538,9 +546,9 @@ function initializeTelegramPlatform(dependencies, options = {}) {
 
         logger.info(`[Telegram] ToolRegistry ready? ${initialized}. Tools count: ${registry?.getAllTools()?.length || 0}.`);
 
-        // Pass the commandRegistry instance from dependencies to the setup function.
+        // Pass the platform-specific commandRegistry instance to the setup function.
         // It will return a list of commands to be registered with the Telegram API.
-        const commandsToRegister = await setupDynamicCommands(dependencies.commandRegistry, { ...dependencies, disabledFeatures: DISABLED_FEATURES });
+        const commandsToRegister = await setupDynamicCommands(telegramCommandRegistry, { ...dependencies, disabledFeatures: DISABLED_FEATURES });
         
         if (commandsToRegister && commandsToRegister.length > 0) {
             await bot.setMyCommands(commandsToRegister);

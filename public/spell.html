@@ -16,13 +16,137 @@
     <main class="content-container">
       <section id="spell-metadata" class="card"></section>
       <section id="input-form" class="form-card"></section>
+      <div id="account-info" class="card" style="display:none;"></div>
       <div id="quote-section" class="card" style="display:none;"></div>
+      <div id="wallet-section" class="card" style="display:none;">
+        <h3>Wallet Connection</h3>
+        <button id="connect-wallet-btn" class="btn btn-primary">Connect Wallet</button>
+        <p id="wallet-address" style="display:none; margin-top: 1rem;"></p>
+      </div>
       <button id="run-btn" class="btn btn-primary" style="display:none;">Run Spell</button>
       <div id="output-section"></div>
     </main>
   </div>
 
+  <!-- Wallet Connection Modal -->
+  <div id="wallet-modal" class="wallet-modal" style="display:none;">
+    <div class="wallet-modal-content">
+      <div class="wallet-modal-header">
+        <h3>Connect Wallet</h3>
+        <button class="wallet-modal-close" id="wallet-modal-close">&times;</button>
+      </div>
+      <div class="wallet-modal-body">
+        <p>Connect your wallet to execute spells. We support MetaMask and other Web3 wallets.</p>
+        <div class="wallet-options">
+          <button class="wallet-option" id="wallet-option-metamask">
+            <span class="wallet-icon">🦊</span>
+            <span class="wallet-name">MetaMask</span>
+          </button>
+          <button class="wallet-option" id="wallet-option-walletconnect">
+            <span class="wallet-icon">🔗</span>
+            <span class="wallet-name">WalletConnect</span>
+          </button>
+        </div>
+        <p class="wallet-help-text">Don't have a wallet? <a href="https://metamask.io" target="_blank">Install MetaMask</a></p>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .wallet-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .wallet-modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .wallet-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .wallet-modal-header h3 {
+      margin: 0;
+      font-size: 24px;
+    }
+    .wallet-modal-close {
+      background: none;
+      border: none;
+      font-size: 32px;
+      cursor: pointer;
+      color: #666;
+      line-height: 1;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+    }
+    .wallet-modal-close:hover {
+      color: #000;
+    }
+    .wallet-modal-body {
+      margin-top: 20px;
+    }
+    .wallet-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .wallet-option {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+    }
+    .wallet-option:hover {
+      border-color: #4CAF50;
+      background: #f5f5f5;
+    }
+    .wallet-icon {
+      font-size: 24px;
+    }
+    .wallet-name {
+      font-weight: 500;
+    }
+    .wallet-help-text {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+    }
+    .wallet-help-text a {
+      color: #4CAF50;
+      text-decoration: none;
+    }
+    .wallet-help-text a:hover {
+      text-decoration: underline;
+    }
+  </style>
+
   <script type="module" src="/js/websocketClient.js"></script>
+  <script src="/js/wallet-connect.js"></script>
+  <script src="/js/buyPointsModal.js"></script>
   <script src="/js/spell_execute.js" type="module"></script>
 </body>
 </html> 

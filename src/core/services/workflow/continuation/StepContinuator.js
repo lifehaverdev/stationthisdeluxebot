@@ -6,6 +6,7 @@
  */
 
 const { validateGenerationMetadata } = require('../utils/ValidationUtils');
+const notificationEvents = require('../../../events/notificationEvents');
 
 class StepContinuator {
     constructor({ logger, castManager, generationRecordManager, costAggregator, stepExecutor }) {
@@ -51,10 +52,21 @@ class StepContinuator {
 
         // Update cast with completed generation
         if (castId) {
+            // Convert costUsd from Decimal128/object to number safely
+            let costUsd = 0;
+            if (completedGeneration.costUsd !== null && completedGeneration.costUsd !== undefined) {
+                if (typeof completedGeneration.costUsd === 'object' && completedGeneration.costUsd._bsontype === 'Decimal128') {
+                    costUsd = parseFloat(completedGeneration.costUsd.toString());
+                } else if (typeof completedGeneration.costUsd === 'object' && completedGeneration.costUsd.toString) {
+                    costUsd = parseFloat(completedGeneration.costUsd.toString());
+                } else {
+                    costUsd = parseFloat(completedGeneration.costUsd) || 0;
+                }
+            }
             await this.castManager.updateCastWithGeneration(
                 castId,
                 completedGeneration._id.toString(),
-                completedGeneration.costUsd
+                costUsd
             );
         }
 
@@ -83,9 +95,10 @@ class StepContinuator {
         );
 
         const nextStepIndex = stepIndex + 1;
+        const isLastStep = nextStepIndex >= spell.steps.length;
 
         // Check if there are more steps
-        if (nextStepIndex < spell.steps.length) {
+        if (!isLastStep) {
             // Execute next step
             await this._executeNextStep(
                 spell,
@@ -96,13 +109,15 @@ class StepContinuator {
                 originalContext
             );
         } else {
-            // Finalize spell
+            // Finalize spell - this is the last step, so use its output as the final result
+            // Don't create a separate final notification record if this step already has the final result
             await this._finalizeSpell(
                 spell,
                 castId,
                 stepGenerationIds,
                 completedGeneration,
-                originalContext
+                originalContext,
+                isLastStep
             );
         }
     }
@@ -173,8 +188,9 @@ class StepContinuator {
     /**
      * Finalizes the spell
      * @private
+     * @param {boolean} isLastStep - Whether this is the last step (to avoid duplicate notifications)
      */
-    async _finalizeSpell(spell, castId, stepGenerationIds, completedGeneration, originalContext) {
+    async _finalizeSpell(spell, castId, stepGenerationIds, completedGeneration, originalContext, isLastStep = false) {
         // Check if cast is already completed to prevent duplicate finalization
         if (castId) {
             const isCompleted = await this.castManager.checkCastStatus(castId);
@@ -184,7 +200,7 @@ class StepContinuator {
             }
         }
 
-        this.logger.info(`[StepContinuator] Spell "${spell.name}" finished successfully. Creating final notification record.`);
+        this.logger.info(`[StepContinuator] Spell "${spell.name}" finished successfully.`);
 
         // Finalize cast
         if (castId) {
@@ -194,7 +210,102 @@ class StepContinuator {
         // Aggregate costs
         const { totalCostUsd, totalPointsSpent } = await this.costAggregator.aggregateCosts(stepGenerationIds);
 
-        // Create final generation record
+        // If this is the last step, update its record to send the final notification
+        // This avoids creating a duplicate final record
+        if (isLastStep && completedGeneration._id) {
+            this.logger.info(`[StepContinuator] Updating final step's generation record to send spell completion notification.`);
+            try {
+                // Check if cast has webhook URL for webhook delivery
+                let webhookUrl = null;
+                let webhookSecret = null;
+                let notificationPlatform = originalContext.platform || 'none';
+                
+                if (castId) {
+                    try {
+                        const castRecord = await this.castManager.getCast(castId);
+                        if (castRecord?.metadata?.webhookUrl) {
+                            webhookUrl = castRecord.metadata.webhookUrl;
+                            webhookSecret = castRecord.metadata.webhookSecret || null;
+                            notificationPlatform = 'webhook';
+                            this.logger.info(`[StepContinuator] Found webhook URL in cast record ${castId}, will deliver via webhook`);
+                        }
+                    } catch (castErr) {
+                        this.logger.warn(`[StepContinuator] Failed to fetch cast record for webhook check: ${castErr.message}`);
+                    }
+                }
+
+                // CRITICAL: Always construct notificationContext from originalContext.telegramContext
+                // The completedGeneration.metadata.notificationContext might only have step completion info
+                // (type: 'spell_step_completion', stepIndex) and not the Telegram context needed for delivery
+                // We MUST prioritize originalContext.telegramContext to ensure chatId, messageId, userId are present
+                const existingContext = completedGeneration.metadata?.notificationContext || {};
+                const notificationContext = {
+                    // Preserve any additional context from the completed generation first
+                    ...existingContext,
+                    // Then override with Telegram context from originalContext (this ensures chatId is always present)
+                    platform: originalContext.platform,
+                    chatId: originalContext.telegramContext?.chatId || existingContext.chatId,
+                    replyToMessageId: originalContext.telegramContext?.messageId || existingContext.replyToMessageId,
+                    userId: originalContext.telegramContext?.userId || existingContext.userId
+                };
+                
+                // Final safety check: ensure chatId is present (required for Telegram notifications)
+                if (!notificationContext.chatId && notificationPlatform !== 'webhook') {
+                    this.logger.warn(`[StepContinuator] No chatId found in notificationContext. originalContext.telegramContext: ${JSON.stringify(originalContext.telegramContext)}`);
+                }
+                
+                // Build update payload
+                const updatePayload = {
+                    deliveryStrategy: 'spell_final',
+                    deliveryStatus: 'pending', // Trigger notification
+                    notificationPlatform: notificationPlatform,
+                    costUsd: Number(totalCostUsd) || 0,
+                    pointsSpent: Number(totalPointsSpent) || 0,
+                    protocolNetPoints: Number(totalPointsSpent) || 0,
+                    'metadata.stepGenerationIds': stepGenerationIds,
+                    'metadata.spellName': spell.name,
+                    'metadata.userInputPrompt': originalContext.parameterOverrides?.input_prompt || '',
+                    'metadata.notificationContext': notificationContext // CRITICAL: Preserve notificationContext for Telegram delivery
+                };
+
+                // Add webhook URL and secret to metadata if webhook delivery
+                if (webhookUrl) {
+                    updatePayload['metadata.webhookUrl'] = webhookUrl;
+                    if (webhookSecret) {
+                        updatePayload['metadata.webhookSecret'] = webhookSecret;
+                    }
+                    updatePayload['metadata.castId'] = castId; // Ensure castId is in metadata for WebhookNotifier
+                }
+                
+                await this.generationRecordManager.updateGenerationRecord(completedGeneration._id.toString(), updatePayload);
+                this.logger.info(`[StepContinuator] Updated final step generation record ${completedGeneration._id} for spell completion notification.`);
+                
+                // Fetch the updated record and emit event manually since status was already 'completed'
+                try {
+                    const updatedRecord = await this.generationRecordManager.getGenerationRecord(completedGeneration._id.toString());
+                    if (updatedRecord && updatedRecord.deliveryStrategy === 'spell_final' && updatedRecord.deliveryStatus === 'pending') {
+                        notificationEvents.emit('generationUpdated', updatedRecord);
+                        this.logger.info(`[StepContinuator] Emitted generationUpdated event for final spell completion ${completedGeneration._id}`);
+                    }
+                } catch (emitErr) {
+                    this.logger.error(`[StepContinuator] Failed to emit event for final step: ${emitErr.message}`);
+                }
+            } catch (updateErr) {
+                this.logger.error(`[StepContinuator] Failed to update final step record: ${updateErr.message}`);
+                // Fallback: create a new final record if update fails
+                await this._createFinalNotificationRecord(spell, castId, stepGenerationIds, completedGeneration, originalContext, totalCostUsd, totalPointsSpent);
+            }
+        } else {
+            // Create final generation record for spell completion notification
+            await this._createFinalNotificationRecord(spell, castId, stepGenerationIds, completedGeneration, originalContext, totalCostUsd, totalPointsSpent);
+        }
+    }
+
+    /**
+     * Creates a final notification record for spell completion
+     * @private
+     */
+    async _createFinalNotificationRecord(spell, castId, stepGenerationIds, completedGeneration, originalContext, totalCostUsd, totalPointsSpent) {
         const finalGenerationParams = {
             masterAccountId: originalContext.masterAccountId,
             initiatingEventId: completedGeneration.initiatingEventId,
@@ -208,7 +319,7 @@ class StepContinuator {
             status: 'completed',
             deliveryStatus: 'pending', // So the dispatcher picks it up
             notificationPlatform: originalContext.platform,
-            deliveryStrategy: 'cook_piece',
+            deliveryStrategy: 'spell_final',
             // Aggregated cost fields
             costUsd: Number(totalCostUsd) || 0,
             pointsSpent: Number(totalPointsSpent) || 0,
@@ -221,7 +332,8 @@ class StepContinuator {
                 notificationContext: {
                     platform: originalContext.platform,
                     chatId: originalContext.telegramContext?.chatId,
-                    replyToMessageId: originalContext.telegramContext?.messageId
+                    replyToMessageId: originalContext.telegramContext?.messageId,
+                    userId: originalContext.telegramContext?.userId
                 },
                 // Cook linkage
                 ...(originalContext.collectionId ? { collectionId: originalContext.collectionId } : {}),

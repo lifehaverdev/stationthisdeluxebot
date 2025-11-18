@@ -94,6 +94,7 @@ class CreditService {
     this.saltMiningService = saltMiningService;
     this.webSocketService = webSocketService;
     this.adminActivityService = adminActivityService; // Optional: for admin activity monitoring
+    this.spellPaymentService = services.spellPaymentService || null; // Optional: for spell payment tracking
     
     const { foundationAddress, foundationAbi } = config;
     if (!foundationAddress || !foundationAbi) {
@@ -892,6 +893,43 @@ class CreditService {
         }
 
         this.logger.info(`[CreditService] Successfully processed deposit group for user ${user} and token ${token}`);
+
+        // --- SPELL PAYMENT TRACKING ---
+        // Check if this deposit is for a spell payment
+        if (this.spellPaymentService) {
+          try {
+            // Check payment tracking for the confirmation transaction hash
+            // (the actual on-chain confirmation, not the original deposit tx)
+            const tracking = this.spellPaymentService.getPaymentTrackingByTxHash(confirmationTxHash);
+            if (tracking) {
+              this.logger.info(`[CreditService] Detected spell payment for transaction ${confirmationTxHash}`);
+              // Handle spell payment event
+              await this.spellPaymentService.handleSpellPaymentEvent(
+                null, // event not available here
+                { args: { user, amount, transactionHash: confirmationTxHash } },
+                tracking.spellPaymentId
+              );
+            } else {
+              // Also check original deposit hashes in case tracking was set up differently
+              for (const txHash of originalTxHashes) {
+                const tracking = this.spellPaymentService.getPaymentTrackingByTxHash(txHash);
+                if (tracking) {
+                  this.logger.info(`[CreditService] Detected spell payment for original transaction ${txHash}`);
+                  await this.spellPaymentService.handleSpellPaymentEvent(
+                    null,
+                    { args: { user, amount, transactionHash: confirmationTxHash } },
+                    tracking.spellPaymentId
+                  );
+                  break; // Only process once per group
+                }
+              }
+            }
+          } catch (error) {
+            // Non-fatal error - log but don't fail the deposit processing
+            this.logger.error(`[CreditService] Error handling spell payment tracking:`, error);
+          }
+        }
+        // --- END SPELL PAYMENT TRACKING ---
 
         // --- WEBSOCKET NOTIFICATION ---
         this._sendDepositNotification(masterAccountId, 'confirmed', { ...finalStatus, originalTxHashes });

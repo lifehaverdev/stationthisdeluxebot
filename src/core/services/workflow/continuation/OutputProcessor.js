@@ -46,6 +46,19 @@ class OutputProcessor {
             stepOutput.text = stepOutput.output;
         }
         
+        // CRITICAL: Unwrap single-element text arrays to strings for downstream tools
+        // This prevents issues where tools expect strings but receive arrays like ["girl"]
+        if (stepOutput.text && Array.isArray(stepOutput.text)) {
+            if (stepOutput.text.length === 1) {
+                // Single element array - unwrap to string
+                stepOutput.text = stepOutput.text[0];
+            } else if (stepOutput.text.length === 0) {
+                // Empty array - remove the field
+                delete stepOutput.text;
+            }
+            // Multiple elements - keep as array (for multi-text outputs)
+        }
+        
         return stepOutput;
     }
 
@@ -53,9 +66,10 @@ class OutputProcessor {
      * Maps output to next step inputs based on outputMappings
      * @param {Object} stepOutput - Normalized step output
      * @param {Object} outputMappings - Output mappings from step definition
+     * @param {string} nodeId - Optional nodeId for namespacing outputs
      * @returns {Object} - Mapped inputs for next step
      */
-    mapOutput(stepOutput, outputMappings) {
+    mapOutput(stepOutput, outputMappings, nodeId = null) {
         const next_inputs = {};
         
         if (!stepOutput || Object.keys(stepOutput).length === 0) {
@@ -75,6 +89,13 @@ class OutputProcessor {
 
         // Process each output field
         for (const outputKey in stepOutput) {
+            // Store output with nodeId prefix to prevent overwrites between steps
+            if (nodeId) {
+                const namespacedKey = `${nodeId}_${outputKey}`;
+                next_inputs[namespacedKey] = stepOutput[outputKey];
+                this.logger.debug(`[OutputProcessor] Stored output "${outputKey}" as "${namespacedKey}" for node ${nodeId}`);
+            }
+            
             // 1. Check for an explicit mapping
             if (outputMappings && outputMappings[outputKey]) {
                 const inputKey = outputMappings[outputKey];
@@ -105,6 +126,7 @@ class OutputProcessor {
      */
     processOutput(completedGeneration, step) {
         const outputMappings = step.outputMappings || {};
+        const nodeId = step.id || null; // Get nodeId for namespacing
         
         // Extract output
         let stepOutput = this.extractOutput(completedGeneration);
@@ -112,8 +134,8 @@ class OutputProcessor {
         // Normalize output
         stepOutput = this.normalizeOutput(stepOutput);
         
-        // Map output to next step inputs
-        const next_inputs = this.mapOutput(stepOutput, outputMappings);
+        // Map output to next step inputs (with nodeId for namespacing)
+        const next_inputs = this.mapOutput(stepOutput, outputMappings, nodeId);
         
         return { stepOutput, next_inputs };
     }

@@ -20,6 +20,7 @@ const { createPointsApi, createRatesApi } = require('./economy');
 const createSpellsApi = require('./spells');
 const createCookApiRouter = require('./cookApi');
 const createWorkspacesApiRouter = require('./workspacesApi');
+const createPaymentsApi = require('./payments/paymentsApi');
 
 
 /**
@@ -418,10 +419,24 @@ function initializeExternalApi(dependencies) {
 
   // --- END public route ---
 
+  // Mount the Payments API router (PUBLIC - no authentication required)
+  const paymentsRouter = createPaymentsApi({
+    spellPaymentService: dependencies.spellPaymentService,
+    logger
+  });
+  if (paymentsRouter) {
+    externalApiRouter.use('/payments', paymentsRouter);
+    logger.info('External Payments API router mounted at /payments. (Public)');
+  } else {
+    logger.warn('External Payments API router not mounted due to missing dependencies.');
+  }
+
   // Mount the Spells API router (Protected by JWT or API key, with dualAuth for protected endpoints)
+  // /cast endpoint supports guest authentication
   const spellsRouter = createSpellsApi({
     ...dependencies,
     dualAuth,
+    guestAuthService: dependencies.guestAuthService
   });
   if (spellsRouter) {
     externalApiRouter.use('/spells', spellsRouter);

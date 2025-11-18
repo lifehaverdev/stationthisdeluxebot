@@ -28,7 +28,7 @@ class OpenAIService {
    * @param {string} [params.instructions='You are a helpful assistant.'] - System instructions.
    * @param {number} [params.temperature=0.7] - The sampling temperature.
    * @param {string} [params.model='gpt-3.5-turbo'] - The model to use.
-   * @returns {Promise<string>} The content of the AI's response.
+   * @returns {Promise<{content: string, usage?: object}>} The content and usage data from the AI's response.
    */
   async executeChatCompletion({
     prompt,
@@ -65,7 +65,12 @@ class OpenAIService {
 
       const responseContent = completion.choices[0]?.message?.content;
       if (responseContent) {
-        return responseContent;
+        // Return both content and usage data for cost calculation
+        return {
+          content: responseContent,
+          usage: completion.usage || null, // { prompt_tokens, completion_tokens, total_tokens }
+          model: completion.model || model
+        };
       } else {
         this.logger.warn('OpenAI response was successful but content was empty.', completion);
         throw new Error('Received an empty response from OpenAI.');

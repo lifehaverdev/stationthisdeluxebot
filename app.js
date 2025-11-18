@@ -28,11 +28,11 @@ const websocketServer = require('./src/core/services/websocket/server.js');
 const NotificationDispatcher = require('./src/core/services/notificationDispatcher');
 const TelegramNotifier = require('./src/platforms/telegram/telegramNotifier');
 const WebSandboxNotifier = require('./src/platforms/web/webSandboxNotifier');
+const WebhookNotifier = require('./src/platforms/webhook/webhookNotifier');
 
 // geniusoverhaul: Import ToolRegistry
 const { ToolRegistry } = require('./src/core/tools/ToolRegistry.js');
-// Import the new CommandRegistry
-const { CommandRegistry } = require('./src/platforms/telegram/dynamicCommands.js');
+// Note: CommandRegistry is no longer imported here - each platform creates its own instance
 
 /**
  * Initialize and start the refactored application
@@ -124,13 +124,15 @@ async function startApp() {
     logger.info('\nProceeding to platform initialization...\n');
     
     // Create the canonical dependencies object as defined in ADR-001
+    // Note: commandRegistry is NOT shared - each platform creates its own instance
+    // to avoid conflicts between Telegram and Discord command registrations
     const dependencies = {
       ...services, // Spread all initialized services
       logger,      // Add the root app logger
       appStartTime: APP_START_TIME,
       internalApiClient: services.internalApiClient || services.internal?.client,
       toolRegistry: ToolRegistry.getInstance(),
-      commandRegistry: new CommandRegistry(logger), // Instantiate the CommandRegistry
+      // commandRegistry removed - each platform will create its own instance
     };
 
     // Backward compatibility: ensure legacy path dependencies.internal.client exists
@@ -186,6 +188,42 @@ async function startApp() {
       }
     } catch (webNotifierErr) {
       logger.error('[App] Failed to initialize WebSandboxNotifier:', webNotifierErr.message);
+    }
+
+    // --- Discord Notifier ---
+    if (platforms.discord && (platforms.discord.client || platforms.discord.bot)) {
+      try {
+        logger.info('[App] Initializing DiscordNotifier...');
+        const DiscordNotifier = require('./src/platforms/discord/discordNotifier');
+        const discordClient = platforms.discord.client || platforms.discord.bot?.client;
+        if (discordClient) {
+          const discordNotifierInstance = new DiscordNotifier(discordClient, services.logger);
+          platformNotifiersMap.discord = discordNotifierInstance;
+          logger.info('[App] DiscordNotifier initialized and registered.');
+        } else {
+          logger.warn('[App] Discord client not available. DiscordNotifier will not be registered.');
+        }
+      } catch (discordErr) {
+        logger.error('[App] Failed to initialize DiscordNotifier:', discordErr.message);
+      }
+    } else {
+      logger.info('[App] Discord platform not available. DiscordNotifier not registered.');
+    }
+
+    // --- Webhook Notifier ---
+    try {
+      logger.info('[App] Initializing WebhookNotifier...');
+      // WebhookNotifier needs internalApiClient for fetching cast records
+      const internalApiClient = services.internal?.client;
+      if (internalApiClient) {
+        const webhookNotifierInstance = new WebhookNotifier(services.logger, internalApiClient);
+        platformNotifiersMap.webhook = webhookNotifierInstance;
+        logger.info('[App] WebhookNotifier initialized and registered.');
+      } else {
+        logger.warn('[App] Internal API client not available. WebhookNotifier will not be registered.');
+      }
+    } catch (webhookErr) {
+      logger.error('[App] Failed to initialize WebhookNotifier:', webhookErr.message);
     }
 
     // Add platform notifiers to services dependencies for Internal API

@@ -1,21 +1,32 @@
 const express = require('express');
 const { createLogger } = require('../../../utils/logger');
+const { authenticateGuestOrUser } = require('../../../platforms/web/middleware/guestAuth');
+const { validateWebhookUrl } = require('../../../utils/webhookUtils');
 
 /**
  * Creates an external-facing Express router for Spells.
  * This router proxies requests to the internal spells API, handling user authentication.
- * @param {Object} dependencies - Dependencies including internalApiClient and dualAuth middleware.
+ * @param {Object} dependencies - Dependencies including internalApiClient, dualAuth middleware, and guestAuthService.
  * @returns {express.Router}
  */
 function createSpellsApi(dependencies) {
     const router = express.Router();
-    const { internalApiClient, logger, dualAuth } = dependencies;
+    const { internalApiClient, logger, dualAuth, guestAuthService } = dependencies;
+    
+    // Create guest authentication middleware if guestAuthService is available
+    const guestOrUserAuth = guestAuthService 
+        ? authenticateGuestOrUser(guestAuthService)
+        : dualAuth; // Fallback to dualAuth if guestAuthService not available
 
     // --- PUBLIC: Marketplace/Discovery Endpoint ---
     router.get('/marketplace', async (req, res) => {
         try {
-            const { tag } = req.query;
-            const url = tag ? `/internal/v1/data/spells/public?tag=${encodeURIComponent(tag)}` : '/internal/v1/data/spells/public';
+            const { tag, search } = req.query;
+            const params = new URLSearchParams();
+            if (tag) params.append('tag', tag);
+            if (search) params.append('search', search);
+            
+            const url = `/internal/v1/data/spells/public${params.toString() ? '?' + params.toString() : ''}`;
             const response = await internalApiClient.get(url);
             const raw = response.data;
             const list = Array.isArray(raw) ? raw : (raw.spells || raw.data || []);
@@ -215,33 +226,127 @@ function createSpellsApi(dependencies) {
         }
     });
 
-    // POST /spells/cast - Execute a spell (proxy to internal API)
-    router.post('/cast', async (req, res) => {
+    // GET /spells/casts/:castId - Get cast status and results
+    // Supports both regular users and guest users
+    router.get('/casts/:castId', async (req, res, next) => {
         try {
+            const { castId } = req.params;
             const user = req.user;
-            if (!user || !user.userId) {
-                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User or userId not found.' } });
+            
+            // Allow guest users or regular users
+            if (guestOrUserAuth) {
+                return guestOrUserAuth(req, res, async (err) => {
+                    if (err) return next(err);
+                    try {
+                        const response = await internalApiClient.get(`/internal/v1/data/spells/casts/${castId}`);
+                        return res.status(response.status || 200).json(response.data);
+                    } catch (error) {
+                        const statusCode = error.response ? error.response.status : 502;
+                        const errorData = error.response ? error.response.data : { message: 'Unable to fetch cast status.' };
+                        return res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+                    }
+                });
+            } else {
+                // Fallback: require authentication
+                if (!user || !user.userId) {
+                    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+                }
+                try {
+                    const response = await internalApiClient.get(`/internal/v1/data/spells/casts/${castId}`);
+                    return res.status(response.status || 200).json(response.data);
+                } catch (error) {
+                    const statusCode = error.response ? error.response.status : 502;
+                    const errorData = error.response ? error.response.data : { message: 'Unable to fetch cast status.' };
+                    return res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+                }
             }
+        } catch (error) {
+            const statusCode = error.response ? error.response.status : 502;
+            const errorData = error.response ? error.response.data : { message: 'Unable to fetch cast status.' };
+            logger.error('Failed to fetch cast status via external API:', errorData);
+            return res.status(statusCode).json({ error: { code: 'BAD_GATEWAY', ...errorData } });
+        }
+    });
 
+    // POST /spells/cast - Execute a spell (proxy to internal API)
+    // Supports both regular users, guest users, and anonymous (for zero-cost spells)
+    router.post('/cast', async (req, res, next) => {
+        try {
             const { slug, context = {} } = req.body || {};
             if (!slug) {
                 return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing spell slug in request body.' } });
             }
 
-            const proxyPayload = {
-                slug,
-                context: {
-                    ...context,
-                    masterAccountId: user.userId,
-                    platform: context.platform || 'web-sandbox',
-                    parameterOverrides: context.parameterOverrides || {},
+            // Check if this is a zero-cost spell (no payment required)
+            const isZeroCost = context.chargeUpfront === false && !context.quote;
+            
+            // Validate webhook URL if provided
+            if (context.webhookUrl) {
+                const validation = validateWebhookUrl(context.webhookUrl, process.env.NODE_ENV !== 'production');
+                if (!validation.valid) {
+                    return res.status(400).json({ 
+                        error: { code: 'BAD_REQUEST', message: `Invalid webhook URL: ${validation.error}` } 
+                    });
                 }
-            };
+            }
 
-            // Forward FULL response from internal API so frontend immediately knows castId / generationId
-            const internalResp = await internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload);
-            // Typical success -> 200 OK with body { castId, generationId?, status }
-            return res.status(internalResp.status || 200).json(internalResp.data);
+            // Handler function for casting spell
+            async function handleCast() {
+                const user = req.user;
+                let masterAccountId;
+                
+                if (isZeroCost && (!user || !user.userId)) {
+                    // For zero-cost spells without auth, use a placeholder
+                    // The internal API should handle this gracefully
+                    masterAccountId = 'anonymous-zero-cost';
+                } else if (user && user.userId) {
+                    masterAccountId = user.userId;
+                } else {
+                    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+                }
+
+                const proxyPayload = {
+                    slug,
+                    context: {
+                        ...context,
+                        masterAccountId: masterAccountId,
+                        platform: context.platform || (user?.isGuest ? 'web-public' : (user ? 'web-sandbox' : 'web-public')),
+                        parameterOverrides: context.parameterOverrides || {},
+                        isGuest: user?.isGuest || isZeroCost, // Zero-cost spells are treated as guest
+                        // Include quote if provided for upfront payment charging
+                        quote: context.quote || null,
+                        chargeUpfront: context.chargeUpfront !== false && !isZeroCost, // Don't charge zero-cost spells
+                        // Include webhook URL and secret if provided
+                        webhookUrl: context.webhookUrl || null,
+                        webhookSecret: context.webhookSecret || null
+                    }
+                };
+
+                // Forward FULL response from internal API so frontend immediately knows castId / generationId
+                const internalResp = await internalApiClient.post('/internal/v1/data/spells/cast', proxyPayload);
+                // Typical success -> 200 OK with body { castId, generationId?, status }
+                return res.status(internalResp.status || 200).json(internalResp.data);
+            }
+            
+            // For zero-cost spells, allow anonymous execution
+            if (isZeroCost) {
+                return handleCast();
+            }
+            
+            // For spells with cost, require authentication
+            if (guestOrUserAuth) {
+                return guestOrUserAuth(req, res, async (err) => {
+                    if (err) return next(err);
+                    // Continue to handler after auth
+                    return handleCast();
+                });
+            } else {
+                // No auth middleware available, require user
+                if (!req.user || !req.user.userId) {
+                    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required for spells with cost.' } });
+                }
+                return handleCast();
+            }
         } catch (error) {
             const statusCode = error.response ? error.response.status : 502;
             const errorData = error.response ? error.response.data : { message: 'Unable to cast spell.' };

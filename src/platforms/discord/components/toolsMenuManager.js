@@ -291,7 +291,10 @@ async function handleToolsButtonInteraction(client, interaction, masterAccountId
     const { logger } = dependencies;
     
     try {
-        await interaction.deferUpdate();
+        // Check if interaction is already deferred (bot.js defers it)
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate();
+        }
         
         const customId = interaction.customId;
         
@@ -337,7 +340,10 @@ async function handleToolsSelectMenuInteraction(client, interaction, masterAccou
     const { logger } = dependencies;
     
     try {
-        await interaction.deferUpdate();
+        // Check if interaction is already deferred (bot.js defers it)
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferUpdate();
+        }
         
         const selectedValue = interaction.values[0];
         

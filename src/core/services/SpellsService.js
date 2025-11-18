@@ -1,9 +1,10 @@
 class SpellsService {
-    constructor({ logger, db, workflowExecutionService, spellPermissionsDb }) {
+    constructor({ logger, db, workflowExecutionService, spellPermissionsDb, creditService }) {
         this.logger = logger;
         this.db = db; // Contains spellsDb
         this.workflowExecutionService = workflowExecutionService;
         this.spellPermissionsDb = spellPermissionsDb;
+        this.creditService = creditService; // Optional: for upfront payment charging
     }
 
     /**
@@ -24,6 +25,14 @@ class SpellsService {
             spell = await this.db.spells.findByName(slug);
             if(spell){
                 this.logger.info(`[SpellsService] Found spell by unique name fallback: ${spell.name}`);
+            }
+        }
+
+        // If not found, try public slug lookup (for public spells)
+        if (!spell) {
+            spell = await this.db.spells.findByPublicSlug(slug);
+            if (spell) {
+                this.logger.info(`[SpellsService] Found spell by public slug: ${spell.slug || spell.publicSlug}`);
             }
         }
 
@@ -64,11 +73,24 @@ class SpellsService {
 
         // 2.5. Create cast record if not already provided
         let castId = context.castId;
-        if (!castId && castsDb) {
+        // Use castsDb parameter if provided, otherwise try to get it from this.db.casts
+        const castsDbToUse = castsDb || this.db?.casts;
+        if (!castId && castsDbToUse) {
             try {
-                const newCast = await castsDb.createCast({ 
+                // Build metadata with webhook URL if provided
+                const castMetadata = {};
+                if (context.webhookUrl) {
+                    castMetadata.webhookUrl = context.webhookUrl;
+                    if (context.webhookSecret) {
+                        castMetadata.webhookSecret = context.webhookSecret;
+                    }
+                    castMetadata.spellSlug = spell.slug || spell.name;
+                }
+
+                const newCast = await castsDbToUse.createCast({ 
                     spellId: spell._id.toString(), // Use spell._id instead of slug
-                    initiatorAccountId: context.masterAccountId 
+                    initiatorAccountId: context.masterAccountId,
+                    metadata: castMetadata
                 });
                 castId = newCast._id.toString();
                 context.castId = castId;
@@ -76,19 +98,58 @@ class SpellsService {
             } catch (e) {
                 this.logger.warn(`[SpellsService] Cast creation failed for spell ${spell._id}:`, e.message);
             }
+        } else if (!castId && !castsDbToUse) {
+            this.logger.warn(`[SpellsService] No castsDb available and no castId provided. Cast tracking will be disabled for this spell execution.`);
+        }
+
+        // 2.6. Charge upfront payment if quote provided (for guest users or when explicitly requested)
+        if (context.quote && context.chargeUpfront !== false && this.creditService) {
+            try {
+                const quote = context.quote;
+                if (!quote.totalCostPts || typeof quote.totalCostPts !== 'number') {
+                    throw new Error('Invalid quote: totalCostPts is required');
+                }
+
+                this.logger.info(`[SpellsService] Charging upfront payment of ${quote.totalCostPts} points for spell ${spell._id}`);
+                
+                const chargeResult = await this.creditService.chargeSpellExecution(
+                    context.masterAccountId,
+                    spell._id.toString(),
+                    quote
+                );
+                
+                context.creditTxId = chargeResult.creditTxId;
+                context.pointsCharged = chargeResult.pointsCharged;
+                
+                this.logger.info(`[SpellsService] Upfront payment successful: ${chargeResult.pointsCharged} points charged, creditTxId: ${chargeResult.creditTxId}`);
+            } catch (error) {
+                if (error.message === 'INSUFFICIENT_POINTS') {
+                    this.logger.warn(`[SpellsService] Insufficient points for spell execution. User: ${context.masterAccountId}, Required: ${context.quote.totalCostPts}`);
+                    throw new Error('Insufficient points to execute spell. Please purchase more points.');
+                }
+                this.logger.error(`[SpellsService] Failed to charge upfront payment:`, error);
+                throw error;
+            }
         }
 
         // 3. Execute the spell via WorkflowExecutionService
         // NOTE: WorkflowExecutionService now uses the centralized execution endpoint for all tool executions.
         this.logger.info(`[SpellsService] Permissions check passed. Handing off to WorkflowExecutionService for spell "${spell.name}". CastId: ${castId || 'none'}`);
-        const result = await this.workflowExecutionService.execute(spell, context);
         
-        // 4. Increment usage count (fire and forget)
-        this.db.spells.incrementUsage(spell._id).catch(err => {
-            this.logger.error(`[SpellsService] Failed to increment usage for spell ${spell._id}: ${err.message}`);
-        });
+        try {
+            const result = await this.workflowExecutionService.execute(spell, context);
+            this.logger.info(`[SpellsService] WorkflowExecutionService.execute() returned for spell "${spell.name}": ${JSON.stringify(result || 'undefined')}`);
+            
+            // 4. Increment usage count (fire and forget)
+            this.db.spells.incrementUsage(spell._id).catch(err => {
+                this.logger.error(`[SpellsService] Failed to increment usage for spell ${spell._id}: ${err.message}`);
+            });
 
-        return result;
+            return result;
+        } catch (execError) {
+            this.logger.error(`[SpellsService] Error executing spell "${spell.name}": ${execError.stack || execError}`);
+            throw execError;
+        }
     }
 
     async checkPermissions(spell, masterAccountId) {
@@ -115,6 +176,10 @@ class SpellsService {
             spell = await this.db.spells.findById(spellIdentifier);
         } else {
             spell = await this.db.spells.findBySlug(spellIdentifier);
+            // If not found, try public slug lookup (for public spells)
+            if (!spell) {
+                spell = await this.db.spells.findByPublicSlug(spellIdentifier);
+            }
         }
 
         if (!spell) {
@@ -147,18 +212,56 @@ class SpellsService {
                 continue;
             }
 
+            // Match on toolId (primary) or toolDisplayName (fallback) to find historical executions
+            // Note: Generation records store toolId, toolDisplayName, and serviceName
+            // We match on toolId first, then fallback to toolDisplayName for backward compatibility
+            // Also try matching by serviceName for tools that might not have toolId set correctly
             const pipeline = [
-                { $match: { serviceName: toolId, status: 'completed', durationMs: { $exists: true }, costUsd: { $exists: true } } },
-                { $sort: { responseTimestamp: -1 } },
+                { $match: { 
+                    $or: [
+                        { toolId: toolId },
+                        { toolDisplayName: toolId },
+                        // Fallback: match by serviceName if toolId matches the service (for legacy records)
+                        { serviceName: toolId }
+                    ],
+                    status: 'completed', 
+                    // Require costUsd, but durationMs is optional (some async jobs don't track duration)
+                    costUsd: { $exists: true, $ne: null, $gt: 0 }
+                }},
+                // Sort by responseTimestamp if available, otherwise by requestTimestamp
+                { $sort: { 
+                    responseTimestamp: -1,
+                    requestTimestamp: -1 
+                }},
                 { $limit: sampleSize },
                 { $group: {
                     _id: null,
+                    count: { $sum: 1 },
                     avgRuntimeMs: { $avg: '$durationMs' },
-                    avgCostUsd: { $avg: '$costUsd' }
+                    avgCostUsd: { $avg: '$costUsd' },
+                    minCostUsd: { $min: '$costUsd' },
+                    maxCostUsd: { $max: '$costUsd' }
                 }}
             ];
 
             const [stats] = await generationOutputsDb.aggregate(pipeline);
+            
+            // Log query results for debugging
+            if (!stats || stats.count === 0) {
+                this.logger.warn(`[SpellsService] No historical data found for tool "${toolId}". Query matched 0 records.`);
+            } else {
+                // Convert Decimal128 to number for logging
+                let avgCostUsdForLog = 0;
+                if (stats.avgCostUsd) {
+                    if (typeof stats.avgCostUsd === 'object' && stats.avgCostUsd._bsontype === 'Decimal128') {
+                        avgCostUsdForLog = parseFloat(stats.avgCostUsd.toString());
+                    } else {
+                        avgCostUsdForLog = parseFloat(stats.avgCostUsd) || 0;
+                    }
+                }
+                const avgRuntimeMsForLog = stats.avgRuntimeMs || 0;
+                this.logger.info(`[SpellsService] Found ${stats.count} historical records for tool "${toolId}". Avg cost: $${avgCostUsdForLog.toFixed(6)}, Avg runtime: ${avgRuntimeMsForLog.toFixed(0)}ms`);
+            }
             const avgRuntimeMs = stats?.avgRuntimeMs || 0;
             let avgCostUsd = 0;
             if (stats?.avgCostUsd) {
@@ -169,6 +272,17 @@ class SpellsService {
                     avgCostUsd = parseFloat(stats.avgCostUsd);
                 }
             }
+            
+            // Fallback: If no historical data exists, use a minimal default cost estimate
+            // This prevents returning 0 cost which would block spell execution
+            // TODO: Enhance to use tool's costingModel when toolRegistry is available
+            if (avgCostUsd === 0 || !stats) {
+                this.logger.warn(`[SpellsService] No historical cost data found for tool "${toolId}". Using fallback estimate.`);
+                // Use a minimal default: $0.01 USD (approximately 30 points)
+                // This is a conservative estimate that ensures spells can execute
+                avgCostUsd = 0.01;
+            }
+            
             const avgCostPts = avgCostUsd / USD_TO_POINTS_CONVERSION_RATE;
 
             breakdown.push({ toolId, avgRuntimeMs, avgCostPts });
