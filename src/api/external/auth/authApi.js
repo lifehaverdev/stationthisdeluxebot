@@ -199,27 +199,68 @@ function createAuthApi(dependencies) {
         
         const { nonce } = storedNonceData;
 
-        // Check if this is a smart contract wallet
+        // Check if this is a smart contract wallet FIRST, before validating signature length
+        // This allows us to handle smart wallets that return non-standard signature formats
         const ethereumService = getEthereumService();
         let isSmartWallet = false;
+        const expectedEOALength = 130; // 65 bytes * 2 hex chars per byte
+        const signatureIsLong = signatureHex.length > expectedEOALength;
         
         if (ethereumService && ethereumService.provider) {
             try {
                 isSmartWallet = await isContract(ethereumService.provider, lowerCaseAddress);
-                logger.info(`[AuthApi] Address ${lowerCaseAddress} is ${isSmartWallet ? 'a smart contract wallet' : 'an EOA'}`);
+                logger.info(`[AuthApi] Address ${lowerCaseAddress} is ${isSmartWallet ? 'a smart contract wallet' : 'an EOA'}, signature length: ${signatureHex.length}`);
             } catch (error) {
-                logger.warn(`[AuthApi] Could not check if address is contract, defaulting to EOA verification:`, error.message);
+                logger.warn(`[AuthApi] Could not check if address is contract:`, error.message);
+                // If contract check fails but signature is unusually long, assume it might be a smart wallet
+                if (signatureIsLong) {
+                    logger.info(`[AuthApi] Contract check failed but signature length (${signatureHex.length}) suggests smart wallet, will attempt EIP-1271 verification`);
+                    isSmartWallet = true; // Try smart wallet verification as fallback
+                }
+            }
+        } else {
+            logger.warn(`[AuthApi] EthereumService not available`);
+            // If ethereumService is not available but signature is very long, we can't verify
+            if (signatureIsLong) {
+                logger.error(`[AuthApi] EthereumService not available, but signature length (${signatureHex.length}) suggests smart wallet. Cannot verify without provider.`);
+                return res.status(503).json({ 
+                    error: { 
+                        code: 'SERVICE_UNAVAILABLE', 
+                        message: 'Smart wallet verification requires blockchain access. Please try again later.' 
+                    } 
+                });
             }
         }
 
         let isValid = false;
 
-        if (isSmartWallet) {
-            // Smart contract wallet - use EIP-1271 verification
+        // If signature is longer than standard EOA signature, always try smart wallet verification
+        // This handles cases where contract detection might fail or wallet uses non-standard format
+        if (isSmartWallet || signatureIsLong) {
+            // Smart contract wallet or unusual signature length - use EIP-1271 verification
+            if (!ethereumService || !ethereumService.provider) {
+                logger.error(`[AuthApi] Cannot verify smart wallet signature: ethereumService not available`, {
+                    address: lowerCaseAddress,
+                    signatureLength: signatureHex.length
+                });
+                return res.status(503).json({ 
+                    error: { 
+                        code: 'SERVICE_UNAVAILABLE', 
+                        message: 'Smart wallet verification requires blockchain access. Please try again later.' 
+                    } 
+                });
+            }
+
             try {
                 // For EIP-1271, we need the message hash (bytes32)
                 // ethers.hashMessage() returns the hash that matches what signMessage produces
                 const messageHash = ethers.hashMessage(nonce);
+                
+                logger.info(`[AuthApi] Attempting EIP-1271 verification for ${isSmartWallet ? 'smart wallet' : 'long signature'}`, {
+                    address: lowerCaseAddress,
+                    signatureLength: signatureHex.length,
+                    messageHash: messageHash
+                });
                 
                 // Smart wallets may return signatures in different formats
                 // Accept any hex string as the signature format varies by wallet implementation
@@ -231,27 +272,96 @@ function createAuthApi(dependencies) {
                 );
                 
                 if (!isValid) {
-                    logger.error(`[AuthApi] EIP-1271 signature verification failed for smart wallet`, {
+                    logger.error(`[AuthApi] EIP-1271 signature verification failed`, {
                         address: lowerCaseAddress,
-                        signatureLength: signatureHex.length
+                        signatureLength: signatureHex.length,
+                        isContract: isSmartWallet,
+                        messageHash: messageHash
                     });
+                    
+                    // Provide more specific error message based on whether we confirmed it's a contract
+                    const errorMessage = isSmartWallet 
+                        ? 'Smart wallet signature verification failed. The signature does not match the expected format. Please ensure you signed the login message correctly.'
+                        : 'Signature verification failed. The signature format suggests a smart wallet, but verification failed. Please ensure you signed the login message correctly with your wallet.';
+                    
                     return res.status(401).json({ 
                         error: { 
                             code: 'INVALID_SIGNATURE', 
-                            message: 'Smart wallet signature verification failed. Please ensure you signed the login message correctly.' 
+                            message: errorMessage
                         } 
                     });
                 }
                 
-                logger.info(`[AuthApi] EIP-1271 signature verified successfully for smart wallet ${lowerCaseAddress}`);
+                logger.info(`[AuthApi] EIP-1271 signature verified successfully for ${lowerCaseAddress}`);
             } catch (error) {
-                logger.error(`[AuthApi] Error during EIP-1271 verification:`, error);
-                return res.status(500).json({ 
-                    error: { 
-                        code: 'VERIFICATION_FAILED', 
-                        message: 'Failed to verify smart wallet signature. Please try again.' 
-                    } 
+                logger.error(`[AuthApi] Error during EIP-1271 verification:`, {
+                    error: error.message,
+                    errorCode: error.code,
+                    errorReason: error.reason,
+                    stack: error.stack,
+                    address: lowerCaseAddress,
+                    signatureLength: signatureHex.length,
+                    isContract: isSmartWallet
                 });
+                
+                // Check if error indicates the contract doesn't exist or doesn't implement EIP-1271
+                const isContractError = error.message?.includes('execution reverted') || 
+                                      error.message?.includes('call exception') ||
+                                      error.code === 'CALL_EXCEPTION';
+                
+                if (isContractError && !isSmartWallet) {
+                    // Address is not a contract, so EIP-1271 won't work
+                    // This might be a hardware wallet returning transaction data instead of a message signature
+                    logger.warn(`[AuthApi] EIP-1271 failed - address is not a contract. Signature may be transaction data.`, {
+                        address: lowerCaseAddress,
+                        signatureLength: signatureHex.length
+                    });
+                    return res.status(400).json({ 
+                        error: { 
+                            code: 'INVALID_SIGNATURE_FORMAT', 
+                            message: 'The signature format is not recognized. Please ensure your wallet is signing a message (not a transaction). If you are using a hardware wallet, make sure it is configured to sign messages, not transactions.' 
+                        } 
+                    });
+                }
+                
+                // If EIP-1271 fails and it's not confirmed to be a contract, try standard verification as fallback (only if signature length matches)
+                if (!isSmartWallet && signatureHex.length === expectedEOALength) {
+                    logger.info(`[AuthApi] EIP-1271 failed but signature length matches EOA, trying standard verification`);
+                    try {
+                        const recoveredAddress = ethers.verifyMessage(nonce, signature);
+                        isValid = recoveredAddress.toLowerCase() === lowerCaseAddress;
+                        if (isValid) {
+                            logger.info(`[AuthApi] Standard verification succeeded as fallback`);
+                        } else {
+                            return res.status(401).json({ 
+                                error: { 
+                                    code: 'INVALID_SIGNATURE', 
+                                    message: 'Signature verification failed. Please ensure you signed the login message correctly.' 
+                                } 
+                            });
+                        }
+                    } catch (fallbackError) {
+                        logger.error(`[AuthApi] Fallback standard verification also failed:`, fallbackError.message);
+                        return res.status(500).json({ 
+                            error: { 
+                                code: 'VERIFICATION_FAILED', 
+                                message: 'Failed to verify signature. Please try again.' 
+                            } 
+                        });
+                    }
+                } else {
+                    // EIP-1271 failed for a confirmed contract or long signature
+                    const errorMessage = isSmartWallet
+                        ? 'Smart wallet signature verification failed. The contract may not implement EIP-1271, or the signature format is incorrect. Please ensure you signed the login message correctly.'
+                        : 'Signature verification failed. The signature format suggests a smart wallet, but verification failed. Please try again or contact support if the issue persists.';
+                    
+                    return res.status(500).json({ 
+                        error: { 
+                            code: 'VERIFICATION_FAILED', 
+                            message: errorMessage
+                        } 
+                    });
+                }
             }
         } else {
             // EOA (Externally Owned Account) - use standard message signature verification
