@@ -295,6 +295,23 @@ class ResponsePayloadNormalizer {
               mediaType = 'video';
             }
             
+            // CRITICAL FIX: If mediaType is still 'document', check URL itself for image patterns
+            // ComfyUI often doesn't include format/filename/subfolder, so URL-based detection is essential
+            // This ensures PNG images from ComfyUI are detected as photos, not documents
+            if (mediaType === 'document') {
+              const url = file.url.toLowerCase();
+              if (url.match(/\.(png|jpg|jpeg|gif|webp|avif|bmp|svg)(\?|$)/i)) {
+                mediaType = 'photo';
+              } else if (url.match(/\.(mp4|webm|avi|mov|mkv)(\?|$)/i)) {
+                mediaType = 'video';
+              } else if (url.match(/\.(gif)(\?|$)/i)) {
+                mediaType = 'animation';
+              } else if (url.includes('/images/') || url.includes('/image/') || url.includes('/img/')) {
+                // URL path suggests it's an image
+                mediaType = 'photo';
+              }
+            }
+            
             media.push({ 
               type: mediaType, 
               url: file.url,
