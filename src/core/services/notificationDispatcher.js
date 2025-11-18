@@ -340,7 +340,16 @@ class NotificationDispatcher {
     if (!collectionId || !userId || !jobId) return;
 
     try {
-      await CookOrchestratorService.appendEvent('PieceGenerated', { collectionId, userId, jobId, generationId: record._id });
+      // ✅ Extract cookId from jobId if not in metadata (jobId format: "cookId:index")
+      const finalCookId = cookId || (jobId.includes(':') ? jobId.split(':')[0] : null);
+      
+      await CookOrchestratorService.appendEvent('PieceGenerated', { 
+        collectionId, 
+        userId, 
+        cookId: finalCookId, // ✅ Include cookId so event is stored on cook document
+        jobId, 
+        generationId: record._id 
+      });
       await CookOrchestratorService.scheduleNext({ collectionId, userId, finishedJobId: jobId, success: record.status === 'completed' });
       this.logger.info(`[NotificationDispatcher] Cook orchestration progressed for collection ${collectionId}, job ${jobId}`);
     } catch (err) {
