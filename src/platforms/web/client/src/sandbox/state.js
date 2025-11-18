@@ -624,7 +624,9 @@ export function setToolWindowOutput(id, output) {
             win.outputVersions = [];
         }
         const lastIdx = win.outputVersions.length - 1;
-        const versionObj = { output, params: JSON.parse(JSON.stringify(win.parameterMappings)) };
+        // Handle windows that don't have parameterMappings (like CollectionWindow)
+        const params = win.parameterMappings ? JSON.parse(JSON.stringify(win.parameterMappings)) : {};
+        const versionObj = { output, params };
 
         if (lastIdx >= 0 && win.outputVersions[lastIdx] && win.outputVersions[lastIdx]._pending) {
             win.outputVersions[lastIdx] = versionObj;

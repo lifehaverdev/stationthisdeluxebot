@@ -122,6 +122,29 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  // POST /api/v1/collections/:id/cook/resume
+  router.post('/collections/:id/cook/resume', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { toolId, spellId, traitTree, paramOverrides, totalSupply } = req.body || {};
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const payload = {
+        userId,
+        toolId,
+        spellId,
+        traitTree: traitTree || undefined,
+        paramOverrides: paramOverrides || undefined,
+        totalSupply: Number.isFinite(totalSupply) ? totalSupply : undefined,
+      };
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(id)}/resume`, payload);
+      return res.json(data);
+    } catch (err) {
+      logger.error('cook resume proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   /**
    * GET /api/v1/collections/:id/pieces/unreviewed
    * Returns oldest unreviewed generation outputs for a collection (status=completed & no metadata.reviewOutcome)

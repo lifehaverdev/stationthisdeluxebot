@@ -40,20 +40,28 @@ class InputParameterNormalizer {
     
     // Apply normalizations
     for (const [schemaKey, variations] of Object.entries(parameterMappings)) {
-      // If the schema key already exists, skip (exact match)
-      if (normalized[schemaKey] !== undefined) {
+      // If the schema key already exists with a non-empty value, skip (exact match)
+      // This ensures we don't overwrite correctly set values
+      if (normalized[schemaKey] !== undefined && normalized[schemaKey] !== null && normalized[schemaKey] !== '') {
+        logger.debug(`[InputParameterNormalizer] Schema key "${schemaKey}" already set correctly, skipping normalization for tool ${tool.displayName || tool.toolId}`);
         continue;
       }
       
       // Check if any variation exists in inputs
       for (const variation of variations) {
-        if (normalized[variation] !== undefined) {
+        // Skip if variation is the same as schemaKey (already checked above)
+        if (variation === schemaKey) {
+          continue;
+        }
+        
+        if (normalized[variation] !== undefined && normalized[variation] !== null && normalized[variation] !== '') {
           // Found a variation - map it to the schema key
-          normalized[schemaKey] = normalized[variation];
-          logger.debug(`[InputParameterNormalizer] Mapped "${variation}" → "${schemaKey}" for tool ${tool.displayName || tool.toolId}`);
-          
-          // Optionally remove the old key (but keep it for now to avoid breaking things)
-          // delete normalized[variation];
+          // Only set if schemaKey is not already set (double-check)
+          if (normalized[schemaKey] === undefined || normalized[schemaKey] === null || normalized[schemaKey] === '') {
+            normalized[schemaKey] = normalized[variation];
+            logger.debug(`[InputParameterNormalizer] Mapped "${variation}" → "${schemaKey}" for tool ${tool.displayName || tool.toolId}`);
+          }
+          // Keep the variation key as well for backward compatibility
           break;
         }
       }

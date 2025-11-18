@@ -35,10 +35,10 @@ The audit covered:
 **Impact:** Can exceed maxConcurrent and supply limits  
 **Fix:** Add mutex/lock per collection+user key
 
-### 3. Triple scheduleNext Calls - Severe Race Condition
+### 3. Multiple scheduleNext Calls - Need Idempotency
 **Status:** 🔴 CRITICAL  
-**Impact:** Can schedule 3x pieces, exceed supply by 3x  
-**Fix:** Remove duplicate calls, add idempotency check
+**Impact:** Can schedule multiple pieces, exceed supply  
+**Fix:** Add idempotency check (calls are necessary for different tool types: immediate, webhook, polling)
 
 ### 4. Failed Submission Still Marks JobId as Running
 **Status:** 🔴 CRITICAL  
@@ -137,12 +137,13 @@ The audit covered:
 
 ### Integration Issues
 
-**Triple scheduleNext Calls:**
-- Webhook processor calls scheduleNext
-- Notification dispatcher calls scheduleNext
-- Generation execution API calls scheduleNext
-- All can fire for same generation
-- Causes severe race conditions
+**Multiple scheduleNext Calls (Necessary but Need Idempotency):**
+- Generation execution API calls scheduleNext (for immediate/synchronous tools)
+- Webhook processor calls scheduleNext (for webhook-based async tools)
+- Notification dispatcher calls scheduleNext (for polling-based async tools)
+- All are necessary for different tool execution types
+- But same generation can trigger multiple paths
+- Need idempotency check to prevent duplicate processing
 
 **Error Handling:**
 - Errors swallowed in multiple places
@@ -199,16 +200,20 @@ The audit covered:
 
 ### Immediate Actions (Critical)
 
-1. **Add Mutex/Locking Mechanism**
-   - Implement async mutex per collection+user key
-   - Protect all state updates
+1. **Add Home-Baked Async Mutex**
+   - Implement promise-chain-based mutex per collection+user key
+   - Protect all state updates in scheduleNext and startCook
    - Ensure atomic operations
+   - No external library needed - simple promise chain pattern
 
-2. **Remove Duplicate scheduleNext Calls**
-   - Keep only webhook processor
-   - Remove from notification dispatcher
-   - Remove from generation execution API
-   - Add idempotency check
+2. **Add Idempotency Check for scheduleNext**
+   - Track processed jobIds in memory Set
+   - Skip if already processed
+   - Keep scheduleNext calls in all three places (they're needed):
+     - Generation execution API (immediate tools)
+     - Webhook processor (webhook tools)
+     - Notification dispatcher (polling tools - verify necessity)
+   - Add cleanup timeout (1 hour) to prevent memory leak
 
 3. **Add Authorization Checks**
    - Verify user owns collection before cooking
@@ -358,10 +363,17 @@ The cook system has several critical issues that need immediate attention, prima
 - Event-driven architecture
 
 **Key Weaknesses:**
-- No concurrency control
+- No concurrency control (needs mutex)
 - Missing authorization
+- No idempotency for scheduleNext (multiple paths needed for different tool types)
 - Deprecated code still in use
 - Error handling needs improvement
+
+**Tool Execution Type Support:**
+- ✅ Immediate/Synchronous tools (String, ChatGPT) - scheduleNext in execution API
+- ✅ Webhook-based async tools (ComfyUI) - scheduleNext in webhook processor
+- ✅ Polling-based async tools (HuggingFace JoyCaption) - scheduleNext in notification dispatcher
+- ⚠️ Need idempotency to handle cases where multiple paths fire for same generation
 
 With the recommended fixes, the system will be significantly more robust and secure.
 

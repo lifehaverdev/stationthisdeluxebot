@@ -1,12 +1,133 @@
 import BaseWindow from './BaseWindow.js';
 import { renderResultContent } from '../node/resultContent.js';
 import { getToolWindows } from '../state.js';
+import { generationIdToWindowMap, generationCompletionManager } from '../node/websocketHandlers.js';
+import { showTextOverlay } from '../node/overlays/textOverlay.js';
 
 /**
  * CollectionWindow – unified window for collection test & review.
  * mode: 'test' | 'review'
  */
 export default class CollectionWindow extends BaseWindow {
+  /**
+   * Render trait selection and final parameters info panel
+   * @param {HTMLElement} container - Container to append the info panel to
+   */
+  _renderTraitAndParamInfo(container) {
+    if (!this._lastTraitSelection && !this._lastFinalParams) return;
+    
+    const infoPanel = document.createElement('div');
+    infoPanel.className = 'collection-generation-info';
+    infoPanel.style.cssText = `
+      margin-top: 16px;
+      padding: 12px;
+      background: rgba(100, 100, 100, 0.1);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+    `;
+    
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight: bold; margin-bottom: 8px; color: #fff;';
+    title.textContent = 'Generation Details';
+    infoPanel.appendChild(title);
+    
+    if (this._lastTraitSelection && Object.keys(this._lastTraitSelection).length > 0) {
+      const traitSection = document.createElement('div');
+      traitSection.style.marginBottom = '8px';
+      const traitLabel = document.createElement('div');
+      traitLabel.style.cssText = 'font-weight: 600; color: #a0a0a0; margin-bottom: 4px;';
+      traitLabel.textContent = 'Selected Traits:';
+      traitSection.appendChild(traitLabel);
+      
+      const traitList = document.createElement('div');
+      traitList.style.cssText = 'padding-left: 12px; color: #d0d0d0;';
+      Object.entries(this._lastTraitSelection).forEach(([cat, val]) => {
+        const traitItem = document.createElement('div');
+        traitItem.textContent = `${cat}: ${val}`;
+        traitList.appendChild(traitItem);
+      });
+      traitSection.appendChild(traitList);
+      infoPanel.appendChild(traitSection);
+    }
+    
+    if (this._lastFinalParams && Object.keys(this._lastFinalParams).length > 0) {
+      const paramSection = document.createElement('div');
+      const paramLabel = document.createElement('div');
+      paramLabel.style.cssText = 'font-weight: 600; color: #a0a0a0; margin-bottom: 4px;';
+      paramLabel.textContent = 'Final Parameters:';
+      paramSection.appendChild(paramLabel);
+      
+      const paramList = document.createElement('div');
+      paramList.style.cssText = 'padding-left: 12px; color: #d0d0d0; max-height: 200px; overflow-y: auto;';
+      Object.entries(this._lastFinalParams).forEach(([key, val]) => {
+        const paramItem = document.createElement('div');
+        paramItem.style.cssText = 'margin-bottom: 8px; word-break: break-word;';
+        const paramKey = document.createElement('span');
+        paramKey.style.cssText = 'font-weight: 500; color: #b0b0b0;';
+        paramKey.textContent = `${key}: `;
+        paramItem.appendChild(paramKey);
+        
+        // Special handling for prompt/text parameters - show full text or make expandable
+        const isPromptParam = /(prompt|text|instruction|input_prompt)/i.test(key);
+        const valStr = String(val);
+        const isLong = valStr.length > 100;
+        
+        if (isPromptParam && isLong) {
+          // For long prompt parameters, show truncated preview with "View Full" button
+          const previewSpan = document.createElement('span');
+          previewSpan.textContent = valStr.substring(0, 100) + '...';
+          previewSpan.style.cssText = 'color: #d0d0d0;';
+          paramItem.appendChild(previewSpan);
+          
+          const viewFullBtn = document.createElement('button');
+          viewFullBtn.textContent = 'View Full';
+          viewFullBtn.style.cssText = `
+            margin-left: 8px;
+            padding: 2px 8px;
+            background: rgba(100, 150, 255, 0.2);
+            border: 1px solid rgba(100, 150, 255, 0.4);
+            border-radius: 4px;
+            color: #88aaff;
+            cursor: pointer;
+            font-size: 11px;
+          `;
+          viewFullBtn.onmouseover = () => {
+            viewFullBtn.style.background = 'rgba(100, 150, 255, 0.3)';
+          };
+          viewFullBtn.onmouseout = () => {
+            viewFullBtn.style.background = 'rgba(100, 150, 255, 0.2)';
+          };
+          viewFullBtn.onclick = () => {
+            showTextOverlay({
+              title: `Final ${key} (after trait substitution)`,
+              text: valStr,
+              readOnly: true
+            });
+          };
+          paramItem.appendChild(viewFullBtn);
+        } else if (isPromptParam) {
+          // For short prompt parameters, show full text
+          const paramVal = document.createElement('span');
+          paramVal.textContent = valStr;
+          paramVal.style.cssText = 'color: #d0d0d0; white-space: pre-wrap;';
+          paramItem.appendChild(paramVal);
+        } else {
+          // For non-prompt parameters, truncate if long
+          const paramVal = document.createElement('span');
+          paramVal.textContent = isLong ? valStr.substring(0, 100) + '...' : valStr;
+          paramVal.style.cssText = 'color: #d0d0d0;';
+          paramItem.appendChild(paramVal);
+        }
+        
+        paramList.appendChild(paramItem);
+      });
+      paramSection.appendChild(paramList);
+      infoPanel.appendChild(paramSection);
+    }
+    
+    container.appendChild(infoPanel);
+  }
   /**
    * @param {object} opts
    * @param {'test'|'review'} opts.mode
@@ -21,12 +142,18 @@ export default class CollectionWindow extends BaseWindow {
 
     this.mode = mode;
     this.collection = collection;
+    // Store reference to this instance on the DOM element for WebSocket handler access
+    this.el._collectionWindowInstance = this;
     // Tag as spell window to enable shared websocket progress handling when testing a spell
     if (mode === 'test' && collection.generatorType === 'spell') {
       this.el.classList.add('spell-window');
       if (collection.spellId) {
         this.el.dataset.spellId = collection.spellId;
       }
+    }
+    // Tag as collection-test-window for WebSocket handler identification
+    if (mode === 'test') {
+      this.el.classList.add('collection-test-window');
     }
 
     this.renderBody();
@@ -142,7 +269,17 @@ export default class CollectionWindow extends BaseWindow {
   /* ---------------- Test Mode ---------------- */
   async _renderTest() {
     const body = this.body;
+    // Clear body but preserve BaseWindow's result-container (outputEl)
+    // We'll append our UI elements before it
+    const existingResultContainer = body.querySelector('.result-container');
     body.innerHTML = '';
+    // Re-add BaseWindow's result container so WebSocket handler can find it
+    if (existingResultContainer) {
+      body.appendChild(existingResultContainer);
+    } else if (this.outputEl) {
+      // Fallback: use BaseWindow's outputEl if it exists
+      body.appendChild(this.outputEl);
+    }
 
     const categories = this.collection.config?.traitTree || [];
     const selects = {};
@@ -244,9 +381,19 @@ export default class CollectionWindow extends BaseWindow {
     btnRow.append(randBtn, execBtn);
     body.appendChild(btnRow);
 
-    const outputDiv = document.createElement('div');
-    outputDiv.style.marginTop = '10px';
-    body.appendChild(outputDiv);
+    // Use BaseWindow's result-container instead of creating a new one
+    // This ensures WebSocket handler can find it
+    let outputDiv = body.querySelector('.result-container');
+    if (!outputDiv) {
+      outputDiv = document.createElement('div');
+      outputDiv.className = 'result-container';
+      outputDiv.style.marginTop = '10px';
+      body.appendChild(outputDiv);
+    } else {
+      // Clear any existing content
+      outputDiv.innerHTML = '';
+      outputDiv.style.marginTop = '10px';
+    }
 
     let stepUl; // will be created on execute for spells
     let progressIndicator;
@@ -274,20 +421,42 @@ export default class CollectionWindow extends BaseWindow {
 
     // Execute handler ------------------------
     execBtn.onclick = async () => {
+      // Clear previous output/error before executing again
+      // Use the result-container that WebSocket handler will use
+      const resultContainer = body.querySelector('.result-container') || outputDiv;
+      if (resultContainer) {
+        resultContainer.innerHTML = '';
+        resultContainer.style.display = 'block';
+      }
+      
       // Note: Unlike SpellWindow we don't pre-create castId; mapping will rely on generationId until first update sets castId.
       // --- Progress UI bootstrap ---
-      if (!progressIndicator) {
+      // Check if progressIndicator exists and is still in DOM, recreate if needed
+      if (!progressIndicator || !progressIndicator.parentElement) {
         progressIndicator = document.createElement('div');
         progressIndicator.className = 'progress-indicator';
         body.appendChild(progressIndicator);
       }
       progressIndicator.textContent = 'Executing…';
+      progressIndicator.style.display = 'block'; // Ensure it's visible
 
-      if (!progBar) {
-        progBar = document.createElement('progress');
-        progBar.className = 'spell-progress-bar';
-        progBar.max = 100; progBar.value = 0;
-        body.appendChild(progBar);
+      // Only create progress bar for spells, not tools
+      if (this.collection.generatorType === 'spell') {
+        if (!progBar || !progBar.parentElement) {
+          progBar = document.createElement('progress');
+          progBar.className = 'spell-progress-bar';
+          progBar.max = 100;
+          progBar.value = 0;
+          body.appendChild(progBar);
+        }
+        progBar.value = 0; // Reset progress bar
+        progBar.style.display = 'block'; // Ensure it's visible
+      } else {
+        // Remove progress bar if it exists for non-spell executions
+        if (progBar && progBar.parentElement) {
+          progBar.remove();
+          progBar = null;
+        }
       }
 
       // Ensure we have step definitions for spell so we can build the status list
@@ -336,8 +505,39 @@ export default class CollectionWindow extends BaseWindow {
       categories.forEach(cat => {
         const el = selects[cat.name];
         if (!el) return;
-        const val = el.value;
-        if (val !== '') traitSel[cat.name] = el.type === 'number' ? Number(val) : val;
+        let val = el.value;
+        
+        // If no value selected (random), generate a random trait
+        if (val === '') {
+          if (cat.mode === 'generated' && cat.generator?.type === 'range') {
+            // Generate random number in range
+            const start = Number.isFinite(cat.generator.start) ? cat.generator.start : 0;
+            const end = Number.isFinite(cat.generator.end) ? cat.generator.end : start;
+            const step = Number.isFinite(cat.generator.step) && cat.generator.step > 0 ? cat.generator.step : 1;
+            const zeroPad = Number(cat.generator.zeroPad) || 0;
+            const count = end >= start ? Math.floor((end - start) / step) + 1 : 1;
+            const idx = Math.floor(Math.random() * count);
+            const num = start + idx * step;
+            val = zeroPad > 0 ? String(num).padStart(zeroPad, '0') : String(num);
+          } else if (Array.isArray(cat.traits) && cat.traits.length > 0) {
+            // Generate random trait with rarity weighting
+            const totalWeight = cat.traits.reduce((acc, t) => acc + (t.rarity || 0.5), 0);
+            let random = Math.random() * totalWeight;
+            for (const trait of cat.traits) {
+              random -= (trait.rarity || 0.5);
+              if (random <= 0) {
+                val = trait.value ?? trait.name;
+                break;
+              }
+            }
+            // Fallback to first trait if none selected
+            if (val === '') val = cat.traits[0].value ?? cat.traits[0].name;
+          }
+        }
+        
+        if (val !== '') {
+          traitSel[cat.name] = el.type === 'number' ? Number(val) : val;
+        }
       });
 
       // Build paramOverrides from inputs
@@ -346,15 +546,39 @@ export default class CollectionWindow extends BaseWindow {
         paramOverrides[inp.name] = inp.type === 'number' ? Number(inp.value) : inp.value;
       });
 
+      console.log('[CollectionWindow] Initial paramOverrides (before trait substitution):', JSON.stringify(paramOverrides, null, 2));
+      console.log('[CollectionWindow] Selected traits (including randomly generated):', traitSel);
+
       // Substitute traits into param strings
+      const substitutionsMade = {};
       Object.entries(paramOverrides).forEach(([k, v]) => {
         if (typeof v === 'string') {
+          const originalValue = v;
           Object.entries(traitSel).forEach(([cat, catVal]) => {
+            const beforeReplace = v;
             v = v.replaceAll(`[[${cat}]]`, String(catVal)).replaceAll(`[[${cat.toLowerCase()}]]`, String(catVal));
+            if (beforeReplace !== v) {
+              if (!substitutionsMade[k]) substitutionsMade[k] = [];
+              substitutionsMade[k].push({ category: cat, value: catVal, before: beforeReplace, after: v });
+            }
           });
           paramOverrides[k] = v;
+          if (originalValue !== v) {
+            console.log(`[CollectionWindow] Trait substitution in ${k}: "${originalValue}" → "${v}"`);
+          }
         }
       });
+
+      console.log('[CollectionWindow] Final paramOverrides (after trait substitution):', JSON.stringify(paramOverrides, null, 2));
+      if (Object.keys(substitutionsMade).length > 0) {
+        console.log('[CollectionWindow] Substitutions made:', substitutionsMade);
+      } else {
+        console.log('[CollectionWindow] No trait substitutions were made (no [[Category]] placeholders found)');
+      }
+
+      // Store trait selection and final params for display later
+      this._lastTraitSelection = traitSel;
+      this._lastFinalParams = JSON.parse(JSON.stringify(paramOverrides));
 
       try {
         if (this.collection.generatorType==='spell' && this.collection.spellId) {
@@ -390,15 +614,89 @@ export default class CollectionWindow extends BaseWindow {
           const { executeSpell } = await import('../logic/spellExecution.js');
           executeSpell(this.id);
         } else {
-          // --- Tool path stays inline ---
+          // --- Tool path with proper async handling ---
           const { default: execClient } = await import('../executionClient.js');
-          const resp = await execClient.execute({ toolId: this.collection.toolId, inputs: paramOverrides, metadata:{ platform:'cook-test', traitSel } });
-          const outputs = resp.outputs?.[0]?.data || resp;
-          outputDiv.innerHTML='';
-          renderResultContent(outputDiv, outputs);
+          const execResult = await execClient.execute({ 
+            toolId: this.collection.toolId, 
+            inputs: paramOverrides, 
+            metadata:{ platform:'cook-test', traitSel } 
+          });
+
+          // Check if this is an async job that needs WebSocket updates
+          if (execResult.generationId && !execResult.final) {
+            // Long-running job – register with WebSocket handlers and wait for updates
+            generationIdToWindowMap[execResult.generationId] = this.el;
+            console.log('[CollectionWindow] Registered generationId:', execResult.generationId, 'for window:', this.el.id);
+            
+            // Update progress indicator
+            if (progressIndicator) {
+              progressIndicator.textContent = `Status: ${execResult.status || 'pending'}...`;
+            }
+            
+            // Wait for WebSocket completion (handles both success and failure)
+            try {
+              await generationCompletionManager.createCompletionPromise(execResult.generationId);
+              // WebSocket handler will update the UI, but ensure we have a result container
+              if (!this.el.querySelector('.result-container')) {
+                const resultContainer = document.createElement('div');
+                resultContainer.className = 'result-container';
+                this.body.appendChild(resultContainer);
+              }
+            } catch (err) {
+              console.error('[CollectionWindow] Error waiting for generation completion:', err);
+              if (progressIndicator) progressIndicator.textContent = 'Error waiting for result';
+            }
+          } else {
+            // Immediate result - handle synchronously
+            if (progressIndicator) progressIndicator.remove();
+            
+            if (execResult.final && execResult.status !== 'failed') {
+              // Normalize output data similar to ToolWindow
+              let outputData;
+              if (Array.isArray(execResult.outputs?.images) && execResult.outputs.images[0]?.url) {
+                outputData = { type: 'image', url: execResult.outputs.images[0].url, generationId: execResult.generationId };
+              } else if (execResult.outputs?.imageUrl) {
+                outputData = { type: 'image', url: execResult.outputs.imageUrl, generationId: execResult.generationId };
+              } else if (execResult.outputs?.image) {
+                outputData = { type: 'image', url: execResult.outputs.image, generationId: execResult.generationId };
+              } else if (execResult.outputs?.response) {
+                outputData = { type: 'text', text: execResult.outputs.response, generationId: execResult.generationId };
+              } else if (execResult.outputs?.text) {
+                outputData = { type: 'text', text: execResult.outputs.text, generationId: execResult.generationId };
+              } else if (Array.isArray(execResult.outputs) && execResult.outputs[0]?.data) {
+                // Handle array format from executionClient
+                const data = execResult.outputs[0].data;
+                if (data.images?.[0]?.url) {
+                  outputData = { type: 'image', url: data.images[0].url, generationId: execResult.generationId };
+                } else if (data.text) {
+                  outputData = { type: 'text', text: data.text, generationId: execResult.generationId };
+                } else {
+                  outputData = { type: 'unknown', generationId: execResult.generationId, ...data };
+                }
+              } else {
+                outputData = { type: 'unknown', generationId: execResult.generationId, ...execResult.outputs };
+              }
+              
+              outputDiv.innerHTML = '';
+              renderResultContent(outputDiv, outputData);
+              // Display trait selection and final parameters
+              this._renderTraitAndParamInfo(outputDiv);
+            } else if (execResult.status === 'failed') {
+              // Show failure message
+              outputDiv.innerHTML = `<div style="color: #ff6b6b; padding: 12px; background: rgba(255, 107, 107, 0.1); border-radius: 8px; border: 1px solid rgba(255, 107, 107, 0.3);">
+                <strong>Generation Failed</strong><br>
+                ${execResult.outputs?.error || execResult.outputs?.message || 'Execution failed. Please check your inputs and try again.'}
+              </div>`;
+            }
+          }
         }
       } catch(e){
-        outputDiv.textContent = e.message || 'Error';
+        console.error('[CollectionWindow] Execution error:', e);
+        if (progressIndicator) progressIndicator.remove();
+        outputDiv.innerHTML = `<div style="color: #ff6b6b; padding: 12px; background: rgba(255, 107, 107, 0.1); border-radius: 8px; border: 1px solid rgba(255, 107, 107, 0.3);">
+          <strong>Error</strong><br>
+          ${e.message || 'Unknown error occurred'}
+        </div>`;
       }
     };
   }

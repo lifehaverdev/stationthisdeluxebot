@@ -195,7 +195,7 @@ function handleGenerationProgress(payload) {
  * @param {object} payload - The final result payload from the server.
  */
 export function handleGenerationUpdate(payload) {
-    const { generationId, outputs, status, toolId, spellId, castId, cookId } = payload;
+    const { generationId, outputs, status, toolId, spellId, castId, cookId, error, message } = payload;
 
     // Ignore cook-driven tool updates that have cookId but no castId
     if (cookId && !castId) {
@@ -219,7 +219,9 @@ export function handleGenerationUpdate(payload) {
     }
 
     // Debug
-    debugLog('WEBSOCKET_UPDATE', '[WS] generationUpdate received', { generationId, toolId });
+    debugLog('WEBSOCKET_UPDATE', '[WS] generationUpdate received', { generationId, toolId, status });
+    console.log('[WS] Looking for window with generationId:', generationId, 'Found:', toolWindowEl ? toolWindowEl.id : 'NOT FOUND');
+    console.log('[WS] generationIdToWindowMap keys:', Object.keys(generationIdToWindowMap));
 
     if (toolWindowEl) {
         // also add to window for debugging
@@ -243,8 +245,10 @@ export function handleGenerationUpdate(payload) {
             resultContainer.className = 'result-container';
             containerParent.appendChild(resultContainer);
         }
-        // ensure it's visible
+        // ensure it's visible and clear any previous content
         resultContainer.style.display = 'block';
+        resultContainer.style.visibility = 'visible';
+        console.log('[WS] Using result container:', resultContainer, 'parent:', containerParent);
 
         if (status === 'completed' || status === 'success') {
             // Cost tracking is handled on the client side via WebSocket events
@@ -266,7 +270,8 @@ export function handleGenerationUpdate(payload) {
             // --- 2b. Images array inside object (non-array payload) ---
             else if (Array.isArray(outputs.images)) {
                 const first = outputs.images[0];
-                const url = typeof first==='string'? first : first.url;
+                const url = typeof first==='string'? first : (first?.url || first);
+                console.log('[WS] Parsing images array, first:', first, 'url:', url);
                 if(url) outputData = { type: 'image', url, generationId };
             }
 
@@ -372,10 +377,48 @@ export function handleGenerationUpdate(payload) {
                 bar.value=Math.round((done/total)*100);
             }
             debugLog('WEBSOCKET_RENDER', '[WS] Rendering output', outputData);
+            console.log('[WS] About to render outputData:', outputData, 'to container:', resultContainer);
             renderResultContent(resultContainer, outputData);
+            console.log('[WS] After render, container innerHTML length:', resultContainer.innerHTML.length);
+            
+            // If this is a CollectionWindow, display trait/param info
+            if (toolWindowEl.classList.contains('collection-window') && toolWindowEl._collectionWindowInstance) {
+                try {
+                    if (typeof toolWindowEl._collectionWindowInstance._renderTraitAndParamInfo === 'function') {
+                        toolWindowEl._collectionWindowInstance._renderTraitAndParamInfo(resultContainer);
+                    }
+                } catch (e) {
+                    console.warn('[WS] Could not render trait/param info:', e);
+                }
+            }
             
         } else {
-            resultContainer.innerHTML = `<p style="color: red;">Failed: ${JSON.stringify(outputs, null, 2)}</p>`;
+            // Handle failure status - show user-friendly error message
+            // Check multiple possible locations for error message
+            const errorMessage = error || message || 
+                               outputs?.error || outputs?.message || outputs?.description || 
+                               (Array.isArray(outputs) && outputs[0]?.error) ||
+                               (Array.isArray(outputs) && outputs[0]?.message) ||
+                               (typeof outputs === 'string' ? outputs : 
+                                (outputs && typeof outputs === 'object' && !Array.isArray(outputs) ? JSON.stringify(outputs) : 
+                                 'Generation failed. Please check your inputs and try again.'));
+            
+            // Escape HTML for safety
+            const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            const safeMessage = escapeHtml(errorMessage);
+            
+            resultContainer.innerHTML = `<div style="color: #ff6b6b; padding: 12px; background: rgba(255, 107, 107, 0.1); border-radius: 8px; border: 1px solid rgba(255, 107, 107, 0.3); margin: 8px 0;">
+                <strong>Generation Failed</strong><br>
+                ${safeMessage}
+            </div>`;
+            
+            // Also remove progress indicator if still present
+            const progIndicator = toolWindowEl.querySelector('.progress-indicator');
+            if (progIndicator) progIndicator.remove();
+            
+            // Remove progress bar if present
+            const progBar = toolWindowEl.querySelector('.spell-progress-bar');
+            if (progBar) progBar.remove();
         }
         
         // --- NEW: Resolve the completion promise ---

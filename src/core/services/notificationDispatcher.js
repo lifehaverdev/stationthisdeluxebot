@@ -180,6 +180,30 @@ class NotificationDispatcher {
     }
     
     try {
+        // Send websocket update to frontend for web-sandbox platform BEFORE continuing execution
+        // This ensures the UI updates to show the step as completed instead of "calculating"
+        if (record.notificationPlatform === 'web-sandbox') {
+          const webSandboxNotifier = this.platformNotifiers['web-sandbox'];
+          if (webSandboxNotifier && typeof webSandboxNotifier.sendNotification === 'function') {
+            try {
+              // Create a notification context for the websocket update
+              const notificationContext = record.metadata?.notificationContext || {
+                type: 'spell_step_completion',
+                spellId: record.metadata?.spell?._id || record.metadata?.spellId,
+                stepIndex: record.metadata?.stepIndex,
+                platform: 'web-sandbox'
+              };
+              
+              // Send websocket update for this completed step
+              await webSandboxNotifier.sendNotification(notificationContext, '', record);
+              this.logger.info(`[NotificationDispatcher] Sent websocket update for spell step GenID ${recordId} to web-sandbox.`);
+            } catch (wsErr) {
+              // Log but don't fail - continuation should still proceed
+              this.logger.warn(`[NotificationDispatcher] Failed to send websocket update for spell step GenID ${recordId}: ${wsErr.message}`);
+            }
+          }
+        }
+        
         await this.workflowExecutionService.continueExecution(record);
         
         // Mark this step's generation record as complete so it isn't picked up again.

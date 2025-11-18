@@ -347,9 +347,13 @@ async function setupDynamicCommands(commandRegistry, dependencies) {
 
             // If main image key is known
             if (imageInputKey) {
+              logger.debug(`[Telegram EXEC /${commandName}] Attempting to extract image for key "${imageInputKey}" from message (has photo: ${!!msg.photo}, has reply_to_message: ${!!msg.reply_to_message})`);
               const initialFile = await getTelegramFileUrl(bot, msg);
               if (initialFile) {
                 inputs[imageInputKey] = initialFile;
+                logger.info(`[Telegram EXEC /${commandName}] ✅ Extracted image from message: ${initialFile.substring(0, 100)}...`);
+              } else {
+                logger.warn(`[Telegram EXEC /${commandName}] ⚠️ Could not extract image from message (photo: ${!!msg.photo}, reply_to_message: ${!!msg.reply_to_message})`);
               }
             }
 

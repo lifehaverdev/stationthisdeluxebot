@@ -13,6 +13,14 @@ export function enableDrag(target, handle) {
   handle.style.cursor = 'move';
 
   const startDrag = (e, isTouch = false) => {
+    // Don't start drag if clicking on interactive elements
+    const isInteractive = e.target.tagName === 'INPUT' || 
+                         e.target.tagName === 'BUTTON' || 
+                         e.target.tagName === 'TEXTAREA' ||
+                         e.target.tagName === 'SELECT' ||
+                         e.target.closest('button, input, textarea, select, a');
+    if (isInteractive) return;
+    
     const clientX = isTouch ? e.touches[0].clientX : e.clientX;
     const clientY = isTouch ? e.touches[0].clientY : e.clientY;
     

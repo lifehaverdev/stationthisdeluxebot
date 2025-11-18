@@ -268,21 +268,30 @@ class ResponsePayloadNormalizer {
         });
       }
       
-      // Extract files (videos, documents, etc.)
+      // Extract files (videos, documents, images, etc.)
       if (item.data.files && Array.isArray(item.data.files)) {
         item.data.files.forEach(file => {
           if (file && file.url) {
             // Determine type from file properties
             let mediaType = 'document';
-            if (file.format && file.format.startsWith('video/')) {
-              mediaType = 'video';
+            
+            // Check for images first (images should be sent as photos, not documents)
+            if (file.format && file.format.startsWith('image/')) {
+              mediaType = 'photo';
             } else if (file.filename) {
-              if (file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
+              // Check filename extensions
+              if (file.filename.match(/\.(png|jpg|jpeg|gif|webp|avif|bmp|svg)$/i)) {
+                mediaType = 'photo';
+              } else if (file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
                 mediaType = 'video';
               } else if (file.filename.match(/\.(gif)$/i)) {
                 mediaType = 'animation';
               }
             } else if (file.subfolder === 'video') {
+              mediaType = 'video';
+            } else if (file.subfolder === 'image' || file.subfolder === 'images') {
+              mediaType = 'photo';
+            } else if (file.format && file.format.startsWith('video/')) {
               mediaType = 'video';
             }
             

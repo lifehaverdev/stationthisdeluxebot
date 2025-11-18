@@ -25,8 +25,15 @@ function injectTextOverlay() {
       if (e.target === overlay) hideTextOverlay();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideTextOverlay();
-    });
+      if (e.key === 'Escape') {
+        const overlay = document.getElementById('text-overlay');
+        if (overlay && overlay.style.display !== 'none') {
+          e.stopPropagation(); // Prevent other handlers (like modal close) from firing
+          e.stopImmediatePropagation(); // Also stop other listeners on the same element
+          hideTextOverlay();
+        }
+      }
+    }, true); // Use capture phase to handle before other listeners
 }
 
 export function showTextOverlay(initialValue, onSave) {

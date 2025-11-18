@@ -65,6 +65,23 @@ export function drawConnectionLine(fromEl, toEl, type, isPermanent = true, conne
     return line;
 }
 
+// Performance optimization: batch connection updates using requestAnimationFrame
+let connectionUpdateScheduled = false;
+let pendingConnectionUpdate = false;
+
+function scheduleConnectionUpdate() {
+    if (!connectionUpdateScheduled) {
+        connectionUpdateScheduled = true;
+        requestAnimationFrame(() => {
+            renderAllConnections();
+            connectionUpdateScheduled = false;
+            pendingConnectionUpdate = false;
+        });
+    } else {
+        pendingConnectionUpdate = true;
+    }
+}
+
 export function renderAllConnections() {
     // Remove all existing permanent connection lines
     document.querySelectorAll('.connection-line.permanent').forEach(el => el.remove());
@@ -72,10 +89,19 @@ export function renderAllConnections() {
     connections.forEach(conn => {
         const fromWindow = document.getElementById(conn.fromWindowId);
         const toWindow = document.getElementById(conn.toWindowId);
+        if (!fromWindow || !toWindow) return; // Skip if windows don't exist
+        
         const fromAnchor = getAnchorPoint(fromWindow, conn.type, true);
         const toAnchor = getAnchorPoint(toWindow, conn.type, false);
+        if (!fromAnchor || !toAnchor) return; // Skip if anchors don't exist
+        
         drawConnectionLine(fromAnchor, toAnchor, conn.type, true, conn);
     });
+}
+
+// Exported function for batched updates (use this instead of renderAllConnections directly)
+export function scheduleRenderAllConnections() {
+    scheduleConnectionUpdate();
 }
 
 export function updatePermanentConnection(connection) {

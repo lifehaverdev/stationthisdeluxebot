@@ -202,39 +202,17 @@ function createAuthApi(dependencies) {
         // INSPECT SIGNATURE: Try to decode and understand what's in there
         logger.info(`[AuthApi] Inspecting signature: length=${signatureHex.length} chars (${signatureHex.length / 2} bytes)`);
         
-        // Try to decode as ABI-encoded data
+        // Log first and last parts of signature for debugging
+        logger.info(`[AuthApi] Signature preview: first 100 chars=${signature.substring(0, 102)}, last 100 chars=${signature.substring(signature.length - 100)}`);
+        
+        // Try to decode as ABI-encoded data or extract the actual signature
         let decodedSignature = null;
         let extractedStandardSig = null;
+        let extractedSignatureForEIP1271 = null;
         
         try {
-            // Check if it looks like ABI-encoded data (starts with function selector or offset)
-            const firstBytes = signature.substring(0, 10); // First 4 bytes (8 hex chars) + 0x
-            
-            // Try to decode as ABI-encoded bytes
-            // ABI encoding: offset (32 bytes) + length (32 bytes) + data
-            if (signatureHex.length > 64) {
-                // Try to extract bytes from ABI-encoded format
-                // Format: 0x + offset (64 chars) + length (64 chars) + data
-                const offsetHex = signatureHex.substring(0, 64);
-                const offset = parseInt(offsetHex, 16);
-                
-                if (offset === 32 || offset === 64) { // Common ABI offset values
-                    const lengthHex = signatureHex.substring(64, 128);
-                    const length = parseInt(lengthHex, 16);
-                    
-                    if (length > 0 && length < 10000) { // Reasonable length
-                        const dataStart = offset * 2; // offset in hex chars
-                        const dataEnd = dataStart + (length * 2);
-                        if (dataEnd <= signatureHex.length) {
-                            extractedStandardSig = '0x' + signatureHex.substring(dataStart, dataEnd);
-                            logger.info(`[AuthApi] Extracted potential signature from ABI encoding: length=${extractedStandardSig.length - 2} chars`);
-                        }
-                    }
-                }
-            }
-            
-            // Also try to find a 65-byte (130 hex char) signature somewhere in the data
-            // Look for patterns that might be a signature
+            // First, try to find a 65-byte (130 hex char) signature embedded in the data
+            // This is the most common case - the actual ECDSA signature is somewhere in the blob
             for (let i = 0; i <= signatureHex.length - 130; i += 2) {
                 const candidate = '0x' + signatureHex.substring(i, i + 130);
                 try {
@@ -248,15 +226,59 @@ function createAuthApi(dependencies) {
                             if (recovered.toLowerCase() === lowerCaseAddress) {
                                 logger.info(`[AuthApi] Found valid signature embedded at offset ${i}!`);
                                 extractedStandardSig = candidate;
+                                extractedSignatureForEIP1271 = candidate; // Use same for EIP-1271
                                 break;
                             }
                         } catch (e) {
-                            // Not a valid signature, continue searching
+                            // Not a valid signature for this message, but might still be the signature bytes
+                            // Store it as potential EIP-1271 signature
+                            if (!extractedSignatureForEIP1271) {
+                                extractedSignatureForEIP1271 = candidate;
+                                logger.info(`[AuthApi] Found potential signature bytes at offset ${i} (v=${vByte}), will try with EIP-1271`);
+                            }
                         }
                     }
                 } catch (e) {
                     // Continue searching
                 }
+            }
+            
+            // If we didn't find a standard signature, try ABI decoding
+            if (!extractedStandardSig && signatureHex.length > 64) {
+                // Try to decode as ABI-encoded bytes
+                // Format: 0x + offset (64 chars) + length (64 chars) + data
+                const offsetHex = signatureHex.substring(0, 64);
+                const offset = parseInt(offsetHex, 16);
+                
+                if (offset === 32 || offset === 64 || offset === 96) { // Common ABI offset values
+                    const lengthHex = signatureHex.substring(64, 128);
+                    const length = parseInt(lengthHex, 16);
+                    
+                    if (length > 0 && length < 10000) { // Reasonable length
+                        const dataStart = offset * 2; // offset in hex chars
+                        const dataEnd = dataStart + (length * 2);
+                        if (dataEnd <= signatureHex.length) {
+                            const extracted = '0x' + signatureHex.substring(dataStart, dataEnd);
+                            logger.info(`[AuthApi] Extracted data from ABI encoding: offset=${offset}, length=${length}, extracted length=${extracted.length - 2} chars`);
+                            
+                            // If extracted data is 65 bytes, it might be the signature
+                            if (extracted.length === 132) { // 0x + 130 chars = 65 bytes
+                                extractedSignatureForEIP1271 = extracted;
+                                logger.info(`[AuthApi] Extracted 65-byte signature from ABI encoding`);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If still no signature found, try looking for WebAuthn signature format
+            // WebAuthn signatures are often 64-65 bytes
+            if (!extractedSignatureForEIP1271) {
+                // Look for patterns that might indicate signature boundaries
+                // Sometimes signatures are at the end or have specific markers
+                const last130 = '0x' + signatureHex.substring(signatureHex.length - 130);
+                logger.info(`[AuthApi] Trying last 130 chars as potential signature`);
+                extractedSignatureForEIP1271 = last130; // Try the last 65 bytes as fallback
             }
         } catch (error) {
             logger.warn(`[AuthApi] Error inspecting signature:`, error.message);
@@ -387,20 +409,48 @@ function createAuthApi(dependencies) {
                 // ethers.hashMessage() returns the hash that matches what signMessage produces
                 const messageHash = ethers.hashMessage(nonce);
                 
+                // Use extracted signature if we found one, otherwise use the full blob
+                // Some smart wallets expect just the signature bytes, others expect the full data
+                const signatureToVerify = extractedSignatureForEIP1271 || signature;
+                
                 logger.info(`[AuthApi] Attempting EIP-1271 verification for ${isSmartWallet ? 'smart wallet' : 'long signature'}`, {
                     address: lowerCaseAddress,
-                    signatureLength: signatureHex.length,
+                    originalSignatureLength: signatureHex.length,
+                    signatureToVerifyLength: signatureToVerify.length - 2,
+                    usingExtracted: !!extractedSignatureForEIP1271,
                     messageHash: messageHash
                 });
                 
-                // Smart wallets may return signatures in different formats
-                // Accept any hex string as the signature format varies by wallet implementation
-                isValid = await verifyEIP1271Signature(
-                    provider,
-                    lowerCaseAddress,
-                    messageHash,
-                    signature
-                );
+                // Try with extracted signature first (if we found one)
+                if (extractedSignatureForEIP1271) {
+                    try {
+                        isValid = await verifyEIP1271Signature(
+                            provider,
+                            lowerCaseAddress,
+                            messageHash,
+                            extractedSignatureForEIP1271
+                        );
+                        if (isValid) {
+                            logger.info(`[AuthApi] EIP-1271 verification succeeded with extracted signature!`);
+                        } else {
+                            logger.warn(`[AuthApi] EIP-1271 verification failed with extracted signature, trying full blob`);
+                        }
+                    } catch (error) {
+                        logger.warn(`[AuthApi] EIP-1271 verification error with extracted signature:`, error.message);
+                    }
+                }
+                
+                // If extracted signature didn't work, try the full blob
+                // Some smart wallets (like WebAuthn-based) might expect the full signing data
+                if (!isValid) {
+                    logger.info(`[AuthApi] Trying EIP-1271 with full signature blob`);
+                    isValid = await verifyEIP1271Signature(
+                        provider,
+                        lowerCaseAddress,
+                        messageHash,
+                        signature
+                    );
+                }
                 
                 if (!isValid) {
                     logger.error(`[AuthApi] EIP-1271 signature verification failed`, {

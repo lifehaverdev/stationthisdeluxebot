@@ -12,6 +12,7 @@
 const csurf = require('csurf');
 
 // List of public-facing auth endpoints to exclude from CSRF protection
+// Also excludes API key-authenticated routes (admin, etc.) since CSRF only applies to session-based auth
 const csrfExcluded = [
   '/api/v1/auth/web3/nonce',
   '/api/v1/auth/web3/verify',
@@ -20,7 +21,8 @@ const csrfExcluded = [
   '/api/v1/auth/ensure-user',
   '/api/v1/auth/refresh',
   '/api/v1/auth/register', // Add registration if/when implemented
-  '/internal/',// Add more as needed
+  '/internal/', // Internal API routes (server-to-server, use API keys)
+  '/api/v1/admin', // Admin routes use API key authentication, not session-based
   '/api/v1/webhook/alchemy',
   '/api/v1/webhook/comfydeploy',
   '/api/v1/points/supported-assets',

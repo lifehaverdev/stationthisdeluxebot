@@ -3,6 +3,7 @@
 // Styling follows modsMenuModal.css convention (see cookMenuModal.css override).
 
 import TraitTreeEditor from './TraitTreeEditor.js';
+import { showTextOverlay } from '../node/overlays/textOverlay.js';
 
 export default class CookMenuModal {
     constructor(options = {}) {
@@ -10,6 +11,7 @@ export default class CookMenuModal {
             view: 'home', // 'home' | 'detail'
             // views: 'home' | 'create' | 'detail'
             loading: false,
+            initialLoadComplete: false, // Track if initial data has been loaded
             error: null,
             activeCooks: [],
             collections: [],
@@ -24,6 +26,10 @@ export default class CookMenuModal {
             paramOverrides: {},
             generatorDisplay:'',
             showGenPicker:false,
+            overviewDirty: false, // Track unsaved changes in overview
+            pendingDescription: null, // Store pending changes before save
+            pendingSupply: null,
+            pendingParamOverrides: {}, // Store pending param changes before save
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -33,6 +39,11 @@ export default class CookMenuModal {
         this._toolsFetched = false;
         this._loadingSpells = false;
         this._spellsFetched = false;
+        this._loadingParams = false; // Guard for loadParamOptions
+        this._loadedParamKeys = null; // Cache for loaded param keys
+        // ✅ WebSocket integration
+        this.ws = typeof window !== 'undefined' ? (window.websocketClient || null) : null;
+        this._wsHandler = null; // Store WebSocket handler for cleanup
     }
 
     setState(newState) {
@@ -41,19 +52,55 @@ export default class CookMenuModal {
     }
 
     // --- API helpers ----------------------------------------------------
+    _startPolling(interval = 10000) {
+        if (this.pollInterval) return; // Already polling
+        // Poll at specified interval (default 10s, fallback 30s)
+        this.pollInterval = setInterval(() => {
+            if (this.state.view === 'home') {
+                this.fetchActiveCooks();
+            }
+        }, interval);
+    }
+
+    _stopPolling() {
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+    }
+
     async fetchActiveCooks() {
         try {
             const res = await fetch('/api/v1/cooks/active', { credentials: 'include' });
             if (!res.ok) throw new Error('failed');
             const data = await res.json();
+            const activeCooks = data.cooks || [];
+            
+            // ✅ Polling logic: Only use as fallback when WebSocket is unavailable
+            // WebSocket is considered available if the client exists and has been initialized
+            const wsAvailable = this.ws && typeof this.ws.on === 'function';
+            const hasRunningCooks = activeCooks.some(c => (c.running || 0) > 0);
+            
+            if (!wsAvailable && hasRunningCooks) {
+                // WebSocket not available, use polling as fallback (slower interval)
+                this._startPolling(30000); // 30 seconds when used as fallback
+            } else if (wsAvailable) {
+                // WebSocket is active, stop polling (WebSocket will handle updates)
+                this._stopPolling();
+            } else {
+                // No running cooks, stop polling regardless
+                this._stopPolling();
+            }
+            
             // Only trigger re-render when we are on home view to avoid wiping inputs in other views
             if (this.state.view === 'home') {
-            this.setState({ activeCooks: data.cooks || [] });
+            this.setState({ activeCooks });
             } else {
-                Object.assign(this.state, { activeCooks: data.cooks || [] });
+                Object.assign(this.state, { activeCooks });
             }
         } catch (err) {
             console.warn('[CookMenuModal] active cooks fetch error', err);
+            this._stopPolling(); // Stop polling on error
             if (this.state.view === 'home') {
             this.setState({ activeCooks: [] });
             } else {
@@ -91,12 +138,10 @@ export default class CookMenuModal {
         this.render();
         this.attachGlobalEvents();
         this.loadInitial();
-        // Start live polling of active cooks every 5 seconds (only when on home view)
-        this.pollInterval = setInterval(() => {
-            if (this.state.view === 'home') {
-                this.fetchActiveCooks();
-            }
-        }, 5000);
+        // Polling will be started/stopped based on active cooks and WebSocket status
+        this.pollInterval = null;
+        // ✅ Subscribe to WebSocket events for real-time cook status updates
+        this._subscribeToWebSocket();
     }
 
     hide() {
@@ -105,16 +150,53 @@ export default class CookMenuModal {
             clearInterval(this.pollInterval);
             this.pollInterval = null;
         }
+        // ✅ Unsubscribe from WebSocket events
+        this._unsubscribeFromWebSocket();
         document.removeEventListener('keydown', this.handleKeyDown);
         document.body.removeChild(this.modalElement);
         this.modalElement = null;
     }
 
+    // ✅ WebSocket subscription management
+    _subscribeToWebSocket() {
+        if (!this.ws) {
+            // Try to get websocketClient from window if not already set
+            if (typeof window !== 'undefined' && window.websocketClient) {
+                this.ws = window.websocketClient;
+            } else {
+                console.warn('[CookMenuModal] WebSocket client not available, will use polling fallback');
+                return;
+            }
+        }
+        
+        // Subscribe to cookStatusUpdate events
+        this._wsHandler = (payload) => {
+            // Only refresh if modal is visible and on home view
+            if (this.modalElement && this.state.view === 'home') {
+                // Refresh active cooks list
+                this.fetchActiveCooks();
+            }
+        };
+        
+        if (this.ws && typeof this.ws.on === 'function') {
+            this.ws.on('cookStatusUpdate', this._wsHandler);
+            console.log('[CookMenuModal] Subscribed to cookStatusUpdate WebSocket events');
+        }
+    }
+
+    _unsubscribeFromWebSocket() {
+        if (this.ws && this._wsHandler && typeof this.ws.off === 'function') {
+            this.ws.off('cookStatusUpdate', this._wsHandler);
+            this._wsHandler = null;
+            console.log('[CookMenuModal] Unsubscribed from cookStatusUpdate WebSocket events');
+        }
+    }
+
     // --- Initial data ---------------------------------------------------
     async loadInitial() {
-        this.setState({ loading: true });
+        this.setState({ loading: true, initialLoadComplete: false });
         await Promise.all([this.fetchActiveCooks(), this.fetchCollections()]);
-        this.setState({ loading: false });
+        this.setState({ loading: false, initialLoadComplete: true });
     }
 
     // --- Rendering ------------------------------------------------------
@@ -138,26 +220,83 @@ export default class CookMenuModal {
 
     // Home view markup
     renderHomeView() {
-        const { activeCooks, collections } = this.state;
-        const cooksHtml = activeCooks.length ? activeCooks.map(c => `
+        const { activeCooks, collections, initialLoadComplete } = this.state;
+        
+        // Show loading spinner if initial data hasn't loaded yet
+        if (!initialLoadComplete) {
+            return `
+                <div class="loading-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 40px; min-height: 200px;">
+                    <div class="loading-spinner"></div>
+                    <p style="margin-top: 20px; color: #aaa; font-size: 14px;">Loading collections...</p>
+                </div>
+            `;
+        }
+        
+        // ✅ Separate cooks into actively running, paused, and awaiting review
+        const runningCooks = [];
+        const pausedCooks = [];
+        const awaitingReview = [];
+        
+        activeCooks.forEach(c => {
+            const running = c.running || 0;
+            const queued = c.queued || 0;
+            const generationCount = c.generationCount || 0;
+            const targetSupply = c.targetSupply || 0;
+            const isComplete = targetSupply > 0 && generationCount >= targetSupply;
+            const hasActiveJobs = running > 0 || queued > 0;
+            
+            if (isComplete && !hasActiveJobs) {
+                // All pieces generated, awaiting review
+                awaitingReview.push(c);
+            } else if (running > 0) {
+                // Actively running
+                runningCooks.push(c);
+            } else {
+                // Paused/stopped but not complete
+                pausedCooks.push(c);
+            }
+        });
+        
+        // Render actively running cooks with fire icon (using HTML entity to avoid encoding issues)
+        const runningHtml = runningCooks.length ? runningCooks.map(c => `
             <div class="cook-status-item">
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
                 <div class="cook-actions">
-                    ${c.status === 'running' ? 
-                        `<button data-action="pause" data-id="${c.collectionId}" title="Pause Cook">⏸</button>` :
-                        `<button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>`
-                    }
+                    <span style="color: #ff6b6b; font-size: 18px; display: inline-block;" title="Cooking in progress">&#128293;</span>
+                    <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook" style="margin-left: 8px;">⏸</button>
                 </div>
             </div>
-        `).join('') : '<div class="empty-message">No active cooks.</div>';
+        `).join('') : '';
+        
+        // Render paused cooks with ▶️ icon
+        const pausedHtml = pausedCooks.length ? pausedCooks.map(c => `
+            <div class="cook-status-item">
+                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-actions">
+                    <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
+                </div>
+            </div>
+        `).join('') : '';
+        
+        // Render awaiting review section
+        const reviewHtml = awaitingReview.length ? awaitingReview.map(c => `
+            <div class="cook-status-item">
+                <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-actions">
+                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Review</button>
+                </div>
+            </div>
+        `).join('') : '<div class="empty-message">No cooks awaiting review.</div>';
 
         const collHtml = collections.length ? collections.map(c => `
             <div class="collection-card" data-id="${c.collectionId}">${c.name || 'Untitled'}</div>
         `).join('') : '<div class="empty-message">No collections yet.</div>';
 
         return `
-            <h2>Active Cooks</h2>
-            <div class="cook-status-list">${cooksHtml}</div>
+            ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
+            ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
+            ${awaitingReview.length > 0 ? `<h2>Awaiting Review</h2><div class="cook-status-list">${reviewHtml}</div>` : ''}
+            ${runningCooks.length === 0 && pausedCooks.length === 0 && awaitingReview.length === 0 ? '<h2>Active Cooks</h2><div class="empty-message">No active cooks.</div>' : ''}
             <hr>
             <h2>My Collections</h2>
             <div class="collection-grid">${collHtml}<div class="collection-card new" data-action="new">＋</div></div>
@@ -187,7 +326,12 @@ export default class CookMenuModal {
         if(detailTab==='overview'){
            body=this.renderOverviewBody();
         }else if(detailTab==='traitTree'){
-           body=`<div id="trait-tree-container"></div>`;
+           body=`<div id="trait-tree-container"></div>
+                 <div class="trait-tree-actions" style="margin-top:12px;display:flex;gap:8px;">
+                   <button class="download-trait-tree-btn">📥 Download JSON</button>
+                   <button class="upload-trait-tree-btn">📤 Upload JSON</button>
+                   <input type="file" accept=".json" id="trait-tree-file-input" style="display:none">
+                 </div>`;
         }
         return `
             <button class="back-btn">← Back</button>
@@ -210,7 +354,7 @@ export default class CookMenuModal {
     }
 
     renderOverviewBody(){
-        const { selectedCollection, paramOverrides, paramOptions, showGenPicker, toolOptions, selectedToolId }=this.state;
+        const { selectedCollection, paramOverrides, paramOptions, showGenPicker, toolOptions, selectedToolId, overviewDirty, pendingDescription, pendingSupply, pendingParamOverrides }=this.state;
         if(showGenPicker){
             // NEW generator picker supporting tool or spell
             const { generatorType, toolOptions, spellOptions, selectedToolId, selectedSpellId } = this.state;
@@ -233,13 +377,35 @@ export default class CookMenuModal {
                     <button class="cancel-generator-btn" style="margin-left:8px;">Cancel</button>
                 </div>`;
         }
+        // Use pending values if they exist, otherwise use saved values
+        const displayDescription = pendingDescription !== null ? pendingDescription : (selectedCollection.description||'');
+        const displaySupply = pendingSupply !== null ? pendingSupply : (selectedCollection.totalSupply||'');
+        const displayParamOverrides = Object.keys(pendingParamOverrides).length > 0 ? pendingParamOverrides : paramOverrides;
+        
+        // Escape HTML for safe display
+        const escapeHtml = (str) => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        const safeDescription = escapeHtml(displayDescription);
+        const safeSupply = escapeHtml(String(displaySupply));
+        
         const metaRows=`
-          <tr><td>Description</td><td>${selectedCollection.description||''}</td><td><button class="edit-desc-btn">Edit</button></td></tr>
-          <tr><td>Total Supply*</td><td>${selectedCollection.totalSupply||''}</td><td><button class="edit-supply-btn">Edit</button></td></tr>`;
+          <tr><td>Description</td><td>${safeDescription}</td><td><button class="edit-desc-btn">Edit</button></td></tr>
+          <tr><td>Total Supply*</td><td>${safeSupply}</td><td><button class="edit-supply-btn">Edit</button></td></tr>`;
         const genRow=`<tr><td>Generator</td><td>${this.state.generatorDisplay||'(none)'}</td><td><button class="edit-gen-btn">${this.state.generatorDisplay?'Change':'Set'}</button></td></tr>`;
-        const paramRows=paramOptions.map(p=>`<tr data-param="${p}"><td>${p}</td><td>${paramOverrides[p]||''}</td><td><button class="edit-param-btn">Edit</button></td></tr>`).join('');
+        const paramRows=paramOptions.map(p=>{
+            const value = displayParamOverrides[p]||'';
+            // Truncate long values for display
+            const displayValue = value.length > 50 ? value.substring(0, 47) + '...' : value;
+            const safeValue = escapeHtml(value);
+            const safeDisplay = escapeHtml(displayValue);
+            return `<tr data-param="${p}"><td>${p}</td><td title="${safeValue}">${safeDisplay}</td><td><button class="edit-param-btn">Edit</button></td></tr>`;
+        }).join('');
+        
+        const unsavedWarning = overviewDirty ? '<div class="unsaved-changes">You have unsaved changes</div>' : '';
+        
         return `<table class="meta-table">${metaRows}${genRow}${paramRows}</table>
+        ${unsavedWarning}
         <div style="margin-top:12px">
+            ${overviewDirty ? '<button class="save-overview-btn" style="margin-right:8px;">Save Changes</button>' : ''}
             <button class="test-btn">Test</button>
             <button class="review-btn">Review</button>
             <button class="start-cook-btn">Start Cook</button>
@@ -265,15 +431,40 @@ export default class CookMenuModal {
 
     attachDetailEvents() {
         const back = this.modalElement.querySelector('.back-btn');
-        if (back) back.onclick = () => this.setState({ view: 'home', selectedCollection: null });
+        if (back) back.onclick = () => {
+            // Warn if there are unsaved changes
+            if (this.state.overviewDirty && this.state.detailTab === 'overview') {
+                if (!confirm('You have unsaved changes. Are you sure you want to go back?')) {
+                    return;
+                }
+            }
+            this.setState({ 
+                view: 'home', 
+                selectedCollection: null,
+                overviewDirty: false,
+                pendingDescription: null,
+                pendingSupply: null,
+                pendingParamOverrides: {}
+            });
+        };
 
         // Always ensure generator / paramOptions loaded when entering detail view
-        if(!this.state.paramOptions.length || !this.state.generatorDisplay){
-            this.loadParamOptions();
+        // Only load if we don't have them AND we haven't already started loading
+        if((!this.state.paramOptions.length || !this.state.generatorDisplay) && !this._loadingParams){
+            this._loadingParams = true;
+            this.loadParamOptions().finally(() => {
+                this._loadingParams = false;
+            });
         }
 
         this.modalElement.querySelectorAll('.tab-btn').forEach(btn=>{
             btn.onclick=()=>{
+                // Warn if switching away from overview with unsaved changes
+                if (this.state.overviewDirty && this.state.detailTab === 'overview') {
+                    if (!confirm('You have unsaved changes in Overview. Are you sure you want to switch tabs?')) {
+                        return;
+                    }
+                }
                 this.state.detailTab=btn.getAttribute('data-tab');
                 this.render();
             };
@@ -284,14 +475,53 @@ export default class CookMenuModal {
                 await this.saveTraitTree(traits);
             }});
             editor.attach(container);
+            
+            // Download button
+            const downloadBtn = this.modalElement.querySelector('.download-trait-tree-btn');
+            if (downloadBtn) {
+                downloadBtn.onclick = () => this.downloadTraitTree();
+            }
+            
+            // Upload button and file input
+            const uploadBtn = this.modalElement.querySelector('.upload-trait-tree-btn');
+            const fileInput = this.modalElement.querySelector('#trait-tree-file-input');
+            if (uploadBtn && fileInput) {
+                uploadBtn.onclick = () => fileInput.click();
+                fileInput.onchange = (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                        // Check file extension
+                        if (!file.name.toLowerCase().endsWith('.json')) {
+                            alert('Please select a JSON file');
+                            e.target.value = '';
+                            return;
+                        }
+                        this.uploadTraitTree(file);
+                        // Reset input so same file can be selected again
+                        e.target.value = '';
+                    }
+                };
+            }
         }
         // (generator edit UI will be integrated into overview later)
         // ensure paramOptions loaded when entering traitTree
-        if(this.state.detailTab==='traitTree' && !this.state.paramOptions.length){
-            this.loadParamOptions();
+        // Only load if we don't have them AND we haven't already started loading
+        if(this.state.detailTab==='traitTree' && !this.state.paramOptions.length && !this._loadingParams){
+            this._loadingParams = true;
+            this.loadParamOptions().finally(() => {
+                this._loadingParams = false;
+            });
         }
         // Overview edit handlers
         if(this.state.detailTab==='overview'){
+            // Reset pending changes when switching to overview (they're already saved or discarded)
+            // But preserve them if we're already on overview and just re-rendering
+            // NOTE: Don't use setState here as it causes infinite render loop - directly update state
+            if (!this.state.overviewDirty) {
+                this.state.pendingDescription = null;
+                this.state.pendingSupply = null;
+                this.state.pendingParamOverrides = {};
+            }
             this.attachOverviewEvents();
         }
     }
@@ -335,6 +565,202 @@ export default class CookMenuModal {
         }
     }
 
+    /**
+     * Validate trait tree structure matches expected schema
+     * Returns { valid: boolean, errors: string[] }
+     */
+    validateTraitTree(data) {
+        const errors = [];
+        
+        // Root validation
+        if (!data || typeof data !== 'object') {
+            return { valid: false, errors: ['Root must be an object'] };
+        }
+        
+        if (!Array.isArray(data.categories)) {
+            return { valid: false, errors: ['categories must be an array'] };
+        }
+        
+        // Validate each category
+        data.categories.forEach((cat, catIdx) => {
+            // Category name
+            if (!cat.name || typeof cat.name !== 'string' || cat.name.trim().length === 0) {
+                errors.push(`Category ${catIdx}: name is required and must be non-empty`);
+            }
+            
+            // Category mode
+            if (cat.mode !== 'manual' && cat.mode !== 'generated') {
+                errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): mode must be "manual" or "generated"`);
+                return; // Skip further validation for this category
+            }
+            
+            // Manual mode validation
+            if (cat.mode === 'manual') {
+                if (!Array.isArray(cat.traits)) {
+                    errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): traits must be an array`);
+                } else {
+                    cat.traits.forEach((trait, traitIdx) => {
+                        // Trait name
+                        if (!trait.name || typeof trait.name !== 'string' || trait.name.trim().length === 0) {
+                            errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}), Trait ${traitIdx}: name is required`);
+                        } else if (trait.name.length > 50) {
+                            errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}), Trait ${traitIdx}: name must be <= 50 characters`);
+                        }
+                        
+                        // Trait value
+                        if (trait.value === undefined || typeof trait.value !== 'string') {
+                            errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}), Trait ${traitIdx}: value is required and must be a string`);
+                        } else if (trait.value.length > 1000) {
+                            errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}), Trait ${traitIdx}: value must be <= 1000 characters`);
+                        }
+                        
+                        // Trait rarity
+                        if (trait.rarity !== undefined) {
+                            const rarity = Number(trait.rarity);
+                            if (isNaN(rarity) || rarity < 0 || rarity > 100) {
+                                errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}), Trait ${traitIdx}: rarity must be between 0 and 100`);
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Generated mode validation
+            if (cat.mode === 'generated') {
+                if (!cat.generator || typeof cat.generator !== 'object') {
+                    errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator is required`);
+                } else {
+                    const gen = cat.generator;
+                    
+                    // Generator type
+                    if (gen.type !== 'range') {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.type must be "range"`);
+                    }
+                    
+                    // Start
+                    if (!Number.isFinite(gen.start)) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.start must be a number`);
+                    }
+                    
+                    // End
+                    if (!Number.isFinite(gen.end)) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.end must be a number`);
+                    } else if (Number.isFinite(gen.start) && gen.end < gen.start) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.end must be >= generator.start`);
+                    }
+                    
+                    // Step
+                    if (!Number.isFinite(gen.step) || gen.step <= 0) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.step must be a positive number`);
+                    }
+                    
+                    // Zero pad (optional)
+                    if (gen.zeroPad !== undefined && (!Number.isFinite(gen.zeroPad) || gen.zeroPad < 0)) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.zeroPad must be a non-negative number`);
+                    }
+                    
+                    // Unique across cook (optional)
+                    if (gen.uniqueAcrossCook !== undefined && typeof gen.uniqueAcrossCook !== 'boolean') {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.uniqueAcrossCook must be a boolean`);
+                    }
+                    
+                    // Shuffle seed (optional)
+                    if (gen.shuffleSeed !== undefined && gen.shuffleSeed !== null && !Number.isFinite(gen.shuffleSeed)) {
+                        errors.push(`Category ${catIdx} (${cat.name || 'unnamed'}): generator.shuffleSeed must be a number or null`);
+                    }
+                }
+            }
+        });
+        
+        return { valid: errors.length === 0, errors };
+    }
+
+    /**
+     * Download trait tree as JSON file
+     */
+    downloadTraitTree() {
+        const { selectedCollection } = this.state;
+        if (!selectedCollection) {
+            alert('No collection selected');
+            return;
+        }
+        
+        const traitTree = selectedCollection.config?.traitTree || [];
+        const json = JSON.stringify({ categories: traitTree }, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `trait-tree-${selectedCollection.collectionId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        // Show success feedback
+        this.setState({ saveSuccess: true });
+        setTimeout(() => this.setState({ saveSuccess: false }), 2000);
+    }
+
+    /**
+     * Upload trait tree from JSON file
+     */
+    async uploadTraitTree(file) {
+        if (!file) return;
+        
+        try {
+            this.setState({ loading: true, error: null });
+            
+            // Read file
+            const text = await file.text();
+            
+            // Parse JSON
+            let json;
+            try {
+                json = JSON.parse(text);
+            } catch (e) {
+                throw new Error(`Invalid JSON: ${e.message}`);
+            }
+            
+            // Validate structure
+            const validation = this.validateTraitTree(json);
+            if (!validation.valid) {
+                throw new Error(`Invalid trait tree structure:\n${validation.errors.join('\n')}`);
+            }
+            
+            // Confirm overwrite if existing trait tree has categories
+            const { selectedCollection } = this.state;
+            const hasExisting = selectedCollection?.config?.traitTree?.length > 0;
+            if (hasExisting) {
+                const confirmed = confirm(
+                    'This will replace your existing trait tree. Are you sure?'
+                );
+                if (!confirmed) {
+                    this.setState({ loading: false });
+                    return;
+                }
+            }
+            
+            // Save trait tree
+            await this.saveTraitTree(json.categories);
+            
+            // Show success feedback
+            this.setState({ 
+                loading: false, 
+                saveSuccess: true,
+                error: null 
+            });
+            setTimeout(() => this.setState({ saveSuccess: false }), 2000);
+            
+        } catch (err) {
+            console.error('[CookMenuModal] uploadTraitTree error:', err);
+            this.setState({
+                loading: false,
+                error: err.message || 'Failed to upload trait tree'
+            });
+        }
+    }
+
     // --- Event handlers -------------------------------------------------
     attachGlobalEvents() {
         // Use event delegation so handlers survive re-render
@@ -353,18 +779,27 @@ export default class CookMenuModal {
     }
 
     attachHomeEvents() {
-        // Delegated click handler for cook action buttons
-        const statusList = this.modalElement.querySelector('.cook-status-list');
-        if (statusList) {
-            statusList.addEventListener('click', (e) => {
+        // ✅ Delegated click handler for all cook action buttons (handles multiple sections)
+        this.modalElement.querySelectorAll('.cook-status-list').forEach(list => {
+            list.addEventListener('click', (e) => {
                 const btn = e.target.closest('button[data-action]');
                 if (!btn) return;
                 const action = btn.getAttribute('data-action');
                 const id = btn.getAttribute('data-id');
                 if (action === 'pause') this.pauseCook(id);
                 if (action === 'resume') this.resumeCook(id);
+                if (action === 'review') {
+                    // Open review window for this collection
+                    const collection = this.state.collections.find(c => c.collectionId === id);
+                    if (collection) {
+                        this.hide();
+                        import('../window/CollectionWindow.js').then(m => {
+                            m.createCollectionReviewWindow(collection);
+                        });
+                    }
+                }
             });
-        }
+        });
 
         // Delegated handler for collection cards (including the + card)
         const grid = this.modalElement.querySelector('.collection-grid');
@@ -380,6 +815,9 @@ export default class CookMenuModal {
                 if (id) {
                 const coll = this.state.collections.find(c => c.collectionId === id);
                 if (coll) {
+                    // Clear param cache when switching collections
+                    this._loadedParamKeys = null;
+                    this._loadingParams = false;
                     this.setState({ view: 'detail', selectedCollection: coll });
                 }
                 }
@@ -391,6 +829,11 @@ export default class CookMenuModal {
     }
 
     handleKeyDown(e) {
+        // Don't close modal if text overlay is open
+        const textOverlay = document.getElementById('text-overlay');
+        if (textOverlay && textOverlay.style.display !== 'none') {
+            return; // Let textOverlay handle Escape
+        }
         if (e.key === 'Escape') this.hide();
     }
 
@@ -452,6 +895,36 @@ export default class CookMenuModal {
             const cook = this.state.activeCooks.find(c => c.collectionId === id);
             if (!cook) throw new Error('Cook not found');
             
+            // Get collection details to retrieve toolId/spellId/config
+            const collection = this.state.collections.find(c => c.collectionId === id);
+            if (!collection) {
+                // Try to fetch collection if not in state
+                const collRes = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include' });
+                if (!collRes.ok) throw new Error('Collection not found');
+                const collData = await collRes.json();
+                const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-csrf-token': csrf 
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        toolId: collData.toolId || collData.config?.toolId,
+                        spellId: collData.spellId || collData.config?.spellId,
+                        traitTree: collData.config?.traitTree || [],
+                        paramOverrides: collData.config?.paramOverrides || {},
+                        totalSupply: cook.targetSupply || collData.totalSupply || collData.config?.totalSupply
+                    })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.error || 'resume failed');
+                }
+                await this.fetchActiveCooks();
+                return;
+            }
+            
             const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
                 method: 'POST',
                 headers: { 
@@ -460,11 +933,11 @@ export default class CookMenuModal {
                 },
                 credentials: 'include',
                 body: JSON.stringify({
-                    toolId: cook.toolId,
-                    spellId: cook.spellId,
-                    traitTree: cook.config?.traitTree || [],
-                    paramOverrides: cook.config?.paramOverrides || {},
-                    totalSupply: cook.targetSupply
+                    toolId: collection.toolId || collection.config?.toolId,
+                    spellId: collection.spellId || collection.config?.spellId,
+                    traitTree: collection.config?.traitTree || [],
+                    paramOverrides: collection.config?.paramOverrides || {},
+                    totalSupply: cook.targetSupply || collection.totalSupply || collection.config?.totalSupply
                 })
             });
             if (!res.ok) {
@@ -572,7 +1045,15 @@ export default class CookMenuModal {
 
     async loadParamOptions(){
         const { selectedCollection }=this.state;
-        if(!selectedCollection) return;
+        if(!selectedCollection) return Promise.resolve();
+        
+        // Check if we already have params for this collection
+        const collectionKey = `${selectedCollection.collectionId}-${selectedCollection.toolId || selectedCollection.spellId || 'none'}`;
+        if(this._loadedParamKeys && this._loadedParamKeys.has(collectionKey)){
+            // Already loaded for this collection, skip
+            return Promise.resolve();
+        }
+        
         if(selectedCollection.generatorType==='tool' && selectedCollection.toolId){
             try{
                 const res=await fetch(`/api/v1/tools/registry/${encodeURIComponent(selectedCollection.toolId)}`);
@@ -584,10 +1065,24 @@ export default class CookMenuModal {
                     } else if(Array.isArray(def.exposedInputs) && def.exposedInputs.length){
                        params = def.exposedInputs.map(e=>e.paramKey);
                     } else { params=['prompt']; }
-                    this.setState({paramOptions:params,generatorDisplay:def.displayName||def.toolId});
+                    this.setState({
+                        paramOptions:params,
+                        generatorDisplay:def.displayName||def.toolId,
+                        paramOverrides: selectedCollection.config?.paramOverrides || {}
+                    });
+                    if(!this._loadedParamKeys) this._loadedParamKeys = new Set();
+                    this._loadedParamKeys.add(collectionKey);
                     return;
                 }
-            }catch(e){console.warn('param fetch fail',e);}
+            }catch(e){
+                console.warn('param fetch fail',e);
+                // On error, set defaults
+                this.setState({
+                    paramOptions:['prompt'],
+                    paramOverrides: selectedCollection.config?.paramOverrides || {}
+                });
+                return;
+            }
         }
         if(selectedCollection.generatorType==='spell' && selectedCollection.spellId){
             try{
@@ -600,22 +1095,64 @@ export default class CookMenuModal {
                     } else if(Array.isArray(def.exposedInputs) && def.exposedInputs.length){
                        params = def.exposedInputs.map(e=>e.paramKey);
                     } else { params=['prompt']; }
-                    this.setState({paramOptions:params,generatorDisplay:def.displayName||def.spellId});
+                    this.setState({
+                        paramOptions:params,
+                        generatorDisplay:def.displayName||def.spellId,
+                        paramOverrides: selectedCollection.config?.paramOverrides || {}
+                    });
+                    if(!this._loadedParamKeys) this._loadedParamKeys = new Set();
+                    this._loadedParamKeys.add(collectionKey);
                     return;
                 }
-            }catch(e){console.warn('param fetch fail',e);}
+            }catch(e){
+                console.warn('param fetch fail',e);
+                // On error, set defaults
+                this.setState({
+                    paramOptions:['prompt'],
+                    paramOverrides: selectedCollection.config?.paramOverrides || {}
+                });
+                return;
+            }
         }
-        this.setState({paramOptions:['prompt']}); }
+        this.setState({
+            paramOptions:['prompt'],
+            paramOverrides: selectedCollection.config?.paramOverrides || {}
+        });
+        if(!this._loadedParamKeys) this._loadedParamKeys = new Set();
+        this._loadedParamKeys.add(collectionKey);
+    }
 
     attachOverviewEvents(){
         const modal=this.modalElement;
-        if(modal.querySelector('.edit-desc-btn')) modal.querySelector('.edit-desc-btn').onclick=async()=>{
-            const val=prompt('Description',this.state.selectedCollection.description||'');
-            if(val!==null){await this.updateCollection({description:val});}
+        
+        // Description edit - use text overlay for better UX
+        if(modal.querySelector('.edit-desc-btn')) modal.querySelector('.edit-desc-btn').onclick=()=>{
+            const current = this.state.pendingDescription !== null 
+                ? this.state.pendingDescription 
+                : (this.state.selectedCollection.description||'');
+            showTextOverlay(current, (newValue) => {
+                this.setState({
+                    pendingDescription: newValue,
+                    overviewDirty: true
+                });
+            });
         };
-        if(modal.querySelector('.edit-supply-btn')) modal.querySelector('.edit-supply-btn').onclick=async()=>{
-            const val=prompt('Total supply',this.state.selectedCollection.totalSupply||'');
-            if(val!==null){await this.updateCollection({totalSupply:Number(val)});} };
+        
+        // Supply edit - use prompt (number input)
+        if(modal.querySelector('.edit-supply-btn')) modal.querySelector('.edit-supply-btn').onclick=()=>{
+            const current = this.state.pendingSupply !== null 
+                ? this.state.pendingSupply 
+                : (this.state.selectedCollection.totalSupply||'');
+            const val=prompt('Total supply',current);
+            if(val!==null){
+                const numVal = val.trim() === '' ? null : Number(val);
+                this.setState({
+                    pendingSupply: numVal,
+                    overviewDirty: true
+                });
+            }
+        };
+        
         if(modal.querySelector('.edit-gen-btn')) modal.querySelector('.edit-gen-btn').onclick=()=>{
             this.setState({showGenPicker:true});
             if(!this.state.toolOptions.length){this.fetchTools();}
@@ -645,17 +1182,52 @@ export default class CookMenuModal {
         if(modal.querySelector('.cancel-generator-btn')) modal.querySelector('.cancel-generator-btn').onclick=()=>{
             this.setState({showGenPicker:false});
         };
+        
+        // Parameter edit - use text overlay for prompt/text inputs
         modal.querySelectorAll('.edit-param-btn').forEach(btn=>{
-            btn.onclick=async()=>{
+            btn.onclick=()=>{
                 const param=btn.closest('tr').getAttribute('data-param');
-                const current=this.state.paramOverrides[param]||'';
+                // Check if this is a prompt/text input
+                const isTextInput = /(prompt|text|instruction|input_prompt)/i.test(param);
+                
+                // Get current value (check pending first, then saved, then empty)
+                const current = this.state.pendingParamOverrides[param] !== undefined
+                    ? this.state.pendingParamOverrides[param]
+                    : (this.state.paramOverrides[param] || '');
+                
+                if (isTextInput) {
+                    // Use text overlay for prompt/text inputs
+                    showTextOverlay(current, (newValue) => {
+                        const newOverrides = {
+                            ...this.state.pendingParamOverrides,
+                            [param]: newValue
+                        };
+                        this.setState({
+                            pendingParamOverrides: newOverrides,
+                            overviewDirty: true
+                        });
+                    });
+                } else {
+                    // Use prompt for other inputs
                 const val=prompt(`Set value for ${param}`,current);
                 if(val!==null){
-                    const overrides={...this.state.paramOverrides,[param]:val};
-                    await this.updateCollection({ 'config.paramOverrides': overrides });
+                        const newOverrides = {
+                            ...this.state.pendingParamOverrides,
+                            [param]: val
+                        };
+                        this.setState({
+                            pendingParamOverrides: newOverrides,
+                            overviewDirty: true
+                        });
+                    }
                 }
             };
         });
+        
+        // Save overview changes button
+        if(modal.querySelector('.save-overview-btn')) modal.querySelector('.save-overview-btn').onclick=async()=>{
+            await this.saveOverviewChanges();
+        };
         if(modal.querySelector('.test-btn')) modal.querySelector('.test-btn').onclick=()=>{
             this.hide();
             import('../window/CollectionWindow.js').then(m=>{m.createCollectionTestWindow(this.state.selectedCollection);} );
@@ -667,7 +1239,35 @@ export default class CookMenuModal {
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
             const coll=this.state.selectedCollection; if(!coll) return;
             if(!(coll.toolId||coll.spellId)){ alert('Please select a generator (tool or spell) before starting.'); return; }
-            const supply = Number(coll.totalSupply)||0; if(supply<=0){ alert('Please set a valid Total Supply (>0).'); return; }
+            
+            // Warn if there are unsaved changes
+            if (this.state.overviewDirty) {
+                if (!confirm('You have unsaved changes. These changes will not be included in the cook. Save changes first?')) {
+                    // User chose not to save, but still allow starting cook with saved values
+                } else {
+                    // User wants to save first
+                    await this.saveOverviewChanges();
+                    // Refresh collection to get updated values
+                    await this.fetchCollections();
+                    const updated = this.state.collections.find(c => c.collectionId === coll.collectionId);
+                    if (updated) {
+                        this.setState({ selectedCollection: updated });
+                        coll = updated;
+                    }
+                }
+            }
+            
+            // Use pending supply if available, otherwise use saved
+            const supply = this.state.pendingSupply !== null 
+                ? this.state.pendingSupply 
+                : (Number(coll.totalSupply)||0);
+            if(supply<=0){ alert('Please set a valid Total Supply (>0).'); return; }
+            
+            // Use pending param overrides if available, otherwise use saved
+            const paramOverrides = Object.keys(this.state.pendingParamOverrides).length > 0
+                ? { ...this.state.paramOverrides, ...this.state.pendingParamOverrides }
+                : (coll.config?.paramOverrides||this.state.paramOverrides||{});
+            
             const id=coll.collectionId;
             try{
                 this.setState({ loading:true });
@@ -676,7 +1276,7 @@ export default class CookMenuModal {
                     toolId: coll.toolId,
                     spellId: coll.spellId,
                     traitTree: coll.config?.traitTree||[],
-                    paramOverrides: coll.config?.paramOverrides||this.state.paramOverrides||{},
+                    paramOverrides: paramOverrides,
                     totalSupply: supply
                 };
                 console.log('[CookMenuModal] startCook payload', payload);
@@ -700,7 +1300,63 @@ export default class CookMenuModal {
         const csrf=await this.getCsrfToken();
         const id=this.state.selectedCollection.collectionId;
         const res=await fetch(`/api/v1/collections/${encodeURIComponent(id)}`,{method:'PUT',headers:{'Content-Type':'application/json','x-csrf-token':csrf},credentials:'include',body:JSON.stringify(fields)});
-        if(res.ok){const updated=await res.json();this.setState({selectedCollection:updated,paramOverrides:updated.config?.paramOverrides||{}});} }
+        if(res.ok){
+            const updated=await res.json();
+            this.setState({
+                selectedCollection:updated,
+                paramOverrides:updated.config?.paramOverrides||{},
+                overviewDirty: false,
+                pendingDescription: null,
+                pendingSupply: null,
+                pendingParamOverrides: {}
+            });
+        }
+    }
+    
+    async saveOverviewChanges(){
+        try {
+            this.setState({ loading: true, error: null });
+            const fields = {};
+            
+            // Add description if changed
+            if (this.state.pendingDescription !== null) {
+                fields.description = this.state.pendingDescription;
+            }
+            
+            // Add supply if changed
+            if (this.state.pendingSupply !== null) {
+                fields.totalSupply = this.state.pendingSupply;
+            }
+            
+            // Add param overrides if changed
+            if (Object.keys(this.state.pendingParamOverrides).length > 0) {
+                // Merge pending with existing overrides
+                const mergedOverrides = {
+                    ...this.state.paramOverrides,
+                    ...this.state.pendingParamOverrides
+                };
+                fields['config.paramOverrides'] = mergedOverrides;
+            }
+            
+            if (Object.keys(fields).length === 0) {
+                this.setState({ loading: false });
+                return; // Nothing to save
+            }
+            
+            await this.updateCollection(fields);
+            this.setState({ 
+                loading: false, 
+                saveSuccess: true 
+            });
+            setTimeout(() => this.setState({ saveSuccess: false }), 2000);
+        } catch (err) {
+            console.error('[CookMenuModal] saveOverviewChanges error:', err);
+            this.setState({
+                loading: false,
+                error: err.message || 'Failed to save changes. Please try again.'
+            });
+        }
+    }
 
     openToolPicker(){
         if(!this.state.toolOptions.length){this.fetchTools().then(()=>this.openToolPicker());return;}

@@ -5,12 +5,12 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.85);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1002;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
     animation: modalOverlayFadeIn 0.3s ease-out;
     overflow-y: auto;
     padding: 40px 20px;
@@ -24,23 +24,23 @@
     }
     to {
         opacity: 1;
-        backdrop-filter: blur(8px);
+        backdrop-filter: blur(12px);
     }
 }
 
 .cook-modal-container {
     background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
     color: #e0e0e0;
-    padding: 28px;
-    border-radius: 16px;
+    padding: 32px;
+    border-radius: 20px;
     width: 90%;
-    max-width: 800px;
+    max-width: 850px;
     position: relative;
     box-shadow: 
-        0 20px 60px rgba(0, 0, 0, 0.5),
-        0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-        0 1px 0 rgba(255, 255, 255, 0.1) inset;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+        0 25px 70px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+        0 2px 0 rgba(255, 255, 255, 0.12) inset;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     max-height: calc(100vh - 80px);
     overflow-y: auto;
     animation: modalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -49,14 +49,33 @@
     box-sizing: border-box;
 }
 
+.cook-modal-container h2 {
+    margin: 0 0 24px 0;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #fff 0%, #e0e0e0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.cook-modal-container hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    margin: 32px 0;
+}
+
 @keyframes modalSlideIn {
     from {
         opacity: 0;
-        transform: scale(0.95);
+        transform: scale(0.95) translateY(20px);
     }
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: scale(1) translateY(0);
     }
 }
 
@@ -99,8 +118,25 @@
     padding: 14px 18px;
     border-radius: 10px;
     margin-bottom: 12px;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.cook-status-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(74, 144, 226, 0.1), transparent);
+    transition: left 0.5s ease;
+}
+
+.cook-status-item:hover::before {
+    left: 100%;
 }
 
 .cook-status-item:hover {
@@ -148,16 +184,37 @@
     border-radius: 12px;
     cursor: pointer;
     text-align: center;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-weight: 500;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.collection-card::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(74, 144, 226, 0.2);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease, height 0.6s ease;
+}
+
+.collection-card:hover::after {
+    width: 300px;
+    height: 300px;
 }
 
 .collection-card:hover {
     background: linear-gradient(135deg, #333 0%, #2a2a2a 100%);
     border-color: rgba(74, 144, 226, 0.4);
     transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(74, 144, 226, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1;
 }
 
 .collection-card.new {
@@ -215,6 +272,24 @@
     color: #fff;
     border-bottom: 2px solid #4a90e2;
     padding-bottom: 8px;
+    position: relative;
+}
+
+.trait-tree-editor h3::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, #4a90e2, transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { width: 60px; }
+    50% { width: 120px; }
+    100% { width: 60px; }
 }
 
 .cat-list {
@@ -247,7 +322,8 @@
 
 .cat-header input.cat-name-input:focus {
     border-color: #4a90e2;
-    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2), 0 0 12px rgba(74, 144, 226, 0.1);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .cat-toggle {
@@ -292,11 +368,17 @@
 }
 
 .trait-table tbody tr {
-    transition: background-color 0.2s ease;
+    position: relative;
+    transition: all 0.2s ease;
 }
 
 .trait-table tbody tr:hover {
     background: #2a2a2a;
+    transform: translateX(2px);
+}
+
+.trait-table tbody tr:hover td {
+    color: #fff;
 }
 
 .trait-table thead {
@@ -324,7 +406,8 @@
 
 .trait-table input:focus {
     border-color: #4a90e2;
-    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2), 0 0 12px rgba(74, 144, 226, 0.1);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .add-cat-row {
@@ -350,7 +433,8 @@
 
 .add-cat-row .new-cat-input:focus {
     border-color: #4a90e2;
-    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+    box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2), 0 0 12px rgba(74, 144, 226, 0.1);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 /* Buttons in editor */
@@ -407,10 +491,59 @@
 }
 
 /* Tab bar improvements */
-.tab-bar{display:flex;gap:8px;margin:8px 0;}
-.tab-btn{background:#2a2a2a;border:1px solid #444;color:#ccc;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;}
-.tab-btn.active{background:#4a90e2;border-color:#4a90e2;color:#fff;}
-.tab-btn:hover:not(.active){background:#3a3a3a;} 
+.tab-bar {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0 24px 0;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    padding: 10px 20px;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    text-transform: capitalize;
+}
+
+.tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(0);
+    width: 80%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #4a90e2, transparent);
+    border-radius: 2px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn.active {
+    color: #4a90e2;
+    background: rgba(74, 144, 226, 0.1);
+}
+
+.tab-btn.active::after {
+    transform: translateX(-50%) scaleX(1);
+}
+
+.tab-btn:hover:not(.active) {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateY(-1px);
+}
+
+.tab-btn:active {
+    transform: translateY(0);
+} 
 
 /* Trait Tree Editor Improvements */
 .trait-table-wrapper {
@@ -474,36 +607,74 @@
 
 /* Status messages */
 .loading-spinner {
-    background: #2a2a2a;
+    background: linear-gradient(135deg, #2a2a2a 0%, #252525 100%);
     color: #fff;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 12px 16px;
+    border-radius: 8px;
     margin: 8px 0;
     text-align: center;
     animation: pulse 1.5s infinite;
+    border: 1px solid rgba(74, 144, 226, 0.2);
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.loading-spinner::before {
+    content: '⏳';
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .error-message {
-    background: #442222;
+    background: linear-gradient(135deg, #442222 0%, #331616 100%);
     color: #ff9999;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 12px 16px;
+    border-radius: 8px;
     margin: 8px 0;
     display: flex;
     align-items: center;
     gap: 8px;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.1);
+    animation: shake 0.5s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
 }
 
 .success-message {
-    background: #224422;
+    background: linear-gradient(135deg, #224422 0%, #1a331a 100%);
     color: #99ff99;
-    padding: 8px 12px;
-    border-radius: 4px;
+    padding: 12px 16px;
+    border-radius: 8px;
     margin: 8px 0;
     display: flex;
     align-items: center;
     gap: 8px;
-    animation: fadeOut 2s forwards;
+    animation: fadeOut 2s forwards, slideIn 0.3s ease;
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    box-shadow: 0 2px 8px rgba(39, 174, 96, 0.1);
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .error-icon, .success-icon {
@@ -520,4 +691,441 @@
     0% { opacity: 1; }
     70% { opacity: 1; }
     100% { opacity: 0; }
+}
+
+/* Back button styling */
+.back-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-bottom: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.back-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    transform: translateX(-2px);
+}
+
+/* Meta table styling */
+.meta-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 20px 0;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.meta-table tr {
+    transition: background-color 0.2s ease;
+}
+
+.meta-table tr:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.meta-table td {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    vertical-align: middle;
+}
+
+.meta-table tr:last-child td {
+    border-bottom: none;
+}
+
+.meta-table td:first-child {
+    font-weight: 600;
+    color: #ccc;
+    width: 140px;
+}
+
+.meta-table td:nth-child(2) {
+    color: #e0e0e0;
+}
+
+.meta-table button {
+    background: rgba(74, 144, 226, 0.15);
+    border: 1px solid rgba(74, 144, 226, 0.3);
+    color: #4a90e2;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.meta-table button:hover {
+    background: rgba(74, 144, 226, 0.25);
+    border-color: rgba(74, 144, 226, 0.5);
+    color: #5aa1f2;
+    transform: translateY(-1px);
+}
+
+/* Action buttons styling */
+.test-btn, .review-btn, .start-cook-btn, .delete-collection-btn, .save-overview-btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    margin-right: 8px;
+    margin-top: 8px;
+}
+
+.save-overview-btn {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.save-overview-btn:hover {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
+}
+
+.test-btn {
+    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+}
+
+.test-btn:hover {
+    background: linear-gradient(135deg, #5aa1f2 0%, #4a90e2 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(74, 144, 226, 0.4);
+}
+
+.review-btn {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.review-btn:hover {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
+}
+
+.start-cook-btn {
+    background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+}
+
+.start-cook-btn:hover {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(230, 126, 34, 0.4);
+}
+
+.delete-collection-btn {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    color: #fff;
+    float: right;
+    box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+}
+
+.delete-collection-btn:hover {
+    background: linear-gradient(135deg, #ec7063 0%, #e74c3c 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(231, 76, 60, 0.4);
+}
+
+/* Trait tree action buttons */
+.trait-tree-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.download-trait-tree-btn, .upload-trait-tree-btn {
+    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    border: none;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.download-trait-tree-btn:hover, .upload-trait-tree-btn:hover {
+    background: linear-gradient(135deg, #5aa1f2 0%, #4a90e2 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(74, 144, 226, 0.4);
+}
+
+.download-trait-tree-btn:active, .upload-trait-tree-btn:active {
+    transform: translateY(0);
+}
+
+.upload-trait-tree-btn {
+    background: linear-gradient(135deg, #27ae60 0%, #219a52 100%);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.upload-trait-tree-btn:hover {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
+}
+
+/* Empty message styling */
+.empty-message {
+    text-align: center;
+    color: #888;
+    padding: 48px 24px;
+    font-size: 15px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
+    border-radius: 12px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    margin: 20px 0;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.empty-message::before {
+    content: '📭';
+    display: block;
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+    animation: float 3s ease-in-out infinite;
+}
+
+/* Initial load spinner */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 40px;
+    min-height: 200px;
+}
+
+.loading-container .loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #4a90e2;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+    border-style: solid;
+}
+
+.loading-container .loading-spinner::before {
+    content: none;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.empty-message:hover {
+    border-color: rgba(74, 144, 226, 0.3);
+    background: linear-gradient(135deg, rgba(74, 144, 226, 0.05) 0%, rgba(74, 144, 226, 0.02) 100%);
+    color: #aaa;
+}
+
+/* Form styling improvements */
+.create-collection-form {
+    margin-top: 20px;
+}
+
+.create-collection-form label {
+    display: block;
+    margin-bottom: 16px;
+    color: #e0e0e0;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.create-collection-form input[type="text"],
+.create-collection-form textarea {
+    width: 100%;
+    padding: 12px 16px;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-sizing: border-box;
+}
+
+.create-collection-form input[type="text"]:focus,
+.create-collection-form textarea:focus {
+    outline: none;
+    border-color: #4a90e2;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.15), 0 0 20px rgba(74, 144, 226, 0.1);
+    transform: translateY(-1px);
+}
+
+.create-collection-form textarea {
+    resize: vertical;
+    min-height: 80px;
+    font-family: inherit;
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.form-actions button[type="submit"] {
+    background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+    border: none;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+}
+
+.form-actions button[type="submit"]:hover {
+    background: linear-gradient(135deg, #5aa1f2 0%, #4a90e2 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(74, 144, 226, 0.4);
+}
+
+.form-actions .cancel-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.form-actions .cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+/* Generator picker improvements */
+.gen-picker select {
+    width: 100%;
+    max-width: 400px;
+    padding: 10px 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gen-picker select:focus {
+    outline: none;
+    border-color: #4a90e2;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.15), 0 0 20px rgba(74, 144, 226, 0.1);
+    transform: translateY(-1px);
+}
+
+/* Scrollbar styling */
+.cook-modal-container::-webkit-scrollbar {
+    width: 12px;
+}
+
+.cook-modal-container::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    margin: 8px 0;
+}
+
+.cook-modal-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(74, 144, 226, 0.4), rgba(74, 144, 226, 0.6));
+    border-radius: 10px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background 0.2s ease;
+}
+
+.cook-modal-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(74, 144, 226, 0.6), rgba(74, 144, 226, 0.8));
+    background-clip: padding-box;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .cook-modal-container {
+        width: 95%;
+        padding: 24px;
+        max-height: calc(100vh - 40px);
+    }
+    
+    .collection-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+    }
+    
+    .tab-bar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .tab-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+    
+    .meta-table {
+        font-size: 13px;
+    }
+    
+    .meta-table td {
+        padding: 12px 16px;
+    }
+    
+    .trait-tree-actions {
+        flex-direction: column;
+    }
+    
+    .download-trait-tree-btn,
+    .upload-trait-tree-btn {
+        width: 100%;
+    }
 }

@@ -65,6 +65,11 @@ document.addEventListener('keyup', (e) => {
     if (e.code === 'Space') spacebarIsDown = false;
 });
 
+// Reset spacebar state when window loses focus to prevent stuck state
+window.addEventListener('blur', () => {
+    spacebarIsDown = false;
+});
+
 import { debugLog, isDebugEnabled, DEBUG_FLAGS } from './config/debugConfig.js';
 import './utils/debugToggle.js'; // Initialize debug toggle utility
 import './test/debugTest.js'; // Initialize debug test utility
@@ -137,10 +142,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function screenToWorkspace(x, y) {
-        // Original mapping: workspace = (screen / scale) - pan
+        // Convert viewport coordinates (e.clientX/clientY) to workspace coordinates
+        // First, get canvas position in viewport
+        const canvasRect = canvas.getBoundingClientRect();
+        // Convert viewport coordinates to canvas-relative coordinates
+        const canvasX = x - canvasRect.left;
+        const canvasY = y - canvasRect.top;
+        // Apply inverse transform: workspace = (canvas / scale) - pan
         return {
-            x: (x / scale) - pan.x,
-            y: (y / scale) - pan.y
+            x: (canvasX / scale) - pan.x,
+            y: (canvasY / scale) - pan.y
         };
     }
 
@@ -173,18 +184,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // If zooming towards a focus point (mouse / touch centre)
         if (centerX !== undefined && centerY !== undefined) {
-            // Screen-space coordinates of the focus point relative to canvas origin
+            // Get canvas position in viewport BEFORE transform update
             const rect = canvas.getBoundingClientRect();
-            const screenX = centerX - rect.left;
-            const screenY = centerY - rect.top;
-
-            // Workspace coordinates of the focus point before zoom
-            const focusWorkspaceX = screenX / prevScale - pan.x;
-            const focusWorkspaceY = screenY / prevScale - pan.y;
-
-            // Compute new pan so the focus point stays under the cursor after zoom
-            pan.x = screenX / scale - focusWorkspaceX;
-            pan.y = screenY / scale - focusWorkspaceY;
+            
+            // Cursor position relative to canvas origin (in canvas coordinate space)
+            const cursorCanvasX = centerX - rect.left;
+            const cursorCanvasY = centerY - rect.top;
+            
+            // Calculate the workspace point that is currently under the cursor
+            // Transform formula: screen = (workspace + pan) * scale
+            // Inverse: workspace = (screen / scale) - pan
+            const cursorWorkspaceX = (cursorCanvasX / prevScale) - pan.x;
+            const cursorWorkspaceY = (cursorCanvasY / prevScale) - pan.y;
+            
+            // Calculate the ideal pan to keep cursor point fixed
+            const idealPanX = (cursorCanvasX / scale) - cursorWorkspaceX;
+            const idealPanY = (cursorCanvasY / scale) - cursorWorkspaceY;
+            
+            // Apply damping factor to reduce pan sensitivity, especially when off-center
+            // This reduces the pan adjustment by 60% to make it less aggressive
+            const panDamping = 0.4; // 40% of calculated adjustment (60% reduction)
+            const panDeltaX = idealPanX - pan.x;
+            const panDeltaY = idealPanY - pan.y;
+            
+            pan.x = pan.x + panDeltaX * panDamping;
+            pan.y = pan.y + panDeltaY * panDamping;
         }
 
         updateTransform();
@@ -196,12 +220,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     updateTransform();
 
-    // Mouse wheel zoom
+    // Mouse wheel zoom and touchpad pan
     sandboxContent.addEventListener('wheel', (e) => {
-        if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        // Detect touchpad vs mouse wheel
+        // Touchpad typically has smaller deltaY and may have significant deltaX
+        const isHorizontalPan = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+        const isSmallDelta = Math.abs(e.deltaY) < 50 && Math.abs(e.deltaX) < 50;
+        const isTouchpadPan = (isHorizontalPan || isSmallDelta) && !e.ctrlKey && !e.metaKey;
+        
+        if (isTouchpadPan) {
+            // Touchpad pan (two-finger scroll)
             e.preventDefault();
-            const zoomFactor = 1.1;
-            const oldScale = scale;
+            pan.x -= e.deltaX;
+            pan.y -= e.deltaY;
+            updateTransform();
+        } else if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            // Mouse wheel zoom (or pinch zoom on touchpad with modifier)
+            e.preventDefault();
+            const zoomFactor = 1.05; // Reduced from 1.1 for better control
             const newScale = scale * (e.deltaY < 0 ? zoomFactor : 1 / zoomFactor);
             setScale(newScale, e.clientX, e.clientY);
         }
@@ -212,7 +248,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     sandboxContent.addEventListener('mousedown', (e) => {
         // Pan only when clicking on the background, not on other elements.
         // Figma-style: pan with spacebar or middle mouse
-        if ((e.target === canvas || e.target.classList.contains('sandbox-bg')) && (e.button === 1 || spacebarIsDown)) {
+        // Exclude tool windows and their interactive elements from pan
+        const isToolWindow = e.target.closest('.tool-window, .spell-window');
+        if (isToolWindow && e.button !== 1) return; // Allow middle-click pan even on windows
+        
+        // Only pan when clicking on canvas background
+        const isCanvasClick = e.target === canvas || 
+                             (e.target.classList && e.target.classList.contains('sandbox-bg'));
+        if (isCanvasClick && (e.button === 1 || spacebarIsDown)) {
             isPanning = true;
             start = { x: e.clientX, y: e.clientY };
             panStart = { ...pan };
@@ -238,7 +281,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     sandboxContent.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
             // Pan with one finger
-            if (e.target === canvas || e.target.classList.contains('sandbox-bg')) {
+            // Exclude tool windows from touch pan
+            const isToolWindow = e.target.closest('.tool-window, .spell-window');
+            if (isToolWindow) return; // Don't pan when touching tool windows
+            
+            // Only pan when touching canvas background
+            const isCanvasTouch = e.target === canvas || 
+                                 (e.target.classList && e.target.classList.contains('sandbox-bg'));
+            if (isCanvasTouch) {
                 isPanning = true;
                 start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                 panStart = { ...pan };
@@ -597,7 +647,14 @@ function initLassoSelection() {
 
     canvas.addEventListener('mousedown', (e) => {
         // Figma-style: only start lasso with left mouse, no spacebar
-        if (e.button !== 0 || e.target !== canvas || spacebarIsDown) return;
+        // Exclude tool windows and their interactive elements from lasso selection
+        const isToolWindow = e.target.closest('.tool-window, .spell-window');
+        if (isToolWindow) return; // Don't start lasso when clicking on tool windows
+        
+        // Only start lasso when clicking directly on canvas background
+        const isCanvasClick = e.target === canvas || 
+                             (e.target.classList && e.target.classList.contains('sandbox-bg'));
+        if (e.button !== 0 || !isCanvasClick || spacebarIsDown) return;
 
         lasso.active = true;
         lasso.x1 = e.clientX;
@@ -622,8 +679,17 @@ function initLassoSelection() {
     document.addEventListener('mouseup', (e) => {
         if (!lasso.active) return;
         
+        // Don't interfere with drag operations - check if we're dragging a window
+        const isDraggingWindow = e.target.closest('.tool-window, .spell-window');
+        if (isDraggingWindow) {
+            lasso.active = false;
+            if (lasso.element) lasso.element.style.display = 'none';
+            return;
+        }
+        
         e.preventDefault();
-        e.stopImmediatePropagation();
+        // Use stopPropagation instead of stopImmediatePropagation to allow drag handlers to run
+        e.stopPropagation();
         
         // Hide the lasso element immediately
         if (lasso.element) {

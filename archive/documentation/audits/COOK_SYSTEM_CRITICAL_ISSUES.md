@@ -107,45 +107,77 @@ No locking mechanism. Multiple concurrent calls can all pass the `state.running.
 
 ### Fix Required
 
-Add mutex/lock per collection+user key:
+Add home-baked async mutex per collection+user key:
 
 ```javascript
-// At class level:
-this.locks = new Map(); // key -> Promise (mutex)
-
-async scheduleNext({ collectionId, userId, finishedJobId, success = true }) {
-  const key = this._getKey(collectionId, userId);
-  
-  // Acquire lock
-  let releaseLock;
-  if (!this.locks.has(key)) {
-    this.locks.set(key, Promise.resolve());
+class CookOrchestratorService {
+  constructor() {
+    // ... existing code ...
+    this.locks = new Map(); // key -> Promise (mutex chain)
   }
-  const lockPromise = this.locks.get(key).then(() => {
-    return new Promise(resolve => {
-      releaseLock = resolve;
+
+  /**
+   * Acquire lock for a specific collection+user key
+   * Returns a function to release the lock
+   */
+  async _acquireLock(key) {
+    // Get or create lock promise chain for this key
+    if (!this.locks.has(key)) {
+      this.locks.set(key, Promise.resolve());
+    }
+    
+    // Add ourselves to the chain - wait for previous operations
+    const previousLock = this.locks.get(key);
+    let releaseLock;
+    const ourLock = previousLock.then(() => {
+      return new Promise(resolve => {
+        releaseLock = resolve; // Store release function
+      });
     });
-  });
-  this.locks.set(key, lockPromise);
-  await lockPromise;
-  
-  try {
-    const state = this.runningByCollection.get(key);
-    if (!state) return;
     
-    // ... rest of logic ...
+    // Update chain with our lock
+    this.locks.set(key, ourLock);
     
-  } finally {
-    releaseLock();
+    // Wait for our turn
+    await ourLock;
+    
+    // Return release function
+    return () => {
+      releaseLock(); // Release lock, allowing next operation
+    };
+  }
+
+  async scheduleNext({ collectionId, userId, finishedJobId, success = true }) {
+    const key = this._getKey(collectionId, userId);
+    
+    // Acquire lock - wait for any concurrent operations to finish
+    const releaseLock = await this._acquireLock(key);
+    
+    try {
+      const state = this.runningByCollection.get(key);
+      if (!state) {
+        releaseLock();
+        return;
+      }
+      
+      // ... rest of protected logic ...
+      
+    } finally {
+      releaseLock(); // Always release lock, even on error
+    }
   }
 }
 ```
 
-Or use a proper async mutex library.
+**How it works:**
+1. First call creates lock chain, proceeds immediately
+2. Second call waits for first call's lock
+3. First call finishes, releases lock, second call proceeds
+4. Result: Operations are serialized per key, preventing race conditions
 
 ---
 
-## Issue 3: Triple scheduleNext Calls - Severe Race Condition
+## Issue 3: Multiple scheduleNext Calls - Need Idempotency
 
 **Severity:** 🔴 CRITICAL  
 **Files:** 
@@ -155,38 +187,93 @@ Or use a proper async mutex library.
 
 ### Problem
 
-Three different places call `scheduleNext` for the same completed generation:
+Multiple different places call `scheduleNext` for completed generations, which is **necessary** for different tool execution types:
 
-1. **Webhook Processor** - When webhook updates generation to completed
-2. **Notification Dispatcher** - When notificationPlatform is 'cook'
-3. **Generation Execution API** - For immediate/static responses
+1. **Generation Execution API** - For immediate/synchronous tools (String, ChatGPT)
+   - Tools complete synchronously, return response immediately
+   - scheduleNext called directly in execution API (lines 527-537, 644-654)
+   - **Necessary** - these tools don't go through webhook
 
-All three can fire for the same generation, causing 3x scheduling.
+2. **Webhook Processor** - For webhook-based async tools (ComfyUI)
+   - Tools start job, complete asynchronously via webhook
+   - scheduleNext called when webhook updates generation to completed (lines 454-472)
+   - **Necessary** - webhook is completion signal
+
+3. **Notification Dispatcher** - For polling-based async tools (HuggingFace JoyCaption)
+   - Tools use async adapters with polling
+   - Polling detects completion, emits generationUpdated event
+   - Notification dispatcher calls scheduleNext (lines 311-325)
+   - **Potentially necessary** - polling tools may not trigger webhook
+
+**However**, the same generation can trigger multiple paths, causing duplicate scheduling.
 
 ### Impact
 
-- Can schedule 3 pieces instead of 1
-- Can exceed supply limit by 3x
-- Severe state corruption
+- Can schedule multiple pieces instead of 1
+- Can exceed supply limit
+- State corruption
 - Resource exhaustion
 
 ### Root Cause
 
-No coordination between different integration points. Each thinks it's responsible for advancing the cook.
+No idempotency check. Same generation completion can trigger scheduleNext from multiple paths:
+- Immediate tool: execution API calls scheduleNext
+- Webhook tool: webhook processor calls scheduleNext  
+- Polling tool: notification dispatcher calls scheduleNext
+- But if a tool triggers both webhook AND notification dispatcher, both call scheduleNext
 
 ### Fix Required
 
-**Option 1:** Remove duplicate calls - keep only webhook processor
-- Remove from notification dispatcher
-- Remove from generation execution API
-- Webhook processor is the canonical completion handler
+**Add idempotency check** in scheduleNext to prevent duplicate processing:
 
-**Option 2:** Add idempotency check in scheduleNext
-- Track which jobIds have already triggered scheduleNext
-- Skip if already processed
-- Use database or in-memory set with TTL
+```javascript
+class CookOrchestratorService {
+  constructor() {
+    // ... existing code ...
+    this.processedJobIds = new Set(); // Track processed jobIds
+    this.processedJobIdsCleanup = new Map(); // key -> setTimeout handle
+  }
 
-**Recommended:** Option 1 (remove duplicates) + Option 2 (idempotency) for safety
+  async scheduleNext({ collectionId, userId, finishedJobId, success = true }) {
+    const key = this._getKey(collectionId, userId);
+    
+    // ✅ IDEMPOTENCY CHECK
+    const jobKey = `${key}:${finishedJobId}`;
+    if (this.processedJobIds.has(jobKey)) {
+      this.logger.debug(`[CookOrchestrator] scheduleNext already processed for jobId ${finishedJobId}, skipping`);
+      return;
+    }
+    
+    // Mark as processed
+    this.processedJobIds.add(jobKey);
+    
+    // Cleanup after 1 hour (safety measure)
+    if (this.processedJobIdsCleanup.has(jobKey)) {
+      clearTimeout(this.processedJobIdsCleanup.get(jobKey));
+    }
+    const timeout = setTimeout(() => {
+      this.processedJobIds.delete(jobKey);
+      this.processedJobIdsCleanup.delete(jobKey);
+    }, 60 * 60 * 1000); // 1 hour
+    this.processedJobIdsCleanup.set(jobKey, timeout);
+    
+    // Acquire lock (from Issue 2 fix)
+    const releaseLock = await this._acquireLock(key);
+    
+    try {
+      // ... rest of scheduleNext logic ...
+    } finally {
+      releaseLock();
+    }
+  }
+}
+```
+
+**Recommendation:**
+- Keep scheduleNext calls in all three places (they're needed for different tool types)
+- Remove from notification dispatcher ONLY if polling tools also trigger webhook processor
+- Add idempotency check to prevent duplicate processing
+- Add mutex (from Issue 2) to prevent race conditions
 
 ---
 
@@ -378,11 +465,12 @@ All critical issues relate to:
 2. **State Management** - Non-atomic updates
 3. **Security** - Missing authorization
 4. **Error Handling** - State updated before operations complete
+5. **Idempotency** - Multiple completion paths need deduplication
 
 **Immediate Actions Required:**
-1. Add mutex/locking mechanism
-2. Remove duplicate scheduleNext calls
-3. Add authorization checks
-4. Fix state update ordering
-5. Add idempotency checks
+1. Add home-baked async mutex mechanism (per collection+user key)
+2. Add idempotency check in scheduleNext (track processed jobIds)
+3. Add authorization checks (verify user owns collection)
+4. Fix state update ordering (move state.running.add() after successful submit)
+5. Evaluate notification dispatcher necessity (may be needed for polling tools)
 

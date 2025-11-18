@@ -1,5 +1,4 @@
 const express = require('express');
-const { CookJobStore } = require('../../core/services/cook');
 const { CookOrchestratorService } = require('../../core/services/cook');
 const { CookProjectionUpdater } = require('../../core/services/cook');
 const { createLogger } = require('../../utils/logger');
@@ -11,6 +10,83 @@ function createCookApi(deps = {}) {
   // Collections database. Prefer the new `collections` service, falling back to legacy `cookCollections` for backward-compat.
   const cookDb = deps.db?.collections || deps.db?.cookCollections;
   const cooksDb = deps.db?.cooks;
+  
+  // ✅ Configure WebSocket service for CookOrchestratorService
+  if (deps.webSocketService) {
+    CookOrchestratorService.setWebSocketService(deps.webSocketService);
+    logger.info('[CookAPI] WebSocket service configured for CookOrchestratorService');
+  }
+
+  // POST /internal/v1/data/collections/:id/resume - resume a paused/stopped cook
+  // Note: This must be defined BEFORE the catch-all /:id routes
+  router.post('/:id/resume', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      // ✅ AUTHORIZATION CHECK: Verify collection exists and user owns it
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const { spellId, toolId, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
+      if (!spellId && !toolId) {
+        // Try to get from collection config
+        const collSpellId = collection.spellId || collection.config?.spellId;
+        const collToolId = collection.toolId || collection.config?.toolId;
+        if (!collSpellId && !collToolId) {
+          return res.status(400).json({ error: 'spellId or toolId required' });
+        }
+      }
+
+      const finalSpellId = spellId || collection.spellId || collection.config?.spellId;
+      const finalToolId = toolId || collection.toolId || collection.config?.toolId;
+      const finalTraitTree = traitTree.length ? traitTree : (collection.config?.traitTree || []);
+      const finalParamOverrides = Object.keys(paramOverrides).length ? paramOverrides : (collection.config?.paramOverrides || {});
+      const finalTotalSupply = Number.isFinite(totalSupply) ? totalSupply : (collection.totalSupply || collection.config?.totalSupply || 1);
+
+      if(!cooksDb) return res.status(503).json({ error: 'cooksDb-unavailable' });
+      // Create a new cook record for the resume
+      const cook = await cooksDb.createCook({ collectionId, initiatorAccountId: userId, targetSupply: finalTotalSupply });
+      const cookId = cook._id;
+
+      // Return immediately and process startCook in the background to avoid timeout
+      // startCook handles resuming automatically by checking producedSoFar
+      logger.info(`[CookAPI] Starting resume cook for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${finalSpellId}, toolId: ${finalToolId}, totalSupply: ${finalTotalSupply}`);
+      
+      CookOrchestratorService.startCook({
+        collectionId,
+        userId,
+        cookId,
+        spellId: finalSpellId,
+        toolId: finalToolId,
+        traitTypes: [],
+        paramsTemplate: {},
+        traitTree: finalTraitTree,
+        paramOverrides: finalParamOverrides,
+        totalSupply: finalTotalSupply,
+      }).then(result => {
+        logger.info(`[CookAPI] Resumed cook successfully. Queued ${result.queued} pieces for collection ${collectionId} by user ${userId}`);
+      }).catch(err => {
+        logger.error(`[CookAPI] Resume cook error for collection ${collectionId}:`, err);
+        logger.error(`[CookAPI] Resume cook error stack:`, err.stack);
+      });
+
+      // Return immediately to avoid timeout
+      return res.json({ queued: 0, status: 'resuming' });
+    } catch (err) {
+      logger.error('[CookAPI] resume error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
 
   // POST /internal/cook/start
   router.post('/start', async (req, res) => {
@@ -21,6 +97,16 @@ function createCookApi(deps = {}) {
       }
       if (!spellId && !toolId) {
         return res.status(400).json({ error: 'spellId or toolId required' });
+      }
+
+      // ✅ AUTHORIZATION CHECK: Verify collection exists and user owns it
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
       }
 
       const { traitTypes = [], paramsTemplate = {}, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
@@ -64,22 +150,15 @@ function createCookApi(deps = {}) {
       const client = await getCachedClient();
       const dbName = process.env.MONGO_DB_NAME || 'station';
       const db = client.db(dbName);
-      // New canonical source for generated pieces.
+      // ✅ Canonical source for generated pieces - no longer using deprecated cook_jobs
       const genOutputsCol = db.collection('generationOutputs');
-      // Legacy cook_jobs queue is optional. Fall back gracefully if missing.
-      let jobsCol = null;
-      try {
-        await CookJobStore._init?.();
-        jobsCol = CookJobStore.collection || db.collection('cook_jobs');
-      } catch (_) {}
 
       // Base: collections owned by user
       let collections = await cookDb.findByUser(userId);
 
-      // Augment with any collectionIds seen in jobs/events for this user (including legacy docs without userId)
-      const jobCollIds = jobsCol ? await jobsCol.distinct('collectionId', { userId, status: { $in: ['queued', 'running'] } }) : [];
+      // ✅ Augment with any collectionIds seen in generation outputs for this user
       const eventCollIds = await genOutputsCol.distinct('metadata.collectionId', { 'metadata.collectionId': { $exists: true }, masterAccountId: userId });
-      const derivedIds = new Set([...(jobCollIds || []), ...(eventCollIds || [])]);
+      const derivedIds = new Set([...(eventCollIds || [])]);
       const knownIds = new Set((collections || []).map(c => c.collectionId));
       const missing = Array.from(derivedIds).filter(id => !knownIds.has(id));
       if (missing.length) {
@@ -98,9 +177,12 @@ function createCookApi(deps = {}) {
       const cooks = [];
       for (const coll of (collections || [])) {
         const collectionId = coll.collectionId;
-        const [queued, running, generated] = await Promise.all([
-          jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'queued' }) : 0,
-          jobsCol ? jobsCol.countDocuments({ userId, collectionId, status: 'running' }) : 0,
+        // ✅ Get running count from CookOrchestratorService (in-memory state)
+        const orchestratorKey = `${collectionId}:${userId}`;
+        const orchestratorState = CookOrchestratorService.runningByCollection?.get(orchestratorKey);
+        const runningFromOrchestrator = orchestratorState?.running?.size || 0;
+        
+        const [generated] = await Promise.all([
           genOutputsCol.countDocuments({
             $and: [
               {
@@ -122,15 +204,20 @@ function createCookApi(deps = {}) {
         ]);
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
         const generationCount = generated;
-        const isActive = (queued + running) > 0 || (targetSupply && generationCount < targetSupply);
-        if (isActive) {
+        // ✅ Use running count from orchestrator (in-memory state) - no deprecated job store
+        const running = runningFromOrchestrator;
+        const queued = 0; // ✅ No queued jobs - orchestrator handles scheduling directly
+        // ✅ Include cooks that are: actively running, paused but not complete, OR completed and awaiting review
+        const isActive = running > 0 || (targetSupply && generationCount < targetSupply);
+        const isAwaitingReview = targetSupply > 0 && generationCount >= targetSupply && running === 0;
+        if (isActive || isAwaitingReview) {
           cooks.push({
             collectionId,
             collectionName: coll.name || 'Untitled',
             generationCount,
             targetSupply,
             queued,
-            running,
+            running, // ✅ Running count from orchestrator only
             updatedAt: coll.updatedAt,
           });
         }
@@ -271,24 +358,27 @@ function createCookApi(deps = {}) {
     return router.handle(req, res);
   });
 
+  // POST /:id/resume – resume cook (must be before catch-all /:id route)
+  // This route is already defined above, but we need to ensure it's not caught by catch-all
+
   // GET /:id         – get collection by ID
   router.get('/:id', async (req, res, next) => {
     // Prevent collision with other explicit routes like /active, /start etc.
-    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });
 
   // PUT /:id         – update collection
   router.put('/:id', async (req, res, next) => {
-    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });
 
   // DELETE /:id      – delete a collection
   router.delete('/:id', async (req, res, next) => {
-    if (['start', 'active', 'ping', 'debug', 'status'].includes(req.params.id)) return next();
+    if (['start', 'active', 'ping', 'debug', 'status', 'resume'].includes(req.params.id)) return next();
     req.url = `/collections/${encodeURIComponent(req.params.id)}`;
     return router.handle(req, res);
   });
@@ -308,17 +398,8 @@ function createCookApi(deps = {}) {
   });
 
   // DEV: GET /internal/cook/debug/queue
-  router.get('/debug/queue', async (req, res) => {
-    try {
-      const userId = req.query.userId;
-      const filter = userId ? { userId } : {};
-      const dbg = await CookJobStore.getQueueDebug(filter);
-      return res.json(dbg);
-    } catch (err) {
-      logger.error('[CookAPI] debug queue error', err);
-      return res.status(500).json({ error: 'internal-error' });
-    }
-  });
+  // ✅ DEPRECATED: Removed /debug/queue endpoint - CookJobStore is deprecated
+  // Use CookOrchestratorService.runningByCollection for debugging instead
 
   router.put('/cooks/:cookId', async (req,res)=>{
     if(!cooksDb) return res.status(503).json({ error: 'service-unavailable' });

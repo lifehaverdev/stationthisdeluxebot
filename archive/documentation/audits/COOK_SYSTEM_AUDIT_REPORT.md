@@ -793,10 +793,21 @@ async _maybeAdvanceCook(record) {
 }
 ```
 
+**Analysis:**
+- ✅ **May be necessary** for polling-based async tools (HuggingFace JoyCaption)
+- ✅ Polling tools use async adapters that emit generationUpdated events
+- ✅ Notification dispatcher listens for these events and calls scheduleNext
+- ⚠️ Can cause duplicate calls if same generation triggers both webhook and notification dispatcher
+
+**Tool Execution Types Requiring scheduleNext:**
+1. **Immediate/Synchronous** (String, ChatGPT) → Execution API
+2. **Webhook-based Async** (ComfyUI) → Webhook Processor
+3. **Polling-based Async** (HuggingFace JoyCaption) → Notification Dispatcher
+
 **Issues:**
-1. **CRITICAL:** Duplicate call - both webhook processor and notification dispatcher call scheduleNext
-2. **CRITICAL:** Can cause race condition - two scheduleNext calls for same finishedJobId
-3. **MEDIUM:** No idempotency check - same jobId can trigger multiple scheduleNext calls
+1. **CRITICAL:** Can cause duplicate scheduleNext calls if same generation triggers multiple paths
+2. **CRITICAL:** No idempotency check - same jobId can trigger multiple scheduleNext calls
+3. **MEDIUM:** Need to verify if polling tools also trigger webhook processor (making this redundant)
 
 **Impact:**
 - Can schedule duplicate pieces
@@ -804,9 +815,9 @@ async _maybeAdvanceCook(record) {
 - State corruption
 
 **Recommendation:**
-- Remove duplicate call (choose one: webhook processor OR notification dispatcher)
-- Add idempotency check in scheduleNext
-- Use database-level locking or distributed lock
+- Evaluate if notification dispatcher is redundant (check if polling tools also trigger webhook)
+- **Add idempotency check** in scheduleNext to prevent duplicate processing regardless
+- Add mutex to prevent race conditions
 
 ### 7.3 Generation Execution API
 
@@ -826,26 +837,142 @@ try {
 }
 ```
 
+**Analysis:**
+- ✅ **Necessary** for immediate/synchronous tools (String, ChatGPT)
+- ✅ These tools complete synchronously and don't go through webhook
+- ⚠️ Can cause duplicate calls if same generation triggers multiple paths
+
+**Tool Execution Types:**
+1. **Immediate/Synchronous** (String, ChatGPT)
+   - Complete synchronously in execution API
+   - scheduleNext called here (lines 527-537, 644-654)
+   - **Necessary** - no webhook involved
+
+2. **Webhook-based Async** (ComfyUI)
+   - Start job, complete via webhook
+   - scheduleNext called in webhook processor
+   - **Necessary** - webhook is completion signal
+
+3. **Polling-based Async** (HuggingFace JoyCaption)
+   - Use async adapters with polling
+   - Polling detects completion, emits generationUpdated event
+   - scheduleNext called in notification dispatcher
+   - **May be necessary** - depends on whether polling tools also trigger webhook
+
 **Issues:**
-1. **CRITICAL:** Triple call - webhook processor, notification dispatcher, AND execution API all call scheduleNext
-2. **CRITICAL:** Can cause multiple scheduleNext calls for same piece
-3. **MEDIUM:** Only for immediate/static responses - async responses handled by webhook
+1. **CRITICAL:** Multiple paths can call scheduleNext for same generation
+2. **CRITICAL:** No idempotency check - duplicate processing possible
+3. **MEDIUM:** Need to verify if notification dispatcher is redundant for polling tools
 
 **Impact:**
-- Severe race conditions
-- Can schedule 3x more pieces than intended
-- Can exceed supply limit quickly
+- Can schedule multiple pieces instead of 1
+- Can exceed supply limit
+- State corruption
 
 **Recommendation:**
-- Remove ALL scheduleNext calls except one (recommend webhook processor)
-- Add idempotency check
-- Use database transaction or lock
+- Keep scheduleNext in execution API (for immediate tools)
+- Keep scheduleNext in webhook processor (for webhook tools)
+- Evaluate notification dispatcher (may be needed for polling tools)
+- **Add idempotency check** to prevent duplicate processing
+- Add mutex to prevent race conditions
 
 ---
 
 ## 8. Concurrency Control
 
-### 8.1 maxConcurrent Enforcement
+### 8.1 Mutex/Locking Mechanism (Required Fix)
+
+**Problem:** In-memory state (`runningByCollection` Map) is accessed concurrently without locking, causing race conditions.
+
+**Solution:** Implement home-baked async mutex using promise chains.
+
+**Implementation:**
+
+```javascript
+class CookOrchestratorService {
+  constructor() {
+    // ... existing code ...
+    this.locks = new Map(); // key -> Promise (mutex chain)
+  }
+
+  /**
+   * Acquire lock for a specific collection+user key
+   * Uses promise chain pattern to serialize operations
+   * Returns a function to release the lock
+   */
+  async _acquireLock(key) {
+    // Get or create lock promise chain for this key
+    if (!this.locks.has(key)) {
+      this.locks.set(key, Promise.resolve());
+    }
+    
+    // Add ourselves to the chain - wait for previous operations
+    const previousLock = this.locks.get(key);
+    let releaseLock;
+    const ourLock = previousLock.then(() => {
+      return new Promise(resolve => {
+        releaseLock = resolve; // Store release function
+      });
+    });
+    
+    // Update chain with our lock
+    this.locks.set(key, ourLock);
+    
+    // Wait for our turn
+    await ourLock;
+    
+    // Return release function
+    return () => {
+      releaseLock(); // Release lock, allowing next operation
+    };
+  }
+}
+```
+
+**How It Works:**
+1. First call: Creates lock chain starting with `Promise.resolve()`, proceeds immediately
+2. Second call: Waits for first call's lock promise, adds itself to chain
+3. First call finishes: Calls `releaseLock()`, resolves second call's promise
+4. Second call proceeds: Now has exclusive access
+5. Result: Operations are serialized per key, preventing race conditions
+
+**Usage:**
+
+```javascript
+async scheduleNext({ collectionId, userId, finishedJobId }) {
+  const key = this._getKey(collectionId, userId);
+  
+  // Acquire lock - wait for any concurrent operations to finish
+  const releaseLock = await this._acquireLock(key);
+  
+  try {
+    const state = this.runningByCollection.get(key);
+    if (!state) {
+      releaseLock();
+      return;
+    }
+    
+    // Protected code - only one operation can run at a time per key
+    state.running.delete(String(finishedJobId));
+    
+    while (state.running.size < state.maxConcurrent && state.nextIndex < state.total) {
+      // ... safe to modify state here ...
+      state.running.add(String(enq.jobId));
+      state.nextIndex += 1;
+    }
+  } finally {
+    releaseLock(); // Always release lock, even on error
+  }
+}
+```
+
+**Benefits:**
+- No external library needed
+- Simple promise chain pattern
+- Per-key locking (different collections don't block each other)
+- Automatic cleanup (lock chain is self-managing)
+
+### 8.2 maxConcurrent Enforcement
 
 **Location:** Lines 272-305
 
@@ -860,11 +987,11 @@ try {
 - Poor performance
 
 **Recommendation:**
-- Use atomic operations or locks
+- **Use mutex (from 8.1)** to ensure atomic operations
 - Make maxConcurrent configurable
 - Add monitoring/alerting for concurrency violations
 
-### 8.2 State Updates Not Atomic
+### 8.3 State Updates Not Atomic
 
 **Location:** Throughout scheduleNext
 

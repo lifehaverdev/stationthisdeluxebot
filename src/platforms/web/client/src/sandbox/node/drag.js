@@ -1,5 +1,5 @@
 import { updateToolWindowPosition, pushHistory, persistState } from '../state.js';
-import { renderAllConnections } from '../connections/index.js';
+import { scheduleRenderAllConnections } from '../connections/drawing.js';
 
 // Setup dragging functionality
 export function setupDragging(windowData, handle) {
@@ -8,6 +8,14 @@ export function setupDragging(windowData, handle) {
     let initialWorkspacePos = { x: 0, y: 0 };
 
     const startDrag = (e, isTouch = false) => {
+        // Don't start drag if clicking on interactive elements
+        const isInteractive = e.target.tagName === 'INPUT' || 
+                             e.target.tagName === 'BUTTON' || 
+                             e.target.tagName === 'TEXTAREA' ||
+                             e.target.tagName === 'SELECT' ||
+                             e.target.closest('button, input, textarea, select, a');
+        if (isInteractive) return;
+        
         const clientX = isTouch ? e.touches[0].clientX : e.clientX;
         const clientY = isTouch ? e.touches[0].clientY : e.clientY;
         
@@ -38,8 +46,8 @@ export function setupDragging(windowData, handle) {
         const { x: screenX, y: screenY } = window.sandbox.workspaceToScreen(windowData.workspaceX, windowData.workspaceY);
         if(windowData.element){ windowData.element.style.left=`${screenX}px`; windowData.element.style.top=`${screenY}px`; }
 
-        // Update all connections in real-time
-        renderAllConnections();
+        // Update all connections in real-time (batched for performance)
+        scheduleRenderAllConnections();
     };
 
     const endDrag = (e, isTouch = false) => {
@@ -66,11 +74,32 @@ export function setupDragging(windowData, handle) {
         if(windowData.element) windowData.element.style.cursor = '';
         if(handle) handle.style.cursor = 'move';
     };
+    
+    // Safety: ensure drag ends if mouse leaves window
+    const handleMouseLeave = () => {
+        if (isDragging) {
+            endDrag({}, false);
+        }
+    };
+    
+    if (handle) {
+        handle.addEventListener('mouseleave', handleMouseLeave);
+    }
 
     // Mouse Events
-    handle.addEventListener('mousedown', (e) => startDrag(e, false));
+    handle.addEventListener('mousedown', (e) => {
+        // Only start drag if not clicking on interactive elements
+        startDrag(e, false);
+    });
+    
+    // Use capture phase for mouseup to ensure we catch it before other handlers
+    document.addEventListener('mouseup', (e) => {
+        if (isDragging) {
+            endDrag(e, false);
+        }
+    }, true); // Use capture phase
+    
     document.addEventListener('mousemove', (e) => drag(e, false));
-    document.addEventListener('mouseup', (e) => endDrag(e, false));
 
     // Touch Events
     handle.addEventListener('touchstart', (e) => startDrag(e, true), { passive: false });

@@ -88,11 +88,17 @@ class TelegramNotifier {
       const textOutputs = ResponsePayloadNormalizer.extractText(normalizedPayload);
       const extractedMedia = ResponsePayloadNormalizer.extractMedia(normalizedPayload);
 
+      // Log extracted media types for debugging
+      this.logger.debug(`[TelegramNotifier] Extracted ${extractedMedia.length} media items: ${extractedMedia.map(m => `${m.type} (${m.url?.substring(0, 50)}...)`).join(', ')}`);
+      this.logger.debug(`[TelegramNotifier] sendAsDocument: ${sendAsDocument}, deliveryHints: ${JSON.stringify(deliveryHints)}`);
+
       // Process media and apply Telegram-specific formatting
       for (const media of extractedMedia) {
         if (media.type === 'photo') {
+          const finalType = sendAsDocument ? 'document' : 'photo';
+          this.logger.debug(`[TelegramNotifier] Processing photo media: ${finalType} (sendAsDocument=${sendAsDocument})`);
           mediaToSend.push({ 
-            type: sendAsDocument ? 'document' : 'photo', 
+            type: finalType, 
             url: media.url, 
             caption: '', 
             filename: suggestedFilename 
