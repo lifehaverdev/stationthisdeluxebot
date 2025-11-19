@@ -38,17 +38,28 @@ function createCookApi(deps = {}) {
       }
 
       const { spellId, toolId, traitTree = [], paramOverrides = {}, totalSupply } = req.body;
-      if (!spellId && !toolId) {
-        // Try to get from collection config
-        const collSpellId = collection.spellId || collection.config?.spellId;
-        const collToolId = collection.toolId || collection.config?.toolId;
-        if (!collSpellId && !collToolId) {
+      
+      // ✅ Get current collection config
+      const collToolId = collection.toolId || collection.config?.toolId;
+      const collSpellId = collection.spellId || collection.config?.spellId;
+      
+      // ✅ Determine final toolId and spellId - prioritize toolId over spellId
+      // Rule: If toolId exists (in request or collection), use it and ignore spellId
+      // This handles cases where collection was migrated from spell to tool but still has stale spellId
+      let finalToolId = toolId || collToolId;
+      let finalSpellId = null;
+      
+      if (finalToolId) {
+        // ✅ toolId exists - use it and clear spellId
+        finalSpellId = null;
+      } else {
+        // No toolId - fall back to spellId
+        finalSpellId = spellId || collSpellId;
+        if (!finalSpellId) {
           return res.status(400).json({ error: 'spellId or toolId required' });
         }
       }
-
-      const finalSpellId = spellId || collection.spellId || collection.config?.spellId;
-      const finalToolId = toolId || collection.toolId || collection.config?.toolId;
+      
       const finalTraitTree = traitTree.length ? traitTree : (collection.config?.traitTree || []);
       const finalParamOverrides = Object.keys(paramOverrides).length ? paramOverrides : (collection.config?.paramOverrides || {});
       const finalTotalSupply = Number.isFinite(totalSupply) ? totalSupply : (collection.totalSupply || collection.config?.totalSupply || 1);
@@ -296,7 +307,24 @@ function createCookApi(deps = {}) {
       const update = { ...req.body };
       delete update.collectionId;
       delete update.userId; // prevent id changes
-      await cookDb.updateCollection(collectionId, update);
+      
+      // ✅ Clear stale spellId/toolId when switching between them
+      // If toolId is being set, clear spellId (and vice versa)
+      // This handles cases where collection was migrated from spell to tool
+      const unsetFields = {};
+      
+      if (update.toolId || (update.config && update.config.toolId)) {
+        // Setting toolId - clear spellId fields (both top-level and in config)
+        unsetFields.spellId = '';
+        unsetFields['config.spellId'] = '';
+      } else if (update.spellId || (update.config && update.config.spellId)) {
+        // Setting spellId - clear toolId fields (both top-level and in config)
+        unsetFields.toolId = '';
+        unsetFields['config.toolId'] = '';
+      }
+      
+      // Use updateCollection with unset support
+      await cookDb.updateCollection(collectionId, update, unsetFields);
       const doc = await cookDb.findById(collectionId);
       return res.json(doc);
     } catch (err) {

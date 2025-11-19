@@ -35,9 +35,13 @@ class CookCollectionsDB extends BaseDB {
     return this.findOne({ collectionId }, { projection: { _id: 0 } });
   }
 
-  async updateCollection(collectionId, update) {
+  async updateCollection(collectionId, update, unsetFields = {}) {
     update.updatedAt = new Date();
-    await this.updateOne({ collectionId }, { $set: update });
+    const updateOp = { $set: update };
+    if (Object.keys(unsetFields).length > 0) {
+      updateOp.$unset = unsetFields;
+    }
+    await this.updateOne({ collectionId }, updateOp);
   }
 
   async deleteCollection(collectionId, userId) {
