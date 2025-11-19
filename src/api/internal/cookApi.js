@@ -195,7 +195,14 @@ function createCookApi(deps = {}) {
         
         // ✅ Use same query logic as _getProducedCount for consistency
         const { ObjectId } = require('mongodb');
-        const userIdObj = ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
+        // ✅ Handle both string and ObjectId formats for userId
+        let userIdObj;
+        if (ObjectId.isValid(userId)) {
+          userIdObj = new ObjectId(userId);
+        } else {
+          // If userId is not a valid ObjectId, try to find generations with string match too
+          userIdObj = userId;
+        }
         
         const countQuery = {
           $and: [
@@ -205,7 +212,12 @@ function createCookApi(deps = {}) {
                 { collectionId } // legacy flat field
               ]
             },
-            { masterAccountId: userIdObj }, // ✅ Match by user
+            {
+              $or: [
+                { masterAccountId: userIdObj }, // ✅ Match ObjectId format
+                { masterAccountId: userId } // ✅ Also try string format
+              ]
+            },
             { status: 'completed' }, // ✅ Use same status filter as _getProducedCount
             { deliveryStrategy: { $ne: 'spell_step' } },
             {
@@ -237,8 +249,31 @@ function createCookApi(deps = {}) {
             ]
           });
           if (totalForCollection > 0) {
-            logger.debug(`[CookAPI] Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter. Query: ${JSON.stringify(countQuery)}`);
+            // ✅ Sample a few generations to see what they look like
+            const sampleGens = await genOutputsCol.find({
+              $or: [
+                { 'metadata.collectionId': collectionId },
+                { collectionId }
+              ]
+            }).limit(3).toArray();
+            
+            logger.debug(`[CookAPI] Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter.`);
+            logger.debug(`[CookAPI] Sample generations:`, sampleGens.map(g => ({
+              _id: g._id,
+              status: g.status,
+              masterAccountId: g.masterAccountId,
+              userId: userId,
+              userIdObj: userIdObj,
+              metadataCollectionId: g.metadata?.collectionId,
+              collectionId: g.collectionId,
+              deliveryStrategy: g.deliveryStrategy,
+              reviewOutcome: g.metadata?.reviewOutcome || g.reviewOutcome
+            })));
+            logger.debug(`[CookAPI] Query used:`, JSON.stringify(countQuery, null, 2));
           }
+        } else {
+          // ✅ Log successful matches too for debugging
+          logger.debug(`[CookAPI] Collection ${collectionId}: Found ${generated} completed generations matching query`);
         }
         
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
