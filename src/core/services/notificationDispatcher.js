@@ -333,11 +333,22 @@ class NotificationDispatcher {
    * If the generation belongs to a cook (notificationPlatform==='cook'), append event and schedule next piece.
    */
   async _maybeAdvanceCook(record) {
-    if (record.notificationPlatform !== 'cook') return;
+    // ✅ Log for debugging cook detection
+    if (record.notificationPlatform !== 'cook') {
+      // Only log if metadata suggests it might be a cook generation
+      const meta = record.metadata || {};
+      if (meta.collectionId || meta.cookId || meta.jobId || meta.source === 'cook') {
+        this.logger.debug(`[NotificationDispatcher] Skipping cook advance - notificationPlatform is '${record.notificationPlatform}', not 'cook'. GenId: ${record._id}, metadata: ${JSON.stringify({ collectionId: meta.collectionId, cookId: meta.cookId, jobId: meta.jobId, source: meta.source })}`);
+      }
+      return;
+    }
     const meta = record.metadata || {};
     const { collectionId, cookId, jobId } = meta;
     const userId = String(record.masterAccountId || '') || null;
-    if (!collectionId || !userId || !jobId) return;
+    if (!collectionId || !userId || !jobId) {
+      this.logger.warn(`[NotificationDispatcher] Cook generation missing required fields. GenId: ${record._id}, collectionId: ${collectionId}, userId: ${userId}, jobId: ${jobId}`);
+      return;
+    }
 
     try {
       // ✅ Extract cookId from jobId if not in metadata (jobId format: "cookId:index")

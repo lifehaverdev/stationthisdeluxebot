@@ -193,26 +193,54 @@ function createCookApi(deps = {}) {
         const orchestratorState = CookOrchestratorService.runningByCollection?.get(orchestratorKey);
         const runningFromOrchestrator = orchestratorState?.running?.size || 0;
         
+        // ✅ Use same query logic as _getProducedCount for consistency
+        const { ObjectId } = require('mongodb');
+        const userIdObj = ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
+        
+        const countQuery = {
+          $and: [
+            {
+              $or: [
+                { 'metadata.collectionId': collectionId },
+                { collectionId } // legacy flat field
+              ]
+            },
+            { masterAccountId: userIdObj }, // ✅ Match by user
+            { status: 'completed' }, // ✅ Use same status filter as _getProducedCount
+            { deliveryStrategy: { $ne: 'spell_step' } },
+            {
+              $or: [
+                { 'metadata.reviewOutcome': { $exists: false } },
+                { 'metadata.reviewOutcome': { $ne: 'rejected' } } // ✅ Match _getProducedCount logic
+              ]
+            },
+            {
+              $or: [
+                { reviewOutcome: { $exists: false } },
+                { reviewOutcome: { $ne: 'rejected' } } // ✅ Also check flat field
+              ]
+            }
+          ]
+        };
+        
         const [generated] = await Promise.all([
-          genOutputsCol.countDocuments({
-            $and: [
-              {
-                $or: [
-                  { 'metadata.collectionId': collectionId },
-                  { collectionId } // legacy flat field
-                ]
-              },
-              { status: { $in: ['completed', 'success'] } },
-              { deliveryStrategy: { $ne: 'spell_step' } },
-              {
-                $or: [
-                  { 'metadata.reviewOutcome': { $exists: false } },
-                  { 'metadata.reviewOutcome': 'accepted' }
-                ]
-              }
-            ]
-          }),
+          genOutputsCol.countDocuments(countQuery),
         ]);
+        
+        // ✅ Debug logging to help diagnose counting issues
+        if (generated === 0) {
+          // Check if there are any generations at all for this collection
+          const totalForCollection = await genOutputsCol.countDocuments({
+            $or: [
+              { 'metadata.collectionId': collectionId },
+              { collectionId }
+            ]
+          });
+          if (totalForCollection > 0) {
+            logger.debug(`[CookAPI] Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter. Query: ${JSON.stringify(countQuery)}`);
+          }
+        }
+        
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
         const generationCount = generated;
         // ✅ Use running count from orchestrator (in-memory state) - no deprecated job store
@@ -221,6 +249,10 @@ function createCookApi(deps = {}) {
         // ✅ Include cooks that are: actively running, paused but not complete, OR completed and awaiting review
         const isActive = running > 0 || (targetSupply && generationCount < targetSupply);
         const isAwaitingReview = targetSupply > 0 && generationCount >= targetSupply && running === 0;
+        
+        // ✅ Debug logging for status determination
+        logger.debug(`[CookAPI] Collection ${collectionId}: generationCount=${generationCount}, targetSupply=${targetSupply}, running=${running}, isActive=${isActive}, isAwaitingReview=${isAwaitingReview}`);
+        
         if (isActive || isAwaitingReview) {
           cooks.push({
             collectionId,
@@ -436,11 +468,25 @@ function createCookApi(deps = {}) {
     const idFilter = { _id: new ObjectId(cookId) };
     const { generationId, status, costDeltaUsd } = req.body;
     const update={};
-    if(generationId) update.$push = { generationIds: generationId };
+    // ✅ Convert generationId to ObjectId if provided
+    if(generationId) {
+      const genIdObj = ObjectId.isValid(generationId) ? new ObjectId(generationId) : generationId;
+      update.$push = { generationIds: genIdObj };
+    }
     if(costDeltaUsd!==undefined) update.$inc = { costUsd: costDeltaUsd, generatedCount:1 };
     if(status) update.$set = { status, completedAt: status==='completed'?new Date():undefined };
-    try{ await cooksDb.updateOne(idFilter, update); res.json({ ok:true }); }
-    catch(e){ logger.error('cook update err',e); res.status(500).json({ error:'internal' }); }
+    // ✅ Always update updatedAt
+    if(!update.$set) update.$set = {};
+    update.$set.updatedAt = new Date();
+    try{ 
+      await cooksDb.updateOne(idFilter, update); 
+      logger.info(`[CookAPI] Updated cook ${cookId} with generationId: ${generationId}, costDelta: ${costDeltaUsd}, status: ${status}`);
+      res.json({ ok:true }); 
+    }
+    catch(e){ 
+      logger.error('[CookAPI] cook update err', e); 
+      res.status(500).json({ error:'internal' }); 
+    }
   });
 
   return router;

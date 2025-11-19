@@ -431,6 +431,10 @@ module.exports = function generationExecutionApi(dependencies) {
           const isSpellStep = metadata && metadata.isSpell;
 
           const initialDeliveryStatus = (user.platform && user.platform !== 'none') ? 'pending' : 'skipped';
+          // ✅ Force notificationPlatform to 'cook' if this is a cook generation
+          const isCookGeneration = metadata && (metadata.source === 'cook' || metadata.collectionId || metadata.cookId);
+          const finalNotificationPlatform = isCookGeneration ? 'cook' : (user.platform || 'none');
+          
           const generationParams = {
             masterAccountId: new ObjectId(masterAccountId),
             ...(sessionId && { sessionId: new ObjectId(sessionId) }),
@@ -444,7 +448,7 @@ module.exports = function generationExecutionApi(dependencies) {
             status: 'pending',
             deliveryStatus: initialDeliveryStatus,
             ...(isSpellStep && { deliveryStrategy: 'spell_step' }),
-            notificationPlatform: user.platform || 'none',
+            notificationPlatform: finalNotificationPlatform,
             pointsSpent: 0,
             protocolNetPoints: 0,
             costUsd: null,

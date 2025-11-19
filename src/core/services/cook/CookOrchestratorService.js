@@ -286,21 +286,30 @@ class CookOrchestratorService {
     }
     
     // ✅ COUNT ONLY SUCCESSFUL GENERATIONS: Exclude failed, rejected, and spell_step deliveries
+    // ✅ Use same query structure as /active endpoint for consistency
     return this.outputsCol.countDocuments({
-      'metadata.collectionId': collectionId,
-      masterAccountId: new ObjectId(userId),
       $and: [
-        // Only count completed generations (exclude failed, pending, etc.)
-        { status: 'completed' },
-        { $or: [
-          { 'metadata.reviewOutcome': { $exists: false } },
-          { 'metadata.reviewOutcome': { $ne: 'rejected' } },
-        ]},
-        { $or: [
-          { reviewOutcome: { $exists: false } },
-          { reviewOutcome: { $ne: 'rejected' } },
-        ]},
+        {
+          $or: [
+            { 'metadata.collectionId': collectionId },
+            { collectionId } // legacy flat field
+          ]
+        },
+        { masterAccountId: new ObjectId(userId) },
+        { status: 'completed' }, // Only count completed generations
         { deliveryStrategy: { $ne: 'spell_step' } },
+        {
+          $or: [
+            { 'metadata.reviewOutcome': { $exists: false } },
+            { 'metadata.reviewOutcome': { $ne: 'rejected' } },
+          ]
+        },
+        {
+          $or: [
+            { reviewOutcome: { $exists: false } },
+            { reviewOutcome: { $ne: 'rejected' } },
+          ]
+        }
       ],
     });
   }
