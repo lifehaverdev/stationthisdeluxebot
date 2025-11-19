@@ -146,11 +146,21 @@ if is_container_running "${NEW_CONTAINER}"; then
   docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 
   echo "✨ Deployment completed successfully!"
-  echo "📝 Tailing logs from the new container (first 400 seconds):"
-  timeout 400 docker logs -f "${OLD_CONTAINER}" 2>&1 &
+  echo ""
+  echo "📝 Showing recent logs (last 50 lines), then following for 60 seconds..."
+  echo "   To continue monitoring logs interactively, run: ./logs.sh"
+  echo "   To monitor Caddy logs: ./logs.sh --caddy"
+  echo ""
+  docker logs --tail 50 "${OLD_CONTAINER}" 2>&1
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "Following logs (press Ctrl+C to stop)..."
+  timeout 60 docker logs -f "${OLD_CONTAINER}" 2>&1 &
   CONSOLE_PID=$!
   docker logs -f "${OLD_CONTAINER}" >> "${LOG_FILE}" 2>&1 &
-  wait ${CONSOLE_PID}
+  wait ${CONSOLE_PID} 2>/dev/null || true
+  echo ""
+  echo "💡 Tip: Run './logs.sh' anytime to continue monitoring logs interactively"
 else
   echo "❌ Failed to start new container!"
   echo "Keeping old container running if it exists."
