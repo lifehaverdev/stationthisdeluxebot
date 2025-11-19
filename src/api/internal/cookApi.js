@@ -239,41 +239,39 @@ function createCookApi(deps = {}) {
           genOutputsCol.countDocuments(countQuery),
         ]);
         
-        // ✅ Debug logging to help diagnose counting issues
-        if (generated === 0) {
-          // Check if there are any generations at all for this collection
-          const totalForCollection = await genOutputsCol.countDocuments({
+        // ✅ Diagnostic logging to help diagnose counting issues (INFO level so it shows up)
+        const totalForCollection = await genOutputsCol.countDocuments({
+          $or: [
+            { 'metadata.collectionId': collectionId },
+            { collectionId }
+          ]
+        });
+        
+        if (totalForCollection > 0 && generated === 0) {
+          // ✅ Sample a few generations to see what they look like
+          const sampleGens = await genOutputsCol.find({
             $or: [
               { 'metadata.collectionId': collectionId },
               { collectionId }
             ]
-          });
-          if (totalForCollection > 0) {
-            // ✅ Sample a few generations to see what they look like
-            const sampleGens = await genOutputsCol.find({
-              $or: [
-                { 'metadata.collectionId': collectionId },
-                { collectionId }
-              ]
-            }).limit(3).toArray();
-            
-            logger.debug(`[CookAPI] Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter.`);
-            logger.debug(`[CookAPI] Sample generations:`, sampleGens.map(g => ({
-              _id: g._id,
-              status: g.status,
-              masterAccountId: g.masterAccountId,
-              userId: userId,
-              userIdObj: userIdObj,
-              metadataCollectionId: g.metadata?.collectionId,
-              collectionId: g.collectionId,
-              deliveryStrategy: g.deliveryStrategy,
-              reviewOutcome: g.metadata?.reviewOutcome || g.reviewOutcome
-            })));
-            logger.debug(`[CookAPI] Query used:`, JSON.stringify(countQuery, null, 2));
-          }
-        } else {
-          // ✅ Log successful matches too for debugging
-          logger.debug(`[CookAPI] Collection ${collectionId}: Found ${generated} completed generations matching query`);
+          }).limit(3).toArray();
+          
+          logger.info(`[CookAPI] ⚠️ Found ${totalForCollection} total generations for collection ${collectionId}, but 0 match completed filter.`);
+          logger.info(`[CookAPI] Sample generation details:`, JSON.stringify(sampleGens.map(g => ({
+            _id: String(g._id),
+            status: g.status,
+            masterAccountId: String(g.masterAccountId),
+            userId: userId,
+            userIdMatches: String(g.masterAccountId) === String(userId) || String(g.masterAccountId) === String(userIdObj),
+            metadataCollectionId: g.metadata?.collectionId,
+            flatCollectionId: g.collectionId,
+            deliveryStrategy: g.deliveryStrategy,
+            reviewOutcome: g.metadata?.reviewOutcome || g.reviewOutcome,
+            hasMetadata: !!g.metadata
+          })), null, 2));
+          logger.info(`[CookAPI] Query used:`, JSON.stringify(countQuery, null, 2));
+        } else if (generated > 0) {
+          logger.info(`[CookAPI] ✅ Collection ${collectionId}: Found ${generated}/${totalForCollection} completed generations matching query`);
         }
         
         const targetSupply = coll.totalSupply || coll.config?.totalSupply || 0;
