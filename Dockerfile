@@ -17,6 +17,7 @@ RUN npm install -g pm2 \
     && npm install
 
 # Copy the rest of the application code
+# Note: Docker will automatically invalidate this cache when files change
 COPY . .
 
 # Create necessary directories and set permissions before switching user
