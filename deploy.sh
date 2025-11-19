@@ -48,6 +48,15 @@ echo "📥 Pulling latest changes from git (main branch)..."
 git checkout main >> "${LOG_FILE}" 2>&1
 git reset --hard origin/main >> "${LOG_FILE}" 2>&1
 git pull origin main >> "${LOG_FILE}" 2>&1
+# Verify we got the latest code
+GIT_COMMIT=$(git rev-parse HEAD)
+echo "📌 Current git commit: ${GIT_COMMIT}" >> "${LOG_FILE}" 2>&1
+# Verify the cookApi.js file has our changes
+if grep -q "✅ Collection.*Found.*completed generations" src/api/internal/cookApi.js; then
+  echo "✅ Verified: cookApi.js contains latest changes" >> "${LOG_FILE}" 2>&1
+else
+  echo "⚠️  WARNING: cookApi.js may not have latest changes!" >> "${LOG_FILE}" 2>&1
+fi
 
 echo "🛑 Stopping and removing old container (if running) *before* building new image..."
 if is_container_running "${OLD_CONTAINER}"; then
@@ -63,6 +72,8 @@ docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
 
 echo "🔨 Building new Docker image using cache from previous build..."
+# Get current git commit hash to force cache invalidation when code changes
+GIT_COMMIT=$(git rev-parse HEAD)
 # Tag the current image as cache-source (if it exists) so BuildKit can use it
 if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
   CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1 --cache-from ${IMAGE_NAME}:latest"
@@ -70,7 +81,7 @@ else
   CACHE_FROM_ARG="--build-arg BUILDKIT_INLINE_CACHE=1"
 fi
 
-docker build ${CACHE_FROM_ARG} -t "${IMAGE_NAME}:latest" . >> "${LOG_FILE}" 2>&1
+docker build ${CACHE_FROM_ARG} --build-arg GIT_COMMIT="${GIT_COMMIT}" -t "${IMAGE_NAME}:latest" . >> "${LOG_FILE}" 2>&1
 
 echo "🌐 Ensuring network ${NETWORK_NAME} exists..."
 docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1 || docker network create "${NETWORK_NAME}"
