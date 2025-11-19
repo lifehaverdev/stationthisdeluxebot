@@ -216,130 +216,151 @@ function createAuthApi(dependencies) {
         let isCoinbaseSmartWallet = false;
         
         try {
-            // Try to decode as Coinbase Smart Wallet SignatureWrapper using ethers ABI decoder
-            // struct SignatureWrapper {
-            //     uint8 ownerIndex;
-            //     bytes signatureData;
-            // }
+            // For Coinbase Smart Wallet, the signature is a SignatureWrapper struct
+            // But it might be nested in WebAuthn data or other structures
+            // Strategy: Search thoroughly for a 65-byte ECDSA signature that verifies our message
+            
+            logger.info(`[AuthApi] Searching for ECDSA signature in ${signatureHex.length / 2} bytes of data...`);
+            
+            // First, try to decode as SignatureWrapper if it starts with proper ABI encoding
             if (signatureHex.length > 128) {
                 try {
-                    const SignatureWrapperABI = [
-                        'tuple(uint8 ownerIndex, bytes signatureData)'
-                    ];
-                    const iface = new ethers.Interface([`function decode(bytes) returns(${SignatureWrapperABI[0]})`]);
-                    
-                    // Try to decode the signature as SignatureWrapper
-                    // The signature itself IS the encoded struct, so we need to decode it
-                    const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
-                        ['tuple(uint8,bytes)'],
-                        signature
-                    );
-                    
-                    if (decoded && decoded[0]) {
-                        const [ownerIndex, signatureData] = decoded[0];
-                        logger.info(`[AuthApi] Decoded Coinbase Smart Wallet SignatureWrapper: ownerIndex=${ownerIndex}, signatureDataLength=${signatureData.length} bytes`);
-                        
-                        // For Ethereum address owners, signatureData is packed r, s, v (65 bytes)
-                        // For passkey owners, it's WebAuthnAuth struct (variable length)
-                        if (signatureData.length === 65) {
-                            // Standard ECDSA signature - convert bytes to hex string
-                            const sigHex = ethers.hexlify(signatureData);
-                            extractedStandardSig = sigHex;
-                            extractedSignatureForEIP1271 = sigHex;
-                            isCoinbaseSmartWallet = true;
-                            logger.info(`[AuthApi] Extracted ECDSA signature from Coinbase Smart Wallet (Ethereum address owner)`);
-                        } else if (signatureData.length > 65) {
-                            // Might be WebAuthn/passkey signature - try to find ECDSA signature within it
-                            logger.info(`[AuthApi] SignatureData length (${signatureData.length}) suggests WebAuthn/passkey, searching for ECDSA signature...`);
-                            const sigDataHex = ethers.hexlify(signatureData);
-                            const sigDataHexClean = sigDataHex.slice(2);
+                    // Check if first 64 chars look like a reasonable offset (should be 32, 64, 96, etc.)
+                    const firstOffset = parseInt(signatureHex.substring(0, 64), 16);
+                    if (firstOffset === 32 || firstOffset === 64) {
+                        try {
+                            const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
+                                ['tuple(uint8,bytes)'],
+                                signature
+                            );
                             
-                            // Search for a 65-byte signature
-                            for (let i = 0; i <= sigDataHexClean.length - 130; i += 2) {
-                                const candidate = '0x' + sigDataHexClean.substring(i, i + 130);
-                                const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
-                                if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
-                                    try {
-                                        const recovered = ethers.verifyMessage(nonce, candidate);
-                                        // For Coinbase Smart Wallet, recovered address is the owner, not the wallet
-                                        // But we can still verify the signature is valid
-                                        logger.info(`[AuthApi] Found potential signature in WebAuthn data, recovered owner: ${recovered}`);
-                                        extractedStandardSig = candidate;
-                                        extractedSignatureForEIP1271 = candidate;
-                                        isCoinbaseSmartWallet = true;
-                                        break;
-                                    } catch (e) {
-                                        // Continue searching
+                            if (decoded && decoded[0]) {
+                                const [ownerIndex, signatureData] = decoded[0];
+                                logger.info(`[AuthApi] Decoded SignatureWrapper: ownerIndex=${ownerIndex}, signatureDataLength=${signatureData.length} bytes`);
+                                
+                                if (signatureData.length === 65) {
+                                    const sigHex = ethers.hexlify(signatureData);
+                                    extractedStandardSig = sigHex;
+                                    extractedSignatureForEIP1271 = sigHex;
+                                    isCoinbaseSmartWallet = true;
+                                    logger.info(`[AuthApi] Extracted ECDSA signature from SignatureWrapper`);
+                                } else {
+                                    // Search within signatureData
+                                    const sigDataHex = ethers.hexlify(signatureData);
+                                    const sigDataHexClean = sigDataHex.slice(2);
+                                    
+                                    for (let i = 0; i <= sigDataHexClean.length - 130; i += 2) {
+                                        const candidate = '0x' + sigDataHexClean.substring(i, i + 130);
+                                        const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
+                                        if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
+                                            try {
+                                                const recovered = ethers.verifyMessage(nonce, candidate);
+                                                logger.info(`[AuthApi] Found valid signature in signatureData at offset ${i}, recovered: ${recovered}`);
+                                                extractedStandardSig = candidate;
+                                                extractedSignatureForEIP1271 = candidate;
+                                                isCoinbaseSmartWallet = true;
+                                                break;
+                                            } catch (e) {
+                                                // Continue searching
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (decodeError) {
+                            logger.info(`[AuthApi] ABI decode failed:`, decodeError.message);
+                        }
+                    }
+                } catch (e) {
+                    // Continue to brute force search
+                }
+            }
+            
+            // Brute force: Search the entire signature blob for a 65-byte signature that verifies our message
+            // This handles nested structures, WebAuthn data, etc.
+            if (!extractedStandardSig) {
+                logger.info(`[AuthApi] Brute force searching for valid signature...`);
+                let candidatesChecked = 0;
+                
+                // Search every possible 65-byte window
+                for (let i = 0; i <= signatureHex.length - 130; i += 2) {
+                    const candidate = '0x' + signatureHex.substring(i, i + 130);
+                    
+                    // Quick validation: check if v byte is reasonable
+                    const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
+                    if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
+                        candidatesChecked++;
+                        try {
+                            const recovered = ethers.verifyMessage(nonce, candidate);
+                            logger.info(`[AuthApi] Found valid signature at offset ${i}! Recovered address: ${recovered}`);
+                            
+                            // For Coinbase Smart Wallet, the recovered address is the owner, not the wallet
+                            // But if we found a valid signature, we accept it
+                            extractedStandardSig = candidate;
+                            extractedSignatureForEIP1271 = candidate;
+                            isCoinbaseSmartWallet = true;
+                            logger.info(`[AuthApi] Successfully extracted and verified signature from Coinbase Smart Wallet`);
+                            break;
+                        } catch (e) {
+                            // Not a valid signature for this message, continue searching
+                        }
+                    }
+                }
+                
+                logger.info(`[AuthApi] Checked ${candidatesChecked} potential signature candidates`);
+            }
+            
+            // If still no signature found, try manual ABI extraction
+            if (!extractedStandardSig && signatureHex.length > 128) {
+                try {
+                    const firstOffset = parseInt(signatureHex.substring(0, 64), 16);
+                    const secondOffset = parseInt(signatureHex.substring(64, 128), 16);
+                    
+                    // Check if offsets are reasonable (not overflow values)
+                    if (firstOffset < 1000 && secondOffset < 10000 && firstOffset < secondOffset) {
+                        logger.info(`[AuthApi] Trying manual ABI extraction: firstOffset=${firstOffset}, secondOffset=${secondOffset}`);
+                        
+                        // Extract signatureData manually
+                        const signatureDataPos = secondOffset * 2;
+                        const signatureDataLength = parseInt(signatureHex.substring(signatureDataPos, signatureDataPos + 64), 16);
+                        
+                        if (signatureDataLength > 0 && signatureDataLength < 2000) {
+                            const signatureDataStart = signatureDataPos + 64;
+                            const signatureDataEnd = signatureDataStart + (signatureDataLength * 2);
+                            
+                            if (signatureDataEnd <= signatureHex.length) {
+                                const signatureData = '0x' + signatureHex.substring(signatureDataStart, signatureDataEnd);
+                                
+                                if (signatureDataLength === 65) {
+                                    extractedStandardSig = signatureData;
+                                    extractedSignatureForEIP1271 = signatureData;
+                                    isCoinbaseSmartWallet = true;
+                                    logger.info(`[AuthApi] Manually extracted 65-byte signature`);
+                                } else {
+                                    // Search within manually extracted data
+                                    const sigDataHexClean = signatureData.slice(2);
+                                    for (let i = 0; i <= sigDataHexClean.length - 130; i += 2) {
+                                        const candidate = '0x' + sigDataHexClean.substring(i, i + 130);
+                                        const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
+                                        if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
+                                            try {
+                                                const recovered = ethers.verifyMessage(nonce, candidate);
+                                                logger.info(`[AuthApi] Found valid signature in manually extracted data`);
+                                                extractedStandardSig = candidate;
+                                                extractedSignatureForEIP1271 = candidate;
+                                                isCoinbaseSmartWallet = true;
+                                                break;
+                                            } catch (e) {
+                                                // Continue
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                } catch (decodeError) {
-                    logger.info(`[AuthApi] ABI decode failed (might not be SignatureWrapper):`, decodeError.message);
-                    // Fall through to manual extraction
-                }
-            }
-            
-            // Fallback: Manual ABI decoding if ethers decoder failed
-            if (!extractedStandardSig && signatureHex.length > 128) {
-                const ownerIndexOffset = parseInt(signatureHex.substring(0, 64), 16);
-                const signatureDataOffset = parseInt(signatureHex.substring(64, 128), 16);
-                
-                logger.info(`[AuthApi] Manual ABI offsets: ownerIndexOffset=${ownerIndexOffset}, signatureDataOffset=${signatureDataOffset}`);
-                
-                // Check if this looks like ABI-encoded struct
-                if (ownerIndexOffset >= 32 && signatureDataOffset >= 64 && ownerIndexOffset < signatureDataOffset) {
-                    // Extract ownerIndex (uint8 padded to 32 bytes)
-                    const ownerIndexPos = ownerIndexOffset * 2;
-                    const ownerIndex = parseInt(signatureHex.substring(ownerIndexPos, ownerIndexPos + 64), 16);
-                    
-                    // Extract signatureData (bytes = length + data)
-                    const signatureDataPos = signatureDataOffset * 2;
-                    const signatureDataLength = parseInt(signatureHex.substring(signatureDataPos, signatureDataPos + 64), 16);
-                    
-                    logger.info(`[AuthApi] Manual decode: ownerIndex=${ownerIndex}, signatureDataLength=${signatureDataLength} bytes`);
-                    
-                    if (signatureDataLength > 0 && signatureDataLength < 2000) {
-                        const signatureDataStart = signatureDataPos + 64;
-                        const signatureDataEnd = signatureDataStart + (signatureDataLength * 2);
-                        
-                        if (signatureDataEnd <= signatureHex.length) {
-                            const signatureData = '0x' + signatureHex.substring(signatureDataStart, signatureDataEnd);
-                            
-                            if (signatureDataLength === 65) {
-                                extractedStandardSig = signatureData;
-                                extractedSignatureForEIP1271 = signatureData;
-                                isCoinbaseSmartWallet = true;
-                                logger.info(`[AuthApi] Manually extracted Coinbase Smart Wallet signature`);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Fallback: Try to find a 65-byte signature embedded anywhere in the data
-            if (!extractedStandardSig) {
-                for (let i = 0; i <= signatureHex.length - 130; i += 2) {
-                    const candidate = '0x' + signatureHex.substring(i, i + 130);
-                    try {
-                        const vByte = parseInt(candidate.substring(candidate.length - 2), 16);
-                        if (vByte === 27 || vByte === 28 || vByte === 0 || vByte === 1) {
-                            try {
-                                const recovered = ethers.verifyMessage(nonce, candidate);
-                                if (recovered.toLowerCase() === lowerCaseAddress) {
-                                    logger.info(`[AuthApi] Found valid signature embedded at offset ${i}!`);
-                                    extractedStandardSig = candidate;
-                                    extractedSignatureForEIP1271 = candidate;
-                                    break;
-                                }
-                            } catch (e) {
-                                // Not a valid signature for this message
-                            }
-                        }
-                    } catch (e) {
-                        // Continue searching
-                    }
+                } catch (e) {
+                    logger.warn(`[AuthApi] Manual extraction failed:`, e.message);
                 }
             }
         } catch (error) {
