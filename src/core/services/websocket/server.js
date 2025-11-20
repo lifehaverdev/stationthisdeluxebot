@@ -121,17 +121,32 @@ class WebSocketService {
   }
 
   /**
+   * Check if there are any active admin connections
+   * @returns {boolean} - True if there are active admin connections
+   */
+  hasAdminConnections() {
+    if (!this.wss || this.adminConnections.size === 0) {
+      return false;
+    }
+    // Check if at least one connection is open
+    for (const connection of this.adminConnections) {
+      if (connection.readyState === WebSocket.OPEN) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Broadcast a message to all admin connections
    * @param {object} data - The data to send
    * @returns {boolean} - True if message was sent to at least one admin
    */
   broadcastToAdmins(data) {
     if (!this.wss) {
-      logger.error('[WebSocketService] Cannot broadcast: WebSocket server not initialized.');
       return false;
     }
     if (this.adminConnections.size === 0) {
-      logger.debug('[WebSocketService] No admin connections to broadcast to.');
       return false;
     }
     const message = JSON.stringify(data);
@@ -142,7 +157,9 @@ class WebSocketService {
         sentCount++;
       }
     });
-    logger.info(`[WebSocketService] Broadcasted admin activity to ${sentCount} admin connection(s).`);
+    if (sentCount > 0) {
+      logger.debug(`[WebSocketService] Broadcasted admin activity to ${sentCount} admin connection(s).`);
+    }
     return sentCount > 0;
   }
 

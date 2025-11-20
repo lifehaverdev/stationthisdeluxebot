@@ -25,7 +25,11 @@ class AdminActivityService {
    */
   emitActivity(type, data) {
     if (!this.webSocketService) {
-      this.logger.debug('[AdminActivityService] WebSocket service not available, skipping activity broadcast.');
+      return;
+    }
+
+    // Only emit if there are active admin connections
+    if (!this.webSocketService.hasAdminConnections()) {
       return;
     }
 

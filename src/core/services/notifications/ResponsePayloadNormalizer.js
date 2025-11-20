@@ -334,10 +334,8 @@ class ResponsePayloadNormalizer {
       
       // Extract images
       if (item.data.images && Array.isArray(item.data.images)) {
-        logger.debug(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.images.length} image(s) in item.data.images (item.type=${item.type})`);
-        item.data.images.forEach((image, idx) => {
+        item.data.images.forEach((image) => {
           if (image && image.url) {
-            logger.debug(`[ResponsePayloadNormalizer] extractMedia: Extracting image ${idx}: ${image.url.substring(0, 80)}... as photo`);
             media.push({ 
               type: 'photo', 
               url: image.url,
@@ -413,8 +411,6 @@ class ResponsePayloadNormalizer {
                 detectionReason = `URL path pattern (image directory): ${url}`;
               }
             }
-            
-            logger.debug(`[ResponsePayloadNormalizer] Extracted media: type=${mediaType}, reason=${detectionReason}, url=${file.url.substring(0, 80)}...`);
             
             media.push({ 
               type: mediaType, 
