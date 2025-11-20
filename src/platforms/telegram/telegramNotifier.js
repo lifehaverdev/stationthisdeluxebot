@@ -83,6 +83,7 @@ class TelegramNotifier {
         generationRecord.responsePayload,
         { logger: this.logger }
       );
+      this.logger.debug(`[TelegramNotifier] Normalized payload: ${normalizedPayload.length} item(s). Types: ${normalizedPayload.map(i => `${i.type}(${i.data?.images?.length || 0} images, ${i.data?.files?.length || 0} files)`).join(', ')}`);
 
       // Extract text and media from normalized payload
       const textOutputs = ResponsePayloadNormalizer.extractText(normalizedPayload);

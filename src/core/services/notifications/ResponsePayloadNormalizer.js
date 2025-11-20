@@ -40,7 +40,57 @@ class ResponsePayloadNormalizer {
 
     // Already in array format - validate and return
     if (Array.isArray(responsePayload)) {
-      // Validate array structure
+      // Check if this is ComfyUI array format: [{ data: { images: [...] } }, ...]
+      // This format needs special handling to extract images properly
+      const hasNestedImages = responsePayload.some(item => 
+        item && typeof item === 'object' && item.data && Array.isArray(item.data.images)
+      );
+      
+      if (hasNestedImages) {
+        logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI array format with nested data.images, extracting images');
+        const normalized = [];
+        responsePayload.forEach((item, index) => {
+          if (item && typeof item === 'object' && item.data) {
+            // Extract images from data.images
+            if (Array.isArray(item.data.images)) {
+              logger.debug(`[ResponsePayloadNormalizer] Item ${index}: Found ${item.data.images.length} image(s) in data.images`);
+              normalized.push({
+                type: 'image',
+                data: { images: item.data.images }
+              });
+            }
+            // Handle other data types
+            else if (item.data.text) {
+              normalized.push({
+                type: 'text',
+                data: { text: Array.isArray(item.data.text) ? item.data.text : [item.data.text] }
+              });
+            }
+            // Handle files array
+            else if (Array.isArray(item.data.files)) {
+              normalized.push({
+                type: 'file',
+                data: { files: item.data.files }
+              });
+            }
+            // Fallback: wrap the data
+            else {
+              normalized.push({
+                type: item.type || 'unknown',
+                data: item.data
+              });
+            }
+          } else if (typeof item === 'string') {
+            normalized.push({ type: 'text', data: { text: [item] } });
+          } else if (item && typeof item === 'object') {
+            normalized.push({ type: item.type || 'unknown', data: item });
+          }
+        });
+        logger.debug('[ResponsePayloadNormalizer] Normalized ComfyUI array format:', normalized.length, 'items');
+        return normalized;
+      }
+      
+      // Standard array format - validate and return
       const normalized = responsePayload.map(item => {
         if (typeof item === 'string') {
           // Convert plain string to proper format
@@ -284,8 +334,10 @@ class ResponsePayloadNormalizer {
       
       // Extract images
       if (item.data.images && Array.isArray(item.data.images)) {
-        item.data.images.forEach(image => {
+        logger.debug(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.images.length} image(s) in item.data.images (item.type=${item.type})`);
+        item.data.images.forEach((image, idx) => {
           if (image && image.url) {
+            logger.debug(`[ResponsePayloadNormalizer] extractMedia: Extracting image ${idx}: ${image.url.substring(0, 80)}... as photo`);
             media.push({ 
               type: 'photo', 
               url: image.url,
