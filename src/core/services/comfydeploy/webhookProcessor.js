@@ -310,6 +310,10 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
       // If they are not, the dispatcher service will not be able to pick this up.
       // For now, we assume they are already on the generationRecord or will be added by another process.
     };
+    // Debug logging for ComfyUI output format
+    if (status === 'success' && outputs) {
+      logger.debug(`[Webhook Processor] ComfyUI outputs format: ${JSON.stringify(outputs)}`);
+    }
     logger.info(`[Webhook Processor] Preparing to update generation ${generationId} for run_id ${run_id}. Payload:`, JSON.stringify(updatePayload, null, 2));
     try {
        // Add the X-Internal-Client-Key header for this request

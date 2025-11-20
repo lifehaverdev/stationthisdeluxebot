@@ -178,15 +178,17 @@ class ResponsePayloadNormalizer {
         });
 
         if (isComfyUIFormat) {
-          logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI format (node IDs with URL arrays), converting to files array');
+          logger.debug(`[ResponsePayloadNormalizer] Detected ComfyUI format (node IDs with URL arrays), converting to files array. Found ${keys.length} node(s) with URLs.`);
           // Flatten all URLs from all node outputs into a single files array
           const allFiles = [];
           keys.forEach(nodeId => {
             const urls = responsePayload[nodeId];
             urls.forEach(url => {
               allFiles.push({ url });
+              logger.debug(`[ResponsePayloadNormalizer] Added file from node ${nodeId}: ${url}`);
             });
           });
+          logger.debug(`[ResponsePayloadNormalizer] ComfyUI normalization complete: ${allFiles.length} file(s) total`);
           normalized.push({ 
             type: 'file', 
             data: { files: allFiles } 
@@ -299,43 +301,68 @@ class ResponsePayloadNormalizer {
           if (file && file.url) {
             // Determine type from file properties
             let mediaType = 'document';
+            let detectionReason = 'default';
             
             // Check for images first (images should be sent as photos, not documents)
             if (file.format && file.format.startsWith('image/')) {
               mediaType = 'photo';
+              detectionReason = `format field: ${file.format}`;
             } else if (file.filename) {
               // Check filename extensions
               if (file.filename.match(/\.(png|jpg|jpeg|gif|webp|avif|bmp|svg)$/i)) {
                 mediaType = 'photo';
+                detectionReason = `filename extension: ${file.filename}`;
               } else if (file.filename.match(/\.(mp4|webm|avi|mov|mkv)$/i)) {
                 mediaType = 'video';
+                detectionReason = `filename extension: ${file.filename}`;
               } else if (file.filename.match(/\.(gif)$/i)) {
                 mediaType = 'animation';
+                detectionReason = `filename extension: ${file.filename}`;
               }
             } else if (file.subfolder === 'video') {
               mediaType = 'video';
+              detectionReason = `subfolder: ${file.subfolder}`;
             } else if (file.subfolder === 'image' || file.subfolder === 'images') {
               mediaType = 'photo';
+              detectionReason = `subfolder: ${file.subfolder}`;
             } else if (file.format && file.format.startsWith('video/')) {
               mediaType = 'video';
+              detectionReason = `format field: ${file.format}`;
             }
             
             // CRITICAL FIX: If mediaType is still 'document', check URL itself for image patterns
             // ComfyUI often doesn't include format/filename/subfolder, so URL-based detection is essential
             // This ensures PNG images from ComfyUI are detected as photos, not documents
             if (mediaType === 'document') {
-              const url = file.url.toLowerCase();
-              if (url.match(/\.(png|jpg|jpeg|gif|webp|avif|bmp|svg)(\?|$)/i)) {
+              const url = file.url;
+              const urlLower = url.toLowerCase();
+              // Improved regex: match extension followed by query param, slash, or end of string
+              // Examples that match: 
+              //   - https://example.com/image.png
+              //   - https://example.com/image.png?token=123
+              //   - https://example.com/image.png/other (less common but handled)
+              // The regex uses (\?|\/|$) to match: ? (query param), / (path separator), or $ (end of string)
+              const imageExtRegex = /\.(png|jpg|jpeg|gif|webp|avif|bmp|svg)(\?|\/|$)/i;
+              const videoExtRegex = /\.(mp4|webm|avi|mov|mkv)(\?|\/|$)/i;
+              const gifExtRegex = /\.(gif)(\?|\/|$)/i;
+              
+              if (imageExtRegex.test(urlLower)) {
                 mediaType = 'photo';
-              } else if (url.match(/\.(mp4|webm|avi|mov|mkv)(\?|$)/i)) {
+                detectionReason = `URL extension (image): ${url}`;
+              } else if (videoExtRegex.test(urlLower)) {
                 mediaType = 'video';
-              } else if (url.match(/\.(gif)(\?|$)/i)) {
+                detectionReason = `URL extension (video): ${url}`;
+              } else if (gifExtRegex.test(urlLower)) {
                 mediaType = 'animation';
-              } else if (url.includes('/images/') || url.includes('/image/') || url.includes('/img/')) {
-                // URL path suggests it's an image
+                detectionReason = `URL extension (gif): ${url}`;
+              } else if (urlLower.includes('/images/') || urlLower.includes('/image/') || urlLower.includes('/img/')) {
+                // URL path suggests it's an image (fallback for URLs without clear extension)
                 mediaType = 'photo';
+                detectionReason = `URL path pattern (image directory): ${url}`;
               }
             }
+            
+            logger.debug(`[ResponsePayloadNormalizer] Extracted media: type=${mediaType}, reason=${detectionReason}, url=${file.url.substring(0, 80)}...`);
             
             media.push({ 
               type: mediaType, 
