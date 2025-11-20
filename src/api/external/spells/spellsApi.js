@@ -92,7 +92,28 @@ function createSpellsApi(dependencies) {
     router.get('/registry/:spellId', async (req, res) => {
         const { spellId } = req.params;
         try {
-            const response = await internalApiClient.get(`/internal/v1/data/spells/${spellId}`);
+            // Try to extract user from JWT cookie if present (optional auth for public endpoint)
+            let masterAccountId = req.user?.userId || req.user?.masterAccountId;
+            
+            // If no user from middleware, try to read JWT cookie directly
+            if (!masterAccountId) {
+                const token = req.cookies?.jwt;
+                if (token) {
+                    try {
+                        const jwt = require('jsonwebtoken');
+                        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                        masterAccountId = decoded.userId || decoded.masterAccountId;
+                        // Set req.user for consistency
+                        req.user = decoded;
+                    } catch (error) {
+                        // JWT invalid or expired - continue without auth (public access)
+                        logger.debug(`[externalSpellsApi] JWT verification failed for /registry/${spellId}:`, error.message);
+                    }
+                }
+            }
+            
+            const params = masterAccountId ? { masterAccountId } : {};
+            const response = await internalApiClient.get(`/internal/v1/data/spells/${spellId}`, { params });
             const s = response.data || {};
             const def = {
                 spellId: s.spellId || s._id || spellId,
@@ -108,6 +129,11 @@ function createSpellsApi(dependencies) {
         } catch (error) {
             if (error.response?.status === 404) {
                 return res.status(404).json({ error: { code: 'NOT_FOUND', message: `Spell with ID '${spellId}' not found.` } });
+            }
+            if (error.response?.status === 403) {
+                // Forward 403 errors with proper error message
+                const errorData = error.response?.data || { error: 'You do not have permission to view this spell.' };
+                return res.status(403).json({ error: { code: 'FORBIDDEN', message: errorData.error || 'You do not have permission to view this spell.' } });
             }
             logger.error(`[externalSpellsApi] Failed to fetch registry data for spell ${spellId}:`, error);
             const status = error.response?.status || 502;

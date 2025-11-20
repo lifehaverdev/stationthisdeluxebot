@@ -21,6 +21,10 @@ export default class SpellWindow extends ToolWindow {
     this.isSpell = true;
     this.spell = spell;
     
+    // Track accessibility state
+    this.isAccessible = null; // null = unknown, true = accessible, false = inaccessible
+    this.accessError = null; // Store error message if inaccessible
+    
     // Initialize cost tracking properties
     this.totalCost = totalCost || { usd: 0, points: 0, ms2: 0, cult: 0 };
     this.costVersions = costVersions || [];
@@ -29,22 +33,7 @@ export default class SpellWindow extends ToolWindow {
 
     // Lazy-load full metadata if exposedInputs missing (e.g., restored from slim snapshot)
     if (!this.spell.exposedInputs) {
-      (async () => {
-        try {
-          const id = this.spell._id || this.spell.slug;
-          if (!id) return;
-          const res = await fetch(`/api/v1/spells/registry/${encodeURIComponent(id)}`);
-          if (!res.ok) return;
-          const full = await res.json();
-          // merge fields but keep original _id/slug
-          Object.assign(this.spell, full);
-          // Rerender inputs section
-          this.body.innerHTML = '';
-          this.renderBody();
-        } catch (e) {
-          console.warn('[SpellWindow] metadata fetch failed', e);
-        }
-      })();
+      this.loadSpellMetadata();
     }
 
     // enable drag after mount
@@ -91,6 +80,115 @@ export default class SpellWindow extends ToolWindow {
     
   }
 
+  /**
+   * Load spell metadata from API
+   * Handles permission errors gracefully
+   */
+  async loadSpellMetadata() {
+    try {
+      const id = this.spell._id || this.spell.slug;
+      if (!id) {
+        this.isAccessible = false;
+        this.accessError = 'Spell ID is missing';
+        this.renderLockedState();
+        return;
+      }
+      
+      const res = await fetch(`/api/v1/spells/registry/${encodeURIComponent(id)}`);
+      
+      // Handle 403 errors gracefully (private spell without permission)
+      if (res.status === 403) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMsg = errorData.error?.message || 'You do not have permission to view this spell.';
+        console.warn(`[SpellWindow] Permission denied for spell ${id}:`, errorMsg);
+        
+        this.isAccessible = false;
+        this.accessError = errorMsg;
+        this.renderLockedState();
+        return;
+      }
+      
+      // Handle other errors
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMsg = errorData.error?.message || `Failed to load spell details (${res.status})`;
+        console.warn(`[SpellWindow] Failed to fetch metadata for spell ${id}:`, errorMsg);
+        
+        this.isAccessible = false;
+        this.accessError = errorMsg;
+        this.renderErrorState();
+        return;
+      }
+      
+      // Success - merge metadata and rerender
+      const full = await res.json();
+      Object.assign(this.spell, full);
+      this.isAccessible = true;
+      this.accessError = null;
+      
+      // Rerender inputs section
+      this.body.innerHTML = '';
+      this.renderBody();
+    } catch (e) {
+      console.warn('[SpellWindow] metadata fetch failed', e);
+      this.isAccessible = false;
+      this.accessError = 'Unable to load spell details. Please try again.';
+      this.renderErrorState();
+    }
+  }
+
+  /**
+   * Render locked/private spell state
+   */
+  renderLockedState() {
+    const spellId = this.spell._id || this.spell.slug || 'unknown';
+    const spellName = this.spell.name || 'Unknown Spell';
+    
+    this.el.classList.add('spell-locked');
+    this.body.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: #999; min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.7;">🔒</div>
+        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 16px;">Private Spell</div>
+        <div style="font-size: 14px; margin-bottom: 4px; color: #888;">${this.accessError || 'You do not have permission to view this spell.'}</div>
+        <div style="font-size: 12px; margin-top: 12px; color: #999; font-family: monospace;">${spellName}</div>
+        <div style="font-size: 11px; margin-top: 4px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
+      </div>
+    `;
+    
+    // Disable execute button if it exists
+    const execBtn = this.el.querySelector('.execute-button');
+    if (execBtn) {
+      execBtn.disabled = true;
+      execBtn.style.opacity = '0.5';
+      execBtn.style.cursor = 'not-allowed';
+    }
+  }
+
+  /**
+   * Render error state (non-permission errors)
+   */
+  renderErrorState() {
+    const spellId = this.spell._id || this.spell.slug || 'unknown';
+    
+    this.el.classList.add('spell-error');
+    this.body.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: #999; min-height: 120px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.7;">⚠️</div>
+        <div style="font-weight: bold; margin-bottom: 8px; color: #666; font-size: 16px;">Failed to Load Spell</div>
+        <div style="font-size: 14px; margin-bottom: 4px; color: #888;">${this.accessError || 'Unable to load spell details.'}</div>
+        <div style="font-size: 11px; margin-top: 12px; color: #aaa; font-family: monospace;">ID: ${spellId}</div>
+      </div>
+    `;
+    
+    // Disable execute button if it exists
+    const execBtn = this.el.querySelector('.execute-button');
+    if (execBtn) {
+      execBtn.disabled = true;
+      execBtn.style.opacity = '0.5';
+      execBtn.style.cursor = 'not-allowed';
+    }
+  }
+
   // Persist spell-specific data
   serialize() {
     return {
@@ -104,11 +202,22 @@ export default class SpellWindow extends ToolWindow {
       totalCost: this.totalCost,
       costVersions: this.costVersions,
       isSpell: true,
+      isAccessible: this.isAccessible, // Include accessibility state
     };
   }
 
   renderBody() {
     if (!this.spell) return; // safety guard for initial placeholder call
+    
+    // Don't render if spell is inaccessible
+    if (this.isAccessible === false) {
+      if (this.accessError && this.accessError.includes('permission')) {
+        this.renderLockedState();
+      } else {
+        this.renderErrorState();
+      }
+      return;
+    }
     // Override to use exposedInputs mapping from original spellWindow.js
     const paramMappings = this.parameterMappings || (this.parameterMappings = {});
     const spellInputSchemaForUI = {};

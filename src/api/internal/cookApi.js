@@ -205,13 +205,13 @@ function createCookApi(deps = {}) {
         }
         
         const countQuery = {
-          $and: [
-            {
-              $or: [
-                { 'metadata.collectionId': collectionId },
-                { collectionId } // legacy flat field
-              ]
-            },
+            $and: [
+              {
+                $or: [
+                  { 'metadata.collectionId': collectionId },
+                  { collectionId } // legacy flat field
+                ]
+              },
             {
               $or: [
                 { masterAccountId: userIdObj }, // ✅ Match ObjectId format
@@ -219,10 +219,10 @@ function createCookApi(deps = {}) {
               ]
             },
             { status: 'completed' }, // ✅ Use same status filter as _getProducedCount
-            { deliveryStrategy: { $ne: 'spell_step' } },
-            {
-              $or: [
-                { 'metadata.reviewOutcome': { $exists: false } },
+              { deliveryStrategy: { $ne: 'spell_step' } },
+              {
+                $or: [
+                  { 'metadata.reviewOutcome': { $exists: false } },
                 { 'metadata.reviewOutcome': { $ne: 'rejected' } } // ✅ Match _getProducedCount logic
               ]
             },
@@ -244,7 +244,7 @@ function createCookApi(deps = {}) {
           $or: [
             { 'metadata.collectionId': collectionId },
             { collectionId }
-          ]
+                ]
         });
         
         if (totalForCollection > 0 && generated === 0) {

@@ -538,7 +538,7 @@ export default class CookMenuModal {
                     'x-csrf-token': csrf 
                 },
                 credentials: 'include',
-                body: JSON.stringify({config:{traitTree:traits}})
+                body: JSON.stringify({'config.traitTree': traits})
             });
             
             const data = await res.json();
@@ -795,8 +795,8 @@ export default class CookMenuModal {
                         this.hide();
                         import('../window/CollectionWindow.js').then(m => {
                             m.createCollectionReviewWindow(collection);
-                        });
-                    }
+            });
+        }
                 }
             });
         });
@@ -902,14 +902,14 @@ export default class CookMenuModal {
                 const collRes = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include' });
                 if (!collRes.ok) throw new Error('Collection not found');
                 const collData = await collRes.json();
-                const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'x-csrf-token': csrf 
-                    },
-                    credentials: 'include',
-                    body: JSON.stringify({
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf 
+                },
+                credentials: 'include',
+                body: JSON.stringify({
                         toolId: collData.toolId || collData.config?.toolId,
                         spellId: collData.spellId || collData.config?.spellId,
                         traitTree: collData.config?.traitTree || [],
@@ -1335,6 +1335,7 @@ export default class CookMenuModal {
                     ...this.state.paramOverrides,
                     ...this.state.pendingParamOverrides
                 };
+                // Use dot notation to update nested field without replacing entire config
                 fields['config.paramOverrides'] = mergedOverrides;
             }
             

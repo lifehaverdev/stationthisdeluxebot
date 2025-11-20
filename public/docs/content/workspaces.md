@@ -185,61 +185,6 @@ If your tabs disappear after refreshing:
 3. **Check Permissions** – Make sure you're logged in (if required)
 4. **Try Again** – The system will retry automatically
 
-## Advanced Usage
-
-### Workspace URLs
-
-Workspace URLs follow this format:
-
-```
-https://stationthis.com/sandbox?workspace=abc123def456
-```
-
-- The workspace ID is a unique 8-character identifier
-- You can bookmark workspace URLs
-- URLs update automatically when you save
-
-### Local Storage
-
-Workspaces are also cached locally for:
-
-- **Offline Access** – View workspaces without internet (read-only)
-- **Faster Loading** – Local cache speeds up workspace loading
-- **Backup** – Local copy serves as a backup
-
-Local storage keys:
-- `sandbox_tool_windows` – Tool window data
-- `sandbox_connections` – Connection data
-- `sandbox_workspace_tabs` – Tab state
-
-### API Access
-
-Workspaces can be accessed via the API:
-
-- **GET** `/api/v1/workspaces/:slug` – Load a workspace
-- **POST** `/api/v1/workspaces` – Save a workspace
-- **DELETE** `/api/v1/workspaces/:slug` – Delete a workspace (coming soon)
-
-*Note: API documentation coming soon.*
-
-## Limitations
-
-### Current Limitations
-
-- **Maximum Size:** 900 KB per workspace
-- **Output Versions:** 5 versions per window maximum
-- **Data URLs:** Large data URLs are stripped (remote URLs preserved)
-- **Tab Limit:** No hard limit, but many tabs may impact performance
-
-### Coming Soon
-
-- Workspace management UI (list, delete, rename)
-- Private workspace support
-- Workspace compression
-- Import/export JSON files
-- Workspace templates
-- Collaboration features
-
 ## FAQ
 
 **Q: Can I save multiple versions of the same workspace?**  
@@ -265,48 +210,5 @@ A: Yes! Public workspaces can be accessed by anyone with the link, no account re
 
 ---
 
-## Technical Details
+_Last updated: 2025-01-27_
 
-### Workspace Snapshot Format
-
-A workspace snapshot is a JSON object:
-
-```json
-{
-  "connections": [
-    {
-      "id": "conn-123",
-      "fromWindowId": "win-1",
-      "toWindowId": "win-2",
-      "type": "image"
-    }
-  ],
-  "toolWindows": [
-    {
-      "id": "win-1",
-      "workspaceX": 100,
-      "workspaceY": 200,
-      "toolId": "text-to-image",
-      "displayName": "Text to Image",
-      "output": { "type": "image", "url": "https://..." },
-      "outputVersions": [...],
-      "parameterMappings": {...}
-    }
-  ]
-}
-```
-
-### Validation
-
-Workspaces are validated before saving:
-
-- **Schema Validation** – Ensures all required fields are present
-- **Size Validation** – Checks that workspace is under 900 KB
-- **Type Validation** – Verifies data types are correct
-
-Invalid workspaces are rejected with clear error messages.
-
----
-
-_Last updated: 2025-01-27_  
-_Workspace System v2.0 - Cloud Persistence & Sharing_

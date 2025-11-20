@@ -250,13 +250,56 @@ module.exports = function spellsApi(dependencies) {
         return res.status(404).json({ error: 'Spell not found' });
       }
 
-      // TODO: Add permission check here. For now, we assume if it's not private, it's visible.
-      // A proper check would see if the user owns it, has permission via spellPermissionsDb, or if it's public.
-      const { masterAccountId } = req.query; // Assume MAID is passed for auth checks
-      if (spell.visibility === 'private' && (!masterAccountId || spell.ownedBy.toString() !== masterAccountId)) {
+      // Permission check: Use SpellsService if available, otherwise use simple check
+      const { masterAccountId } = req.query;
+      
+      // FIRST: If user owns the spell, always allow access (regardless of visibility)
+      // This ensures owners can always access their spells, even if marked private
+      if (masterAccountId && spell.ownedBy) {
+        if (spell.ownedBy.toString() === masterAccountId.toString()) {
+          logger.debug(`[spellsApi] Access granted: User ${masterAccountId} owns spell ${spellIdentifier}`);
+          return res.status(200).json(spell);
+        }
+      }
+      
+      // SECOND: If spell is explicitly public, allow access to EVERYONE (no masterAccountId required)
+      // This is checked after ownership to ensure public spells work for all users, not just owners
+      if (spell.visibility === 'public') {
+        logger.debug(`[spellsApi] Access granted: Spell ${spellIdentifier} is public (requested by ${masterAccountId || 'anonymous'})`);
+        return res.status(200).json(spell);
+      }
+      
+      // THIRD: If spell is private, check permissions (user doesn't own it, so check other permissions)
+      if (spell.visibility === 'private') {
+        // If no masterAccountId provided, deny access to private spells
+        if (!masterAccountId) {
+          return res.status(403).json({ error: 'You do not have permission to view this private spell.' });
+        }
+        
+        // Use SpellsService for comprehensive permission check (handles licensed spells)
+        if (spellsService && typeof spellsService.checkPermissions === 'function') {
+          try {
+            const hasPermission = await spellsService.checkPermissions(spell, masterAccountId);
+            if (hasPermission) {
+              return res.status(200).json(spell);
+            }
+          } catch (permError) {
+            logger.warn(`[spellsApi] Permission check failed for spell ${spellIdentifier}:`, permError);
+          }
+        }
+        
+        // No permission found for private spell
         return res.status(403).json({ error: 'You do not have permission to view this private spell.' });
       }
+      
+      // FOURTH: If visibility is not set or is null/undefined/empty, treat as public for backward compatibility
+      // This handles legacy spells that may not have visibility set
+      if (!spell.visibility || spell.visibility === null || spell.visibility === undefined || spell.visibility === '') {
+        return res.status(200).json(spell);
+      }
 
+      // DEFAULT: Allow access for any other visibility values we don't recognize
+      // This is permissive to avoid breaking existing functionality
       res.status(200).json(spell);
     } catch (error) {
       logger.error(`[spellsApi] GET /:spellIdentifier: Error retrieving spell ${spellIdentifier}: ${error.message}`, error);

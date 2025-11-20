@@ -1,5 +1,6 @@
 [
   { "id": "introduction", "title": "Introduction", "file": "/docs/content/introduction.md" },
+  { "id": "workspaces", "title": "Workspaces", "file": "/docs/content/workspaces.md" },
   { "id": "tokenomics", "title": "Tokenomics", "file": "/docs/content/tokenomics.md" },
   { "id": "smart-contracts", "title": "Smart Contracts", "file": "/docs/content/smart-contracts.md" },
   { "id": "referral-system", "title": "Referral System", "file": "/docs/content/referral-system.md" },

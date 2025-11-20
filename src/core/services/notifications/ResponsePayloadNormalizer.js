@@ -165,42 +165,67 @@ class ResponsePayloadNormalizer {
         return this.normalize(responsePayload.outputs, options);
       }
 
-      // Format 11: Complex nested structure - try to extract meaningful data
-      else {
-        logger.debug('[ResponsePayloadNormalizer] Attempting to extract from complex object');
-        
-        // Check for nested data structures
+      // Format 11: ComfyUI format - object with node IDs as keys and arrays of URLs as values
+      // Example: { "3": ["https://...image.png"], "4": ["https://...image2.png"] }
+      else if (typeof responsePayload === 'object' && !Array.isArray(responsePayload)) {
         const keys = Object.keys(responsePayload);
-        
-        // If it has a 'data' field, wrap it
-        if (responsePayload.data) {
+        // Check if this looks like ComfyUI output format (numeric keys with URL arrays)
+        const isComfyUIFormat = keys.length > 0 && keys.every(key => {
+          const value = responsePayload[key];
+          return Array.isArray(value) && value.every(item => 
+            typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))
+          );
+        });
+
+        if (isComfyUIFormat) {
+          logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI format (node IDs with URL arrays), converting to files array');
+          // Flatten all URLs from all node outputs into a single files array
+          const allFiles = [];
+          keys.forEach(nodeId => {
+            const urls = responsePayload[nodeId];
+            urls.forEach(url => {
+              allFiles.push({ url });
+            });
+          });
           normalized.push({ 
-            type: responsePayload.type || 'unknown', 
-            data: responsePayload.data 
+            type: 'file', 
+            data: { files: allFiles } 
           });
         }
-        // If it looks like it might have content, try to extract
-        else if (keys.length > 0) {
-          // Try to find text-like fields
-          const textFields = keys.filter(k => 
-            ['text', 'content', 'message', 'output', 'result'].includes(k.toLowerCase())
-          );
+        // Format 12: Complex nested structure - try to extract meaningful data
+        else {
+          logger.debug('[ResponsePayloadNormalizer] Attempting to extract from complex object');
           
-          if (textFields.length > 0) {
-            const textValue = responsePayload[textFields[0]];
-            if (typeof textValue === 'string') {
+          // If it has a 'data' field, wrap it
+          if (responsePayload.data) {
+            normalized.push({ 
+              type: responsePayload.type || 'unknown', 
+              data: responsePayload.data 
+            });
+          }
+          // If it looks like it might have content, try to extract
+          else if (keys.length > 0) {
+            // Try to find text-like fields
+            const textFields = keys.filter(k => 
+              ['text', 'content', 'message', 'output', 'result'].includes(k.toLowerCase())
+            );
+            
+            if (textFields.length > 0) {
+              const textValue = responsePayload[textFields[0]];
+              if (typeof textValue === 'string') {
+                normalized.push({ 
+                  type: 'text', 
+                  data: { text: [textValue] } 
+                });
+              }
+            } else {
+              // Fallback: wrap the entire object
+              logger.warn('[ResponsePayloadNormalizer] Unknown format, wrapping entire object:', keys);
               normalized.push({ 
-                type: 'text', 
-                data: { text: [textValue] } 
+                type: 'unknown', 
+                data: responsePayload 
               });
             }
-          } else {
-            // Fallback: wrap the entire object
-            logger.warn('[ResponsePayloadNormalizer] Unknown format, wrapping entire object:', keys);
-            normalized.push({ 
-              type: 'unknown', 
-              data: responsePayload 
-            });
           }
         }
       }

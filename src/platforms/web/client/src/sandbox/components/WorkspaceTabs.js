@@ -2,6 +2,7 @@
 import { saveWorkspace, loadWorkspace, loadBlankWorkspace } from '../workspaces.js';
 import { initState } from '../state.js';
 import { activeToolWindows, connections, selectedNodeIds, persistState } from '../state.js';
+import { showNotification } from '../utils/notifications.js';
 
 const EMOJIS = ['🖼️','🎵','📝','🎬','✨','🌟','🚀','🔥','💡','🧪','🧩'];
 function pickEmoji(str){
@@ -70,32 +71,63 @@ export default function initWorkspaceTabs(container){
     bar.appendChild(add);
   }
   let current=0;
+  let switchingInProgress = false;
+  
   async function switchTab(idx){
     if(idx===current) return;
-    // autosave current (silent)
-    const newSlug = await saveWorkspace(tabs[current].slug || null,{silent:true});
-    if (!tabs[current].slug && newSlug) {
-      tabs[current].slug = newSlug;
-      tabs[current].emoji = pickEmoji(newSlug);
+    if(switchingInProgress) {
+      console.warn('[WorkspaceTabs] Tab switch already in progress');
+      return;
     }
-    persistTabs();
-    current=idx;
-    persistTabs();
-    const t=tabs[idx];
-    if(t.slug) await loadWorkspace(t.slug);
-    else {
-      resetToBlank();
-      const url=new URL(window.location.href);
-      url.searchParams.delete('workspace');
-      window.history.pushState({},'',url);
+    
+    switchingInProgress = true;
+    
+    try {
+      // autosave current (silent, but handle failures)
+      try {
+        const newSlug = await saveWorkspace(tabs[current].slug || null,{silent:true});
+        if (!tabs[current].slug && newSlug) {
+          tabs[current].slug = newSlug;
+          tabs[current].emoji = pickEmoji(newSlug);
+        }
+      } catch (e) {
+        // Autosave failed - warn user but continue with switch
+        console.error('[WorkspaceTabs] Autosave failed during tab switch:', e);
+        showNotification('Warning: Could not save current workspace before switching tabs.', 'warning', 5000);
+      }
+      
+      persistTabs();
+      current=idx;
+      persistTabs();
+      
+      const t=tabs[idx];
+      if(t.slug) {
+        try {
+          await loadWorkspace(t.slug, { silent: true });
+        } catch (e) {
+          console.error('[WorkspaceTabs] Failed to load workspace:', e);
+          showNotification(`Failed to load workspace: ${e.message}`, 'error');
+          // Reset to blank on load failure
+          resetToBlank();
+        }
+      } else {
+        resetToBlank();
+        const url=new URL(window.location.href);
+        url.searchParams.delete('workspace');
+        window.history.pushState({},'',url);
+      }
+    } finally {
+      switchingInProgress = false;
     }
   }
-  function addTab(){
+  async function addTab(){
+    // Save current workspace before adding new tab
+    // switchTab will handle saving, then we switch to the new blank tab
+    const newTabIndex = tabs.length;
     tabs.push({slug:null,emoji:'🆕'});
     render();
-    // Ensure new tab starts blank
-    resetToBlank();
-    switchTab(tabs.length-1);
+    // Switch to new tab (this will save current workspace first, then load blank)
+    await switchTab(newTabIndex);
   }
 
   function persistTabs(){
@@ -133,18 +165,39 @@ export default function initWorkspaceTabs(container){
     document.querySelectorAll('.tool-window, .connection-line').forEach(el=>el.remove());
   }
 
-  function closeTab(idx){
+  async function closeTab(idx){
     // Prevent closing last tab
     if(tabs.length===1) return;
+    
+    // If closing current tab, try to save first
+    if(idx === current) {
+      try {
+        await saveWorkspace(tabs[current].slug || null, {silent:true});
+      } catch (e) {
+        console.error('[WorkspaceTabs] Autosave failed before closing tab:', e);
+        // Continue anyway - user explicitly closed tab
+      }
+    }
+    
     tabs.splice(idx,1);
     // Adjust current index
     if(current>=idx) current=Math.max(0,current-1);
     render();
     persistTabs();
+    
     // Activate new current tab view
     const cur=tabs[current];
-    if(cur.slug) loadWorkspace(cur.slug);
-    else resetToBlank();
+    if(cur && cur.slug) {
+      try {
+        await loadWorkspace(cur.slug, { silent: true });
+      } catch (e) {
+        console.error('[WorkspaceTabs] Failed to load workspace after tab close:', e);
+        showNotification(`Failed to load workspace: ${e.message}`, 'error');
+        resetToBlank();
+      }
+    } else {
+      resetToBlank();
+    }
   }
 
   // initial tab from URL param
@@ -159,7 +212,10 @@ export default function initWorkspaceTabs(container){
 
   // If first tab has a slug (coming from ?workspace=) load it immediately for guests
   if(tabs[0] && tabs[0].slug){
-    loadWorkspace(tabs[0].slug);
+    loadWorkspace(tabs[0].slug, { silent: true }).catch(e => {
+      console.error('[WorkspaceTabs] Failed to load initial workspace:', e);
+      showNotification(`Failed to load workspace: ${e.message}`, 'error');
+    });
   }
 
   // Listen for external snapshot updates to refresh canvas without losing tabs

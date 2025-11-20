@@ -28,6 +28,36 @@ export async function executeSpell(windowId) {
     console.error(`[spellExecution] Could not find spell window with ID ${windowId} to execute.`);
     return;
   }
+  
+  // Check if spell is accessible (for private spells without permission)
+  if (spellWindow.isAccessible === false) {
+    const spellWindowEl = document.getElementById(windowId);
+    const errorMsg = spellWindow.accessError || 'You do not have permission to execute this spell.';
+    alert(`Cannot execute spell: ${errorMsg}`);
+    showError(spellWindowEl, errorMsg);
+    return;
+  }
+  
+  // If accessibility is unknown (null), wait a bit for metadata to load
+  if (spellWindow.isAccessible === null && !spellWindow.spell.exposedInputs) {
+    const spellWindowEl = document.getElementById(windowId);
+    showError(spellWindowEl, 'Loading spell details... Please wait.');
+    // Wait up to 3 seconds for metadata to load
+    let attempts = 0;
+    while (spellWindow.isAccessible === null && attempts < 30) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    // Check again after waiting
+    if (spellWindow.isAccessible === false) {
+      const errorMsg = spellWindow.accessError || 'You do not have permission to execute this spell.';
+      alert(`Cannot execute spell: ${errorMsg}`);
+      showError(spellWindowEl, errorMsg);
+      return;
+    }
+  }
+  
   const { spell, parameterMappings } = spellWindow;
   const inputs = {};
   if (spell.exposedInputs) {

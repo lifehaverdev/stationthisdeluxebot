@@ -17,7 +17,7 @@ const {
     editEscapedMessageMedia,
     sendPhotoWithEscapedCaption,
 } = require('../utils/messaging');
-const { stripHtml } = require('../../../utils/stringUtils');
+const { stripHtml, escapeMarkdownV2 } = require('../../../utils/stringUtils');
  
 // Map for shortening callback data to fit within Telegram's 64-byte limit
 const FILTER_SHORTCODE_MAP = {
@@ -1438,13 +1438,22 @@ async function loraAdminCallbackHandler(bot, callbackQuery, masterAccountId, dep
         await internal.client.post(apiEndpoint);
 
         // Edit the original message to show the result
+        // Note: originalMessage may already be escaped if it was sent with MarkdownV2
+        // We need to escape only the new parts we're adding
         const originalMessage = callbackQuery.message.text;
-        const newText = `${originalMessage}\n\n*Action Taken: ${resultText} by ${callbackQuery.from.first_name}*`;
+        const esc = escapeMarkdownV2;
+        const escapedFirstName = esc(callbackQuery.from.first_name || 'Unknown');
+        const escapedResultText = esc(resultText);
+        // Build the new text: originalMessage (already escaped) + new escaped content
+        const newText = `${originalMessage}\n\n*Action Taken: ${escapedResultText} by ${escapedFirstName}*`;
 
-        await editEscapedMessageText(bot, newText, {
+        // Use bot.editMessageText directly since we're manually escaping the new parts
+        // and originalMessage is already in the correct format
+        await bot.editMessageText(newText, {
             chat_id: callbackQuery.message.chat.id,
             message_id: callbackQuery.message.message_id,
-            reply_markup: null // Remove buttons
+            reply_markup: null, // Remove buttons
+            parse_mode: 'MarkdownV2'
         });
 
         await bot.answerCallbackQuery(callbackQuery.id, { text: `LoRA ${resultText}!` });

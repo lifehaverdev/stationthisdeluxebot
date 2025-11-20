@@ -48,14 +48,30 @@ class WorkspacesDB extends BaseDB {
       throw new Error('snapshot is required');
     }
 
-    const slug = this._generateSlug();
+    // Generate unique slug with collision detection
+    let slug;
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    do {
+      slug = this._generateSlug();
+      const existing = await this.findBySlug(slug);
+      if (!existing) break;
+      attempts++;
+    } while (attempts < maxAttempts);
+    
+    if (attempts >= maxAttempts) {
+      throw new Error('Failed to generate unique workspace slug');
+    }
+
     const now = new Date();
-    const bytes = Buffer.byteLength(JSON.stringify(snapshot));
+    // Use Buffer.byteLength for accurate UTF-8 byte count (matches MongoDB storage)
+    const bytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
 
     const doc = {
       slug,
       ownerId: ownerId ? new ObjectId(ownerId) : null,
-      name,
+      name: (name || '').trim(),
       visibility,
       snapshot,
       sizeBytes: bytes,
@@ -73,15 +89,38 @@ class WorkspacesDB extends BaseDB {
   }
 
   async updateSnapshot(slug, snapshot, requesterId = null) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      throw new Error('snapshot is required');
+    }
+    
     const ws = await this.findBySlug(slug);
     if (!ws) throw new Error('Workspace not found');
-    if (ws.ownerId && requesterId && ws.ownerId.toString() !== requesterId.toString()) {
-      throw new Error('Forbidden');
+    
+    // Authorization: allow update if workspace has no owner (anonymous) OR requester is owner
+    if (ws.ownerId) {
+      // Workspace has owner - require matching requesterId
+      if (!requesterId) {
+        throw new Error('Forbidden');
+      }
+      // Convert both to strings for comparison (handles ObjectId vs string)
+      if (ws.ownerId.toString() !== requesterId.toString()) {
+        throw new Error('Forbidden');
+      }
     }
-    const bytes = Buffer.byteLength(JSON.stringify(snapshot));
-    return this.updateOne({ slug }, {
+    // If no ownerId, allow update (anonymous workspace)
+    
+    // Use Buffer.byteLength for accurate UTF-8 byte count
+    const bytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
+    
+    const result = await this.updateOne({ slug }, {
       $set: { snapshot, sizeBytes: bytes, updatedAt: new Date() }
     });
+    
+    if (result.matchedCount === 0) {
+      throw new Error('Workspace not found');
+    }
+    
+    return result;
   }
 
   async listWorkspacesByOwner(ownerId, { limit = 50, skip = 0 } = {}) {
@@ -89,9 +128,27 @@ class WorkspacesDB extends BaseDB {
   }
 
   async deleteWorkspace(slug, requesterId) {
-    const filt = { slug };
-    if (requesterId) filt.ownerId = new ObjectId(requesterId);
-    return this.deleteOne(filt);
+    const ws = await this.findBySlug(slug);
+    if (!ws) {
+      throw new Error('Workspace not found');
+    }
+    
+    // Authorization: only owner can delete (or anonymous if no owner)
+    if (ws.ownerId) {
+      if (!requesterId) {
+        throw new Error('Forbidden');
+      }
+      if (ws.ownerId.toString() !== requesterId.toString()) {
+        throw new Error('Forbidden');
+      }
+    }
+    
+    const result = await this.deleteOne({ slug });
+    if (result.deletedCount === 0) {
+      throw new Error('Workspace not found');
+    }
+    
+    return result;
   }
 }
 

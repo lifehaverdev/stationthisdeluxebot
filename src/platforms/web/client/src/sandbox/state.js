@@ -820,6 +820,28 @@ export function resetAllCosts() {
 // --- Generation Recovery System ---
 
 /**
+ * Get CSRF token for API requests
+ */
+async function getCsrfToken() {
+    if (window.__csrfToken) return window.__csrfToken;
+    try {
+        const res = await fetch('/api/v1/csrf-token', { credentials: 'include' });
+        if (!res.ok) {
+            throw new Error(`CSRF token fetch failed: ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.csrfToken) {
+            throw new Error('CSRF token not in response');
+        }
+        window.__csrfToken = data.csrfToken;
+        return window.__csrfToken;
+    } catch (e) {
+        stateDebug('[getCsrfToken] error', e);
+        throw new Error('Failed to get CSRF token. Please refresh the page.');
+    }
+}
+
+/**
  * Check for completed pending generations and update windows
  * This is called on page load to recover from websocket disconnections
  */
@@ -835,11 +857,16 @@ export async function checkPendingGenerations() {
     stateDebug('[PendingGen] Checking', generationIds.length, 'pending generations');
     
     try {
+        // Get CSRF token for the request
+        const csrfToken = await getCsrfToken();
+        
         // Fetch generation statuses from the API
         const response = await fetch('/api/v1/generations/status', {
             method: 'POST',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
+                'x-csrf-token': csrfToken,
                 'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
             },
             body: JSON.stringify({ generationIds })

@@ -580,45 +580,136 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateFAB();
 
     // Provide global reload helper for WorkspaceTabs hydration
+    let reloadInProgress = false;
     window.__reloadSandboxState = async () => {
-        // Remove all existing tool windows and connection lines
-        document.querySelectorAll('.tool-window, .connection-line').forEach(el => el.remove());
+        // Prevent concurrent reloads
+        if (reloadInProgress) {
+            console.warn('[Sandbox] Reload already in progress, skipping duplicate call');
+            return;
+        }
+        
+        reloadInProgress = true;
+        
+        try {
+            // Remove all existing tool windows and connection lines
+            document.querySelectorAll('.tool-window, .connection-line').forEach(el => el.remove());
 
-        // Re-initialize state from localStorage
-        initState();
+            // Re-initialize state from localStorage
+            initState();
 
-        // Reload available tools so we can map toolIds to definitions
-        await initializeTools();
+            // Reload available tools so we can map toolIds to definitions
+            // This MUST complete before recreating windows
+            await initializeTools();
 
-        // Re-create windows and connections
-        getToolWindows().forEach(win => {
-            if (win.isSpell && win.spell) {
-                createSpellWindow(
-                    win.spell,
-                    { x: win.workspaceX, y: win.workspaceY },
-                    win.id,
-                    win.output,
-                    win.parameterMappings,
-                    win.outputVersions,
-                    win.currentVersionIndex,
-                    win.totalCost,
-                    win.costVersions
-                );
-                return;
-            }
-            if (win.tool) {
-                const tool = getAvailableTools().find(t => t.toolId === win.tool.toolId || t.displayName === win.tool.displayName);
-                if (tool) {
-                    createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+            const availableTools = getAvailableTools();
+            const missingTools = [];
+            const missingSpells = [];
+
+            // Re-create windows and connections
+            getToolWindows().forEach(win => {
+                if (win.isSpell && win.spell) {
+                    // Create spell window - SpellWindow will handle async permission errors gracefully
+                    // It will show a locked state (🔒) if the spell is private/inaccessible
+                    try {
+                        const spellWindowEl = createSpellWindow(
+                            win.spell,
+                            { x: win.workspaceX, y: win.workspaceY },
+                            win.id,
+                            win.output,
+                            win.parameterMappings,
+                            win.outputVersions,
+                            win.currentVersionIndex,
+                            win.totalCost,
+                            win.costVersions
+                        );
+                        
+                        // Track spell for potential permission issues (async check happens in SpellWindow)
+                        // The window will automatically show locked state if access is denied
+                        if (!win.spell.exposedInputs) {
+                            // Spell metadata will be loaded asynchronously
+                            // If it fails with 403, SpellWindow will show locked state
+                            missingSpells.push(win.spell.name || win.spell._id || 'Unknown spell');
+                        }
+                    } catch (e) {
+                        // Only catches synchronous errors during window creation
+                        console.error(`[Sandbox] Failed to recreate spell window ${win.id}:`, e);
+                        missingSpells.push(win.spell.name || win.spell._id || 'Unknown spell');
+                        
+                        // Fallback: Create a minimal placeholder if window creation fails completely
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'tool-window spell-window spell-locked';
+                        placeholder.id = win.id;
+                        placeholder.style.left = `${win.workspaceX}px`;
+                        placeholder.style.top = `${win.workspaceY}px`;
+                        placeholder.innerHTML = `
+                            <div class="tool-window-header">
+                                <span>🔒 Private Spell</span>
+                            </div>
+                            <div class="tool-window-body" style="padding: 24px; text-align: center; color: #999;">
+                                <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.7;">🔒</div>
+                                <div style="font-weight: bold; margin-bottom: 8px; color: #666;">Private Spell</div>
+                                <div style="font-size: 14px; margin-bottom: 4px; color: #888;">Unable to load spell window.</div>
+                                <div style="font-size: 12px; margin-top: 12px; color: #999; font-family: monospace;">Spell ID: ${win.spell._id || 'unknown'}</div>
+                            </div>
+                        `;
+                        document.querySelector('.sandbox-canvas')?.appendChild(placeholder);
+                    }
+                    return;
                 }
-            }
-        });
+                
+                if (win.type === 'collection') {
+                    // Collection windows - would need collection registry
+                    console.warn(`[Sandbox] Collection windows not yet supported in reload: ${win.id}`);
+                    return;
+                }
+                
+                if (win.tool) {
+                    // Prioritize toolId match over displayName for accuracy
+                    let tool = null;
+                    if (win.tool.toolId) {
+                        tool = availableTools.find(t => t.toolId === win.tool.toolId);
+                    }
+                    if (!tool && win.tool.displayName) {
+                        tool = availableTools.find(t => t.displayName === win.tool.displayName);
+                    }
+                    
+                    if (tool) {
+                        try {
+                            createToolWindow(tool, { x: win.workspaceX, y: win.workspaceY }, win.id, win.output);
+                        } catch (e) {
+                            console.error(`[Sandbox] Failed to recreate tool window ${win.id}:`, e);
+                            missingTools.push(win.tool.displayName || win.tool.toolId);
+                        }
+                    } else {
+                        missingTools.push(win.tool.displayName || win.tool.toolId);
+                    }
+                }
+            });
 
-        renderAllConnections();
+            // Warn about missing tools/spells
+            if (missingTools.length > 0) {
+                console.warn(`[Sandbox] Could not recreate ${missingTools.length} tool window(s):`, missingTools);
+            }
+            if (missingSpells.length > 0) {
+                console.warn(`[Sandbox] Could not recreate ${missingSpells.length} spell window(s):`, missingSpells);
+            }
+
+            renderAllConnections();
+        } catch (e) {
+            console.error('[Sandbox] Error during state reload:', e);
+            throw e; // Re-throw so caller knows it failed
+        } finally {
+            reloadInProgress = false;
+        }
     };
 
-    window.addEventListener('sandboxSnapshotUpdated', () => {
-        window.__reloadSandboxState();
+    // Use async handler for event listener
+    window.addEventListener('sandboxSnapshotUpdated', async () => {
+        try {
+            await window.__reloadSandboxState();
+        } catch (e) {
+            console.error('[Sandbox] Failed to reload state after snapshot update:', e);
+        }
     });
 
     // Upload button in action-modal

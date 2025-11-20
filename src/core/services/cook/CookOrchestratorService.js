@@ -300,14 +300,14 @@ class CookOrchestratorService {
         { deliveryStrategy: { $ne: 'spell_step' } },
         {
           $or: [
-            { 'metadata.reviewOutcome': { $exists: false } },
-            { 'metadata.reviewOutcome': { $ne: 'rejected' } },
+          { 'metadata.reviewOutcome': { $exists: false } },
+          { 'metadata.reviewOutcome': { $ne: 'rejected' } },
           ]
         },
         {
           $or: [
-            { reviewOutcome: { $exists: false } },
-            { reviewOutcome: { $ne: 'rejected' } },
+          { reviewOutcome: { $exists: false } },
+          { reviewOutcome: { $ne: 'rejected' } },
           ]
         }
       ],
@@ -321,7 +321,7 @@ class CookOrchestratorService {
     this.logger.info(`[CookOrchestrator] startCook called for collection ${collectionId}, userId: ${userId}, cookId: ${cookId}, spellId: ${spellId}, toolId: ${toolId}, totalSupply: ${totalSupply}`);
     try {
       this.logger.info(`[CookOrchestrator] Calling _init()...`);
-      await this._init();
+    await this._init();
       this.logger.info(`[CookOrchestrator] _init completed`);
       
       if (!spellId && !toolId) {
@@ -329,8 +329,8 @@ class CookOrchestratorService {
         throw new Error('spellId or toolId required');
       }
 
-      const supply = Number.isFinite(totalSupply) && totalSupply > 0 ? Math.floor(totalSupply) : 1;
-      const key = this._getKey(collectionId, userId);
+    const supply = Number.isFinite(totalSupply) && totalSupply > 0 ? Math.floor(totalSupply) : 1;
+    const key = this._getKey(collectionId, userId);
       this.logger.info(`[CookOrchestrator] Acquiring lock for key: ${key}`);
       
       // Acquire lock to prevent race conditions
@@ -338,8 +338,8 @@ class CookOrchestratorService {
       this.logger.info(`[CookOrchestrator] Lock acquired, getting produced count...`);
       
       try {
-        const producedSoFar = await this._getProducedCount(collectionId, userId);
-        this.logger.info(`[Cook DEBUG] collection ${collectionId} supply=${supply} producedSoFar=${producedSoFar}`);
+    const producedSoFar = await this._getProducedCount(collectionId, userId);
+    this.logger.info(`[Cook DEBUG] collection ${collectionId} supply=${supply} producedSoFar=${producedSoFar}`);
         
         // Check if state exists, create or update atomically
         const existingState = this.runningByCollection.get(key);
@@ -358,56 +358,56 @@ class CookOrchestratorService {
             traitTypes, 
             paramsTemplate 
           });
-        }
+    }
         
-        const state = this.runningByCollection.get(key);
-        this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, total: state.total });
-        state.nextIndex = Math.max(state.nextIndex, producedSoFar);
-        state.total = supply; // update if changed
+    const state = this.runningByCollection.get(key);
+    this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, total: state.total });
+    state.nextIndex = Math.max(state.nextIndex, producedSoFar);
+    state.total = supply; // update if changed
 
         await this.appendEvent('CookStarted', { collectionId, userId, cookId: state.cookId, totalSupply: supply });
 
-        if (producedSoFar >= state.total) {
-          this.logger.info(`[CookOrchestrator] Supply already met for collection ${collectionId}. Nothing to do.`);
+    if (producedSoFar >= state.total) {
+      this.logger.info(`[CookOrchestrator] Supply already met for collection ${collectionId}. Nothing to do.`);
           await this.appendEvent('CookCompleted', { collectionId, userId, cookId: state.cookId });
-          this.runningByCollection.delete(key);
-          return { queued: 0 };
-        }
+      this.runningByCollection.delete(key);
+      return { queued: 0 };
+    }
 
-        // Submit first piece immediately if within supply
+    // Submit first piece immediately if within supply
         // Use _getProducedCount() for accurate count instead of state.generatedCount
         const currentProduced = await this._getProducedCount(collectionId, userId);
         if (state.nextIndex < state.total && (currentProduced + state.running.size) < state.total) {
-          const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
-          const enqueuedJobId = enq.jobId;
+      const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
+      const enqueuedJobId = enq.jobId;
           await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enqueuedJobId, pieceIndex: state.nextIndex });
 
-          if (IMMEDIATE_SUBMIT) {
-            try {
-              // Build submission payload directly without waiting for any watcher
-              const submission = enq.submission;
-              if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
-              const resp = await submitPiece({ spellId: spellId, submission });
-              this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
+      if (IMMEDIATE_SUBMIT) {
+        try {
+          // Build submission payload directly without waiting for any watcher
+          const submission = enq.submission;
+          if (ENABLE_VERBOSE_SUBMIT_LOGS) this.logger.info(`[CookOrchestrator] Immediate submit for job ${enqueuedJobId} (tool ${submission.toolId})`);
+          const resp = await submitPiece({ spellId: spellId, submission });
+          this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
               
               // ✅ FIX: Only add to running set AFTER successful submit
               state.running.add(String(enqueuedJobId));
               state.nextIndex += 1;
-            } catch (e) {
-              this.logger.error(`[CookOrchestrator] Immediate submit failed: ${e.message}`);
+        } catch (e) {
+          this.logger.error(`[CookOrchestrator] Immediate submit failed: ${e.message}`);
               // Don't add to running set if submit failed - cook can retry or fail gracefully
               throw e; // Re-throw to allow caller to handle
-            }
+        }
           } else {
             // If not immediate submit, add to running set (for future worker-based submission)
             state.running.add(String(enqueuedJobId));
             state.nextIndex += 1;
-          }
+      }
 
-          return { queued: 1 }; 
-        }
+      return { queued: 1 }; 
+    }
 
-        return { queued: 0 };
+    return { queued: 0 };
       } catch (innerErr) {
         this.logger.error(`[CookOrchestrator] Error inside startCook (after lock acquired):`, innerErr);
         throw innerErr;
@@ -529,11 +529,11 @@ class CookOrchestratorService {
 
           // Update the cook document via internal API.
           try {
-            await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, {
-              generationId: generation._id.toString(),
-              costDeltaUsd: costDelta,
-            });
-            this.logger.info(`[CookOrchestrator] Updated cook ${state.cookId} with generation ${generation._id} (costUsd=${costDelta}).`);
+          await internalApiClient.put(`/internal/v1/data/cook/cooks/${state.cookId}`, {
+            generationId: generation._id.toString(),
+            costDeltaUsd: costDelta,
+          });
+          this.logger.info(`[CookOrchestrator] Updated cook ${state.cookId} with generation ${generation._id} (costUsd=${costDelta}).`);
           } catch (apiErr) {
             // ✅ Handle 404 gracefully - cook may have been deleted or doesn't exist
             if (apiErr.response?.status === 404) {
@@ -548,7 +548,7 @@ class CookOrchestratorService {
         if (err.response?.status === 404) {
           this.logger.warn(`[CookOrchestrator] Cook ${state.cookId} not found (404) - may have been deleted, continuing gracefully`);
         } else {
-          this.logger.error(`[CookOrchestrator] Failed to update cook ${state.cookId}: ${err.message}`);
+        this.logger.error(`[CookOrchestrator] Failed to update cook ${state.cookId}: ${err.message}`);
         }
       }
     }

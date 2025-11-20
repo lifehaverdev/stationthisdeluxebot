@@ -387,8 +387,8 @@ export default class CollectionWindow extends BaseWindow {
     if (!outputDiv) {
       outputDiv = document.createElement('div');
       outputDiv.className = 'result-container';
-      outputDiv.style.marginTop = '10px';
-      body.appendChild(outputDiv);
+    outputDiv.style.marginTop = '10px';
+    body.appendChild(outputDiv);
     } else {
       // Clear any existing content
       outputDiv.innerHTML = '';
@@ -443,11 +443,11 @@ export default class CollectionWindow extends BaseWindow {
       // Only create progress bar for spells, not tools
       if (this.collection.generatorType === 'spell') {
         if (!progBar || !progBar.parentElement) {
-          progBar = document.createElement('progress');
-          progBar.className = 'spell-progress-bar';
+        progBar = document.createElement('progress');
+        progBar.className = 'spell-progress-bar';
           progBar.max = 100;
           progBar.value = 0;
-          body.appendChild(progBar);
+        body.appendChild(progBar);
         }
         progBar.value = 0; // Reset progress bar
         progBar.style.display = 'block'; // Ensure it's visible
