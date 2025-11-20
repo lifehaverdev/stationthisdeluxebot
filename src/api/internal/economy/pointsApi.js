@@ -4,7 +4,9 @@ const { ethers } = require('ethers');
 const foundationAbi = require('../../../core/contracts/abis/foundation.json');
 const { contracts } = require('../../../core/contracts');
 const { getFundingRate, getDonationFundingRate, getDecimals, DEFAULT_FUNDING_RATE, getChainTokenConfig, getChainNftConfig } = require('../../../core/services/alchemy/tokenConfig');
+const { RPC_ENV_VARS, CHAIN_NAMES } = require('../../../core/services/alchemy/foundationConfig');
 const tokenDecimalService = require('../../../core/services/tokenDecimalService');
+const { createRateLimitMiddleware, createWalletRateLimitMiddleware } = require('../../../utils/rateLimiter');
 
 const TRUSTED_NFT_COLLECTIONS = {
     "0x524cab2ec69124574082676e6f654a18df49a048": { fundingRate: 1, name: "MiladyStation", iconUrl: "/images/sandbox/components/miladystation.avif" },
@@ -18,6 +20,61 @@ const TRUSTED_NFT_COLLECTIONS = {
 const BASELINE_NFT_FUNDING_RATE = 0.70;
 
 const USD_TO_POINTS_CONVERSION_RATE = 0.000337;
+
+// --- Validation Helpers ---
+function isValidEthereumAddress(address) {
+    if (!address || typeof address !== 'string') return false;
+    return ethers.isAddress(address);
+}
+
+function isValidTransactionHash(txHash) {
+    if (!txHash || typeof txHash !== 'string') return false;
+    return /^0x[a-fA-F0-9]{64}$/.test(txHash);
+}
+
+function isValidAmount(amount) {
+    if (!amount || typeof amount !== 'string') return false;
+    // Allow empty string, but if present must be valid number format
+    if (amount === '') return true;
+    // Must be a valid number string (allows decimals)
+    if (!/^\d+\.?\d*$/.test(amount)) return false;
+    // Must not be negative
+    if (amount.startsWith('-')) return false;
+    // Must not be just a decimal point
+    if (amount === '.') return false;
+    return true;
+}
+
+function sanitizeReferralCode(code) {
+    if (!code || typeof code !== 'string') return null;
+    // Only allow alphanumeric and common safe characters
+    return code.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+function isValidChainId(chainId) {
+    if (!chainId) return false;
+    const chainIdStr = String(chainId);
+    // Check if chainId is in the supported chains list (RPC_ENV_VARS keys)
+    return chainIdStr in RPC_ENV_VARS;
+}
+
+function generateRequestId() {
+    return 'req_' + crypto.randomBytes(8).toString('hex');
+}
+
+function createErrorResponse(message, code, requestId, details = null) {
+    const response = {
+        error: {
+            code: code || 'ERROR',
+            message,
+            requestId
+        }
+    };
+    if (details) {
+        response.error.details = details;
+    }
+    return response;
+}
 
 module.exports = function pointsApi(dependencies) {
     const { logger, priceFeedService, nftPriceService, creditServices = {}, ethereumServices = {}, creditService: legacyCredit, ethereumService: legacyEth, db } = dependencies;
@@ -44,21 +101,46 @@ module.exports = function pointsApi(dependencies) {
         };
     }
 
+    // Rate limiting for quote endpoint: 20 requests per minute per IP
+    const quoteRateLimiter = createRateLimitMiddleware({
+        windowMs: 60 * 1000, // 1 minute
+        max: 20,
+        message: 'Too many quote requests. Please try again later.'
+    }, logger);
+
+    // Rate limiting for purchase endpoint: 10 requests per minute per wallet
+    const purchaseRateLimiter = createWalletRateLimitMiddleware({
+        windowMs: 60 * 1000, // 1 minute
+        max: 10,
+        message: 'Too many purchase requests. Please try again later.'
+    }, logger);
+
     /**
      * GET /supported-assets
      * Returns a list of all tokens and NFTs supported for credit deposits.
      */
     router.get('/supported-assets', (req, res) => {
+        const requestId = generateRequestId();
         const chainId = String(req.query.chainId || '1');
+        
+        // Validate chain ID
+        if (!isValidChainId(chainId)) {
+            logger.warn('[pointsApi] /supported-assets invalid chainId', { requestId, chainId });
+            return res.status(400).json(createErrorResponse(
+                `Unsupported chain ID '${chainId}'. Supported chains: ${Object.keys(RPC_ENV_VARS).join(', ')}.`,
+                'UNSUPPORTED_CHAIN',
+                requestId,
+                { supportedChains: Object.keys(RPC_ENV_VARS).map(id => ({ chainId: id, name: CHAIN_NAMES[id] || id })) }
+            ));
+        }
+        
         const { creditService, ethereumService } = getChainServices(chainId);
-        logger.info(`[pointsApi] /supported-assets requested for chainId=${chainId}`);
-        console.log('[pointsApi:/supported-assets] raw query params:', req.query);
+        logger.info('[pointsApi] /supported-assets requested', { requestId, chainId });
 
+        try {
         // Trace helper outputs
-        const tokensCfgRaw = getChainTokenConfig(chainId);
-        const nftsCfgRaw = getChainNftConfig(chainId);
-        console.log('[pointsApi:/supported-assets] tokensCfgRaw keys:', Object.keys(tokensCfgRaw || {}));
-        console.log('[pointsApi:/supported-assets] nftsCfgRaw keys:', Object.keys(nftsCfgRaw || {}));
+            let tokensCfgRaw = getChainTokenConfig(chainId);
+            let nftsCfgRaw = getChainNftConfig(chainId);
 
         // Defensive: if we accidentally received the root config object (keys are chainIds),
         // narrow it down to the specific chainId we want so the response shape is correct.
@@ -69,14 +151,12 @@ module.exports = function pointsApi(dependencies) {
             nftsCfgRaw = nftsCfgRaw[chainId] || {};
         }
 
-        console.log('[pointsApi] tokensCfg for chain', chainId, tokensCfgRaw);
-        const tokens = Object.entries(tokensCfgRaw).map(([address, cfg]) => {
+            const tokens = Object.entries(tokensCfgRaw || {}).map(([address, cfg]) => {
             const { fundingRate, symbol, iconUrl, decimals } = cfg || {};
             return { type: 'TOKEN', address, symbol, fundingRate, iconUrl, decimals };
         });
-        console.log('[pointsApi] tokens array', tokens);
 
-        const nfts = Object.entries(nftsCfgRaw)
+            const nfts = Object.entries(nftsCfgRaw || {})
             .filter(([, cfg]) => cfg && cfg.name)
             .map(([address, { fundingRate, name, iconUrl }]) => ({
                 type: 'NFT',
@@ -94,6 +174,10 @@ module.exports = function pointsApi(dependencies) {
                 nftFundingRate: BASELINE_NFT_FUNDING_RATE,
             },
         });
+        } catch (error) {
+            logger.error('[pointsApi] /supported-assets error:', error, { requestId });
+            res.status(500).json(createErrorResponse('Failed to fetch supported assets', 'FETCH_ERROR', requestId));
+        }
     });
 
     /**
@@ -101,22 +185,92 @@ module.exports = function pointsApi(dependencies) {
      * @description Provides a real-time quote for a deposit.
      * @access Internal
      */
-    router.post('/quote', async (req, res, next) => {
+    router.post('/quote', quoteRateLimiter, async (req, res, next) => {
+        const requestId = generateRequestId();
         try {
             const { type, assetAddress, amount, tokenId, userWalletAddress, mode = 'contribute', chainId: bodyChainId } = req.body;
             const chainId = String(bodyChainId || '1');
+            
+            // Validate chain ID
+            if (!isValidChainId(chainId)) {
+                return res.status(400).json(createErrorResponse(
+                    `Unsupported chain ID '${chainId}'. Supported chains: ${Object.keys(RPC_ENV_VARS).join(', ')}.`,
+                    'UNSUPPORTED_CHAIN',
+                    requestId,
+                    { supportedChains: Object.keys(RPC_ENV_VARS).map(id => ({ chainId: id, name: CHAIN_NAMES[id] || id })) }
+                ));
+            }
+            
             const { creditService, ethereumService } = getChainServices(chainId);
 
-            // --- Donate-mode validation & funding-rate helper -----------------
+            // --- Input Validation ---
             const SUPPORTED_MODES = ['contribute', 'donate'];
             if (!SUPPORTED_MODES.includes(mode)) {
-                return res.status(400).json({ message: `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.` });
+                return res.status(400).json(createErrorResponse(
+                    `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.`,
+                    'INVALID_MODE',
+                    requestId
+                ));
             }
 
-            console.log('[pointsApi:/quote] Incoming request:', req.body);
-            if (!type || !assetAddress || (type === 'token' && !amount)) {
-                return res.status(400).json({ message: 'Missing required fields.' });
+            // Validate required fields
+            if (!type || !assetAddress) {
+                return res.status(400).json(createErrorResponse(
+                    'Missing required fields: type and assetAddress are required.',
+                    'MISSING_FIELDS',
+                    requestId,
+                    { missing: ['type', 'assetAddress'] }
+                ));
             }
+
+            // Validate type
+            if (!['token', 'nft'].includes(type)) {
+                return res.status(400).json(createErrorResponse(
+                    `Invalid type '${type}'. Allowed values: token, nft.`,
+                    'INVALID_TYPE',
+                    requestId
+                ));
+            }
+
+            // Validate asset address
+            if (!isValidEthereumAddress(assetAddress)) {
+                return res.status(400).json(createErrorResponse(
+                    'Invalid asset address format.',
+                    'INVALID_ADDRESS',
+                    requestId
+                ));
+            }
+
+            // Validate amount for tokens
+            if (type === 'token') {
+                if (!amount) {
+                    return res.status(400).json(createErrorResponse(
+                        'Amount is required for token deposits.',
+                        'MISSING_FIELDS',
+                        requestId,
+                        { missing: ['amount'] }
+                    ));
+                }
+                if (!isValidAmount(amount)) {
+                    return res.status(400).json(createErrorResponse(
+                        'Invalid amount format. Amount must be a positive number.',
+                        'INVALID_AMOUNT',
+                        requestId
+                    ));
+                }
+            }
+
+            // Validate tokenId for NFTs
+            if (type === 'nft' && !tokenId) {
+                return res.status(400).json(createErrorResponse(
+                    'TokenId is required for NFT deposits.',
+                    'MISSING_FIELDS',
+                    requestId,
+                    { missing: ['tokenId'] }
+                ));
+            }
+
+            logger.info('[pointsApi:/quote] Processing quote request', { requestId, type, assetAddress, mode });
 
             let fundingRate, symbol, name, decimals, grossUsd, netAfterFundingRate, price, assetAmount;
             let estimatedGasUsd = 5.5; // Placeholder, will be replaced by dynamic estimation
@@ -132,7 +286,8 @@ module.exports = function pointsApi(dependencies) {
                 // Get price in USD
                 price = await priceFeedService.getPriceInUsd(assetAddress);
                 
-                logger.info(`[pointsApi:/quote] Amount conversion:`, {
+                logger.info(`[pointsApi:/quote] Amount conversion`, {
+                    requestId,
                     token: assetAddress,
                     decimals,
                     originalAmount: amount,
@@ -140,26 +295,41 @@ module.exports = function pointsApi(dependencies) {
                     adjustedAmount: adjustedAmount.toString(),
                     assetAmount
                 });
-                console.log('[pointsApi:/quote] Price fetched for', assetAddress, ':', price);
+                
+                // Get price in USD
+                price = await priceFeedService.getPriceInUsd(assetAddress);
+                if (!price || price <= 0) {
+                    return res.status(400).json(createErrorResponse(
+                        'Unable to fetch price for this asset. Please try again later.',
+                        'PRICE_UNAVAILABLE',
+                        requestId
+                    ));
+                }
+                
+                logger.debug(`[pointsApi:/quote] Price fetched`, { requestId, assetAddress, price });
                 grossUsd = assetAmount * price;
                 netAfterFundingRate = grossUsd * fundingRate;
+                
                 // --- Dynamic gas estimation ---
                 // Skip gas estimation for MS2 token since we want it regardless of gas cost
                 if (assetAddress.toLowerCase() === '0x98Ed411B8cf8536657c660Db8aA55D9D4bAAf820'.toLowerCase()) {
-                    logger.info('[pointsApi:/quote] Skipping gas estimation for MS2 token');
+                    logger.info('[pointsApi:/quote] Skipping gas estimation for MS2 token', { requestId });
                     estimatedGasUsd = 0; // Don't factor gas into the quote for MS2
                 } else {
                     try {
-                        if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
+                        if (!creditService.estimateDepositGasCostInUsd) {
+                            logger.warn('[pointsApi:/quote] Gas estimation not available', { requestId });
+                        } else if (userWalletAddress && isValidEthereumAddress(userWalletAddress)) {
                         estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
                             type,
                             assetAddress,
                             amount,
                             userWalletAddress
                         });
-                        console.log('[pointsApi:/quote] Dynamic gas estimate (USD):', estimatedGasUsd);
+                            logger.debug('[pointsApi:/quote] Dynamic gas estimate', { requestId, estimatedGasUsd });
+                        }
                     } catch (err) {
-                        console.warn('[pointsApi:/quote] Failed to estimate gas dynamically, using fallback:', err);
+                        logger.warn('[pointsApi:/quote] Failed to estimate gas dynamically, using fallback', { requestId, error: err.message });
                     }
                 }
             } else if (type === 'nft') {
@@ -176,30 +346,36 @@ module.exports = function pointsApi(dependencies) {
                 name = data.name;
                 // Get floor price in USD
                 price = await nftPriceService.getFloorPriceInUsd(assetAddress);
-                console.log('[pointsApi:/quote] NFT price fetched for', assetAddress, ':', price);
-                if (!price) {
-                    return res.status(400).json({ message: 'Could not fetch NFT floor price.' });
+                if (!price || price <= 0) {
+                    return res.status(400).json(createErrorResponse(
+                        'Could not fetch NFT floor price. Please try again later.',
+                        'PRICE_UNAVAILABLE',
+                        requestId
+                    ));
                 }
+                logger.debug('[pointsApi:/quote] NFT price fetched', { requestId, assetAddress, price });
                 grossUsd = price;
                 netAfterFundingRate = grossUsd * fundingRate;
                 assetAmount = 1;
+                
                 // --- Dynamic gas estimation for NFT transfer ---
                 try {
-                    if (!creditService.estimateDepositGasCostInUsd) throw new Error('creditService.estimateDepositGasCostInUsd not implemented');
+                    if (!creditService.estimateDepositGasCostInUsd) {
+                        logger.warn('[pointsApi:/quote] Gas estimation not available for NFT', { requestId });
+                    } else if (userWalletAddress && isValidEthereumAddress(userWalletAddress)) {
                     estimatedGasUsd = await creditService.estimateDepositGasCostInUsd({
                         type,
                         assetAddress,
                         tokenId,
                         userWalletAddress
                     });
-                    console.log('[pointsApi:/quote] Dynamic gas estimate (USD) for NFT:', estimatedGasUsd);
+                        logger.debug('[pointsApi:/quote] Dynamic gas estimate for NFT', { requestId, estimatedGasUsd });
+                    }
                 } catch (err) {
-                    console.warn('[pointsApi:/quote] Failed to estimate gas dynamically for NFT, using fallback:', err);
+                    logger.warn('[pointsApi:/quote] Failed to estimate gas dynamically for NFT, using fallback', { requestId, error: err.message });
                 }
-            } else {
-                return res.status(400).json({ message: 'Invalid type.' });
             }
-
+            
             // Calculate funding rate deduction
             const fundingRateDeduction = grossUsd - netAfterFundingRate;
 
@@ -213,8 +389,9 @@ module.exports = function pointsApi(dependencies) {
                 pointsCredited = 0;
             }
 
-            // Log all intermediate values
-            console.log('[pointsApi:/quote] Calculated values:', {
+            // Log calculated values for debugging
+            logger.debug('[pointsApi:/quote] Calculated quote values', {
+                requestId,
                 fundingRate,
                 symbol,
                 name,
@@ -248,11 +425,16 @@ module.exports = function pointsApi(dependencies) {
                     netAfterFundingRate,
                     estimatedGasUsd,
                     userReceivesUsd
-                }
+                },
+                requestId
             });
         } catch (error) {
-            logger.error('Failed to generate quote:', error);
-            next(error);
+            logger.error('[pointsApi] /quote error', { requestId, error: error.message, stack: error.stack });
+            res.status(500).json(createErrorResponse(
+                'An error occurred while generating the quote. Please try again.',
+                'QUOTE_ERROR',
+                requestId
+            ));
         }
     });
 
@@ -261,30 +443,87 @@ module.exports = function pointsApi(dependencies) {
      * @description Initiates the on-chain deposit process. Returns tx data for the frontend wallet.
      * @access Internal
      */
-    router.post('/purchase', async (req, res, next) => {
+    router.post('/purchase', purchaseRateLimiter, async (req, res, next) => {
+        const requestId = generateRequestId();
         try {
             const { quoteId, type, assetAddress, amount, tokenId, userWalletAddress, recipientAddress, referralCode, mode = 'contribute', chainId: bodyChainId } = req.body;
             const chainId = String(bodyChainId || '1');
+            
+            // Validate chain ID
+            if (!isValidChainId(chainId)) {
+                return res.status(400).json(createErrorResponse(
+                    `Unsupported chain ID '${chainId}'. Supported chains: ${Object.keys(RPC_ENV_VARS).join(', ')}.`,
+                    'UNSUPPORTED_CHAIN',
+                    requestId,
+                    { supportedChains: Object.keys(RPC_ENV_VARS).map(id => ({ chainId: id, name: CHAIN_NAMES[id] || id })) }
+                ));
+            }
+            
             const { creditService, ethereumService } = getChainServices(chainId);
             const SUPPORTED_MODES = ['contribute', 'donate'];
+            
+            // Validate mode
             if (!SUPPORTED_MODES.includes(mode)) {
-                logger.warn(`[pointsApi] /purchase unsupported mode '${mode}'. Allowed: ${SUPPORTED_MODES.join(', ')}`);
-                return res.status(400).json({ message: `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.` });
+                logger.warn(`[pointsApi] /purchase unsupported mode '${mode}'`, { requestId });
+                return res.status(400).json(createErrorResponse(
+                    `Unsupported mode '${mode}'. Allowed values: ${SUPPORTED_MODES.join(', ')}.`,
+                    'INVALID_MODE',
+                    requestId
+                ));
             }
-            logger.info(`[pointsApi] /purchase called with:`, req.body);
-            // Debug: Log the full request body
-            console.log('[pointsApi] /purchase received body:', req.body);
+            
+            // Validate required fields
             const missingFields = [];
             if (!quoteId) missingFields.push('quoteId');
             if (!type) missingFields.push('type');
             if (!assetAddress) missingFields.push('assetAddress');
             if (!userWalletAddress) missingFields.push('userWalletAddress');
             if (type === 'token' && !amount) missingFields.push('amount');
+            if (type === 'nft' && !tokenId) missingFields.push('tokenId');
+            
             if (missingFields.length > 0) {
-                logger.warn(`[pointsApi] /purchase missing required fields: ${missingFields.join(', ')}`);
-                console.warn('[pointsApi] /purchase missing fields:', missingFields, 'Body:', req.body);
-                return res.status(400).json({ message: 'Missing required fields.', missingFields });
+                logger.warn(`[pointsApi] /purchase missing required fields`, { requestId, missingFields });
+                return res.status(400).json(createErrorResponse(
+                    'Missing required fields.',
+                    'MISSING_FIELDS',
+                    requestId,
+                    { missingFields }
+                ));
             }
+            
+            // Validate addresses
+            if (!isValidEthereumAddress(assetAddress)) {
+                return res.status(400).json(createErrorResponse(
+                    'Invalid asset address format.',
+                    'INVALID_ADDRESS',
+                    requestId
+                ));
+            }
+            
+            if (!isValidEthereumAddress(userWalletAddress)) {
+                return res.status(400).json(createErrorResponse(
+                    'Invalid user wallet address format.',
+                    'INVALID_ADDRESS',
+                    requestId
+                ));
+            }
+            
+            // Validate amount for tokens
+            if (type === 'token' && !isValidAmount(amount)) {
+                return res.status(400).json(createErrorResponse(
+                    'Invalid amount format. Amount must be a positive number.',
+                    'INVALID_AMOUNT',
+                    requestId
+                ));
+            }
+            
+            // Validate quoteId format
+            if (quoteId && !quoteId.startsWith('qid_')) {
+                logger.warn(`[pointsApi] /purchase invalid quoteId format`, { requestId, quoteId });
+                // Don't fail, but log warning
+            }
+            
+            logger.info(`[pointsApi] /purchase processing purchase request`, { requestId, type, assetAddress, mode });
 
             let approvalRequired = false;
             let approvalTx = null;
@@ -305,25 +544,33 @@ module.exports = function pointsApi(dependencies) {
             }
 
             if (referralCode) {
-                logger.info(`[pointsApi] /purchase looking up referral code: ${referralCode}`);
-                const vault = await creditLedgerDb.findReferralVaultByName(referralCode);
-                if (vault && vault.vault_address) {
-                    logger.info(`[pointsApi] /purchase found vault for referral code ${referralCode}: ${vault.vault_address}`);
-                    toAddress = vault.vault_address;
+                // Sanitize referral code
+                const sanitizedCode = sanitizeReferralCode(referralCode);
+                if (!sanitizedCode) {
+                    logger.warn(`[pointsApi] /purchase invalid referral code format`, { requestId, referralCode });
                 } else {
-                    logger.warn(`[pointsApi] /purchase referral code ${referralCode} not found or vault has no address. Defaulting to foundation address.`);
+                    logger.info(`[pointsApi] /purchase looking up referral code`, { requestId, referralCode: sanitizedCode });
+                    const vault = await creditLedgerDb.findReferralVaultByName(sanitizedCode);
+                    if (vault && vault.vault_address) {
+                        logger.info(`[pointsApi] /purchase found vault for referral code`, { requestId, referralCode: sanitizedCode, vaultAddress: vault.vault_address });
+                        toAddress = vault.vault_address;
+                    } else {
+                        logger.warn(`[pointsApi] /purchase referral code not found or vault has no address`, { requestId, referralCode: sanitizedCode });
+                    }
                 }
-            } else if (recipientAddress && isValidAddress(recipientAddress)) {
-                logger.info(`[pointsApi] /purchase using recipientAddress from request body: ${recipientAddress}`);
+            } else if (recipientAddress) {
+                if (!isValidEthereumAddress(recipientAddress)) {
+                    return res.status(400).json(createErrorResponse(
+                        'Invalid recipient address format.',
+                        'INVALID_ADDRESS',
+                        requestId
+                    ));
+                }
+                logger.info(`[pointsApi] /purchase using recipientAddress from request body`, { requestId, recipientAddress });
                 toAddress = recipientAddress;
             }
 
-            logger.info(`[pointsApi] Using recipient address for deposit: ${toAddress}`);
-
-            // Helper to validate Ethereum address
-            function isValidAddress(addr) {
-                return /^0x[a-fA-F0-9]{40}$/.test(addr);
-            }
+            logger.info(`[pointsApi] Using recipient address for deposit`, { requestId, toAddress });
 
             if (type === 'token') {
                 // Get token decimals
@@ -438,11 +685,12 @@ module.exports = function pointsApi(dependencies) {
                 return res.status(400).json({ message: 'Invalid type.' });
             }
 
-            logger.info(`[pointsApi] /purchase returning tx data for purchaseId ${purchaseId}`);
+            logger.info(`[pointsApi] /purchase returning tx data`, { requestId, purchaseId });
             const responsePayload = {
                 approvalRequired,
                 approvalTx,
                 purchaseId,
+                requestId
             };
             if (mode === 'donate') {
                 responsePayload.donationTx = donationTx;
@@ -452,8 +700,12 @@ module.exports = function pointsApi(dependencies) {
 
             res.json(responsePayload);
         } catch (error) {
-            logger.error('[pointsApi] /purchase error:', error);
-            next(error);
+            logger.error('[pointsApi] /purchase error', { requestId, error: error.message, stack: error.stack });
+            res.status(500).json(createErrorResponse(
+                'An error occurred while preparing the purchase. Please try again.',
+                'PURCHASE_ERROR',
+                requestId
+            ));
         }
     });
 
@@ -463,18 +715,47 @@ module.exports = function pointsApi(dependencies) {
      * @access Internal
      */
     router.get('/tx-status', async (req, res, next) => {
+        const requestId = generateRequestId();
         try {
-            const { txHash } = req.query;
-            logger.info(`[pointsApi] /tx-status called with txHash: ${txHash}`);
+            const { txHash, chainId: queryChainId } = req.query;
+            const chainId = String(queryChainId || '1');
+            
             if (!txHash) {
-                logger.warn('[pointsApi] /tx-status missing txHash.');
-                return res.status(400).json({ message: 'Transaction hash is required.' });
+                logger.warn('[pointsApi] /tx-status missing txHash', { requestId });
+                return res.status(400).json(createErrorResponse(
+                    'Transaction hash is required.',
+                    'MISSING_FIELDS',
+                    requestId,
+                    { missing: ['txHash'] }
+                ));
             }
+            
+            // Validate chain ID
+            if (!isValidChainId(chainId)) {
+                return res.status(400).json(createErrorResponse(
+                    `Unsupported chain ID '${chainId}'. Supported chains: ${Object.keys(RPC_ENV_VARS).join(', ')}.`,
+                    'UNSUPPORTED_CHAIN',
+                    requestId,
+                    { supportedChains: Object.keys(RPC_ENV_VARS).map(id => ({ chainId: id, name: CHAIN_NAMES[id] || id })) }
+                ));
+            }
+            
+            // Validate transaction hash format
+            if (!isValidTransactionHash(txHash)) {
+                return res.status(400).json(createErrorResponse(
+                    'Invalid transaction hash format.',
+                    'INVALID_TX_HASH',
+                    requestId
+                ));
+            }
+            
+            const { creditService, ethereumService } = getChainServices(chainId);
+            logger.info('[pointsApi] /tx-status called', { requestId, txHash, chainId });
 
             // 1. Try to find the ledger entry
             const ledgerEntry = await creditService.creditLedgerDb.findLedgerEntryByTxHash(txHash);
             if (ledgerEntry) {
-                logger.info(`[pointsApi] /tx-status found ledger entry for txHash: ${txHash}`);
+                logger.info('[pointsApi] /tx-status found ledger entry', { requestId, txHash });
                 const {
                     status,
                     deposit_block_number: blockNumber,
@@ -489,10 +770,11 @@ module.exports = function pointsApi(dependencies) {
                 // Try to get symbol from config if not present
                 let assetSymbol = symbol;
                 if (!assetSymbol && assetAddress) {
-                    const tokenConfig = Object.entries(TOKEN_CONFIG).find(
+                    const tokenConfig = getChainTokenConfig(chainId);
+                    const tokenEntry = Object.entries(tokenConfig || {}).find(
                         ([address]) => address.toLowerCase() === assetAddress.toLowerCase()
                     );
-                    assetSymbol = tokenConfig ? tokenConfig[1].symbol : undefined;
+                    assetSymbol = tokenEntry ? tokenEntry[1].symbol : undefined;
                 }
                 // Format amount using centralized decimal service
                 let assetAmount = amount;
@@ -518,37 +800,43 @@ module.exports = function pointsApi(dependencies) {
             }
 
             // 2. If not found in ledger, check on-chain
-            logger.info(`[pointsApi] /tx-status ledger entry not found, checking on-chain for txHash: ${txHash}`);
+            logger.info('[pointsApi] /tx-status ledger entry not found, checking on-chain', { requestId, txHash });
             let txReceipt;
             try {
                 txReceipt = await ethereumService.getProvider().getTransactionReceipt(txHash);
             } catch (err) {
-                logger.warn(`[pointsApi] /tx-status error checking on-chain:`, err);
+                logger.warn('[pointsApi] /tx-status error checking on-chain', { requestId, error: err.message });
             }
             if (txReceipt) {
-                logger.info(`[pointsApi] /tx-status found on-chain tx, but not in ledger. Returning PENDING_CONFIRMATION.`);
+                logger.info('[pointsApi] /tx-status found on-chain tx, but not in ledger', { requestId, txHash });
                 res.json({
                     status: 'PENDING_CONFIRMATION',
                     txHash,
                     blockNumber: txReceipt.blockNumber,
                     receipt: null,
-                    failureReason: null
+                    failureReason: null,
+                    requestId
                 });
                 return;
             }
 
             // 3. Not found at all
-            logger.warn(`[pointsApi] /tx-status txHash not found in ledger or on-chain: ${txHash}`);
+            logger.warn('[pointsApi] /tx-status txHash not found in ledger or on-chain', { requestId, txHash });
             res.json({
                 status: 'UNKNOWN',
                 txHash,
                 blockNumber: null,
                 receipt: null,
-                failureReason: 'Transaction not found in ledger or on-chain.'
+                failureReason: 'Transaction not found in ledger or on-chain.',
+                requestId
             });
         } catch (error) {
-            logger.error('[pointsApi] /tx-status error:', error);
-            next(error);
+            logger.error('[pointsApi] /tx-status error', { requestId, error: error.message, stack: error.stack });
+            res.status(500).json(createErrorResponse(
+                'An error occurred while fetching transaction status. Please try again.',
+                'TX_STATUS_ERROR',
+                requestId
+            ));
         }
     });
 

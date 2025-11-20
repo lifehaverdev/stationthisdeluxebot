@@ -112,17 +112,69 @@ function getTokenConfig(address, chainId = MAINNET_CHAIN_ID) {
   );
 }
 
+/**
+ * Validates that a funding rate is within acceptable bounds (0 to 1)
+ * @param {number} rate - The funding rate to validate
+ * @param {string} fieldName - Name of the field for error messages
+ * @param {string} tokenAddress - Token address for error messages
+ * @throws {Error} If rate is invalid
+ */
+function validateFundingRate(rate, fieldName, tokenAddress) {
+  if (typeof rate !== 'number' || isNaN(rate)) {
+    throw new Error(`Invalid ${fieldName} for token ${tokenAddress}: must be a number`);
+  }
+  if (rate < 0 || rate > 1) {
+    throw new Error(`Invalid ${fieldName} for token ${tokenAddress}: ${rate} must be between 0 and 1`);
+  }
+}
+
+/**
+ * Validates all funding rates in the configuration on startup
+ * @throws {Error} If any rate is invalid
+ */
+function validateAllFundingRates() {
+  for (const [chainId, chainConfig] of Object.entries(TOKEN_CONFIG)) {
+    for (const [tokenAddress, config] of Object.entries(chainConfig)) {
+      if (config.fundingRate !== undefined) {
+        validateFundingRate(config.fundingRate, 'fundingRate', tokenAddress);
+      }
+      if (config.donationFundingRate !== undefined) {
+        validateFundingRate(config.donationFundingRate, 'donationFundingRate', tokenAddress);
+      }
+    }
+  }
+  
+  // Validate NFT funding rates
+  for (const [chainId, chainConfig] of Object.entries(TRUSTED_NFT_COLLECTIONS)) {
+    for (const [collectionAddress, config] of Object.entries(chainConfig)) {
+      if (config.fundingRate !== undefined) {
+        validateFundingRate(config.fundingRate, 'fundingRate', collectionAddress);
+      }
+    }
+  }
+}
+
 function getFundingRate(address, chainId = MAINNET_CHAIN_ID) {
   const cfg = getTokenConfig(address, chainId);
-  return cfg ? cfg.fundingRate : DEFAULT_FUNDING_RATE;
+  const rate = cfg ? cfg.fundingRate : DEFAULT_FUNDING_RATE;
+  // Ensure rate is within bounds (defensive check)
+  return Math.max(0, Math.min(1, rate));
 }
 
 function getDonationFundingRate(address, chainId = MAINNET_CHAIN_ID) {
   const cfg = getTokenConfig(address, chainId);
   if (!cfg) return DEFAULT_FUNDING_RATE;
-  return (typeof cfg.donationFundingRate === 'number')
-    ? cfg.donationFundingRate
-    : Math.min(1.05, cfg.fundingRate * 1.05); // default 5% boost capped at 1.05
+  
+  let rate;
+  if (typeof cfg.donationFundingRate === 'number') {
+    rate = cfg.donationFundingRate;
+  } else {
+    // Default 5% boost, capped at 1.0 (100%) not 1.05
+    rate = Math.min(1.0, cfg.fundingRate * 1.05);
+  }
+  
+  // Ensure rate is within bounds (defensive check)
+  return Math.max(0, Math.min(1, rate));
 }
 
 function getDecimals(address, chainId = MAINNET_CHAIN_ID) {
@@ -145,6 +197,15 @@ getChainNftConfig = function(chainId = MAINNET_CHAIN_ID) {
   return cfg;
 };
 
+// Validate all funding rates on module load
+try {
+  validateAllFundingRates();
+  console.log('[tokenConfig] All funding rates validated successfully');
+} catch (error) {
+  console.error('[tokenConfig] CRITICAL: Funding rate validation failed:', error.message);
+  throw error;
+}
+
 module.exports = {
   // Raw configs
   TOKEN_CONFIG,
@@ -163,4 +224,8 @@ module.exports = {
   getDecimals,
   getChainTokenConfig,
   getChainNftConfig,
+  
+  // Validation
+  validateFundingRate,
+  validateAllFundingRates,
 }; 

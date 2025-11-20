@@ -47,7 +47,28 @@ import { websocketClient } from '/js/websocketClient.js';
     window.fetch = async function(...args) {
         const resp = await originalFetch.apply(this, args);
         if (resp && resp.status === 401) {
+            // Don't trigger reauth for workspace GET requests (they can be public)
+            const url = args[0];
+            if (typeof url === 'string' && url.includes('/api/v1/workspaces/') && args[1]?.method === 'GET') {
+                return resp;
+            }
+            
+            // Don't trigger reauth if modal is already open or if this is a workspace operation
+            // that might legitimately fail (e.g., trying to save without being logged in)
             if (typeof window.openReauthModal === 'function' && !window.__reauthModalOpen__) {
+                // Check if we have a JWT in localStorage (from landing page login)
+                // If we do, the cookie might not be set yet - give it a moment
+                const jwtInStorage = localStorage.getItem('jwt');
+                if (jwtInStorage && !document.cookie.includes('jwt=')) {
+                    // JWT exists in storage but not in cookie - cookie might be setting
+                    // Wait a bit and check again before showing reauth modal
+                    setTimeout(() => {
+                        if (!document.cookie.includes('jwt=') && !window.__reauthModalOpen__) {
+                            window.openReauthModal();
+                        }
+                    }, 500);
+                    return resp;
+                }
                 window.openReauthModal();
             }
         }

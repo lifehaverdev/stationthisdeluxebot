@@ -20,16 +20,13 @@ function createPointsApi(dependencies) {
             const response = await internalApiClient.get(url);
             try {
                 const data = response.data || {};
-                const preview = {
+                logger.debug('[pointsApi-external] supported-assets response', {
                     chainId: chainId || null,
-                    tokensLen: Array.isArray(data.tokens) ? data.tokens.length : 'NA',
-                    token0: Array.isArray(data.tokens) ? data.tokens[0] : undefined,
-                    nftsLen: Array.isArray(data.nfts) ? data.nfts.length : 'NA',
-                    nft0: Array.isArray(data.nfts) ? data.nfts[0] : undefined,
-                };
-                console.log('[pointsApi-external] supported-assets response preview:', preview);
+                    tokensCount: Array.isArray(data.tokens) ? data.tokens.length : 0,
+                    nftsCount: Array.isArray(data.nfts) ? data.nfts.length : 0,
+                });
             } catch (e) {
-                console.warn('[pointsApi-external] Failed to log response preview:', e);
+                logger.warn('[pointsApi-external] Failed to log response preview', { error: e.message });
             }
             res.json(response.data);
         } catch (error) {
@@ -48,7 +45,22 @@ function createPointsApi(dependencies) {
             const response = await internalApiClient.post('/internal/v1/data/points/quote', req.body);
             res.json(response.data);
         } catch (error) {
-            next(error);
+            logger.error('[pointsApi-external] /quote error', { 
+                error: error.message,
+                status: error.response?.status,
+                data: error.response?.data 
+            });
+            // Forward error response from internal API if available
+            if (error.response) {
+                return res.status(error.response.status).json(error.response.data);
+            }
+            // Generic error if internal API error is not available
+            res.status(500).json({ 
+                error: { 
+                    code: 'QUOTE_ERROR', 
+                    message: 'An error occurred while generating the quote. Please try again.' 
+                } 
+            });
         }
     });
 
@@ -67,13 +79,19 @@ function createPointsApi(dependencies) {
                     const response = await internalApiClient.get(`/internal/v1/data/users/${req.user.userId}/preferences/preferredCharteredFund`);
                     if (response.data && response.data.value && response.data.value.referralCode) {
                         referralCode = response.data.value.referralCode;
-                        logger.info(`[pointsApi-external] Used referral code '${referralCode}' from user preferences for user ${req.user.userId}.`);
+                        logger.info('[pointsApi-external] Used referral code from user preferences', { 
+                            userId: req.user.userId,
+                            referralCode 
+                        });
                     }
                 } catch (error) {
                     // A 404 is expected if the preference isn't set. We can ignore it.
                     if (error.response && error.response.status !== 404) {
                         // Log other errors but don't block the transaction
-                        logger.warn(`[pointsApi-external] Failed to fetch user preferences: ${error.message}`);
+                        logger.warn('[pointsApi-external] Failed to fetch user preferences', { 
+                            error: error.message,
+                            userId: req.user.userId 
+                        });
                     }
                 }
             }
@@ -87,7 +105,22 @@ function createPointsApi(dependencies) {
             const response = await internalApiClient.post('/internal/v1/data/points/purchase', payload);
             res.json(response.data);
         } catch (error) {
-            next(error);
+            logger.error('[pointsApi-external] /purchase error', { 
+                error: error.message,
+                status: error.response?.status,
+                data: error.response?.data 
+            });
+            // Forward error response from internal API if available
+            if (error.response) {
+                return res.status(error.response.status).json(error.response.data);
+            }
+            // Generic error if internal API error is not available
+            res.status(500).json({ 
+                error: { 
+                    code: 'PURCHASE_ERROR', 
+                    message: 'An error occurred while preparing the purchase. Please try again.' 
+                } 
+            });
         }
     });
 
@@ -100,12 +133,32 @@ function createPointsApi(dependencies) {
         try {
             const { txHash } = req.query;
             if (!txHash) {
-                return res.status(400).json({ message: 'Transaction hash is required.' });
+                return res.status(400).json({ 
+                    error: { 
+                        code: 'MISSING_FIELDS', 
+                        message: 'Transaction hash is required.' 
+                    } 
+                });
             }
             const response = await internalApiClient.get(`/internal/v1/data/points/tx-status?txHash=${txHash}`);
             res.json(response.data);
         } catch (error) {
-            next(error);
+            logger.error('[pointsApi-external] /tx-status error', { 
+                error: error.message,
+                status: error.response?.status,
+                data: error.response?.data 
+            });
+            // Forward error response from internal API if available
+            if (error.response) {
+                return res.status(error.response.status).json(error.response.data);
+            }
+            // Generic error if internal API error is not available
+            res.status(500).json({ 
+                error: { 
+                    code: 'TX_STATUS_ERROR', 
+                    message: 'An error occurred while fetching transaction status. Please try again.' 
+                } 
+            });
         }
     });
 

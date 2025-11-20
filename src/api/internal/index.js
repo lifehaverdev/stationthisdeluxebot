@@ -6,6 +6,8 @@
 
 const express = require('express');
 const axios = require('axios');
+const { createLogger } = require('../../utils/logger');
+const { createRateLimitMiddleware } = require('../../utils/rateLimiter');
 const createStatusService = require('./status');
 const { createUserCoreApi, createUserEventsApi, createUserPreferencesApiRouter, createUserStatusReportApiService } = require('./users');
 const { createTransactionsApiService, createPointsApi, createCreditLedgerApi, createUserEconomyApi, createRatesApiService } = require('./economy');
@@ -18,7 +20,6 @@ const { loraTriggerMapApi, lorasApiRouter, loraImportRouter } = require('./loras
 const createTrainingsApi = require('./trainingsApi');
 const createSpellsApi = require('./spells'); // spells index now exports function
 const { initializeLlmApi } = require('./llm');
-const { createLogger } = require('../../utils/logger');
 const internalApiClient = require('../../utils/internalApiClient');
 const initializeWalletsApi = require('./wallets'); // path updated after folder reorg
 const { createAuthApi } = require('./auth');
@@ -53,6 +54,23 @@ function initializeInternalServices(dependencies = {}) {
   });
 
   const logger = dependencies.logger || console;
+
+  // General rate limiting for internal API: 100 requests per 15 minutes per IP
+  // This provides basic DoS protection while allowing legitimate internal traffic
+  const generalRateLimiter = createRateLimitMiddleware({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100,
+    message: 'Too many requests to internal API. Please try again later.',
+    // Skip rate limiting for health checks and status endpoints
+    skip: (req) => {
+      return req.path === '/status' || 
+             req.path === '/health' || 
+             req.path.startsWith('/internal/v1/data/system/status');
+    }
+  }, logger);
+
+  // Apply general rate limiting to v1DataRouter
+  v1DataRouter.use(generalRateLimiter);
   const dbDataServices = dependencies.db?.data;
 
   // Initialize logger for the internal API

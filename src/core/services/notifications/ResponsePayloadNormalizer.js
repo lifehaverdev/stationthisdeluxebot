@@ -46,6 +46,7 @@ class ResponsePayloadNormalizer {
         item && typeof item === 'object' && item.data && Array.isArray(item.data.images)
       );
       
+      logger.debug(`[ResponsePayloadNormalizer] Array format detected. hasNestedImages=${hasNestedImages}, array length=${responsePayload.length}`);
       if (hasNestedImages) {
         logger.debug('[ResponsePayloadNormalizer] Detected ComfyUI array format with nested data.images, extracting images');
         const normalized = [];
@@ -91,7 +92,8 @@ class ResponsePayloadNormalizer {
       }
       
       // Standard array format - validate and return
-      const normalized = responsePayload.map(item => {
+      logger.debug('[ResponsePayloadNormalizer] Using standard array format handler');
+      const normalized = responsePayload.map((item, index) => {
         if (typeof item === 'string') {
           // Convert plain string to proper format
           return { type: 'text', data: { text: [item] } };
@@ -99,6 +101,11 @@ class ResponsePayloadNormalizer {
         if (item && typeof item === 'object') {
           // Ensure it has type and data structure
           if (item.data) {
+            // Check if this item has images that we should extract
+            if (Array.isArray(item.data.images)) {
+              logger.debug(`[ResponsePayloadNormalizer] Standard handler: Item ${index} has ${item.data.images.length} image(s) in data.images, converting to image type`);
+              return { type: 'image', data: { images: item.data.images } };
+            }
             return { type: item.type || 'unknown', data: item.data };
           }
           // If it's an object without data, wrap it
@@ -334,8 +341,10 @@ class ResponsePayloadNormalizer {
       
       // Extract images
       if (item.data.images && Array.isArray(item.data.images)) {
-        item.data.images.forEach((image) => {
+        console.log(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.images.length} image(s) in item.data.images (item.type=${item.type})`);
+        item.data.images.forEach((image, idx) => {
           if (image && image.url) {
+            console.log(`[ResponsePayloadNormalizer] extractMedia: Extracting image ${idx} as photo: ${image.url.substring(0, 80)}...`);
             media.push({ 
               type: 'photo', 
               url: image.url,
@@ -347,6 +356,7 @@ class ResponsePayloadNormalizer {
       
       // Extract files (videos, documents, images, etc.)
       if (item.data.files && Array.isArray(item.data.files)) {
+        console.log(`[ResponsePayloadNormalizer] extractMedia: Found ${item.data.files.length} file(s) in item.data.files (item.type=${item.type})`);
         item.data.files.forEach(file => {
           if (file && file.url) {
             // Determine type from file properties
@@ -412,6 +422,7 @@ class ResponsePayloadNormalizer {
               }
             }
             
+            console.log(`[ResponsePayloadNormalizer] extractMedia: Extracted file as ${mediaType} (reason: ${detectionReason}): ${file.url.substring(0, 80)}...`);
             media.push({ 
               type: mediaType, 
               url: file.url,
@@ -422,6 +433,7 @@ class ResponsePayloadNormalizer {
       }
     }
     
+    console.log(`[ResponsePayloadNormalizer] extractMedia: Returning ${media.length} media item(s): ${media.map(m => `${m.type}(${m.url?.substring(0, 50)}...)`).join(', ')}`);
     return media;
   }
 

@@ -1,4 +1,4 @@
-const { JsonRpcProvider, Wallet, Contract, formatEther, Interface } = require('ethers');
+const { JsonRpcProvider, Wallet, Contract, formatEther, Interface, isAddress } = require('ethers');
 
 /**
  * @class EthereumService
@@ -34,6 +34,12 @@ class EthereumService {
     this.signer = new Wallet(privateKey, this.provider);
     this.chainId = config.chainId; // Allow chainId to be passed in.
     this.interfaceCache = new Map(); // For caching ethers.Interface objects
+    this.MAX_CACHE_SIZE = 100; // LRU cache size limit
+    this.cacheStats = {
+      hits: 0,
+      misses: 0,
+      evictions: 0
+    };
 
     this.logger.info(`[EthereumService] Initialized for address: ${this.signer.address} on chainId: ${this.chainId}`);
     this.logger.info(`[EthereumService] DEBUG: Private key loaded from ETHEREUM_SIGNER_PRIVATE_KEY: ${privateKey ? 'YES' : 'NO'}`);
@@ -42,17 +48,57 @@ class EthereumService {
 
   /**
    * Helper to get or create a cached Interface object from an ABI.
+   * Implements LRU cache with size limit to prevent memory leaks.
    * @param {Array} abi - The contract ABI.
    * @returns {import('ethers').Interface}
    * @private
    */
   _getInterface(abi) {
-    const abiString = JSON.stringify(abi); // Use stringified ABI as a key
-    if (!this.interfaceCache.has(abiString)) {
-        this.logger.debug('[EthereumService] Caching new ethers.Interface for a given ABI.');
-        this.interfaceCache.set(abiString, new Interface(abi));
+    if (!Array.isArray(abi) || abi.length === 0) {
+      throw new Error('ABI must be a non-empty array');
     }
-    return this.interfaceCache.get(abiString);
+    
+    const abiString = JSON.stringify(abi);
+    
+    // Check cache (LRU: move to end on access)
+    if (this.interfaceCache.has(abiString)) {
+      this.cacheStats.hits++;
+      const iface = this.interfaceCache.get(abiString);
+      // Move to end (most recently used)
+      this.interfaceCache.delete(abiString);
+      this.interfaceCache.set(abiString, iface);
+      return iface;
+    }
+    
+    // Cache miss
+    this.cacheStats.misses++;
+    
+    // Evict oldest if cache is full
+    if (this.interfaceCache.size >= this.MAX_CACHE_SIZE) {
+      const firstKey = this.interfaceCache.keys().next().value;
+      this.interfaceCache.delete(firstKey);
+      this.cacheStats.evictions++;
+      this.logger.debug(`[EthereumService] Evicted oldest Interface from cache. Cache size: ${this.interfaceCache.size}`);
+    }
+    
+    this.logger.debug('[EthereumService] Caching new ethers.Interface for a given ABI.');
+    const iface = new Interface(abi);
+    this.interfaceCache.set(abiString, iface);
+    return iface;
+  }
+
+  /**
+   * Get cache statistics for monitoring and tuning.
+   * @returns {object} Cache statistics including hit rate, size, and max size.
+   */
+  getCacheStats() {
+    const total = this.cacheStats.hits + this.cacheStats.misses;
+    return {
+      ...this.cacheStats,
+      hitRate: total > 0 ? (this.cacheStats.hits / total * 100).toFixed(2) + '%' : '0%',
+      size: this.interfaceCache.size,
+      maxSize: this.MAX_CACHE_SIZE
+    };
   }
 
   /**
@@ -93,14 +139,15 @@ class EthereumService {
    */
   async read(contractAddress, abi, functionName, ...args) {
     this.logger.info(`[EthereumService] Executing read operation: ${functionName} on ${contractAddress}`);
-    try {
-      // For read operations, we don't need a signer.
+    
+    if (!isAddress(contractAddress)) {
+      throw new Error(`Invalid contract address: ${contractAddress}`);
+    }
+    
+    return await this._retryOperation(async () => {
       const contract = this.getContract(contractAddress, abi, false);
       return await contract[functionName](...args);
-    } catch (error) {
-      this.logger.error(`[EthereumService] Error during read operation '${functionName}':`, error);
-      throw error;
-    }
+    }, `read(${functionName})`);
   }
 
   /**
@@ -115,6 +162,11 @@ class EthereumService {
   async write(contractAddress, abi, functionName, ...args) {
     this.logger.info(`[EthereumService] Sending write transaction: ${functionName} on ${contractAddress}`);
     this.logger.info(`[EthereumService] DEBUG: Transaction will be signed by: ${this.signer.address}`);
+    
+    if (!isAddress(contractAddress)) {
+      throw new Error(`Invalid contract address: ${contractAddress}`);
+    }
+    
     try {
       const contract = this.getContract(contractAddress, abi, true);
       const txResponse = await contract[functionName](...args);
@@ -122,33 +174,79 @@ class EthereumService {
       this.logger.info(`[EthereumService] DEBUG: Transaction from address: ${txResponse.from}`);
       return txResponse;
     } catch (error) {
-      this.logger.error(`[EthereumService] Error sending transaction '${functionName}':`, error);
-      throw error;
+      const context = {
+        operation: 'write',
+        contractAddress,
+        functionName,
+        args: args.map(a => typeof a === 'bigint' ? a.toString() : a),
+        originalError: error.message
+      };
+      this.logger.error(`[EthereumService] Error sending transaction '${functionName}':`, context);
+      const enhancedError = new Error(`Write operation failed: ${functionName} on ${contractAddress}. ${error.message}`);
+      enhancedError.cause = error;
+      throw enhancedError;
     }
   }
 
   /**
    * Waits for a transaction to be confirmed and returns the receipt.
    * @param {import('ethers').TransactionResponse} txResponse - The response object from a `write` call.
+   * @param {object} [options={}] - Options for confirmation.
+   * @param {number} [options.confirmations=1] - Number of block confirmations to wait for.
+   * @param {number} [options.timeoutMs=300000] - Timeout in milliseconds (default: 5 minutes).
    * @returns {Promise<import('ethers').TransactionReceipt>} The transaction receipt after it's confirmed.
    */
-  async waitForConfirmation(txResponse) {
+  async waitForConfirmation(txResponse, options = {}) {
+    const {
+      confirmations = 1,
+      timeoutMs = 300000 // 5 minutes default
+    } = options;
+    
     if (!txResponse || typeof txResponse.wait !== 'function') {
       this.logger.error('[EthereumService] waitForConfirmation received an invalid transaction response object.');
       throw new Error('Invalid input: txResponse must be a valid TransactionResponse object.');
     }
-    this.logger.info(`[EthereumService] Waiting for confirmation of tx: ${txResponse.hash}...`);
+    
+    this.logger.info(`[EthereumService] Waiting for ${confirmations} confirmation(s) of tx: ${txResponse.hash}...`);
+    
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Transaction confirmation timeout after ${timeoutMs}ms. Hash: ${txResponse.hash}`));
+      }, timeoutMs);
+    });
+    
     try {
-      const receipt = await txResponse.wait();
+      const receipt = await Promise.race([
+        txResponse.wait(confirmations),
+        timeoutPromise
+      ]);
+      
       this.logger.info(`[EthereumService] Transaction ${txResponse.hash} confirmed in block: ${receipt.blockNumber}`);
-      if (!receipt || !receipt.hash) {
-          this.logger.error(`[EthereumService] CRITICAL: Received an invalid receipt for a confirmed transaction! Hash: ${txResponse.hash}`, { receipt });
-          throw new Error(`Invalid receipt received for transaction ${txResponse.hash}`);
+      
+      if (!receipt || !receipt.hash || receipt.hash !== txResponse.hash) {
+        this.logger.error(`[EthereumService] CRITICAL: Received an invalid receipt for a confirmed transaction! Hash: ${txResponse.hash}`, { receipt });
+        throw new Error(`Invalid receipt received for transaction ${txResponse.hash}`);
       }
+      
+      if (receipt.status === 0) {
+        throw new Error(`Transaction ${txResponse.hash} reverted. Check contract execution.`);
+      }
+      
       return receipt;
     } catch (error) {
-        this.logger.error(`[EthereumService] Error waiting for confirmation of tx ${txResponse.hash}:`, error);
-        throw error;
+      if (error.message.includes('timeout')) {
+        // Check if transaction is still pending
+        try {
+          const tx = await this.provider.getTransaction(txResponse.hash);
+          if (tx && tx.blockNumber === null) {
+            this.logger.warn(`[EthereumService] Transaction ${txResponse.hash} still pending after timeout`);
+          }
+        } catch (checkError) {
+          this.logger.error(`[EthereumService] Failed to check transaction status:`, checkError);
+        }
+      }
+      this.logger.error(`[EthereumService] Error waiting for confirmation of tx ${txResponse.hash}:`, error);
+      throw error;
     }
   }
 
@@ -159,11 +257,21 @@ class EthereumService {
    */
   async getLatestBlock() {
     this.logger.info('[EthereumService] Fetching latest block number...');
-    try {
+    return await this._retryOperation(async () => {
       return await this.provider.getBlockNumber();
+    }, 'getLatestBlock');
+  }
+
+  /**
+   * Health check for provider connectivity.
+   * @returns {Promise<object>} Health status with blockNumber and chainId.
+   */
+  async healthCheck() {
+    try {
+      const blockNumber = await this.provider.getBlockNumber();
+      return { healthy: true, blockNumber, chainId: this.chainId };
     } catch (error) {
-      this.logger.error('[EthereumService] Error fetching latest block:', error);
-      throw error;
+      return { healthy: false, error: error.message, chainId: this.chainId };
     }
   }
 
@@ -180,6 +288,21 @@ class EthereumService {
    */
   async getPastEvents(contractAddress, abi, eventName, fromBlock, toBlock, topics = []) {
     this.logger.info(`[EthereumService] Fetching past '${eventName}' events from block ${fromBlock} to ${toBlock}`);
+    
+    if (!isAddress(contractAddress)) {
+      throw new Error(`Invalid contract address: ${contractAddress}`);
+    }
+    
+    // Resolve 'latest' to actual block number
+    let resolvedToBlock = toBlock;
+    if (toBlock === 'latest') {
+      resolvedToBlock = await this.provider.getBlockNumber();
+    }
+    
+    if (fromBlock > resolvedToBlock) {
+      throw new Error(`Invalid block range: fromBlock (${fromBlock}) > toBlock (${resolvedToBlock})`);
+    }
+    
     const contract = this.getContract(contractAddress, abi);
     
     // Node providers often limit the block range for event queries.
@@ -190,8 +313,8 @@ class EthereumService {
     try {
       const eventFilter = contract.filters[eventName](...topics);
       let currentBlock = fromBlock;
-      while (currentBlock <= toBlock) {
-        const endBlock = Math.min(currentBlock + MAX_BLOCK_RANGE, toBlock);
+      while (currentBlock <= resolvedToBlock) {
+        const endBlock = Math.min(currentBlock + MAX_BLOCK_RANGE, resolvedToBlock);
         this.logger.debug(`[EthereumService] Querying chunk for '${eventName}' from ${currentBlock} to ${endBlock}`);
         const events = await contract.queryFilter(eventFilter, currentBlock, endBlock);
         allEvents = allEvents.concat(events);
@@ -201,7 +324,15 @@ class EthereumService {
       this.logger.info(`[EthereumService] Found ${allEvents.length} total '${eventName}' events across all chunks.`);
       return allEvents;
     } catch (error) {
-      this.logger.error(`[EthereumService] Error fetching past events '${eventName}':`, error);
+      const context = {
+        operation: 'getPastEvents',
+        contractAddress,
+        eventName,
+        fromBlock,
+        toBlock: resolvedToBlock,
+        originalError: error.message
+      };
+      this.logger.error(`[EthereumService] Error fetching past events '${eventName}':`, context);
       throw error;
     }
   }
@@ -216,12 +347,28 @@ class EthereumService {
    */
   async estimateGasCostInUsd(contractAddress, abi, functionName, ...args) {
     this.logger.info(`[EthereumService] Estimating gas for ${functionName} on ${contractAddress}...`);
+    
+    if (!isAddress(contractAddress)) {
+      throw new Error(`Invalid contract address: ${contractAddress}`);
+    }
+    
     try {
         const contract = this.getContract(contractAddress, abi, true); // Connect to signer for estimation
-        const gasEstimate = await contract[functionName].estimateGas(...args);
+        
+        let gasEstimate;
+        try {
+          gasEstimate = await contract[functionName].estimateGas(...args);
+        } catch (error) {
+          // Distinguish between simulation failures and network errors
+          if (error.code === 'CALL_EXCEPTION' || error.reason) {
+            throw new Error(`Gas estimation failed: Transaction would revert. ${error.reason || error.message}`);
+          }
+          throw error;
+        }
         
         const feeData = await this.provider.getFeeData();
-        const gasPrice = feeData.gasPrice; // Using gasPrice for simplicity; can be upgraded to EIP-1559 fields
+        // Prefer EIP-1559 if available, fallback to legacy gasPrice
+        const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
         
         if (!gasPrice) {
             throw new Error('Could not retrieve gas price from provider.');
@@ -243,7 +390,13 @@ class EthereumService {
         return estimatedCostUsd;
 
     } catch (error) {
-        this.logger.error(`[EthereumService] Error during gas estimation for '${functionName}':`, error);
+        const context = {
+          operation: 'estimateGasCostInUsd',
+          contractAddress,
+          functionName,
+          originalError: error.message
+        };
+        this.logger.error(`[EthereumService] Error during gas estimation for '${functionName}':`, context);
         throw error;
     }
   }
@@ -278,8 +431,98 @@ class EthereumService {
    * @returns {import('ethers').Result} The decoded log arguments.
    */
   decodeEventLog(eventFragment, data, topics, abi) {
-    const iface = this._getInterface(abi);
-    return iface.decodeEventLog(eventFragment, data, topics);
+    if (!eventFragment) {
+      throw new Error('Event fragment is required for decoding');
+    }
+    
+    try {
+      const iface = this._getInterface(abi);
+      return iface.decodeEventLog(eventFragment, data, topics);
+    } catch (error) {
+      this.logger.error(`[EthereumService] Failed to decode event log:`, {
+        eventFragment: eventFragment?.name,
+        data,
+        topics,
+        error: error.message
+      });
+      throw new Error(`Event decoding failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Retry an operation with exponential backoff for transient failures.
+   * @param {Function} operation - Async function to retry.
+   * @param {string} operationName - Name of the operation for logging.
+   * @param {number} maxRetries - Maximum number of retry attempts (default: 3).
+   * @returns {Promise<any>} Result of the operation.
+   * @private
+   */
+  async _retryOperation(operation, operationName, maxRetries = 3) {
+    let lastError;
+    const baseDelay = 1000; // 1 second
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        
+        // Check if error is retryable
+        const isRetryable = this._isRetryableError(error);
+        
+        if (!isRetryable || attempt >= maxRetries) {
+          // Non-retryable error or exhausted retries
+          const context = {
+            operation: operationName,
+            attempt,
+            maxRetries,
+            originalError: error.message
+          };
+          this.logger.error(`[EthereumService] ${operationName} failed:`, context);
+          throw error;
+        }
+        
+        // Calculate exponential backoff
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        this.logger.warn(`[EthereumService] ${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`, error.message);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
+   * Check if an error is retryable (transient failure).
+   * @param {Error} error - The error to check.
+   * @returns {boolean} Whether the error is retryable.
+   * @private
+   */
+  _isRetryableError(error) {
+    // Network errors
+    if (error.code === 'NETWORK_ERROR' || 
+        error.code === 'TIMEOUT' ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('ECONNRESET') ||
+        error.message?.includes('ENOTFOUND') ||
+        error.message?.includes('ETIMEDOUT')) {
+      return true;
+    }
+    
+    // Rate limiting
+    if (error.status === 429 || error.code === 429) {
+      return true;
+    }
+    
+    // RPC errors that might be transient
+    if (error.code === -32005 || // Request limit exceeded
+        error.code === -32002) { // Too many requests
+      return true;
+    }
+    
+    // Non-retryable: contract reverts, invalid transactions, etc.
+    return false;
   }
 }
 

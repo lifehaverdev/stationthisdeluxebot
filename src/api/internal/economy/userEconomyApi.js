@@ -413,30 +413,78 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         return res.status(402).json({ error: { code: 'INSUFFICIENT_FUNDS', message: `User has insufficient points. Required: ${pointsToSpend}, Available: ${combinedPointsRemaining}.`, requestId } });
       }
 
-      // 3. Iterate through sorted deposits and deduct points
-      let pointsLeftToDeduct = pointsToSpend;
-      const spendSummary = [];
+      // 3. Execute point deduction within a transaction to prevent race conditions
+      const spendSummary = await db.creditLedger.withTransaction(async (session) => {
+        // Re-read deposits within transaction to get consistent view
+        let txActiveDeposits;
+        if (spendTarget === 'masterAccountId' || spendTarget === 'combined') {
+          txActiveDeposits = await db.creditLedger.findActiveDepositsForUser(masterAccountId);
+        } else {
+          // For wallet-based, we need to re-read by wallet address
+          const userCore = await db.userCore.findUserCoreById(masterAccountId);
+          let primaryWallet = null;
+          if (userCore && Array.isArray(userCore.wallets)) {
+            primaryWallet = userCore.wallets.find(w => w.isPrimary) || userCore.wallets[0];
+          }
+          if (primaryWallet && primaryWallet.address) {
+            txActiveDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(primaryWallet.address);
+          } else {
+            txActiveDeposits = [];
+          }
+        }
 
-      for (const deposit of activeDeposits) {
-        if (pointsLeftToDeduct <= 0) break;
+        // Merge with supplemental deposits if needed
+        if (spendTarget === 'combined' && walletAddress) {
+          const supplementalDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(walletAddress);
+          const existingIds = new Set(txActiveDeposits.map(d => d._id.toString()));
+          for (const dep of supplementalDeposits) {
+            if (!existingIds.has(dep._id.toString())) {
+              txActiveDeposits.push(dep);
+            }
+          }
+        }
 
-        const pointsBefore = deposit.points_remaining;
-        const pointsToDeductFromThisDeposit = Math.min(pointsLeftToDeduct, pointsBefore);
+        // Re-validate total points within transaction
+        const txTotalPoints = txActiveDeposits.reduce((sum, deposit) => sum + (deposit.points_remaining || 0), 0);
+        if (txTotalPoints < pointsToSpend) {
+          throw new Error(`Insufficient points in transaction. Required: ${pointsToSpend}, Available: ${txTotalPoints}`);
+        }
 
-        await db.creditLedger.deductPointsFromDeposit(deposit._id, pointsToDeductFromThisDeposit);
+        // Sort by funding rate (ascending - lowest rate first)
+        txActiveDeposits.sort((a, b) => (a.funding_rate_applied || 0) - (b.funding_rate_applied || 0));
 
-        const deductionRecord = {
-          depositId: deposit._id.toString(),
-          tokenAddress: deposit.token_address,
-          fundingRate: deposit.funding_rate_applied,
-          pointsBefore: pointsBefore,
-          pointsDeducted: pointsToDeductFromThisDeposit,
-          pointsAfter: pointsBefore - pointsToDeductFromThisDeposit,
-        };
-        spendSummary.push(deductionRecord);
+        // Iterate through sorted deposits and deduct points atomically
+        let pointsLeftToDeduct = pointsToSpend;
+        const summary = [];
 
-        pointsLeftToDeduct -= pointsToDeductFromThisDeposit;
-      }
+        for (const deposit of txActiveDeposits) {
+          if (pointsLeftToDeduct <= 0) break;
+
+          const pointsBefore = deposit.points_remaining;
+          const pointsToDeductFromThisDeposit = Math.min(pointsLeftToDeduct, pointsBefore);
+
+          // Deduct points within transaction (will throw if insufficient)
+          await db.creditLedger.deductPointsFromDeposit(deposit._id, pointsToDeductFromThisDeposit, session);
+
+          const deductionRecord = {
+            depositId: deposit._id.toString(),
+            tokenAddress: deposit.token_address,
+            fundingRate: deposit.funding_rate_applied,
+            pointsBefore: pointsBefore,
+            pointsDeducted: pointsToDeductFromThisDeposit,
+            pointsAfter: pointsBefore - pointsToDeductFromThisDeposit,
+          };
+          summary.push(deductionRecord);
+
+          pointsLeftToDeduct -= pointsToDeductFromThisDeposit;
+        }
+
+        if (pointsLeftToDeduct > 0) {
+          throw new Error(`Failed to deduct all points. Remaining: ${pointsLeftToDeduct}`);
+        }
+
+        return summary;
+      });
       
       logger.info(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId} (target: ${spendTarget})`, {
         totalPointsSpent: pointsToSpend,

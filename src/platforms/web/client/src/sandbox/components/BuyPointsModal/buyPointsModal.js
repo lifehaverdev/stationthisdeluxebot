@@ -16,6 +16,9 @@ const buyPointsState = {
     donateQuote: null
 };
 
+// --- Request Cancellation ---
+let currentQuoteAbortController = null;
+
 // --- DOM Element References ---
 let modal, modalContent, walletInfoDiv, closeModalBtn, closeModalBtnBottom, step1, step2, step3, step4, step5, loader, errorDisplay;
 let assetSelection, amountInput, quoteDisplay, reviewSummary, txStatusDisplay, receiptDisplay;
@@ -29,6 +32,10 @@ function safeToFixed(val, digits = 2) {
 }
 
 function goToStep(stepNumber) {
+    // Clear error when navigating between steps
+    if (buyPointsState.error && stepNumber !== buyPointsState.step) {
+        buyPointsState.error = null;
+    }
     buyPointsState.step = stepNumber;
     render();
 }
@@ -452,8 +459,23 @@ async function getUserWalletAddress() {
 
 async function fetchQuote() {
     if (!buyPointsState.selectedAsset || !buyPointsState.amount) return;
-    if (!(await ensureCorrectNetwork())) return;
+    
+    // Validate network before fetching quote
+    const isCorrectNetwork = await ensureCorrectNetwork();
+    if (!isCorrectNetwork) {
+        showError('Please switch to a supported network to get a quote.');
+        return;
+    }
+    
+    // Cancel any in-flight quote request
+    if (currentQuoteAbortController) {
+        currentQuoteAbortController.abort();
+    }
+    currentQuoteAbortController = new AbortController();
+    
     showLoader(true);
+    buyPointsState.error = null; // Clear previous errors
+    
     try {
         let amountToSend = buyPointsState.amount;
         if (buyPointsState.selectedAsset.type === 'token') {
@@ -476,9 +498,22 @@ async function fetchQuote() {
                 'X-CSRF-Token': token
             },
             body: JSON.stringify(body),
-            credentials: 'include'
+            credentials: 'include',
+            signal: currentQuoteAbortController.signal
         });
-        if (!res.ok) throw new Error('Failed to fetch quote');
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            let errorMessage = 'Could not fetch quote.';
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.message || errorMessage;
+            } catch {
+                // If not JSON, use default message
+            }
+            throw new Error(errorMessage);
+        }
+        
         buyPointsState.quote = await res.json();
 
         // If current mode is contribute, fetch a donate quote in parallel for comparison
@@ -492,13 +527,17 @@ async function fetchQuote() {
                         'X-CSRF-Token': token
                     },
                     body: JSON.stringify(donateBody),
-                    credentials: 'include'
+                    credentials: 'include',
+                    signal: currentQuoteAbortController.signal
                 });
                 if (donateRes.ok) {
                     buyPointsState.donateQuote = await donateRes.json();
                 }
             } catch (e) {
-                console.warn('[BuyPointsModal] Failed to fetch donate quote:', e);
+                // Only log if not aborted
+                if (e.name !== 'AbortError') {
+                    console.warn('[BuyPointsModal] Failed to fetch donate quote:', e);
+                }
             }
         } else {
             buyPointsState.donateQuote = null; // clear if switched to donate
@@ -506,8 +545,15 @@ async function fetchQuote() {
         showLoader(false);
         render();
     } catch (err) {
+        // Don't show error if request was aborted (user changed amount)
+        if (err.name === 'AbortError') {
+            return;
+        }
         showLoader(false);
-        showError('Could not fetch quote.');
+        const errorMessage = err.message || 'Could not fetch quote. Please check your network connection and try again.';
+        showError(errorMessage);
+    } finally {
+        currentQuoteAbortController = null;
     }
 }
 
@@ -593,7 +639,7 @@ async function initiatePurchase() {
             const actionLabel = buyPointsState.mode === 'donate' ? 'donation' : 'deposit';
             showError(`Please sign the ${actionLabel} transaction in your wallet.`);
             txHash = await sendTransaction(finalTx);
-            console.log('[BuyPointsModal] ${actionLabel} tx sent:', txHash);
+            console.log(`[BuyPointsModal] ${actionLabel} tx sent:`, txHash);
             buyPointsState.txStatus = { 
                 status: 'submitted', 
                 txHash: txHash, 
@@ -606,8 +652,9 @@ async function initiatePurchase() {
         }
         showLoader(false);
         goToStep(4); // Step 4: Waiting for confirmation
-        // User can click 'Refresh' to update their account info
-        // TODO: Integrate notification/event-driven updates for real-time status
+        
+        // Subscribe to real-time transaction status updates via WebSocket
+        subscribeToTransactionUpdates(txHash);
     } catch (err) {
         showLoader(false);
         showError(err.message || 'Could not initiate purchase.');
@@ -616,24 +663,71 @@ async function initiatePurchase() {
 
 // --- Add a manual refresh function ---
 async function handleManualRefresh() {
+    if (!buyPointsState.txStatus || !buyPointsState.txStatus.txHash) {
+        showError('No transaction to refresh.');
+        return;
+    }
+    
     showLoader(true);
+    buyPointsState.error = null;
+    
     try {
-        // Fetch latest user/account info (implement as needed)
-        // Example: await fetchUserAccountInfo();
-        // Optionally, update buyPointsState with new info
+        const txHash = buyPointsState.txStatus.txHash;
+        const res = await fetch(`${API_BASE_URL}/tx-status?txHash=${txHash}`, {
+            credentials: 'include',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Failed to fetch transaction status');
+        }
+        
+        const statusData = await res.json();
+        
+        // Update txStatus with latest data
+        buyPointsState.txStatus = {
+            ...buyPointsState.txStatus,
+            status: statusData.status,
+            receipt: statusData.receipt,
+            confirmationTxHash: statusData.receipt?.confirmation_tx_hash || statusData.receipt?.confirmationTxHash,
+            failureReason: statusData.failureReason
+        };
+        
+        // Advance to receipt step if confirmed
+        if (statusData.status === 'CONFIRMED' && statusData.receipt) {
+            goToStep(5);
+        } else if (statusData.status === 'FAILED' || statusData.failureReason) {
+            buyPointsState.txStatus.failureReason = statusData.failureReason || 'Transaction failed';
+            showError(buyPointsState.txStatus.failureReason);
+        }
+        
+        render();
         showLoader(false);
-        // Optionally, advance to receipt step if confirmed
-        // goToStep(5);
     } catch (err) {
         showLoader(false);
-        showError('Failed to refresh account info.');
+        showError(err.message || 'Failed to refresh transaction status. Please try again.');
     }
 }
 
 // --- Event Handlers ---
 function handleAmountChange(e) {
-    buyPointsState.amount = e.target.value;
+    const newAmount = e.target.value;
+    
+    // Basic input validation: allow empty, numbers, and single decimal point
+    if (newAmount !== '' && !/^\d*\.?\d*$/.test(newAmount)) {
+        // Invalid input, don't update state
+        return;
+    }
+    
+    // Prevent negative numbers
+    if (newAmount.startsWith('-')) {
+        return;
+    }
+    
+    buyPointsState.amount = newAmount;
     buyPointsState.quote = null;
+    buyPointsState.error = null; // Clear errors when user changes input
+    
     if (buyPointsState.amount && buyPointsState.selectedAsset) {
         debounce(() => fetchQuote(), 400);
     } else {
@@ -661,6 +755,82 @@ function handlePointsDepositUpdate(event) {
     }
 }
 
+function handleTransactionStatusUpdate(event) {
+    console.log('[BuyPointsModal] Received transactionStatusUpdate event:', event);
+    const { txHash, status, message, error, receipt, originalTxHashes } = event;
+
+    // Only process updates for the current transaction
+    if (!buyPointsState.txStatus || buyPointsState.txStatus.txHash !== txHash) {
+        // Check if this is a confirmation tx hash for one of our original transactions
+        if (originalTxHashes && buyPointsState.txStatus && originalTxHashes.includes(buyPointsState.txStatus.txHash)) {
+            // This is an update for our transaction, but using the confirmation tx hash
+            // Update the txStatus to track the confirmation transaction
+            buyPointsState.txStatus.confirmationTxHash = txHash;
+        } else {
+            return; // Not our transaction
+        }
+    }
+
+    // Update transaction status based on the event
+    if (!buyPointsState.txStatus) {
+        buyPointsState.txStatus = { txHash, status, message };
+    } else {
+        buyPointsState.txStatus.status = status;
+        buyPointsState.txStatus.message = message || buyPointsState.txStatus.message;
+    }
+
+    // Handle different status updates
+    switch (status) {
+        case 'submitted':
+            buyPointsState.txStatus.status = 'submitted';
+            buyPointsState.txStatus.message = message || 'Transaction submitted to blockchain...';
+            break;
+        case 'pending':
+            buyPointsState.txStatus.status = 'pending';
+            buyPointsState.txStatus.message = message || 'Transaction is pending in mempool...';
+            break;
+        case 'confirming':
+            buyPointsState.txStatus.status = 'confirming';
+            buyPointsState.txStatus.message = message || 'Transaction is being confirmed...';
+            break;
+        case 'confirmed':
+            buyPointsState.txStatus.status = 'confirmed';
+            buyPointsState.txStatus.message = message || 'Transaction confirmed successfully!';
+            if (receipt) {
+                buyPointsState.txStatus.receipt = receipt;
+            }
+            // Still wait for pointsDepositUpdate for final confirmation
+            break;
+        case 'failed':
+            buyPointsState.txStatus.status = 'Failed';
+            buyPointsState.txStatus.failureReason = error || message || 'Transaction failed';
+            showError(buyPointsState.txStatus.failureReason);
+            break;
+    }
+
+    // Re-render to show updated status
+    if (buyPointsState.step === 4) {
+        render();
+    }
+}
+
+function subscribeToTransactionUpdates(txHash) {
+    if (!window.websocketClient) {
+        console.warn('[BuyPointsModal] WebSocket client not available, cannot subscribe to transaction updates');
+        return;
+    }
+
+    // Unsubscribe from previous transaction if any
+    if (transactionStatusHandler && currentTxHash) {
+        window.websocketClient.off('transactionStatusUpdate', transactionStatusHandler);
+    }
+
+    currentTxHash = txHash;
+    transactionStatusHandler = handleTransactionStatusUpdate;
+    window.websocketClient.on('transactionStatusUpdate', transactionStatusHandler);
+    console.log(`[BuyPointsModal] Subscribed to transactionStatusUpdate events for tx ${txHash}`);
+}
+
 function handleReviewPurchase() {
     if (!buyPointsState.quote) {
         showError('No quote available.');
@@ -673,11 +843,42 @@ function handleConfirmPurchase() {
     initiatePurchase();
 }
 
+// Store WebSocket subscription references for cleanup
+let websocketSubscriptionHandler = null;
+let transactionStatusHandler = null;
+let currentTxHash = null;
+
 function closeModal() {
+    // Cancel any in-flight requests
+    if (currentQuoteAbortController) {
+        currentQuoteAbortController.abort();
+        currentQuoteAbortController = null;
+    }
+    
+    // Clear polling interval
     if (buyPointsState.pollInterval) {
         clearInterval(buyPointsState.pollInterval);
     }
-    modal.style.display = 'none';
+    
+    // Unsubscribe from websocket events
+    if (window.websocketClient) {
+        if (websocketSubscriptionHandler) {
+            window.websocketClient.off('pointsDepositUpdate', websocketSubscriptionHandler);
+            websocketSubscriptionHandler = null;
+        }
+        if (transactionStatusHandler) {
+            window.websocketClient.off('transactionStatusUpdate', transactionStatusHandler);
+            transactionStatusHandler = null;
+        }
+    }
+    currentTxHash = null;
+    
+    // Hide modal
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Reset all state including mode and donateQuote
     Object.assign(buyPointsState, {
         step: 1,
         supportedAssets: null,
@@ -688,12 +889,14 @@ function closeModal() {
         txStatus: null,
         error: null,
         isLoading: false,
-        pollInterval: null
+        pollInterval: null,
+        mode: 'contribute',
+        donateQuote: null
     });
-    modal.parentNode.removeChild(modal);
-    // Unsubscribe from websocket events
-    if (window.websocketClient) {
-        window.websocketClient.off('pointsDepositUpdate', handlePointsDepositUpdate);
+    
+    // Remove modal from DOM
+    if (modal && modal.parentNode) {
+        modal.parentNode.removeChild(modal);
     }
 }
 
@@ -802,10 +1005,13 @@ async function initBuyPointsModal() {
         btn.addEventListener('click', function() { goToStep(buyPointsState.step - 1); });
     });
 
-    // Subscribe to websocket events
-    if (window.websocketClient) {
-        window.websocketClient.on('pointsDepositUpdate', handlePointsDepositUpdate);
+    // Subscribe to websocket events (with guard to prevent duplicate subscriptions)
+    if (window.websocketClient && !websocketSubscriptionHandler) {
+        websocketSubscriptionHandler = handlePointsDepositUpdate;
+        window.websocketClient.on('pointsDepositUpdate', websocketSubscriptionHandler);
         console.log('[BuyPointsModal] Subscribed to pointsDepositUpdate events.');
+    } else if (websocketSubscriptionHandler) {
+        console.warn('[BuyPointsModal] WebSocket already subscribed, skipping duplicate subscription.');
     }
 
     await fetchSupportedChains();

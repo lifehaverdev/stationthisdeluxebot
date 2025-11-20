@@ -1,6 +1,22 @@
 const { BaseDB, ObjectId } = require('../BaseDB');
+const { PRIORITY } = require('../utils/queue');
 
 const COLLECTION_NAME = 'credit_ledger';
+
+// State machine definitions for status transitions
+const LEDGER_STATUS_TRANSITIONS = {
+  PENDING_CONFIRMATION: ['CONFIRMED', 'ERROR'],
+  ERROR: ['CONFIRMED', 'PENDING_CONFIRMATION'], // Allow retry/reconciliation
+  CONFIRMED: [] // Final state - no transitions allowed
+};
+
+const WITHDRAWAL_STATUS_TRANSITIONS = {
+  PENDING_PROCESSING: ['COMPLETED', 'FAILED', 'REJECTED_UNPROFITABLE', 'ERROR'],
+  COMPLETED: [], // Final state
+  FAILED: [], // Final state
+  REJECTED_UNPROFITABLE: [], // Final state
+  ERROR: ['PENDING_PROCESSING'] // Allow retry
+};
 
 class CreditLedgerDB extends BaseDB {
   constructor(logger) {
@@ -43,12 +59,34 @@ class CreditLedgerDB extends BaseDB {
   /**
    * Updates the status of a ledger entry.
    * Typically used to move an entry from PENDING_CONFIRMATION to CONFIRMED.
+   * Validates state transitions according to the state machine.
    * @param {string} depositTxHash - The hash of the original deposit transaction.
-   * @param {string} status - The new status (e.g., 'CONFIRMED', 'FAILED').
+   * @param {string} status - The new status (e.g., 'CONFIRMED', 'ERROR').
    * @param {object} [additionalData={}] - An object with additional fields to set.
+   * @param {ClientSession} session - Optional MongoDB session for transaction support.
+   * @param {boolean} skipValidation - Skip state machine validation (use with caution).
    * @returns {Promise<Object>} The result of the update operation.
+   * @throws {Error} If the status transition is invalid.
    */
-  async updateLedgerStatus(depositTxHash, status, additionalData = {}) {
+  async updateLedgerStatus(depositTxHash, status, additionalData = {}, session = null, skipValidation = false) {
+    if (!skipValidation) {
+      // Get current entry to validate state transition
+      const currentEntry = await this.findLedgerEntryByTxHash(depositTxHash);
+      if (!currentEntry) {
+        throw new Error(`Ledger entry not found for transaction hash: ${depositTxHash}`);
+      }
+
+      const currentStatus = currentEntry.status || 'PENDING_CONFIRMATION';
+      const allowedTransitions = LEDGER_STATUS_TRANSITIONS[currentStatus] || [];
+
+      if (!allowedTransitions.includes(status)) {
+        throw new Error(
+          `Invalid status transition: ${currentStatus} → ${status}. ` +
+          `Allowed transitions from ${currentStatus}: ${allowedTransitions.join(', ') || 'none (final state)'}`
+        );
+      }
+    }
+
     const filter = { deposit_tx_hash: depositTxHash };
     const update = {
       $set: {
@@ -57,7 +95,7 @@ class CreditLedgerDB extends BaseDB {
         updatedAt: new Date(),
       },
     };
-    return this.updateOne(filter, update);
+    return this.updateOne(filter, update, {}, false, PRIORITY.HIGH, session);
   }
 
   /**
@@ -113,12 +151,34 @@ class CreditLedgerDB extends BaseDB {
 
   /**
    * Updates the status of a withdrawal request.
+   * Validates state transitions according to the state machine.
    * @param {string} requestTxHash - The transaction hash of the withdrawal request
    * @param {string} status - The new status
    * @param {object} additionalData - Additional data to update
+   * @param {ClientSession} session - Optional MongoDB session for transaction support.
+   * @param {boolean} skipValidation - Skip state machine validation (use with caution).
    * @returns {Promise<Object>} The result of the update operation
+   * @throws {Error} If the status transition is invalid.
    */
-  async updateWithdrawalRequestStatus(requestTxHash, status, additionalData = {}) {
+  async updateWithdrawalRequestStatus(requestTxHash, status, additionalData = {}, session = null, skipValidation = false) {
+    if (!skipValidation) {
+      // Get current request to validate state transition
+      const currentRequest = await this.findWithdrawalRequestByTxHash(requestTxHash);
+      if (!currentRequest) {
+        throw new Error(`Withdrawal request not found for transaction hash: ${requestTxHash}`);
+      }
+
+      const currentStatus = currentRequest.status || 'PENDING_PROCESSING';
+      const allowedTransitions = WITHDRAWAL_STATUS_TRANSITIONS[currentStatus] || [];
+
+      if (!allowedTransitions.includes(status)) {
+        throw new Error(
+          `Invalid status transition: ${currentStatus} → ${status}. ` +
+          `Allowed transitions from ${currentStatus}: ${allowedTransitions.join(', ') || 'none (final state)'}`
+        );
+      }
+    }
+
     const filter = { request_tx_hash: requestTxHash };
     const update = {
       $set: {
@@ -127,7 +187,7 @@ class CreditLedgerDB extends BaseDB {
         updatedAt: new Date()
       }
     };
-    return this.updateOne(filter, update);
+    return this.updateOne(filter, update, {}, false, PRIORITY.HIGH, session);
   }
 
   /**
@@ -315,10 +375,11 @@ class CreditLedgerDB extends BaseDB {
    * This method now matches on BOTH representations so we remain backward
    * compatible while we migrate existing data.
    *
-   * @param {ObjectId|string} masterAccountId – The user’s master account id
+   * @param {ObjectId|string} masterAccountId – The user's master account id
+   * @param {ClientSession} session – Optional MongoDB session for transaction support
    * @returns {Promise<Array<Object>>}
    */
-  async findActiveDepositsForUser(masterAccountId) {
+  async findActiveDepositsForUser(masterAccountId, session = null) {
     const idStr = typeof masterAccountId === 'string' ? masterAccountId : masterAccountId.toString();
 
     return this.findMany(
@@ -329,7 +390,9 @@ class CreditLedgerDB extends BaseDB {
       },
       {
         sort: { funding_rate_applied: 1 }, // Ascending order (lowest rate first)
-      }
+      },
+      PRIORITY.HIGH,
+      session
     );
   }
 
@@ -337,9 +400,10 @@ class CreditLedgerDB extends BaseDB {
    * Finds all active, confirmed deposit entries for a wallet address that can be spent from.
    * The deposits are sorted by their funding rate in ascending order.
    * @param {string} walletAddress - The user's wallet address (case-insensitive).
+   * @param {ClientSession} session – Optional MongoDB session for transaction support
    * @returns {Promise<Array<Object>>} A sorted list of credit ledger entries.
    */
-  async findActiveDepositsForWalletAddress(walletAddress) {
+  async findActiveDepositsForWalletAddress(walletAddress, session = null) {
     if (!walletAddress) return [];
     return this.findMany(
       {
@@ -349,27 +413,54 @@ class CreditLedgerDB extends BaseDB {
       },
       {
         sort: { funding_rate_applied: 1 },
-      }
+      },
+      PRIORITY.HIGH,
+      session
     );
   }
 
   /**
    * Atomically deducts a specified number of points from a specific deposit entry.
+   * Prevents negative balances by only updating if sufficient points are available.
    * @param {ObjectId} depositId - The _id of the credit_ledger entry.
    * @param {number} pointsToDeduct - The number of points to subtract from points_remaining.
+   * @param {ClientSession} session - Optional MongoDB session for transaction support.
    * @returns {Promise<Object>} The result of the update operation.
+   * @throws {Error} If points to deduct is invalid or insufficient points available.
    */
-  async deductPointsFromDeposit(depositId, pointsToDeduct) {
+  async deductPointsFromDeposit(depositId, pointsToDeduct, session = null) {
     if (pointsToDeduct <= 0) {
       throw new Error('Points to deduct must be a positive number.');
     }
-    return this.updateOne(
-      { _id: depositId },
+    
+    // Use atomic update with condition to prevent negative balance
+    const result = await this.updateOne(
+      { 
+        _id: depositId,
+        points_remaining: { $gte: pointsToDeduct } // Only update if sufficient points
+      },
       {
         $inc: { points_remaining: -pointsToDeduct },
         $set: { updatedAt: new Date() },
-      }
+      },
+      {},
+      false,
+      undefined,
+      session
     );
+    
+    if (result.matchedCount === 0) {
+      // Check if document exists but has insufficient points
+      const deposit = await this.findOne({ _id: depositId }, {}, undefined, session);
+      if (!deposit) {
+        throw new Error(`Deposit entry ${depositId} not found`);
+      }
+      throw new Error(
+        `Insufficient points remaining in deposit. Available: ${deposit.points_remaining || 0}, Required: ${pointsToDeduct}`
+      );
+    }
+    
+    return result;
   }
 
   /**

@@ -3,6 +3,7 @@ const { createLogger } = require('../../../utils/logger');
 const { createAdminVerificationMiddleware } = require('./middleware');
 const { getCustodyKey, splitCustodyAmount } = require('../../../core/services/alchemy/contractUtils');
 const { USD_PER_POINT } = require('../../../core/constants/economy');
+const { createWalletRateLimitMiddleware } = require('../../../utils/rateLimiter');
 
 const logger = createLogger('AdminVaultApi');
 const NATIVE_ETH = '0x0000000000000000000000000000000000000000';
@@ -29,6 +30,18 @@ function createAdminApi(dependencies) {
 
   const router = express.Router();
   const adminMiddleware = createAdminVerificationMiddleware(dependencies);
+
+  // Rate limiting for admin endpoints: 10 requests per minute per wallet
+  // Admin endpoints are already protected by NFT ownership, but we add rate limiting
+  // to prevent abuse even from legitimate admins
+  const adminRateLimiter = createWalletRateLimitMiddleware({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10,
+    message: 'Too many admin requests. Please try again later.'
+  }, logger);
+
+  // Apply rate limiting to all admin routes
+  router.use(adminRateLimiter);
 
   /**
    * GET /accounts - Get all user accounts with their deposit details and balances

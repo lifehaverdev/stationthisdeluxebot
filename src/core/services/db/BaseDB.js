@@ -328,6 +328,60 @@ class BaseDB {
     clearErrorLog() {
         this.errors = [];
     }
+
+    /**
+     * Starts a MongoDB session for transaction support.
+     * @returns {Promise<ClientSession>} The MongoDB session
+     */
+    async startSession() {
+        const client = await getCachedClient();
+        return client.startSession();
+    }
+
+    /**
+     * Executes operations within a MongoDB transaction.
+     * Automatically commits on success or aborts on error.
+     * @param {Function} callback - Async function that receives the session and should perform operations
+     * @param {object} options - Transaction options
+     * @param {number} options.maxCommitTimeMS - Maximum commit time in milliseconds
+     * @param {object} options.readConcern - Read concern for the transaction
+     * @param {object} options.writeConcern - Write concern for the transaction
+     * @returns {Promise<any>} The result of the callback
+     */
+    async withTransaction(callback, options = {}) {
+        const session = await this.startSession();
+        
+        try {
+            let result;
+            await session.withTransaction(async () => {
+                result = await callback(session);
+            }, options);
+            
+            return result;
+        } catch (error) {
+            this.errors.push({
+                type: 'transaction',
+                collection: this.collectionName,
+                timestamp: new Date(),
+                error: error.message,
+                stack: error.stack
+            });
+            throw error;
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    /**
+     * Helper method to get collection with optional session for transaction support.
+     * @param {ClientSession} session - Optional MongoDB session
+     * @returns {Promise<Collection>} MongoDB collection
+     */
+    async getCollection(session = null) {
+        const client = await getCachedClient();
+        const collection = client.db(this.dbName).collection(this.collectionName);
+        return collection;
+    }
 }
 
 module.exports = { BaseDB, ObjectId }; // Export ObjectId for convenience 

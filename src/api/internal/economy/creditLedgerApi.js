@@ -70,7 +70,12 @@ function createCreditLedgerApi(services, logger) {
     logger.info(`[creditLedgerApi] PUT /ledger/entries/${txHash}/status - RequestId: ${requestId}`, { body: req.body });
 
     try {
-      const result = await creditLedgerDb.updateLedgerStatus(txHash, status, confirmation_tx_hash, additional_data);
+      // Fix: Merge confirmation_tx_hash into additional_data object
+      const additionalData = {
+        ...(confirmation_tx_hash ? { confirmation_tx_hash } : {}),
+        ...(additional_data || {})
+      };
+      const result = await creditLedgerDb.updateLedgerStatus(txHash, status, additionalData);
       res.json({ result, requestId });
     } catch (error) {
       logger.error(`[creditLedgerApi] Error updating ledger entry status:`, error);

@@ -86,30 +86,99 @@ class TokenRiskEngine {
   }
 
   /**
+   * Gets the USDC address for a given chain
+   * @param {string} chainId - Chain ID (defaults to '1' for mainnet)
+   * @returns {string} USDC address for the chain
+   * @private
+   */
+  _getUsdcAddressForChain(chainId = '1') {
+    // Map chain IDs to network names used in contracts
+    const chainIdToNetwork = {
+      '1': 'mainnet',
+      '11155111': 'sepolia',
+      '42161': 'arbitrum',
+      '8453': 'base'
+    };
+    
+    const network = chainIdToNetwork[String(chainId)] || 'mainnet';
+    const usdcAddress = contracts.USDC.addresses[network];
+    
+    if (!usdcAddress) {
+      this.logger.warn(`[TokenRiskEngine] No USDC address found for chain ${chainId}, falling back to mainnet`);
+      return contracts.USDC.addresses['mainnet'];
+    }
+    
+    return usdcAddress;
+  }
+
+  /**
    * Assesses a token to determine if it's acceptable as collateral.
    * @param {string} tokenAddress - The address of the token to assess.
    * @param {string} depositAmountWei - The amount of the token being deposited.
+   * @param {string} chainId - Optional chain ID (defaults to '1' for mainnet)
    * @returns {Promise<{isSafe: boolean, reason: string, price: number, liquidationThreshold: number}>} An assessment result.
    */
-  async assessCollateral(tokenAddress, depositAmountWei) {
+  async assessCollateral(tokenAddress, depositAmountWei, chainId = '1') {
     this.logger.info(`[TokenRiskEngine] Assessing collateral for token: ${tokenAddress}`);
+    
+    // Input validation
+    if (!tokenAddress || typeof tokenAddress !== 'string') {
+      this.logger.error(`[TokenRiskEngine] Invalid tokenAddress: ${tokenAddress}`);
+      return { isSafe: false, reason: 'INVALID_TOKEN_ADDRESS', price: 0, liquidationThreshold: 0 };
+    }
+    
+    if (!depositAmountWei || BigInt(depositAmountWei) <= 0n) {
+      this.logger.error(`[TokenRiskEngine] Invalid depositAmountWei: ${depositAmountWei}`);
+      return { isSafe: false, reason: 'INVALID_DEPOSIT_AMOUNT', price: 0, liquidationThreshold: 0 };
+    }
+    
     const normalizedAddress = tokenAddress.toLowerCase();
 
     // 0. Check if it's native ETH
     if (normalizedAddress === '0x0000000000000000000000000000000000000000') {
       this.logger.info(`[TokenRiskEngine] Detected native ETH. Bypassing liquidity checks.`);
-      const price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
-      return { isSafe: true, reason: 'NATIVE_ASSET', price, liquidationThreshold: 0.85 }; // High LTV for ETH
+      try {
+        const price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
+        if (price <= 0) {
+          return { isSafe: false, reason: 'NO_RELIABLE_PRICE', price: 0, liquidationThreshold: 0 };
+        }
+        return { isSafe: true, reason: 'NATIVE_ASSET', price, liquidationThreshold: 0.85 }; // High LTV for ETH
+      } catch (error) {
+        this.logger.error(`[TokenRiskEngine] Failed to fetch ETH price:`, error);
+        return { isSafe: false, reason: 'PRICE_FETCH_ERROR', price: 0, liquidationThreshold: 0 };
+      }
     }
 
     // 1. Whitelist Check (Fast Path)
     if (TOKEN_WHITELIST.includes(normalizedAddress)) {
-      this.logger.info(`[TokenRiskEngine] Token ${normalizedAddress} is on the whitelist. Accepting.`);
-      return { isSafe: true, reason: 'WHITELISTED', price: 1.0, liquidationThreshold: 0.9 }; // Example threshold
+      this.logger.info(`[TokenRiskEngine] Token ${normalizedAddress} is on the whitelist. Fetching actual price.`);
+      try {
+        // Fetch actual price even for whitelisted tokens (whitelist only bypasses liquidity checks)
+        const price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
+        if (price <= 0) {
+          this.logger.warn(`[TokenRiskEngine] Whitelisted token ${normalizedAddress} has invalid price, using fallback`);
+          // For stablecoins, use 1.0 as fallback; for WETH, this shouldn't happen
+          const fallbackPrice = normalizedAddress === '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' ? 0 : 1.0;
+          return { isSafe: true, reason: 'WHITELISTED', price: fallbackPrice, liquidationThreshold: 0.9 };
+        }
+        return { isSafe: true, reason: 'WHITELISTED', price, liquidationThreshold: 0.9 };
+      } catch (error) {
+        this.logger.error(`[TokenRiskEngine] Failed to fetch price for whitelisted token:`, error);
+        // Fallback to safe default for whitelisted tokens
+        const fallbackPrice = normalizedAddress === '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' ? 0 : 1.0;
+        return { isSafe: true, reason: 'WHITELISTED', price: fallbackPrice, liquidationThreshold: 0.9 };
+      }
     }
 
     // 2. Get Baseline Price
-    const price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
+    let price;
+    try {
+      price = await this.priceFeedService.getPriceInUsd(normalizedAddress);
+    } catch (error) {
+      this.logger.error(`[TokenRiskEngine] Failed to fetch price:`, error);
+      return { isSafe: false, reason: 'PRICE_FETCH_ERROR', price: 0, liquidationThreshold: 0 };
+    }
+    
     if (price <= 0) {
       return { isSafe: false, reason: 'NO_RELIABLE_PRICE', price: 0, liquidationThreshold: 0 };
     }
@@ -117,31 +186,61 @@ class TokenRiskEngine {
     // 3. Liquidity & Price Impact Check
     // We simulate selling a fixed USD value of the token (e.g., $100) to check liquidity.
     const testAmountUsd = 100;
-    const testAmountTokenWei = tokenDecimalService.parseTokenAmount(String(testAmountUsd / price), normalizedAddress);
+    let testAmountTokenWei;
+    try {
+      testAmountTokenWei = tokenDecimalService.parseTokenAmount(String(testAmountUsd / price), normalizedAddress);
+    } catch (error) {
+      this.logger.error(`[TokenRiskEngine] Failed to parse test amount:`, error);
+      return { isSafe: false, reason: 'AMOUNT_PARSING_ERROR', price, liquidationThreshold: 0 };
+    }
     
-    // We need a stablecoin address to quote against, e.g., USDC
-    const usdcAddress = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
+    // Get chain-aware USDC address (note: DEX quotes are always on mainnet, but we use chain-aware address for consistency)
+    const usdcAddress = this._getUsdcAddressForChain(chainId);
     const feeTier = 3000; // Common fee tier for stable pairs
 
-    const quotedUsdcOut = await this.dexService.getSwapQuote(
-        normalizedAddress, 
-        usdcAddress,
-        testAmountTokenWei.toString(),
-        feeTier
-    );
+    let quotedUsdcOut;
+    try {
+      quotedUsdcOut = await this.dexService.getSwapQuote(
+          normalizedAddress, 
+          usdcAddress,
+          testAmountTokenWei.toString(),
+          feeTier
+      );
+    } catch (error) {
+      this.logger.error(`[TokenRiskEngine] Failed to get swap quote:`, error);
+      return { isSafe: false, reason: 'DEX_QUOTE_ERROR', price, liquidationThreshold: 0 };
+    }
     
     if (quotedUsdcOut === 0n) {
         return { isSafe: false, reason: 'NO_LIQUIDITY_POOL', price, liquidationThreshold: 0 };
     }
 
     // 4. Calculate Price Impact
-    const expectedUsdcOut = tokenDecimalService.parseTokenAmount(String(testAmountUsd), usdcAddress);
-    const priceImpact = (expectedUsdcOut.sub(quotedUsdcOut)).mul(100).div(expectedUsdcOut); // In percentage
+    let expectedUsdcOut;
+    try {
+      expectedUsdcOut = tokenDecimalService.parseTokenAmount(String(testAmountUsd), usdcAddress);
+    } catch (error) {
+      this.logger.error(`[TokenRiskEngine] Failed to parse expected USDC amount:`, error);
+      return { isSafe: false, reason: 'AMOUNT_PARSING_ERROR', price, liquidationThreshold: 0 };
+    }
     
-    this.logger.info(`[TokenRiskEngine] Price impact for selling $${testAmountUsd} of ${normalizedAddress}: ${priceImpact.toString()}%`);
+    // Convert to BigInt for proper arithmetic
+    const expectedUsdcOutBN = BigInt(expectedUsdcOut.toString());
+    const quotedUsdcOutBN = BigInt(quotedUsdcOut.toString());
+    
+    // Calculate price impact percentage: ((expected - quoted) / expected) * 100
+    if (expectedUsdcOutBN === 0n) {
+      this.logger.error(`[TokenRiskEngine] Expected USDC out is zero, cannot calculate price impact`);
+      return { isSafe: false, reason: 'PRICE_IMPACT_CALC_ERROR', price, liquidationThreshold: 0 };
+    }
+    
+    const priceImpactNumerator = (expectedUsdcOutBN - quotedUsdcOutBN) * 100n;
+    const priceImpact = Number(priceImpactNumerator / expectedUsdcOutBN);
+    
+    this.logger.info(`[TokenRiskEngine] Price impact for selling $${testAmountUsd} of ${normalizedAddress}: ${priceImpact.toFixed(2)}%`);
     
     const MAX_PRICE_IMPACT = 10; // Allow up to 10% price impact
-    if (priceImpact.gt(MAX_PRICE_IMPACT)) {
+    if (priceImpact > MAX_PRICE_IMPACT) {
         return { isSafe: false, reason: 'HIGH_PRICE_IMPACT', price, liquidationThreshold: 0 };
     }
 
