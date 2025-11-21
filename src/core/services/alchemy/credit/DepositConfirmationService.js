@@ -48,6 +48,7 @@ class DepositConfirmationService {
   async confirmDepositGroup(deposits) {
     // All deposits in this group share the same user and token.
     const { depositor_address: user, token_address: token } = deposits[0];
+    let masterAccountId = null;
     const originalTxHashes = deposits.map(d => d.deposit_tx_hash);
     const groupKey = getGroupKey(user, token);
 
@@ -89,7 +90,7 @@ class DepositConfirmationService {
 
       // 1. USER ACCOUNT VERIFICATION / CREATION
       this.logger.info(`[DepositConfirmationService] Step 1: Ensuring user account exists for depositor ${user}...`);
-      let masterAccountId = await this.verifyUserAccount(user);
+      masterAccountId = await this.verifyUserAccount(user);
       if (!masterAccountId) {
         return; // Error already logged and deposits marked
       }
@@ -359,10 +360,9 @@ class DepositConfirmationService {
         }
       }
       // Send failure notification if we know who the user is
-      const { depositor_address: user } = deposits[0];
-      const masterAccountId = await this.verifyUserAccount(user);
-      if (masterAccountId) {
-        this.depositNotificationService.notifyDepositUpdate(masterAccountId, 'failed', { 
+      const fallbackMasterAccountId = masterAccountId || await this.verifyUserAccount(user);
+      if (fallbackMasterAccountId) {
+        this.depositNotificationService.notifyDepositUpdate(fallbackMasterAccountId, 'failed', { 
           reason: errorMessage, 
           originalTxHashes 
         });
@@ -607,4 +607,3 @@ class DepositConfirmationService {
 }
 
 module.exports = DepositConfirmationService;
-

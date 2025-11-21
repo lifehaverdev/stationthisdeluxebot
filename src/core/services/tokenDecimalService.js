@@ -57,11 +57,46 @@ class TokenDecimalService {
   parseTokenAmount(amount, tokenAddress, chainId = '1') {
     try {
       const decimals = this.getTokenDecimals(tokenAddress, chainId);
-      return parseUnits(amount, decimals);
+      let normalizedAmount = amount;
+      if (typeof normalizedAmount !== 'string') {
+        normalizedAmount = normalizedAmount?.toString();
+      }
+      if (typeof normalizedAmount !== 'string') {
+        throw new Error(`Invalid amount type: ${typeof amount}`);
+      }
+      normalizedAmount = normalizedAmount.trim();
+      try {
+        return parseUnits(normalizedAmount, decimals);
+      } catch (innerError) {
+        if (innerError?.code === 'NUMERIC_FAULT' && innerError?.fault === 'underflow') {
+          const sanitized = this._sanitizeAmountString(normalizedAmount, decimals);
+          return parseUnits(sanitized, decimals);
+        }
+        throw innerError;
+      }
     } catch (error) {
       this.logger.error(`[TokenDecimalService] Failed to parse amount for ${tokenAddress}:`, error);
       return 0n;
     }
+  }
+
+  _sanitizeAmountString(amount, decimals) {
+    let value = amount.trim();
+    if (!value.includes('.') || decimals <= 0) {
+      return value;
+    }
+    const negative = value.startsWith('-');
+    if (negative) {
+      value = value.slice(1);
+    }
+    const [wholePartRaw, fractionRaw = ''] = value.split('.');
+    const wholePart = wholePartRaw || '0';
+    if (fractionRaw.length === 0) {
+      return negative ? `-${wholePart}` : wholePart;
+    }
+    const trimmedFraction = fractionRaw.slice(0, decimals).replace(/0+$/, '');
+    const sanitized = trimmedFraction.length ? `${wholePart}.${trimmedFraction}` : wholePart;
+    return negative ? `-${sanitized}` : sanitized;
   }
 
   /**
