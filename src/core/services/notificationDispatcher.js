@@ -12,14 +12,14 @@ class NotificationDispatcher {
     if (!services.logger) {
         throw new Error('[NotificationDispatcher] Critical: services.logger is required.');
     }
-    if (!services.workflowExecutionService) {
-      this.logger.warn('[NotificationDispatcher] workflowExecutionService is not provided. Spell execution will not work.');
-    }
-    
     this.internalApiClient = services.internalApiClient;
     this.logger = services.logger;
     this.platformNotifiers = services.platformNotifiers || {};
     this.workflowExecutionService = services.workflowExecutionService;
+    
+    if (!this.workflowExecutionService) {
+      this.logger.warn('[NotificationDispatcher] workflowExecutionService is not provided. Spell execution will not work.');
+    }
     
     this.isListening = false;
     this.boundProcessRecord = this._processRecord.bind(this); // Bind once for adding/removing listener

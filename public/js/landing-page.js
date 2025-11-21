@@ -141,10 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error(error.error.message || 'Signature verification failed.');
         }
 
-        const { token } = await verifyResponse.json();
-
-        // 4. Store JWT and redirect
-        localStorage.setItem('jwt', token);
+        await verifyResponse.json();
+        // 4. Backend sets httpOnly session cookie; redirect to main app
         window.location.href = '/'; // Redirect to the main app
 
       } catch (error) {
@@ -172,8 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error(error.error.message || 'API key login failed.');
         }
 
-        const { token } = await response.json();
-        localStorage.setItem('jwt', token);
+        await response.json();
         window.location.href = '/';
 
       } catch (error) {
@@ -202,8 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error(error.error.message || 'Password login failed.');
         }
 
-        const { token } = await response.json();
-        localStorage.setItem('jwt', token);
+        await response.json();
         window.location.href = '/';
 
       } catch (error) {

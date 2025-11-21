@@ -16,7 +16,27 @@ export let activeSubmenu = false;
 
 // --- Selection Management ---
 export const selectedNodeIds = new Set();
-const selectionChangeEvent = new CustomEvent('selectionchange');
+const canUseDOM = typeof window !== 'undefined' && typeof document !== 'undefined';
+let selectionChangeEvent = null;
+
+function getSelectionChangeEvent() {
+    if (!canUseDOM) return null;
+    if (selectionChangeEvent) return selectionChangeEvent;
+    if (typeof window.CustomEvent === 'function') {
+        selectionChangeEvent = new window.CustomEvent('selectionchange');
+    } else if (document?.createEvent) {
+        selectionChangeEvent = document.createEvent('CustomEvent');
+        selectionChangeEvent.initCustomEvent('selectionchange', false, false, null);
+    }
+    return selectionChangeEvent;
+}
+
+function dispatchSelectionChangeEvent() {
+    const event = getSelectionChangeEvent();
+    if (event && canUseDOM) {
+        document.dispatchEvent(event);
+    }
+}
 
 export const lasso = {
     active: false,
@@ -397,14 +417,14 @@ export function selectNode(id, additive = false) {
         stateDebug('[SELECTNODE] Could not find element for ID', id);
     }
     stateDebug('[selectNode] selection now:', Array.from(selectedNodeIds));
-    document.dispatchEvent(selectionChangeEvent);
+    dispatchSelectionChangeEvent();
 }
 
 export function deselectNode(id) {
     selectedNodeIds.delete(id);
     const el = document.getElementById(id);
     if (el) el.classList.remove('node-selected');
-    document.dispatchEvent(selectionChangeEvent);
+    dispatchSelectionChangeEvent();
 }
 
 export function toggleNodeSelection(id) {
@@ -425,7 +445,7 @@ export function clearSelection() {
         if (el) el.classList.remove('node-selected');
     });
     stateDebug('[clearSelection] selection now:', Array.from(selectedNodeIds));
-    document.dispatchEvent(selectionChangeEvent);
+    dispatchSelectionChangeEvent();
 }
 
 // --- End Selection ---

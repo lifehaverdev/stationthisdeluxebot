@@ -89,8 +89,13 @@ function optionalAuth(req, res, next) {
     // Extract the token
     const token = authHeader.split(' ')[1];
     
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      logger.error('JWT_SECRET is not defined; optionalAuth cannot verify token.');
+      return next();
+    }
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'stationthis-jwt-secret');
+    const decoded = jwt.verify(token, jwtSecret);
     
     // Add user info to request
     req.user = {

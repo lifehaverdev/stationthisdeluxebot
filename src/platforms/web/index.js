@@ -113,14 +113,11 @@ function initializeWebPlatform(services, options = {}) {
       });
 
       // --- Static File Serving ---
-      // Serve static files from the public directory (for images, etc.)
-      app.use(express.static(publicPath));
-
-      // Serve static files from the client/src directory for our new UI (e.g., index.css)
-      app.use(express.static(path.join(__dirname, 'client', 'src')));
-
-      // Serve static files from the client/dist directory first (for the main app)
+      // Serve static files from the client/dist directory first (production bundle only)
       app.use(express.static(path.join(__dirname, 'client', 'dist')));
+
+      // Then serve assets from the public directory (images, landing pages, etc.)
+      app.use(express.static(publicPath));
       
       // Then serve from the regular static path if specified
       if (options.staticPath) {

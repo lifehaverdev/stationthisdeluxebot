@@ -1,12 +1,14 @@
-import OpenAI from 'openai';
-
-const openai = new OpenAI({
-    apiKey: '',
-    baseURL: 'https://www.miladystation2.net/api/v1'
-});
+async function createClient() {
+    const { default: OpenAI } = await import('openai');
+    return new OpenAI({
+        apiKey: '',
+        baseURL: 'https://www.miladystation2.net/api/v1'
+    });
+}
 
 async function testGeneration() {
     try {
+        const openai = await createClient();
         console.log('Starting image generation...');
         const response = await openai.images.generate({
             prompt: "test prompt for api generation through openai client",
@@ -23,4 +25,8 @@ async function testGeneration() {
     }
 }
 
-testGeneration();
+if (require.main === module) {
+    testGeneration();
+}
+
+module.exports = { testGeneration };
