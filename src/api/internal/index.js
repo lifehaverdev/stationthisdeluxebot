@@ -61,11 +61,17 @@ function initializeInternalServices(dependencies = {}) {
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100,
     message: 'Too many requests to internal API. Please try again later.',
-    // Skip rate limiting for health checks and status endpoints
+    // Skip rate limiting for health checks, status endpoints, and trusted internal clients
     skip: (req) => {
-      return req.path === '/status' || 
-             req.path === '/health' || 
-             req.path.startsWith('/internal/v1/data/system/status');
+      const isStatusEndpoint = req.path === '/status' ||
+        req.path === '/health' ||
+        req.path.startsWith('/internal/v1/data/system/status');
+      const hasInternalClientKey = Boolean(req.headers['x-internal-client-key']);
+      const isLoopback =
+        req.ip === '127.0.0.1' ||
+        req.ip === '::ffff:127.0.0.1' ||
+        req.ip === '::1';
+      return isStatusEndpoint || hasInternalClientKey || isLoopback;
     }
   }, logger);
 

@@ -105,6 +105,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     }).then(res => res.data?.generations?.[0]).catch(() => null);
 
     if (generationRecordForProgress && websocketServer) {
+        const collectionId = generationRecordForProgress.metadata?.collectionId || generationRecordForProgress.collectionId || null;
         websocketServer.sendToUser(generationRecordForProgress.masterAccountId, {
             type: 'generationProgress',
             payload: {
@@ -116,7 +117,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 toolId: generationRecordForProgress.toolId || generationRecordForProgress.metadata?.toolId || null,
                 spellId: generationRecordForProgress.metadata?.spell?._id || generationRecordForProgress.metadata?.spellId || null,
                 castId: generationRecordForProgress.metadata?.castId || generationRecordForProgress.castId || null,
-                cookId: generationRecordForProgress.metadata?.cookId || null
+                cookId: generationRecordForProgress.metadata?.cookId || null,
+                collectionId
             }
         });
     }
@@ -338,6 +340,7 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
     // --- Send Final Update via WebSocket ---
     if (websocketServer && generationRecord) {
         logger.info(`[Webhook Processor] Sending final WebSocket update for generation ${generationId}.`);
+        const collectionId = generationRecord.metadata?.collectionId || generationRecord.collectionId || null;
         websocketServer.sendToUser(generationRecord.masterAccountId, {
             type: 'generationUpdate',
             payload: {
@@ -350,7 +353,8 @@ async function processComfyDeployWebhook(payload, { internalApiClient, logger, w
                 toolId: generationRecord.toolId || generationRecord.metadata?.toolId || null,
                 spellId: generationRecord.metadata?.spell?._id || generationRecord.metadata?.spellId || null,
                 castId: generationRecord.metadata?.castId || generationRecord.castId || null,
-                cookId: generationRecord.metadata?.cookId || null
+                cookId: generationRecord.metadata?.cookId || null,
+                collectionId
             }
         });
     }

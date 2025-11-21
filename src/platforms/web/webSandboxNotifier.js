@@ -121,6 +121,7 @@ class WebSandboxNotifier {
         spellId: generationRecord.spellId || generationRecord.metadata?.spellId || generationRecord.metadata?.spell?._id || null,
         castId: generationRecord.castId || generationRecord.metadata?.castId || null,
         cookId: generationRecord.cookId || generationRecord.metadata?.cookId || null,
+        collectionId: generationRecord.collectionId || generationRecord.metadata?.collectionId || null,
         costUsd: this._convertCostUsd(generationRecord.costUsd),
         finalEventTimestamp: generationRecord.responseTimestamp || new Date().toISOString(),
       };

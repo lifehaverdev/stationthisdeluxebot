@@ -171,11 +171,11 @@ export default class CookMenuModal {
         
         // Subscribe to cookStatusUpdate events
         this._wsHandler = (payload) => {
-            // Only refresh if modal is visible and on home view
-            if (this.modalElement && this.state.view === 'home') {
-                // Refresh active cooks list
-                this.fetchActiveCooks();
+            if (!payload || !payload.collectionId) {
+                return;
             }
+            // Update local state immediately so we don't have to re-fetch and trip rate limits
+            this._applyCookStatusUpdate(payload);
         };
         
         if (this.ws && typeof this.ws.on === 'function') {
@@ -189,6 +189,48 @@ export default class CookMenuModal {
             this.ws.off('cookStatusUpdate', this._wsHandler);
             this._wsHandler = null;
             console.log('[CookMenuModal] Unsubscribed from cookStatusUpdate WebSocket events');
+        }
+    }
+
+    _applyCookStatusUpdate(payload) {
+        const { collectionId } = payload || {};
+        if (!collectionId) return;
+
+        const activeCooks = Array.isArray(this.state.activeCooks) ? [...this.state.activeCooks] : [];
+        const idx = activeCooks.findIndex(c => c.collectionId === collectionId);
+        const collectionMeta = (this.state.collections || []).find(c => c.collectionId === collectionId);
+
+        const current = idx >= 0 ? { ...activeCooks[idx] } : {
+            collectionId,
+            collectionName: collectionMeta?.name || payload.collectionName || 'Untitled',
+            targetSupply: collectionMeta?.totalSupply || 0,
+            generationCount: 0,
+            running: 0,
+            queued: 0
+        };
+
+        const normalizeNumber = (value, fallback) => (typeof value === 'number' && !Number.isNaN(value) ? value : fallback);
+
+        current.generationCount = normalizeNumber(payload.generationCount, current.generationCount || 0);
+        current.targetSupply = normalizeNumber(payload.targetSupply, current.targetSupply || 0);
+        current.running = normalizeNumber(payload.running, current.running || 0);
+        current.queued = normalizeNumber(payload.queued, current.queued || 0);
+        current.status = payload.status || current.status || 'running';
+        current.updatedAt = new Date().toISOString();
+        if (!current.collectionName && (collectionMeta?.name || payload.collectionName)) {
+            current.collectionName = collectionMeta?.name || payload.collectionName;
+        }
+
+        if (idx >= 0) {
+            activeCooks[idx] = current;
+        } else {
+            activeCooks.push(current);
+        }
+
+        if (this.state.view === 'home') {
+            this.setState({ activeCooks, initialLoadComplete: this.state.initialLoadComplete || activeCooks.length > 0 });
+        } else {
+            Object.assign(this.state, { activeCooks });
         }
     }
 

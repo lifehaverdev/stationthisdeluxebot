@@ -29,6 +29,8 @@ class WorkflowNotifier {
 
         const { originalContext, spell } = context;
         const castId = originalContext.castId || null;
+        const cookId = originalContext.cookId || null;
+        const collectionId = originalContext.collectionId || null;
         const spellId = spell._id;
 
         try {
@@ -43,7 +45,9 @@ class WorkflowNotifier {
                         liveStatus: liveStatus,
                         toolId: tool.toolId,
                         spellId: spellId,
-                        castId: castId
+                        castId: castId,
+                        cookId,
+                        collectionId
                     }
                 }
             );
@@ -64,6 +68,8 @@ class WorkflowNotifier {
         const { originalContext } = context;
         const { requestId = null } = options;
         const castId = originalContext.castId || null;
+        const cookId = originalContext.cookId || null;
+        const collectionId = originalContext.collectionId || null;
 
         try {
             this.websocketService.sendToUser(
@@ -74,7 +80,9 @@ class WorkflowNotifier {
                         toolId: tool.toolId,
                         output: output,
                         requestId: requestId,
-                        castId: castId
+                        castId: castId,
+                        cookId,
+                        collectionId
                     }
                 }
             );
@@ -104,4 +112,3 @@ class WorkflowNotifier {
 }
 
 module.exports = WorkflowNotifier;
-
