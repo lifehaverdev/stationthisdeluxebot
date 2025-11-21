@@ -132,8 +132,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Continue execution - checkPendingGenerations() will handle recovery
     }
 
-    // Check for pending generations that may have completed while away
-    await checkPendingGenerations();
+    if (window.__EXTERNAL_API_KEY__) {
+        await checkPendingGenerations();
+    }
 
     // Locate main containers
     const sandboxContent = document.querySelector('.sandbox-content');

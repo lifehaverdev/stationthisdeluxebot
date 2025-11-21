@@ -355,14 +355,26 @@ async function startApp() {
         // --- Credit Service Startup ---
         // This is now started AFTER the web platform is running to ensure
         // the internal API is ready to receive requests from the service.
-        if (services.creditService && typeof services.creditService.start === 'function') {
-            logger.info('Starting CreditService to sync with on-chain state...');
-            // We do not await this, as it can be a long-running process.
-            // It will run in the background.
-            services.creditService.start().catch(err => {
-                logger.error('CreditService failed to start or encountered a runtime error:', err);
-            });
-            logger.info('CreditService sync process has been initiated.');
+        const creditServices = services.creditService;
+        if (creditServices && typeof creditServices === 'object') {
+            const chainIds = Object.keys(creditServices);
+            if (chainIds.length === 0) {
+                logger.warn('CreditService registry is empty. On-chain deposit features will not be reconciled.');
+            }
+            for (const chainId of chainIds) {
+                const serviceInstance = creditServices[chainId];
+                if (serviceInstance && typeof serviceInstance.start === 'function') {
+                    logger.info(`Starting CreditService for chainId ${chainId} to sync with on-chain state...`);
+                    serviceInstance.start().catch(err => {
+                        logger.error(`CreditService (chain ${chainId}) failed to start or encountered a runtime error:`, err);
+                    });
+                } else {
+                    logger.warn(`CreditService for chainId ${chainId} is missing or invalid. Deposits on this chain will not be reconciled.`);
+                }
+            }
+            if (chainIds.length > 0) {
+                logger.info('CreditService startup invoked for all configured chains.');
+            }
         } else {
             logger.warn('CreditService not found or not initialized. On-chain deposit features will not be reconciled.');
         }

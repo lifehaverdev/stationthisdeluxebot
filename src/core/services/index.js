@@ -357,6 +357,13 @@ async function initializeServices(options = {}) {
 
     logger.info('Core services created successfully');
     
+    const dbInstances = initializedDbServices?.data || {};
+    const dbWrapper = {
+      ...dbInstances,
+      data: dbInstances,
+      models: dbInstances
+    };
+
     const returnedServices = {
       media: mediaService,
       points: pointsService,
@@ -364,7 +371,7 @@ async function initializeServices(options = {}) {
       workflows: workflowsService,
       openai: openAIService,
       huggingface: huggingfaceService,
-      db: initializedDbServices, // Return the INSTANTIATED services
+      db: dbWrapper, // Expose db services with legacy-compatible shape
       internal: apiServices.internal, // This contains router, status
       external: apiServices.external, // This contains the external router
       internalApiClient, // <-- expose the singleton client at top-level
