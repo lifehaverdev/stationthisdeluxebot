@@ -52,6 +52,13 @@ import { websocketClient } from '/js/websocketClient.js';
             if (typeof url === 'string' && url.includes('/api/v1/workspaces/') && args[1]?.method === 'GET') {
                 return resp;
             }
+            // Skip reauth prompts for endpoints that require API keys (not user sessions)
+            const skippable401Endpoints = [
+                '/api/v1/generations/status'
+            ];
+            if (typeof url === 'string' && skippable401Endpoints.some(endpoint => url.includes(endpoint))) {
+                return resp;
+            }
             
             // Don't trigger reauth if modal is already open or if this is a workspace operation
             // that might legitimately fail (e.g., trying to save without being logged in)

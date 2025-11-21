@@ -113,8 +113,16 @@ function initializeWebPlatform(services, options = {}) {
       });
 
       // --- Static File Serving ---
+      const clientDir = path.join(__dirname, 'client');
+      const clientDist = path.join(clientDir, 'dist');
+      const clientSrc = path.join(clientDir, 'src');
+
       // Serve static files from the client/dist directory first (production bundle only)
-      app.use(express.static(path.join(__dirname, 'client', 'dist')));
+      app.use(express.static(clientDist));
+
+      // Serve sandbox source modules (ESM bundle is not built yet)
+      app.use('/sandbox', express.static(path.join(clientSrc, 'sandbox')));
+      app.get('/index.css', (req, res) => res.sendFile(path.join(clientSrc, 'index.css')));
 
       // Then serve assets from the public directory (images, landing pages, etc.)
       app.use(express.static(publicPath));

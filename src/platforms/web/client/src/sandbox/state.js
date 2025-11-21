@@ -879,19 +879,30 @@ export async function checkPendingGenerations() {
     try {
         // Get CSRF token for the request
         const csrfToken = await getCsrfToken();
-        
+
         // Fetch generation statuses from the API
+        const fetchHeaders = {
+            'Content-Type': 'application/json',
+            'x-csrf-token': csrfToken
+        };
+
+        const authToken = localStorage.getItem('authToken');
+        if (authToken) {
+            fetchHeaders['Authorization'] = `Bearer ${authToken}`;
+        }
+
         const response = await fetch('/api/v1/generations/status', {
             method: 'POST',
             credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-csrf-token': csrfToken,
-                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
-            },
+            headers: fetchHeaders,
             body: JSON.stringify({ generationIds })
         });
         
+        if (response.status === 401 || response.status === 403) {
+            stateDebug('[PendingGen] Generation status endpoint unauthorized. Likely missing API key auth.');
+            return;
+        }
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }

@@ -218,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'Content-Type': 'application/json',
         'X-CSRF-Token': csrfToken
       },
+      credentials: 'include',
       body: JSON.stringify(body)
     });
   }
