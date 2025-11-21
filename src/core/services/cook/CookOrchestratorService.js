@@ -378,9 +378,8 @@ class CookOrchestratorService {
         // Use _getProducedCount() for accurate count instead of state.generatedCount
         const currentProduced = await this._getProducedCount(collectionId, userId);
         if (state.nextIndex < state.total && (currentProduced + state.running.size) < state.total) {
-      const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
+        const enq = await this._enqueuePiece({ collectionId, userId, cookId, index: state.nextIndex, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate });
       const enqueuedJobId = enq.jobId;
-          await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enqueuedJobId, pieceIndex: state.nextIndex });
 
       if (IMMEDIATE_SUBMIT) {
         try {
@@ -390,19 +389,18 @@ class CookOrchestratorService {
           const resp = await submitPiece({ spellId: spellId, submission });
           this.logger.info(`[Cook] Submitted piece. job=${enqueuedJobId} resp=${resp?.status || 'ok'}`);
               
-              // ✅ FIX: Only add to running set AFTER successful submit
               state.running.add(String(enqueuedJobId));
               state.nextIndex += 1;
         } catch (e) {
           this.logger.error(`[CookOrchestrator] Immediate submit failed: ${e.message}`);
-              // Don't add to running set if submit failed - cook can retry or fail gracefully
               throw e; // Re-throw to allow caller to handle
         }
           } else {
-            // If not immediate submit, add to running set (for future worker-based submission)
             state.running.add(String(enqueuedJobId));
             state.nextIndex += 1;
       }
+
+          await this.appendEvent('PieceQueued', { collectionId, userId, cookId, jobId: enqueuedJobId, pieceIndex: state.nextIndex - 1 });
 
       return { queued: 1 }; 
     }

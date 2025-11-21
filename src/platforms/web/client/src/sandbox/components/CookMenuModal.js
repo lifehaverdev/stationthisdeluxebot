@@ -43,7 +43,9 @@ export default class CookMenuModal {
         this._loadedParamKeys = null; // Cache for loaded param keys
         // ✅ WebSocket integration
         this.ws = typeof window !== 'undefined' ? (window.websocketClient || null) : null;
-        this._wsHandler = null; // Store WebSocket handler for cleanup
+        this._wsCookHandler = null;
+        this._wsProgressHandler = null;
+        this._wsUpdateHandler = null;
     }
 
     setState(newState) {
@@ -170,25 +172,46 @@ export default class CookMenuModal {
         }
         
         // Subscribe to cookStatusUpdate events
-        this._wsHandler = (payload) => {
+        this._wsCookHandler = (payload) => {
             if (!payload || !payload.collectionId) {
                 return;
             }
-            // Update local state immediately so we don't have to re-fetch and trip rate limits
             this._applyCookStatusUpdate(payload);
+        };
+
+        this._wsProgressHandler = (payload) => {
+            if (!payload || !payload.collectionId) return;
+            this._applyGenerationProgress(payload);
+        };
+
+        this._wsUpdateHandler = (payload) => {
+            if (!payload || !payload.collectionId) return;
+            this._applyGenerationUpdate(payload);
         };
         
         if (this.ws && typeof this.ws.on === 'function') {
-            this.ws.on('cookStatusUpdate', this._wsHandler);
-            console.log('[CookMenuModal] Subscribed to cookStatusUpdate WebSocket events');
+            this.ws.on('cookStatusUpdate', this._wsCookHandler);
+            this.ws.on('generationProgress', this._wsProgressHandler);
+            this.ws.on('generationUpdate', this._wsUpdateHandler);
+            console.log('[CookMenuModal] Subscribed to cookStatusUpdate and generation progress/update events');
         }
     }
 
     _unsubscribeFromWebSocket() {
-        if (this.ws && this._wsHandler && typeof this.ws.off === 'function') {
-            this.ws.off('cookStatusUpdate', this._wsHandler);
-            this._wsHandler = null;
-            console.log('[CookMenuModal] Unsubscribed from cookStatusUpdate WebSocket events');
+        if (this.ws && typeof this.ws.off === 'function') {
+            if (this._wsCookHandler) {
+                this.ws.off('cookStatusUpdate', this._wsCookHandler);
+                this._wsCookHandler = null;
+            }
+            if (this._wsProgressHandler) {
+                this.ws.off('generationProgress', this._wsProgressHandler);
+                this._wsProgressHandler = null;
+            }
+            if (this._wsUpdateHandler) {
+                this.ws.off('generationUpdate', this._wsUpdateHandler);
+                this._wsUpdateHandler = null;
+            }
+            console.log('[CookMenuModal] Unsubscribed from WebSocket cook/generation events');
         }
     }
 
@@ -229,6 +252,64 @@ export default class CookMenuModal {
 
         if (this.state.view === 'home') {
             this.setState({ activeCooks, initialLoadComplete: this.state.initialLoadComplete || activeCooks.length > 0 });
+        } else {
+            Object.assign(this.state, { activeCooks });
+        }
+    }
+
+    _applyGenerationProgress(payload) {
+        const { collectionId, progress, liveStatus } = payload || {};
+        if (!collectionId) return;
+
+        const activeCooks = Array.isArray(this.state.activeCooks) ? [...this.state.activeCooks] : [];
+        const idx = activeCooks.findIndex(c => c.collectionId === collectionId);
+        if (idx === -1) {
+            // Create placeholder entry so UI shows it
+            this._applyCookStatusUpdate({
+                collectionId,
+                generationCount: 0,
+                targetSupply: 0,
+                status: 'running',
+                running: 1,
+                queued: 0,
+                eventType: 'generationProgress'
+            });
+            return;
+        }
+
+        const current = { ...activeCooks[idx] };
+        current.status = 'running';
+        current.running = Math.max(1, current.running || 0);
+        current.lastProgress = typeof progress === 'number' ? progress : current.lastProgress;
+        current.liveStatus = liveStatus || current.liveStatus || 'Running';
+        current.updatedAt = new Date().toISOString();
+        activeCooks[idx] = current;
+
+        if (this.state.view === 'home') {
+            this.setState({ activeCooks });
+        } else {
+            Object.assign(this.state, { activeCooks });
+        }
+    }
+
+    _applyGenerationUpdate(payload) {
+        const { collectionId, status } = payload || {};
+        if (!collectionId) return;
+        const activeCooks = Array.isArray(this.state.activeCooks) ? [...this.state.activeCooks] : [];
+        const idx = activeCooks.findIndex(c => c.collectionId === collectionId);
+        if (idx === -1) return;
+        const current = { ...activeCooks[idx] };
+        if (status === 'completed' || status === 'failed') {
+            current.running = Math.max(0, (current.running || 1) - 1);
+            if (current.running === 0 && current.generationCount >= (current.targetSupply || 0)) {
+                current.status = 'paused';
+            }
+        }
+        current.updatedAt = new Date().toISOString();
+        activeCooks[idx] = current;
+
+        if (this.state.view === 'home') {
+            this.setState({ activeCooks });
         } else {
             Object.assign(this.state, { activeCooks });
         }
