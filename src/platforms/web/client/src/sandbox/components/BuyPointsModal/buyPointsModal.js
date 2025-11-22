@@ -13,7 +13,11 @@ const buyPointsState = {
     // New: operation mode – 'contribute' (default) or 'donate'
     mode: 'contribute',
     // Holds donate-mode quote for comparison
-    donateQuote: null
+    donateQuote: null,
+    // Wallet + balance tracking
+    walletAddress: null,
+    walletBalances: null,
+    balancesLoading: false
 };
 
 // --- Request Cancellation ---
@@ -29,6 +33,56 @@ let selectedAssetDisplay, reviewPurchaseBtn, confirmPurchaseBtn;
 function safeToFixed(val, digits = 2) {
     const num = Number(val);
     return isFinite(num) ? num.toFixed(digits) : '-';
+}
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+function normalizeAddress(address) {
+    return (address || '').toLowerCase();
+}
+
+function isValidAddress(address) {
+    return typeof address === 'string' && /^0x[a-fA-F0-9]{40}$/.test(address);
+}
+
+function hexToBigInt(hex) {
+    if (!hex || hex === '0x' || hex === '0X') return 0n;
+    return BigInt(hex);
+}
+
+function formatBigIntBalance(raw, decimals = 18, precision = 4) {
+    if (typeof raw !== 'bigint') return '0';
+    if (raw === 0n) return '0';
+    const divisor = 10n ** BigInt(decimals);
+    const whole = raw / divisor;
+    const fraction = raw % divisor;
+    if (fraction === 0n) return whole.toString();
+    if (precision <= 0) return whole.toString();
+    const scale = 10n ** BigInt(precision);
+    const scaledFraction = (fraction * scale) / divisor;
+    let fractionStr = scaledFraction.toString().padStart(precision, '0');
+    fractionStr = fractionStr.replace(/0+$/, '');
+    return fractionStr ? `${whole.toString()}.${fractionStr}` : whole.toString();
+}
+
+function getBalanceEntryForAsset(asset) {
+    if (!asset || !buyPointsState.walletBalances) return null;
+    const map = buyPointsState.walletBalances.tokens || {};
+    const isEth = (asset.symbol || '').toUpperCase() === 'ETH';
+    const addr = normalizeAddress(asset.address || (isEth ? ZERO_ADDRESS : ''));
+    return map[addr] || null;
+}
+
+function assetHasPositiveBalance(asset) {
+    const entry = getBalanceEntryForAsset(asset);
+    return entry ? entry.raw > 0n : false;
+}
+
+function getBalanceLabel(asset) {
+    const entry = getBalanceEntryForAsset(asset);
+    if (!entry) return null;
+    const symbol = (asset.symbol || asset.name || '').toUpperCase();
+    return `${entry.formatted} ${symbol}`;
 }
 
 function goToStep(stepNumber) {
@@ -86,9 +140,49 @@ function renderAssetSelection() {
         assetSelection.innerHTML = '<div>Loading assets...</div>';
         return;
     }
-    // Define tier order and asset order
-    const tierOrder = [1, 2, 3];
+
+    const walletAddress = buyPointsState.walletAddress;
+    const walletBalances = buyPointsState.walletBalances;
+    const balancesLoading = buyPointsState.balancesLoading;
+
+    // Wallet summary header
+    const walletSummary = document.createElement('div');
+    walletSummary.className = 'wallet-balance-summary';
+    if (!walletAddress) {
+        walletSummary.innerHTML = `
+            <div>Please connect your wallet to view available payment assets.</div>
+            <button class="connect-wallet-btn">Connect Wallet</button>
+        `;
+        assetSelection.appendChild(walletSummary);
+        const connectBtn = walletSummary.querySelector('.connect-wallet-btn');
+        if (connectBtn) {
+            connectBtn.onclick = async () => {
+                try {
+                    await getUserWalletAddress();
+                    await refreshWalletInfo();
+                    await fetchWalletBalances();
+                } catch (err) {
+                    showError(err.message);
+                }
+            };
+        }
+        return;
+    }
+
+    if (balancesLoading || !walletBalances) {
+        walletSummary.textContent = 'Checking wallet balances...';
+        assetSelection.appendChild(walletSummary);
+        return;
+    }
+
+    const nativeEntry = getBalanceEntryForAsset({ address: ZERO_ADDRESS, symbol: 'ETH' });
+    walletSummary.innerHTML = `<div>ETH Balance: <strong>${nativeEntry ? `${nativeEntry.formatted} ETH` : '0 ETH'}</strong></div>`;
+    assetSelection.appendChild(walletSummary);
+
+    // Define tier order and asset order (native first)
+    const tierOrder = ['native', 1, 2, 3];
     const tierAssets = {
+        native: ['eth'],
         1: ['ms2', 'cult'],
         2: ['eth', 'weth', 'usdt', 'usdc'],
         3: ['pepe', 'mog', 'spx6900']
@@ -100,32 +194,46 @@ function renderAssetSelection() {
     // Render tokens by tier
     const tokens = (buyPointsState.supportedAssets.tokens || []).filter(t => t && (t.symbol || t.name));
     const renderedAddresses = new Set();
+    let renderedAnyAsset = false;
+
     tierOrder.forEach(tier => {
         const tierSymbols = tierAssets[tier];
+        if (!tierSymbols) return;
         const tierTokens = tierSymbols
             .map(sym => findAssetBySymbol(sym, tokens))
-            .filter(Boolean);
-        if (tierTokens.length > 0) {
-            const tierDiv = document.createElement('div');
-            tierDiv.className = 'asset-tier-group';
-            tierDiv.innerHTML = `<div class="asset-tier-heading">Tier ${tier}</div>`;
-            tierTokens.forEach(asset => {
-                const btn = document.createElement('button');
-                btn.className = 'asset-btn';
-                const iconSrc = asset.iconUrl || '/images/sandbox/components/placeholder.png';
-                btn.innerHTML = `<img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon"> ${asset.symbol || asset.name}`;
-                btn.onclick = () => {
-                    buyPointsState.selectedAsset = { ...asset, type: 'token' };
-                    goToStep(2);
-                };
-                tierDiv.appendChild(btn);
-                renderedAddresses.add(asset.address.toLowerCase());
-            });
-            assetSelection.appendChild(tierDiv);
-        }
+            .filter(asset => asset && assetHasPositiveBalance(asset));
+        if (tierTokens.length === 0) return;
+
+        const tierDiv = document.createElement('div');
+        tierDiv.className = 'asset-tier-group';
+        const heading = tier === 'native' ? 'Native Assets' : `Tier ${tier}`;
+        tierDiv.innerHTML = `<div class="asset-tier-heading">${heading}</div>`;
+        tierTokens.forEach(asset => {
+            const btn = document.createElement('button');
+            btn.className = 'asset-btn';
+            const iconSrc = asset.iconUrl || '/images/sandbox/components/placeholder.png';
+            const balanceLabel = getBalanceLabel(asset);
+            btn.innerHTML = `
+                <div class="asset-btn-main">
+                    <img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon">
+                    <span>${asset.symbol || asset.name}</span>
+                </div>
+                ${balanceLabel ? `<div class="asset-balance-pill">Bal: ${balanceLabel}</div>` : ''}
+            `;
+            btn.onclick = () => {
+                buyPointsState.selectedAsset = { ...asset, type: 'token' };
+                goToStep(2);
+            };
+            tierDiv.appendChild(btn);
+            renderedAddresses.add((asset.address || '').toLowerCase());
+            renderedAnyAsset = true;
+        });
+        assetSelection.appendChild(tierDiv);
     });
     // Render any remaining tokens not in predefined tiers
-    const remainingTokens = tokens.filter(t => !renderedAddresses.has((t.address||'').toLowerCase()));
+    const remainingTokens = tokens
+        .filter(t => !renderedAddresses.has((t.address||'').toLowerCase()))
+        .filter(assetHasPositiveBalance);
     if (remainingTokens.length) {
         const otherDiv = document.createElement('div');
         otherDiv.className = 'asset-tier-group';
@@ -134,7 +242,14 @@ function renderAssetSelection() {
             const btn = document.createElement('button');
             btn.className = 'asset-btn';
             const iconSrc = asset.iconUrl || '/images/sandbox/components/placeholder.png';
-            btn.innerHTML = `<img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon"> ${asset.symbol || asset.name}`;
+            const balanceLabel = getBalanceLabel(asset);
+            btn.innerHTML = `
+                <div class="asset-btn-main">
+                    <img src="${iconSrc}" alt="${asset.symbol || asset.name}" class="asset-icon">
+                    <span>${asset.symbol || asset.name}</span>
+                </div>
+                ${balanceLabel ? `<div class="asset-balance-pill">Bal: ${balanceLabel}</div>` : ''}
+            `;
             btn.onclick = () => {
                 buyPointsState.selectedAsset = { ...asset, type: 'token' };
                 goToStep(2);
@@ -142,9 +257,10 @@ function renderAssetSelection() {
             otherDiv.appendChild(btn);
         });
         assetSelection.appendChild(otherDiv);
+        renderedAnyAsset = true;
     }
     // Render NFTs (after tokens)
-    const nfts = (buyPointsState.supportedAssets.nfts || []).filter(n => n && n.name);
+    const nfts = (buyPointsState.supportedAssets.nfts || []).filter(n => n && n.name && assetHasPositiveBalance(n));
     if (nfts.length > 0) {
         const nftDiv = document.createElement('div');
         nftDiv.className = 'asset-tier-group';
@@ -160,7 +276,16 @@ function renderAssetSelection() {
             nftDiv.appendChild(btn);
         });
         assetSelection.appendChild(nftDiv);
+        renderedAnyAsset = renderedAnyAsset || nfts.length > 0;
     }
+
+    if (!renderedAnyAsset) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-message';
+        emptyDiv.textContent = 'No supported token balances detected. Deposit a supported asset to continue.';
+        assetSelection.appendChild(emptyDiv);
+    }
+
     // Custom coin logic
     if (customCoinBtn && customCoinInputContainer && customCoinAddress && customCoinSubmit) {
         customCoinBtn.onclick = () => {
@@ -171,16 +296,6 @@ function renderAssetSelection() {
         };
     }
 }
-
-// Add CSS for .asset-icon if not present
-(function ensureAssetIconCss() {
-    if (!document.getElementById('asset-icon-style')) {
-        const style = document.createElement('style');
-        style.id = 'asset-icon-style';
-        style.textContent = `.asset-icon { width: 24px; height: 24px; vertical-align: middle; margin-right: 8px; border-radius: 50%; background: #222; } .asset-tier-heading { font-weight: bold; margin: 12px 0 6px 0; color: #90caf9; } .asset-tier-group { margin-bottom: 10px; }`;
-        document.head.appendChild(style);
-    }
-})();
 
 function renderAmountStep() {
     if (!selectedAssetDisplay || !amountInput || !quoteDisplay) return;
@@ -239,6 +354,24 @@ function renderReviewStep() {
     }
     const q = buyPointsState.quote;
     const b = q.breakdown || {};
+    const toNum = (val) => {
+        if (typeof val === 'number') return val;
+        const parsed = Number(val);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const estimatedGas = toNum(b.estimatedGasUsd ?? q.fees?.estimatedGasUsd);
+    const showGasRow = buyPointsState.mode !== 'donate';
+
+    let userReceivesValue = toNum(b.userReceivesUsd ?? q.userReceivesUsd ?? q.usdValue?.netAfterFundingRate ?? q.usdValue?.gross);
+    if (!showGasRow && estimatedGas) {
+        userReceivesValue += estimatedGas;
+    }
+
+    const gasRowHtml = showGasRow
+        ? `<div>Estimated Gas Fee: <b>-$${safeToFixed(estimatedGas)}</b></div>`
+        : `<div>Estimated Gas Fee: <b>$0 (covered for donations)</b></div>`;
+
     reviewSummary.innerHTML = `
         <div>Asset: ${buyPointsState.selectedAsset.symbol || buyPointsState.selectedAsset.name}</div>
         <div>Amount: ${buyPointsState.amount}</div>
@@ -247,8 +380,8 @@ function renderReviewStep() {
         <div>Gross USD: <b>$${safeToFixed(b.grossUsd ?? q.usdValue?.gross)}</b></div>
         <div>Funding Rate Deduction: <b>-$${safeToFixed(b.fundingRateDeduction ?? 0)}</b></div>
         <div>Net After Funding Rate: <b>$${safeToFixed(b.netAfterFundingRate ?? q.usdValue?.netAfterFundingRate)}</b></div>
-        <div>Estimated Gas Fee: <b>-$${safeToFixed(b.estimatedGasUsd ?? q.fees?.estimatedGasUsd)}</b></div>
-        <div style="font-weight:bold; color:#4caf50;">User Receives: $${safeToFixed(b.userReceivesUsd ?? q.userReceivesUsd)}</div>
+        ${gasRowHtml}
+        <div style="font-weight:bold; color:#4caf50;">User Receives: $${safeToFixed(userReceivesValue)}</div>
     `;
 
     // Update CTA text based on mode
@@ -399,6 +532,103 @@ async function getCurrentChainId() {
     }
 }
 
+async function fetchWalletBalances() {
+    if (!window.ethereum || !buyPointsState.supportedAssets) return;
+    try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (!accounts || !accounts.length) {
+            buyPointsState.walletBalances = null;
+            buyPointsState.walletAddress = null;
+            buyPointsState.balancesLoading = false;
+            render();
+            return;
+        }
+
+        const address = accounts[0];
+        buyPointsState.walletAddress = address;
+        buyPointsState.balancesLoading = true;
+        render();
+
+        const balances = { tokens: {} };
+        // Native ETH balance
+        try {
+            const ethHex = await window.ethereum.request({
+                method: 'eth_getBalance',
+                params: [address, 'latest']
+            });
+            const rawEth = BigInt(ethHex || '0x0');
+            balances.tokens[normalizeAddress(ZERO_ADDRESS)] = {
+                raw: rawEth,
+                decimals: 18,
+                formatted: formatBigIntBalance(rawEth, 18)
+            };
+        } catch (err) {
+            console.warn('[BuyPointsModal] Failed to fetch ETH balance:', err);
+        }
+
+        const tokens = (buyPointsState.supportedAssets.tokens || []).filter(Boolean);
+        const balanceOfSelector = '0x70a08231';
+        const addrParam = address.toLowerCase().replace('0x', '').padStart(64, '0');
+
+        for (const token of tokens) {
+            const tokenAddress = normalizeAddress(token.address);
+            if (!tokenAddress || tokenAddress === normalizeAddress(ZERO_ADDRESS)) continue;
+            if (!isValidAddress(token.address)) {
+                console.warn('[BuyPointsModal] Skipping invalid token address', token.symbol || token.address);
+                continue;
+            }
+            try {
+                const data = `${balanceOfSelector}${addrParam}`;
+                const balanceHex = await window.ethereum.request({
+                    method: 'eth_call',
+                    params: [{ to: token.address, data }, 'latest']
+                });
+                const raw = hexToBigInt(balanceHex);
+                balances.tokens[tokenAddress] = {
+                    raw,
+                    decimals: token.decimals || 18,
+                    formatted: formatBigIntBalance(raw, token.decimals || 18)
+                };
+            } catch (err) {
+                console.warn('[BuyPointsModal] Failed to read balance for token', token.symbol || token.address, err);
+            }
+        }
+
+        const nftConfigs = (buyPointsState.supportedAssets.nfts || []).filter(Boolean);
+        for (const nft of nftConfigs) {
+            const nftAddress = normalizeAddress(nft.address);
+            if (!nftAddress) continue;
+            if (!isValidAddress(nft.address)) {
+                console.warn('[BuyPointsModal] Skipping invalid NFT address', nft.name || nft.address);
+                continue;
+            }
+            try {
+                const data = `${balanceOfSelector}${addrParam}`;
+                const balanceHex = await window.ethereum.request({
+                    method: 'eth_call',
+                    params: [{ to: nft.address, data }, 'latest']
+                });
+                const raw = hexToBigInt(balanceHex);
+                balances.tokens[nftAddress] = {
+                    raw,
+                    decimals: 0,
+                    formatted: formatBigIntBalance(raw, 0)
+                };
+            } catch (err) {
+                console.warn('[BuyPointsModal] Failed to read balance for NFT', nft.name || nft.address, err);
+            }
+        }
+
+        buyPointsState.walletBalances = balances;
+        buyPointsState.balancesLoading = false;
+        render();
+    } catch (err) {
+        console.warn('[BuyPointsModal] Wallet balance fetch failed:', err);
+        buyPointsState.balancesLoading = false;
+        render();
+    }
+}
+
 async function ensureCorrectNetwork() {
     const chainId = await getCurrentChainId();
     if (!chainId || SUPPORTED_CHAIN_IDS.includes(chainId)) {
@@ -428,6 +658,7 @@ async function fetchSupportedAssets() {
         console.log('[BuyPointsModal] Supported assets response:', data);
         buyPointsState.supportedAssets = data;
         render();
+        fetchWalletBalances();
     } catch (err) {
         showError('Could not load supported assets.');
     }
@@ -1050,8 +1281,20 @@ async function refreshWalletInfo() {
         const shortAddr = addr ? addr.slice(0, 6) + '…' + addr.slice(-4) : 'Not connected';
         const chainName = SUPPORTED_CHAINS[chainId] || `Chain ${chainId || '?'}`;
         walletInfoDiv.textContent = `${shortAddr} | ${chainName}`;
+        buyPointsState.walletAddress = addr || null;
+        buyPointsState.chainId = chainId;
+        if (addr) {
+            fetchWalletBalances();
+        } else {
+            buyPointsState.walletBalances = null;
+            buyPointsState.balancesLoading = false;
+            render();
+        }
     } catch (err) {
         walletInfoDiv.textContent = 'Wallet not connected';
+        buyPointsState.walletAddress = null;
+        buyPointsState.walletBalances = null;
+        buyPointsState.balancesLoading = false;
     }
 }
 

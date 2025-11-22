@@ -346,9 +346,9 @@ class ResponsePayloadNormalizer {
           if (image && image.url) {
             console.log(`[ResponsePayloadNormalizer] extractMedia: Extracting image ${idx} as photo: ${image.url.substring(0, 80)}...`);
             media.push({ 
-              type: 'photo', 
+              ...image,
               url: image.url,
-              ...image 
+              type: 'photo' 
             });
           }
         });
@@ -424,9 +424,9 @@ class ResponsePayloadNormalizer {
             
             console.log(`[ResponsePayloadNormalizer] extractMedia: Extracted file as ${mediaType} (reason: ${detectionReason}): ${file.url.substring(0, 80)}...`);
             media.push({ 
-              type: mediaType, 
+              ...file,
               url: file.url,
-              ...file 
+              type: mediaType 
             });
           }
         });
@@ -487,4 +487,3 @@ class ResponsePayloadNormalizer {
 }
 
 module.exports = ResponsePayloadNormalizer;
-

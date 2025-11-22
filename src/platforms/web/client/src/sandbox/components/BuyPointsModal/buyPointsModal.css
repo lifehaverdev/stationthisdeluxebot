@@ -66,23 +66,86 @@
 /* --- Asset Selection (Step 1) --- */
 #asset-selection {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-direction: column;
+    gap: 14px;
     margin-bottom: 20px;
 }
+.wallet-balance-summary {
+    background: rgba(255,255,255,0.04);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+.connect-wallet-btn {
+    margin-top: 10px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: none;
+    background: #1c6ed0;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+.connect-wallet-btn:hover {
+    background: #2a7ff0;
+}
+.asset-tier-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #2b2b2b;
+    border-radius: 10px;
+    background: #121212;
+}
+.asset-tier-heading {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #7ab6ff;
+    margin-bottom: 4px;
+}
 .asset-btn {
-    background-color: #2a2a2a;
-    border: 1px solid #444;
+    width: 100%;
+    background-color: #1f1f1f;
+    border: 1px solid #333;
     color: #f0f0f0;
-    padding: 10px 15px;
+    padding: 12px 14px;
     border-radius: 8px;
     cursor: pointer;
     transition: background-color 0.2s, border-color 0.2s;
     font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
 }
 .asset-btn:hover {
-    background-color: #3a3a3a;
-    border-color: #666;
+    background-color: #2a2a2a;
+    border-color: #4c4c4c;
+}
+.asset-btn-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.asset-icon {
+    width: 24px;
+    height: 24px;
+    vertical-align: middle;
+    border-radius: 50%;
+    background: #222;
+}
+.asset-balance-pill {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(112, 161, 255, 0.15);
+    color: #a8ceff;
 }
 
 /* --- Input Fields --- */

@@ -250,7 +250,12 @@ export default class CookMenuModal {
             activeCooks.push(current);
         }
 
-        if (this.state.view === 'home') {
+        const canPatchDom = this.state.view === 'home' && idx >= 0 && this.modalElement;
+        this.state.activeCooks = activeCooks;
+
+        if (canPatchDom) {
+            this._refreshCookDom(collectionId);
+        } else if (this.state.view === 'home') {
             this.setState({ activeCooks, initialLoadComplete: this.state.initialLoadComplete || activeCooks.length > 0 });
         } else {
             Object.assign(this.state, { activeCooks });
@@ -285,7 +290,11 @@ export default class CookMenuModal {
         current.updatedAt = new Date().toISOString();
         activeCooks[idx] = current;
 
-        if (this.state.view === 'home') {
+        const canPatchDom = this.state.view === 'home' && this.modalElement;
+        this.state.activeCooks = activeCooks;
+        if (canPatchDom) {
+            this._refreshCookDom(collectionId);
+        } else if (this.state.view === 'home') {
             this.setState({ activeCooks });
         } else {
             Object.assign(this.state, { activeCooks });
@@ -300,6 +309,10 @@ export default class CookMenuModal {
         if (idx === -1) return;
         const current = { ...activeCooks[idx] };
         if (status === 'completed' || status === 'failed') {
+            if (status === 'completed' && typeof current.generationCount === 'number') {
+                const cap = Number.isFinite(current.targetSupply) && current.targetSupply > 0 ? current.targetSupply : Infinity;
+                current.generationCount = Math.min(cap, (current.generationCount || 0) + 1);
+            }
             current.running = Math.max(0, (current.running || 1) - 1);
             if (current.running === 0 && current.generationCount >= (current.targetSupply || 0)) {
                 current.status = 'paused';
@@ -308,10 +321,106 @@ export default class CookMenuModal {
         current.updatedAt = new Date().toISOString();
         activeCooks[idx] = current;
 
-        if (this.state.view === 'home') {
+        const canPatchDom = this.state.view === 'home' && this.modalElement;
+        this.state.activeCooks = activeCooks;
+        if (canPatchDom) {
+            this._refreshCookDom(collectionId);
+        } else if (this.state.view === 'home') {
             this.setState({ activeCooks });
         } else {
             Object.assign(this.state, { activeCooks });
+        }
+    }
+
+    _formatCookStatus(cook = {}) {
+        const {
+            status,
+            running = 0,
+            queued = 0,
+            generationCount = 0,
+            targetSupply = 0,
+            lastProgress,
+            liveStatus,
+        } = cook;
+
+        const normalizedStatus = (status || (running > 0 ? 'running' : 'paused')).toLowerCase();
+        const piecesRemaining = Number.isFinite(targetSupply) && targetSupply > 0
+            ? Math.max(0, targetSupply - generationCount)
+            : null;
+        const pct = typeof lastProgress === 'number'
+            ? Math.max(0, Math.min(100, Math.round(lastProgress * 100)))
+            : null;
+
+        const parts = [];
+        if (normalizedStatus === 'running') {
+            parts.push('Running');
+            if (running > 0) parts.push(`${running} active`);
+            if (queued > 0) parts.push(`${queued} queued`);
+        } else if (normalizedStatus === 'paused') {
+            parts.push('Paused');
+            if (queued > 0) parts.push(`${queued} queued`);
+        } else if (normalizedStatus === 'failed') {
+            parts.push('Failed');
+        } else {
+            parts.push(normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1));
+        }
+
+        if (pct !== null) {
+            parts.push(`${pct}%`);
+        }
+        if (liveStatus) {
+            parts.push(liveStatus);
+        }
+        if (piecesRemaining !== null && normalizedStatus !== 'paused') {
+            parts.push(`${piecesRemaining} remaining`);
+        }
+
+        return parts.filter(Boolean).join(' • ') || 'Status unavailable';
+    }
+
+    _getStatusIconAndTitle(cook = {}) {
+        const normalizedStatus = (cook.status || (cook.running > 0 ? 'running' : 'paused')).toLowerCase();
+        if (normalizedStatus === 'running') {
+            return { icon: '🔥', title: 'Cook running' };
+        }
+        if (normalizedStatus === 'paused') {
+            return { icon: '⏸', title: 'Cook paused' };
+        }
+        if (normalizedStatus === 'failed') {
+            return { icon: '⚠️', title: 'Cook failed' };
+        }
+        return { icon: 'ℹ️', title: 'Status update' };
+    }
+
+    _refreshCookDom(collectionId) {
+        if (!this.modalElement || this.state.view !== 'home') return;
+        const cook = (this.state.activeCooks || []).find(c => c.collectionId === collectionId);
+        if (!cook) return;
+
+        const item = this.modalElement.querySelector(`.cook-status-item[data-id="${collectionId}"]`);
+        if (!item) {
+            // Cook might have moved between sections; fall back to full render.
+            this.render();
+            return;
+        }
+
+        const titleEl = item.querySelector('.cook-title');
+        if (titleEl) {
+            const generationCount = typeof cook.generationCount === 'number' ? cook.generationCount : 0;
+            const targetSupply = typeof cook.targetSupply === 'number' ? cook.targetSupply : 0;
+            titleEl.textContent = `${cook.collectionName || 'Untitled'} – ${generationCount}/${targetSupply}`;
+        }
+
+        const statusEl = item.querySelector('.cook-status-text');
+        if (statusEl) {
+            statusEl.textContent = this._formatCookStatus(cook);
+        }
+
+        const iconEl = item.querySelector('.cook-status-icon');
+        if (iconEl) {
+            const { icon, title } = this._getStatusIconAndTitle(cook);
+            iconEl.textContent = icon;
+            if (title) iconEl.setAttribute('title', title);
         }
     }
 
@@ -382,10 +491,11 @@ export default class CookMenuModal {
         
         // Render actively running cooks with fire icon (using HTML entity to avoid encoding issues)
         const runningHtml = runningCooks.length ? runningCooks.map(c => `
-            <div class="cook-status-item">
+            <div class="cook-status-item" data-id="${c.collectionId}">
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
-                    <span style="color: #ff6b6b; font-size: 18px; display: inline-block;" title="Cooking in progress">&#128293;</span>
+                    <span class="cook-status-icon" title="Cooking in progress">&#128293;</span>
                     <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook" style="margin-left: 8px;">⏸</button>
                 </div>
             </div>
@@ -393,8 +503,9 @@ export default class CookMenuModal {
         
         // Render paused cooks with ▶️ icon
         const pausedHtml = pausedCooks.length ? pausedCooks.map(c => `
-            <div class="cook-status-item">
+            <div class="cook-status-item" data-id="${c.collectionId}">
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
                 </div>
@@ -403,8 +514,9 @@ export default class CookMenuModal {
         
         // Render awaiting review section
         const reviewHtml = awaitingReview.length ? awaitingReview.map(c => `
-            <div class="cook-status-item">
+            <div class="cook-status-item" data-id="${c.collectionId}">
                 <div class="cook-title">${c.collectionName || 'Untitled'} – ${c.generationCount}/${c.targetSupply}</div>
+                <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Review</button>
                 </div>

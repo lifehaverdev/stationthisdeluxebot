@@ -1,3 +1,5 @@
+import { showTextOverlay } from '../node/overlays/textOverlay.js';
+
 export default class TraitTreeEditor {
   constructor({ collection, onSave }) {
     this.collection = collection;
@@ -37,6 +39,15 @@ export default class TraitTreeEditor {
     } else {
       delete this.state.validationErrors[key];
     }
+  }
+
+  clearCategoryValidationErrors(categoryIdx) {
+    const prefix = `${categoryIdx}:`;
+    Object.keys(this.state.validationErrors).forEach(key => {
+      if (key.startsWith(prefix)) {
+        delete this.state.validationErrors[key];
+      }
+    });
   }
 
   // ---------- Render helpers ----------
@@ -79,6 +90,9 @@ export default class TraitTreeEditor {
               <label>Shuffle Seed<br><input type="number" class="gen-shuffle" value="${Number.isFinite(generator.shuffleSeed)?generator.shuffleSeed:''}"></label>
             </div>
             <div style="margin-top:8px;color:#aaa;">Count: ${count} · Preview: ${preview}</div>
+          </div>
+          <div class="trait-json-actions">
+            <button class="edit-cat-json-btn" data-cat="${idx}" title="Edit raw JSON for this category">Edit JSON</button>
           </div>`;
       } else {
         const traitRows = (cat.traits||[]).map((tr, tIdx) => {
@@ -136,6 +150,9 @@ export default class TraitTreeEditor {
               </tbody>
             </table>
             ${this.state.isDirty ? '<div class="unsaved-changes">You have unsaved changes</div>' : ''}
+          </div>
+          <div class="trait-json-actions">
+            <button class="edit-cat-json-btn" data-cat="${idx}" title="Edit raw JSON for this category">Edit JSON</button>
           </div>`;
       }
     }
@@ -175,8 +192,45 @@ export default class TraitTreeEditor {
     return out.map(v => zp>0 ? String(v).padStart(zp,'0') : String(v));
   }
 
+  editCategoryJson(categoryIdx) {
+    const category = this.state.categories[categoryIdx];
+    if (!category) return;
+    const initial = JSON.stringify(category, null, 2);
+    showTextOverlay(initial, (newValue) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(newValue);
+      } catch (err) {
+        alert('Failed to parse JSON: ' + err.message);
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object') {
+        alert('JSON must describe an object.');
+        return;
+      }
+      if (typeof parsed.name !== 'string' || !parsed.name.trim()) {
+        alert('Category must include a non-empty "name" field.');
+        return;
+      }
+      parsed.name = parsed.name.trim();
+      parsed.mode = parsed.mode === 'generated' ? 'generated' : 'manual';
+      if (parsed.mode === 'manual') {
+        parsed.traits = Array.isArray(parsed.traits) ? parsed.traits : [];
+      } else {
+        parsed.generator = parsed.generator || { type:'range', start:0, end:10, step:1, zeroPad:0, uniqueAcrossCook:false, shuffleSeed:null };
+      }
+      this.state.categories[categoryIdx] = parsed;
+      this.clearCategoryValidationErrors(categoryIdx);
+      this.state.isDirty = true;
+      if (this.container) {
+        this.attach(this.container);
+      }
+    });
+  }
+
   // ---------- DOM attachment & events ----------
   attach(container) {
+    this.container = container;
     container.innerHTML = this.render();
     // Add category
     container.querySelector('.add-cat-btn').onclick = () => {
@@ -196,6 +250,12 @@ export default class TraitTreeEditor {
         const idx = Number(toggle.getAttribute('data-toggle'));
         this.state.editingCatIdx = this.state.editingCatIdx===idx ? null : idx;
         this.attach(container);
+      };
+    });
+    container.querySelectorAll('.edit-cat-json-btn').forEach(btn=>{
+      btn.onclick=()=>{
+        const catIdx = Number(btn.getAttribute('data-cat'));
+        this.editCategoryJson(catIdx);
       };
     });
 
