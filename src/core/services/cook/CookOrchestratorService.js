@@ -343,7 +343,8 @@ class CookOrchestratorService {
         
         // Check if state exists, create or update atomically
         const existingState = this.runningByCollection.get(key);
-        if (!existingState) {
+        const shouldResetState = !existingState || (existingState.running && existingState.running.size === 0);
+        if (shouldResetState) {
           this.runningByCollection.set(key, { 
             running: new Set(), 
             nextIndex: producedSoFar, 
@@ -358,7 +359,13 @@ class CookOrchestratorService {
             traitTypes, 
             paramsTemplate 
           });
-    }
+        } else {
+          existingState.total = supply;
+          existingState.generatedCount = producedSoFar;
+          if (producedSoFar < existingState.nextIndex) {
+            existingState.nextIndex = producedSoFar;
+          }
+        }
         
     const state = this.runningByCollection.get(key);
     this.logger.info(`[Cook DEBUG] State on start`, { nextIndex: state.nextIndex, runningSize: state.running.size, total: state.total });
