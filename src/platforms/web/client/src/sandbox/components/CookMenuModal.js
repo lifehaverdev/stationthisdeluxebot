@@ -589,8 +589,6 @@ export default class CookMenuModal {
             <div class="collection-card" data-id="${c.collectionId}">${c.name || 'Untitled'}</div>
         `).join('') : '<div class="empty-message">No collections yet.</div>';
 
-        const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
-        const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
         return `
             ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
             ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
