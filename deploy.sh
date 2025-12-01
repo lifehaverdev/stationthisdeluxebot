@@ -50,15 +50,9 @@ load_env_var() {
     return
   fi
   if [[ -f "${ENV_FILE}" ]]; then
-    local line
-    line=$(grep -E "^${var_name}=" "${ENV_FILE}" | tail -n1 || true)
-    if [[ -n "${line}" ]]; then
-      local value="${line#${var_name}=}"
-      value="${value%$'\r'}"
-      value="${value#\"}"
-      value="${value%\"}"
-      value="${value#\'}"
-      value="${value%\'}"
+    local value
+    value=$(grep -E "^${var_name}=" "${ENV_FILE}" | tail -n1 | sed -E "s/^${var_name}=//" | tr -d '\r\"'"'"'' || true)
+    if [[ -n "${value}" ]]; then
       printf '%s' "${value}"
       return
     fi
