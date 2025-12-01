@@ -63,6 +63,21 @@ const CHART_COLORS_CONFIG = CHART_COLORS || {
   text: '#e0e0e0'
 };
 
+const TOKEN_METADATA = {
+  '0x0000000000000000000000000000000000000000': { symbol: 'ETH', decimals: 18 },
+  '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { symbol: 'USDC', decimals: 6 },
+  '0x6b175474e89094c44da98b954eedeac495271d0f': { symbol: 'DAI', decimals: 18 },
+  '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { symbol: 'WETH', decimals: 18 },
+  '0xdac17f958d2ee523a2206206994597c13d831ec7': { symbol: 'USDT', decimals: 6 },
+  '0x98ed411b8cf8536657c660db8aa55d9d4baaf820': { symbol: 'MS2', decimals: 6 },
+  '0x6982508145454ce325ddbe47a25d4ec3d2311933': { symbol: 'PEPE', decimals: 18 },
+  '0xaaee1a9723aadb7afa2810263653a34ba2c21c7a': { symbol: 'MOG', decimals: 18 },
+  '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c': { symbol: 'SPX6900', decimals: 18 }
+};
+
+const DEPOSIT_QUEUE_STORAGE_KEY = 'adminDepositFollowUpQueue';
+const DEPOSIT_RECOVERY_DEFAULT_STATUSES = ['PENDING_CONFIRMATION', 'ERROR', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'];
+
 // Constants
 const USD_PER_POINT = 0.000337; // 1 point = $0.000337 USD
 
@@ -94,9 +109,123 @@ function splitCustodyAmount(packedAmount) {
   return { userOwned, escrow };
 }
 
+function getTokenMetadata(tokenAddress) {
+  if (!tokenAddress) {
+    return { symbol: 'UNKNOWN', decimals: 18 };
+  }
+  const normalized = tokenAddress.toLowerCase();
+  return TOKEN_METADATA[normalized] || { symbol: normalized.slice(0, 6), decimals: 18 };
+}
+
+function formatTokenAmountDisplay(amountWei, tokenAddress) {
+  try {
+    const { decimals, symbol } = getTokenMetadata(tokenAddress);
+    if (amountWei === undefined || amountWei === null) return 'N/A';
+    const formatted = ethers.formatUnits(amountWei.toString(), decimals);
+    return `${parseFloat(formatted).toFixed(6)} ${symbol}`;
+  } catch (error) {
+    console.warn('[AdminDashboard] Failed to format token amount', error);
+    return `${amountWei} (raw)`;
+  }
+}
+
+function shortHash(value) {
+  if (!value || typeof value !== 'string') return 'N/A';
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function relativeTimeFrom(timestamp) {
+  if (!timestamp) return '';
+  const deltaMs = Date.now() - new Date(timestamp).getTime();
+  if (deltaMs < 1000) return 'just now';
+  const mins = Math.floor(deltaMs / (60 * 1000));
+  if (mins < 1) return 'seconds ago';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function escapeHtml(str = '') {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatFailureMessage(deposit) {
+  const reason = deposit.failure_reason || deposit.failureReason || '';
+  const details = deposit.error_details || deposit.errorDetails || '';
+  if (!reason && !details) {
+    return '<span style="color:#888;">None</span>';
+  }
+  let html = '';
+  if (reason) {
+    html += `<div style="color:#ff9800;">${escapeHtml(reason)}</div>`;
+  }
+  if (details) {
+    const detailText = typeof details === 'string' ? details : JSON.stringify(details, null, 2);
+    const trimmed = detailText.length > 220 ? `${detailText.slice(0, 220)}…` : detailText;
+    html += `<div style="color:#888;font-size:0.85em;margin-top:0.25rem;">${escapeHtml(trimmed)}</div>`;
+  }
+  return html;
+}
+
+function buildDepositPayload(deposit, masterAccountId) {
+  return {
+    masterAccountId: masterAccountId || deposit.master_account_id,
+    depositor: deposit.depositor_address || deposit.depositorAddress,
+    token: deposit.token_address || deposit.tokenAddress,
+    vault: deposit.vault_account || deposit.vaultAddress,
+    depositTxHash: deposit.deposit_tx_hash,
+    confirmationTxHash: deposit.confirmation_tx_hash || null,
+    status: deposit.status,
+    amountWei: deposit.deposit_amount_wei || deposit.depositAmountWei,
+    failureReason: deposit.failure_reason || deposit.failureReason || null,
+    errorDetails: deposit.error_details || deposit.errorDetails || null,
+    createdAt: deposit.createdAt,
+    updatedAt: deposit.updatedAt
+  };
+}
+
+function formatQueueAction(action) {
+  switch (action) {
+    case 'REFUND':
+      return 'Refund / Rescind';
+    case 'RECONFIRM':
+    default:
+      return 'Retry Confirmation';
+  }
+}
+
 let provider = null;
 let signer = null;
 let foundationContract = null;
+
+function loadDepositQueueFromStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(DEPOSIT_QUEUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('[AdminDashboard] Failed to load deposit queue from storage', error);
+    return [];
+  }
+}
+
+function persistDepositQueue() {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(DEPOSIT_QUEUE_STORAGE_KEY, JSON.stringify(state.depositFollowUpQueue || []));
+  } catch (error) {
+    console.warn('[AdminDashboard] Failed to persist deposit queue', error);
+  }
+}
 
 const state = {
   loading: false,
@@ -129,6 +258,18 @@ const state = {
     results: [],
     selectedUser: null,
     loading: false
+  },
+  depositDiagnostics: {},
+  depositFollowUpQueue: loadDepositQueueFromStorage(),
+  depositRecovery: {
+    loading: false,
+    deposits: [],
+    metrics: null,
+    filters: {
+      statuses: [...DEPOSIT_RECOVERY_DEFAULT_STATUSES],
+      token: ''
+    },
+    error: null
   },
   error: null
 };
@@ -242,6 +383,48 @@ async function setupActivityFeed() {
   });
 }
 
+async function loadDepositRecoveryData(options = {}) {
+  const { suppressRender = false } = options;
+  if (!currentAccount) return;
+  if (!suppressRender) {
+    state.depositRecovery.loading = true;
+    render();
+  } else {
+    state.depositRecovery.loading = true;
+  }
+
+  try {
+    const params = new URLSearchParams();
+    params.set('wallet', currentAccount);
+    params.set('chainId', '1');
+    if (state.depositRecovery.filters.statuses.length > 0) {
+      params.set('statuses', state.depositRecovery.filters.statuses.join(','));
+    }
+    if (state.depositRecovery.filters.token) {
+      params.set('token', state.depositRecovery.filters.token.trim());
+    }
+
+    const response = await fetch(`/api/v1/admin/vaults/deposits/pending?${params.toString()}`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || 'Failed to fetch pending deposits');
+    }
+
+    const data = await response.json();
+    state.depositRecovery.deposits = data.deposits || [];
+    state.depositRecovery.metrics = data.metrics || null;
+    state.depositRecovery.error = null;
+  } catch (error) {
+    console.error('[AdminDashboard] Failed to load deposit recovery data:', error);
+    state.depositRecovery.error = error.message;
+  } finally {
+    state.depositRecovery.loading = false;
+    if (!suppressRender) {
+      render();
+    }
+  }
+}
+
 function disconnectActivityFeed() {
   const wsClient = (typeof websocketClient !== 'undefined' && websocketClient) || (typeof window !== 'undefined' && window.websocketClient);
   if (wsClient) {
@@ -324,6 +507,9 @@ async function loadDashboard() {
 
     // Fetch costs data
     await loadCosts();
+
+    // Fetch deposit recovery telemetry
+    await loadDepositRecoveryData({ suppressRender: true });
 
     state.loading = false;
     render();
@@ -575,6 +761,8 @@ function render() {
   }
 
   let html = '<div class="admin-dashboard">';
+  html += renderDepositRecoverySection();
+  html += renderDepositFollowUpQueue();
   
   // Foundation balances
   if (state.balances && state.balances.foundation) {
@@ -616,57 +804,56 @@ function render() {
       // Show token if it has any balance (protocolEscrow, userOwned, realUserOwned, or protocolOwnedNotSeized) or if there's a mismatch
       if (protocolEscrow > 0n || userOwned > 0n || realUserOwned > 0n || protocolOwnedNotSeized > 0n || hasMismatch || (onChainProtocolEscrow !== null && (onChainProtocolEscrow > 0n || onChainUserOwned > 0n))) {
         hasAnyBalance = true;
-        const protocolAmount = formatUnits(protocolEscrow.toString(), token.decimals);
-        const userAmount = formatUnits(userOwned.toString(), token.decimals);
-        const realUserAmount = formatUnits(realUserOwned.toString(), token.decimals);
-        const protocolNotSeizedAmount = formatUnits(protocolOwnedNotSeized.toString(), token.decimals);
-        const totalDepositedAmount = formatUnits(totalDeposited.toString(), token.decimals);
-        const totalUserEscrowAmount = formatUnits(totalUserEscrowOnChain.toString(), token.decimals);
-        
-        let onChainDisplay = '';
-        if (onChainProtocolEscrow !== null) {
-          const onChainProtocolAmount = formatUnits(onChainProtocolEscrow.toString(), token.decimals);
-          const onChainUserAmount = formatUnits(onChainUserOwned.toString(), token.decimals);
-          const mismatchStyle = hasMismatch ? 'background: #ff6b6b20; border-left: 3px solid #ff6b6b; padding-left: 0.5rem;' : '';
-          onChainDisplay = `
-            <div style="${mismatchStyle} margin-top: 0.5rem; font-size: 0.9em; color: #888;">
-              <strong>On-Chain (Verified):</strong><br>
-              Protocol Escrow: ${onChainProtocolAmount} ${hasMismatch && protocolEscrow !== onChainProtocolEscrow ? '⚠️' : ''}<br>
-              User Owned: ${onChainUserAmount} ${hasMismatch && userOwned !== onChainUserOwned ? '⚠️' : ''}
-            </div>
-          `;
-          console.log(`[AdminDashboard] Generated onChainDisplay for ${token.symbol}, hasMismatch=${hasMismatch}`);
-          console.log(`[AdminDashboard] onChainDisplay content:`, onChainDisplay);
-        } else {
-          console.log(`[AdminDashboard] No on-chain data for ${token.symbol} (onChainProtocolEscrow is null)`);
-        }
-        
+        const contractTotalWei = BigInt(token.contractTotalWei || (BigInt(token.userOwned || '0') + BigInt(token.protocolEscrow || '0')));
+        const contractUserWei = BigInt(token.contractUserOwnedWei || token.userOwned || '0');
+        const contractProtocolWei = BigInt(token.contractProtocolEscrowWei || token.protocolEscrow || '0');
+        const ledgerUserClaimWei = BigInt(token.ledgerUserClaimWei || token.realUserOwned || '0');
+        const ledgerProtocolClaimWei = BigInt(token.ledgerProtocolClaimWei || token.protocolOwnedNotSeized || '0');
+        const pointDebtWei = BigInt(token.pointDebtWei || '0');
+        const pendingSeizureWei = BigInt(token.pendingSeizureWei || '0');
+        const pointsOutstanding = token.pointsOutstanding || 0;
+        const pointsOutstandingUsd = typeof token.pointsOutstandingUsd === 'number'
+          ? token.pointsOutstandingUsd
+          : Number((pointsOutstanding * USD_PER_POINT).toFixed(2));
+
+        const contractTotalAmount = formatUnits(contractTotalWei.toString(), token.decimals);
+        const contractUserAmount = formatUnits(contractUserWei.toString(), token.decimals);
+        const contractProtocolAmount = formatUnits(contractProtocolWei.toString(), token.decimals);
+        const ledgerUserAmount = formatUnits(ledgerUserClaimWei.toString(), token.decimals);
+        const ledgerProtocolAmount = formatUnits(ledgerProtocolClaimWei.toString(), token.decimals);
+        const pointDebtAmount = formatUnits(pointDebtWei.toString(), token.decimals);
+        const pendingSeizureAmount = formatUnits(pendingSeizureWei.toString(), token.decimals);
+
+        const contractMismatch = pointDebtWei > 0n || pendingSeizureWei > 0n || hasMismatch;
         const tokenHtml = `
-          <div class="token-item" style="${hasMismatch ? 'border: 2px solid #ff6b6b;' : ''}">
-            <span class="token-symbol">${token.symbol} ${hasMismatch ? '⚠️ MISMATCH' : ''}</span>
-            <div class="token-amount" style="flex: 1;">
-              <div style="margin-bottom: 0.5rem;">
-                <strong>Database (On-Chain):</strong><br>
-                Protocol Escrow: ${protocolAmount}<br>
-                User Owned (On-Chain): ${userAmount}
+          <div class="token-item" style="${contractMismatch ? 'border: 2px solid #ff6b6b;' : ''}">
+            <span class="token-symbol">${token.symbol} ${contractMismatch ? '⚠️' : ''}</span>
+            <div class="token-amount" style="flex:1; display:flex; flex-direction:column; gap:0.5rem;">
+              <div style="padding:0.5rem; background:#1a1a1a; border-radius:4px;">
+                <strong>Contract Balances</strong><br>
+                Total Locked: ${contractTotalAmount}<br>
+                User Owned (on-chain): ${contractUserAmount}<br>
+                Protocol Escrow (on-chain): ${contractProtocolAmount}
               </div>
-              <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: #1a1a1a; border-radius: 4px;">
-                <strong>Real Balances (Based on Points):</strong><br>
-                Total User Escrow (On-Chain): ${totalUserEscrowAmount}<br>
-                Real User Owned: <span style="color: #4caf50;">${realUserAmount}</span><br>
-                Protocol Owned (Not Seized): <span style="color: #ff9800;">${protocolNotSeizedAmount}</span><br>
-                Total Deposited: ${totalDepositedAmount}
+              <div style="padding:0.5rem; background:#1a1a1a; border-radius:4px;">
+                <strong>Ledger Claims (Points)</strong><br>
+                User Claim: <span style="color:#4caf50;">${ledgerUserAmount}</span><br>
+                Protocol Claim (earned but not seized): <span style="color:#ff9800;">${ledgerProtocolAmount}</span>
               </div>
-              ${onChainDisplay || ''}
+              <div style="padding:0.5rem; background:#1a1a1a; border-radius:4px;">
+                <strong>Debt &amp; Signals</strong><br>
+                Point-Denominated Debt: ${pointDebtAmount}${pointDebtWei > 0n ? ' ⚠️' : ''}<br>
+                Pending Seizure Opportunity: ${pendingSeizureAmount}${pendingSeizureWei > 0n ? ' ⚠️' : ''}<br>
+                Points Outstanding: ${pointsOutstanding.toLocaleString()} pts (~$${pointsOutstandingUsd.toFixed(2)})
+              </div>
             </div>
             ${protocolOwnedNotSeized > 0n ? `
             <button class="withdraw-btn" data-token="${token.tokenAddress}" data-vault="${FOUNDATION_ADDRESS}" data-amount="${token.protocolOwnedNotSeized}" data-symbol="${token.symbol}" data-decimals="${token.decimals}">
               Withdraw ${formatUnits(token.protocolOwnedNotSeized.toString(), token.decimals)} ${token.symbol}
             </button>
-            ` : protocolEscrow > 0n ? '<span style="color: #888;">No withdrawable amount (all user-owned)</span>' : '<span style="color: #888;">No protocol escrow</span>'}
+            ` : contractProtocolWei > 0n ? '<span style="color: #888;">No withdrawable amount (all user-owned)</span>' : '<span style="color: #888;">No protocol escrow</span>'}
           </div>
         `;
-        console.log(`[AdminDashboard] Token HTML for ${token.symbol} includes onChain:`, tokenHtml.includes('On-Chain'));
         html += tokenHtml;
       }
     });
@@ -1709,6 +1896,44 @@ function render() {
     });
   });
 
+  // Deposit diagnostics & follow-up queue controls
+  document.querySelectorAll('.diagnose-deposit-btn').forEach(btn => {
+    btn.addEventListener('click', handleDepositDiagnostics);
+  });
+
+  document.querySelectorAll('.queue-deposit-btn').forEach(btn => {
+    btn.addEventListener('click', handleQueueDeposit);
+  });
+
+  document.querySelectorAll('.copy-deposit-btn').forEach(btn => {
+    btn.addEventListener('click', handleCopyDepositPayload);
+  });
+
+  document.querySelectorAll('.copy-queue-entry-btn').forEach(btn => {
+    btn.addEventListener('click', handleCopyQueueEntry);
+  });
+
+  document.querySelectorAll('.remove-queue-entry-btn').forEach(btn => {
+    btn.addEventListener('click', handleRemoveQueueEntry);
+  });
+
+  const exportQueueBtn = document.getElementById('export-deposit-queue');
+  if (exportQueueBtn) {
+    exportQueueBtn.addEventListener('click', handleExportDepositQueue);
+  }
+
+  document.querySelectorAll('.deposit-status-checkbox').forEach(cb => {
+    cb.addEventListener('change', handleDepositStatusFilterChange);
+  });
+  const depositTokenInput = document.getElementById('deposit-token-filter');
+  if (depositTokenInput) {
+    depositTokenInput.addEventListener('change', handleDepositTokenFilterChange);
+  }
+  const depositRefreshBtn = document.getElementById('deposit-refresh-btn');
+  if (depositRefreshBtn) {
+    depositRefreshBtn.addEventListener('click', () => loadDepositRecoveryData());
+  }
+
   // Adjust points form
   const adjustPointsForm = document.getElementById('adjust-points-form');
   if (adjustPointsForm) {
@@ -2318,20 +2543,53 @@ function renderUserDetails(userData) {
     html += '<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">';
     html += '<thead><tr style="border-bottom: 1px solid #444;">';
     html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">Date</th>';
+    html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">Token</th>';
     html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">TX Hash</th>';
     html += '<th style="text-align: right; padding: 0.5rem; color: #90caf9;">Points</th>';
     html += '<th style="text-align: right; padding: 0.5rem; color: #90caf9;">USD Value</th>';
     html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">Status</th>';
+    html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">Failure / Notes</th>';
+    html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">On-Chain State</th>';
+    html += '<th style="text-align: left; padding: 0.5rem; color: #90caf9;">Actions</th>';
     html += '</tr></thead><tbody>';
-    deposits.forEach(deposit => {
+    deposits.forEach((deposit, index) => {
       const points = deposit.points_credited || 0;
       const usdValue = deposit.user_credited_usd ? parseFloat(deposit.user_credited_usd.toString()) : 0;
+      const txHash = deposit.deposit_tx_hash || deposit.confirmation_tx_hash || '';
+      const tokenAddress = (deposit.token_address || deposit.tokenAddress || '').toLowerCase();
+      const tokenMeta = getTokenMetadata(tokenAddress);
+      const diag = state.depositDiagnostics[txHash];
+      const diagError = diag?.error;
+      const diagChecked = diag?.checkedAt ? relativeTimeFrom(diag.checkedAt) : null;
+      const isQueued = state.depositFollowUpQueue?.some(entry => entry.txHash === txHash);
+      const isConfirmed = deposit.status === 'CONFIRMED';
+      const dateLabel = new Date(deposit.createdAt || deposit.timestamp).toLocaleString();
+      let onChainHtml = '';
+      if (diag && !diagError) {
+        onChainHtml += `<div>Unconfirmed: <strong>${formatTokenAmountDisplay(diag.userOwned, tokenAddress)}</strong></div>`;
+        onChainHtml += `<div style="color:#888;">Escrow: ${formatTokenAmountDisplay(diag.escrow, tokenAddress)}</div>`;
+        onChainHtml += `<div style="color:#555;font-size:0.8em;">${diagChecked || 'just now'}</div>`;
+        onChainHtml += `<button class="diagnose-deposit-btn" data-context="user" data-index="${index}" style="margin-top:0.25rem; padding:0.3rem 0.5rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Refresh</button>`;
+      } else if (diag && diagError) {
+        onChainHtml += `<div style="color:#d32f2f;">${escapeHtml(diagError)}</div>`;
+        onChainHtml += `<button class="diagnose-deposit-btn" data-context="user" data-index="${index}" style="margin-top:0.25rem; padding:0.3rem 0.5rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Retry</button>`;
+      } else {
+        onChainHtml += `<button class="diagnose-deposit-btn" data-context="user" data-index="${index}" style="padding:0.4rem 0.75rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Check</button>`;
+      }
+
       html += '<tr style="border-bottom: 1px solid #333;">';
-      html += '<td style="padding: 0.5rem; color: #888;">' + new Date(deposit.createdAt || deposit.timestamp).toLocaleString() + '</td>';
-      html += '<td style="padding: 0.5rem; color: #90caf9;"><a href="https://etherscan.io/tx/' + (deposit.deposit_tx_hash || deposit.confirmation_tx_hash || '') + '" target="_blank" style="color: #90caf9;">' + (deposit.deposit_tx_hash || deposit.confirmation_tx_hash || 'N/A').slice(0, 16) + '...</a></td>';
+      html += `<td style="padding: 0.5rem; color: #888;">${dateLabel}</td>`;
+      html += `<td style="padding: 0.5rem; color: #e0e0e0;">${tokenMeta.symbol}<div style="color:#888;font-size:0.8em;">${shortHash(tokenAddress)}</div></td>`;
+      html += '<td style="padding: 0.5rem; color: #90caf9;"><a href="https://etherscan.io/tx/' + txHash + '" target="_blank" style="color: #90caf9;">' + (txHash ? txHash.slice(0, 16) + '...' : 'N/A') + '</a></td>';
       html += '<td style="padding: 0.5rem; text-align: right; color: #4caf50;">' + points.toLocaleString() + '</td>';
       html += '<td style="padding: 0.5rem; text-align: right; color: #4caf50;">$' + usdValue.toFixed(4) + '</td>';
-      html += '<td style="padding: 0.5rem; color: ' + (deposit.status === 'CONFIRMED' ? '#4caf50' : '#888') + ';">' + (deposit.status || 'N/A') + '</td>';
+      html += '<td style="padding: 0.5rem; color: ' + (isConfirmed ? '#4caf50' : '#ff9800') + ';">' + (deposit.status || 'N/A') + '</td>';
+      html += `<td style="padding: 0.5rem;">${formatFailureMessage(deposit)}</td>`;
+      html += `<td style="padding: 0.5rem; color:#e0e0e0;">${onChainHtml}</td>`;
+      html += '<td style="padding: 0.5rem;">';
+      html += `<button class="queue-deposit-btn" data-context="user" data-index="${index}" ${isConfirmed || isQueued ? 'disabled' : ''} style="display:block; width:100%; margin-bottom:0.35rem; padding:0.4rem; background:${isConfirmed || isQueued ? '#555' : '#3f51b5'}; color:#fff; border:none; border-radius:4px; cursor:${isConfirmed || isQueued ? 'not-allowed' : 'pointer'};">${isQueued ? 'Queued' : 'Queue Follow-Up'}</button>`;
+      html += `<button class="copy-deposit-btn" data-context="user" data-index="${index}" style="display:block; width:100%; padding:0.4rem; background:#2a2f3a; color:#90caf9; border:1px solid #444; border-radius:4px; cursor:pointer;">Copy Payload</button>`;
+      html += '</td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
@@ -2340,9 +2598,368 @@ function renderUserDetails(userData) {
   }
   html += '</div>';
   html += '</div>';
-
-  html += '</div>';
   return html;
+}
+
+function renderDepositRecoverySection() {
+  const recovery = state.depositRecovery;
+  const statusOptions = Array.from(new Set([...DEPOSIT_RECOVERY_DEFAULT_STATUSES, ...(recovery.filters.statuses || [])]));
+  let html = '<section class="vault-section">';
+  html += '<h2>Deposit Recovery</h2>';
+  html += '<div style="margin-bottom: 1rem; padding: 1rem; background: #1a1a1a; border-radius: 4px;">';
+  html += '<div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;">';
+  html += '<label style="color:#e0e0e0;">Statuses:</label>';
+  statusOptions.forEach((status, idx) => {
+    const checkboxId = `deposit-status-${idx}`;
+    const checked = recovery.filters.statuses.includes(status) ? 'checked' : '';
+    html += `
+      <label for="${checkboxId}" style="color:#e0e0e0; font-size:0.9em;">
+        <input type="checkbox" class="deposit-status-checkbox" id="${checkboxId}" value="${status}" ${checked}>
+        ${status.replace(/_/g, ' ')}
+      </label>
+    `;
+  });
+  html += '<label style="color:#e0e0e0; margin-left:1rem;">Token:</label>';
+  const tokenFilterValue = escapeHtml(recovery.filters.token || '');
+  html += `<input type="text" id="deposit-token-filter" placeholder="0x..." value="${tokenFilterValue}" style="padding:0.4rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#e0e0e0; min-width:220px;">`;
+  html += '<button id="deposit-refresh-btn" style="padding:0.5rem 1rem; background:#3f51b5; color:#fff; border:none; border-radius:4px; cursor:pointer;">Refresh</button>';
+  html += '</div>';
+  html += '</div>';
+
+  if (recovery.error) {
+    html += `<div class="error" style="margin-bottom:1rem;">${escapeHtml(recovery.error)}</div>`;
+  }
+
+  if (recovery.metrics && recovery.deposits.length > 0) {
+    const total = recovery.deposits.length;
+    const countByStatus = recovery.metrics.countByStatus || {};
+    html += '<div style="margin-bottom: 1rem; padding: 0.75rem; background: #1a1a1a; border-radius: 4px; font-size: 0.9em;">';
+    html += `<strong style="color:#90caf9;">Open Deposits:</strong> ${total}`;
+    html += ' &nbsp;|&nbsp; ';
+    html += Object.entries(countByStatus).map(([status, count]) => `<span style="margin-right:0.75rem;">${status}: ${count}</span>`).join('');
+    if (recovery.metrics.totalAmountWei) {
+      html += ` &nbsp;|&nbsp; Total Raw: ${recovery.metrics.totalAmountWei} wei`;
+    }
+    html += '</div>';
+  }
+
+  if (recovery.loading) {
+    html += '<div class="loading">Loading pending deposits…</div>';
+  } else if (!recovery.deposits || recovery.deposits.length === 0) {
+    html += '<p style="color:#888;">No deposits matched the current filters.</p>';
+  } else {
+    html += '<div style="overflow-x:auto;">';
+    html += '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
+    html += '<thead><tr style="border-bottom:1px solid #444;">';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Updated</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Depositor</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Token</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">TX Hash</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Amount</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Status</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Failure / Notes</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">On-Chain</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Actions</th>';
+    html += '</tr></thead><tbody>';
+
+    recovery.deposits.forEach((deposit, index) => {
+      const txHash = deposit.deposit_tx_hash || deposit.confirmation_tx_hash || '';
+      const tokenAddress = deposit.token_address || '';
+      const tokenMeta = getTokenMetadata(tokenAddress);
+      const amountDisplay = formatTokenAmountDisplay(deposit.deposit_amount_wei || '0', tokenAddress);
+      const diag = txHash ? state.depositDiagnostics[txHash] : null;
+      const diagError = diag?.error;
+      const diagChecked = diag?.checkedAt ? relativeTimeFrom(diag.checkedAt) : null;
+      const isQueued = state.depositFollowUpQueue?.some(entry => entry.txHash === txHash);
+      const updatedLabel = deposit.updatedAt ? new Date(deposit.updatedAt).toLocaleString() : 'N/A';
+      const depoShort = deposit.depositor_address ? shortHash(deposit.depositor_address) : 'Unknown';
+
+      let onChainHtml = '';
+      if (diag && !diagError) {
+        onChainHtml = `
+          <div>Unconfirmed: <strong>${formatTokenAmountDisplay(diag.userOwned, tokenAddress)}</strong></div>
+          <div style="color:#888;">Escrow: ${formatTokenAmountDisplay(diag.escrow, tokenAddress)}</div>
+          <div style="color:#555;font-size:0.8em;">${diagChecked || 'just now'}</div>
+          <button class="diagnose-deposit-btn" data-context="recovery" data-index="${index}" style="margin-top:0.25rem; padding:0.3rem 0.5rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Refresh</button>
+        `;
+      } else if (diag && diagError) {
+        onChainHtml = `
+          <div style="color:#d32f2f;">${escapeHtml(diagError)}</div>
+          <button class="diagnose-deposit-btn" data-context="recovery" data-index="${index}" style="margin-top:0.25rem; padding:0.3rem 0.5rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Retry</button>
+        `;
+      } else {
+        onChainHtml = `<button class="diagnose-deposit-btn" data-context="recovery" data-index="${index}" style="padding:0.4rem 0.75rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Check</button>`;
+      }
+
+      html += '<tr style="border-bottom:1px solid #333;">';
+      html += `<td style="padding:0.5rem; color:#888;">${updatedLabel}</td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0; font-family:monospace;">${depoShort}<br><span style="color:#888; font-size:0.8em;">${deposit.master_account_id || 'n/a'}</span></td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0;">${tokenMeta.symbol}<div style="color:#888; font-size:0.8em;">${shortHash(tokenAddress)}</div></td>`;
+      html += `<td style="padding:0.5rem; color:#90caf9;"><a href="https://etherscan.io/tx/${txHash}" target="_blank" style="color:#90caf9;">${txHash ? txHash.slice(0, 16) + '...' : 'N/A'}</a></td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0;">${amountDisplay}</td>`;
+      html += `<td style="padding:0.5rem; color:${deposit.status === 'ERROR' ? '#ff9800' : '#e0e0e0'};">${deposit.status || 'N/A'}</td>`;
+      html += `<td style="padding:0.5rem;">${formatFailureMessage(deposit)}</td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0;">${onChainHtml}</td>`;
+      html += '<td style="padding:0.5rem;">';
+      html += `<button class="queue-deposit-btn" data-context="recovery" data-index="${index}" ${isQueued ? 'disabled' : ''} style="display:block; width:100%; margin-bottom:0.35rem; padding:0.4rem; background:${isQueued ? '#555' : '#3f51b5'}; color:#fff; border:none; border-radius:4px; cursor:${isQueued ? 'not-allowed' : 'pointer'};">${isQueued ? 'Queued' : 'Queue Follow-Up'}</button>`;
+      html += `<button class="copy-deposit-btn" data-context="recovery" data-index="${index}" style="display:block; width:100%; padding:0.4rem; background:#2a2f3a; color:#90caf9; border:1px solid #444; border-radius:4px; cursor:pointer;">Copy Payload</button>`;
+      html += '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    html += '</div>';
+  }
+
+  html += '</section>';
+  return html;
+}
+
+function renderDepositFollowUpQueue() {
+  const queue = state.depositFollowUpQueue || [];
+  let html = '<section class="vault-section">';
+  html += '<h2>Deposit Follow-Up Queue</h2>';
+  html += '<div style="margin-top: 1rem; padding: 1.5rem; background: #2a2f3a; border-radius: 4px;">';
+  html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; flex-wrap: wrap;">';
+  html += '<h4 style="color: #c0c0c0; margin: 0;">Deposit Recovery Queue</h4>';
+  html += '<div>';
+  html += `<span style="color:#90caf9; margin-right:0.75rem;">${queue.length} queued</span>`;
+  html += '<button id="export-deposit-queue" style="padding:0.4rem 0.75rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Export JSON</button>';
+  html += '</div>';
+  html += '</div>';
+  html += '<p style="color:#888; font-size:0.9em; margin-top:0; margin-bottom:1rem;">Queue entries are stored locally. Each entry only prepares data for a manual on-chain transaction signed with the verified admin wallet—no server-side balance changes are performed from this UI.</p>';
+
+  if (queue.length === 0) {
+    html += '<p style="color:#888;">No deposits queued. Use “Queue Follow-Up” beside a deposit to stage a manual confirmation or rescission.</p>';
+  } else {
+    html += '<div style="overflow-x:auto;">';
+    html += '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
+    html += '<thead><tr style="border-bottom:1px solid #444;">';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">TX Hash</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Token / Amount</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Action</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Failure Reason</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Queued</th>';
+    html += '<th style="text-align:left; padding:0.5rem; color:#90caf9;">Controls</th>';
+    html += '</tr></thead><tbody>';
+    queue.forEach((entry, index) => {
+      const tokenMeta = getTokenMetadata(entry.token);
+      const queuedAgo = relativeTimeFrom(entry.queuedAt);
+      html += '<tr style="border-bottom:1px solid #333;">';
+      html += `<td style="padding:0.5rem; color:#90caf9;"><a href="https://etherscan.io/tx/${entry.txHash}" target="_blank" style="color:#90caf9;">${entry.txHash ? entry.txHash.slice(0, 16) + '...' : 'N/A'}</a></td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0;">${tokenMeta.symbol}<div style="color:#888;font-size:0.8em;">${formatTokenAmountDisplay(entry.amountWei || '0', entry.token)}</div></td>`;
+      html += `<td style="padding:0.5rem; color:#e0e0e0;">${formatQueueAction(entry.action)}</td>`;
+      html += `<td style="padding:0.5rem; color:#ff9800;">${entry.failureReason ? escapeHtml(entry.failureReason) : '—'}</td>`;
+      html += `<td style="padding:0.5rem; color:#888;">${queuedAgo || 'just now'}</td>`;
+      html += '<td style="padding:0.5rem;">';
+      html += `<button class="copy-queue-entry-btn" data-queue-index="${index}" style="margin-bottom:0.35rem; padding:0.4rem; background:#2a2f3a; border:1px solid #444; border-radius:4px; color:#90caf9; cursor:pointer;">Copy Payload</button>`;
+      html += `<button class="remove-queue-entry-btn" data-queue-index="${index}" style="padding:0.4rem; background:#d32f2f; border:none; border-radius:4px; color:#fff; cursor:pointer;">Remove</button>`;
+      html += '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '</div>';
+  }
+
+  html += '</div></section>';
+  return html;
+}
+
+function handleDepositStatusFilterChange() {
+  const selected = Array.from(document.querySelectorAll('.deposit-status-checkbox'))
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
+  state.depositRecovery.filters.statuses = selected.length > 0 ? selected : [...DEPOSIT_RECOVERY_DEFAULT_STATUSES];
+  loadDepositRecoveryData();
+}
+
+function handleDepositTokenFilterChange(e) {
+  state.depositRecovery.filters.token = (e.target.value || '').trim();
+}
+
+function getSelectedMasterAccountId() {
+  return state.userSearch?.selectedUser?.user?._id || state.userSearch?.selectedUser?.user?._id || null;
+}
+
+function getDepositsForContext(context = 'user') {
+  if (context === 'recovery') {
+    return state.depositRecovery?.deposits || [];
+  }
+  return state.userSearch?.selectedUser?.deposits || [];
+}
+
+function getDepositFromContext(context, index) {
+  const deposits = getDepositsForContext(context);
+  if (typeof index !== 'number' || Number.isNaN(index)) return null;
+  return deposits[index] || null;
+}
+
+async function handleDepositDiagnostics(event) {
+  event.preventDefault();
+  const btn = event.currentTarget;
+  const index = parseInt(btn.dataset.index, 10);
+  const context = btn.dataset.context || 'user';
+  const deposit = getDepositFromContext(context, index);
+  if (!deposit) {
+    showNotification('Deposit not found for diagnostics', 'error');
+    return;
+  }
+  if (!foundationContract) {
+    await initializeContracts();
+  }
+  if (!foundationContract) {
+    showNotification('Connect wallet to run on-chain diagnostics', 'error');
+    return;
+  }
+  const userAddress = deposit.depositor_address || deposit.depositorAddress;
+  const tokenAddress = deposit.token_address || deposit.tokenAddress;
+  const txHash = deposit.deposit_tx_hash || deposit.confirmation_tx_hash;
+  if (!userAddress || !tokenAddress || !txHash) {
+    showNotification('Deposit is missing metadata required for diagnostics', 'error');
+    return;
+  }
+  try {
+    btn.disabled = true;
+    const custodyKey = getCustodyKey(userAddress, tokenAddress);
+    const packedAmount = await foundationContract.custody(custodyKey);
+    const { userOwned, escrow } = splitCustodyAmount(packedAmount);
+    state.depositDiagnostics[txHash] = {
+      userOwned: userOwned.toString(),
+      escrow: escrow.toString(),
+      checkedAt: new Date().toISOString()
+    };
+    showNotification('On-chain custody balance refreshed', 'success');
+  } catch (error) {
+    console.error('[AdminDashboard] Deposit diagnostics failed', error);
+    state.depositDiagnostics[txHash] = {
+      error: error.message || 'Failed to read custody state',
+      checkedAt: new Date().toISOString()
+    };
+    showNotification(`On-chain check failed: ${error.message || 'Unknown error'}`, 'error');
+  } finally {
+    btn.disabled = false;
+    render();
+  }
+}
+
+function handleQueueDeposit(event) {
+  event.preventDefault();
+  const btn = event.currentTarget;
+  const index = parseInt(btn.dataset.index, 10);
+  const context = btn.dataset.context || 'user';
+  const deposit = getDepositFromContext(context, index);
+  if (!deposit) {
+    showNotification('Unable to queue deposit (missing metadata)', 'error');
+    return;
+  }
+  const fallbackMasterAccountId = context === 'user' ? getSelectedMasterAccountId() : null;
+  const masterAccountId = deposit.master_account_id || fallbackMasterAccountId;
+  if (!masterAccountId) {
+    showNotification('Unable to queue deposit (missing metadata)', 'error');
+    return;
+  }
+  const txHash = deposit.deposit_tx_hash || deposit.confirmation_tx_hash;
+  if (!txHash) {
+    showNotification('Deposit missing transaction hash', 'error');
+    return;
+  }
+  const existing = state.depositFollowUpQueue?.find(entry => entry.txHash === txHash);
+  if (existing) {
+    showNotification('Deposit already queued', 'info');
+    return;
+  }
+  const tokenAddress = deposit.token_address || deposit.tokenAddress;
+  const entry = {
+    txHash,
+    masterAccountId,
+    depositor: deposit.depositor_address || deposit.depositorAddress,
+    token: tokenAddress,
+    amountWei: deposit.deposit_amount_wei || '0',
+    status: deposit.status,
+    failureReason: deposit.failure_reason || deposit.failureReason || null,
+    action: 'RECONFIRM',
+    queuedAt: new Date().toISOString()
+  };
+  state.depositFollowUpQueue = [entry, ...(state.depositFollowUpQueue || [])];
+  persistDepositQueue();
+  showNotification('Deposit queued for manual follow-up', 'success');
+  render();
+}
+
+function handleCopyDepositPayload(event) {
+  event.preventDefault();
+  const context = event.currentTarget.dataset.context || 'user';
+  const index = parseInt(event.currentTarget.dataset.index, 10);
+  const deposit = getDepositFromContext(context, index);
+  if (!deposit) {
+    showNotification('Deposit not found', 'error');
+    return;
+  }
+  const fallbackMasterAccountId = context === 'user' ? getSelectedMasterAccountId() : null;
+  const payload = buildDepositPayload(deposit, deposit.master_account_id || fallbackMasterAccountId);
+  copyTextToClipboard(JSON.stringify(payload, null, 2));
+  showNotification('Deposit payload copied', 'success');
+}
+
+function handleCopyQueueEntry(event) {
+  event.preventDefault();
+  const index = parseInt(event.currentTarget.dataset.queueIndex, 10);
+  const queue = state.depositFollowUpQueue || [];
+  const entry = queue[index];
+  if (!entry) {
+    showNotification('Queue entry not found', 'error');
+    return;
+  }
+  copyTextToClipboard(JSON.stringify(entry, null, 2));
+  showNotification('Queue entry copied', 'success');
+}
+
+function handleRemoveQueueEntry(event) {
+  event.preventDefault();
+  const index = parseInt(event.currentTarget.dataset.queueIndex, 10);
+  if (Number.isNaN(index)) return;
+  if (!Array.isArray(state.depositFollowUpQueue)) {
+    state.depositFollowUpQueue = [];
+    render();
+    return;
+  }
+  state.depositFollowUpQueue.splice(index, 1);
+  persistDepositQueue();
+  showNotification('Queue entry removed', 'info');
+  render();
+}
+
+function handleExportDepositQueue() {
+  const queue = state.depositFollowUpQueue || [];
+  if (queue.length === 0) {
+    showNotification('Queue is empty', 'warning');
+    return;
+  }
+  copyTextToClipboard(JSON.stringify(queue, null, 2));
+  showNotification('Queue exported to clipboard', 'success');
+}
+
+function copyTextToClipboard(text) {
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(err => {
+      console.error('Clipboard write failed', err);
+    });
+  } else {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand('copy');
+    } catch (err) {
+      console.error('Fallback clipboard copy failed', err);
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
 }
 
 async function handleUserSearch() {
@@ -2392,6 +3009,7 @@ async function loadUserDetails(masterAccountId) {
 
     const data = await response.json();
     state.userSearch.selectedUser = data;
+    state.depositDiagnostics = {};
     render();
   } catch (error) {
     console.error('Error loading user details:', error);

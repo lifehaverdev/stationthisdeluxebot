@@ -5,9 +5,11 @@ const COLLECTION_NAME = 'credit_ledger';
 
 // State machine definitions for status transitions
 const LEDGER_STATUS_TRANSITIONS = {
-  PENDING_CONFIRMATION: ['CONFIRMED', 'ERROR'],
-  ERROR: ['CONFIRMED', 'PENDING_CONFIRMATION'], // Allow retry/reconciliation
-  CONFIRMED: [] // Final state - no transitions allowed
+  PENDING_CONFIRMATION: ['CONFIRMED', 'ERROR', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'],
+  ERROR: ['CONFIRMED', 'PENDING_CONFIRMATION', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'], // Allow retry/reconciliation
+  FAILED_RISK_ASSESSMENT: [], // Final failure state
+  REJECTED_UNPROFITABLE: [], // Final failure state
+  CONFIRMED: [] // Final success state - no transitions allowed
 };
 
 const WITHDRAWAL_STATUS_TRANSITIONS = {
@@ -77,13 +79,16 @@ class CreditLedgerDB extends BaseDB {
       }
 
       const currentStatus = currentEntry.status || 'PENDING_CONFIRMATION';
-      const allowedTransitions = LEDGER_STATUS_TRANSITIONS[currentStatus] || [];
 
-      if (!allowedTransitions.includes(status)) {
-        throw new Error(
-          `Invalid status transition: ${currentStatus} → ${status}. ` +
-          `Allowed transitions from ${currentStatus}: ${allowedTransitions.join(', ') || 'none (final state)'}`
-        );
+      if (currentStatus !== status) {
+        const allowedTransitions = LEDGER_STATUS_TRANSITIONS[currentStatus] || [];
+
+        if (!allowedTransitions.includes(status)) {
+          throw new Error(
+            `Invalid status transition: ${currentStatus} → ${status}. ` +
+            `Allowed transitions from ${currentStatus}: ${allowedTransitions.join(', ') || 'none (final state)'}`
+          );
+        }
       }
     }
 

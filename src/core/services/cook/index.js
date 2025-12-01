@@ -5,6 +5,7 @@
 const TraitEngine = require('./TraitEngine');
 const CookOrchestratorService = require('./CookOrchestratorService');
 const CookProjectionUpdater = require('./CookProjectionUpdater');
+const CollectionExportService = require('./CollectionExportService');
 const { createLogger } = require('../../../utils/logger');
 
 async function initializeCookServices(logger = console) {
@@ -22,5 +23,6 @@ module.exports = {
   TraitEngine,
   CookOrchestratorService,
   CookProjectionUpdater,
+  CollectionExportService,
   initializeCookServices,
 }; 

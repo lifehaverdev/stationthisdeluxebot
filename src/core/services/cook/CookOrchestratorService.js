@@ -433,15 +433,18 @@ class CookOrchestratorService {
    */
   async _enqueuePiece({ collectionId, userId, cookId, index, toolId, spellId, traitTree, paramOverrides, traitTypes, paramsTemplate }) {
     let selectedTraits;
+    let traitDetails = [];
     let finalParams;
 
     if (Array.isArray(traitTree) && traitTree.length) {
       const selection = TraitEngine.selectFromTraitTree(traitTree, { deterministicIndex: index });
-      selectedTraits = selection;
-      finalParams = TraitEngine.applyTraitsToParams(paramOverrides || {}, selection);
+      selectedTraits = selection.selectedTraits || {};
+      traitDetails = selection.traitDetails || [];
+      finalParams = TraitEngine.applyTraitsToParams(paramOverrides || {}, selectedTraits);
     } else {
       const generated = TraitEngine.generateTraitSelection(traitTypes);
       selectedTraits = generated.selectedTraits;
+      traitDetails = generated.traitDetails || [];
       const baseTemplate = Object.keys(paramOverrides||{}).length ? paramOverrides : paramsTemplate;
       finalParams = TraitEngine.applyTraitsToParams(baseTemplate, selectedTraits);
     }
@@ -460,8 +463,15 @@ class CookOrchestratorService {
         pieceIndex,
         toolId: spellIdOrToolId,
         selectedTraits,
+        traitDetails,
         paramSnapshot: finalParams || {},
       }
+    };
+    submission.metadata.appliedTraits = traitDetails;
+    submission.metadata.traitSel = selectedTraits;
+    submission.metadata.traits = {
+      selected: selectedTraits,
+      details: traitDetails
     };
 
     // Deterministic per-piece key: cookId:index

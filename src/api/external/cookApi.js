@@ -53,6 +53,61 @@ function createCookApiRouter(deps = {}) {
     }
   });
 
+  // GET /api/v1/collections/:id/analytics
+  router.get('/collections/:id/analytics', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.query.userId;
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/analytics`, { params: { userId } });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection analytics proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/export', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const metadataOptions = req.body?.metadataOptions;
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/export`, {
+        userId,
+        metadataOptions
+      });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection export proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.get('/collections/:id/export/status', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.query?.userId;
+      const params = { userId };
+      if (req.query?.exportId) params.exportId = req.query.exportId;
+      const { data } = await internalApiClient.get(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/export/status`, { params });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection export status proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
+  router.post('/collections/:id/export/cancel', async (req, res) => {
+    try {
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      const { data } = await internalApiClient.post(`/internal/v1/data/collections/${encodeURIComponent(req.params.id)}/export/cancel`, { userId });
+      return res.json(data);
+    } catch (err) {
+      logger.error('collection export cancel proxy error', err.response?.data || err.message);
+      const status = err.response?.status || 500;
+      return res.status(status).json(err.response?.data || { error: 'proxy-error' });
+    }
+  });
+
   // PUT /api/v1/collections/:id
   router.put('/collections/:id', async (req, res) => {
     try {

@@ -45,7 +45,7 @@ function createPublicStorageApi(services) {
         fileName,
         contentType,
         userId: 'web-upload-user',
-        bucketName: bucketName || process.env.R2_DATASETS_BUCKET || process.env.R2_BUCKET_NAME
+        bucketName: bucketName || 'datasets'
       });
       res.json(response.data);
     } catch (error) {

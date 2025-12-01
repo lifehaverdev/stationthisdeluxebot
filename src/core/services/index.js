@@ -37,7 +37,7 @@ const SaltMiningService = require('./alchemy/saltMiningService');
 const SpellStatsService = require('./analytics/SpellStatsService');
 // --- New Service: ModelDiscoveryService ---
 const ModelDiscoveryService = require('./comfydeploy/modelDiscoveryService');
-const { initializeCookServices } = require('./cook');
+const { initializeCookServices, CollectionExportService } = require('./cook');
 const StringService = require('./stringService');
 const { initializeTrainingServices } = require('./training');
 // --- Guest Account Services ---
@@ -189,6 +189,7 @@ async function initializeServices(options = {}) {
           const creditServiceConfig = {
             foundationAddress: getFoundationAddress(chainId),
             foundationAbi: contracts.foundation.abi,
+            disableWebhookActions: process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1',
           };
           const creditDeps = {
             ethereumService: ethService,
@@ -298,6 +299,20 @@ async function initializeServices(options = {}) {
     spellStatsService.startAutoRefresh(toolRegistry);
     logger.info('SpellStatsService initialized and ToolRegistry stats enrichment scheduled.');
 
+    let collectionExportService = null;
+    if (initializedDbServices.data.collectionExports && initializedDbServices.data.cookCollections && initializedDbServices.data.generationOutputs && storageService) {
+      collectionExportService = new CollectionExportService({
+        logger,
+        cookCollectionsDb: initializedDbServices.data.cookCollections,
+        generationOutputsDb: initializedDbServices.data.generationOutputs,
+        collectionExportsDb: initializedDbServices.data.collectionExports,
+        storageService
+      });
+      logger.info('CollectionExportService initialized.');
+    } else {
+      logger.warn('CollectionExportService not initialized: missing DB or storage dependencies.');
+    }
+
     // Initialize API services, now with userSettingsService
     const apiServices = initializeAPI({
       logger,
@@ -329,6 +344,8 @@ async function initializeServices(options = {}) {
       guestAccountService, // Add guest account service
       guestAuthService, // Add guest auth service
       spellPaymentService // Add spell payment service
+      ,
+      collectionExportService
     });
     
     // The internalApiClient is a singleton utility, not from apiServices.

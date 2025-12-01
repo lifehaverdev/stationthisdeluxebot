@@ -14,6 +14,14 @@ if [ -f .env ]; then
   done < <(grep -v '^\s*#' .env | grep '=')
 fi
 
+# Default to disabling webhook-dependent credit actions in local dev unless explicitly overridden
+if [ -z "$DISABLE_CREDIT_WEBHOOK_ACTIONS" ]; then
+  export DISABLE_CREDIT_WEBHOOK_ACTIONS=1
+  echo "[run-dev.sh] DISABLE_CREDIT_WEBHOOK_ACTIONS not set. Defaulting to 1 for run-dev."
+else
+  echo "[run-dev.sh] DISABLE_CREDIT_WEBHOOK_ACTIONS=$DISABLE_CREDIT_WEBHOOK_ACTIONS"
+fi
+
 # --- Load Ethereum signer private key interactively unless SKIP_CREDIT_SERVICE=1 ---
 if [ "${SKIP_CREDIT_SERVICE}" != "1" ]; then
   if [ -z "$ETHEREUM_SIGNER_PRIVATE_KEY" ]; then

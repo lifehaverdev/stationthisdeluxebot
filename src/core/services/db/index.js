@@ -24,6 +24,7 @@ const CooksDB = require('./cooksDb');
 const WorkspacesDB = require('./workspacesDb');
 const DatasetDB = require('./datasetDb'); // ADDED: dataset service
 const CostsDB = require('./costsDb'); // ADDED: costs service
+const CollectionExportsDB = require('./collectionExportsDb');
 
 // Import new on-chain DB services
 const CreditLedgerDB = require('./alchemy/creditLedgerDb');
@@ -69,6 +70,7 @@ function initializeDbServices(logger) {
     cooks: CooksDB ? new CooksDB(logger) : null,
     workspaces: WorkspacesDB ? new WorkspacesDB(logger) : null,
     costs: CostsDB ? new CostsDB(logger) : null, // ADDED: costs service
+    collectionExports: CollectionExportsDB ? new CollectionExportsDB(logger) : null,
     
     // On-chain services
     creditLedger: CreditLedgerDB ? new CreditLedgerDB(logger) : null,

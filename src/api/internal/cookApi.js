@@ -3,6 +3,7 @@ const { CookOrchestratorService } = require('../../core/services/cook');
 const { CookProjectionUpdater } = require('../../core/services/cook');
 const { createLogger } = require('../../utils/logger');
 const { getCachedClient } = require('../../core/services/db/utils/queue');
+const { ObjectId } = require('mongodb');
 
 function createCookApi(deps = {}) {
   const router = express.Router();
@@ -10,6 +11,7 @@ function createCookApi(deps = {}) {
   // Collections database. Prefer the new `collections` service, falling back to legacy `cookCollections` for backward-compat.
   const cookDb = deps.db?.collections || deps.db?.cookCollections;
   const cooksDb = deps.db?.cooks;
+  const generationOutputsDb = deps.db?.generationOutputs;
   
   // ✅ Configure WebSocket service for CookOrchestratorService
   if (deps.webSocketService) {
@@ -96,6 +98,303 @@ function createCookApi(deps = {}) {
     } catch (err) {
       logger.error('[CookAPI] resume error', err);
       return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  // GET /:id/analytics – collection analytics + export prep
+  router.get('/:id/analytics', async (req, res) => {
+    try {
+      const collectionId = req.params.id;
+      const userId = req.query.userId || req.user?.userId || req.user?.id || req.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      if (!generationOutputsDb) return res.status(503).json({ error: 'generationOutputs-unavailable' });
+
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      if (!ObjectId.isValid(userId)) {
+        return res.status(400).json({ error: 'invalid-user-id' });
+      }
+      const masterAccountId = new ObjectId(userId);
+
+      const match = {
+        $and: [
+          {
+            $or: [
+              { 'metadata.collectionId': collectionId },
+              { collectionId }
+            ]
+          },
+          { masterAccountId },
+          { status: 'completed' },
+          { deliveryStrategy: { $ne: 'spell_step' } }
+        ]
+      };
+
+      const generations = await generationOutputsDb.findGenerations(match, {
+        projection: {
+          pointsSpent: 1,
+          durationMs: 1,
+          reviewOutcome: 1,
+          requestTimestamp: 1,
+          responseTimestamp: 1,
+          metadata: 1
+        }
+      });
+
+      let totalPointsSpent = 0;
+      let totalDurationMs = 0;
+      let durationSamples = 0;
+      let approvedCount = 0;
+      let rejectedCount = 0;
+      let pendingCount = 0;
+
+      const normalizeOutcome = (doc) => (doc.reviewOutcome || doc.metadata?.reviewOutcome || '').toLowerCase();
+
+      for (const gen of generations) {
+        const pointsVal = Number(gen.pointsSpent || 0);
+        if (!Number.isNaN(pointsVal)) {
+          totalPointsSpent += pointsVal;
+        }
+        const reviewOutcome = normalizeOutcome(gen);
+        if (reviewOutcome === 'accepted' || reviewOutcome === 'approved') {
+          approvedCount += 1;
+        } else if (reviewOutcome === 'rejected') {
+          rejectedCount += 1;
+        } else {
+          pendingCount += 1;
+        }
+
+        let duration = typeof gen.durationMs === 'number' ? gen.durationMs : null;
+        if ((!duration || Number.isNaN(duration)) && gen.requestTimestamp && gen.responseTimestamp) {
+          duration = new Date(gen.responseTimestamp) - new Date(gen.requestTimestamp);
+        }
+        if (Number.isFinite(duration) && duration > 0) {
+          totalDurationMs += duration;
+          durationSamples += 1;
+        }
+      }
+
+      const totalGenerations = generations.length;
+      const avgDurationMs = durationSamples ? totalDurationMs / durationSamples : 0;
+      const decisionCount = approvedCount + rejectedCount;
+      const approvalRate = decisionCount ? (approvedCount / decisionCount) * 100 : 0;
+      const rejectionRate = decisionCount ? (rejectedCount / decisionCount) * 100 : 0;
+
+      const traitUsageMap = new Map();
+      const pushTraitStat = (category, name, outcome) => {
+        if (!name) return;
+        const key = `${category || 'Uncategorized'}::${name}`;
+        if (!traitUsageMap.has(key)) {
+          traitUsageMap.set(key, {
+            category: category || 'Uncategorized',
+            name,
+            approved: 0,
+            rejected: 0,
+            pending: 0,
+            total: 0
+          });
+        }
+        const bucket = traitUsageMap.get(key);
+        bucket.total += 1;
+        if (outcome === 'accepted' || outcome === 'approved') bucket.approved += 1;
+        else if (outcome === 'rejected') bucket.rejected += 1;
+        else bucket.pending += 1;
+      };
+
+      const extractTraits = (gen) => {
+        const entries = [];
+        const meta = gen.metadata || {};
+        const addEntry = (category, label) => {
+          if (!label) return;
+          entries.push({
+            category: category || 'Uncategorized',
+            label: String(label)
+          });
+        };
+        const detailArrays = [
+          meta.appliedTraits,
+          meta.traits?.details,
+          meta.traitDetails
+        ];
+        let detailsFound = false;
+        detailArrays.forEach(arr => {
+          if (Array.isArray(arr) && arr.length) {
+            detailsFound = true;
+            arr.forEach(item => {
+              if (!item) return;
+              const category = item.category || item.group || item.type || 'Uncategorized';
+              const name = item.name || item.value || item.slug || item.label;
+              addEntry(category, name);
+            });
+          }
+        });
+        if (!detailsFound) {
+          const selectedSets = [
+            meta.selectedTraits,
+            meta.traits?.selected,
+            meta.traitSel
+          ];
+          selectedSets.forEach(set => {
+            if (set && typeof set === 'object') {
+              Object.entries(set).forEach(([category, val]) => {
+                if (val === undefined || val === null) return;
+                const label = typeof val === 'string'
+                  ? val.slice(0, 60)
+                  : (val?.name || val?.value || val?.label || '');
+                addEntry(category, label);
+              });
+            }
+          });
+        }
+        return entries;
+      };
+
+      for (const gen of generations) {
+        const entries = extractTraits(gen);
+        if (!entries.length) continue;
+        const seenKeys = new Set();
+        const outcome = normalizeOutcome(gen);
+        entries.forEach(entry => {
+          const key = `${entry.category}::${entry.label}`;
+          if (seenKeys.has(key)) return;
+          seenKeys.add(key);
+          pushTraitStat(entry.category, entry.label, outcome);
+        });
+      }
+
+      const summary = {
+        totalGenerations,
+        totalPointsSpent,
+        approvedCount,
+        rejectedCount,
+        pendingCount,
+        approvalRate,
+        rejectionRate,
+        avgDurationMs,
+        totalSupply: collection.totalSupply || collection.config?.totalSupply || 0
+      };
+
+      const approvedTotal = summary.approvedCount || 0;
+      const traitRarity = Array.from(traitUsageMap.values())
+        .map(entry => ({
+          category: entry.category,
+          name: entry.name,
+          approved: entry.approved,
+          rejected: entry.rejected,
+          pending: entry.pending,
+          total: entry.total,
+          approvalRate: entry.total ? (entry.approved / entry.total) * 100 : null,
+          approvalShare: approvedTotal ? (entry.approved / approvedTotal) * 100 : null
+        }))
+        .sort((a, b) => b.approved - a.approved || b.total - a.total);
+
+      return res.json({
+        summary,
+        traitRarity,
+        traitSampleCount: traitUsageMap.size,
+        approvedGenerationsWithTraits: generations.filter(g => normalizeOutcome(g) === 'accepted' && Array.isArray(g.metadata?.appliedTraits)).length
+      });
+    } catch (err) {
+      logger.error('[CookAPI] analytics error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/:id/export', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+      if (!cookDb) return res.status(503).json({ error: 'service-unavailable' });
+      const collection = await cookDb.findById(collectionId);
+      if (!collection) {
+        return res.status(404).json({ error: 'collection-not-found' });
+      }
+      if (collection.userId !== userId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+
+      const metadataOptions = req.body?.metadataOptions || {};
+      const job = await exportService.requestExport({ userId, collectionId, metadataOptions });
+      return res.json(job);
+    } catch (err) {
+      if (['export-not-ready', 'no-approved-pieces', 'export-service-unavailable'].includes(err.message)) {
+        const status = err.message === 'export-service-unavailable' ? 503 : 400;
+        return res.status(status).json({ error: err.message });
+      }
+      logger.error('[CookAPI] export enqueue error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.get('/:id/export/status', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.query?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      const exportId = req.query.exportId;
+      let job = null;
+      if (exportId) {
+        job = await exportService.getJobById(exportId);
+      } else {
+        job = await exportService.getLatestJob({ userId, collectionId });
+      }
+
+      if (!job) {
+        return res.status(404).json({ error: 'export-not-found' });
+      }
+      if (job.userId !== userId || job.collectionId !== collectionId) {
+        return res.status(403).json({ error: 'unauthorized' });
+      }
+      return res.json(job);
+    } catch (err) {
+      logger.error('[CookAPI] export status error', err);
+      return res.status(500).json({ error: err.message || 'internal-error' });
+    }
+  });
+
+  router.post('/:id/export/cancel', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const collectionId = req.params.id;
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+      if (!collectionId || !userId) {
+        return res.status(400).json({ error: 'collectionId and userId required' });
+      }
+
+      const job = await exportService.cancelJob({ collectionId, userId });
+      if (!job) {
+        return res.status(404).json({ error: 'export-not-found' });
+      }
+      return res.json(job);
+    } catch (err) {
+      logger.error('[CookAPI] export cancel error', err);
+      return res.status(500).json({ error: err.message || 'internal-error' });
     }
   });
 

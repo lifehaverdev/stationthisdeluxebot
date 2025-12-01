@@ -475,6 +475,7 @@ function createAdminApi(dependencies) {
             let realUserOwnedWei = 0n;
             let totalDepositedWei = 0n;
             let totalUserEscrowOnChain = 0n; // Will sum up all user escrow balances
+            let totalPointsRemaining = 0;
             
             // Group deposits by depositor to query their escrow balances
             const depositorsByAddress = {};
@@ -485,6 +486,7 @@ function createAdminApi(dependencies) {
               const depositor = deposit.depositor_address.toLowerCase();
               
               totalDepositedWei += depositAmount;
+              totalPointsRemaining += Number(deposit.points_remaining || 0);
               
               // Calculate user's share: (points_remaining / points_credited) * deposit_amount
               if (pointsCredited > 0n) {
@@ -523,9 +525,22 @@ function createAdminApi(dependencies) {
 
             // Protocol-owned (not yet seized) = total deposited - real user-owned
             // This represents what the protocol has earned from point spends but hasn't seized yet
-            const protocolOwnedNotSeized = totalDepositedWei > realUserOwnedWei 
+            const ledgerProtocolClaimWei = totalDepositedWei > realUserOwnedWei 
               ? totalDepositedWei - realUserOwnedWei 
               : 0n;
+            const protocolOwnedNotSeized = ledgerProtocolClaimWei;
+            
+            const contractProtocolEscrowWei = BigInt(balance.protocolEscrow.toString());
+            const contractUserOwnedWei = BigInt(balance.userOwned.toString());
+            const contractTotalWei = contractProtocolEscrowWei + contractUserOwnedWei;
+            
+            const pointDebtWei = realUserOwnedWei > contractUserOwnedWei 
+              ? realUserOwnedWei - contractUserOwnedWei 
+              : 0n;
+            const pendingSeizureWei = ledgerProtocolClaimWei > contractProtocolEscrowWei
+              ? ledgerProtocolClaimWei - contractProtocolEscrowWei
+              : 0n;
+            const pointsOutstandingUsd = Number((totalPointsRemaining * USD_PER_POINT).toFixed(4));
             
             logger.info(`[AdminApi] Token ${symbol}: totalDeposited=${totalDepositedWei.toString()}, realUserOwned=${realUserOwnedWei.toString()}, totalUserEscrowOnChain=${totalUserEscrowOnChain.toString()}, protocolOwnedNotSeized=${protocolOwnedNotSeized.toString()}`);
 
@@ -534,12 +549,21 @@ function createAdminApi(dependencies) {
               symbol,
               decimals,
               name,
-              protocolEscrow: balance.protocolEscrow.toString(),
-              userOwned: balance.userOwned.toString(), // On-chain userOwned at Foundation (may be outdated)
+              contractTotalWei: contractTotalWei.toString(),
+              contractProtocolEscrowWei: contractProtocolEscrowWei.toString(),
+              contractUserOwnedWei: contractUserOwnedWei.toString(),
+              protocolEscrow: contractProtocolEscrowWei.toString(), // legacy
+              userOwned: contractUserOwnedWei.toString(), // legacy
               realUserOwned: realUserOwnedWei.toString(), // Calculated from points_remaining across all deposits
-              protocolOwnedNotSeized: protocolOwnedNotSeized.toString(), // Protocol's share not yet seized
+              ledgerUserClaimWei: realUserOwnedWei.toString(),
+              ledgerProtocolClaimWei: ledgerProtocolClaimWei.toString(),
+              protocolOwnedNotSeized: protocolOwnedNotSeized.toString(), // Protocol's share not yet seized (legacy)
               totalDeposited: totalDepositedWei.toString(),
-              totalUserEscrowOnChain: totalUserEscrowOnChain.toString() // Sum of all user escrow balances on-chain
+              totalUserEscrowOnChain: totalUserEscrowOnChain.toString(), // Sum of all user escrow balances on-chain
+              pointDebtWei: pointDebtWei.toString(),
+              pendingSeizureWei: pendingSeizureWei.toString(),
+              pointsOutstanding: totalPointsRemaining,
+              pointsOutstandingUsd
             };
           } catch (error) {
             logger.error(`[AdminApi] Error getting protocolEscrow balance for ${tokenAddress}:`, error);
@@ -973,6 +997,115 @@ function createAdminApi(dependencies) {
           details: error.message,
           requestId 
         } 
+      });
+    }
+  });
+
+  /**
+   * GET /deposits/pending
+   * Provides a list of ledger entries that require operator attention (pending/error states).
+   * Query params:
+   *   statuses (comma-separated) - defaults to pending + error states
+   *   token (address) - optional filter
+   *   depositor (address) - optional filter
+   *   limit - max rows (default 100, max 500)
+   */
+  router.get('/deposits/pending', adminMiddleware, async (req, res) => {
+    const requestId = require('uuid').v4();
+    const chainId = req.query.chainId || '1';
+    const defaultStatuses = ['PENDING_CONFIRMATION', 'ERROR', 'FAILED_RISK_ASSESSMENT', 'REJECTED_UNPROFITABLE'];
+    const statuses = (req.query.statuses ? req.query.statuses.split(',') : defaultStatuses)
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const tokenFilter = req.query.token ? req.query.token.toLowerCase() : null;
+    const depositorFilter = req.query.depositor ? req.query.depositor.toLowerCase() : null;
+
+    logger.info(`[AdminApi] GET /deposits/pending chainId=${chainId} statuses=${statuses.join('|')} requestId=${requestId}`);
+
+    try {
+      const { creditService } = getChainServices(chainId);
+      if (!creditService || !creditService.creditLedgerDb) {
+        return res.status(503).json({
+          error: {
+            code: 'SERVICE_UNAVAILABLE',
+            message: 'Credit service not available',
+            requestId
+          }
+        });
+      }
+
+      if (!statuses.length) {
+        return res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'At least one status must be provided',
+            requestId
+          }
+        });
+      }
+
+      const filter = { status: { $in: statuses } };
+      if (tokenFilter) {
+        filter.token_address = tokenFilter;
+      }
+      if (depositorFilter) {
+        filter.depositor_address = depositorFilter;
+      }
+
+      const options = {
+        sort: { updatedAt: -1 },
+        limit
+      };
+
+      const deposits = await creditService.creditLedgerDb.findMany(filter, options);
+
+      const normalized = deposits.map(entry => ({
+        deposit_tx_hash: entry.deposit_tx_hash,
+        confirmation_tx_hash: entry.confirmation_tx_hash,
+        depositor_address: entry.depositor_address,
+        master_account_id: entry.master_account_id,
+        token_address: entry.token_address,
+        status: entry.status,
+        failure_reason: entry.failure_reason,
+        error_details: entry.error_details,
+        deposit_amount_wei: entry.deposit_amount_wei,
+        points_credited: entry.points_credited,
+        points_remaining: entry.points_remaining,
+        updatedAt: entry.updatedAt,
+        createdAt: entry.createdAt,
+        vault_account: entry.vault_account,
+        deposit_type: entry.deposit_type
+      }));
+
+      const metrics = normalized.reduce((acc, deposit) => {
+        acc.countByStatus[deposit.status] = (acc.countByStatus[deposit.status] || 0) + 1;
+        if (deposit.deposit_amount_wei) {
+          const amount = BigInt(deposit.deposit_amount_wei);
+          acc.totalAmountWei = (acc.totalAmountWei || 0n) + amount;
+        }
+        return acc;
+      }, { countByStatus: {}, totalAmountWei: 0n });
+
+      res.json({
+        success: true,
+        requestId,
+        chainId,
+        deposits: normalized,
+        metrics: {
+          ...metrics,
+          totalAmountWei: metrics.totalAmountWei ? metrics.totalAmountWei.toString() : '0'
+        }
+      });
+    } catch (error) {
+      logger.error('[AdminApi] Error fetching pending deposits:', error);
+      res.status(500).json({
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'Failed to fetch pending deposits',
+          details: error.message,
+          requestId
+        }
       });
     }
   });
@@ -2290,4 +2423,3 @@ function createAdminApi(dependencies) {
 }
 
 module.exports = { createAdminApi };
-

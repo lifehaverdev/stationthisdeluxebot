@@ -90,7 +90,14 @@ class CreditService {
     this.adminActivityService = adminActivityService;
     this.spellPaymentService = services.spellPaymentService || null;
     
-    const { foundationAddress, foundationAbi } = config;
+    const { foundationAddress, foundationAbi, disableWebhookActions: disableWebhookActionsConfig } = config;
+    const disableWebhookActionsEnv = process.env.DISABLE_CREDIT_WEBHOOK_ACTIONS === '1';
+    this.disableWebhookActions = (typeof disableWebhookActionsConfig === 'boolean')
+      ? disableWebhookActionsConfig
+      : disableWebhookActionsEnv;
+    if (this.disableWebhookActions) {
+      this.logger.warn('[CreditService] Webhook-dependent credit actions are DISABLED for this environment.');
+    }
     if (!foundationAddress || !foundationAbi) {
       throw new Error('CreditService: Missing contract address or ABI in config.');
     }
@@ -211,17 +218,22 @@ class CreditService {
     );
 
     // 13. Event Webhook Processor
-    this.eventWebhookProcessor = new EventWebhookProcessor(
-      this.ethereumService,
-      this.depositProcessorService,
-      this.donationProcessorService,
-      this.withdrawalProcessorService,
-      this.referralVaultService,
-      this.eventDeduplicationService,
-      this.depositConfirmationService,
-      this.contractConfig,
-      this.logger
-    );
+    if (!this.disableWebhookActions) {
+      this.eventWebhookProcessor = new EventWebhookProcessor(
+        this.ethereumService,
+        this.depositProcessorService,
+        this.donationProcessorService,
+        this.withdrawalProcessorService,
+        this.referralVaultService,
+        this.eventDeduplicationService,
+        this.depositConfirmationService,
+        this.contractConfig,
+        this.logger
+      );
+    } else {
+      this.eventWebhookProcessor = null;
+      this.logger.info('[CreditService] Event webhook processor not initialized (disabled).');
+    }
   }
 
   /**
@@ -261,6 +273,14 @@ class CreditService {
    * Handles all events received from an Alchemy webhook.
    */
   async handleEventWebhook(webhookPayload) {
+    if (this.disableWebhookActions) {
+      this.logger.warn('[CreditService] Ignoring event webhook because webhook-driven actions are disabled.');
+      return { success: false, message: 'Webhook actions disabled in this environment.' };
+    }
+    if (!this.eventWebhookProcessor) {
+      this.logger.error('[CreditService] Event webhook processor unavailable.');
+      return { success: false, message: 'Webhook processor unavailable.' };
+    }
     return await this.eventWebhookProcessor.processWebhook(webhookPayload);
   }
 
@@ -309,6 +329,10 @@ class CreditService {
    * Handles a RescissionRequested event from the webhook.
    */
   async handleWithdrawalRequestWebhook(webhookPayload) {
+    if (this.disableWebhookActions) {
+      this.logger.warn('[CreditService] Ignoring withdrawal webhook because webhook-driven actions are disabled.');
+      return { success: false, message: 'Webhook actions disabled in this environment.' };
+    }
     this.logger.info('[CreditService] Processing withdrawal request webhook...');
 
     const eventPayload = webhookPayload.payload || webhookPayload;
@@ -519,4 +543,3 @@ class CreditService {
 }
 
 module.exports = CreditService;
-

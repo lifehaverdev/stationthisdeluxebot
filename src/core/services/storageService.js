@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { Upload } = require('@aws-sdk/lib-storage');
 const { v4: uuidv4 } = require('uuid');
@@ -20,9 +20,33 @@ class StorageService {
         },
       });
       this.logger.info('StorageService initialized for Cloudflare R2.');
-
+      this._publicUrlCache = new Map();
+      this._initBucketMap();
       // use only v3 client
     }
+  }
+
+  _initBucketMap() {
+    const base = process.env.R2_BUCKET_NAME;
+    this.bucketNames = {
+      default: base,
+      uploads: base,
+      datasets: process.env.R2_DATASETS_BUCKET || 'datasets',
+      exports: process.env.R2_EXPORTS_BUCKET || 'exports'
+    };
+  }
+
+  getBucketName(kind = 'default') {
+    if (!this.bucketNames) this._initBucketMap();
+    return this.bucketNames[kind] || kind || this.bucketNames.default;
+  }
+
+  _resolveBucketName(input) {
+    if (!input) return this.getBucketName('default');
+    if (this.bucketNames && this.bucketNames[input]) {
+      return this.bucketNames[input];
+    }
+    return input;
   }
 
   /**
@@ -38,12 +62,8 @@ class StorageService {
       throw new Error('StorageService is not configured.');
     }
 
-    const bucket = bucketName || process.env.R2_BUCKET_NAME;
-    // Determine appropriate public base URL for the bucket
-    const publicBaseUrl =
-      bucket === (process.env.R2_DATASETS_BUCKET || '')
-        ? (process.env.R2_DATASETS_PUBLIC_URL || process.env.R2_PUBLIC_URL)
-        : process.env.R2_PUBLIC_URL;
+    const bucket = this._resolveBucketName(bucketName);
+    const publicBaseUrl = this._resolvePublicUrl(bucket);
     const key = `${userId}/${uuidv4()}-${fileName}`;
     try {
       const cmd = new PutObjectCommand({
@@ -78,25 +98,114 @@ class StorageService {
       throw new Error('StorageService is not configured.');
     }
 
-    const bucket = bucketName || process.env.R2_BUCKET_NAME;
+    const bucket = this._resolveBucketName(bucketName);
     try {
-      const upload = new Upload({
+      const uploadParams = {
+        Bucket: bucket,
+        Key: key,
+        Body: stream,
+        ContentType: contentType,
+      };
+      const attemptUpload = async (params) => {
+        const upload = new Upload({
         client: this.s3Client,
-        params: {
-          Bucket: bucket,
-          Key: key,
-          Body: stream,
-          ContentType: contentType,
-        },
+        params,
       });
+        await upload.done();
+        return params.Bucket;
+      };
 
-      await upload.done();
-      const permanentUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
+      let finalBucket = bucket;
+      try {
+        await attemptUpload(uploadParams);
+      } catch (error) {
+        if (error?.Code === 'NoSuchBucket' && bucket !== this.bucketNames.default) {
+          this.logger.warn(`Bucket "${bucket}" missing; falling back to default bucket "${this.bucketNames.default}" for upload key ${key}.`);
+          finalBucket = this.bucketNames.default;
+          await attemptUpload({ ...uploadParams, Bucket: finalBucket });
+        } else {
+          throw error;
+        }
+      }
+
+      const publicBase = this._resolvePublicUrl(finalBucket);
+      const permanentUrl = `${publicBase}/${key}`;
       this.logger.info(`Successfully uploaded stream to ${permanentUrl}`);
-      return { permanentUrl };
+      return { permanentUrl, key, bucket: finalBucket };
     } catch (error) {
       this.logger.error('Failed to upload stream to R2:', error);
       throw new Error('Could not upload file stream.');
+    }
+  }
+
+  async generateSignedDownloadUrl(key, options = {}) {
+    if (!this.s3Client) {
+      throw new Error('StorageService is not configured.');
+    }
+    const bucket = this._resolveBucketName(options.bucketName);
+    try {
+      const cmd = new GetObjectCommand({
+        Bucket: bucket,
+        Key: key
+      });
+      return await getSignedUrl(this.s3Client, cmd, { expiresIn: options.expiresIn || 3600 });
+    } catch (error) {
+      this.logger.error('Failed to generate signed download URL:', error);
+      throw new Error('Could not generate signed download URL.');
+    }
+  }
+
+  _resolvePublicUrl(bucket) {
+    if (!bucket) return process.env.R2_PUBLIC_URL;
+    if (!this._publicUrlCache) this._publicUrlCache = new Map();
+    if (this._publicUrlCache.has(bucket)) {
+      return this._publicUrlCache.get(bucket);
+    }
+
+    const override = this._lookupBucketOverride(bucket);
+    if (override) {
+      this._publicUrlCache.set(bucket, override);
+      return override;
+    }
+
+    const derived = this._deriveUrlFromDefault(bucket);
+    if (derived) {
+      this._publicUrlCache.set(bucket, derived);
+      return derived;
+    }
+
+    this._publicUrlCache.set(bucket, process.env.R2_PUBLIC_URL || '');
+    return process.env.R2_PUBLIC_URL || '';
+  }
+
+  _lookupBucketOverride(bucket) {
+    const defaultBucket = this.getBucketName('default');
+    if (bucket === defaultBucket && process.env.R2_PUBLIC_URL) return process.env.R2_PUBLIC_URL;
+    const datasetBucket = this.getBucketName('datasets');
+    if (bucket === datasetBucket && process.env.R2_DATASETS_PUBLIC_URL) return process.env.R2_DATASETS_PUBLIC_URL;
+    const exportsBucket = this.getBucketName('exports');
+    if (bucket === exportsBucket && process.env.R2_EXPORTS_PUBLIC_URL) return process.env.R2_EXPORTS_PUBLIC_URL;
+    return null;
+  }
+
+  _deriveUrlFromDefault(bucket) {
+    const defaultUrl = process.env.R2_PUBLIC_URL;
+    if (!defaultUrl) return null;
+    try {
+      const parsed = new URL(defaultUrl);
+      const defaultBucket = process.env.R2_BUCKET_NAME;
+      let hostname = parsed.hostname;
+      if (defaultBucket && hostname.startsWith(`${defaultBucket}.`)) {
+        const root = hostname.substring(defaultBucket.length + 1);
+        hostname = `${bucket}.${root}`;
+      } else if (!hostname.startsWith(`${bucket}.`)) {
+        hostname = `${bucket}.${hostname}`;
+      }
+      const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
+      return `${parsed.protocol}//${hostname}${path}`;
+    } catch (err) {
+      this.logger.warn('Failed to derive public URL from default R2_PUBLIC_URL:', err.message);
+      return null;
     }
   }
 }

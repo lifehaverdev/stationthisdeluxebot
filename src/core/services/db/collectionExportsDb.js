@@ -1,0 +1,43 @@
+const { BaseDB, ObjectId } = require('./BaseDB');
+
+class CollectionExportsDB extends BaseDB {
+  constructor(logger) {
+    super('collectionExports');
+    this.logger = logger || console;
+  }
+
+  async createJob(doc) {
+    const payload = {
+      ...doc,
+      status: doc.status || 'pending',
+      progress: doc.progress || { stage: 'queued', current: 0, total: 0 },
+      createdAt: doc.createdAt || new Date(),
+      updatedAt: doc.updatedAt || new Date()
+    };
+    const result = await this.insertOne(payload);
+    return { ...payload, _id: result.insertedId };
+  }
+
+  async findById(id) {
+    const _id = typeof id === 'string' ? new ObjectId(id) : id;
+    return this.findOne({ _id });
+  }
+
+  async findActiveForCollection(collectionId, userId) {
+    return this.findOne({
+      collectionId,
+      userId,
+      status: { $in: ['pending', 'running'] }
+    }, { sort: { createdAt: -1 } });
+  }
+
+  async findLatestForCollection(collectionId, userId) {
+    return this.findOne({ collectionId, userId }, { sort: { createdAt: -1 } });
+  }
+
+  async findNextPending() {
+    return this.findOne({ status: 'pending' }, { sort: { createdAt: 1 } });
+  }
+}
+
+module.exports = CollectionExportsDB;

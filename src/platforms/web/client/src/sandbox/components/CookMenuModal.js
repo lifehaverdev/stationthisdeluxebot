@@ -16,7 +16,7 @@ export default class CookMenuModal {
             activeCooks: [],
             collections: [],
             selectedCollection: null,
-            detailTab: 'overview', // 'overview' | 'traitTree'
+            detailTab: 'overview', // 'overview' | 'traitTree' | 'analytics'
             generatorType: null, // 'tool' | 'spell'
             toolOptions: [],
             selectedToolId: null,
@@ -30,6 +30,12 @@ export default class CookMenuModal {
             pendingDescription: null, // Store pending changes before save
             pendingSupply: null,
             pendingParamOverrides: {}, // Store pending param changes before save
+            analyticsData: null,
+            analyticsLoading: false,
+            analyticsError: null,
+            analyticsCollectionId: null,
+            paramPanelOpen: false,
+            exportJobs: {}
         };
         this.modalElement = null;
         this.handleKeyDown = this.handleKeyDown.bind(this);
@@ -41,6 +47,19 @@ export default class CookMenuModal {
         this._spellsFetched = false;
         this._loadingParams = false; // Guard for loadParamOptions
         this._loadedParamKeys = null; // Cache for loaded param keys
+        this._analyticsCache = new Map();
+        this._traitCategoryState = new Map();
+        this._paramDetailsEl = null;
+        this._paramDetailsHandler = null;
+        this._exportPollTimer = null;
+        this._exportPollContext = null;
+        this._exportStatusMeta = new Map();
+        this.state.exportForm = { nameTemplate: '', description: '', shuffleOrder: false, collectionId: null };
+        this._exportStatusInFlight = new Set();
+        this._fetchCollectionsPromise = null;
+        this._fetchActivePromise = null;
+        this._lastCollectionsFetch = 0;
+        this._lastActiveFetch = 0;
         // ✅ WebSocket integration
         this.ws = typeof window !== 'undefined' ? (window.websocketClient || null) : null;
         this._wsCookHandler = null;
@@ -71,9 +90,18 @@ export default class CookMenuModal {
         }
     }
 
-    async fetchActiveCooks() {
+    async fetchActiveCooks(force = false) {
+        const now = Date.now();
+        if (!force) {
+            if (this._fetchActivePromise) return this._fetchActivePromise;
+            if (this._lastActiveFetch && (now - this._lastActiveFetch) < 4000) {
+                return;
+            }
+        }
+        const runFetch = async () => {
         try {
-            const res = await fetch('/api/v1/cooks/active', { credentials: 'include' });
+            const res = await fetch('/api/v1/cooks/active', { credentials: 'include', cache: 'no-store' });
+            if (res.status === 304) return;
             if (!res.ok) throw new Error('failed');
             const data = await res.json();
             const activeCooks = data.cooks || [];
@@ -108,12 +136,33 @@ export default class CookMenuModal {
             } else {
                 Object.assign(this.state, { activeCooks: [] });
             }
+        } finally {
+                this._lastActiveFetch = Date.now();
+            }
+        };
+        const promise = runFetch();
+        this._fetchActivePromise = promise;
+        try {
+            await promise;
+        } finally {
+            if (this._fetchActivePromise === promise) {
+                this._fetchActivePromise = null;
+            }
         }
     }
 
-    async fetchCollections() {
+    async fetchCollections(force = false) {
+        const now = Date.now();
+        if (!force) {
+            if (this._fetchCollectionsPromise) return this._fetchCollectionsPromise;
+            if (this._lastCollectionsFetch && (now - this._lastCollectionsFetch) < 4000) {
+                return;
+            }
+        }
+        const runFetch = async () => {
         try {
-            const res = await fetch('/api/v1/collections', { credentials: 'include' });
+            const res = await fetch('/api/v1/collections', { credentials: 'include', cache: 'no-store' });
+            if (res.status === 304) return;
             if (!res.ok) throw new Error('failed');
             const data = await res.json();
             if (this.state.view === 'home') {
@@ -127,6 +176,18 @@ export default class CookMenuModal {
             this.setState({ collections: [] });
             } else {
                 Object.assign(this.state, { collections: [] });
+            }
+        } finally {
+                this._lastCollectionsFetch = Date.now();
+            }
+        };
+        const promise = runFetch();
+        this._fetchCollectionsPromise = promise;
+        try {
+            await promise;
+        } finally {
+            if (this._fetchCollectionsPromise === promise) {
+                this._fetchCollectionsPromise = null;
             }
         }
     }
@@ -152,6 +213,7 @@ export default class CookMenuModal {
             clearInterval(this.pollInterval);
             this.pollInterval = null;
         }
+        this._clearExportPoll();
         // ✅ Unsubscribe from WebSocket events
         this._unsubscribeFromWebSocket();
         document.removeEventListener('keydown', this.handleKeyDown);
@@ -427,7 +489,7 @@ export default class CookMenuModal {
     // --- Initial data ---------------------------------------------------
     async loadInitial() {
         this.setState({ loading: true, initialLoadComplete: false });
-        await Promise.all([this.fetchActiveCooks(), this.fetchCollections()]);
+        await Promise.all([this.fetchActiveCooks(true), this.fetchCollections(true)]);
         this.setState({ loading: false, initialLoadComplete: true });
     }
 
@@ -527,6 +589,8 @@ export default class CookMenuModal {
             <div class="collection-card" data-id="${c.collectionId}">${c.name || 'Untitled'}</div>
         `).join('') : '<div class="empty-message">No collections yet.</div>';
 
+        const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
+        const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
         return `
             ${runningCooks.length > 0 ? `<h2>Active Cooks</h2><div class="cook-status-list">${runningHtml}</div>` : ''}
             ${pausedCooks.length > 0 ? `<h2>Paused Cooks</h2><div class="cook-status-list">${pausedHtml}</div>` : ''}
@@ -555,7 +619,7 @@ export default class CookMenuModal {
     renderDetailView() {
         const { selectedCollection, detailTab = 'overview' } = this.state;
         if (!selectedCollection) return '<div class="error-message">Collection not found.</div>';
-        const tabs = ['overview','traitTree'];
+        const tabs = ['overview','traitTree','analytics'];
         const tabsHtml = tabs.map(t=>`<button class="tab-btn${t===detailTab?' active':''}" data-tab="${t}">${t}</button>`).join('');
         let body='';
         if(detailTab==='overview'){
@@ -567,6 +631,8 @@ export default class CookMenuModal {
                    <button class="upload-trait-tree-btn">📤 Upload JSON</button>
                    <input type="file" accept=".json" id="trait-tree-file-input" style="display:none">
                  </div>`;
+        }else if(detailTab==='analytics'){
+            body=this.renderAnalyticsBody();
         }
         return `
             <button class="back-btn">← Back</button>
@@ -634,10 +700,19 @@ export default class CookMenuModal {
             const safeDisplay = escapeHtml(displayValue);
             return `<tr data-param="${p}"><td>${p}</td><td title="${safeValue}">${safeDisplay}</td><td><button class="edit-param-btn">Edit</button></td></tr>`;
         }).join('');
+        const paramSection = paramOptions.length ? `
+          <tr class="param-section-row">
+            <td colspan="3">
+              <details class="param-details" ${this.state.paramPanelOpen ? 'open' : ''}>
+                <summary>Generator Parameters (${paramOptions.length})</summary>
+                <table class="param-inner-table"><tbody>${paramRows}</tbody></table>
+              </details>
+            </td>
+          </tr>` : '';
         
         const unsavedWarning = overviewDirty ? '<div class="unsaved-changes">You have unsaved changes</div>' : '';
         
-        return `<table class="meta-table">${metaRows}${genRow}${paramRows}</table>
+        return `<table class="meta-table">${metaRows}${genRow}${paramSection}</table>
         ${unsavedWarning}
         <div style="margin-top:12px">
             ${overviewDirty ? '<button class="save-overview-btn" style="margin-right:8px;">Save Changes</button>' : ''}
@@ -646,6 +721,225 @@ export default class CookMenuModal {
             <button class="start-cook-btn">Start Cook</button>
             <button class="delete-collection-btn" style="float:right;color:#f55">Delete</button>
         </div>`;
+    }
+
+    renderAnalyticsBody() {
+        const { analyticsLoading, analyticsData, analyticsError, selectedCollection } = this.state;
+        if (analyticsLoading) {
+            return `<div class="analytics-loading">Loading collection analytics…</div>`;
+        }
+        if (analyticsError) {
+            return `<div class="error-message">${analyticsError}</div>`;
+        }
+        if (!analyticsData) {
+            return `<div class="empty-message">No analytics available yet. Generate or review some pieces to unlock insights.</div>`;
+        }
+
+        const summary = analyticsData.summary || {};
+        const formatterCache = this._numberFormatterCache || new Map();
+        this._numberFormatterCache = formatterCache;
+        const getFormatter = (digits = 0) => {
+            const key = digits <= 0 ? `int` : `p${digits}`;
+            if (!formatterCache.has(key)) {
+                formatterCache.set(
+                    key,
+                    new Intl.NumberFormat(undefined, digits <= 0
+                        ? { maximumFractionDigits: 0 }
+                        : { minimumFractionDigits: 0, maximumFractionDigits: digits })
+                );
+            }
+            return formatterCache.get(key);
+        };
+        const formatNumber = (val, digits = 0) => {
+            const num = Number(val);
+            if (!Number.isFinite(num)) return '-';
+            return getFormatter(digits).format(num);
+        };
+        const avgSeconds = summary.avgDurationMs ? summary.avgDurationMs / 1000 : 0;
+        const escapeText = (input) => {
+            const str = String(input ?? '');
+            return str.replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+        if (this.state.selectedCollection && (!this.state.exportForm || this.state.exportForm.collectionId !== this.state.selectedCollection.collectionId)) {
+            this.state.exportForm = this._buildExportFormDefaults(this.state.selectedCollection);
+        }
+        const currentExportForm = this.state.exportForm && this.state.selectedCollection && this.state.exportForm.collectionId === this.state.selectedCollection.collectionId
+            ? this.state.exportForm
+            : this._buildExportFormDefaults(this.state.selectedCollection);
+        const traitSections = (() => {
+            const rarity = analyticsData.traitRarity || [];
+            if (!rarity.length) {
+                return '<div class="empty-message">No trait usage has been tracked yet.</div>';
+            }
+            const grouped = new Map();
+            rarity.forEach(entry => {
+                const key = entry.category || 'Uncategorized';
+                if (!grouped.has(key)) grouped.set(key, []);
+                grouped.get(key).push(entry);
+            });
+            const traitState = this._traitCategoryState || (this._traitCategoryState = new Map());
+            return Array.from(grouped.entries()).map(([category, entries]) => {
+                const totals = entries.reduce((acc, entry) => {
+                    acc.approved += entry.approved || 0;
+                    acc.total += entry.total || 0;
+                    return acc;
+                }, { approved: 0, total: 0 });
+                const rows = entries.map(entry => {
+                    const approvalRate = entry.total
+                        ? `${formatNumber((entry.approved / entry.total) * 100, 1)}%`
+                        : 'n/a';
+                    return `
+                        <div class="trait-row">
+                            <span class="trait-name">${escapeText(entry.name)}</span>
+                            <span class="trait-approvals">${formatNumber(entry.approved)}/${formatNumber(entry.total)}</span>
+                            <span class="trait-rate">${approvalRate}</span>
+                        </div>
+                    `;
+                }).join('');
+                const openState = traitState.has(category)
+                    ? (traitState.get(category) ? 'open' : '')
+                    : '';
+                return `
+                    <details class="trait-category" data-category="${category}" ${openState}>
+                        <summary>
+                            <span class="trait-category-title">${category}</span>
+                            <span class="trait-category-count">${formatNumber(totals.approved)}/${formatNumber(totals.total)} approved</span>
+                        </summary>
+                        <div class="trait-rows">${rows}</div>
+                    </details>
+                `;
+            }).join('');
+        })();
+
+        const collectionId = selectedCollection?.collectionId;
+        const exportJob = collectionId ? (this.state.exportJobs?.[collectionId] || null) : null;
+        const targetSupply = selectedCollection?.totalSupply || selectedCollection?.config?.totalSupply || summary.totalSupply || 0;
+        const readyForExport = summary.approvedCount > 0;
+        const exportInProgress = exportJob && ['pending', 'running'].includes(exportJob.status);
+        const exportButtonDisabled = !readyForExport || exportInProgress;
+        const exportButtonLabel = exportInProgress
+            ? 'Preparing Export…'
+            : (readyForExport ? 'Export Collection (ZIP)' : 'Approve Pieces to Export');
+        const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, summary.approvedCount);
+        const showCancel = exportInProgress;
+        const exportConfigMarkup = (!exportInProgress)
+            ? `
+                <div class="export-config">
+                    <label>
+                        Metadata Name Template
+                        <input type="text" class="export-name-template" value="${escapeText(currentExportForm.nameTemplate || '')}" placeholder="${escapeText((this.state.selectedCollection?.name || 'Piece') + ' #{{number}}')}">
+                        <small>Use <code>{{number}}</code> where the sequential number should appear.</small>
+                    </label>
+                    <label>
+                        Description
+                        <textarea class="export-description" rows="3" placeholder="Describe your collection...">${escapeText(currentExportForm.description || '')}</textarea>
+                    </label>
+                    <label class="export-shuffle-row">
+                        <input type="checkbox" class="export-shuffle"${currentExportForm.shuffleOrder ? ' checked' : ''}>
+                        Shuffle approved pieces before exporting
+                    </label>
+                </div>
+            `
+            : '';
+
+        return `
+            <div class="analytics-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Points Spent</div>
+                    <div class="stat-value">${formatNumber(summary.totalPointsSpent)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Approved</div>
+                    <div class="stat-value">${formatNumber(summary.approvedCount)}</div>
+                    <div class="stat-sub">${formatNumber(summary.approvalRate, 1)}% approval</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Rejected</div>
+                    <div class="stat-value">${formatNumber(summary.rejectedCount)}</div>
+                    <div class="stat-sub">${formatNumber(summary.rejectionRate, 1)}% rejection</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Generation Time</div>
+                    <div class="stat-value">${avgSeconds ? formatNumber(avgSeconds, 1) : '-'}s</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Pending Reviews</div>
+                    <div class="stat-value">${formatNumber(summary.pendingCount)}</div>
+                </div>
+            </div>
+            <div class="analytics-section export">
+                <h3>Export Collection</h3>
+                <p>Download a review-ready archive of your approved pieces once your collection supply is met.</p>
+                ${exportConfigMarkup}
+                <button class="${exportButtonClass}"${exportButtonDisabledAttr} data-label="${exportButtonLabel}">${exportButtonLabel}</button>
+                ${showCancel ? '<button class="cancel-export-btn">Cancel Export</button>' : ''}
+                ${exportStatusMarkup}
+            </div>
+            <div class="analytics-section">
+                <h3>Trait Rarity Breakdown</h3>
+                ${traitSections || '<div class="empty-message">No trait tree has been configured yet.</div>'}
+            </div>
+        `;
+    }
+
+    renderExportStatus(job, readyForExport, targetSupply, approvedCount) {
+        if (!readyForExport) {
+            const supplyMsg = targetSupply > 0
+                ? `Approved ${approvedCount}/${targetSupply}. You can still export early, but finished pieces only.`
+                : 'Approve at least one piece to enable exports.';
+            return `<div class="export-status muted">${supplyMsg}</div>`;
+        }
+        if (!job) {
+            return '<div class="export-status muted">No export requested yet.</div>';
+        }
+        const status = job.status || 'pending';
+        const progress = job.progress || {};
+        const parts = [];
+        const total = progress.total || progress.current || 0;
+        const current = progress.current || 0;
+        if (status === 'pending') {
+            parts.push('Queued – awaiting worker availability');
+        } else if (status === 'running') {
+            parts.push(`Running (${current}/${total || '?'})`);
+        } else if (status === 'completed') {
+            parts.push('Ready for download');
+        } else if (status === 'cancelled') {
+            parts.push('Cancelled');
+        } else if (status === 'failed') {
+            parts.push(`Failed: ${job.error || 'Unexpected error'}`);
+        } else {
+            parts.push(status);
+        }
+        if (progress.stage) {
+            parts.push(this._formatExportStage(progress.stage));
+        }
+        let actions = '';
+        if (status === 'completed' && job.downloadUrl) {
+            const expires = job.expiresAt ? new Date(job.expiresAt).toLocaleString() : null;
+            actions = `<div class="export-actions"><a class="export-download" href="${job.downloadUrl}" target="_blank" rel="noopener">Download ZIP</a>${expires ? `<span class="export-expiry">Expires ${expires}</span>` : ''}</div>`;
+        }
+        return `<div class="export-status export-${status}">
+            <div>${parts.join(' • ')}</div>
+            ${actions}
+        </div>`;
+    }
+
+    _formatExportStage(stage) {
+        if (!stage) return '';
+        const map = {
+            queued: 'Queued',
+            preparing: 'Preparing manifest',
+            collecting: 'Collecting approved pieces',
+            uploading: 'Uploading archive',
+            completed: 'Completed',
+            failed: 'Failed',
+            cancelled: 'Cancelled'
+        };
+        return map[stage] || stage;
     }
 
     attachCreateEvents() {
@@ -679,7 +973,12 @@ export default class CookMenuModal {
                 overviewDirty: false,
                 pendingDescription: null,
                 pendingSupply: null,
-                pendingParamOverrides: {}
+                pendingParamOverrides: {},
+                detailTab: 'overview',
+                analyticsData: null,
+                analyticsError: null,
+                analyticsLoading: false,
+                analyticsCollectionId: null
             });
         };
 
@@ -747,6 +1046,56 @@ export default class CookMenuModal {
                 this._loadingParams = false;
             });
         }
+        if (this.state.detailTab === 'analytics') {
+            const collId = this.state.selectedCollection?.collectionId;
+            if (collId) {
+                if (this._shouldFetchExportStatus(collId)) {
+                    this.fetchExportStatus(collId);
+                }
+                this._ensureAnalyticsData(collId);
+            }
+            const exportBtn = this.modalElement.querySelector('.export-collection-btn');
+            if (exportBtn) {
+                exportBtn.onclick = () => this.handleExportCollection(exportBtn);
+            }
+            const cancelBtn = this.modalElement.querySelector('.cancel-export-btn');
+            if (cancelBtn) {
+                cancelBtn.onclick = () => this.handleCancelExport();
+            }
+            const nameInput = this.modalElement.querySelector('.export-name-template');
+            if (nameInput) {
+                nameInput.addEventListener('input', (e) => {
+                    if (!this.state.exportForm || !this.state.selectedCollection) return;
+                    this.state.exportForm.nameTemplate = e.target.value;
+                });
+            }
+            const descInput = this.modalElement.querySelector('.export-description');
+            if (descInput) {
+                descInput.addEventListener('input', (e) => {
+                    if (!this.state.exportForm || !this.state.selectedCollection) return;
+                    this.state.exportForm.description = e.target.value;
+                });
+            }
+            const shuffleInput = this.modalElement.querySelector('.export-shuffle');
+            if (shuffleInput) {
+                shuffleInput.addEventListener('change', (e) => {
+                    if (!this.state.exportForm || !this.state.selectedCollection) return;
+                    this.state.exportForm.shuffleOrder = !!e.target.checked;
+                });
+            }
+            if (collId) {
+                const activeJob = this.state.exportJobs?.[collId] || null;
+                if (activeJob && !['completed', 'failed'].includes(activeJob.status)) {
+                    this._scheduleExportPoll(collId, activeJob.id);
+                }
+            }
+            this.modalElement.querySelectorAll('.trait-category').forEach(detailsEl => {
+                detailsEl.addEventListener('toggle', () => {
+                    const key = detailsEl.dataset.category || 'Uncategorized';
+                    this._traitCategoryState.set(key, detailsEl.open);
+                });
+            });
+        }
         // Overview edit handlers
         if(this.state.detailTab==='overview'){
             // Reset pending changes when switching to overview (they're already saved or discarded)
@@ -797,6 +1146,216 @@ export default class CookMenuModal {
                 loading: false,
                 error: err.message || 'Failed to save traits. Please try again.'
             });
+        }
+    }
+
+    async handleExportCollection(buttonEl) {
+        const collectionId = this.state.selectedCollection?.collectionId;
+        if (!collectionId) return;
+        try {
+            const csrf = await this.getCsrfToken();
+            const defaults = this._buildExportFormDefaults(this.state.selectedCollection);
+            const form = this.state.exportForm && this.state.exportForm.collectionId === collectionId
+                ? this.state.exportForm
+                : defaults;
+            const metadataOptions = {
+                nameTemplate: (form.nameTemplate || defaults.nameTemplate).trim(),
+                description: form.description ?? defaults.description,
+                shuffleOrder: !!form.shuffleOrder
+            };
+            if (buttonEl) {
+                buttonEl.disabled = true;
+                buttonEl.classList.add('is-running');
+                buttonEl.textContent = 'Starting…';
+            }
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/export`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    metadataOptions
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to start export');
+            }
+            this._updateExportJobState(collectionId, data);
+            if (data.status !== 'completed' && data.status !== 'failed') {
+                this._scheduleExportPoll(collectionId, data.id);
+            }
+        } catch (err) {
+            console.error('[CookMenuModal] export error:', err);
+            const friendly = err.message === 'no-approved-pieces'
+                ? 'You need at least one approved piece before exporting.'
+                : err.message;
+            alert(friendly || 'Failed to start export. Please try again.');
+        } finally {
+            if (buttonEl) {
+                buttonEl.disabled = false;
+                buttonEl.classList.remove('is-running');
+                buttonEl.textContent = buttonEl.dataset.label || 'Export Collection (ZIP)';
+            }
+        }
+    }
+
+    async handleCancelExport() {
+        const collectionId = this.state.selectedCollection?.collectionId;
+        if (!collectionId) return;
+        if (!confirm('Cancel the current export job?')) return;
+        try {
+            const csrf = await this.getCsrfToken();
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/export/cancel`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrf
+                },
+                credentials: 'include',
+                body: JSON.stringify({})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to cancel export');
+            }
+            this._updateExportJobState(collectionId, data);
+            this._clearExportPoll();
+            alert('Export cancelled.');
+        } catch (err) {
+            console.error('[CookMenuModal] cancel export error:', err);
+            alert(err.message || 'Failed to cancel export.');
+        }
+    }
+
+    _updateExportJobState(collectionId, jobData) {
+        const exportJobs = { ...(this.state.exportJobs || {}) };
+        if (jobData) {
+            exportJobs[collectionId] = jobData;
+        } else {
+            delete exportJobs[collectionId];
+        }
+        this.setState({ exportJobs });
+        this._markExportStatusFetched(collectionId);
+    }
+
+    _scheduleExportPoll(collectionId, exportId) {
+        if (this._exportPollTimer) {
+            clearTimeout(this._exportPollTimer);
+        }
+        this._exportPollContext = { collectionId, exportId };
+        this._markExportStatusPending(collectionId);
+        this._exportPollTimer = setTimeout(() => this._pollExportStatus(), 4000);
+    }
+
+    async _pollExportStatus() {
+        if (!this._exportPollContext) return;
+        const { collectionId, exportId } = this._exportPollContext;
+        if (!collectionId || this._exportStatusInFlight.has(collectionId)) {
+            return;
+        }
+        this._exportStatusInFlight.add(collectionId);
+        try {
+            let url = `/api/v1/collections/${encodeURIComponent(collectionId)}/export/status`;
+            if (exportId) {
+                url += `?exportId=${encodeURIComponent(exportId)}`;
+            }
+            const res = await fetch(url, { credentials: 'include', cache: 'no-store' });
+            if (res.status === 304) {
+                this._markExportStatusFetched(collectionId);
+                this._clearExportPoll();
+                return;
+            }
+            const data = await res.json();
+            if (!res.ok) {
+                if (res.status === 404 || data.error === 'export-not-found') {
+                    this._updateExportJobState(collectionId, null);
+                    this._markExportStatusFetched(collectionId);
+                    this._clearExportPoll();
+                    return;
+                }
+                throw new Error(data.error || 'Failed to fetch export status');
+            }
+            this._updateExportJobState(collectionId, data);
+            if (data.status === 'completed' || data.status === 'failed') {
+                this._clearExportPoll();
+                this._markExportStatusFetched(collectionId);
+            } else {
+                this._scheduleExportPoll(collectionId, data.id);
+            }
+        } catch (err) {
+            console.warn('[CookMenuModal] export status poll failed:', err);
+            this._clearExportPoll();
+            this._markExportStatusFetched(collectionId);
+        } finally {
+            this._exportStatusInFlight.delete(collectionId);
+        }
+    }
+
+    _clearExportPoll() {
+        if (this._exportPollTimer) {
+            clearTimeout(this._exportPollTimer);
+            this._exportPollTimer = null;
+        }
+        this._exportPollContext = null;
+    }
+
+    _markExportStatusFetched(collectionId) {
+        if (!collectionId) return;
+        this._exportStatusMeta.set(collectionId, { ts: Date.now(), pending: false });
+    }
+
+    _markExportStatusPending(collectionId) {
+        if (!collectionId) return;
+        this._exportStatusMeta.set(collectionId, { ts: Date.now(), pending: true });
+    }
+
+    _shouldFetchExportStatus(collectionId) {
+        if (!collectionId) return false;
+        if (this._exportStatusInFlight.has(collectionId)) return false;
+        const meta = this._exportStatusMeta.get(collectionId);
+        if (!meta) return true;
+        if (typeof meta === 'number') {
+            this._exportStatusMeta.set(collectionId, { ts: meta, pending: false });
+            return Date.now() - meta > 60 * 1000;
+        }
+        if (meta.pending) return false;
+        const maxAge = 60 * 1000;
+        return !meta.ts || (Date.now() - meta.ts) > maxAge;
+    }
+
+    async fetchExportStatus(collectionId) {
+        if (!collectionId) return;
+        if (this._exportStatusInFlight.has(collectionId)) return;
+        this._exportStatusInFlight.add(collectionId);
+        try {
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/export/status`, { credentials: 'include', cache: 'no-store' });
+            if (res.status === 404) {
+                this._updateExportJobState(collectionId, null);
+                this._markExportStatusFetched(collectionId);
+                return;
+            }
+            if (res.status === 304) {
+                this._markExportStatusFetched(collectionId);
+                return;
+            }
+            const data = await res.json();
+            if (!res.ok) {
+                if (data.error === 'export-not-found') {
+                    this._updateExportJobState(collectionId, null);
+                    this._markExportStatusFetched(collectionId);
+                    return;
+                }
+                throw new Error(data.error || 'Failed to fetch export status');
+            }
+            this._updateExportJobState(collectionId, data);
+            this._markExportStatusFetched(collectionId);
+        } catch (err) {
+            console.warn('[CookMenuModal] fetchExportStatus error:', err);
+        } finally {
+            this._exportStatusInFlight.delete(collectionId);
         }
     }
 
@@ -1053,7 +1612,20 @@ export default class CookMenuModal {
                     // Clear param cache when switching collections
                     this._loadedParamKeys = null;
                     this._loadingParams = false;
-                    this.setState({ view: 'detail', selectedCollection: coll });
+                    const cachedAnalytics = this._analyticsCache.get(coll.collectionId) || null;
+                    const exportForm = (this.state.selectedCollection && this.state.selectedCollection.collectionId === coll.collectionId)
+                        ? (this.state.exportForm || this._buildExportFormDefaults(coll))
+                        : this._buildExportFormDefaults(coll);
+                    this.setState({ 
+                        view: 'detail', 
+                        selectedCollection: coll,
+                        detailTab: 'overview',
+                        analyticsData: cachedAnalytics,
+                        analyticsError: null,
+                        analyticsLoading: false,
+                        analyticsCollectionId: cachedAnalytics ? coll.collectionId : null,
+                        exportForm
+                    });
                 }
                 }
         });
@@ -1114,7 +1686,7 @@ export default class CookMenuModal {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || 'pause failed');
             }
-            await this.fetchActiveCooks();
+            await this.fetchActiveCooks(true);
         } catch (err) {
             alert('Failed to pause cook: ' + (err.message || 'error'));
         } finally {
@@ -1134,7 +1706,7 @@ export default class CookMenuModal {
             const collection = this.state.collections.find(c => c.collectionId === id);
             if (!collection) {
                 // Try to fetch collection if not in state
-                const collRes = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include' });
+                const collRes = await fetch(`/api/v1/collections/${encodeURIComponent(id)}`, { credentials: 'include', cache: 'no-store' });
                 if (!collRes.ok) throw new Error('Collection not found');
                 const collData = await collRes.json();
             const res = await fetch(`/api/v1/collections/${encodeURIComponent(id)}/cook/resume`, {
@@ -1156,7 +1728,7 @@ export default class CookMenuModal {
                     const data = await res.json().catch(() => ({}));
                     throw new Error(data.error || 'resume failed');
                 }
-                await this.fetchActiveCooks();
+                await this.fetchActiveCooks(true);
                 return;
             }
             
@@ -1179,7 +1751,7 @@ export default class CookMenuModal {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || 'resume failed');
             }
-            await this.fetchActiveCooks();
+            await this.fetchActiveCooks(true);
         } catch (err) {
             alert('Failed to resume cook: ' + (err.message || 'error'));
         } finally {
@@ -1198,7 +1770,7 @@ export default class CookMenuModal {
                 credentials: 'include',
             });
             if (!res.ok) throw new Error('delete failed');
-            await Promise.all([this.fetchActiveCooks(), this.fetchCollections()]);
+            await Promise.all([this.fetchActiveCooks(true), this.fetchCollections(true)]);
         } catch (err) {
             alert('Failed to delete collection');
         }
@@ -1221,7 +1793,7 @@ export default class CookMenuModal {
             if (!res.ok) throw new Error('create failed');
             const data = await res.json();
             const newId = data.collection?.collectionId || data.collectionId || data._id;
-            await this.fetchCollections();
+            await this.fetchCollections(true);
             // Optional: directly open detail view (placeholder)
             if (newId) {
                 alert('Collection created! Opening detail view…');
@@ -1238,7 +1810,7 @@ export default class CookMenuModal {
         if(this._loadingTools || this._toolsFetched) return;
         this._loadingTools=true;
         try{
-            const res=await fetch('/api/v1/tools/registry', { credentials:'include' });
+            const res=await fetch('/api/v1/tools/registry', { credentials:'include', cache:'no-store' });
             if(!res.ok) throw new Error('tools fetch failed');
             const data=await res.json();
             if(Array.isArray(data)) this.setState({toolOptions:data});
@@ -1251,7 +1823,7 @@ export default class CookMenuModal {
         if(this._loadingSpells || this._spellsFetched) return;
         this._loadingSpells=true;
         try{
-            const res=await fetch('/api/v1/spells/registry', { credentials:'include' });
+            const res=await fetch('/api/v1/spells/registry', { credentials:'include', cache:'no-store' });
             if(!res.ok) throw new Error('spells fetch failed');
             const data=await res.json();
             if(Array.isArray(data)) this.setState({spellOptions:data});
@@ -1291,7 +1863,7 @@ export default class CookMenuModal {
         
         if(selectedCollection.generatorType==='tool' && selectedCollection.toolId){
             try{
-                const res=await fetch(`/api/v1/tools/registry/${encodeURIComponent(selectedCollection.toolId)}`);
+                const res=await fetch(`/api/v1/tools/registry/${encodeURIComponent(selectedCollection.toolId)}`, { cache:'no-store' });
                 if(res.ok){
                     const def=await res.json();
                     let params;
@@ -1321,7 +1893,7 @@ export default class CookMenuModal {
         }
         if(selectedCollection.generatorType==='spell' && selectedCollection.spellId){
             try{
-                const res=await fetch(`/api/v1/spells/registry/${encodeURIComponent(selectedCollection.spellId)}`);
+                const res=await fetch(`/api/v1/spells/registry/${encodeURIComponent(selectedCollection.spellId)}`, { cache:'no-store' });
                 if(res.ok){
                     const def=await res.json();
                     let params;
@@ -1355,6 +1927,80 @@ export default class CookMenuModal {
         });
         if(!this._loadedParamKeys) this._loadedParamKeys = new Set();
         this._loadedParamKeys.add(collectionKey);
+    }
+
+    async loadCollectionAnalytics(collectionId) {
+        if (!collectionId) return;
+        if (this.state.analyticsLoading && this.state.analyticsCollectionId === collectionId) {
+            return;
+        }
+        this.setState({
+            analyticsLoading: true,
+            analyticsError: null,
+            analyticsCollectionId: collectionId
+        });
+        try {
+            const res = await fetch(`/api/v1/collections/${encodeURIComponent(collectionId)}/analytics`, { credentials: 'include', cache: 'no-store' });
+            if (res.status === 304) {
+                const cached = this._analyticsCache.get(collectionId) || null;
+                this.setState({
+                    analyticsLoading: false,
+                    analyticsData: cached || this.state.analyticsData,
+                    analyticsError: cached ? null : this.state.analyticsError
+                });
+                return;
+            }
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to load analytics');
+            }
+            const data = await res.json();
+            this._analyticsCache.set(collectionId, data);
+            this.setState({
+                analyticsData: data,
+                analyticsError: null,
+                analyticsLoading: false
+            });
+        } catch (err) {
+            console.error('[CookMenuModal] analytics load error:', err);
+            this.setState({
+                analyticsError: err.message || 'Failed to load analytics',
+                analyticsLoading: false
+            });
+        }
+    }
+
+    _ensureAnalyticsData(collectionId) {
+        if (!collectionId) return;
+        const cached = this._analyticsCache.get(collectionId);
+        if (cached && this.state.analyticsCollectionId !== collectionId) {
+            this.setState({
+                analyticsData: cached,
+                analyticsError: null,
+                analyticsLoading: false,
+                analyticsCollectionId: collectionId
+            });
+            return;
+        }
+        if (!cached) {
+            this.loadCollectionAnalytics(collectionId);
+        }
+    }
+
+    _buildExportFormDefaults(collection) {
+        if (!collection) {
+            return {
+                nameTemplate: 'Collection Piece #{{number}}',
+                description: '',
+                shuffleOrder: false
+            };
+        }
+        return {
+            nameTemplate: `${collection.name || 'Collection Piece'} #{{number}}`,
+            description: collection.description || '',
+            shuffleOrder: false,
+            collectionId: collection.collectionId
+        };
     }
 
     attachOverviewEvents(){
@@ -1458,6 +2104,18 @@ export default class CookMenuModal {
                 }
             };
         });
+
+        if (this._paramDetailsEl && this._paramDetailsHandler) {
+            this._paramDetailsEl.removeEventListener('toggle', this._paramDetailsHandler);
+        }
+        const paramDetails = modal.querySelector('.param-details');
+        if (paramDetails) {
+            this._paramDetailsEl = paramDetails;
+            this._paramDetailsHandler = () => {
+                this.state.paramPanelOpen = paramDetails.open;
+            };
+            paramDetails.addEventListener('toggle', this._paramDetailsHandler);
+        }
         
         // Save overview changes button
         if(modal.querySelector('.save-overview-btn')) modal.querySelector('.save-overview-btn').onclick=async()=>{
@@ -1483,7 +2141,7 @@ export default class CookMenuModal {
                     // User wants to save first
                     await this.saveOverviewChanges();
                     // Refresh collection to get updated values
-                    await this.fetchCollections();
+                    await this.fetchCollections(true);
                     const updated = this.state.collections.find(c => c.collectionId === coll.collectionId);
                     if (updated) {
                         this.setState({ selectedCollection: updated });
@@ -1520,7 +2178,7 @@ export default class CookMenuModal {
                 console.log('[CookMenuModal] startCook response', data);
                 if(!res.ok){throw new Error(data.error||'start failed');}
                 alert(`Cook started${typeof data.queued==='number'?` (queued ${data.queued})`:''}`);
-                await this.fetchActiveCooks();
+                await this.fetchActiveCooks(true);
             }catch(e){alert('Failed to start cook: '+(e.message||'error'))}finally{this.setState({ loading:false });}
         };
         if(modal.querySelector('.delete-collection-btn')) modal.querySelector('.delete-collection-btn').onclick=()=>{

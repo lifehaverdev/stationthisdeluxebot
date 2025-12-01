@@ -133,6 +133,7 @@ function initializeInternalServices(dependencies = {}) {
       saltMiningService: dependencies.saltMiningService,
       // Platform notifiers for cross-platform notifications
       platformNotifiers: dependencies.platformNotifiers || {},
+      collectionExportService: dependencies.collectionExportService
   };
 
   // Create an instance of teamServiceDb and add it to apiDependencies

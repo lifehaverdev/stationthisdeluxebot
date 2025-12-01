@@ -44,7 +44,8 @@ class TraitEngine {
    * Returns map of { [CategoryName]: valueString }
    */
   static selectFromTraitTree(categories = [], options = {}) {
-    const result = {};
+    const selectedTraits = {};
+    const traitDetails = [];
     const detIndex = Number.isFinite(options.deterministicIndex) ? options.deterministicIndex : null;
     categories.forEach((cat) => {
       if (!cat || !cat.name) return;
@@ -66,7 +67,13 @@ class TraitEngine {
         }
         const num = start + idx * step;
         const val = zeroPad > 0 ? String(num).padStart(zeroPad, '0') : String(num);
-        result[cat.name] = val;
+        selectedTraits[cat.name] = val;
+        traitDetails.push({
+          category: cat.name,
+          name: val,
+          value: val,
+          mode: 'generated'
+        });
       } else if (Array.isArray(cat.traits) && cat.traits.length) {
         // Manual mode - rarity weighted
         const totalWeight = cat.traits.reduce((acc, t) => acc + (t.rarity || 0.5), 0);
@@ -77,10 +84,20 @@ class TraitEngine {
           if (r <= 0) { winner = t; break; }
         }
         const value = winner.value !== undefined ? winner.value : (winner.prompt || winner.name || '');
-        result[cat.name] = String(value);
+        selectedTraits[cat.name] = String(value);
+        traitDetails.push({
+          category: cat.name,
+          name: winner.name || value,
+          value: value,
+          mode: 'manual',
+          metadata: {
+            prompt: winner.prompt,
+            rarity: winner.rarity
+          }
+        });
       }
     });
-    return result;
+    return { selectedTraits, traitDetails };
   }
 
   static _shuffleIndex(index, count, seed) {

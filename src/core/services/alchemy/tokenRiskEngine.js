@@ -2,11 +2,14 @@ const { ethers } = require('ethers');
 const { contracts } = require('../../contracts');
 const tokenDecimalService = require('../tokenDecimalService');
 
+const MS2_ADDRESS = '0x98ed411b8cf8536657c660db8aa55d9d4baaf820';
+
 // A list of tokens that are always considered safe and can bypass deeper checks.
 const TOKEN_WHITELIST = [
     '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC on Mainnet
     '0x6b175474e89094c44da98b954eedeac495271d0f', // DAI on Mainnet
-    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'  // WETH on Mainnet
+    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH on Mainnet
+    MS2_ADDRESS // Native MS2 token - skip DEX checks
 ];
 
 /**
