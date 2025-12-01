@@ -461,7 +461,7 @@ class CollectionExportService {
       : [];
 
     const attributes = [...traitList, ...appliedTraits];
-    const promptValue = generation.metadata?.prompt || generation.prompt || '';
+    const promptValue = this._extractPromptValue(generation);
     if (promptValue) {
       attributes.push({
         trait_type: 'prompt',
@@ -689,6 +689,24 @@ class CollectionExportService {
 
   _isPaused() {
     return !!this.workerState.paused;
+  }
+
+  _extractPromptValue(generation) {
+    const metadata = generation.metadata || {};
+    const requestPayload = generation.requestPayload || generation.request || {};
+    const inputs = metadata.request?.inputs || requestPayload.inputs || {};
+
+    return (
+      metadata.userInputPrompt ||
+      metadata.originalPrompt ||
+      metadata.prompt ||
+      generation.prompt ||
+      requestPayload.input_prompt ||
+      inputs.input_prompt ||
+      requestPayload.prompt ||
+      inputs.prompt ||
+      ''
+    );
   }
 }
 
