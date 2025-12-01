@@ -15,27 +15,30 @@ class SystemStateDB extends BaseDB {
     }
   }
 
+  async getValue(key, defaultValue = null) {
+    const doc = await this.findOne({ _id: key });
+    return doc ? doc.value : defaultValue;
+  }
+
+  async setValue(key, value) {
+    const filter = { _id: key };
+    const update = { $set: { value } };
+    const options = { upsert: true };
+    return this.updateOne(filter, update, options);
+  }
+
   /**
    * Retrieves the last block number that was successfully processed.
-   * @param {number} defaultValue - The value to return if no block number is found (e.g., contract deployment block).
-   * @returns {Promise<number>} The last synced block number.
    */
   async getLastSyncedBlock(defaultValue = 0) {
-    const doc = await this.findOne({ _id: LAST_SYNCED_BLOCK_KEY });
-    return doc ? doc.value : defaultValue;
+    return this.getValue(LAST_SYNCED_BLOCK_KEY, defaultValue);
   }
 
   /**
    * Sets the last successfully processed block number.
-   * This should be called after an event has been fully processed.
-   * @param {number} blockNumber - The block number to save.
-   * @returns {Promise<Object>} The result of the upsert operation.
    */
   async setLastSyncedBlock(blockNumber) {
-    const filter = { _id: LAST_SYNCED_BLOCK_KEY };
-    const update = { $set: { value: blockNumber } };
-    const options = { upsert: true };
-    return this.updateOne(filter, update, options);
+    return this.setValue(LAST_SYNCED_BLOCK_KEY, blockNumber);
   }
 }
 

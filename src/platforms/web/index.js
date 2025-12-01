@@ -33,6 +33,12 @@ function initializeWebPlatform(services, options = {}) {
   const app = express();
   const logger = services.logger || console; // Get logger from services, fallback to console
   const publicPath = path.join(__dirname, '..', '..', '..', 'public');
+  const maintenancePagePath = process.env.MAINTENANCE_MODE_PAGE
+    ? path.resolve(process.env.MAINTENANCE_MODE_PAGE)
+    : path.join(publicPath, 'maintenance.html');
+  const maintenanceFlagPath = process.env.MAINTENANCE_MODE_FILE
+    ? path.resolve(process.env.MAINTENANCE_MODE_FILE)
+    : path.join('/var', 'run', 'hyperbot', 'maintenance.flag');
 
   // Trust the first proxy in front of the app.
   app.set('trust proxy', 1);
@@ -47,6 +53,44 @@ function initializeWebPlatform(services, options = {}) {
   app.use(express.json({ verify: rawBodySaver }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+
+  const maintenanceBypassPaths = new Set([
+    '/api/health',
+    '/health',
+  ]);
+
+  const isMaintenanceEnabled = () => {
+    if (process.env.MAINTENANCE_MODE === '1' || process.env.MAINTENANCE_MODE === 'true') {
+      return true;
+    }
+    try {
+      return fs.existsSync(maintenanceFlagPath);
+    } catch (err) {
+      logger.warn('[WebPlatform] Unable to read maintenance flag', err);
+      return false;
+    }
+    return false;
+  };
+
+  app.use((req, res, next) => {
+    if (!isMaintenanceEnabled() || maintenanceBypassPaths.has(req.path)) {
+      return next();
+    }
+
+    const message = process.env.MAINTENANCE_MODE_MESSAGE
+      || 'StationThis is undergoing scheduled maintenance. Please try again shortly.';
+
+    res.set('Retry-After', process.env.MAINTENANCE_RETRY_AFTER || '120');
+
+    if (req.accepts('html') && fs.existsSync(maintenancePagePath)) {
+      return res.status(503).sendFile(maintenancePagePath);
+    }
+
+    return res.status(503).json({
+      error: 'maintenance',
+      message
+    });
+  });
 
   // --- Referral Handler ---
   app.use(referralHandler);

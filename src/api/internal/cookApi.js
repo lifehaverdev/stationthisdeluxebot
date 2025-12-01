@@ -398,6 +398,49 @@ function createCookApi(deps = {}) {
     }
   });
 
+  router.get('/export/worker/status', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const status = await exportService.getWorkerStatus({ includeQueueSize: true });
+      return res.json(status);
+    } catch (err) {
+      logger.error('[CookAPI] export worker status error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/export/worker/pause', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const reason = req.body?.reason || 'manual';
+      const status = await exportService.pauseProcessing({ reason });
+      return res.json(status);
+    } catch (err) {
+      logger.error('[CookAPI] export worker pause error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
+  router.post('/export/worker/resume', async (req, res) => {
+    try {
+      const exportService = deps.collectionExportService;
+      if (!exportService) {
+        return res.status(503).json({ error: 'export-service-unavailable' });
+      }
+      const status = await exportService.resumeProcessing();
+      return res.json(status);
+    } catch (err) {
+      logger.error('[CookAPI] export worker resume error', err);
+      return res.status(500).json({ error: 'internal-error' });
+    }
+  });
+
   // POST /internal/cook/start
   router.post('/start', async (req, res) => {
     try {

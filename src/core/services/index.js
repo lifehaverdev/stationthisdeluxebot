@@ -306,7 +306,8 @@ async function initializeServices(options = {}) {
         cookCollectionsDb: initializedDbServices.data.cookCollections,
         generationOutputsDb: initializedDbServices.data.generationOutputs,
         collectionExportsDb: initializedDbServices.data.collectionExports,
-        storageService
+        storageService,
+        systemStateDb: initializedDbServices.data.systemState
       });
       logger.info('CollectionExportService initialized.');
     } else {

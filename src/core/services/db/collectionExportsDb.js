@@ -38,6 +38,10 @@ class CollectionExportsDB extends BaseDB {
   async findNextPending() {
     return this.findOne({ status: 'pending' }, { sort: { createdAt: 1 } });
   }
+
+  async countPending() {
+    return this.count({ status: 'pending' });
+  }
 }
 
 module.exports = CollectionExportsDB;

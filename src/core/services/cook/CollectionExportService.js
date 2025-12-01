@@ -5,19 +5,44 @@ const { PRIORITY } = require('../db/utils/queue');
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetchImpl }) => fetchImpl(...args));
 
+const WORKER_STATE_KEY = 'collection_export_worker_state';
+const WORKER_HEARTBEAT_KEY = 'collection_export_worker_heartbeat';
+
 class CollectionExportService {
-  constructor({ logger, cookCollectionsDb, generationOutputsDb, collectionExportsDb, storageService }) {
+  constructor({ logger, cookCollectionsDb, generationOutputsDb, collectionExportsDb, storageService, systemStateDb }) {
     this.logger = (logger && logger.child) ? logger.child({ service: 'CollectionExport' }) : (logger || console);
     this.cookCollectionsDb = cookCollectionsDb;
     this.generationOutputsDb = generationOutputsDb;
     this.collectionExportsDb = collectionExportsDb;
     this.storageService = storageService;
+    this.systemStateDb = systemStateDb || null;
     this.processing = false;
     this.queueCheckScheduled = false;
     this.downloadTimeoutMs = Number(process.env.COLLECTION_EXPORT_FETCH_TIMEOUT_MS || 60000);
     this.activeJobId = null;
     this.abortedJobs = new Set();
     this._currentJob = null;
+    this.workerState = {
+      paused: false,
+      pauseReason: null,
+      pausedAt: null,
+      updatedAt: new Date(),
+      lastHeartbeat: null
+    };
+    this._stateLoaded = false;
+    this._stateLoadPromise = this._loadPersistentState()
+      .catch(err => {
+        this.logger.error('[CollectionExportService] unable to load worker state', err);
+      })
+      .finally(() => {
+        this._stateLoaded = true;
+        this._stateLoadPromise = null;
+      });
+    this.heartbeatIntervalMs = Number(process.env.COLLECTION_EXPORT_HEARTBEAT_INTERVAL_MS || 30000);
+    this._heartbeatTimer = null;
+    if (this.heartbeatIntervalMs > 0 && this.systemStateDb) {
+      this._startHeartbeat();
+    }
   }
 
   async requestExport({ userId, collectionId, metadataOptions = {} }) {
@@ -71,7 +96,13 @@ class CollectionExportService {
   }
 
   _scheduleQueueProcessing() {
-    if (this.processing || this.queueCheckScheduled) return;
+    if (!this._stateLoaded && this._stateLoadPromise) {
+      this._stateLoadPromise.then(() => this._scheduleQueueProcessing()).catch(err => {
+        this.logger.error('[CollectionExportService] queue scheduling after state load failed', err);
+      });
+      return;
+    }
+    if (this.processing || this.queueCheckScheduled || this._isPaused()) return;
     this.queueCheckScheduled = true;
     setImmediate(() => {
       this.queueCheckScheduled = false;
@@ -85,10 +116,11 @@ class CollectionExportService {
     if (this.processing) return;
     this.processing = true;
     try {
-      while (true) {
+      while (!this._isPaused()) {
         const nextJob = await this.collectionExportsDb.findNextPending();
         if (!nextJob) break;
         await this._runJob(nextJob);
+        if (this._isPaused()) break;
       }
     } finally {
       this.processing = false;
@@ -104,6 +136,7 @@ class CollectionExportService {
     this.activeJobId = String(jobId);
     this._currentJob = jobDoc;
     this.abortedJobs.delete(this.activeJobId);
+    await this._recordHeartbeat();
     await this.collectionExportsDb.updateOne(
       { _id: jobId },
       {
@@ -163,6 +196,7 @@ class CollectionExportService {
     }
     this.activeJobId = null;
     this._currentJob = null;
+    await this._recordHeartbeat();
     return lastError;
   }
 
@@ -473,6 +507,54 @@ class CollectionExportService {
     return this._formatJob(await this.collectionExportsDb.findById(latest._id));
   }
 
+  async pauseProcessing({ reason = 'manual' } = {}) {
+    await this._ensureStateLoaded();
+    if (this.workerState.paused) {
+      return this.getWorkerStatus();
+    }
+    this.workerState.paused = true;
+    this.workerState.pauseReason = reason || 'manual';
+    this.workerState.pausedAt = new Date();
+    this.workerState.updatedAt = new Date();
+    await this._persistState();
+    return this.getWorkerStatus();
+  }
+
+  async resumeProcessing() {
+    await this._ensureStateLoaded();
+    if (!this.workerState.paused) {
+      return this.getWorkerStatus();
+    }
+    this.workerState.paused = false;
+    this.workerState.pauseReason = null;
+    this.workerState.pausedAt = null;
+    this.workerState.updatedAt = new Date();
+    await this._persistState();
+    this._scheduleQueueProcessing();
+    return this.getWorkerStatus();
+  }
+
+  async getWorkerStatus({ includeQueueSize = true } = {}) {
+    await this._ensureStateLoaded();
+    const pendingCount = includeQueueSize && this.collectionExportsDb && this.collectionExportsDb.countPending
+      ? await this.collectionExportsDb.countPending()
+      : null;
+    const status = this._isPaused()
+      ? 'paused'
+      : (this.activeJobId ? 'busy' : 'idle');
+    return {
+      status,
+      paused: this.workerState.paused,
+      pauseReason: this.workerState.pauseReason,
+      activeJobId: this.activeJobId,
+      currentCollectionId: this._currentJob?.collectionId || null,
+      queueDepth: typeof pendingCount === 'number' ? pendingCount : null,
+      processing: this.processing,
+      lastHeartbeat: this.workerState.lastHeartbeat || null,
+      updatedAt: this.workerState.updatedAt || null
+    };
+  }
+
   async _fetchWithTimeout(url, timeoutMs = this.downloadTimeoutMs) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -502,7 +584,8 @@ class CollectionExportService {
       updatedAt: job.updatedAt,
       startedAt: job.startedAt,
       finishedAt: job.finishedAt,
-      metadataOptions: job.metadataOptions || null
+      metadataOptions: job.metadataOptions || null,
+      skipped: job.skipped || []
     };
   }
 
@@ -539,6 +622,73 @@ class CollectionExportService {
       }
     ];
     return { $and: clauses };
+  }
+
+  async _ensureStateLoaded() {
+    if (this._stateLoaded || !this._stateLoadPromise) return;
+    try {
+      await this._stateLoadPromise;
+    } catch (err) {
+      this.logger.error('[CollectionExportService] failed to load worker state', err);
+    }
+  }
+
+  async _loadPersistentState() {
+    if (!this.systemStateDb) return;
+    const saved = await this.systemStateDb.getValue(WORKER_STATE_KEY, null);
+    if (saved && typeof saved === 'object') {
+      this.workerState = {
+        ...this.workerState,
+        ...saved,
+        lastHeartbeat: saved.lastHeartbeat ? new Date(saved.lastHeartbeat) : null
+      };
+    }
+  }
+
+  async _persistState() {
+    if (!this.systemStateDb) return;
+    const payload = {
+      paused: !!this.workerState.paused,
+      pauseReason: this.workerState.pauseReason || null,
+      pausedAt: this.workerState.pausedAt || null,
+      updatedAt: new Date()
+    };
+    this.workerState.updatedAt = payload.updatedAt;
+    try {
+      await this.systemStateDb.setValue(WORKER_STATE_KEY, payload);
+    } catch (err) {
+      this.logger.error('[CollectionExportService] failed to persist worker state', err);
+    }
+  }
+
+  async _recordHeartbeat() {
+    if (!this.systemStateDb) return;
+    const payload = {
+      timestamp: new Date(),
+      paused: this.workerState.paused,
+      pauseReason: this.workerState.pauseReason || null,
+      activeJobId: this.activeJobId,
+      currentCollectionId: this._currentJob?.collectionId || null,
+      processing: this.processing
+    };
+    this.workerState.lastHeartbeat = payload.timestamp;
+    try {
+      await this.systemStateDb.setValue(WORKER_HEARTBEAT_KEY, payload);
+    } catch (err) {
+      this.logger.error('[CollectionExportService] failed to write heartbeat', err);
+    }
+  }
+
+  _startHeartbeat() {
+    if (this._heartbeatTimer || !this.systemStateDb) return;
+    this._recordHeartbeat().catch(err => this.logger.error('[CollectionExportService] heartbeat error', err));
+    this._heartbeatTimer = setInterval(() => {
+      this._recordHeartbeat().catch(err => this.logger.error('[CollectionExportService] heartbeat error', err));
+    }, this.heartbeatIntervalMs);
+  }
+
+  _isPaused() {
+    return !!this.workerState.paused;
   }
 }
 
