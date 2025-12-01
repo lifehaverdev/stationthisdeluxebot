@@ -822,6 +822,8 @@ export default class CookMenuModal {
         const exportButtonLabel = exportInProgress
             ? 'Preparing Export…'
             : (readyForExport ? 'Export Collection (ZIP)' : 'Approve Pieces to Export');
+        const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
+        const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
         const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, summary.approvedCount);
         const showCancel = exportInProgress;
         const exportConfigMarkup = (!exportInProgress)
