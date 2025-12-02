@@ -28,7 +28,7 @@ MAINT_DIR="/var/run/hyperbot"
 MAINT_FLAG="${MAINT_DIR}/maintenance.flag"
 
 # Worker control
-INTERNAL_API_URL="${INTERNAL_API_URL:-http://localhost:4000/internal/v1/data}"
+INTERNAL_API_URL="${INTERNAL_API_URL:-http://${CONTAINER_ALIAS}:4000/internal/v1/data}"
 WORKER_STATUS_ENDPOINT="/collections/export/worker/status"
 WORKER_PAUSE_ENDPOINT="/collections/export/worker/pause"
 WORKER_RESUME_ENDPOINT="/collections/export/worker/resume"
@@ -93,13 +93,13 @@ call_internal_api() {
 
   local url="${INTERNAL_API_URL}${path}"
   local response status body
+  local curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" "${url}")
 
-  if [[ "${method}" == "GET" ]]; then
-    response=$(curl -sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" "${url}" 2>>"${LOG_FILE}" || true)
-  else
-    response=$(curl -sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" -X "${method}" -d "${payload:-{}}" "${url}" 2>>"${LOG_FILE}" || true)
+  if [[ "${method}" != "GET" ]]; then
+    curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" -X "${method}" -d "${payload:-{}}" "${url}")
   fi
 
+  response=$(docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.5.0 "${curlArgs[@]}" 2>>"${LOG_FILE}" || true)
   status="$(printf '%s\n' "${response}" | tail -n1)"
   body="$(printf '%s\n' "${response}" | sed '$d')"
 
