@@ -191,6 +191,22 @@ class BaseDB {
         );
     }
 
+    async updateMany(filter, update, options = {}, priority = PRIORITY.HIGH, session = null) {
+        let updateDoc = update;
+        if (!Object.keys(update).some(key => key.startsWith('$'))) {
+            updateDoc = { $set: this.validateData(update) };
+        }
+        const operationOptions = { ...options, session };
+        return dbQueue.enqueue(() =>
+            this.monitorOperation(async () => {
+                const client = await getCachedClient();
+                const collection = client.db(this.dbName).collection(this.collectionName);
+                return collection.updateMany(filter, updateDoc, operationOptions);
+            }, 'updateMany'),
+            priority
+        );
+    }
+
     async deleteOne(filter, priority = PRIORITY.HIGH, session = null) {
         return dbQueue.enqueue(async () => {
             const client = await getCachedClient();
