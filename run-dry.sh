@@ -42,10 +42,10 @@ MAINT_FLAG="${MAINTENANCE_MODE_FILE:-/tmp/hyperbot-maintenance.flag}"
 mkdir -p "$(dirname "${MAINT_FLAG}")" 2>/dev/null || true
 
 INTERNAL_API_KEY_ADMIN="$(load_env_var INTERNAL_API_KEY_ADMIN)"
-if [[ -z "${INTERNAL_CLIENT_KEY:-}" && -n "${INTERNAL_API_KEY_ADMIN}" ]]; then
-  INTERNAL_CLIENT_KEY="${INTERNAL_API_KEY_ADMIN}"
+if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
+  echo "[dry-run] INTERNAL_API_KEY_ADMIN is required."
+  exit 1
 fi
-INTERNAL_CLIENT_KEY="${INTERNAL_CLIENT_KEY:-}"
 
 WORKER_CTL="node ${REPO_ROOT}/scripts/export-worker-control.js"
 
@@ -77,7 +77,7 @@ check_health() {
 call_worker() {
   local cmd="$1"
   shift
-  INTERNAL_API_BASE="${INTERNAL_API_URL}" INTERNAL_CLIENT_KEY="${INTERNAL_CLIENT_KEY}" \
+  INTERNAL_API_BASE="${INTERNAL_API_URL}" INTERNAL_API_KEY_ADMIN="${INTERNAL_API_KEY_ADMIN}" \
     ${WORKER_CTL} "${cmd}" "$@" || {
       echo "[dry-run] Worker ${cmd} command failed."
       return 1

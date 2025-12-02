@@ -10,7 +10,7 @@
  *
  * Environment variables:
  *   INTERNAL_API_BASE     Base URL for internal API (default http://localhost:4000/internal/v1/data)
- *   INTERNAL_CLIENT_KEY   Required internal client key for authentication
+ *   INTERNAL_API_KEY_ADMIN   Required internal client key for authentication
  */
 
 const path = require('path');
@@ -26,7 +26,7 @@ async function main() {
     return help();
   }
   if (!clientKey) {
-    console.error('INTERNAL_CLIENT_KEY env var is required.');
+    console.error('INTERNAL_API_KEY_ADMIN env var is required.');
     process.exit(1);
   }
 
@@ -56,7 +56,7 @@ Usage:
 
 Environment:
   INTERNAL_API_BASE    Base URL for internal API (default http://localhost:4000/internal/v1/data)
-  INTERNAL_CLIENT_KEY  Internal API key (required)
+  INTERNAL_API_KEY_ADMIN  Internal API key (required)
 `);
   process.exit(0);
 }

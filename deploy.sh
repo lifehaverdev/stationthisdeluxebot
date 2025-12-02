@@ -61,11 +61,6 @@ load_env_var() {
 }
 
 INTERNAL_API_KEY_ADMIN="$(load_env_var INTERNAL_API_KEY_ADMIN)"
-if [[ -z "${INTERNAL_CLIENT_KEY:-}" && -n "${INTERNAL_API_KEY_ADMIN}" ]]; then
-  INTERNAL_CLIENT_KEY="${INTERNAL_API_KEY_ADMIN}"
-else
-  INTERNAL_CLIENT_KEY="${INTERNAL_CLIENT_KEY:-}"
-fi
 
 mkdir -p "${LOG_DIR}" "${MAINT_DIR}"
 
@@ -87,16 +82,16 @@ call_internal_api() {
   local path="$2"
   local payload="${3:-}"
 
-  if [[ -z "${INTERNAL_CLIENT_KEY}" ]]; then
+  if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
     return 1
   fi
 
   local url="${INTERNAL_API_URL}${path}"
   local response status body
-  local curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" "${url}")
+  local curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_API_KEY_ADMIN}" "${url}")
 
   if [[ "${method}" != "GET" ]]; then
-    curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_CLIENT_KEY}" -X "${method}" -d "${payload:-{}}" "${url}")
+    curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_API_KEY_ADMIN}" -X "${method}" -d "${payload:-{}}" "${url}")
   fi
 
   response=$(docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.5.0 "${curlArgs[@]}" 2>>"${LOG_FILE}" || true)
@@ -135,8 +130,8 @@ PY
 }
 
 pause_worker() {
-  if [[ -z "${INTERNAL_CLIENT_KEY}" ]]; then
-    log "INTERNAL_CLIENT_KEY not set; skipping worker pause."
+  if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
+    log "INTERNAL_API_KEY_ADMIN not set; skipping worker pause."
     return
   fi
   local payload
@@ -150,7 +145,7 @@ pause_worker() {
 }
 
 wait_for_worker_idle() {
-  if [[ -z "${INTERNAL_CLIENT_KEY}" ]]; then
+  if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
     return
   fi
   log "Waiting for worker to become idle..."
@@ -186,7 +181,7 @@ wait_for_worker_idle() {
 }
 
 resume_worker() {
-  if [[ -z "${INTERNAL_CLIENT_KEY}" ]]; then
+  if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
     return
   fi
   if call_internal_api "POST" "${WORKER_RESUME_ENDPOINT}" '{}' >/dev/null; then
