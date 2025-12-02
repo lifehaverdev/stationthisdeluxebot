@@ -18,7 +18,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const fetch = require('node-fetch');
 
 const INTERNAL_API_BASE = process.env.INTERNAL_API_BASE || 'http://localhost:4000/internal/v1/data';
-const clientKey = process.env.INTERNAL_CLIENT_KEY || process.env.INTERNAL_API_KEY_ADMIN;
+const clientKey = process.env.INTERNAL_API_KEY_ADMIN;
 
 async function main() {
   const [, , command, ...rest] = process.argv;

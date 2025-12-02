@@ -67,8 +67,9 @@ export default class CookMenuModal {
         this._wsUpdateHandler = null;
     }
 
-    setState(newState) {
+    setState(newState, options = {}) {
         Object.assign(this.state, newState);
+        if (options.skipRender) return;
         if (this.modalElement) this.render();
     }
 
@@ -721,13 +722,68 @@ export default class CookMenuModal {
         </div>`;
     }
 
+    _renderExportSectionContent(summary = {}) {
+        const escapeText = (value) => this._escapeHtml(value ?? '');
+        const selectedCollection = this.state.selectedCollection;
+        if (selectedCollection && (!this.state.exportForm || this.state.exportForm.collectionId !== selectedCollection.collectionId)) {
+            this.state.exportForm = this._buildExportFormDefaults(selectedCollection);
+        }
+        const currentExportForm = this.state.exportForm && selectedCollection && this.state.exportForm.collectionId === selectedCollection.collectionId
+            ? this.state.exportForm
+            : this._buildExportFormDefaults(selectedCollection);
+        const collectionId = selectedCollection?.collectionId;
+        const exportJob = collectionId ? (this.state.exportJobs?.[collectionId] || null) : null;
+        const targetSupply = selectedCollection?.totalSupply || selectedCollection?.config?.totalSupply || summary.totalSupply || 0;
+        const approvedCount = summary.approvedCount || 0;
+        const readyForExport = approvedCount > 0;
+        const exportInProgress = exportJob && ['pending', 'running'].includes(exportJob.status);
+        const exportButtonDisabled = !readyForExport || exportInProgress;
+        const exportButtonLabel = exportInProgress
+            ? 'Preparing Export…'
+            : (readyForExport ? 'Export Collection (ZIP)' : 'Approve Pieces to Export');
+        const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
+        const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
+        const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, approvedCount);
+        const showCancel = exportInProgress;
+        const exportConfigMarkup = (!exportInProgress)
+            ? `
+                <div class="export-config">
+                    <label>
+                        Metadata Name Template
+                        <input type="text" class="export-name-template" value="${escapeText(currentExportForm.nameTemplate || '')}" placeholder="${escapeText((selectedCollection?.name || 'Piece') + ' #{{number}}')}">
+                        <small>Use <code>{{number}}</code> where the sequential number should appear.</small>
+                    </label>
+                    <label>
+                        Description
+                        <textarea class="export-description" rows="3" placeholder="Describe your collection...">${escapeText(currentExportForm.description || '')}</textarea>
+                    </label>
+                    <label class="export-shuffle-row">
+                        <input type="checkbox" class="export-shuffle"${currentExportForm.shuffleOrder ? ' checked' : ''}>
+                        Shuffle approved pieces before exporting
+                    </label>
+                </div>
+            `
+            : '';
+
+        return `
+            <h3>Export Collection</h3>
+            <p>Download a review-ready archive of your approved pieces once your collection supply is met.</p>
+            ${exportConfigMarkup}
+            <div class="export-buttons-row">
+                <button class="${exportButtonClass}"${exportButtonDisabledAttr} data-label="${exportButtonLabel}">${exportButtonLabel}</button>
+                ${showCancel ? '<button class="cancel-export-btn">Cancel Export</button>' : ''}
+            </div>
+            ${exportStatusMarkup}
+        `;
+    }
+
     renderAnalyticsBody() {
-        const { analyticsLoading, analyticsData, analyticsError, selectedCollection } = this.state;
+        const { analyticsLoading, analyticsData } = this.state;
         if (analyticsLoading) {
             return `<div class="analytics-loading">Loading collection analytics…</div>`;
         }
-        if (analyticsError) {
-            return `<div class="error-message">${analyticsError}</div>`;
+        if (this.state.analyticsError) {
+            return `<div class="error-message">${this.state.analyticsError}</div>`;
         }
         if (!analyticsData) {
             return `<div class="empty-message">No analytics available yet. Generate or review some pieces to unlock insights.</div>`;
@@ -754,20 +810,6 @@ export default class CookMenuModal {
             return getFormatter(digits).format(num);
         };
         const avgSeconds = summary.avgDurationMs ? summary.avgDurationMs / 1000 : 0;
-        const escapeText = (input) => {
-            const str = String(input ?? '');
-            return str.replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        };
-        if (this.state.selectedCollection && (!this.state.exportForm || this.state.exportForm.collectionId !== this.state.selectedCollection.collectionId)) {
-            this.state.exportForm = this._buildExportFormDefaults(this.state.selectedCollection);
-        }
-        const currentExportForm = this.state.exportForm && this.state.selectedCollection && this.state.exportForm.collectionId === this.state.selectedCollection.collectionId
-            ? this.state.exportForm
-            : this._buildExportFormDefaults(this.state.selectedCollection);
         const traitSections = (() => {
             const rarity = analyticsData.traitRarity || [];
             if (!rarity.length) {
@@ -792,7 +834,7 @@ export default class CookMenuModal {
                         : 'n/a';
                     return `
                         <div class="trait-row">
-                            <span class="trait-name">${escapeText(entry.name)}</span>
+                            <span class="trait-name">${this._escapeHtml(entry.name)}</span>
                             <span class="trait-approvals">${formatNumber(entry.approved)}/${formatNumber(entry.total)}</span>
                             <span class="trait-rate">${approvalRate}</span>
                         </div>
@@ -813,40 +855,12 @@ export default class CookMenuModal {
             }).join('');
         })();
 
-        const collectionId = selectedCollection?.collectionId;
-        const exportJob = collectionId ? (this.state.exportJobs?.[collectionId] || null) : null;
-        const targetSupply = selectedCollection?.totalSupply || selectedCollection?.config?.totalSupply || summary.totalSupply || 0;
-        const readyForExport = summary.approvedCount > 0;
-        const exportInProgress = exportJob && ['pending', 'running'].includes(exportJob.status);
-        const exportButtonDisabled = !readyForExport || exportInProgress;
-        const exportButtonLabel = exportInProgress
-            ? 'Preparing Export…'
-            : (readyForExport ? 'Export Collection (ZIP)' : 'Approve Pieces to Export');
-        const exportButtonClass = exportInProgress ? 'export-collection-btn is-running' : 'export-collection-btn';
-        const exportButtonDisabledAttr = exportButtonDisabled ? ' disabled' : '';
-        const exportStatusMarkup = this.renderExportStatus(exportJob, readyForExport, targetSupply, summary.approvedCount);
-        const showCancel = exportInProgress;
-        const exportConfigMarkup = (!exportInProgress)
-            ? `
-                <div class="export-config">
-                    <label>
-                        Metadata Name Template
-                        <input type="text" class="export-name-template" value="${escapeText(currentExportForm.nameTemplate || '')}" placeholder="${escapeText((this.state.selectedCollection?.name || 'Piece') + ' #{{number}}')}">
-                        <small>Use <code>{{number}}</code> where the sequential number should appear.</small>
-                    </label>
-                    <label>
-                        Description
-                        <textarea class="export-description" rows="3" placeholder="Describe your collection...">${escapeText(currentExportForm.description || '')}</textarea>
-                    </label>
-                    <label class="export-shuffle-row">
-                        <input type="checkbox" class="export-shuffle"${currentExportForm.shuffleOrder ? ' checked' : ''}>
-                        Shuffle approved pieces before exporting
-                    </label>
-                </div>
-            `
-            : '';
+        const exportSectionInner = this._renderExportSectionContent(summary);
 
         return `
+            <div class="analytics-section export">
+                ${exportSectionInner}
+            </div>
             <div class="analytics-grid">
                 <div class="stat-card">
                     <div class="stat-label">Points Spent</div>
@@ -870,14 +884,6 @@ export default class CookMenuModal {
                     <div class="stat-label">Pending Reviews</div>
                     <div class="stat-value">${formatNumber(summary.pendingCount)}</div>
                 </div>
-            </div>
-            <div class="analytics-section export">
-                <h3>Export Collection</h3>
-                <p>Download a review-ready archive of your approved pieces once your collection supply is met.</p>
-                ${exportConfigMarkup}
-                <button class="${exportButtonClass}"${exportButtonDisabledAttr} data-label="${exportButtonLabel}">${exportButtonLabel}</button>
-                ${showCancel ? '<button class="cancel-export-btn">Cancel Export</button>' : ''}
-                ${exportStatusMarkup}
             </div>
             <div class="analytics-section">
                 <h3>Trait Rarity Breakdown</h3>
@@ -1054,35 +1060,8 @@ export default class CookMenuModal {
                 }
                 this._ensureAnalyticsData(collId);
             }
-            const exportBtn = this.modalElement.querySelector('.export-collection-btn');
-            if (exportBtn) {
-                exportBtn.onclick = () => this.handleExportCollection(exportBtn);
-            }
-            const cancelBtn = this.modalElement.querySelector('.cancel-export-btn');
-            if (cancelBtn) {
-                cancelBtn.onclick = () => this.handleCancelExport();
-            }
-            const nameInput = this.modalElement.querySelector('.export-name-template');
-            if (nameInput) {
-                nameInput.addEventListener('input', (e) => {
-                    if (!this.state.exportForm || !this.state.selectedCollection) return;
-                    this.state.exportForm.nameTemplate = e.target.value;
-                });
-            }
-            const descInput = this.modalElement.querySelector('.export-description');
-            if (descInput) {
-                descInput.addEventListener('input', (e) => {
-                    if (!this.state.exportForm || !this.state.selectedCollection) return;
-                    this.state.exportForm.description = e.target.value;
-                });
-            }
-            const shuffleInput = this.modalElement.querySelector('.export-shuffle');
-            if (shuffleInput) {
-                shuffleInput.addEventListener('change', (e) => {
-                    if (!this.state.exportForm || !this.state.selectedCollection) return;
-                    this.state.exportForm.shuffleOrder = !!e.target.checked;
-                });
-            }
+            const exportSection = this.modalElement.querySelector('.analytics-section.export');
+            this._attachExportSectionEvents(exportSection);
             if (collId) {
                 const activeJob = this.state.exportJobs?.[collId] || null;
                 if (activeJob && !['completed', 'failed'].includes(activeJob.status)) {
@@ -1237,8 +1216,55 @@ export default class CookMenuModal {
         } else {
             delete exportJobs[collectionId];
         }
-        this.setState({ exportJobs });
+        const skipRender = this.state.view === 'detail' && this.state.detailTab === 'analytics';
+        this.setState({ exportJobs }, { skipRender });
+        if (skipRender) {
+            this._refreshExportSection();
+        }
         this._markExportStatusFetched(collectionId);
+    }
+
+    _refreshExportSection() {
+        if (this.state.view !== 'detail' || this.state.detailTab !== 'analytics') return;
+        if (!this.modalElement) return;
+        const section = this.modalElement.querySelector('.analytics-section.export');
+        if (!section) return;
+        const summary = this.state.analyticsData?.summary || {};
+        section.innerHTML = this._renderExportSectionContent(summary);
+        this._attachExportSectionEvents(section);
+    }
+
+    _attachExportSectionEvents(root) {
+        if (!root) return;
+        const exportBtn = root.querySelector('.export-collection-btn');
+        if (exportBtn) {
+            exportBtn.onclick = () => this.handleExportCollection(exportBtn);
+        }
+        const cancelBtn = root.querySelector('.cancel-export-btn');
+        if (cancelBtn) {
+            cancelBtn.onclick = () => this.handleCancelExport();
+        }
+        const nameInput = root.querySelector('.export-name-template');
+        if (nameInput) {
+            nameInput.addEventListener('input', (e) => {
+                if (!this.state.exportForm || !this.state.selectedCollection) return;
+                this.state.exportForm.nameTemplate = e.target.value;
+            });
+        }
+        const descInput = root.querySelector('.export-description');
+        if (descInput) {
+            descInput.addEventListener('input', (e) => {
+                if (!this.state.exportForm || !this.state.selectedCollection) return;
+                this.state.exportForm.description = e.target.value;
+            });
+        }
+        const shuffleInput = root.querySelector('.export-shuffle');
+        if (shuffleInput) {
+            shuffleInput.addEventListener('change', (e) => {
+                if (!this.state.exportForm || !this.state.selectedCollection) return;
+                this.state.exportForm.shuffleOrder = !!e.target.checked;
+            });
+        }
     }
 
     _scheduleExportPoll(collectionId, exportId) {
@@ -2001,6 +2027,16 @@ export default class CookMenuModal {
             shuffleOrder: false,
             collectionId: collection.collectionId
         };
+    }
+
+    _escapeHtml(input) {
+        if (input === null || input === undefined) return '';
+        return String(input)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     attachOverviewEvents(){

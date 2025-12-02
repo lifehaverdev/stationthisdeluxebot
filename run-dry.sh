@@ -52,11 +52,6 @@ WORKER_CTL="node ${REPO_ROOT}/scripts/export-worker-control.js"
 echo "[dry-run] Starting dry run at $(date)"
 echo "[dry-run] Logs: ${LOG_FILE}"
 
-if [[ -z "${INTERNAL_CLIENT_KEY}" ]]; then
-  echo "[dry-run] INTERNAL_CLIENT_KEY is required (set INTERNAL_API_KEY_ADMIN or INTERNAL_CLIENT_KEY)."
-  exit 1
-fi
-
 if ! command -v node >/dev/null 2>&1; then
   echo "[dry-run] Node.js not found in PATH."
   exit 1

@@ -77,56 +77,29 @@ run_logged() {
   "$@" >> "${LOG_FILE}" 2>&1
 }
 
-call_internal_api() {
-  local method="$1"
-  local path="$2"
-  local payload="${3:-}"
-
+worker_ctl() {
+  local cmd="$1"
+  shift
   if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
+    log "INTERNAL_API_KEY_ADMIN not set; skipping worker ${cmd}."
+    return 1
+  fi
+  if ! docker ps --format '{{.Names}}' | grep -q "^${APP_CONTAINER}$"; then
+    log "Container ${APP_CONTAINER} not running; cannot execute worker ${cmd}."
     return 1
   fi
 
-  local url="${INTERNAL_API_URL}${path}"
-  local response status body
-  local curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_API_KEY_ADMIN}" "${url}")
-
-  if [[ "${method}" != "GET" ]]; then
-    curlArgs=(-sS -w '\n%{http_code}' -H "Content-Type: application/json" -H "X-Internal-Client-Key: ${INTERNAL_API_KEY_ADMIN}" -X "${method}" -d "${payload:-{}}" "${url}")
+  local output status
+  output=$(docker exec "${APP_CONTAINER}" \
+    env INTERNAL_API_BASE="http://localhost:4000/internal/v1/data" \
+    INTERNAL_API_KEY_ADMIN="${INTERNAL_API_KEY_ADMIN}" \
+    node /usr/src/app/scripts/export-worker-control.js "$cmd" "$@" 2>> "${LOG_FILE}")
+  status=$?
+  if [[ -n "${output}" ]]; then
+    printf '%s\n' "${output}" >> "${LOG_FILE}"
+    printf '%s\n' "${output}"
   fi
-
-  response=$(docker run --rm --network "${NETWORK_NAME}" curlimages/curl:8.5.0 "${curlArgs[@]}" 2>>"${LOG_FILE}" || true)
-  status="$(printf '%s\n' "${response}" | tail -n1)"
-  body="$(printf '%s\n' "${response}" | sed '$d')"
-
-  if [[ "${status}" =~ ^2 ]]; then
-    printf '%s' "${body}"
-    return 0
-  fi
-
-  log "Internal API ${method} ${path} failed (${status}): ${body}"
-  return 1
-}
-
-json_field() {
-  local field="$1"
-  python3 - "$field" <<'PY' 2>/dev/null
-import json, sys
-data = sys.stdin.read()
-try:
-    payload = json.loads(data)
-    value = payload
-    for key in sys.argv[1].split('.'):
-        if isinstance(value, dict):
-            value = value.get(key)
-        else:
-            value = None
-            break
-    if value is None:
-        value = ''
-    print(value)
-except Exception:
-    print('')
-PY
+  return ${status}
 }
 
 pause_worker() {
@@ -134,9 +107,7 @@ pause_worker() {
     log "INTERNAL_API_KEY_ADMIN not set; skipping worker pause."
     return
   fi
-  local payload
-  payload=$(python3 -c 'import json,sys; print(json.dumps({"reason": sys.argv[1]}))' "deploy")
-  if call_internal_api "POST" "${WORKER_PAUSE_ENDPOINT}" "${payload}" >/dev/null; then
+  if worker_ctl pause "deploy" >/dev/null; then
     WORKER_PAUSED=1
     log "Worker pause acknowledged."
   else
@@ -152,17 +123,17 @@ wait_for_worker_idle() {
   local start_ts
   start_ts=$(date +%s)
   while true; do
-    local status_json state currentJob
-    status_json=$(call_internal_api "GET" "${WORKER_STATUS_ENDPOINT}" || true)
-    if [[ -n "${status_json}" ]]; then
-      state=$(printf '%s' "${status_json}" | json_field "status")
-      currentJob=$(printf '%s' "${status_json}" | json_field "activeJobId")
-      log "Worker status: ${state:-unknown} ${currentJob:+(job ${currentJob})}"
-      if [[ "${state}" != "busy" ]]; then
-        return
-      fi
-    else
+    local status_json
+    status_json=$(worker_ctl status || true)
+    if [[ -z "${status_json}" ]]; then
       log "Warning: unable to query worker status; assuming idle."
+      return
+    fi
+    local state currentJob
+    state=$(printf '%s' "${status_json}" | python3 -c 'import json,sys; data=sys.stdin.read(); import json; obj=json.loads(data); print(obj.get("status",""))' 2>/dev/null || printf '')
+    currentJob=$(printf '%s' "${status_json}" | python3 -c 'import json,sys; data=sys.stdin.read(); import json; obj=json.loads(data); print(obj.get("activeJobId",""))' 2>/dev/null || printf '')
+    log "Worker status: ${state:-unknown} ${currentJob:+(job ${currentJob})}"
+    if [[ "${state}" != "busy" ]]; then
       return
     fi
     local now elapsed
@@ -184,7 +155,7 @@ resume_worker() {
   if [[ -z "${INTERNAL_API_KEY_ADMIN}" ]]; then
     return
   fi
-  if call_internal_api "POST" "${WORKER_RESUME_ENDPOINT}" '{}' >/dev/null; then
+  if worker_ctl resume >/dev/null; then
     WORKER_RESUMED=1
     log "Worker resume acknowledged."
   else

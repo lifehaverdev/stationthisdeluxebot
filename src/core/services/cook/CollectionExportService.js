@@ -315,6 +315,8 @@ class CollectionExportService {
         responsePayload: 1,
         artifactUrls: 1,
         metadata: 1,
+        requestPayload: 1,
+        request: 1,
         costUsd: 1,
         durationMs: 1,
         requestTimestamp: 1,
