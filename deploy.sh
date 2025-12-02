@@ -14,6 +14,8 @@ IMAGE_NAME="hyperbotdocked"
 OLD_IMAGE_NAME="${IMAGE_NAME}_previous"
 NETWORK_NAME="hyperbot_network"
 CONTAINER_ALIAS="hyperbot"
+WORKER_CONTAINER="hyperbotworker"
+WORKER_ALIAS="hyperbot-worker"
 
 # Reverse proxy (Caddy)
 CADDY_CONTAINER="caddy_proxy"
@@ -205,6 +207,28 @@ stop_container_if_exists() {
   fi
 }
 
+start_worker_container() {
+  run_logged "Starting worker container..." docker run -d \
+    --env COLLECTION_EXPORT_PROCESSING_ENABLED=true \
+    --env-file .env \
+    --network "${NETWORK_NAME}" \
+    --network-alias "${WORKER_ALIAS}" \
+    --name "${WORKER_CONTAINER}" \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    "${IMAGE_NAME}" \
+    pm2-runtime start worker.js --name export-worker
+}
+
+ensure_worker_running() {
+  if docker ps --format '{{.Names}}' | grep -q "^${WORKER_CONTAINER}$"; then
+    log "Worker container already running."
+    return
+  fi
+  log "Worker container not running; starting..."
+  start_worker_container
+}
+
 ensure_network() {
   if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
     run_logged "Creating docker network ${NETWORK_NAME}..." docker network create "${NETWORK_NAME}"
@@ -259,13 +283,22 @@ log "Current git commit: ${GIT_COMMIT}"
 touch .docker-build-trigger
 echo "${GIT_COMMIT}" > .docker-build-trigger
 
-pause_worker
-wait_for_worker_idle
+DEPLOY_WORKER_FLAG="${DEPLOY_WORKER:-0}"
+if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
+  pause_worker
+  wait_for_worker_idle
+else
+  log "Skipping worker pause (DEPLOY_WORKER not set)."
+fi
 
 enable_maintenance
 
 log "Stopping application container prior to build..."
 stop_container_if_exists "${APP_CONTAINER}"
+if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
+  log "Stopping worker container prior to build..."
+  stop_container_if_exists "${WORKER_CONTAINER}"
+fi
 
 log "Cleaning up docker cache..."
 docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
@@ -292,6 +325,7 @@ fi
 run_logged "Starting application container..." docker run -d \
   --env ETHEREUM_SIGNER_PRIVATE_KEY="${PRIVATE_KEY}" \
   --env MAINTENANCE_MODE_FILE="${MAINT_FLAG}" \
+  --env COLLECTION_EXPORT_PROCESSING_ENABLED=false \
   --env-file .env \
   --network "${NETWORK_NAME}" \
   --network-alias "${CONTAINER_ALIAS}" \
@@ -325,7 +359,10 @@ fi
 unset PRIVATE_KEY
 
 disable_maintenance
-resume_worker
+ensure_worker_running
+if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
+  resume_worker
+fi
 
 log "Tagging previous image..."
 if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then

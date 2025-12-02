@@ -42,6 +42,21 @@ class CollectionExportsDB extends BaseDB {
   async countPending() {
     return this.count({ status: 'pending' });
   }
+
+  async resetRunningJobs() {
+    const now = new Date();
+    return this.updateMany(
+      { status: 'running' },
+      {
+        $set: {
+          status: 'pending',
+          progress: { stage: 'queued', current: 0, total: 0 },
+          updatedAt: now
+        },
+        $unset: { startedAt: '', finishedAt: '', downloadUrl: '', expiresAt: '' }
+      }
+    );
+  }
 }
 
 module.exports = CollectionExportsDB;

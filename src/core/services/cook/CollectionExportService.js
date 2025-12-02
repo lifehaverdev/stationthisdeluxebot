@@ -9,13 +9,24 @@ const WORKER_STATE_KEY = 'collection_export_worker_state';
 const WORKER_HEARTBEAT_KEY = 'collection_export_worker_heartbeat';
 
 class CollectionExportService {
-  constructor({ logger, cookCollectionsDb, generationOutputsDb, collectionExportsDb, storageService, systemStateDb }) {
+  constructor({
+    logger,
+    cookCollectionsDb,
+    generationOutputsDb,
+    collectionExportsDb,
+    storageService,
+    systemStateDb,
+    processingEnabled = process.env.COLLECTION_EXPORT_PROCESSING_ENABLED !== 'false',
+    autoPollIntervalMs = Number(process.env.COLLECTION_EXPORT_AUTO_POLL_MS || 15000),
+    stateSyncIntervalMs = Number(process.env.COLLECTION_EXPORT_STATE_SYNC_MS || 5000)
+  }) {
     this.logger = (logger && logger.child) ? logger.child({ service: 'CollectionExport' }) : (logger || console);
     this.cookCollectionsDb = cookCollectionsDb;
     this.generationOutputsDb = generationOutputsDb;
     this.collectionExportsDb = collectionExportsDb;
     this.storageService = storageService;
     this.systemStateDb = systemStateDb || null;
+    this.processingEnabled = processingEnabled !== false;
     this.processing = false;
     this.queueCheckScheduled = false;
     this.downloadTimeoutMs = Number(process.env.COLLECTION_EXPORT_FETCH_TIMEOUT_MS || 60000);
@@ -29,6 +40,8 @@ class CollectionExportService {
       updatedAt: new Date(),
       lastHeartbeat: null
     };
+    this.stateSyncIntervalMs = stateSyncIntervalMs;
+    this._lastStateSync = 0;
     this._stateLoaded = false;
     this._stateLoadPromise = this._loadPersistentState()
       .catch(err => {
@@ -37,12 +50,18 @@ class CollectionExportService {
       .finally(() => {
         this._stateLoaded = true;
         this._stateLoadPromise = null;
+        if (this.processingEnabled) {
+          this._recoverStuckJobs().catch(err => this.logger.error('[CollectionExportService] failed to recover jobs on start', err));
+          this._scheduleQueueProcessing();
+          this._startQueuePolling(autoPollIntervalMs);
+        }
       });
     this.heartbeatIntervalMs = Number(process.env.COLLECTION_EXPORT_HEARTBEAT_INTERVAL_MS || 30000);
     this._heartbeatTimer = null;
     if (this.heartbeatIntervalMs > 0 && this.systemStateDb) {
       this._startHeartbeat();
     }
+    this._queuePollTimer = null;
   }
 
   async requestExport({ userId, collectionId, metadataOptions = {} }) {
@@ -96,6 +115,7 @@ class CollectionExportService {
   }
 
   _scheduleQueueProcessing() {
+    if (!this.processingEnabled) return;
     if (!this._stateLoaded && this._stateLoadPromise) {
       this._stateLoadPromise.then(() => this._scheduleQueueProcessing()).catch(err => {
         this.logger.error('[CollectionExportService] queue scheduling after state load failed', err);
@@ -116,7 +136,10 @@ class CollectionExportService {
     if (this.processing) return;
     this.processing = true;
     try {
+      await this._syncWorkerStateFromStore(true);
+      await this._recoverStuckJobs();
       while (!this._isPaused()) {
+        await this._syncWorkerStateFromStore();
         const nextJob = await this.collectionExportsDb.findNextPending();
         if (!nextJob) break;
         await this._runJob(nextJob);
@@ -538,6 +561,7 @@ class CollectionExportService {
 
   async getWorkerStatus({ includeQueueSize = true } = {}) {
     await this._ensureStateLoaded();
+    await this._syncWorkerStateFromStore(true);
     const pendingCount = includeQueueSize && this.collectionExportsDb && this.collectionExportsDb.countPending
       ? await this.collectionExportsDb.countPending()
       : null;
@@ -644,6 +668,7 @@ class CollectionExportService {
         ...saved,
         lastHeartbeat: saved.lastHeartbeat ? new Date(saved.lastHeartbeat) : null
       };
+      this._lastStateSync = Date.now();
     }
   }
 
@@ -687,6 +712,49 @@ class CollectionExportService {
     this._heartbeatTimer = setInterval(() => {
       this._recordHeartbeat().catch(err => this.logger.error('[CollectionExportService] heartbeat error', err));
     }, this.heartbeatIntervalMs);
+  }
+
+  _startQueuePolling(intervalMs) {
+    if (!this.processingEnabled || this._queuePollTimer) return;
+    const pollInterval = Number(intervalMs);
+    if (!pollInterval || pollInterval <= 0) return;
+    this._queuePollTimer = setInterval(() => {
+      if (this.processing) return;
+      this._scheduleQueueProcessing();
+    }, pollInterval);
+  }
+
+  async _recoverStuckJobs() {
+    if (!this.collectionExportsDb || typeof this.collectionExportsDb.resetRunningJobs !== 'function') return;
+    try {
+      const result = await this.collectionExportsDb.resetRunningJobs();
+      if (result && result.modifiedCount) {
+        this.logger.warn(`[CollectionExportService] Reset ${result.modifiedCount} running export job(s) to pending state after restart.`);
+      }
+    } catch (err) {
+      this.logger.error('[CollectionExportService] failed to reset running jobs', err);
+    }
+  }
+
+  async _syncWorkerStateFromStore(force = false) {
+    if (!this.systemStateDb) return;
+    const now = Date.now();
+    if (!force && this.stateSyncIntervalMs > 0 && (now - this._lastStateSync) < this.stateSyncIntervalMs) {
+      return;
+    }
+    try {
+      const saved = await this.systemStateDb.getValue(WORKER_STATE_KEY, null);
+      if (saved && typeof saved === 'object') {
+        this.workerState = {
+          ...this.workerState,
+          ...saved,
+          lastHeartbeat: saved.lastHeartbeat ? new Date(saved.lastHeartbeat) : this.workerState.lastHeartbeat
+        };
+      }
+      this._lastStateSync = now;
+    } catch (err) {
+      this.logger.error('[CollectionExportService] failed to sync worker state', err);
+    }
   }
 
   _isPaused() {

@@ -51,9 +51,11 @@ async function startApp() {
     logger.info('Database connection initialized.');
     
     // Initialize core services, passing the WebSocketService instance
+    const exportProcessingEnabled = process.env.COLLECTION_EXPORT_PROCESSING_ENABLED !== 'false';
     const services = await initializeServices({ 
       logger: logger,
-      webSocketService: websocketServer
+      webSocketService: websocketServer,
+      collectionExportProcessingEnabled: exportProcessingEnabled
     });
     logger.info('Core services initialized.');
     /*

@@ -307,7 +307,8 @@ async function initializeServices(options = {}) {
         generationOutputsDb: initializedDbServices.data.generationOutputs,
         collectionExportsDb: initializedDbServices.data.collectionExports,
         storageService,
-        systemStateDb: initializedDbServices.data.systemState
+        systemStateDb: initializedDbServices.data.systemState,
+        processingEnabled: options.collectionExportProcessingEnabled !== false
       });
       logger.info('CollectionExportService initialized.');
     } else {
@@ -416,7 +417,8 @@ async function initializeServices(options = {}) {
       adminActivityService, // expose AdminActivityService
       guestAccountService, // expose GuestAccountService
       guestAuthService, // expose GuestAuthService
-      spellPaymentService // expose SpellPaymentService
+      spellPaymentService, // expose SpellPaymentService
+      collectionExportService
     };
 
     // DIAGNOSTIC LOGGING REMOVED
