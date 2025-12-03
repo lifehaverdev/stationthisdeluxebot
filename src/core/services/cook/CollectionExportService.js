@@ -766,17 +766,29 @@ class CollectionExportService {
     const requestPayload = generation.requestPayload || generation.request || {};
     const inputs = metadata.request?.inputs || requestPayload.inputs || {};
 
-    return (
+    const candidate =
       metadata.userInputPrompt ||
       metadata.originalPrompt ||
       metadata.prompt ||
-      generation.prompt ||
-      requestPayload.input_prompt ||
-      inputs.input_prompt ||
+      metadata.userPrompt ||
+      requestPayload.user_prompt ||
+      inputs.user_prompt ||
       requestPayload.prompt ||
       inputs.prompt ||
-      ''
-    );
+      requestPayload.input_prompt ||
+      inputs.input_prompt ||
+      generation.prompt ||
+      '';
+
+    return this._stripLoraTags(candidate);
+  }
+
+  _stripLoraTags(value) {
+    if (!value) return '';
+    return String(value)
+      .replace(/<lora:[^>]+>/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
   }
 }
 

@@ -15,15 +15,15 @@ class HuggingFaceAdapter {
    * @param {string} params.imageUrl
    * @returns {Promise<import('../adapterTypes').ToolResult>}
    */
-  async execute(params) {
+  async execute(params = {}) {
     const { imageUrl } = params;
     if (!imageUrl) throw new Error('HuggingFaceAdapter.execute requires imageUrl');
-    const description = await this.svc.interrogateImage({ imageUrl });
+    const description = await this.svc.interrogateImage(params);
     const costUsd = 0.0019; // static cost per request per tool definition
     return { type: 'text', data: { text: [description] }, status: 'succeeded', costUsd };
   }
 
-  async startJob(params) {
+  async startJob(params = {}) {
     const { imageUrl } = params;
     if (!imageUrl) throw new Error('HuggingFaceAdapter.startJob requires imageUrl');
 
@@ -32,7 +32,7 @@ class HuggingFaceAdapter {
 
     const jobPromise = (async () => {
       try {
-        const description = await this.svc.interrogateImage({ imageUrl });
+        const description = await this.svc.interrogateImage(params);
         const costUsd = 0.0019;
         return { type: 'text', data: { text: [description] }, status: 'succeeded', costUsd };
       } catch (err) {

@@ -424,7 +424,10 @@ async function initializeServices(options = {}) {
     // DIAGNOSTIC LOGGING REMOVED
 
     // Initialize Cook projection services
-    await initializeCookServices(logger);
+    await initializeCookServices(logger, {
+      cookCollectionsDb: dbInstances.cookCollections,
+      cooksDb: dbInstances.cooks,
+    });
 
     // Initialize Training services
     const trainingServices = await initializeTrainingServices({

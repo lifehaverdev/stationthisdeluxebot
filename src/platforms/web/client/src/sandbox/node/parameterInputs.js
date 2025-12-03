@@ -89,6 +89,9 @@ function createParameterInput(key, param, mapping, toolWindows) {
         // Static input as normal
         const label = document.createElement('label');
         label.textContent = param.name;
+        if (param.description) {
+            label.title = param.description;
+        }
 
         let inputEl;
         if (Array.isArray(param.enum) && param.enum.length) {
@@ -103,6 +106,9 @@ function createParameterInput(key, param, mapping, toolWindows) {
             });
             select.value = mapping && mapping.value !== undefined ? mapping.value : (param.default || param.enum[0]);
             select.addEventListener('change', (e) => handleChange(e.target.value, container));
+            if (param.description) {
+                select.title = param.description;
+            }
             inputEl = select;
         } else {
             // Fallback to text/number input
@@ -112,7 +118,14 @@ function createParameterInput(key, param, mapping, toolWindows) {
             input.value = mapping && mapping.value !== undefined ? mapping.value : (param.default || '');
             input.placeholder = param.description || param.name;
             input.addEventListener('input', (e) => handleChange(e.target.value, container));
+            if (param.description) {
+                input.title = param.description;
+            }
             inputEl = input;
+        }
+
+        if (param.description) {
+            container.title = param.description;
         }
 
         container.append(label, inputEl);

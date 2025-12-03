@@ -560,6 +560,7 @@ export default class CookMenuModal {
                 <div class="cook-actions">
                     <span class="cook-status-icon" title="Cooking in progress">&#128293;</span>
                     <button data-action="pause" data-id="${c.collectionId}" title="Pause Cook" style="margin-left: 8px;">⏸</button>
+                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
         `).join('') : '';
@@ -571,6 +572,7 @@ export default class CookMenuModal {
                 <div class="cook-status-text">${this._formatCookStatus(c)}</div>
                 <div class="cook-actions">
                     <button data-action="resume" data-id="${c.collectionId}" title="Resume Cook">▶️</button>
+                    <button data-action="review" data-id="${c.collectionId}" title="Review Pieces" style="margin-left: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 4px; padding: 4px 10px;">Review</button>
                 </div>
             </div>
         `).join('') : '';
@@ -2166,7 +2168,7 @@ export default class CookMenuModal {
             import('../window/CollectionWindow.js').then(m=>{m.createCollectionReviewWindow(this.state.selectedCollection);} );
         };
         if(modal.querySelector('.start-cook-btn')) modal.querySelector('.start-cook-btn').onclick=async()=>{
-            const coll=this.state.selectedCollection; if(!coll) return;
+            let coll=this.state.selectedCollection; if(!coll) return;
             if(!(coll.toolId||coll.spellId)){ alert('Please select a generator (tool or spell) before starting.'); return; }
             
             // Warn if there are unsaved changes

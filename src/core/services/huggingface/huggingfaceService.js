@@ -8,19 +8,39 @@ class HuggingFaceService {
    */
   constructor(options = {}) {
     this.logger = options.logger || console;
-    this.baseUrl = 'https://fancyfeast-joy-caption-pre-alpha.hf.space';
+    this.baseUrl = 'https://fancyfeast-joy-caption-beta-one.hf.space';
     // Optional HuggingFace personal-access token for higher rate limits
     this.token = process.env.HF_TOKEN || null;
     this.logger.info('HuggingFaceService initialized successfully.');
   }
 
   /**
-   * Interrogates an image using the Joy Caption API to generate a text description.
+   * Interrogates an image using the JoyCaption Beta One API to generate a text description.
    * @param {object} params - Parameters for image interrogation.
    * @param {string} params.imageUrl - URL of the image to interrogate.
+   * @param {string} [params.captionType]
+   * @param {string} [params.captionLength]
+   * @param {string|string[]} [params.extraOptions]
+   * @param {string} [params.personName]
+   * @param {number} [params.temperature]
+   * @param {number} [params.topP]
+   * @param {number} [params.maxNewTokens]
+   * @param {boolean} [params.logPrompt]
    * @returns {Promise<string>} The generated text description of the image.
    */
-  async interrogateImage({ imageUrl }) {
+  async interrogateImage(params = {}) {
+    const {
+      imageUrl,
+      captionType = 'Descriptive',
+      captionLength = 'long',
+      extraOptions = [],
+      personName = '',
+      temperature = 0.6,
+      topP = 0.9,
+      maxNewTokens = 512,
+      logPrompt = false
+    } = params;
+
     if (!imageUrl || typeof imageUrl !== 'string') {
       throw new Error('Image URL is required for interrogation.');
     }
@@ -28,32 +48,49 @@ class HuggingFaceService {
     this.logger.info(`Starting image interrogation for URL: ${imageUrl}`);
 
     try {
-      // Step 1: Get Event ID
-      const eventId = await this._getEventId(imageUrl);
-      
-      if (!eventId) {
-        throw new Error('Failed to get event ID from HuggingFace API');
+      const normalizedExtraOptions = this._normalizeExtraOptions(extraOptions);
+
+      const prompt = await this._buildPrompt({
+        captionType,
+        captionLength,
+        extraOptions: normalizedExtraOptions,
+        personName
+      });
+
+      const hfImagePath = await this._uploadImageFromUrl(imageUrl);
+
+      const temperatureValue = this._sanitizeNumber(temperature, 0, 2, 0.6);
+      const topPValue = this._sanitizeNumber(topP, 0, 1, 0.9);
+      const maxTokensValue = Math.round(this._sanitizeNumber(maxNewTokens, 1, 2048, 512));
+      const consentToLog = Boolean(logPrompt);
+
+      const description = await this._invokeQueueFunction('chat_joycaption', [
+        { path: hfImagePath },
+        prompt,
+        temperatureValue,
+        topPValue,
+        maxTokensValue,
+        consentToLog
+      ]);
+
+      if (!description || typeof description !== 'string') {
+        throw new Error('Invalid description format received');
       }
 
-      // Step 2: Stream Result
-      const description = await this._streamEventResult(eventId);
-      
       this.logger.info('Image interrogation completed successfully');
       return description;
-
     } catch (error) {
       // Check for quota/rate limit errors with retry time
       const waitTimeMatch = error.message.match(/retry in (\d+):(\d+):(\d+)/);
       if (waitTimeMatch) {
         const [_, hours, minutes, seconds] = waitTimeMatch;
-        const totalMinutes = (parseInt(hours) * 60) + parseInt(minutes) + Math.ceil(parseInt(seconds) / 60);
+        const totalMinutes = (parseInt(hours, 10) * 60) + parseInt(minutes, 10) + Math.ceil(parseInt(seconds, 10) / 60);
         throw new Error(`⏳ HuggingFace quota exceeded. Please try again in ${totalMinutes} minutes.`);
       }
       
-      // Generic quota error
       if (error.message.includes('exceeded your GPU quota') || error.message.includes('quota') || error.message.includes('rate limit')) {
         this.logger.error(`HuggingFace quota/rate limit error: ${error.message}`);
-        throw new Error('⏳ JoyCaption daily quota exhausted. Please try again tomorrow. You can still use the free UI directly at https://huggingface.co/spaces/fancyfeast/joy-caption-pre-alpha');
+        throw new Error('⏳ JoyCaption daily quota exhausted. Please try again tomorrow. You can still use the free UI directly at https://huggingface.co/spaces/fancyfeast/joy-caption-beta-one');
       }
 
       this.logger.error(`Image interrogation failed: ${error.message}`);
@@ -61,205 +98,253 @@ class HuggingFaceService {
     }
   }
 
-  /**
-   * Step 1: Send POST request to get event ID
-   * @private
-   */
-  async _getEventId(imageUrl) {
-    this.logger.info('Requesting event ID from HuggingFace...');
-    
+  async _buildPrompt({ captionType, captionLength, extraOptions, personName }) {
     try {
-      const postHeaders = { 'Content-Type': 'application/json' };
-      if (this.token) postHeaders['Authorization'] = `Bearer ${this.token}`;
+      const result = await this._invokeQueueFunction('build_prompt', [
+        captionType || 'Descriptive',
+        captionLength || 'long',
+        Array.isArray(extraOptions) ? extraOptions : [],
+        personName || ''
+      ]);
 
-      const response = await fetch(`${this.baseUrl}/call/stream_chat`, {
-        method: 'POST',
-        headers: postHeaders,
-        body: JSON.stringify({
-          data: [{ path: imageUrl }]
-        })
-      });
-
-      // Log response headers for rate limit info
-      const headers = {};
-      response.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-      this.logger.info(`[HuggingFace] POST response status: ${response.status}, headers: ${JSON.stringify(headers)}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`[HuggingFace] POST failed: ${response.status} - ${errorText}`);
-        throw new Error(`HuggingFace API returned status ${response.status}: ${errorText}`);
-      }
-
-      const jsonResponse = await response.json();
-      this.logger.debug('Event ID response:', jsonResponse);
-
-      // Extract event ID from response (using legacy extraction logic)
-      const eventId = JSON.stringify(jsonResponse).split('"')[3];
-      
-      if (!eventId) {
-        throw new Error('Failed to extract event ID from response');
-      }
-
-      this.logger.info(`Event ID received: ${eventId}`);
-      return eventId;
-
+      if (typeof result === 'string') return result;
+      if (Array.isArray(result) && typeof result[0] === 'string') return result[0];
     } catch (error) {
-      this.logger.error(`Error getting event ID: ${error.message}`);
-      throw error;
+      this.logger.warn(`[HuggingFace] Prompt builder failed (${error.message}). Falling back to default prompt.`);
+    }
+    return 'Write a long detailed description for this image.';
+  }
+
+  async _uploadImageFromUrl(imageUrl) {
+    this.logger.info('[HuggingFace] Downloading image before upload');
+    const downloadResponse = await fetch(imageUrl);
+    if (!downloadResponse.ok) {
+      const errorText = await downloadResponse.text().catch(() => '');
+      throw new Error(`Failed to download image (${downloadResponse.status}): ${errorText}`);
+    }
+
+    const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+    const contentType = downloadResponse.headers.get('content-type') || 'application/octet-stream';
+    const fileName = this._deriveFileName(imageUrl, contentType);
+
+    const formData = new FormData();
+    const fileBlob = new Blob([buffer], { type: contentType });
+    formData.append('files', fileBlob, fileName);
+
+    const uploadHeaders = this.token ? { Authorization: `Bearer ${this.token}` } : undefined;
+
+    this.logger.info('[HuggingFace] Uploading image chunk to JoyCaption space');
+    const response = await fetch(`${this.baseUrl}/gradio_api/upload`, {
+      method: 'POST',
+      headers: uploadHeaders,
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Image upload failed (${response.status}): ${errorText}`);
+    }
+
+    const json = await response.json();
+    if (!Array.isArray(json) || !json[0]) {
+      throw new Error('Upload response missing file path');
+    }
+
+    this.logger.info('[HuggingFace] Image uploaded successfully');
+    return json[0];
+  }
+
+  async _invokeQueueFunction(functionName, dataPayload) {
+    const eventId = await this._createEvent(functionName, dataPayload);
+    if (!eventId) throw new Error('Failed to create HuggingFace job');
+    const { finalData } = await this._streamEventResult(functionName, eventId);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(finalData);
+    } catch (error) {
+      throw new Error(`Invalid JSON data received from HuggingFace: ${error.message}`);
+    }
+
+    if (Array.isArray(parsed)) {
+      return parsed.length === 1 ? parsed[0] : parsed;
+    }
+
+    return parsed;
+  }
+
+  async _createEvent(functionName, dataPayload) {
+    const postHeaders = { 'Content-Type': 'application/json' };
+    if (this.token) postHeaders['Authorization'] = `Bearer ${this.token}`;
+
+    const payload = { data: dataPayload };
+    this.logger.info(`[HuggingFace] Creating job for ${functionName}`);
+
+    const response = await fetch(`${this.baseUrl}/gradio_api/call/${functionName}`, {
+      method: 'POST',
+      headers: postHeaders,
+      body: JSON.stringify(payload)
+    });
+
+    this._logHeaders('POST', response);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`[HuggingFace] POST failed: ${response.status} - ${errorText}`);
+      throw new Error(`HuggingFace API returned status ${response.status}: ${errorText}`);
+    }
+
+    const json = await response.json();
+    const eventId = json?.event_id;
+
+    if (!eventId) {
+      throw new Error('Failed to extract event ID from response');
+    }
+
+    this.logger.info(`[HuggingFace] Event ID for ${functionName}: ${eventId}`);
+    return eventId;
+  }
+
+  async _streamEventResult(functionName, eventId) {
+    const streamUrl = `${this.baseUrl}/gradio_api/call/${functionName}/${eventId}`;
+    this.logger.info(`[HuggingFace] Streaming result for ${functionName} (${eventId})`);
+
+    const streamHeaders = this.token ? { Authorization: `Bearer ${this.token}` } : undefined;
+    const response = await fetch(streamUrl, {
+      method: 'GET',
+      headers: streamHeaders,
+      signal: AbortSignal.timeout(180000) // 3 minute timeout
+    });
+
+    this._logHeaders('STREAM', response);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      this.logger.error(`[HuggingFace] Stream failed: ${response.status} - ${errorText}`);
+      throw new Error(`Stream request failed with status ${response.status}: ${errorText}`);
+    }
+
+    const raw = await response.text();
+    this.logger.debug('[HuggingFace] Raw SSE payload:', raw);
+
+    const events = this._parseSSE(raw);
+    let finalData = null;
+    let lastGeneratingData = null;
+    let errorMessage = null;
+
+    events.forEach(({ name, data }) => {
+      this.logger.info(`[HuggingFace] Event ${name} => ${data}`);
+      if (name === 'error') {
+        errorMessage = this._extractErrorMessage(data);
+      } else if (name === 'complete') {
+        finalData = data;
+      } else if (name === 'generating') {
+        lastGeneratingData = data;
+      }
+    });
+
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+
+    const payload = finalData || lastGeneratingData;
+    if (!payload) {
+      throw new Error('No valid data received from the server');
+    }
+
+    return { finalData: payload, events };
+  }
+
+  _parseSSE(content) {
+    const events = [];
+    const lines = content.split('\n');
+    let currentEvent = null;
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (currentEvent) {
+          events.push({ name: currentEvent.name || 'message', data: currentEvent.data.join('\n') });
+          currentEvent = null;
+        }
+        return;
+      }
+      if (trimmed.startsWith('event:')) {
+        if (currentEvent) {
+          events.push({ name: currentEvent.name || 'message', data: currentEvent.data.join('\n') });
+        }
+        currentEvent = { name: trimmed.replace('event:', '').trim(), data: [] };
+        this.logger.info(`[HuggingFace] SSE event detected on line ${index}: ${currentEvent.name}`);
+        return;
+      }
+      if (trimmed.startsWith('data:')) {
+        if (!currentEvent) currentEvent = { name: 'message', data: [] };
+        currentEvent.data.push(trimmed.replace('data:', '').trim());
+      }
+    });
+
+    if (currentEvent) {
+      events.push({ name: currentEvent.name || 'message', data: currentEvent.data.join('\n') });
+    }
+
+    return events;
+  }
+
+  _extractErrorMessage(payload) {
+    if (!payload || payload === 'null') {
+      return 'The JoyCaption space reported an unknown error. Please try again shortly.';
+    }
+
+    try {
+      const parsed = JSON.parse(payload);
+      if (typeof parsed === 'string') return parsed;
+      return JSON.stringify(parsed);
+    } catch (error) {
+      return payload;
     }
   }
 
-  /**
-   * Step 2: Stream result using event ID
-   * @private
-   */
-  async _streamEventResult(eventId) {
-    this.logger.info(`Streaming result for event ID: ${eventId}`);
-    
-    const streamUrl = `${this.baseUrl}/call/stream_chat/${eventId}`;
-
-    try {
-      const getHeaders = this.token ? { Authorization: `Bearer ${this.token}` } : undefined;
-
-      const response = await fetch(streamUrl, { 
-        method: 'GET',
-        headers: getHeaders,
-        signal: AbortSignal.timeout(60000) // 60 second timeout
-      });
-
-      // Log response headers for rate limit info
-      const streamHeaders = {};
-      response.headers.forEach((value, key) => {
-        streamHeaders[key] = value;
-      });
-      this.logger.info(`[HuggingFace] Stream response status: ${response.status}, headers: ${JSON.stringify(streamHeaders)}`);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        this.logger.error(`[HuggingFace] Stream failed: ${response.status} - ${errorText}`);
-        throw new Error(`Stream request failed with status ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.text();
-      this.logger.debug('Raw stream response received');
-      this.logger.info(`[HuggingFace] Full SSE response: ${result}`); // Log full response for debugging
-
-      // Parse Server-Sent Events format - log ALL lines for debugging
-      const lines = result.split('\n');
-      this.logger.info(`[HuggingFace] SSE has ${lines.length} lines`);
-      
-      let lastDataLine = null;
-      let isErrorEvent = false;
-      let errorMessage = null;
-      let allEvents = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.trim()) continue; // Skip empty lines
-        
-        this.logger.info(`[HuggingFace] SSE Line ${i}: "${line}"`);
-        
-        // Track all event types
-        if (line.startsWith('event:')) {
-          const eventType = line.replace('event:', '').trim();
-          allEvents.push(eventType);
-          this.logger.info(`[HuggingFace] Event type: ${eventType}`);
-          
-          if (eventType === 'error') {
-            isErrorEvent = true;
-          }
-          continue;
-        }
-
-        // Process data events - capture ALL data
-        if (line.startsWith('data:')) {
-          const data = line.replace('data:', '').trim();
-          this.logger.info(`[HuggingFace] Data content: "${data}"`);
-          
-          // If this is data after an error event, it might contain error details
-          if (isErrorEvent) {
-            if (data && data !== 'null') {
-              try {
-                const parsed = JSON.parse(data);
-                errorMessage = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
-                this.logger.error(`[HuggingFace] Error details: ${errorMessage}`);
-              } catch (e) {
-                // Not JSON, might be plain text error
-                errorMessage = data;
-                this.logger.error(`[HuggingFace] Error text: ${data}`);
-              }
-            } else {
-              this.logger.warn(`[HuggingFace] Error event has null/empty data`);
-            }
-          } else if (data !== 'null' && data !== '') {
-            // Normal success data
-            try {
-              JSON.parse(data);
-              lastDataLine = data;
-            } catch (e) {
-              this.logger.warn('Invalid JSON data received:', data);
-            }
-          }
-        }
-        
-        // Log any other SSE fields
-        if (!line.startsWith('event:') && !line.startsWith('data:')) {
-          this.logger.info(`[HuggingFace] Other SSE field: "${line}"`);
-        }
-      }
-
-      this.logger.info(`[HuggingFace] All events detected: ${allEvents.join(', ')}`);
-
-      // Handle different scenarios
-      if (isErrorEvent) {
-        if (!errorMessage) {
-          // No error details provided - this is the quota limit case
-          this.logger.error('[HuggingFace] Error event with no details - likely daily quota exhausted');
-          errorMessage = 'Daily quota exhausted. Please try again tomorrow.';
-        }
-        throw new Error(errorMessage);
-      }
-
-      if (!lastDataLine) {
-        throw new Error('No valid data received from the server');
-      }
-
-      const jsonData = JSON.parse(lastDataLine);
-      this.logger.debug('Parsed JSON data:', jsonData);
-
-      if (!Array.isArray(jsonData) || jsonData.length === 0) {
-        throw new Error('Invalid response format from server');
-      }
-
-      const description = jsonData[0];
-      
-      if (!description || typeof description !== 'string') {
-        throw new Error('Invalid description format received');
-      }
-
-      return description;
-
-    } catch (error) {
-      this.logger.error(`Error streaming result: ${error.message}`);
-      
-      // Provide more specific error messages
-      if (error.message === 'No valid data received from the server') {
-        throw new Error('The image analysis service is currently unavailable. Please try again later.');
-      }
-      if (error.message === 'Server returned an error event') {
-        throw new Error('The server encountered an error processing your request. Please try again.');
-      }
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-        throw new Error('Request timed out. The image may be too large or the service is slow.');
-      }
-      
-      throw error;
+  _normalizeExtraOptions(extraOptions) {
+    if (Array.isArray(extraOptions)) {
+      return extraOptions.map(option => option && option.toString().trim()).filter(Boolean);
     }
+
+    if (typeof extraOptions === 'string') {
+      return extraOptions
+        .split(/[\n,;]+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+    }
+
+    return [];
+  }
+
+  _deriveFileName(imageUrl, contentType) {
+    try {
+      const parsed = new URL(imageUrl);
+      const baseName = parsed.pathname.split('/').pop();
+      if (baseName && baseName.includes('.')) return baseName;
+    } catch (_) {
+      // ignore parsing errors – fall back below
+    }
+
+    const extensionFromType = contentType?.split('/').pop() || 'jpg';
+    return `image-${Date.now()}.${extensionFromType}`;
+  }
+
+  _sanitizeNumber(value, min, max, fallback) {
+    const num = typeof value === 'number' ? value : parseFloat(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.min(max, Math.max(min, num));
+  }
+
+  _logHeaders(stage, response) {
+    const headers = {};
+    response.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    this.logger.info(`[HuggingFace] ${stage} response status: ${response.status}, headers: ${JSON.stringify(headers)}`);
   }
 }
 
 module.exports = HuggingFaceService;
-
