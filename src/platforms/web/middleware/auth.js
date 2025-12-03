@@ -5,7 +5,7 @@
  */
 
 const jwt = require('jsonwebtoken');
-const { createLogger } = require('../../../utils/logger');
+const { createLogger, setRequestContext } = require('../../../utils/logger');
 
 const logger = createLogger('AuthMiddleware');
 
@@ -55,10 +55,14 @@ function authenticateUser(req, res, next) {
         return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
       }
       req.user = user;
+      setRequestContext({
+        userId: user?.userId || user?.id,
+        authMethod: 'jwt',
+      });
       next();
     });
   } catch (error) {
-    console.error('Authentication error:', error);
+    logger.error({ err: error }, 'Authentication error');
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'Unauthorized: Token expired' });
     }
@@ -169,8 +173,11 @@ async function authenticateUserOrApiKey(req, res, next) {
           return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Invalid token.' } });
         }
         req.user = user;
-        console.log('[AuthMiddleware] JWT Verified. req.user set to:', req.user); // DEBUG LOG
         req.authMethod = 'jwt';
+        setRequestContext({
+          userId: user?.userId || user?.id,
+          authMethod: 'jwt',
+        });
         return next();
       });
     }
@@ -188,6 +195,10 @@ async function authenticateUserOrApiKey(req, res, next) {
           req.user = response.data.user;
           req.apiKey = response.data.apiKey;
           req.authMethod = 'apiKey';
+          setRequestContext({
+            userId: req.user?.userId || req.user?._id || req.user?.id,
+            authMethod: 'apiKey',
+          });
           next();
         })
         .catch(error => {

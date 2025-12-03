@@ -15,6 +15,7 @@ const { createLogger } = require('../../utils/logger');
 const { authenticateUser } = require('./middleware/auth');
 const csrfProtection = require('./middleware/csrf'); // <-- Import new CSRF middleware
 const { referralHandler } = require('./middleware/referralHandler');
+const { actionTrackingMiddleware } = require('../../utils/actionTracker');
 
 // Add this function before middleware setup
 function rawBodySaver(req, res, buf, encoding) {
@@ -53,6 +54,7 @@ function initializeWebPlatform(services, options = {}) {
   app.use(express.json({ verify: rawBodySaver }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+  app.use(actionTrackingMiddleware);
 
   const maintenanceBypassPaths = new Set([
     '/api/health',

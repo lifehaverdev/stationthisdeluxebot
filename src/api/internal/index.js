@@ -47,13 +47,14 @@ function initializeInternalServices(dependencies = {}) {
   const mainInternalRouter = express.Router();
   const v1DataRouter = express.Router();
 
-  // Diagnostic Middleware: Log all incoming requests to the internal router
+  const logger = dependencies.logger || createLogger('InternalAPI');
+  dependencies.logger = logger;
+
+  // Diagnostic Middleware: Log all incoming requests to the internal router (debug by default)
   mainInternalRouter.use((req, res, next) => {
-    console.log(`[INTERNAL ROUTER DIAGNOSTIC] Incoming Request: ${req.method} ${req.originalUrl}`);
+    logger.debug({ method: req.method, url: req.originalUrl }, '[InternalAPI] Incoming request');
     next();
   });
-
-  const logger = dependencies.logger || console;
 
   // General rate limiting for internal API: 100 requests per 15 minutes per IP
   // This provides basic DoS protection while allowing legitimate internal traffic
@@ -80,7 +81,7 @@ function initializeInternalServices(dependencies = {}) {
   const dbDataServices = dependencies.db?.data;
 
   // Initialize logger for the internal API
-  const internalLogger = createLogger('InternalAPI');
+  // Replace references to dependencies.logger with the structured logger
 
   // Retrieve the base URL for the internal API from environment variables,
   // falling back to a default for local development.
@@ -389,15 +390,15 @@ function initializeInternalServices(dependencies = {}) {
 
   // Diagnostic: Log all registered routes after mounting
   setTimeout(() => {
-    console.log('[INTERNAL ROUTER DIAGNOSTIC] Registered routes on mainInternalRouter:');
+    logger.debug('[InternalAPI] Registered routes on mainInternalRouter:');
     mainInternalRouter.stack.forEach(layer => {
-      if (layer.route) { // regular route
-        console.log(`  - ${Object.keys(layer.route.methods).join(', ').toUpperCase()} ${layer.route.path}`);
-      } else if (layer.name === 'router') { // sub-router
+      if (layer.route) {
+        logger.debug({ methods: Object.keys(layer.route.methods), path: layer.route.path }, '[InternalAPI] Registered route');
+      } else if (layer.name === 'router') {
         const path = layer.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '');
         layer.handle.stack.forEach(subLayer => {
           if (subLayer.route) {
-            console.log(`  - ${Object.keys(subLayer.route.methods).join(', ').toUpperCase()} ${path}${subLayer.route.path}`);
+            logger.debug({ methods: Object.keys(subLayer.route.methods), path: `${path}${subLayer.route.path}` }, '[InternalAPI] Registered sub-route');
           }
         });
       }

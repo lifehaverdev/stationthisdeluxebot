@@ -41,12 +41,12 @@ function initializeExternalApi(dependencies) {
   const logger = createLogger('ExternalAPI');
   
   // Debug logging for dependencies
-  console.log('[ExternalAPI] Dependencies check:', {
+  logger.debug({
     internalApiClient: !!internalApiClient,
     longRunningApiClient: !!dependencies.longRunningApiClient,
     priceFeedService: !!dependencies.priceFeedService,
     saltMiningService: !!dependencies.saltMiningService
-  });
+  }, '[ExternalAPI] Dependencies check');
   
   const externalApiRouter = express.Router();
   // Maintain backward compatibility for modules that still expect dependencies.internal.client
@@ -133,19 +133,18 @@ function initializeExternalApi(dependencies) {
 
     // JWT authentication from cookie
     const token = req.cookies.jwt;
-  console.log('[dualAuth] jwt cookie:', token);
-  if (token) {
-    try {
-      const jwt = require('jsonwebtoken');
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log('[dualAuth] decoded JWT:', decoded);
-      req.user = decoded;
-      return next();
-    } catch (error) {
-      console.error('[dualAuth] JWT verification error:', error);
-      return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token.' } });
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        logger.debug({ hasJwt: true }, '[dualAuth] JWT verified');
+        return next();
+      } catch (error) {
+        logger.warn({ err: error }, '[dualAuth] JWT verification error');
+        return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token.' } });
+      }
     }
-  }
 
     // If neither API key nor JWT is present, deny access.
     return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });

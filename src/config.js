@@ -33,6 +33,7 @@ module.exports = {
   
   // Logging
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  LOG_VERBOSE_API: process.env.LOG_VERBOSE_API === '1',
   
   // Environment
   NODE_ENV: process.env.NODE_ENV || 'development',

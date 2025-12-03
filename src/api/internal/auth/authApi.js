@@ -9,6 +9,14 @@ const crypto = require('crypto');
  */
 function createAuthApi(dependencies) {
   const router = express.Router();
+  const verboseEnabled = process.env.LOG_VERBOSE_AUTH_API === '1';
+  const verboseLog = (...args) => {
+    if (verboseEnabled) {
+      logger.info(...args);
+    } else if (logger.debug) {
+      logger.debug(...args);
+    }
+  };
   // This internal API is allowed to access the database directly.
   const { userCore, userPreferences: userPreferencesDb, creditLedger: creditLedgerDb } = dependencies.db;
   const logger = dependencies.logger;
@@ -74,14 +82,14 @@ function createAuthApi(dependencies) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Wallet address is required.' } });
     }
     const normalizedAddress = address.toLowerCase();
-    logger.info(`[AuthApi] /find-or-create-by-wallet looking for wallet: ${normalizedAddress}`);
+    verboseLog(`[AuthApi] /find-or-create-by-wallet looking for wallet: ${normalizedAddress}`);
 
     let user = null;
     let isNewUser = false;
     try {
       try {
         user = await userCore.findUserCoreByWalletAddress(normalizedAddress);
-        logger.info(`[AuthApi] findUserCoreByWalletAddress result for ${normalizedAddress}:`, user ? `User found with ID ${user._id}` : 'User not found');
+        verboseLog(`[AuthApi] findUserCoreByWalletAddress result for ${normalizedAddress}:`, user ? `User found with ID ${user._id}` : 'User not found');
       } catch (dbFindErr) {
         logger.error(`[AuthApi] DB error in findUserCoreByWalletAddress: ${dbFindErr.message}`);
         logger.error(dbFindErr.stack);
@@ -89,7 +97,7 @@ function createAuthApi(dependencies) {
       }
 
       if (!user) {
-        logger.info(`[AuthApi] No user found for wallet ${normalizedAddress}. Creating a new user.`);
+        verboseLog(`[AuthApi] No user found for wallet ${normalizedAddress}. Creating a new user.`);
         const newUserDoc = {
           wallets: [{ address: normalizedAddress, verified: true, isPrimary: true, addedAt: new Date() }],
           lastLoginTimestamp: new Date(),
@@ -98,17 +106,17 @@ function createAuthApi(dependencies) {
         try {
           user = await userCore.createUserCore(newUserDoc);
           isNewUser = true;
-          logger.info(`[AuthApi] New user created for wallet address: ${normalizedAddress} with ID: ${user._id}`);
+          verboseLog(`[AuthApi] New user created for wallet address: ${normalizedAddress} with ID: ${user._id}`);
         } catch (dbCreateErr) {
           logger.error(`[AuthApi] DB error in createUserCore: ${dbCreateErr.message}`);
           logger.error(dbCreateErr.stack);
           return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'DB error in createUserCore', details: dbCreateErr.message } });
         }
       } else {
-        logger.info(`[AuthApi] User found for wallet address: ${normalizedAddress} with ID: ${user._id}. Updating last login.`);
+        verboseLog(`[AuthApi] User found for wallet address: ${normalizedAddress} with ID: ${user._id}. Updating last login.`);
         try {
           await userCore.updateLastLogin(user._id, 'web');
-          logger.info(`[AuthApi] User last login updated for ${normalizedAddress}.`);
+          verboseLog(`[AuthApi] User last login updated for ${normalizedAddress}.`);
         } catch (dbUpdateErr) {
           logger.error(`[AuthApi] DB error in updateLastLogin: ${dbUpdateErr.message}`);
           logger.error(dbUpdateErr.stack);
@@ -120,17 +128,17 @@ function createAuthApi(dependencies) {
         try {
           const existingPreference = await userPreferencesDb.getPreferenceByKey(user._id.toString(), 'preferredCharteredFund');
           if (!existingPreference) {
-            logger.info(`[AuthApi] User ${user._id} has no preferred fund. Attempting to migrate referral code: ${referralCode}`);
+            verboseLog(`[AuthApi] User ${user._id} has no preferred fund. Attempting to migrate referral code: ${referralCode}`);
             const vault = await creditLedgerDb.findReferralVaultByName(referralCode);
             if (vault && vault.vault_address) {
               const preferenceValue = { vaultName: vault.vaultName, vaultAddress: vault.vault_address, referralCode: referralCode };
               await userPreferencesDb.setPreferenceByKey(user._id.toString(), 'preferredCharteredFund', preferenceValue);
-              logger.info(`[AuthApi] Successfully set preferredCharteredFund for user ${user._id} to vault ${vault.vaultName} (${vault.vault_address})`);
+              verboseLog(`[AuthApi] Successfully set preferredCharteredFund for user ${user._id} to vault ${vault.vaultName} (${vault.vault_address})`);
             } else {
               logger.warn(`[AuthApi] Referral code ${referralCode} provided during login for user ${user._id} is invalid or has no vault address. Skipping preference update.`);
             }
           } else {
-            logger.info(`[AuthApi] User ${user._id} already has a preferred fund. Ignoring new referral code ${referralCode}.`);
+            verboseLog(`[AuthApi] User ${user._id} already has a preferred fund. Ignoring new referral code ${referralCode}.`);
           }
         } catch (prefError) {
           logger.error(`[AuthApi] Error during referral preference migration for user ${user._id}:`, prefError);

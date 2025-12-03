@@ -25,43 +25,84 @@ const longRunningApiClient = axios.create({
 });
 
 // Optional: Add interceptors for logging or centralized error handling
+const seenErrors = new Set();
+const ERROR_WINDOW_MS = 1000;
+
+function shouldLogError(key) {
+  const now = Date.now();
+  if (seenErrors.has(key)) {
+    return false;
+  }
+  seenErrors.add(key);
+  setTimeout(() => seenErrors.delete(key), ERROR_WINDOW_MS).unref?.();
+  return true;
+}
+
 internalApiClient.interceptors.request.use(request => {
-  logger.debug('Starting Internal API Request:', { method: request.method.toUpperCase(), url: request.url, data: request.data });
+  logger.debug({
+    method: request.method?.toUpperCase(),
+    url: request.url,
+  }, 'Starting internal API request');
   return request;
 });
 
 internalApiClient.interceptors.response.use(response => {
-  logger.debug('Internal API Response Status:', { status: response.status, data: response.data });
+  logger.debug({
+    status: response.status,
+    url: response.config?.url,
+  }, 'Internal API response');
   return response;
 }, error => {
-  logger.error('[InternalApiClient] API Call Error:', { 
-    message: error.message,
-    status: error.response ? error.response.status : null,
-    method: error.config ? error.config.method.toUpperCase() : null,
-    url: error.config ? error.config.url : null,
-    responseData: error.response ? error.response.data : null
-  });
+  const key = `${error.config?.method}:${error.config?.url}:${error.response?.status}:${error.config?.headers?.['x-action-id'] || ''}`;
+  if (shouldLogError(key)) {
+    logger.error({
+      err: error,
+      status: error.response ? error.response.status : null,
+      method: error.config ? error.config.method?.toUpperCase() : null,
+      url: error.config ? error.config.url : null,
+    }, '[InternalApiClient] API call error');
+  } else {
+    logger.debug({
+      status: error.response ? error.response.status : null,
+      method: error.config ? error.config.method?.toUpperCase() : null,
+      url: error.config ? error.config.url : null,
+    }, '[InternalApiClient] Suppressed duplicate error');
+  }
   // It's important to re-throw the error so the calling function knows it failed
   return Promise.reject(error);
 });
 
 // Add the same interceptors to the long-running client
 longRunningApiClient.interceptors.request.use(request => {
-  logger.debug('Starting Long-Running Internal API Request:', { method: request.method.toUpperCase(), url: request.url, data: request.data });
+  logger.debug({
+    method: request.method?.toUpperCase(),
+    url: request.url,
+  }, 'Starting long-running internal API request');
   return request;
 });
 
 longRunningApiClient.interceptors.response.use(response => {
-  logger.debug('Long-Running Internal API Response Status:', { status: response.status, data: response.data });
+  logger.debug({
+    status: response.status,
+    url: response.config?.url,
+  }, 'Long-running internal API response');
   return response;
 }, error => {
-  logger.error('[LongRunningApiClient] API Call Error:', { 
-    message: error.message,
-    status: error.response ? error.response.status : null,
-    method: error.config ? error.config.method.toUpperCase() : null,
-    url: error.config ? error.config.url : null,
-    responseData: error.response ? error.response.data : null
-  });
+  const key = `long:${error.config?.method}:${error.config?.url}:${error.response?.status}:${error.config?.headers?.['x-action-id'] || ''}`;
+  if (shouldLogError(key)) {
+    logger.error({
+      err: error,
+      status: error.response ? error.response.status : null,
+      method: error.config ? error.config.method?.toUpperCase() : null,
+      url: error.config ? error.config.url : null,
+    }, '[LongRunningApiClient] API call error');
+  } else {
+    logger.debug({
+      status: error.response ? error.response.status : null,
+      method: error.config ? error.config.method?.toUpperCase() : null,
+      url: error.config ? error.config.url : null,
+    }, '[LongRunningApiClient] Suppressed duplicate error');
+  }
   return Promise.reject(error);
 });
 
@@ -80,10 +121,10 @@ internalApiClient.rateGeneration = async function(generationId, ratingType, mast
       ratingType,
       masterAccountId
     });
-    logger.info(`[InternalApiClient] Successfully rated generation ${generationId} as ${ratingType}.`);
+    logger.info({ generationId, ratingType }, '[InternalApiClient] Successfully rated generation.');
     return response.data;
   } catch (error) {
-    logger.error(`[InternalApiClient] Failed to rate generation ${generationId}: ${error.message}`);
+    logger.error({ err: error, generationId }, '[InternalApiClient] Failed to rate generation');
     throw error;
   }
 };

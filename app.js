@@ -117,10 +117,13 @@ async function startApp() {
     logger.info(`- ComfyUI API: ${initResults.data.comfyUI.connected ? 'Connected' : 'Failed'}`);
     
     if (initResults.data.comfyUI.connected) {
-      logger.info(`  - Available workflows: ${JSON.stringify(initResults.data.comfyUI.workflows)}`);
-      logger.info(`  - Available deployments: ${JSON.stringify(initResults.data.comfyUI.deployments)}`);
-      logger.info(`  - Available machines: ${JSON.stringify(initResults.data.comfyUI.machines)}`);
-      logger.info(`  - Ready machines: ${JSON.stringify(initResults.data.comfyUI.readyMachines)}`);
+      logger.info(`  - ComfyUI deployments ready: ${initResults.data.comfyUI.deployments?.length || 0}`);
+      logger.debug({
+        workflows: initResults.data.comfyUI.workflows,
+        deployments: initResults.data.comfyUI.deployments,
+        machines: initResults.data.comfyUI.machines,
+        readyMachines: initResults.data.comfyUI.readyMachines,
+      }, '[App] ComfyUI inventory');
     }
     
     logger.info('\nProceeding to platform initialization...\n');
@@ -143,13 +146,9 @@ async function startApp() {
     }
     dependencies.internal.client = dependencies.internalApiClient;
     // geniusoverhaul: Add a log to verify dependencies.toolRegistry
-    logger.info('[App] Canonical dependencies object created. Checking toolRegistry...');
-    if (dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function') {
-        logger.info('[App] dependencies.toolRegistry appears to be a valid ToolRegistry instance.');
-    } else {
-        logger.warn('[App] dependencies.toolRegistry is MISSING or INVALID!', { registry: dependencies.toolRegistry });
-    }
-    // End verification log
+    logger.debug({
+      hasToolRegistry: !!(dependencies.toolRegistry && typeof dependencies.toolRegistry.getToolById === 'function')
+    }, '[App] Canonical dependencies ready');
     
     // Initialize platforms with the canonical dependencies object
     logger.info('Initializing platform adapters...');

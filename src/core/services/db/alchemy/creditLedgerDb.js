@@ -512,15 +512,27 @@ class CreditLedgerDB extends BaseDB {
     };
     // Debug: log how many entries match before aggregation
     const allEntries = await this.findMany(match);
-    this.logger.info(`[CreditLedgerDB] Aggregating points for wallet ${walletAddress}: Found ${allEntries.length} matching ledger entries.`);
-    if (allEntries.length > 0) {
-      this.logger.info(`[CreditLedgerDB] Points remaining in entries:`, allEntries.map(e => e.points_remaining));
+    const verboseEnabled = process.env.LOG_VERBOSE_CREDIT_LEDGER_DB === '1';
+    if (verboseEnabled) {
+      this.logger.info(`[CreditLedgerDB] Aggregating points for wallet ${walletAddress}: Found ${allEntries.length} matching ledger entries.`);
+      if (allEntries.length > 0) {
+        this.logger.info(`[CreditLedgerDB] Points remaining in entries:`, allEntries.map(e => e.points_remaining));
+      }
+    } else if (this.logger.debug) {
+      this.logger.debug({
+        walletAddress,
+        entryCount: allEntries.length
+      }, '[CreditLedgerDB] Aggregating points summary');
     }
     const result = await this.aggregate([
       { $match: match },
       { $group: { _id: null, total: { $sum: "$points_remaining" } } }
     ]);
-    this.logger.info(`[CreditLedgerDB] Aggregation result for wallet ${walletAddress}:`, result);
+    if (verboseEnabled) {
+      this.logger.info(`[CreditLedgerDB] Aggregation result for wallet ${walletAddress}:`, result);
+    } else if (this.logger.debug) {
+      this.logger.debug({ walletAddress, result }, '[CreditLedgerDB] Aggregation result summary');
+    }
     return result.length > 0 ? result[0].total : 0;
   }
 

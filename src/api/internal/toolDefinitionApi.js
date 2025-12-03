@@ -5,6 +5,15 @@ const { createLogger } = require('../../utils/logger'); // Adjust path as needed
 // const { validateObjectId } = require('../middleware/validationMiddleware'); // Assuming validation middleware
 
 const logger = createLogger('ToolDefinitionApi');
+const VERBOSE_ENABLED = process.env.LOG_VERBOSE_TOOL_DEFINITION_API === '1';
+
+function info(...args) {
+  if (VERBOSE_ENABLED) {
+    logger.info(...args);
+  } else {
+    logger.debug(...args);
+  }
+}
 
 /**
  * Creates an Express router for tool definition related internal API endpoints.
@@ -23,7 +32,7 @@ function createToolDefinitionApiRouter(services) {
    * Returns a list of all available tools.
    */
   router.get('/', (req, res) => {
-    logger.info('[ToolDefinitionApi] GET / - Request received to list all tools');
+    info('[ToolDefinitionApi] GET / - Request received to list all tools');
     try {
       const allTools = toolRegistry.getAllTools();
       // We are now returning the full tool object for the documentation page.
@@ -45,7 +54,7 @@ function createToolDefinitionApiRouter(services) {
    */
   router.get('/:toolId', (req, res) => {
     const { toolId } = req.params;
-    logger.info(`[ToolDefinitionApi] GET /${toolId} - Request received`);
+    info(`[ToolDefinitionApi] GET /${toolId} - Request received`);
 
     try {
       const tool = toolRegistry.getToolById(toolId);
@@ -82,13 +91,13 @@ function createToolDefinitionApiRouter(services) {
     // validateObjectId('toolId', 'params'), // Optional: if toolId is an ObjectId, not a string like 'fluxgeneral'
     (req, res) => {
       const { toolId } = req.params;
-      logger.info(`[ToolDefinitionApi] GET /${toolId}/input-schema - Request received`);
+      info(`[ToolDefinitionApi] GET /${toolId}/input-schema - Request received`);
 
       try {
         const tool = toolRegistry.getToolById(toolId);
 
         if (!tool) {
-          logger.warn(`[ToolDefinitionApi] GET /${toolId}/input-schema - Tool not found`);
+        logger.warn(`[ToolDefinitionApi] GET /${toolId}/input-schema - Tool not found`);
           return res.status(404).json({
             error: {
               code: 'TOOL_NOT_FOUND',
@@ -98,7 +107,7 @@ function createToolDefinitionApiRouter(services) {
         }
 
         if (!tool.inputSchema) {
-          logger.warn(`[ToolDefinitionApi] GET /${toolId}/input-schema - Input schema not found for tool`);
+        logger.warn(`[ToolDefinitionApi] GET /${toolId}/input-schema - Input schema not found for tool`);
           return res.status(404).json({
             error: {
               code: 'INPUT_SCHEMA_NOT_FOUND',
@@ -107,7 +116,7 @@ function createToolDefinitionApiRouter(services) {
           });
         }
 
-        logger.info(`[ToolDefinitionApi] GET /${toolId}/input-schema - Returning input schema`);
+        info(`[ToolDefinitionApi] GET /${toolId}/input-schema - Returning input schema`);
         res.status(200).json(tool.inputSchema);
 
       } catch (error) {
@@ -122,7 +131,7 @@ function createToolDefinitionApiRouter(services) {
     }
   );
 
-  logger.info('[ToolDefinitionApi] Tool Definition API routes initialized.');
+  info('[ToolDefinitionApi] Tool Definition API routes initialized.');
   return router;
 }
 

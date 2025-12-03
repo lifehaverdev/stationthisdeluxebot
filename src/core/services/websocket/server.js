@@ -12,7 +12,7 @@ class WebSocketService {
     this.adminConnections = new Set(); // Set of admin WebSocket connections
     this.wss = null;
     this.ethereumServices = null; // Will be set during initialization
-    logger.info('[WebSocketService] Service instantiated.');
+    logger.debug('[WebSocketService] Service instantiated.');
   }
 
   setEthereumServices(ethereumServices) {
@@ -45,44 +45,48 @@ class WebSocketService {
       const { userId } = user; // userId is the masterAccountId
       // Normalize userId to string for consistent storage/lookup
       const userIdStr = String(userId);
-      logger.info(`[WebSocketService] DEBUG connection - userId from JWT: "${userId}" (type: ${typeof userId}), normalized: "${userIdStr}"`);
+      logger.debug({ userId, normalizedUserId: userIdStr }, '[WebSocketService] Connection attempt');
       if (!this.connections.has(userIdStr)) {
         this.connections.set(userIdStr, new Set());
-        logger.info(`[WebSocketService] DEBUG connection - Created new Set for user ${userIdStr}`);
+        logger.debug({ userId: userIdStr }, '[WebSocketService] Created connection bucket');
       }
       const userConnections = this.connections.get(userIdStr);
       userConnections.add(ws);
-      logger.info(`[WebSocketService] Connection established for user ${userIdStr}. Total connections for this user: ${userConnections.size}, Total users: ${this.connections.size}`);
+      logger.debug({
+        userId: userIdStr,
+        connectionsForUser: userConnections.size,
+        totalUsers: this.connections.size,
+      }, '[WebSocketService] Connection established');
 
       // Check if this is an admin connection
       const isAdmin = await this._checkAdminStatus(userIdStr, req);
       if (isAdmin) {
         this.adminConnections.add(ws);
-        logger.info(`[WebSocketService] Admin connection registered for user ${userIdStr}`);
+        logger.debug(`[WebSocketService] Admin connection registered for user ${userIdStr}`);
       }
 
       ws.on('close', () => {
         userConnections.delete(ws);
         this.adminConnections.delete(ws);
-        logger.info(`[WebSocketService] Connection closed for user ${userIdStr}. Remaining: ${userConnections.size}`);
+        logger.debug({ userId: userIdStr, remaining: userConnections.size }, '[WebSocketService] Connection closed');
         if (userConnections.size === 0) {
           this.connections.delete(userIdStr);
-          logger.info(`[WebSocketService] All connections for user ${userIdStr} removed. Total users remaining: ${this.connections.size}`);
+          logger.debug({ userId: userIdStr, totalUsers: this.connections.size }, '[WebSocketService] Removed user from connection map');
         }
       });
       
       ws.on('error', (error) => {
-        logger.error(`[WebSocketService] WebSocket error for user ${userIdStr}:`, error);
+        logger.error({ err: error, userId: userIdStr }, '[WebSocketService] WebSocket error');
       });
 
       ws.on('message', (message) => {
-        logger.info(`[WebSocketService] Received message from ${userIdStr}: ${message}`);
+        logger.debug({ userId: userIdStr }, '[WebSocketService] Received message');
       });
 
       ws.send(JSON.stringify({ type: 'connection_ack', message: 'WebSocket connection established.' }));
     });
 
-    logger.info('[WebSocketService] Server initialized and attached to HTTP server.');
+    logger.debug('[WebSocketService] Server initialized and attached to HTTP server.');
   }
 
   sendToUser(userId, data) {
@@ -91,16 +95,16 @@ class WebSocketService {
       return false;
     }
     const userIdStr = String(userId);
-    // Debug: Log all connection keys to help diagnose lookup issues
     const allKeys = Array.from(this.connections.keys());
-    logger.info(`[WebSocketService] DEBUG sendToUser - Looking up userId: "${userIdStr}" (type: ${typeof userIdStr})`);
-    logger.info(`[WebSocketService] DEBUG sendToUser - All connection keys: [${allKeys.map(k => `"${k}"`).join(', ')}]`);
-    logger.info(`[WebSocketService] DEBUG sendToUser - Total users with connections: ${this.connections.size}`);
-    
+    logger.debug({
+      lookupUserId: userIdStr,
+      connectionKeys: allKeys,
+      totalUsers: this.connections.size,
+    }, '[WebSocketService] sendToUser lookup');
+
     const userConnections = this.connections.get(userIdStr);
     if (userConnections && userConnections.size > 0) {
-      logger.info('[WebSocketService] DEBUG sendToUser payload', data);
-      logger.info(`[WebSocketService] Sending data to user ${userIdStr}. Connections: ${userConnections.size}`);
+      logger.debug({ userId: userIdStr, payloadType: data?.type }, '[WebSocketService] Dispatching payload');
       const message = JSON.stringify(data);
       let sentCount = 0;
       userConnections.forEach(connection => {
@@ -111,11 +115,14 @@ class WebSocketService {
           logger.warn(`[WebSocketService] Connection not OPEN (state: ${connection.readyState})`);
         }
       });
-      logger.info(`[WebSocketService] Sent message to ${sentCount} of ${userConnections.size} connections`);
+      logger.debug({
+        userId: userIdStr,
+        connections: userConnections.size,
+        sentCount,
+      }, '[WebSocketService] Sent message to user');
       return sentCount > 0;
     } else {
-      logger.warn(`[WebSocketService] No active connections for user ${userIdStr}.`);
-      logger.warn(`[WebSocketService] DEBUG - Connection map has ${this.connections.size} users, keys: [${allKeys.join(', ')}]`);
+      logger.debug({ userId: userIdStr }, '[WebSocketService] No active connections');
       return false;
     }
   }
@@ -212,7 +219,11 @@ class WebSocketService {
   _authenticate(req) {
     try {
       if (!req.headers.cookie) {
-        logger.warn('[WebSocketService] Auth failed: No cookie header.');
+        if (process.env.LOG_VERBOSE_WEBSOCKET === '1') {
+          logger.warn('[WebSocketService] Auth failed: No cookie header.');
+        } else {
+          logger.debug('[WebSocketService] Auth failed: No cookie header.');
+        }
         return null;
       }
       const cookies = cookie.parse(req.headers.cookie);
@@ -226,19 +237,27 @@ class WebSocketService {
       }
       
       if (!token) {
-        logger.warn('[WebSocketService] Auth failed: No JWT or guestToken in cookie.');
+        if (process.env.LOG_VERBOSE_WEBSOCKET === '1') {
+          logger.warn('[WebSocketService] Auth failed: No JWT or guestToken in cookie.');
+        } else {
+          logger.debug('[WebSocketService] Auth failed: No JWT or guestToken in cookie.');
+        }
         return null;
       }
       
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       // Assuming decoded token has userId which is the masterAccountId
       if (!decoded.userId) {
-        logger.warn('[WebSocketService] Auth failed: JWT does not contain userId.');
+        if (process.env.LOG_VERBOSE_WEBSOCKET === '1') {
+          logger.warn('[WebSocketService] Auth failed: JWT does not contain userId.');
+        } else {
+          logger.debug('[WebSocketService] Auth failed: JWT does not contain userId.');
+        }
         return null;
       }
       
       const authType = decoded.isGuest ? 'guest' : 'user';
-      logger.info(`[WebSocketService] ${authType} authenticated via WebSocket: ${decoded.userId}`);
+      logger.debug(`[WebSocketService] ${authType} authenticated via WebSocket: ${decoded.userId}`);
       return decoded;
     } catch (err) {
       logger.error(`[WebSocketService] Authentication error: ${err.message}`);

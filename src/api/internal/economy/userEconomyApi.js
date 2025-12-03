@@ -8,6 +8,14 @@ module.exports = function initializeUserEconomyApi(dependencies) {
   const { logger, db } = dependencies;
   // Use mergeParams to access masterAccountId from the parent router (userCoreApi)
   const router = express.Router({ mergeParams: true }); 
+  const verboseEnabled = process.env.LOG_VERBOSE_USER_ECONOMY_API === '1';
+  const verboseLog = (...args) => {
+    if (verboseEnabled) {
+      logger.info(...args);
+    } else if (logger.debug) {
+      logger.debug(...args);
+    }
+  };
 
   // Check for essential dependencies
   if (!db || !db.userEconomy || !db.transactions) {
@@ -18,7 +26,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     return router;
   }
 
-  logger.info('[userEconomyApi] Initializing User Economy API routes...');
+  verboseLog('[userEconomyApi] Initializing User Economy API routes...');
 
   // Helper function to get masterAccountId ObjectId from params
   const getMasterAccountId = (req, res) => {
@@ -45,7 +53,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const masterAccountIdStr = masterAccountId.toString();
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] GET /users/${masterAccountIdStr}/economy - RequestId: ${requestId}`);
+    verboseLog(`[userEconomyApi] GET /users/${masterAccountIdStr}/economy - RequestId: ${requestId}`);
 
     try {
       const economyRecord = await db.userEconomy.findByMasterAccountId(masterAccountId);
@@ -62,7 +70,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         });
       }
 
-      logger.info(`[userEconomyApi] GET /economy: Record found for ${masterAccountIdStr}. RequestId: ${requestId}`);
+      verboseLog(`[userEconomyApi] GET /economy: Record found for ${masterAccountIdStr}. RequestId: ${requestId}`);
       res.status(200).json(economyRecord);
 
     } catch (error) {
@@ -86,7 +94,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const { amountUsd, description, transactionType, relatedItems, externalTransactionId } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/credit - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/credit - RequestId: ${requestId}`, { body: req.body });
 
     if (amountUsd === undefined || amountUsd === null) {
         return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing required field: amountUsd.', details: { field: 'amountUsd' }, requestId } });
@@ -117,14 +125,14 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     try {
       client = await getCachedClient();
       session = client.startSession();
-      logger.info(`[userEconomyApi] POST /credit: Starting transaction. RequestId: ${requestId}`);
+      verboseLog(`[userEconomyApi] POST /credit: Starting transaction. RequestId: ${requestId}`);
 
       await session.withTransaction(async (sess) => {
         let currentEconomy = await db.userEconomy.findByMasterAccountId(masterAccountId, sess);
         let balanceBeforeUsd;
 
         if (!currentEconomy) {
-          logger.info(`[userEconomyApi] POST /credit: Creating initial economy record for ${masterAccountIdStr}. RequestId: ${requestId}`);
+          verboseLog(`[userEconomyApi] POST /credit: Creating initial economy record for ${masterAccountIdStr}. RequestId: ${requestId}`);
           currentEconomy = await db.userEconomy.createUserEconomyRecord(masterAccountId, '0', 0, sess);
           if (!currentEconomy) throw new Error('Failed to create initial economy record.');
           balanceBeforeUsd = Decimal128.fromString('0'); 
@@ -153,7 +161,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         if (!createdTransaction) throw new Error('Failed to log transaction.');
 
         // Add detailed logging before the final fetch
-        logger.info(`[userEconomyApi] POST /credit: Transaction components completed. Attempting final fetch. TxId: ${createdTransaction._id}, SessionId: ${sess.id?.id?.toString('hex')}, InTransaction: ${sess.inTransaction()}`);
+        verboseLog(`[userEconomyApi] POST /credit: Transaction components completed. Attempting final fetch. TxId: ${createdTransaction._id}, SessionId: ${sess.id?.id?.toString('hex')}, InTransaction: ${sess.inTransaction()}`);
 
         finalEconomyRecord = await db.userEconomy.findByMasterAccountId(masterAccountId, {}, sess); // Explicitly pass empty options {} here too
         if (!finalEconomyRecord) {
@@ -161,7 +169,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
              throw new Error('Failed to fetch final economy record.');
         }
 
-        logger.info(`[userEconomyApi] POST /credit: Transaction successful. TxId: ${createdTransaction._id}. RequestId: ${requestId}`);
+        verboseLog(`[userEconomyApi] POST /credit: Transaction successful. TxId: ${createdTransaction._id}. RequestId: ${requestId}`);
       });
 
       res.status(200).json({ updatedEconomy: finalEconomyRecord, transaction: createdTransaction });
@@ -190,7 +198,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const { amountUsd, description, transactionType, relatedItems } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/debit - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/debit - RequestId: ${requestId}`, { body: req.body });
 
     if (amountUsd === undefined || amountUsd === null) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing required field: amountUsd.', details: { field: 'amountUsd' }, requestId } });
@@ -221,7 +229,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     try {
       client = await getCachedClient();
       session = client.startSession();
-      logger.info(`[userEconomyApi] POST /debit: Starting transaction. RequestId: ${requestId}`);
+      verboseLog(`[userEconomyApi] POST /debit: Starting transaction. RequestId: ${requestId}`);
 
       await session.withTransaction(async (sess) => {
         const currentEconomy = await db.userEconomy.findByMasterAccountId(masterAccountId, sess);
@@ -261,7 +269,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         finalEconomyRecord = await db.userEconomy.findByMasterAccountId(masterAccountId, sess);
         if (!finalEconomyRecord) throw new Error('Failed to fetch final economy record.');
 
-        logger.info(`[userEconomyApi] POST /debit: Transaction successful. TxId: ${createdTransaction._id}. RequestId: ${requestId}`);
+        verboseLog(`[userEconomyApi] POST /debit: Transaction successful. TxId: ${createdTransaction._id}. RequestId: ${requestId}`);
       });
 
       res.status(200).json({ updatedEconomy: finalEconomyRecord, transaction: createdTransaction });
@@ -292,7 +300,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const { expChange, description } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] PUT /users/${masterAccountIdStr}/economy/exp - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[userEconomyApi] PUT /users/${masterAccountIdStr}/economy/exp - RequestId: ${requestId}`, { body: req.body });
 
     if (expChange === undefined || expChange === null) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Missing required field: expChange.', details: { field: 'expChange' }, requestId } });
@@ -327,7 +335,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
           return res.status(500).json({ error: { code: 'INTERNAL_SERVER_ERROR', message: 'Failed to retrieve economy record after update.', requestId } });
       }
 
-      logger.info(`[userEconomyApi] PUT /exp: EXP updated for ${masterAccountIdStr}. New EXP: ${updatedEconomyRecord.exp}. RequestId: ${requestId}`);
+      verboseLog(`[userEconomyApi] PUT /exp: EXP updated for ${masterAccountIdStr}. New EXP: ${updatedEconomyRecord.exp}. RequestId: ${requestId}`);
       res.status(200).json(updatedEconomyRecord);
 
     } catch (error) {
@@ -345,7 +353,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const { pointsToSpend, spendContext, walletAddress } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/spend - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/spend - RequestId: ${requestId}`, { body: req.body });
 
     if (!Number.isInteger(pointsToSpend) || pointsToSpend <= 0) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'pointsToSpend must be a positive integer.', requestId } });
@@ -359,14 +367,14 @@ module.exports = function initializeUserEconomyApi(dependencies) {
 
       // 2. If none, try by wallet address (from userCore)
       if (!activeDeposits || activeDeposits.length === 0) {
-        logger.info(`[userEconomyApi] /spend: No deposits for masterAccountId, attempting wallet fallback.`);
+        verboseLog(`[userEconomyApi] /spend: No deposits for masterAccountId, attempting wallet fallback.`);
         const userCore = await db.userCore.findUserCoreById(masterAccountId);
         let primaryWallet = null;
         if (userCore && Array.isArray(userCore.wallets)) {
           primaryWallet = userCore.wallets.find(w => w.isPrimary) || userCore.wallets[0];
         }
         if (primaryWallet && primaryWallet.address) {
-          logger.info(`[userEconomyApi] /spend: Fallback to wallet-based spend for address ${primaryWallet.address}`);
+          verboseLog(`[userEconomyApi] /spend: Fallback to wallet-based spend for address ${primaryWallet.address}`);
           activeDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(primaryWallet.address);
           spendTarget = 'walletAddress';
         }
@@ -391,7 +399,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
           }
         }
         if (walletToCheck) {
-          logger.info(`[userEconomyApi] /spend: Attempting supplemental wallet-based deposits for address ${walletToCheck}`);
+          verboseLog(`[userEconomyApi] /spend: Attempting supplemental wallet-based deposits for address ${walletToCheck}`);
           supplementalDeposits = await db.creditLedger.findActiveDepositsForWalletAddress(walletToCheck);
         }
 
@@ -486,7 +494,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         return summary;
       });
       
-      logger.info(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId} (target: ${spendTarget})`, {
+      verboseLog(`[userEconomyApi] SPEND_LOG: User ${masterAccountIdStr} spent ${pointsToSpend} points. RequestId: ${requestId} (target: ${spendTarget})`, {
         totalPointsSpent: pointsToSpend,
         spendBreakdown: spendSummary,
         context: spendContext || 'N/A'
@@ -514,7 +522,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     const { points, description, rewardType, relatedItems } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/credit-points - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[userEconomyApi] POST /users/${masterAccountIdStr}/economy/credit-points - RequestId: ${requestId}`, { body: req.body });
 
     if (!Number.isInteger(points) || points <= 0) {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'points must be a positive integer.', requestId } });
@@ -540,7 +548,7 @@ module.exports = function initializeUserEconomyApi(dependencies) {
         throw new Error('Database operation failed to create reward entry.');
       }
 
-      logger.info(`[userEconomyApi] Successfully created reward credit entry for ${masterAccountIdStr}. RequestId: ${requestId}`);
+      verboseLog(`[userEconomyApi] Successfully created reward credit entry for ${masterAccountIdStr}. RequestId: ${requestId}`);
       res.status(201).json({ success: true, entryId: result.insertedId, requestId });
 
     } catch (error) {
@@ -570,6 +578,6 @@ module.exports = function initializeUserEconomyApi(dependencies) {
     });
   });
 
-  logger.info('[userEconomyApi] User Economy API routes initialized.');
+  verboseLog('[userEconomyApi] User Economy API routes initialized.');
   return router;
 }; 

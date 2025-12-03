@@ -1,115 +1,93 @@
 /**
- * Logger Utility
- * 
- * Provides consistent logging throughout the application
+ * Logger Utility (Pino + AsyncLocalStorage)
+ *
+ * Provides consistent structured logging and lightweight request context propagation.
  */
 
-const winston = require('winston');
+const { AsyncLocalStorage } = require('async_hooks');
+const { randomUUID } = require('crypto');
+const pino = require('pino');
 const config = require('../config');
-const util = require('util'); // Import the 'util' module
 
-/**
- * Create a configured logger instance for a specific module
- * @param {string} module - Module name for the logger
- * @returns {object} Configured winston logger instance
- */
-function createLogger(module) {
-  // Custom replacer function for JSON.stringify to handle BigInts
-  const jsonReplacer = (key, value) => {
-    if (typeof value === 'bigint') {
-      return value.toString();
+const loggingContext = new AsyncLocalStorage();
+
+const redactPaths = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["x-api-key"]',
+  'req.headers["x-internal-client-key"]',
+  'req.headers["x-guest-token"]',
+  'req.body.password',
+  'req.body.apiKey',
+  'apiKey',
+  'token',
+];
+
+const prettyTransport = !config.IS_PRODUCTION
+  ? {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        singleLine: true,
+        translateTime: 'SYS:standard',
+      },
     }
-    return value;
-  };
+  : null;
 
-  // Define log format
-  const logFormat = winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.splat(),
-    winston.format.printf((info) => {
-      const { level, message, module, timestamp, stack, httpStatus, alwaysLogFull } = info;
+const baseLogger = pino({
+  level: config.LOG_LEVEL || 'info',
+  redact: {
+    paths: redactPaths,
+    censor: '[REDACTED]',
+  },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  transport: prettyTransport ? { target: prettyTransport.target, options: prettyTransport.options } : undefined,
+  mixin() {
+    const context = loggingContext.getStore();
+    if (!context) return {};
+    // Avoid leaking mutable references
+    return { ...context };
+  },
+});
 
-      // Detect status code from various possible locations
-      let detectedStatus = httpStatus ?? info.statusCode ?? (info.res && info.res.statusCode);
-
-      // Check within splat metadata (common pattern logger.info(msg, { req, res }))
-      if (detectedStatus === undefined) {
-        const splatMeta = info[Symbol.for('splat')];
-        if (Array.isArray(splatMeta)) {
-          for (const item of splatMeta) {
-            if (item && typeof item === 'object' && item.res && typeof item.res.statusCode === 'number') {
-              detectedStatus = item.res.statusCode;
-              if (!info.req && item.req) info.req = item.req;
-              break;
-            }
-          }
-        }
-      }
-
-      // Abbreviate common successful HTTP 200 responses unless explicitly overridden
-      if (detectedStatus === 200 && !alwaysLogFull) {
-        // Try to include minimal contextual information if available
-        const method = info.method || (info.req && info.req.method) || '';
-        const url = info.url || (info.req && info.req.url) || '';
-        return `${timestamp} [${level.toUpperCase()}] [${module}]: HTTP 200 ${method} ${url}`.trim();
-      }
-
-      // Fallback: if message already contains status 200 pattern (e.g., "GET /foo - 200")
-      if (!alwaysLogFull && typeof message === 'string' && /\s-\s200$/.test(message)) {
-        return `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
-      }
-
-      let log = `${timestamp} [${level.toUpperCase()}] [${module}]: ${message}`;
-
-      const splat = info[Symbol.for('splat')];
-      if (splat && splat.length > 0) {
-          const formattedSplat = util.inspect(splat.length === 1 ? splat[0] : splat, { depth: 10, colors: false });
-          log += `\n${formattedSplat}`;
-      }
-
-      if (stack) {
-        log += `\n${stack}`;
-      }
-
-      return log;
-    })
-  );
-  
-  // Create logger instance
-  const logger = winston.createLogger({
-    level: config.LOG_LEVEL,
-    format: logFormat,
-    defaultMeta: { module },
-    transports: [
-      // Write logs to console in non-production environments
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.colorize(),
-          logFormat
-        )
-      })
-    ]
-  });
-  
-  // Add file transport in production
-  if (config.IS_PRODUCTION) {
-    logger.add(
-      new winston.transports.File({ 
-        filename: 'logs/error.log', 
-        level: 'error' 
-      })
-    );
-    logger.add(
-      new winston.transports.File({ 
-        filename: 'logs/combined.log' 
-      })
-    );
+function createLogger(module) {
+  const child = baseLogger.child(module ? { module } : {});
+  if (!config.LOG_VERBOSE_API && module && module.toLowerCase().includes('api')) {
+    const debugFn = child.debug ? child.debug.bind(child) : baseLogger.debug.bind(baseLogger);
+    child.info = (...args) => {
+      debugFn(...args);
+    };
   }
-  
-  return logger;
+  return child;
+}
+
+function runWithRequestContext(context, fn) {
+  const ctx = context && typeof context === 'object' ? { ...context } : {};
+  if (!ctx.reqId) {
+    ctx.reqId = randomUUID();
+  }
+  return loggingContext.run(ctx, fn);
+}
+
+function setRequestContext(values) {
+  if (!values || typeof values !== 'object') return;
+  const store = loggingContext.getStore();
+  if (!store) return;
+  Object.assign(store, values);
+}
+
+function getRequestContext() {
+  return loggingContext.getStore() || {};
+}
+
+function getBaseLogger() {
+  return baseLogger;
 }
 
 module.exports = {
-  createLogger
-}; 
+  createLogger,
+  getBaseLogger,
+  runWithRequestContext,
+  setRequestContext,
+  getRequestContext,
+};

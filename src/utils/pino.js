@@ -1,62 +1,59 @@
-const pino = require('pino');
-const config = require('../config');
+const { randomUUID } = require('crypto');
+const pinoHttp = require('pino-http');
+const { getBaseLogger, runWithRequestContext } = require('./logger');
 
-// Create a pino logger instance specifically for HTTP requests
-const httpLogger = pino({
-  level: config.LOG_LEVEL,
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'SYS:standard',
-      ignore: 'pid,hostname',
-      singleLine: true,
-    },
+const STATIC_ASSET_REGEXP = /\.(?:css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|ttf|otf|woff2?|eot)$/i;
+
+const baseHttpLogger = getBaseLogger().child({ module: 'http' });
+
+const httpLogger = pinoHttp({
+  logger: baseHttpLogger,
+  genReqId(req) {
+    return req.headers['x-request-id'] || randomUUID();
   },
-});
-
-// Export a pre-configured pino-http instance
-module.exports = require('pino-http')({
-  logger: httpLogger,
-
-  // Define a custom serializer for the request object to ensure
-  // the body is handled correctly and not logged character-by-character.
+  customAttributeKeys: {
+    reqId: 'reqId',
+  },
   serializers: {
     req(req) {
-      // For abbrev logs we don't need full body at all
       return {
         method: req.method,
         url: req.url,
-        remoteAddress: req.remoteAddress,
+        remoteAddress: req.ip || req.socket?.remoteAddress,
       };
     },
     res(res) {
-      return { statusCode: res.statusCode };
-    }
+      return {
+        statusCode: res.statusCode,
+      };
+    },
   },
-
-  // Custom log message to provide a clear summary of the request.
-  customSuccessMessage: function (req, res) {
-    return `${req.method} ${req.url} - ${res.statusCode}`;
+  customSuccessMessage(req, res) {
+    const duration = res.responseTime ? ` ${res.responseTime}ms` : '';
+    return `${req.method} ${req.url} - ${res.statusCode}${duration}`;
   },
-  customErrorMessage: function (req, res, err) {
+  customErrorMessage(req, res, err) {
     return `${req.method} ${req.url} - ${res.statusCode} - ${err.message}`;
   },
-  // Silence logs for requests that only serve static assets to reduce console noise
-  customLogLevel: function (req, res, err) {
-    // If an error occurred, always log it as error
+  customLogLevel(req, res, err) {
     if (err || res.statusCode >= 500) return 'error';
-
-    // Skip logging for common static asset extensions (css, js, images, fonts, maps)
-    const STATIC_ASSET_REGEXP = /\.(?:css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|avif|ttf|otf|woff2?|eot)$/i;
-    if (STATIC_ASSET_REGEXP.test(req.url)) {
-      return 'silent';
-    }
-
-    // Warn for client errors
+    if (STATIC_ASSET_REGEXP.test(req.url)) return 'silent';
     if (res.statusCode >= 400) return 'warn';
-
-    // Otherwise, use info for application/API requests
+    if (req.__actionTracked) return 'debug';
     return 'info';
-  }
-}); 
+  },
+});
+
+module.exports = function httpLoggingMiddleware(req, res, next) {
+  httpLogger(req, res, (err) => {
+    if (err) return next(err);
+    const context = {
+      reqId: req.id,
+      method: req.method,
+      url: req.url,
+      remoteAddress: req.ip || req.socket?.remoteAddress,
+      platform: 'web',
+    };
+    runWithRequestContext(context, () => next());
+  });
+}; 

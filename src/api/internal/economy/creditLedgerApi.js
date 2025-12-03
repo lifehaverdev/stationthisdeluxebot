@@ -11,6 +11,14 @@ const { v4: uuidv4 } = require('uuid');
 function createCreditLedgerApi(services, logger) {
   const router = express.Router();
   const creditLedgerDb = services.db?.creditLedger;
+  const verboseEnabled = process.env.LOG_VERBOSE_CREDIT_LEDGER_API === '1';
+  const verboseLog = (...args) => {
+    if (verboseEnabled) {
+      logger.info(...args);
+    } else if (logger.debug) {
+      logger.debug(...args);
+    }
+  };
 
   if (!creditLedgerDb) {
     throw new Error('CreditLedgerApi: Missing creditLedgerDb service');
@@ -21,7 +29,7 @@ function createCreditLedgerApi(services, logger) {
     const requestId = uuidv4();
     const { deposit_tx_hash, deposit_log_index, deposit_block_number, vault_account, depositor_address, token_address, deposit_amount_wei } = req.body;
 
-    logger.info(`[creditLedgerApi] POST /ledger/entries - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[creditLedgerApi] POST /ledger/entries - RequestId: ${requestId}`, { body: req.body });
 
     try {
       const entry = await creditLedgerDb.createLedgerEntry({
@@ -47,7 +55,7 @@ function createCreditLedgerApi(services, logger) {
     const { txHash } = req.params;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] GET /ledger/entries/${txHash} - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/entries/${txHash} - RequestId: ${requestId}`);
 
     try {
       const entry = await creditLedgerDb.findLedgerEntryByTxHash(txHash);
@@ -67,7 +75,7 @@ function createCreditLedgerApi(services, logger) {
     const { status, confirmation_tx_hash, additional_data } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] PUT /ledger/entries/${txHash}/status - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[creditLedgerApi] PUT /ledger/entries/${txHash}/status - RequestId: ${requestId}`, { body: req.body });
 
     try {
       // Fix: Merge confirmation_tx_hash into additional_data object
@@ -88,7 +96,7 @@ function createCreditLedgerApi(services, logger) {
     const requestId = uuidv4();
     const { request_tx_hash, request_block_number, vault_account, user_address, token_address, master_account_id, collateral_amount_wei } = req.body;
 
-    logger.info(`[creditLedgerApi] POST /ledger/withdrawals - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[creditLedgerApi] POST /ledger/withdrawals - RequestId: ${requestId}`, { body: req.body });
 
     try {
       const request = await creditLedgerDb.createWithdrawalRequest({
@@ -114,7 +122,7 @@ function createCreditLedgerApi(services, logger) {
     const { txHash } = req.params;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] GET /ledger/withdrawals/${txHash} - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/withdrawals/${txHash} - RequestId: ${requestId}`);
 
     try {
       const request = await creditLedgerDb.findWithdrawalRequestByTxHash(txHash);
@@ -134,7 +142,7 @@ function createCreditLedgerApi(services, logger) {
     const { status, additional_data } = req.body;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] PUT /ledger/withdrawals/${txHash}/status - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[creditLedgerApi] PUT /ledger/withdrawals/${txHash}/status - RequestId: ${requestId}`, { body: req.body });
 
     try {
       const result = await creditLedgerDb.updateWithdrawalRequestStatus(txHash, status, additional_data);
@@ -150,7 +158,7 @@ function createCreditLedgerApi(services, logger) {
     const requestId = uuidv4();
     const { vault_address, owner_address, master_account_id, creation_tx_hash, salt } = req.body;
 
-    logger.info(`[creditLedgerApi] POST /ledger/vaults - RequestId: ${requestId}`, { body: req.body });
+    verboseLog(`[creditLedgerApi] POST /ledger/vaults - RequestId: ${requestId}`, { body: req.body });
 
     try {
       const vault = await creditLedgerDb.createReferralVault({
@@ -172,7 +180,7 @@ function createCreditLedgerApi(services, logger) {
   router.get('/vaults/by-name/:name', async (req, res) => {
     const { name } = req.params;
     const requestId = uuidv4();
-    logger.info(`[creditLedgerApi] GET /ledger/vaults/by-name/${name} - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/vaults/by-name/${name} - RequestId: ${requestId}`);
     try {
       const vault = await creditLedgerDb.findReferralVaultByName(name);
       if (!vault) {
@@ -190,7 +198,7 @@ function createCreditLedgerApi(services, logger) {
     const { address } = req.params;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] GET /ledger/vaults/by-address/${address} - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/vaults/by-address/${address} - RequestId: ${requestId}`);
 
     try {
       const vault = await creditLedgerDb.findReferralVaultByAddress(address);
@@ -209,7 +217,7 @@ function createCreditLedgerApi(services, logger) {
     const { masterAccountId } = req.params;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] GET /ledger/vaults/by-master-account/${masterAccountId} - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/vaults/by-master-account/${masterAccountId} - RequestId: ${requestId}`);
 
     try {
       const vaults = await creditLedgerDb.findReferralVaultsByMasterAccount(masterAccountId);
@@ -225,7 +233,7 @@ function createCreditLedgerApi(services, logger) {
     const { vaultAddress } = req.params;
     const requestId = uuidv4();
 
-    logger.info(`[creditLedgerApi] GET /ledger/vaults/${vaultAddress}/stats - RequestId: ${requestId}`);
+    verboseLog(`[creditLedgerApi] GET /ledger/vaults/${vaultAddress}/stats - RequestId: ${requestId}`);
 
     try {
       const stats = await creditLedgerDb.getVaultTokenStats(vaultAddress);

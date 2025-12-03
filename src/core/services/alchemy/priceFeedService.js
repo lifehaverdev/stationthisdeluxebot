@@ -17,6 +17,8 @@ const MS2_ADDRESSES = {
  * This service will abstract the specific logic for interacting with price oracles
  * like Alchemy's Price Feed API or Chainlink Data Feeds.
  */
+const verboseEnabled = process.env.LOG_VERBOSE_PRICE_FEED === '1';
+
 class PriceFeedService {
   /**
    * @param {object} config - Configuration object.
@@ -25,13 +27,20 @@ class PriceFeedService {
    */
   constructor(config, logger) {
     this.logger = logger || console;
+    this.verboseLog = (...args) => {
+      if (verboseEnabled) {
+        this.logger.info(...args);
+      } else if (this.logger.debug) {
+        this.logger.debug(...args);
+      }
+    };
     
     if (!config || !config.alchemyApiKey) {
       this.logger.warn('[PriceFeedService] Alchemy API Key is missing. Service will use placeholder data.');
     }
     this.alchemyApiKey = config.alchemyApiKey;
     
-    this.logger.info('[PriceFeedService] Initialized.');
+    this.verboseLog('[PriceFeedService] Initialized.');
   }
 
   /**
@@ -40,7 +49,7 @@ class PriceFeedService {
    * @returns {Promise<{name: string, symbol: string, decimals: number}>} An object with token metadata.
    */
   async getMetadata(tokenAddress) {
-    this.logger.info(`[PriceFeedService] Fetching metadata for token: ${tokenAddress}`);
+    this.verboseLog(`[PriceFeedService] Fetching metadata for token: ${tokenAddress}`);
     // Note: This uses the public Alchemy RPC endpoint format.
     const fetchURL = `https://eth-mainnet.g.alchemy.com/v2/${this.alchemyApiKey}`;
 
@@ -64,7 +73,7 @@ class PriceFeedService {
 
       const json = await response.json();
       
-      this.logger.info(`[PriceFeedService] Full metadata response for ${tokenAddress}: ${JSON.stringify(json, null, 2)}`);
+      this.verboseLog(`[PriceFeedService] Full metadata response for ${tokenAddress}: ${JSON.stringify(json, null, 2)}`);
 
       if (json.error) {
         throw new Error(`Alchemy API Error: ${json.error.message}`);
@@ -75,7 +84,7 @@ class PriceFeedService {
           throw new Error(`Could not parse metadata for ${tokenAddress} from Alchemy response.`);
       }
 
-      this.logger.info(`[PriceFeedService] Found metadata for ${symbol}: ${decimals} decimals.`);
+      this.verboseLog(`[PriceFeedService] Found metadata for ${symbol}: ${decimals} decimals.`);
       return { name, symbol, decimals };
     } catch (error) {
       this.logger.error(`[PriceFeedService] Failed to fetch metadata for ${tokenAddress}:`, error);
@@ -118,7 +127,7 @@ class PriceFeedService {
       } catch (error) {
         this.logger.error(`[PriceFeedService] Attempt ${attempt} to fetch MS2 price failed:`, error?.message || error);
         if (attempt < MAX_ATTEMPTS) {
-          this.logger.info(`[PriceFeedService] Retrying MS2 price fetch in ${RETRY_DELAY_MS / 1000}s (${MAX_ATTEMPTS - attempt} retries left)…`);
+        this.verboseLog(`[PriceFeedService] Retrying MS2 price fetch in ${RETRY_DELAY_MS / 1000}s (${MAX_ATTEMPTS - attempt} retries left)…`);
           await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
           continue;
         }
@@ -130,18 +139,18 @@ class PriceFeedService {
   }
 
   async getPriceInUsd(tokenAddress) {
-    this.logger.info(`[PriceFeedService] Fetching price for token: ${tokenAddress}`);
+    this.verboseLog(`[PriceFeedService] Fetching price for token: ${tokenAddress}`);
     const network = 'eth-mainnet'; // This should be configured if supporting other chains
 
     // Check if this is MS2 token
     if (tokenAddress.toLowerCase() === MS2_ADDRESSES.ETH.toLowerCase()) {
-      this.logger.info('[PriceFeedService] Identified MS2 token, using CoinGecko price feed.');
+      this.verboseLog('[PriceFeedService] Identified MS2 token, using CoinGecko price feed.');
       return this._getMS2Price();
     }
 
     if (tokenAddress.toLowerCase() === NATIVE_ETH_ADDRESS) {
       // Use "Token Prices By Symbol" for native ETH
-      this.logger.info(`[PriceFeedService] Identified native ETH, using 'by-symbol' endpoint.`);
+      this.verboseLog(`[PriceFeedService] Identified native ETH, using 'by-symbol' endpoint.`);
       const fetchURL = `https://api.g.alchemy.com/prices/v1/${this.alchemyApiKey}/tokens/by-symbol`;
       const params = new URLSearchParams({ symbols: 'ETH', currency: 'USD' });
       const urlWithParams = `${fetchURL}?${params.toString()}`;
@@ -163,7 +172,7 @@ class PriceFeedService {
       }
     } else {
       // Use "Token Prices By Address" for all ERC20 tokens
-      this.logger.info(`[PriceFeedService] Identified ERC20 token, using 'by-address' endpoint.`);
+      this.verboseLog(`[PriceFeedService] Identified ERC20 token, using 'by-address' endpoint.`);
       const fetchURL = `https://api.g.alchemy.com/prices/v1/${this.alchemyApiKey}/tokens/by-address`;
       const requestBody = {
           addresses: [{ network, address: tokenAddress }],
