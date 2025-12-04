@@ -280,8 +280,6 @@ run_logged "Pull latest" git pull origin main
 
 GIT_COMMIT=$(git rev-parse HEAD)
 log "Current git commit: ${GIT_COMMIT}"
-touch .docker-build-trigger
-echo "${GIT_COMMIT}" > .docker-build-trigger
 
 DEPLOY_WORKER_FLAG="${DEPLOY_WORKER:-0}"
 if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
@@ -300,9 +298,13 @@ if [[ "${DEPLOY_WORKER_FLAG}" == "1" ]]; then
   stop_container_if_exists "${WORKER_CONTAINER}"
 fi
 
-log "Cleaning up docker cache..."
-docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
-docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+if [[ "${DOCKER_PRUNE:-0}" == "1" ]]; then
+  log "Cleaning up docker cache..."
+  docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+  docker image prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+else
+  log "Skipping docker cache prune (DOCKER_PRUNE not set)."
+fi
 
 log "Building new docker image..."
 if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
@@ -369,9 +371,11 @@ if docker image inspect "${IMAGE_NAME}:latest" >/dev/null 2>&1; then
   docker tag "${IMAGE_NAME}:latest" "${OLD_IMAGE_NAME}" >> "${LOG_FILE}" 2>&1 || true
 fi
 
-log "Pruning dangling images..."
-docker image prune -f >> "${LOG_FILE}" 2>&1 || true
-docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+if [[ "${DOCKER_PRUNE:-0}" == "1" ]]; then
+  log "Pruning dangling images..."
+  docker image prune -f >> "${LOG_FILE}" 2>&1 || true
+  docker builder prune -a -f --filter "until=24h" >> "${LOG_FILE}" 2>&1 || true
+fi
 
 log "Deployment complete. Recent logs:"
 docker logs --tail 50 "${APP_CONTAINER}" 2>&1 | tee -a "${LOG_FILE}" || true
