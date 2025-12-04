@@ -13,8 +13,8 @@ RUN apt-get update \
 # Copy package files and install dependencies first
 # This layer is only invalidated if package.json or package-lock.json changes
 COPY package*.json ./
-RUN npm install -g pm2 && \
-    --mount=type=cache,target=/root/.npm npm install
+RUN npm install -g pm2
+RUN --mount=type=cache,target=/root/.npm npm install
 
 # Copy the rest of the application code
 # Note: Docker will automatically invalidate this cache when files change
